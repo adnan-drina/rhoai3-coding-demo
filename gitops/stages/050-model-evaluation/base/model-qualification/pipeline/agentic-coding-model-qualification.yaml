@@ -1,0 +1,1510 @@
+apiVersion: pipelines.kubeflow.org/v2beta1
+kind: Pipeline
+metadata:
+  name: agentic-coding-model-qualification
+  namespace: evaluated-models
+spec:
+  description: Evaluates one model on the agentic coding EvalHub collections and ranks
+    it on the qualification leaderboard.
+  displayName: Agentic coding model qualification
+---
+apiVersion: pipelines.kubeflow.org/v2beta1
+kind: PipelineVersion
+metadata:
+  name: agentic-coding-model-qualification-v1
+  namespace: evaluated-models
+spec:
+  description: Evaluates one model on the agentic coding EvalHub collections and ranks
+    it on the qualification leaderboard.
+  displayName: agentic-coding-model-qualification v1
+  pipelineName: agentic-coding-model-qualification
+  pipelineSpec:
+    components:
+      comp-evaluate-collection:
+        executorLabel: exec-evaluate-collection
+        inputDefinitions:
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            collection_id:
+              parameterType: STRING
+            evalhub_experiment:
+              parameterType: STRING
+            evalhub_url:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_name:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            qualification_tag:
+              parameterType: STRING
+            queue:
+              parameterType: STRING
+            run_name:
+              parameterType: STRING
+            skip:
+              parameterType: BOOLEAN
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
+            timeout_seconds:
+              parameterType: NUMBER_INTEGER
+        outputDefinitions:
+          artifacts:
+            results:
+              artifactType:
+                schemaTitle: system.Artifact
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
+                schemaVersion: 0.0.1
+      comp-evaluate-collection-2:
+        executorLabel: exec-evaluate-collection-2
+        inputDefinitions:
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            collection_id:
+              parameterType: STRING
+            evalhub_experiment:
+              parameterType: STRING
+            evalhub_url:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_name:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            qualification_tag:
+              parameterType: STRING
+            queue:
+              parameterType: STRING
+            run_name:
+              parameterType: STRING
+            skip:
+              parameterType: BOOLEAN
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
+            timeout_seconds:
+              parameterType: NUMBER_INTEGER
+        outputDefinitions:
+          artifacts:
+            results:
+              artifactType:
+                schemaTitle: system.Artifact
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
+                schemaVersion: 0.0.1
+      comp-evaluate-collection-3:
+        executorLabel: exec-evaluate-collection-3
+        inputDefinitions:
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            collection_id:
+              parameterType: STRING
+            evalhub_experiment:
+              parameterType: STRING
+            evalhub_url:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_name:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            qualification_tag:
+              parameterType: STRING
+            queue:
+              parameterType: STRING
+            run_name:
+              parameterType: STRING
+            skip:
+              parameterType: BOOLEAN
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
+            timeout_seconds:
+              parameterType: NUMBER_INTEGER
+        outputDefinitions:
+          artifacts:
+            results:
+              artifactType:
+                schemaTitle: system.Artifact
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
+                schemaVersion: 0.0.1
+      comp-evaluate-collection-4:
+        executorLabel: exec-evaluate-collection-4
+        inputDefinitions:
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            collection_id:
+              parameterType: STRING
+            evalhub_experiment:
+              parameterType: STRING
+            evalhub_url:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_name:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            qualification_tag:
+              parameterType: STRING
+            queue:
+              parameterType: STRING
+            run_name:
+              parameterType: STRING
+            skip:
+              parameterType: BOOLEAN
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
+            timeout_seconds:
+              parameterType: NUMBER_INTEGER
+        outputDefinitions:
+          artifacts:
+            results:
+              artifactType:
+                schemaTitle: system.Artifact
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
+                schemaVersion: 0.0.1
+      comp-evaluate-collection-5:
+        executorLabel: exec-evaluate-collection-5
+        inputDefinitions:
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            collection_id:
+              parameterType: STRING
+            evalhub_experiment:
+              parameterType: STRING
+            evalhub_url:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_name:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            qualification_tag:
+              parameterType: STRING
+            queue:
+              parameterType: STRING
+            run_name:
+              parameterType: STRING
+            skip:
+              parameterType: BOOLEAN
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
+            timeout_seconds:
+              parameterType: NUMBER_INTEGER
+        outputDefinitions:
+          artifacts:
+            results:
+              artifactType:
+                schemaTitle: system.Artifact
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
+                schemaVersion: 0.0.1
+      comp-leaderboard:
+        executorLabel: exec-leaderboard
+        inputDefinitions:
+          parameters:
+            evalhub_url:
+              parameterType: STRING
+            max_regression:
+              parameterType: NUMBER_DOUBLE
+            model_name:
+              parameterType: STRING
+            qualification_tag:
+              parameterType: STRING
+            run_name:
+              parameterType: STRING
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
+        outputDefinitions:
+          artifacts:
+            report:
+              artifactType:
+                schemaTitle: system.HTML
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
+                schemaVersion: 0.0.1
+          parameters:
+            Output:
+              parameterType: STRING
+      comp-resolve-model:
+        executorLabel: exec-resolve-model
+        inputDefinitions:
+          parameters:
+            model_name:
+              parameterType: STRING
+        outputDefinitions:
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
+    deploymentSpec:
+      executors:
+        exec-evaluate-collection:
+          container:
+            args:
+            - --executor_input
+            - '{{$}}'
+            - --function_to_execute
+            - evaluate_collection
+            command:
+            - sh
+            - -c
+            - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
+              \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
+              \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+              3.9\"' && \"$0\" \"$@\"\n"
+            - sh
+            - -ec
+            - 'program_path=$(mktemp -d)
+
+
+              printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+              _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+              '
+            - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
+              \ import *\n\ndef evaluate_collection(\n    model_name: str,\n    model_id:\
+              \ str,\n    model_url: str,\n    auth_secret: str,\n    target: str,\n\
+              \    tenant: str,\n    collection_id: str,\n    qualification_tag: str,\n\
+              \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
+              \    run_name: str,\n    timeout_seconds: int,\n    skip: bool,\n  \
+              \  results: dsl.Output[dsl.Artifact],\n    scores: dsl.Output[dsl.Metrics],\n\
+              ):\n    \"\"\"Run one EvalHub collection on the model and keep the job\
+              \ body and results.\"\"\"\n    import json\n    if skip:\n        print(f\"\
+              {collection_id}: skipped by the run's skip parameter; no EvalHub job\
+              \ submitted\")\n        with open(results.path, \"w\") as f:\n     \
+              \       json.dump({\"collection_id\": collection_id, \"skipped\": True},\
+              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return\n\
+              \    import os\n    import re\n    import subprocess\n    import tempfile\n\
+              \n    import httpx\n    import yaml\n\n    work = tempfile.mkdtemp()\n\
+              \    profile = os.path.join(work, \"evalhub.yaml\")\n    with open(profile,\
+              \ \"w\") as f:\n        yaml.safe_dump({\"active_profile\": \"default\"\
+              ,\n                        \"profiles\": {\"default\": {\"base_url\"\
+              : evalhub_url, \"tenant\": tenant}}}, f)\n    env = dict(os.environ,\
+              \ EVALHUB_CONFIG=profile)\n    subprocess.run([\"evalhub\", \"health\"\
+              ], env=env, check=True)\n\n    version = collection_id.rsplit(\"-\"\
+              , 1)[-1]\n    tags = {\"qualification_run\": run_name, \"model\": model_name,\
+              \ \"target\": target,\n            \"collection\": collection_id, \"\
+              collection_version\": version}\n    body = {\n        \"name\": f\"\
+              {collection_id}-{model_name}-{run_name}\"[:120],\n        \"description\"\
+              : f\"Model qualification run {run_name}: {target} model {model_name}\
+              \ on {collection_id}\",\n        \"tags\": [qualification_tag, f\"target={target}\"\
+              , f\"model={model_name}\"],\n        \"model\": {\"url\": model_url,\
+              \ \"name\": model_id, \"auth\": {\"secret_ref\": auth_secret}},\n  \
+              \      \"collection\": {\"id\": collection_id},\n        \"experiment\"\
+              : {\"name\": evalhub_experiment, \"tags\": [{\"key\": k, \"value\":\
+              \ v} for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
+              , \"name\": queue},\n    }\n    path = os.path.join(work, \"eval.yaml\"\
+              )\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body, f,\
+              \ sort_keys=False)\n    print(open(path).read())\n\n    # The gate:\
+              \ --wait blocks until the job is terminal and exits 1 when the job fails\
+              \ (before printing it),\n    # so the job id comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read\n    # from the documented jobs endpoint with the same ServiceAccount\
+              \ token and service CA.\n    token = open(\"/var/run/secrets/kubernetes.io/serviceaccount/token\"\
+              ).read().strip()\n    response = httpx.get(f\"{evalhub_url}/api/v1/evaluations/jobs/{job_id}\"\
+              , timeout=60,\n                         headers={\"Authorization\":\
+              \ f\"Bearer {token}\", \"X-Tenant\": tenant},\n                    \
+              \     verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\")\n\
+              \    response.raise_for_status()\n    job = response.json()\n    csv\
+              \ = subprocess.run([\"evalhub\", \"eval\", \"results\", job_id, \"--format\"\
+              , \"csv\"],\n                         env=env, capture_output=True,\
+              \ text=True).stdout\n    with open(results.path, \"w\") as f:\n    \
+              \    json.dump({\"eval_yaml\": body, \"job\": job, \"results_csv\":\
+              \ csv}, f, indent=1)\n    state = (job.get(\"status\") or {}).get(\"\
+              state\")\n    # Scalar metrics: logged by the pipeline server's MLflow\
+              \ integration to this task's nested run and shown\n    # in the KFP\
+              \ and MLflow run comparison views. A benchmark whose metrics are all\
+              \ zero had no successful\n    # requests, so it gets no score.\n   \
+              \ for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
+              \        t = b.get(\"test\") or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if isinstance(t.get(\"primary_score\"), (int, float)) and any(numbers):\n\
+              \            scores.log_metric(f\"{b['id']}.{t.get('primary_score_metric')}\"\
+              .replace(\"/\", \"_\").replace(\":\", \"_\"),\n                    \
+              \          float(t[\"primary_score\"]))\n            scores.log_metric(f\"\
+              {b['id']}.pass\".replace(\"/\", \"_\").replace(\":\", \"_\"), 1.0 if\
+              \ t.get(\"pass\") else 0.0)\n    print(f\"{collection_id}: job {job_id}\
+              \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
+              , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
+              job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
+              )\n\n"
+            image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
+            resources:
+              cpuLimit: 0.5
+              cpuRequest: 0.1
+              memoryLimit: 0.536870912
+              memoryRequest: 0.268435456
+              resourceCpuLimit: 500m
+              resourceCpuRequest: 100m
+              resourceMemoryLimit: 512Mi
+              resourceMemoryRequest: 256Mi
+        exec-evaluate-collection-2:
+          container:
+            args:
+            - --executor_input
+            - '{{$}}'
+            - --function_to_execute
+            - evaluate_collection
+            command:
+            - sh
+            - -c
+            - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
+              \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
+              \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+              3.9\"' && \"$0\" \"$@\"\n"
+            - sh
+            - -ec
+            - 'program_path=$(mktemp -d)
+
+
+              printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+              _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+              '
+            - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
+              \ import *\n\ndef evaluate_collection(\n    model_name: str,\n    model_id:\
+              \ str,\n    model_url: str,\n    auth_secret: str,\n    target: str,\n\
+              \    tenant: str,\n    collection_id: str,\n    qualification_tag: str,\n\
+              \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
+              \    run_name: str,\n    timeout_seconds: int,\n    skip: bool,\n  \
+              \  results: dsl.Output[dsl.Artifact],\n    scores: dsl.Output[dsl.Metrics],\n\
+              ):\n    \"\"\"Run one EvalHub collection on the model and keep the job\
+              \ body and results.\"\"\"\n    import json\n    if skip:\n        print(f\"\
+              {collection_id}: skipped by the run's skip parameter; no EvalHub job\
+              \ submitted\")\n        with open(results.path, \"w\") as f:\n     \
+              \       json.dump({\"collection_id\": collection_id, \"skipped\": True},\
+              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return\n\
+              \    import os\n    import re\n    import subprocess\n    import tempfile\n\
+              \n    import httpx\n    import yaml\n\n    work = tempfile.mkdtemp()\n\
+              \    profile = os.path.join(work, \"evalhub.yaml\")\n    with open(profile,\
+              \ \"w\") as f:\n        yaml.safe_dump({\"active_profile\": \"default\"\
+              ,\n                        \"profiles\": {\"default\": {\"base_url\"\
+              : evalhub_url, \"tenant\": tenant}}}, f)\n    env = dict(os.environ,\
+              \ EVALHUB_CONFIG=profile)\n    subprocess.run([\"evalhub\", \"health\"\
+              ], env=env, check=True)\n\n    version = collection_id.rsplit(\"-\"\
+              , 1)[-1]\n    tags = {\"qualification_run\": run_name, \"model\": model_name,\
+              \ \"target\": target,\n            \"collection\": collection_id, \"\
+              collection_version\": version}\n    body = {\n        \"name\": f\"\
+              {collection_id}-{model_name}-{run_name}\"[:120],\n        \"description\"\
+              : f\"Model qualification run {run_name}: {target} model {model_name}\
+              \ on {collection_id}\",\n        \"tags\": [qualification_tag, f\"target={target}\"\
+              , f\"model={model_name}\"],\n        \"model\": {\"url\": model_url,\
+              \ \"name\": model_id, \"auth\": {\"secret_ref\": auth_secret}},\n  \
+              \      \"collection\": {\"id\": collection_id},\n        \"experiment\"\
+              : {\"name\": evalhub_experiment, \"tags\": [{\"key\": k, \"value\":\
+              \ v} for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
+              , \"name\": queue},\n    }\n    path = os.path.join(work, \"eval.yaml\"\
+              )\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body, f,\
+              \ sort_keys=False)\n    print(open(path).read())\n\n    # The gate:\
+              \ --wait blocks until the job is terminal and exits 1 when the job fails\
+              \ (before printing it),\n    # so the job id comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read\n    # from the documented jobs endpoint with the same ServiceAccount\
+              \ token and service CA.\n    token = open(\"/var/run/secrets/kubernetes.io/serviceaccount/token\"\
+              ).read().strip()\n    response = httpx.get(f\"{evalhub_url}/api/v1/evaluations/jobs/{job_id}\"\
+              , timeout=60,\n                         headers={\"Authorization\":\
+              \ f\"Bearer {token}\", \"X-Tenant\": tenant},\n                    \
+              \     verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\")\n\
+              \    response.raise_for_status()\n    job = response.json()\n    csv\
+              \ = subprocess.run([\"evalhub\", \"eval\", \"results\", job_id, \"--format\"\
+              , \"csv\"],\n                         env=env, capture_output=True,\
+              \ text=True).stdout\n    with open(results.path, \"w\") as f:\n    \
+              \    json.dump({\"eval_yaml\": body, \"job\": job, \"results_csv\":\
+              \ csv}, f, indent=1)\n    state = (job.get(\"status\") or {}).get(\"\
+              state\")\n    # Scalar metrics: logged by the pipeline server's MLflow\
+              \ integration to this task's nested run and shown\n    # in the KFP\
+              \ and MLflow run comparison views. A benchmark whose metrics are all\
+              \ zero had no successful\n    # requests, so it gets no score.\n   \
+              \ for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
+              \        t = b.get(\"test\") or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if isinstance(t.get(\"primary_score\"), (int, float)) and any(numbers):\n\
+              \            scores.log_metric(f\"{b['id']}.{t.get('primary_score_metric')}\"\
+              .replace(\"/\", \"_\").replace(\":\", \"_\"),\n                    \
+              \          float(t[\"primary_score\"]))\n            scores.log_metric(f\"\
+              {b['id']}.pass\".replace(\"/\", \"_\").replace(\":\", \"_\"), 1.0 if\
+              \ t.get(\"pass\") else 0.0)\n    print(f\"{collection_id}: job {job_id}\
+              \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
+              , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
+              job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
+              )\n\n"
+            image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
+            resources:
+              cpuLimit: 0.5
+              cpuRequest: 0.1
+              memoryLimit: 0.536870912
+              memoryRequest: 0.268435456
+              resourceCpuLimit: 500m
+              resourceCpuRequest: 100m
+              resourceMemoryLimit: 512Mi
+              resourceMemoryRequest: 256Mi
+        exec-evaluate-collection-3:
+          container:
+            args:
+            - --executor_input
+            - '{{$}}'
+            - --function_to_execute
+            - evaluate_collection
+            command:
+            - sh
+            - -c
+            - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
+              \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
+              \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+              3.9\"' && \"$0\" \"$@\"\n"
+            - sh
+            - -ec
+            - 'program_path=$(mktemp -d)
+
+
+              printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+              _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+              '
+            - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
+              \ import *\n\ndef evaluate_collection(\n    model_name: str,\n    model_id:\
+              \ str,\n    model_url: str,\n    auth_secret: str,\n    target: str,\n\
+              \    tenant: str,\n    collection_id: str,\n    qualification_tag: str,\n\
+              \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
+              \    run_name: str,\n    timeout_seconds: int,\n    skip: bool,\n  \
+              \  results: dsl.Output[dsl.Artifact],\n    scores: dsl.Output[dsl.Metrics],\n\
+              ):\n    \"\"\"Run one EvalHub collection on the model and keep the job\
+              \ body and results.\"\"\"\n    import json\n    if skip:\n        print(f\"\
+              {collection_id}: skipped by the run's skip parameter; no EvalHub job\
+              \ submitted\")\n        with open(results.path, \"w\") as f:\n     \
+              \       json.dump({\"collection_id\": collection_id, \"skipped\": True},\
+              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return\n\
+              \    import os\n    import re\n    import subprocess\n    import tempfile\n\
+              \n    import httpx\n    import yaml\n\n    work = tempfile.mkdtemp()\n\
+              \    profile = os.path.join(work, \"evalhub.yaml\")\n    with open(profile,\
+              \ \"w\") as f:\n        yaml.safe_dump({\"active_profile\": \"default\"\
+              ,\n                        \"profiles\": {\"default\": {\"base_url\"\
+              : evalhub_url, \"tenant\": tenant}}}, f)\n    env = dict(os.environ,\
+              \ EVALHUB_CONFIG=profile)\n    subprocess.run([\"evalhub\", \"health\"\
+              ], env=env, check=True)\n\n    version = collection_id.rsplit(\"-\"\
+              , 1)[-1]\n    tags = {\"qualification_run\": run_name, \"model\": model_name,\
+              \ \"target\": target,\n            \"collection\": collection_id, \"\
+              collection_version\": version}\n    body = {\n        \"name\": f\"\
+              {collection_id}-{model_name}-{run_name}\"[:120],\n        \"description\"\
+              : f\"Model qualification run {run_name}: {target} model {model_name}\
+              \ on {collection_id}\",\n        \"tags\": [qualification_tag, f\"target={target}\"\
+              , f\"model={model_name}\"],\n        \"model\": {\"url\": model_url,\
+              \ \"name\": model_id, \"auth\": {\"secret_ref\": auth_secret}},\n  \
+              \      \"collection\": {\"id\": collection_id},\n        \"experiment\"\
+              : {\"name\": evalhub_experiment, \"tags\": [{\"key\": k, \"value\":\
+              \ v} for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
+              , \"name\": queue},\n    }\n    path = os.path.join(work, \"eval.yaml\"\
+              )\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body, f,\
+              \ sort_keys=False)\n    print(open(path).read())\n\n    # The gate:\
+              \ --wait blocks until the job is terminal and exits 1 when the job fails\
+              \ (before printing it),\n    # so the job id comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read\n    # from the documented jobs endpoint with the same ServiceAccount\
+              \ token and service CA.\n    token = open(\"/var/run/secrets/kubernetes.io/serviceaccount/token\"\
+              ).read().strip()\n    response = httpx.get(f\"{evalhub_url}/api/v1/evaluations/jobs/{job_id}\"\
+              , timeout=60,\n                         headers={\"Authorization\":\
+              \ f\"Bearer {token}\", \"X-Tenant\": tenant},\n                    \
+              \     verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\")\n\
+              \    response.raise_for_status()\n    job = response.json()\n    csv\
+              \ = subprocess.run([\"evalhub\", \"eval\", \"results\", job_id, \"--format\"\
+              , \"csv\"],\n                         env=env, capture_output=True,\
+              \ text=True).stdout\n    with open(results.path, \"w\") as f:\n    \
+              \    json.dump({\"eval_yaml\": body, \"job\": job, \"results_csv\":\
+              \ csv}, f, indent=1)\n    state = (job.get(\"status\") or {}).get(\"\
+              state\")\n    # Scalar metrics: logged by the pipeline server's MLflow\
+              \ integration to this task's nested run and shown\n    # in the KFP\
+              \ and MLflow run comparison views. A benchmark whose metrics are all\
+              \ zero had no successful\n    # requests, so it gets no score.\n   \
+              \ for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
+              \        t = b.get(\"test\") or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if isinstance(t.get(\"primary_score\"), (int, float)) and any(numbers):\n\
+              \            scores.log_metric(f\"{b['id']}.{t.get('primary_score_metric')}\"\
+              .replace(\"/\", \"_\").replace(\":\", \"_\"),\n                    \
+              \          float(t[\"primary_score\"]))\n            scores.log_metric(f\"\
+              {b['id']}.pass\".replace(\"/\", \"_\").replace(\":\", \"_\"), 1.0 if\
+              \ t.get(\"pass\") else 0.0)\n    print(f\"{collection_id}: job {job_id}\
+              \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
+              , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
+              job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
+              )\n\n"
+            image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
+            resources:
+              cpuLimit: 0.5
+              cpuRequest: 0.1
+              memoryLimit: 0.536870912
+              memoryRequest: 0.268435456
+              resourceCpuLimit: 500m
+              resourceCpuRequest: 100m
+              resourceMemoryLimit: 512Mi
+              resourceMemoryRequest: 256Mi
+        exec-evaluate-collection-4:
+          container:
+            args:
+            - --executor_input
+            - '{{$}}'
+            - --function_to_execute
+            - evaluate_collection
+            command:
+            - sh
+            - -c
+            - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
+              \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
+              \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+              3.9\"' && \"$0\" \"$@\"\n"
+            - sh
+            - -ec
+            - 'program_path=$(mktemp -d)
+
+
+              printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+              _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+              '
+            - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
+              \ import *\n\ndef evaluate_collection(\n    model_name: str,\n    model_id:\
+              \ str,\n    model_url: str,\n    auth_secret: str,\n    target: str,\n\
+              \    tenant: str,\n    collection_id: str,\n    qualification_tag: str,\n\
+              \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
+              \    run_name: str,\n    timeout_seconds: int,\n    skip: bool,\n  \
+              \  results: dsl.Output[dsl.Artifact],\n    scores: dsl.Output[dsl.Metrics],\n\
+              ):\n    \"\"\"Run one EvalHub collection on the model and keep the job\
+              \ body and results.\"\"\"\n    import json\n    if skip:\n        print(f\"\
+              {collection_id}: skipped by the run's skip parameter; no EvalHub job\
+              \ submitted\")\n        with open(results.path, \"w\") as f:\n     \
+              \       json.dump({\"collection_id\": collection_id, \"skipped\": True},\
+              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return\n\
+              \    import os\n    import re\n    import subprocess\n    import tempfile\n\
+              \n    import httpx\n    import yaml\n\n    work = tempfile.mkdtemp()\n\
+              \    profile = os.path.join(work, \"evalhub.yaml\")\n    with open(profile,\
+              \ \"w\") as f:\n        yaml.safe_dump({\"active_profile\": \"default\"\
+              ,\n                        \"profiles\": {\"default\": {\"base_url\"\
+              : evalhub_url, \"tenant\": tenant}}}, f)\n    env = dict(os.environ,\
+              \ EVALHUB_CONFIG=profile)\n    subprocess.run([\"evalhub\", \"health\"\
+              ], env=env, check=True)\n\n    version = collection_id.rsplit(\"-\"\
+              , 1)[-1]\n    tags = {\"qualification_run\": run_name, \"model\": model_name,\
+              \ \"target\": target,\n            \"collection\": collection_id, \"\
+              collection_version\": version}\n    body = {\n        \"name\": f\"\
+              {collection_id}-{model_name}-{run_name}\"[:120],\n        \"description\"\
+              : f\"Model qualification run {run_name}: {target} model {model_name}\
+              \ on {collection_id}\",\n        \"tags\": [qualification_tag, f\"target={target}\"\
+              , f\"model={model_name}\"],\n        \"model\": {\"url\": model_url,\
+              \ \"name\": model_id, \"auth\": {\"secret_ref\": auth_secret}},\n  \
+              \      \"collection\": {\"id\": collection_id},\n        \"experiment\"\
+              : {\"name\": evalhub_experiment, \"tags\": [{\"key\": k, \"value\":\
+              \ v} for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
+              , \"name\": queue},\n    }\n    path = os.path.join(work, \"eval.yaml\"\
+              )\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body, f,\
+              \ sort_keys=False)\n    print(open(path).read())\n\n    # The gate:\
+              \ --wait blocks until the job is terminal and exits 1 when the job fails\
+              \ (before printing it),\n    # so the job id comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read\n    # from the documented jobs endpoint with the same ServiceAccount\
+              \ token and service CA.\n    token = open(\"/var/run/secrets/kubernetes.io/serviceaccount/token\"\
+              ).read().strip()\n    response = httpx.get(f\"{evalhub_url}/api/v1/evaluations/jobs/{job_id}\"\
+              , timeout=60,\n                         headers={\"Authorization\":\
+              \ f\"Bearer {token}\", \"X-Tenant\": tenant},\n                    \
+              \     verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\")\n\
+              \    response.raise_for_status()\n    job = response.json()\n    csv\
+              \ = subprocess.run([\"evalhub\", \"eval\", \"results\", job_id, \"--format\"\
+              , \"csv\"],\n                         env=env, capture_output=True,\
+              \ text=True).stdout\n    with open(results.path, \"w\") as f:\n    \
+              \    json.dump({\"eval_yaml\": body, \"job\": job, \"results_csv\":\
+              \ csv}, f, indent=1)\n    state = (job.get(\"status\") or {}).get(\"\
+              state\")\n    # Scalar metrics: logged by the pipeline server's MLflow\
+              \ integration to this task's nested run and shown\n    # in the KFP\
+              \ and MLflow run comparison views. A benchmark whose metrics are all\
+              \ zero had no successful\n    # requests, so it gets no score.\n   \
+              \ for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
+              \        t = b.get(\"test\") or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if isinstance(t.get(\"primary_score\"), (int, float)) and any(numbers):\n\
+              \            scores.log_metric(f\"{b['id']}.{t.get('primary_score_metric')}\"\
+              .replace(\"/\", \"_\").replace(\":\", \"_\"),\n                    \
+              \          float(t[\"primary_score\"]))\n            scores.log_metric(f\"\
+              {b['id']}.pass\".replace(\"/\", \"_\").replace(\":\", \"_\"), 1.0 if\
+              \ t.get(\"pass\") else 0.0)\n    print(f\"{collection_id}: job {job_id}\
+              \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
+              , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
+              job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
+              )\n\n"
+            image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
+            resources:
+              cpuLimit: 0.5
+              cpuRequest: 0.1
+              memoryLimit: 0.536870912
+              memoryRequest: 0.268435456
+              resourceCpuLimit: 500m
+              resourceCpuRequest: 100m
+              resourceMemoryLimit: 512Mi
+              resourceMemoryRequest: 256Mi
+        exec-evaluate-collection-5:
+          container:
+            args:
+            - --executor_input
+            - '{{$}}'
+            - --function_to_execute
+            - evaluate_collection
+            command:
+            - sh
+            - -c
+            - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
+              \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
+              \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+              3.9\"' && \"$0\" \"$@\"\n"
+            - sh
+            - -ec
+            - 'program_path=$(mktemp -d)
+
+
+              printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+              _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+              '
+            - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
+              \ import *\n\ndef evaluate_collection(\n    model_name: str,\n    model_id:\
+              \ str,\n    model_url: str,\n    auth_secret: str,\n    target: str,\n\
+              \    tenant: str,\n    collection_id: str,\n    qualification_tag: str,\n\
+              \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
+              \    run_name: str,\n    timeout_seconds: int,\n    skip: bool,\n  \
+              \  results: dsl.Output[dsl.Artifact],\n    scores: dsl.Output[dsl.Metrics],\n\
+              ):\n    \"\"\"Run one EvalHub collection on the model and keep the job\
+              \ body and results.\"\"\"\n    import json\n    if skip:\n        print(f\"\
+              {collection_id}: skipped by the run's skip parameter; no EvalHub job\
+              \ submitted\")\n        with open(results.path, \"w\") as f:\n     \
+              \       json.dump({\"collection_id\": collection_id, \"skipped\": True},\
+              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return\n\
+              \    import os\n    import re\n    import subprocess\n    import tempfile\n\
+              \n    import httpx\n    import yaml\n\n    work = tempfile.mkdtemp()\n\
+              \    profile = os.path.join(work, \"evalhub.yaml\")\n    with open(profile,\
+              \ \"w\") as f:\n        yaml.safe_dump({\"active_profile\": \"default\"\
+              ,\n                        \"profiles\": {\"default\": {\"base_url\"\
+              : evalhub_url, \"tenant\": tenant}}}, f)\n    env = dict(os.environ,\
+              \ EVALHUB_CONFIG=profile)\n    subprocess.run([\"evalhub\", \"health\"\
+              ], env=env, check=True)\n\n    version = collection_id.rsplit(\"-\"\
+              , 1)[-1]\n    tags = {\"qualification_run\": run_name, \"model\": model_name,\
+              \ \"target\": target,\n            \"collection\": collection_id, \"\
+              collection_version\": version}\n    body = {\n        \"name\": f\"\
+              {collection_id}-{model_name}-{run_name}\"[:120],\n        \"description\"\
+              : f\"Model qualification run {run_name}: {target} model {model_name}\
+              \ on {collection_id}\",\n        \"tags\": [qualification_tag, f\"target={target}\"\
+              , f\"model={model_name}\"],\n        \"model\": {\"url\": model_url,\
+              \ \"name\": model_id, \"auth\": {\"secret_ref\": auth_secret}},\n  \
+              \      \"collection\": {\"id\": collection_id},\n        \"experiment\"\
+              : {\"name\": evalhub_experiment, \"tags\": [{\"key\": k, \"value\":\
+              \ v} for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
+              , \"name\": queue},\n    }\n    path = os.path.join(work, \"eval.yaml\"\
+              )\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body, f,\
+              \ sort_keys=False)\n    print(open(path).read())\n\n    # The gate:\
+              \ --wait blocks until the job is terminal and exits 1 when the job fails\
+              \ (before printing it),\n    # so the job id comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read\n    # from the documented jobs endpoint with the same ServiceAccount\
+              \ token and service CA.\n    token = open(\"/var/run/secrets/kubernetes.io/serviceaccount/token\"\
+              ).read().strip()\n    response = httpx.get(f\"{evalhub_url}/api/v1/evaluations/jobs/{job_id}\"\
+              , timeout=60,\n                         headers={\"Authorization\":\
+              \ f\"Bearer {token}\", \"X-Tenant\": tenant},\n                    \
+              \     verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\")\n\
+              \    response.raise_for_status()\n    job = response.json()\n    csv\
+              \ = subprocess.run([\"evalhub\", \"eval\", \"results\", job_id, \"--format\"\
+              , \"csv\"],\n                         env=env, capture_output=True,\
+              \ text=True).stdout\n    with open(results.path, \"w\") as f:\n    \
+              \    json.dump({\"eval_yaml\": body, \"job\": job, \"results_csv\":\
+              \ csv}, f, indent=1)\n    state = (job.get(\"status\") or {}).get(\"\
+              state\")\n    # Scalar metrics: logged by the pipeline server's MLflow\
+              \ integration to this task's nested run and shown\n    # in the KFP\
+              \ and MLflow run comparison views. A benchmark whose metrics are all\
+              \ zero had no successful\n    # requests, so it gets no score.\n   \
+              \ for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
+              \        t = b.get(\"test\") or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if isinstance(t.get(\"primary_score\"), (int, float)) and any(numbers):\n\
+              \            scores.log_metric(f\"{b['id']}.{t.get('primary_score_metric')}\"\
+              .replace(\"/\", \"_\").replace(\":\", \"_\"),\n                    \
+              \          float(t[\"primary_score\"]))\n            scores.log_metric(f\"\
+              {b['id']}.pass\".replace(\"/\", \"_\").replace(\":\", \"_\"), 1.0 if\
+              \ t.get(\"pass\") else 0.0)\n    print(f\"{collection_id}: job {job_id}\
+              \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
+              , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
+              job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
+              )\n\n"
+            image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
+            resources:
+              cpuLimit: 0.5
+              cpuRequest: 0.1
+              memoryLimit: 0.536870912
+              memoryRequest: 0.268435456
+              resourceCpuLimit: 500m
+              resourceCpuRequest: 100m
+              resourceMemoryLimit: 512Mi
+              resourceMemoryRequest: 256Mi
+        exec-leaderboard:
+          container:
+            args:
+            - --executor_input
+            - '{{$}}'
+            - --function_to_execute
+            - leaderboard
+            command:
+            - sh
+            - -c
+            - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
+              \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
+              \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+              3.9\"' && \"$0\" \"$@\"\n"
+            - sh
+            - -ec
+            - 'program_path=$(mktemp -d)
+
+
+              printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+              _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+              '
+            - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
+              \ import *\n\ndef leaderboard(\n    model_name: str,\n    target: str,\n\
+              \    tenant: str,\n    qualification_tag: str,\n    evalhub_url: str,\n\
+              \    max_regression: float,\n    run_name: str,\n    report: dsl.Output[dsl.HTML],\n\
+              \    scores: dsl.Output[dsl.Metrics],\n) -> str:\n    \"\"\"Rank every\
+              \ qualified model per benchmark; for a candidate, recommend PROMOTE\
+              \ or HOLD vs production.\"\"\"\n    import html\n    import json\n \
+              \   import os\n    import subprocess\n    import tempfile\n\n    import\
+              \ httpx\n    import yaml\n\n    profile = os.path.join(tempfile.mkdtemp(),\
+              \ \"evalhub.yaml\")\n    with open(profile, \"w\") as f:\n        yaml.safe_dump({\"\
+              active_profile\": \"default\",\n                        \"profiles\"\
+              : {\"default\": {\"base_url\": evalhub_url, \"tenant\": tenant}}}, f)\n\
+              \    env = dict(os.environ, EVALHUB_CONFIG=profile)\n    token = open(\"\
+              /var/run/secrets/kubernetes.io/serviceaccount/token\").read().strip()\n\
+              \    client = httpx.Client(base_url=evalhub_url, timeout=60, verify=\"\
+              /etc/pki/ca-trust/source/anchors/service-ca.crt\",\n               \
+              \           headers={\"Authorization\": f\"Bearer {token}\", \"X-Tenant\"\
+              : tenant})\n\n    jobs, offset = [], 0\n    while True:\n        page\
+              \ = client.get(\"/api/v1/evaluations/jobs\",\n                     \
+              \     params={\"tags\": qualification_tag, \"limit\": 100, \"offset\"\
+              : offset}).raise_for_status().json()\n        jobs += page.get(\"items\"\
+              ) or []\n        offset += 100\n        if not page.get(\"next\") or\
+              \ offset >= page.get(\"total_count\", 0):\n            break\n\n   \
+              \ def tag(job, key):\n        return next((t.split(\"=\", 1)[1] for\
+              \ t in job.get(\"tags\") or [] if t.startswith(key + \"=\")), None)\n\
+              \n    # Newest finished job per (model, collection).\n    latest = {}\n\
+              \    for job in sorted(jobs, key=lambda j: j[\"resource\"][\"created_at\"\
+              ]):\n        if (job.get(\"status\") or {}).get(\"state\") not in (\"\
+              completed\", \"partially_failed\", \"failed\"):\n            continue\n\
+              \        cid = (job.get(\"collection\") or {}).get(\"id\")\n       \
+              \ model = tag(job, \"model\")\n        if cid and model:\n         \
+              \   latest[(model, cid)] = job\n    targets = {}\n    for (model, _),\
+              \ job in latest.items():\n        targets[model] = tag(job, \"target\"\
+              ) or \"candidate\"\n    collections = sorted({cid for _, cid in latest},\
+              \ key=lambda c: [\"latency\", \"throughput\", \"capability\",\n    \
+              \                     \"security-quick\", \"security-full\"].index(next((k\
+              \ for k in [\"latency\", \"throughput\",\n                         \"\
+              capability\", \"security-quick\", \"security-full\"] if k in c), \"\
+              capability\")))\n    models = sorted(targets, key=lambda m: (targets[m]\
+              \ != \"production\", m != model_name, m))\n    production = next((m\
+              \ for m in models if targets[m] == \"production\"), None)\n\n    def\
+              \ describe(cid):\n        out = subprocess.run([\"evalhub\", \"collections\"\
+              , \"describe\", cid, \"--format\", \"json\"],\n                    \
+              \         env=env, capture_output=True, text=True, check=True).stdout\n\
+              \        c = json.loads(out)\n        return c[0] if isinstance(c, list)\
+              \ else c\n\n    def score(job, bdef):\n        \"\"\"Primary score and\
+              \ pass for one benchmark, or (None, False) when the run produced nothing.\"\
+              \"\"\n        if job is None:\n            return None, None\n     \
+              \   primary = bdef.get(\"primary_score\") or {}\n        metric, lower\
+              \ = primary.get(\"metric\", \"\"), bool(primary.get(\"lower_is_better\"\
+              ))\n        threshold = (bdef.get(\"pass_criteria\") or {}).get(\"threshold\"\
+              )\n        b = {x.get(\"id\"): x for x in (job.get(\"results\") or {}).get(\"\
+              benchmarks\") or []}.get(bdef[\"id\"]) or {}\n        numbers = [v for\
+              \ v in (b.get(\"metrics\") or {}).values() if isinstance(v, (int, float))]\n\
+              \        if not numbers or not any(numbers):\n            return None,\
+              \ False  # no metrics, or all zero: no request succeeded\n        t\
+              \ = b.get(\"test\") or {}\n        value = t.get(\"primary_score\",\
+              \ (b.get(\"metrics\") or {}).get(metric))\n        passed = t.get(\"\
+              pass\")\n        if passed is None and isinstance(value, (int, float))\
+              \ and threshold is not None:\n            passed = value <= threshold\
+              \ if lower else value >= threshold\n        return value, passed\n\n\
+              \    reasons, sections, capability = [], [], {}\n    for cid in collections:\n\
+              \        col = describe(cid)\n        rows = []\n        for bdef in\
+              \ col.get(\"benchmarks\") or []:\n            primary = bdef.get(\"\
+              primary_score\") or {}\n            metric, lower = primary.get(\"metric\"\
+              , \"\"), bool(primary.get(\"lower_is_better\"))\n            threshold\
+              \ = (bdef.get(\"pass_criteria\") or {}).get(\"threshold\")\n       \
+              \     cells = {m: score(latest.get((m, cid)), bdef) for m in models}\n\
+              \            for m, (v, _) in cells.items():\n                if isinstance(v,\
+              \ (int, float)):\n                    scores.log_metric(f\"{m}.{bdef['id']}.{metric}\"\
+              .replace(\"/\", \"_\"), float(v))\n            rows.append((bdef[\"\
+              id\"], metric, lower, threshold, cells))\n            if target == \"\
+              candidate\":\n                v, p = cells.get(model_name, (None, None))\n\
+              \                if p is not True:\n                    reasons.append(f\"\
+              {cid}/{bdef['id']}: misses its gate ({metric} {v}, threshold {threshold})\"\
+              )\n                pv = cells.get(production, (None, None))[0] if production\
+              \ else None\n                if isinstance(v, (int, float)) and isinstance(pv,\
+              \ (int, float)) and pv:\n                    delta = (v - pv) / abs(pv)\
+              \ * (-1 if lower else 1)\n                    if delta < -max_regression:\n\
+              \                        reasons.append(f\"{cid}/{bdef['id']}: {abs(delta):.0%}\
+              \ worse than production on {metric}\")\n        col_threshold = (col.get(\"\
+              pass_criteria\") or {}).get(\"threshold\")\n        col_scores = {m:\
+              \ ((latest.get((m, cid)) or {}).get(\"results\") or {}).get(\"test\"\
+              ) or {} for m in models}\n        if col.get(\"category\") == \"code\"\
+              :\n            capability = {m: t.get(\"score\") for m, t in col_scores.items()}\n\
+              \        if target == \"candidate\" and col_threshold is not None and\
+              \ col_scores.get(model_name, {}).get(\"pass\") is not True:\n      \
+              \      reasons.append(f\"{cid}: collection score {col_scores.get(model_name,\
+              \ {}).get('score')} misses {col_threshold}\")\n        sections.append((col.get(\"\
+              name\") or cid, rows, col_threshold, col_scores))\n\n    verdict = \"\
+              BASELINE RECORDED\" if target == \"production\" else None\n    if target\
+              \ == \"candidate\":\n        if production is None:\n            reasons.append(\"\
+              no production baseline yet: run this pipeline with the production model\
+              \ first\")\n        else:\n            c, p = capability.get(model_name),\
+              \ capability.get(production)\n            if not (isinstance(c, (int,\
+              \ float)) and isinstance(p, (int, float))):\n                reasons.append(\"\
+              no capability scores to compare\")\n            elif c <= p:\n     \
+              \           reasons.append(f\"capability score {c:.3f} does not beat\
+              \ production {p:.3f}\")\n        verdict = \"PROMOTE\" if not reasons\
+              \ else \"HOLD\"\n\n    def fmt(v):\n        return f\"{v:.4g}\" if isinstance(v,\
+              \ (int, float)) else \"-\"\n\n    def cell(v, p, best):\n        cls\
+              \ = {True: \"pass\", False: \"fail\"}.get(p, \"na\")\n        star =\
+              \ \" *\" if best else \"\"\n        return f\"<td class={cls}>{fmt(v)}{star}</td>\"\
+              \n\n    head = \"\".join(f\"<th>{html.escape(m)}<br><small>{targets[m]}</small></th>\"\
+              \ for m in models)\n    h = [\"<h1>Agentic coding model leaderboard</h1>\"\
+              ,\n         f\"<p class=note>Run {html.escape(run_name)} evaluated <b>{html.escape(model_name)}</b>\
+              \ ({target}).</p>\",\n         f\"<h2 class={'promote' if verdict ==\
+              \ 'PROMOTE' else 'hold' if verdict == 'HOLD' else 'base'}>{verdict}</h2>\"\
+              ]\n    if target == \"candidate\":\n        h.append(\"<ul>\" + \"\"\
+              .join(f\"<li>{html.escape(r)}</li>\" for r in reasons) + \"</ul>\" if\
+              \ reasons else\n                 f\"<p>{html.escape(model_name)} passes\
+              \ every gate, beats production on capability and is not more \"\n  \
+              \               f\"than {max_regression:.0%} worse on any benchmark.</p>\"\
+              )\n    for title, rows, col_threshold, col_scores in sections:\n   \
+              \     body = []\n        for bid, metric, lower, threshold, cells in\
+              \ rows:\n            vals = [v for v, _ in cells.values() if isinstance(v,\
+              \ (int, float))]\n            best = (min(vals) if lower else max(vals))\
+              \ if vals else None\n            body.append(f\"<tr><td>{html.escape(bid)}<br><small>{html.escape(metric)},\
+              \ \"\n                        f\"{'lower' if lower else 'higher'} is\
+              \ better, gate {fmt(threshold)}</small></td>\"\n                   \
+              \     + \"\".join(cell(cells[m][0], cells[m][1], cells[m][0] == best\
+              \ and len(vals) > 1) for m in models)\n                        + \"\
+              </tr>\")\n        if col_threshold is not None:\n            body.append(f\"\
+              <tr><td><b>Collection score</b><br><small>weighted, gate {fmt(col_threshold)}</small></td>\"\
+              \n                        + \"\".join(cell(col_scores[m].get(\"score\"\
+              ), col_scores[m].get(\"pass\"), False) for m in models)\n          \
+              \              + \"</tr>\")\n        h.append(f\"<h3>{html.escape(title)}</h3><table><tr><th>Benchmark</th>{head}</tr>{''.join(body)}</table>\"\
+              )\n    h.append(\"<p class=note>Each cell is the newest qualification\
+              \ result for that model; * marks the best value, \"\n             \"\
+              green passes its gate, red fails it. Compare individual runs in the\
+              \ dashboard: Develop &amp; train &gt; \"\n             \"Evaluations,\
+              \ select runs and click Compare (MLflow experiment agentic-coding-evaluations),\
+              \ or compare \"\n             \"pipeline runs in the MLflow experiment\
+              \ agentic-coding-qualification. Production models \"\n             \"\
+              are reached through the MaaS gateway and candidates directly, so production\
+              \ latency includes the \"\n             \"gateway hop.</p>\")\n    style\
+              \ = (\"<style>body{font-family:system-ui,sans-serif;margin:24px;color:#151515}table{border-collapse:collapse;\"\
+              \n             \"margin:8px 0 20px}th,td{border:1px solid #d2d2d2;padding:6px\
+              \ 10px;text-align:left;vertical-align:top}\"\n             \"th{background:#f0f0f0}td.pass{background:#f3faf2}td.fail{background:#faeaea}small{color:#555}\"\
+              \n             \"h2.promote{color:#3e8635}h2.hold{color:#c9190b}h2.base{color:#0066cc}.note{color:#555;font-size:.9em}</style>\"\
+              )\n    with open(report.path, \"w\") as f:\n        f.write(f\"<!doctype\
+              \ html><html><head><meta charset=utf-8>{style}</head><body>{''.join(h)}</body></html>\"\
+              )\n    print(verdict)\n    for r in reasons:\n        print(f\"  - {r}\"\
+              )\n    return verdict\n\n"
+            image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
+            resources:
+              cpuLimit: 0.5
+              cpuRequest: 0.1
+              memoryLimit: 0.536870912
+              memoryRequest: 0.268435456
+              resourceCpuLimit: 500m
+              resourceCpuRequest: 100m
+              resourceMemoryLimit: 512Mi
+              resourceMemoryRequest: 256Mi
+        exec-resolve-model:
+          container:
+            args:
+            - --executor_input
+            - '{{$}}'
+            - --function_to_execute
+            - resolve_model
+            command:
+            - sh
+            - -c
+            - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
+              \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
+              \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+              3.9\"' && \"$0\" \"$@\"\n"
+            - sh
+            - -ec
+            - 'program_path=$(mktemp -d)
+
+
+              printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+              _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+              '
+            - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
+              \ import *\n\ndef resolve_model(model_name: str) -> NamedTuple(\n  \
+              \      \"Model\", [(\"model_id\", str), (\"model_url\", str), (\"auth_secret\"\
+              , str), (\"target\", str), (\"tenant\", str)]):\n    \"\"\"Find where\
+              \ the model is served: a candidate InferenceService here, or a production\
+              \ model on MaaS.\"\"\"\n    import json\n    import ssl\n    import\
+              \ urllib.error\n    import urllib.request\n    from collections import\
+              \ namedtuple\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
+              \ open(f\"{sa}/token\").read().strip()\n    ctx = ssl.create_default_context(cafile=f\"\
+              {sa}/ca.crt\")\n\n    def get(path):\n        req = urllib.request.Request(f\"\
+              https://kubernetes.default.svc{path}\", headers={\"Authorization\":\
+              \ f\"Bearer {token}\"})\n        try:\n            with urllib.request.urlopen(req,\
+              \ context=ctx, timeout=30) as r:\n                return json.load(r)\n\
+              \        except urllib.error.HTTPError as e:\n            if e.code\
+              \ == 404:\n                return None\n            raise\n\n    Model\
+              \ = namedtuple(\"Model\", [\"model_id\", \"model_url\", \"auth_secret\"\
+              , \"target\", \"tenant\"])\n    isvc = get(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
+              )\n    if isvc is not None:\n        ready = {c[\"type\"]: c[\"status\"\
+              ] for c in (isvc.get(\"status\") or {}).get(\"conditions\") or []}.get(\"\
+              Ready\")\n        url = (isvc.get(\"status\") or {}).get(\"url\")\n\
+              \        if ready != \"True\" or not url:\n            raise RuntimeError(f\"\
+              candidate InferenceService {model_name} is not Ready; start it in the\
+              \ \"\n                               f\"Evaluated Models project (Deployments)\
+              \ and run the pipeline again\")\n        print(f\"{model_name}: candidate\
+              \ InferenceService in {tenant}, {url}\")\n        return Model(model_name,\
+              \ url.rstrip(\"/\") + \"/v1\", \"qualification-model-auth\", \"candidate\"\
+              , tenant)\n    endpoints = get(f\"/api/v1/namespaces/{tenant}/configmaps/qualification-endpoints\"\
+              )\n    if endpoints is None:\n        raise RuntimeError(\"ConfigMap\
+              \ qualification-endpoints is missing (Stage 050 provisioner hook)\"\
+              )\n    model_id = model_name if \"/\" in model_name else f\"publishers/internal-models/models/{model_name}\"\
+              \n    print(f\"{model_name}: production model on MaaS as {model_id}\"\
+              )\n    return Model(model_id, endpoints[\"data\"][\"maas_base_url\"\
+              ], \"evalhub-model-auth-maas\", \"production\", tenant)\n\n"
+            image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
+            resources:
+              cpuLimit: 0.5
+              cpuRequest: 0.1
+              memoryLimit: 0.536870912
+              memoryRequest: 0.268435456
+              resourceCpuLimit: 500m
+              resourceCpuRequest: 100m
+              resourceMemoryLimit: 512Mi
+              resourceMemoryRequest: 256Mi
+    pipelineInfo:
+      description: Evaluates one model on the agentic coding EvalHub collections and
+        ranks it on the qualification leaderboard.
+      name: agentic-coding-model-qualification
+    root:
+      dag:
+        tasks:
+          evaluate-collection:
+            cachingOptions: {}
+            componentRef:
+              name: comp-evaluate-collection
+            dependentTasks:
+            - resolve-model
+            inputs:
+              parameters:
+                auth_secret:
+                  taskOutputParameter:
+                    outputParameterKey: auth_secret
+                    producerTask: resolve-model
+                collection_id:
+                  runtimeValue:
+                    constant: agentic-coding-latency-v1
+                evalhub_experiment:
+                  runtimeValue:
+                    constant: agentic-coding-evaluations
+                evalhub_url:
+                  runtimeValue:
+                    constant: https://evalhub.evalhub.svc.cluster.local:8443
+                model_id:
+                  taskOutputParameter:
+                    outputParameterKey: model_id
+                    producerTask: resolve-model
+                model_name:
+                  componentInputParameter: model_name
+                model_url:
+                  taskOutputParameter:
+                    outputParameterKey: model_url
+                    producerTask: resolve-model
+                qualification_tag:
+                  runtimeValue:
+                    constant: agentic-coding-qualification
+                queue:
+                  runtimeValue:
+                    constant: lq-cpu-default
+                run_name:
+                  runtimeValue:
+                    constant: '{{$.pipeline_job_name}}'
+                skip:
+                  componentInputParameter: skip_latency
+                target:
+                  taskOutputParameter:
+                    outputParameterKey: target
+                    producerTask: resolve-model
+                tenant:
+                  taskOutputParameter:
+                    outputParameterKey: tenant
+                    producerTask: resolve-model
+                timeout_seconds:
+                  runtimeValue:
+                    constant: 3600.0
+            taskInfo:
+              name: latency
+          evaluate-collection-2:
+            cachingOptions: {}
+            componentRef:
+              name: comp-evaluate-collection-2
+            dependentTasks:
+            - evaluate-collection
+            - resolve-model
+            inputs:
+              parameters:
+                auth_secret:
+                  taskOutputParameter:
+                    outputParameterKey: auth_secret
+                    producerTask: resolve-model
+                collection_id:
+                  runtimeValue:
+                    constant: agentic-coding-throughput-v1
+                evalhub_experiment:
+                  runtimeValue:
+                    constant: agentic-coding-evaluations
+                evalhub_url:
+                  runtimeValue:
+                    constant: https://evalhub.evalhub.svc.cluster.local:8443
+                model_id:
+                  taskOutputParameter:
+                    outputParameterKey: model_id
+                    producerTask: resolve-model
+                model_name:
+                  componentInputParameter: model_name
+                model_url:
+                  taskOutputParameter:
+                    outputParameterKey: model_url
+                    producerTask: resolve-model
+                qualification_tag:
+                  runtimeValue:
+                    constant: agentic-coding-qualification
+                queue:
+                  runtimeValue:
+                    constant: lq-cpu-default
+                run_name:
+                  runtimeValue:
+                    constant: '{{$.pipeline_job_name}}'
+                skip:
+                  componentInputParameter: skip_throughput
+                target:
+                  taskOutputParameter:
+                    outputParameterKey: target
+                    producerTask: resolve-model
+                tenant:
+                  taskOutputParameter:
+                    outputParameterKey: tenant
+                    producerTask: resolve-model
+                timeout_seconds:
+                  runtimeValue:
+                    constant: 3600.0
+            taskInfo:
+              name: throughput
+          evaluate-collection-3:
+            cachingOptions: {}
+            componentRef:
+              name: comp-evaluate-collection-3
+            dependentTasks:
+            - evaluate-collection-2
+            - resolve-model
+            inputs:
+              parameters:
+                auth_secret:
+                  taskOutputParameter:
+                    outputParameterKey: auth_secret
+                    producerTask: resolve-model
+                collection_id:
+                  runtimeValue:
+                    constant: agentic-coding-capability-v1
+                evalhub_experiment:
+                  runtimeValue:
+                    constant: agentic-coding-evaluations
+                evalhub_url:
+                  runtimeValue:
+                    constant: https://evalhub.evalhub.svc.cluster.local:8443
+                model_id:
+                  taskOutputParameter:
+                    outputParameterKey: model_id
+                    producerTask: resolve-model
+                model_name:
+                  componentInputParameter: model_name
+                model_url:
+                  taskOutputParameter:
+                    outputParameterKey: model_url
+                    producerTask: resolve-model
+                qualification_tag:
+                  runtimeValue:
+                    constant: agentic-coding-qualification
+                queue:
+                  runtimeValue:
+                    constant: lq-cpu-default
+                run_name:
+                  runtimeValue:
+                    constant: '{{$.pipeline_job_name}}'
+                skip:
+                  componentInputParameter: skip_capability
+                target:
+                  taskOutputParameter:
+                    outputParameterKey: target
+                    producerTask: resolve-model
+                tenant:
+                  taskOutputParameter:
+                    outputParameterKey: tenant
+                    producerTask: resolve-model
+                timeout_seconds:
+                  runtimeValue:
+                    constant: 10800.0
+            taskInfo:
+              name: capability
+          evaluate-collection-4:
+            cachingOptions: {}
+            componentRef:
+              name: comp-evaluate-collection-4
+            dependentTasks:
+            - evaluate-collection-3
+            - resolve-model
+            inputs:
+              parameters:
+                auth_secret:
+                  taskOutputParameter:
+                    outputParameterKey: auth_secret
+                    producerTask: resolve-model
+                collection_id:
+                  runtimeValue:
+                    constant: agentic-coding-security-quick-v1
+                evalhub_experiment:
+                  runtimeValue:
+                    constant: agentic-coding-evaluations
+                evalhub_url:
+                  runtimeValue:
+                    constant: https://evalhub.evalhub.svc.cluster.local:8443
+                model_id:
+                  taskOutputParameter:
+                    outputParameterKey: model_id
+                    producerTask: resolve-model
+                model_name:
+                  componentInputParameter: model_name
+                model_url:
+                  taskOutputParameter:
+                    outputParameterKey: model_url
+                    producerTask: resolve-model
+                qualification_tag:
+                  runtimeValue:
+                    constant: agentic-coding-qualification
+                queue:
+                  runtimeValue:
+                    constant: lq-cpu-default
+                run_name:
+                  runtimeValue:
+                    constant: '{{$.pipeline_job_name}}'
+                skip:
+                  componentInputParameter: skip_security_quick
+                target:
+                  taskOutputParameter:
+                    outputParameterKey: target
+                    producerTask: resolve-model
+                tenant:
+                  taskOutputParameter:
+                    outputParameterKey: tenant
+                    producerTask: resolve-model
+                timeout_seconds:
+                  runtimeValue:
+                    constant: 7200.0
+            taskInfo:
+              name: security quick
+          evaluate-collection-5:
+            cachingOptions: {}
+            componentRef:
+              name: comp-evaluate-collection-5
+            dependentTasks:
+            - evaluate-collection-4
+            - resolve-model
+            inputs:
+              parameters:
+                auth_secret:
+                  taskOutputParameter:
+                    outputParameterKey: auth_secret
+                    producerTask: resolve-model
+                collection_id:
+                  runtimeValue:
+                    constant: agentic-coding-security-full-v1
+                evalhub_experiment:
+                  runtimeValue:
+                    constant: agentic-coding-evaluations
+                evalhub_url:
+                  runtimeValue:
+                    constant: https://evalhub.evalhub.svc.cluster.local:8443
+                model_id:
+                  taskOutputParameter:
+                    outputParameterKey: model_id
+                    producerTask: resolve-model
+                model_name:
+                  componentInputParameter: model_name
+                model_url:
+                  taskOutputParameter:
+                    outputParameterKey: model_url
+                    producerTask: resolve-model
+                qualification_tag:
+                  runtimeValue:
+                    constant: agentic-coding-qualification
+                queue:
+                  runtimeValue:
+                    constant: lq-cpu-default
+                run_name:
+                  runtimeValue:
+                    constant: '{{$.pipeline_job_name}}'
+                skip:
+                  componentInputParameter: skip_security_full
+                target:
+                  taskOutputParameter:
+                    outputParameterKey: target
+                    producerTask: resolve-model
+                tenant:
+                  taskOutputParameter:
+                    outputParameterKey: tenant
+                    producerTask: resolve-model
+                timeout_seconds:
+                  runtimeValue:
+                    constant: 14400.0
+            taskInfo:
+              name: security full
+          leaderboard:
+            cachingOptions: {}
+            componentRef:
+              name: comp-leaderboard
+            dependentTasks:
+            - evaluate-collection-5
+            - resolve-model
+            inputs:
+              parameters:
+                evalhub_url:
+                  runtimeValue:
+                    constant: https://evalhub.evalhub.svc.cluster.local:8443
+                max_regression:
+                  runtimeValue:
+                    constant: 0.05
+                model_name:
+                  componentInputParameter: model_name
+                qualification_tag:
+                  runtimeValue:
+                    constant: agentic-coding-qualification
+                run_name:
+                  runtimeValue:
+                    constant: '{{$.pipeline_job_name}}'
+                target:
+                  taskOutputParameter:
+                    outputParameterKey: target
+                    producerTask: resolve-model
+                tenant:
+                  taskOutputParameter:
+                    outputParameterKey: tenant
+                    producerTask: resolve-model
+            taskInfo:
+              name: leaderboard
+          resolve-model:
+            cachingOptions: {}
+            componentRef:
+              name: comp-resolve-model
+            inputs:
+              parameters:
+                model_name:
+                  componentInputParameter: model_name
+            taskInfo:
+              name: resolve model
+      inputDefinitions:
+        parameters:
+          model_name:
+            parameterType: STRING
+          skip_capability:
+            defaultValue: false
+            isOptional: true
+            parameterType: BOOLEAN
+          skip_latency:
+            defaultValue: false
+            isOptional: true
+            parameterType: BOOLEAN
+          skip_security_full:
+            defaultValue: false
+            isOptional: true
+            parameterType: BOOLEAN
+          skip_security_quick:
+            defaultValue: false
+            isOptional: true
+            parameterType: BOOLEAN
+          skip_throughput:
+            defaultValue: false
+            isOptional: true
+            parameterType: BOOLEAN
+    schemaVersion: 2.1.0
+    sdkVersion: kfp-2.16.1
+  platformSpec:
+    platforms:
+      kubernetes:
+        deploymentSpec:
+          executors:
+            exec-evaluate-collection:
+              configMapAsVolume:
+              - configMapName: pipeline-tasks-service-ca
+                configMapNameParameter:
+                  runtimeValue:
+                    constant: pipeline-tasks-service-ca
+                mountPath: /etc/pki/ca-trust/source/anchors
+                optional: false
+            exec-evaluate-collection-2:
+              configMapAsVolume:
+              - configMapName: pipeline-tasks-service-ca
+                configMapNameParameter:
+                  runtimeValue:
+                    constant: pipeline-tasks-service-ca
+                mountPath: /etc/pki/ca-trust/source/anchors
+                optional: false
+            exec-evaluate-collection-3:
+              configMapAsVolume:
+              - configMapName: pipeline-tasks-service-ca
+                configMapNameParameter:
+                  runtimeValue:
+                    constant: pipeline-tasks-service-ca
+                mountPath: /etc/pki/ca-trust/source/anchors
+                optional: false
+            exec-evaluate-collection-4:
+              configMapAsVolume:
+              - configMapName: pipeline-tasks-service-ca
+                configMapNameParameter:
+                  runtimeValue:
+                    constant: pipeline-tasks-service-ca
+                mountPath: /etc/pki/ca-trust/source/anchors
+                optional: false
+            exec-evaluate-collection-5:
+              configMapAsVolume:
+              - configMapName: pipeline-tasks-service-ca
+                configMapNameParameter:
+                  runtimeValue:
+                    constant: pipeline-tasks-service-ca
+                mountPath: /etc/pki/ca-trust/source/anchors
+                optional: false
+            exec-leaderboard:
+              configMapAsVolume:
+              - configMapName: pipeline-tasks-service-ca
+                configMapNameParameter:
+                  runtimeValue:
+                    constant: pipeline-tasks-service-ca
+                mountPath: /etc/pki/ca-trust/source/anchors
+                optional: false
+            exec-resolve-model:
+              configMapAsVolume:
+              - configMapName: pipeline-tasks-service-ca
+                configMapNameParameter:
+                  runtimeValue:
+                    constant: pipeline-tasks-service-ca
+                mountPath: /etc/pki/ca-trust/source/anchors
+                optional: false

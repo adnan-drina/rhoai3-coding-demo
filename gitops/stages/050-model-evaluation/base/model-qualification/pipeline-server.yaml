@@ -143,3 +143,36 @@ spec:
           resources:
             requests: {cpu: 50m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}
+---
+# Qualification pipeline tasks call EvalHub (service-serving certificate) as the pipeline-runner ServiceAccount:
+# the service CA for the task containers, and the tenant's EvalHub Role for that ServiceAccount.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pipeline-tasks-service-ca
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: pipeline-server
+    app.kubernetes.io/component: pipelines
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+    service.beta.openshift.io/inject-cabundle: "true"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipeline-runner-evalhub-access
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: pipeline-server
+    app.kubernetes.io/component: pipelines
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: evalhub-evaluator
+subjects:
+  - kind: ServiceAccount
+    name: pipeline-runner-dspa
+    namespace: evaluated-models
