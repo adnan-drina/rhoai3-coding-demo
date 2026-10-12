@@ -1,0 +1,156 @@
+# OCI export of evaluation results to the cluster's internal registry (RHOAI 3.5 "Evaluating AI systems",
+# 2.19 Export evaluation results to an OCI registry), repository demo-sandbox/evaluation-results.
+# The evaluation sidecar verifies registry TLS against system roots only (no CA field in the 3.5.1 CR), so
+# exports go through the registry's default route, which serves the cluster's publicly trusted ingress
+# certificate (OCP "Exposing the registry": configs.imageregistry spec.defaultRoute: true). The pusher is a
+# ServiceAccount with system:image-builder in demo-sandbox; a Sync hook composes the documented
+# kubernetes.io/dockerconfigjson Secret from its token, so no credential is stored in Git.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: evalhub-oci-pusher
+  namespace: demo-sandbox
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: evalhub-oci-pusher-token
+  namespace: demo-sandbox
+  annotations:
+    kubernetes.io/service-account.name: evalhub-oci-pusher
+    argocd.argoproj.io/sync-wave: "12"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-oci-pusher-image-builder
+  namespace: demo-sandbox
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:image-builder
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-oci-pusher
+    namespace: demo-sandbox
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: evalhub-oci-export-provisioner
+  namespace: demo-sandbox
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: evalhub-oci-export-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [imageregistry.operator.openshift.io]
+    resources: [configs]
+    resourceNames: [cluster]
+    verbs: [get, patch]
+  - apiGroups: [route.openshift.io]
+    resources: [routes]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: evalhub-oci-export-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: evalhub-oci-export-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-oci-export-provisioner
+    namespace: demo-sandbox
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: evalhub-oci-export-provisioner
+  namespace: demo-sandbox
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [evalhub-oci-pusher-token, evalhub-oci-registry]
+    verbs: [get, patch, update]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-oci-export-provisioner
+  namespace: demo-sandbox
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: evalhub-oci-export-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-oci-export-provisioner
+    namespace: demo-sandbox
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: provision-evalhub-oci-export
+  namespace: demo-sandbox
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: evalhub-oci-export-provisioner
+      containers:
+        - name: provision
+          # Same reviewed OpenShift CLI image as the other Stage 050 hooks.
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          command: [/bin/bash, -ceu]
+          args:
+            - |
+              oc patch configs.imageregistry.operator.openshift.io cluster --type=merge -p '{"spec":{"defaultRoute":true}}'
+              host=""
+              for i in $(seq 1 30); do
+                host="$(oc get route default-route -n openshift-image-registry -o jsonpath='{.spec.host}' 2>/dev/null || true)"
+                [ -n "${host}" ] && break; sleep 5
+              done
+              [ -n "${host}" ] || { echo "ERROR: registry default route not created" >&2; exit 1; }
+              umask 077; WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"' EXIT
+              for i in $(seq 1 30); do
+                oc get secret evalhub-oci-pusher-token -n demo-sandbox -o jsonpath='{.data.token}' | base64 -d > "${WORK}/token" || true
+                [ -s "${WORK}/token" ] && break; sleep 2
+              done
+              [ -s "${WORK}/token" ] || { echo "ERROR: pusher token not populated" >&2; exit 1; }
+              python3 - "${host}" "${WORK}/token" "${WORK}/config.json" <<'PY'
+              import base64, json, sys
+              host, token = sys.argv[1], open(sys.argv[2]).read().strip()
+              auth = base64.b64encode(("evalhub-oci-pusher:" + token).encode()).decode()
+              json.dump({"auths": {host: {"auth": auth}}}, open(sys.argv[3], "w"))
+              PY
+              oc create secret generic evalhub-oci-registry -n demo-sandbox --type=kubernetes.io/dockerconfigjson \
+                --from-file=.dockerconfigjson="${WORK}/config.json" --dry-run=client -o yaml | oc apply -f -
+              echo "Secret demo-sandbox/evalhub-oci-registry targets ${host}"
