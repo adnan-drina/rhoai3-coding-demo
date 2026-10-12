@@ -42,7 +42,14 @@ rules:
     verbs: [get, patch]
   - apiGroups: [datasciencepipelinesapplications.opendatahub.io]
     resources: [datasciencepipelinesapplications]
-    verbs: [get, create]
+    verbs: [get, create, patch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [ds-pipeline-server-config-dspa, ds-pipeline-server-config-custom]
+    verbs: [get, patch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -133,13 +140,34 @@ spec:
                   pipelineStore: kubernetes
               YAML
               fi
-              for i in $(seq 1 120); do
-                ready=$(oc $T get dspa dspa -n "$NS" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
-                [[ "$ready" == True ]] && { echo "Pipeline server dspa is Ready"; exit 0; }
-                sleep 5
-              done
-              oc $T get dspa dspa -n "$NS" -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.message}{"\n"}{end}' >&2
-              exit 1
+              wait_ready() {
+                for i in $(seq 1 120); do
+                  ready=$(oc $T get dspa dspa -n "$NS" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+                  [[ "$ready" == True ]] && { echo "Pipeline server dspa is Ready"; return 0; }
+                  sleep 5
+                done
+                oc $T get dspa dspa -n "$NS" -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.message}{"\n"}{end}' >&2
+                return 1
+              }
+              wait_ready
+              # Per-step MLflow runs: each step's driver and launcher call MLflow's in-cluster service, whose
+              # certificate the service CA signs, but they trust only their image's system CAs; the 3.5 pipeline
+              # server passes them no CA bundle for that call, only the MLflow plugin's insecureSkipVerify flag.
+              # By operator decision (2026-10-12) the plugin skips TLS verification for those calls. The flag is
+              # set in a copy of the operator-generated server config, used through the DSPA's
+              # apiServer.customServerConfigMap; delete the copy and the DSPA field to return to the default.
+              CUSTOM=ds-pipeline-server-config-custom
+              base=$CUSTOM; oc $T get configmap "$CUSTOM" -n "$NS" >/dev/null 2>&1 || base=ds-pipeline-server-config-dspa
+              config=$(oc $T get configmap "$base" -n "$NS" -o jsonpath='{.data.config\.json}')
+              [[ "$config" == *'"insecureSkipVerify":'* ]] || { echo "ERROR: $base has no MLflow plugin TLS setting" >&2; exit 1; }
+              config=${config//'"insecureSkipVerify":false'/'"insecureSkipVerify":true'}
+              oc $T create configmap "$CUSTOM" -n "$NS" --from-literal=config.json="$config" --dry-run=client -o yaml | oc $T apply -f - >/dev/null
+              if [[ "$(oc $T get dspa dspa -n "$NS" -o jsonpath='{.spec.apiServer.customServerConfigMap.name}')" != "$CUSTOM" ]]; then
+                oc $T patch dspa dspa -n "$NS" --type=merge -p "{\"spec\":{\"apiServer\":{\"customServerConfigMap\":{\"name\":\"$CUSTOM\",\"key\":\"config.json\"}}}}" >/dev/null
+                echo "Pipeline server uses $CUSTOM (MLflow plugin insecureSkipVerify)"
+                sleep 10
+                wait_ready
+              fi
           resources:
             requests: {cpu: 50m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}
