@@ -8,6 +8,7 @@ resources:
   - prompts
   - swebench
   - oci-export
+  - edd
 labels:
   - pairs:
       app.kubernetes.io/part-of: rhoai-platform

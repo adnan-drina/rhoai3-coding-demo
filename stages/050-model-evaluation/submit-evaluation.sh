@@ -111,6 +111,14 @@ if [[ -z "$MODEL_URL" ]]; then
   [[ -n "$host" ]] || { echo '[FAIL] MaaS gateway api hostname not found; pass --model-url' >&2; exit 1; }
   MODEL_URL="https://$host"
 fi
+# Collections mix providers; Inspect, Garak and GuideLLM need the /v1 base URL and LightEval accepts it.
+[[ -n "$COLLECTION" && "$MODEL_URL" != */v1 ]] && MODEL_URL="${MODEL_URL%/}/v1"
+# Tag runs with the accelerator serving the model (performance results are per GPU node).
+ACCEL="$(oc get pods -n internal-models --request-timeout=10s -o json 2>/dev/null | python3 -c 'import json,sys
+m=sys.argv[1].split("/")[-1]
+for p in json.load(sys.stdin)["items"]:
+    if p["metadata"]["name"].startswith(m + "-kserve-") and "router" not in p["metadata"]["name"] and p["status"].get("phase")=="Running": print(p["spec"].get("nodeName","")); break' "$MODEL_NAME" | xargs -I{} oc get node {} --request-timeout=10s -o jsonpath='{.metadata.labels.nvidia\.com/gpu\.product}' 2>/dev/null || true)"
+export ACCEL
 short="${MODEL_NAME##*/}"; bench="${BENCHMARK//[^a-zA-Z0-9]/-}"; [[ -n "$NAME" ]] || NAME="${COLLECTION:-$bench}-${short}-$(date -u +%Y%m%dT%H%M%SZ)"
 
 OCI_HOST=""
@@ -127,7 +135,6 @@ import json, os
 e = os.environ
 body = {"name": e["NAME"], "tags": ["stage-050", "coding"],
         "model": {"url": e["MODEL_URL"], "name": e["MODEL_NAME"], "auth": {"secret_ref": e["SECRET_REF"]}},
-        "pass_criteria": {"threshold": float(e["THRESHOLD"])},
         # Experiment tags make MLflow history queryable by model, benchmark and source (3.5 guide 2.20, ExperimentConfig.tags).
         "experiment": {"name": e["EXPERIMENT"], "tags": [
             {"key": "model", "value": e["MODEL_NAME"].split("/")[-1]},
@@ -140,7 +147,11 @@ if e["OCI_HOST"]:
 if e["QUEUE"]:
     body["queue"] = {"kind": "kueue", "name": e["QUEUE"]}  # RHOAI 3.5 Evaluating AI systems 2.8/2.10
 if e["COLLECTION"]:
-    body["collection"] = {"id": e["COLLECTION"]}
+    body["collection"] = {"id": e["COLLECTION"]}  # the collection carries its own weights and pass criteria
+else:
+    body["pass_criteria"] = {"threshold": float(e["THRESHOLD"])}
+if e.get("ACCEL"):
+    body["experiment"]["tags"].append({"key": "accelerator", "value": e["ACCEL"]})
 else:
     if e["PROVIDER"] == "lighteval":
         params = {"provider": "endpoint", "num_few_shot": 0,

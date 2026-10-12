@@ -1,0 +1,60 @@
+# Agentic coding serving performance on the model's GPU node (GuideLLM), traffic shaped like a coding agent turn:
+# 8,000 prompt tokens and 512 output tokens. Per-benchmark gates only (different units).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evalhub-collection-agentic-coding-performance-v1
+  namespace: redhat-ods-applications
+  labels:
+    trustyai.opendatahub.io/evalhub-collection-type: system
+    trustyai.opendatahub.io/evalhub-collection-name: agentic-coding-performance-v1
+    app.kubernetes.io/name: evalhub-collection-agentic-coding-performance-v1
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+data:
+  agentic-coding-performance-v1.yaml: |
+    id: agentic-coding-performance-v1
+    name: Agentic coding performance v1
+    category: performance
+    description: >-
+      Does the model serve agent turns fast enough on its GPU node? Interactive latency for one agent session
+      (time to first token) and capacity under load (output tokens per second at saturation), both with an
+      agentic request shape of 8,000 prompt and 512 output tokens and the served model's own tokenizer.
+      Each request stays far inside the evaluation sidecar's 30 s limit. Run one model per GPU node and
+      tag the run with the node's accelerator. Submit with model.url ending in /v1.
+    tags: [performance, agentic-coding, guidellm, edd]
+    benchmarks:
+      - id: concurrent
+        provider_id: guidellm
+        weight: 1
+        primary_score:
+          metric: mean_ttft_ms
+          lower_is_better: true
+        pass_criteria:
+          threshold: 2000
+        parameters:
+          profile: concurrent
+          rate: 1
+          max_seconds: 120
+          data: prompt_tokens=8000,output_tokens=512
+          # Tokenizer used to size the synthetic prompts; shared by the Qwen 3.x models.
+          processor: RedHatAI/Qwen3.8-27B-INT4
+          request_type: chat_completions
+      - id: throughput
+        provider_id: guidellm
+        weight: 1
+        primary_score:
+          metric: output_tokens_per_second
+          lower_is_better: false
+        pass_criteria:
+          threshold: 60
+        parameters:
+          profile: throughput
+          max_seconds: 180
+          data: prompt_tokens=8000,output_tokens=512
+          # Tokenizer used to size the synthetic prompts; shared by the Qwen 3.x models.
+          processor: RedHatAI/Qwen3.8-27B-INT4
+          request_type: chat_completions

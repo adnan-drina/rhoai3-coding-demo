@@ -53,6 +53,10 @@ spec:
     - safety-and-fairness-v1
     - standard-llm-evals-v1
     - toxicity-and-ethical-principles
+    # Evaluation-driven development criteria for the agentic coding demo (edd/ ConfigMaps).
+    - agentic-coding-capability-v1
+    - agentic-coding-security-v1
+    - agentic-coding-performance-v1
   env:
     # The deployment helper discovers the native HTTPS address only after
     # MLflow is Available. The operator owns TLS trust and projected tokens.
