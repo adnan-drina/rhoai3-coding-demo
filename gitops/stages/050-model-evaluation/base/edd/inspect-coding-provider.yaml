@@ -1,0 +1,60 @@
+# System-owned EvalHub provider for the two Inspect coding benchmarks of agentic-coding-capability-v2 (RHOAI
+# 3.5 "Evaluating AI systems", Add a custom provider by using a ConfigMap). Same community Inspect adapter as
+# the built-in `inspect` provider (pinned by digest), with generation bounds set through Inspect's
+# INSPECT_EVAL_* environment variables (runtime.k8s.env, as in the operator's provider definitions). Without
+# them Inspect sets no output-token cap and retries without limit, so long answers ran past the evaluation
+# sidecar's 30 s model request limit and HumanEval spent hours in retries on Qwen 3.6 (2026-10-12). The cap
+# matches the 512 tokens LiveCodeBench already uses; eight concurrent requests stay within the model's 16
+# sequences. Benchmark ids are the adapter's own, so it selects the same inspect-evals tasks.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evalhub-provider-inspect-coding
+  namespace: redhat-ods-applications
+  labels:
+    trustyai.opendatahub.io/evalhub-provider-type: system
+    trustyai.opendatahub.io/evalhub-provider-name: inspect-coding
+    app.kubernetes.io/name: evalhub-provider-inspect-coding
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+data:
+  inspect-coding.yaml: |
+    id: inspect-coding
+    name: Inspect AI (bounded coding)
+    title: Inspect AI (bounded coding)
+    description: >-
+      Inspect AI coding benchmarks with a 512-token generation cap, eight concurrent model requests and
+      three retries, sized for the evaluation sidecar's 30 s model request limit.
+    runtime:
+      k8s:
+        image: quay.io/evalhub/community-inspect@sha256:e866641cc9964d3094efb43f78cb7dba9a23c40bbfe05ec0aebde3b772a1b822
+        entrypoint:
+          - python
+          - main.py
+        cpu_request: 500m
+        memory_request: 512Mi
+        cpu_limit: 2000m
+        memory_limit: 4Gi
+        env:
+          - name: INSPECT_EVAL_MAX_TOKENS
+            value: "512"
+          - name: INSPECT_EVAL_MAX_CONNECTIONS
+            value: "8"
+          - name: INSPECT_EVAL_MAX_RETRIES
+            value: "3"
+    benchmarks:
+      - id: inspect/humaneval
+        name: HumanEval
+        description: Python code generation from docstrings.
+        category: coding
+        metrics: [accuracy/accuracy, accuracy/stderr]
+        tags: [coding, inspect-evals]
+      - id: inspect/mbpp
+        name: MBPP
+        description: Mostly Basic Python Programming, entry-level programming tasks.
+        category: coding
+        metrics: [accuracy/accuracy]
+        tags: [coding, inspect-evals]

@@ -47,9 +47,9 @@ SERVICE_CA_CONFIGMAP = "pipeline-tasks-service-ca"
 COLLECTIONS = [
     ("step-1-latency", "skip_latency", "agentic-coding-latency-v1", 3600),
     ("step-2-throughput", "skip_throughput", "agentic-coding-throughput-v1", 3600),
-    ("step-3-capability", "skip_capability", "agentic-coding-capability-v1", 3 * 3600),
-    ("step-4-security-quick", "skip_security_quick", "agentic-coding-security-quick-v1", 2 * 3600),
-    ("step-5-security-full", "skip_security_full", "agentic-coding-security-full-v1", 4 * 3600),
+    ("step-3-capability", "skip_capability", "agentic-coding-capability-v2", 3 * 3600),
+    ("step-4-security-quick", "skip_security_quick", "agentic-coding-security-quick-v2", 2 * 3600),
+    ("step-5-security-full", "skip_security_full", "agentic-coding-security-full-v2", 4 * 3600),
 ]
 # Fixed for the demo: the EvalHub tag of every qualification job and the MLflow experiment of those jobs.
 # Pipeline runs themselves are tracked in the MLflow experiment chosen in the run form

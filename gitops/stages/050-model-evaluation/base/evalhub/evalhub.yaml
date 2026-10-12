@@ -31,6 +31,10 @@ spec:
     # Community SWE-bench adapter (eval-hub-contrib, pinned by digest in swebench/provider-configmap.yaml),
     # approved by the operator on 2026-10-09; not a Red Hat built-in provider.
     - swebench
+    # Bounded Inspect coding benchmarks and larger-CPU Garak scans for the agentic coding v2 collections
+    # (edd/inspect-coding-provider.yaml, edd/garak-coding-provider.yaml).
+    - inspect-coding
+    - garak-coding
   # EvalHub MCP server for AI coding agents (RHOAI 3.5 "Evaluating AI systems", 4.3 Deploy the EvalHub MCP
   # server). The 3.5.1 CRD has no port field; the operator chooses the port and exposes the evalhub-mcp
   # Service and its re-encrypt Route; mcp-access-rolebinding.yaml admits the MCP principal.
@@ -56,6 +60,9 @@ spec:
     # Evaluation-driven development criteria for the agentic coding demo (edd/ ConfigMaps).
     - agentic-coding-capability-v1
     - agentic-coding-security-quick-v1
+    - agentic-coding-capability-v2
+    - agentic-coding-security-quick-v2
+    - agentic-coding-security-full-v2
     - agentic-coding-security-full-v1
     - agentic-coding-latency-v1
     - agentic-coding-throughput-v1

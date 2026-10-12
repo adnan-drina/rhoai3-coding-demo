@@ -11,12 +11,12 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v5
+  name: agentic-coding-model-qualification-v6
   namespace: evaluated-models
 spec:
   description: Evaluates one model on the agentic coding EvalHub collections and ranks
     it on the qualification leaderboard.
-  displayName: agentic-coding-model-qualification v5
+  displayName: agentic-coding-model-qualification v6
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -1323,7 +1323,7 @@ spec:
                     producerTask: step-2-throughput
                 collection_id:
                   runtimeValue:
-                    constant: agentic-coding-capability-v1
+                    constant: agentic-coding-capability-v2
                 evalhub_experiment:
                   runtimeValue:
                     constant: agentic-coding-evaluations
@@ -1378,7 +1378,7 @@ spec:
                     producerTask: step-3-capability
                 collection_id:
                   runtimeValue:
-                    constant: agentic-coding-security-quick-v1
+                    constant: agentic-coding-security-quick-v2
                 evalhub_experiment:
                   runtimeValue:
                     constant: agentic-coding-evaluations
@@ -1433,7 +1433,7 @@ spec:
                     producerTask: step-4-security-quick
                 collection_id:
                   runtimeValue:
-                    constant: agentic-coding-security-full-v1
+                    constant: agentic-coding-security-full-v2
                 evalhub_experiment:
                   runtimeValue:
                     constant: agentic-coding-evaluations
