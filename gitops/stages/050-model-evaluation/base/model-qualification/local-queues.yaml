@@ -1,0 +1,22 @@
+---
+# Same cluster queues as demo-sandbox and internal-models (Stage 020 quota): evaluation jobs use the
+# CPU queue, the candidate model server the reserved GPU queue.
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: lq-cpu-default
+  namespace: evaluated-models
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  clusterQueue: cq-cpu-default
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: lq-gpu-reserved-demo
+  namespace: evaluated-models
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  clusterQueue: cq-gpu-reserved-demo

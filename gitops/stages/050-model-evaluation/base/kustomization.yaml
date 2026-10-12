@@ -9,6 +9,7 @@ resources:
   - swebench
   - oci-export
   - edd
+  - model-qualification
 labels:
   - pairs:
       app.kubernetes.io/part-of: rhoai-platform

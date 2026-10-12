@@ -1,0 +1,90 @@
+---
+# Governed access for model qualification (Stage 050, project evaluated-models). Candidates are served
+# in evaluated-models itself; this subscription reaches the production baseline (the MaaS coding model
+# a candidate would replace) and the external models used as judges, so baseline evaluations go through
+# the same MaaS path developers use. The key is minted by the evaluated-models provisioner ServiceAccount.
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: model-qualification
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: model-qualification
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: governed-access
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  owner:
+    users:
+      - system:serviceaccount:evaluated-models:evalhub-maas-key-provisioner
+  priority: 70
+  modelRefs:
+    - name: qwen3-8-27b-int4
+      namespace: internal-models
+      tokenRateLimits:
+        - limit: 5000000
+          window: 1h
+    - name: qwen3-6-27b
+      namespace: internal-models
+      tokenRateLimits:
+        - limit: 5000000
+          window: 1h
+    - name: gpt-6-luna
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+    - name: claude-sonnet-5-5
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+    - name: nemotron-3-ultra-550b-a55b
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      modelSet: model-qualification
+      provider: governed-models
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: model-qualification
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: model-qualification
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: governed-access
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  subjects:
+    users:
+      - system:serviceaccount:evaluated-models:evalhub-maas-key-provisioner
+  modelRefs:
+    - name: qwen3-8-27b-int4
+      namespace: internal-models
+    - name: qwen3-6-27b
+      namespace: internal-models
+    - name: gpt-6-luna
+      namespace: external-models
+    - name: claude-sonnet-5-5
+      namespace: external-models
+    - name: nemotron-3-ultra-550b-a55b
+      namespace: external-models
+  meteringMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      modelSet: model-qualification
+      provider: governed-models

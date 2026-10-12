@@ -6,3 +6,4 @@ resources:
   - personal-users-access.yaml
   - playground-sandbox-access.yaml
   - evaluation-sandbox-access.yaml
+  - model-qualification-access.yaml

@@ -1,0 +1,24 @@
+# Model qualification project. Candidate models are served here as InferenceServices (the Start
+# evaluation run form lists InferenceServices of the selected project) and evaluated against the
+# production baseline before promotion to MaaS. Only platform admins (rhods-admins, ai-admin) have
+# access; developers (rhoai-developers) consume promoted models through MaaS and never see candidates.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: evaluated-models
+  labels:
+    opendatahub.io/dashboard: "true"
+    kubernetes.io/metadata.name: evaluated-models
+    # EvalHub tenant (RHOAI 3.5 "Evaluating AI systems", multi-tenancy): jobs, collections and MLflow
+    # experiments for model qualification are scoped to this namespace.
+    evalhub.trustyai.opendatahub.io/tenant: ""
+    # Kueue enforcement as in the other GPU projects (Stage 020).
+    kueue.openshift.io/managed: "true"
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/warn-version: latest
+  annotations:
+    openshift.io/display-name: "Evaluated Models"
+    openshift.io/description: "Candidate models under qualification against the production baseline. Platform admins only."
+    argocd.argoproj.io/sync-wave: "5"
