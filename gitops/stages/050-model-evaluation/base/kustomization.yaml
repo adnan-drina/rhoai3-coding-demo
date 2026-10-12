@@ -9,6 +9,7 @@ resources:
   - swebench
   - oci-export
   - edd
+  - candidates/qwen3-6-27b
 labels:
   - pairs:
       app.kubernetes.io/part-of: rhoai-platform
