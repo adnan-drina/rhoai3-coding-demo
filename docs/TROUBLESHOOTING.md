@@ -2674,4 +2674,29 @@ oc logs deploy/evalhub-mcp -n evalhub -c evalhub-mcp --since=10m | grep -E 'Requ
 
 **Likely cause:** The score is the weighted average of each benchmark's primary metric (3.5 guide 2.1), rendered as a percentage of a 0–1 value. Catalog entries without a primary metric (Inspect) produce no score; raw-unit metrics (GuideLLM milliseconds and tokens per second) are multiplied by 100. Garak's attack success rate is shown as the score although lower is better.
 
-**Recover:** Run benchmarks through the `agentic-coding-*` collections, which declare a primary metric and threshold for every benchmark. Read capability scores as percentages; for security read the score as attack success rate (lower is better); for performance read the per-benchmark Pass/Fail and the metrics, not the headline percentage. Red Hat item in BACKLOG.
+**Recover:** Run benchmarks through the `agentic-coding-*` collections, which declare a primary metric and threshold for every benchmark. Read capability scores as percentages; for security read the score as attack success rate (lower is better); for latency and throughput read the per-benchmark Pass/Fail and the metrics, not the headline percentage. Red Hat item in BACKLOG.
+
+## Qualification Pipeline Run Shows No Logs, Empty Inputs Or Unopenable Artifacts
+
+**Affected stage:** Stage 050, agentic coding qualification pipeline in project **Evaluated Models**, RHOAI 3.5.1 (all found and fixed 2026-10-12; the cause was our configuration in each case)
+
+| Symptom | Cause | Configured remedy |
+|---|---|---|
+| A step's **Logs** tab says `pods "<workflow>-<number>" not found ... may have been pruned`, and its **Input/Output** tab shows `No value` | The dashboard looks a step up in the run metadata (MLMD) by its label. One component reused with `set_display_name` labels records every step under its task key (`evaluate-collection`, `evaluate-collection-2`, ...), so nothing matches; the dashboard then guesses a pod name that does not exist | Each step is its own named component (`latency`, `throughput`, `capability`, `security-quick`, `security-full`), so the task key equals the label. Do not add `set_display_name` to pipeline steps |
+| Artifact URI links and download icons on **Artifacts** do not open | The pipeline server signs artifact links with its storage host. The in-cluster ODF service (`s3.openshift-storage.svc`) is unreachable from a browser | The **Pipelines** connection carries the ODF S3 Route (`https://s3-openshift-storage.apps.<cluster domain>`), which has the publicly trusted ingress certificate. The pipeline server is configured from that connection |
+| Every step fails at the end with `runID is required to update nested MLflow run` | The run was created without an MLflow experiment. The dashboard's **Create run** form sends one (`plugins_input.mlflow.experiment_name`); the KFP SDK `create_run_from_pipeline_*` calls do not | Create runs from the dashboard, or `POST /apis/v2beta1/runs` with `"plugins_input": {"mlflow": {"experiment_name": "agentic-coding-qualification"}}` |
+| **Executions** lists one `(No name)` `system.DAGExecution` per run | That is the run's root DAG; KFP records it without a task name | Expected; not configurable |
+| A step fails installing `eval-hub-sdk==1.0.5` (`from versions: 0.4.0 ... 0.4.4`) | The runtime image's default pip index has older releases only | Components pass `pip_index_urls=["https://pypi.org/simple"]`. Compile with kfp 2.16.1, which matches the runtime image's index |
+| Registering the compiled pipeline fails with a database error | The pipeline server's default MariaDB stores the pipeline spec in a `latin1` column and rejects non-ASCII characters | Keep `pipeline.py` ASCII-only (`LC_ALL=C grep -nP '[^\x00-\x7F]' pipeline.py` must print nothing) |
+| The latency job reports all-zero metrics or fails its gate when run with throughput | EvalHub runs a collection's benchmarks in parallel. A saturation run beside the single session pushes requests past the evaluation sidecar's 30 s limit (`context canceled`) | Latency and throughput are separate collections (`agentic-coding-latency-v1`, `agentic-coding-throughput-v1`) with 256 output tokens. The leaderboard counts all-zero metrics as a fail |
+
+**Diagnose:** compare what the dashboard reads with the real pods (read-only):
+
+```bash
+oc get pods -n evaluated-models | grep agentic-coding
+P=$(oc get pods -n evaluated-models -l app=mariadb-dspa -o jsonpath='{.items[0].metadata.name}')
+oc exec -n evaluated-models "$P" -- bash -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" mlpipeline -e "SELECT execution_id, name, string_value FROM ExecutionProperty WHERE name IN (\"task_name\",\"pod_name\") ORDER BY execution_id;"'
+```
+
+Each step's `task_name` must equal the label in the graph, and its `pod_name` must be an existing pod.
+
