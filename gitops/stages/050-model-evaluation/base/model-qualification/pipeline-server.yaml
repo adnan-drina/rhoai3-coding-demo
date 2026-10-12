@@ -58,6 +58,12 @@ spec:
   database:
     mariaDB:
       deploy: true
+  # MLflow experiment tracking for pipeline runs ("Working with AI pipelines", 4.2): each run becomes a parent
+  # MLflow run with one nested run per task, logging task parameters and scalar metrics. Tasks do not call
+  # the MLflow SDK themselves, so the task environment variables are not injected.
+  mlflow:
+    integrationMode: AUTODETECT
+    injectUserEnvVars: false
   objectStorage:
     externalStorage:
       host: s3.openshift-storage.svc

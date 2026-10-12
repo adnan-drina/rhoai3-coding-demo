@@ -11,12 +11,12 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v8
+  name: agentic-coding-model-qualification-v9
   namespace: evaluated-models
 spec:
   description: Evaluates one model on the agentic coding EvalHub collections and ranks
     it on the qualification leaderboard.
-  displayName: agentic-coding-model-qualification v8
+  displayName: agentic-coding-model-qualification v9
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -28,6 +28,8 @@ spec:
               parameterType: STRING
             collection_id:
               parameterType: STRING
+            evalhub_experiment:
+              parameterType: STRING
             evalhub_url:
               parameterType: STRING
             model_id:
@@ -53,6 +55,10 @@ spec:
             results:
               artifactType:
                 schemaTitle: system.Artifact
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
                 schemaVersion: 0.0.1
       comp-evaluate-collection-2:
         executorLabel: exec-evaluate-collection-2
@@ -62,6 +68,8 @@ spec:
               parameterType: STRING
             collection_id:
               parameterType: STRING
+            evalhub_experiment:
+              parameterType: STRING
             evalhub_url:
               parameterType: STRING
             model_id:
@@ -87,6 +95,10 @@ spec:
             results:
               artifactType:
                 schemaTitle: system.Artifact
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
                 schemaVersion: 0.0.1
       comp-evaluate-collection-3:
         executorLabel: exec-evaluate-collection-3
@@ -96,6 +108,8 @@ spec:
               parameterType: STRING
             collection_id:
               parameterType: STRING
+            evalhub_experiment:
+              parameterType: STRING
             evalhub_url:
               parameterType: STRING
             model_id:
@@ -121,6 +135,10 @@ spec:
             results:
               artifactType:
                 schemaTitle: system.Artifact
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
                 schemaVersion: 0.0.1
       comp-evaluate-collection-4:
         executorLabel: exec-evaluate-collection-4
@@ -130,6 +148,8 @@ spec:
               parameterType: STRING
             collection_id:
               parameterType: STRING
+            evalhub_experiment:
+              parameterType: STRING
             evalhub_url:
               parameterType: STRING
             model_id:
@@ -156,6 +176,10 @@ spec:
               artifactType:
                 schemaTitle: system.Artifact
                 schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
+                schemaVersion: 0.0.1
       comp-evaluate-collection-5:
         executorLabel: exec-evaluate-collection-5
         inputDefinitions:
@@ -163,6 +187,8 @@ spec:
             auth_secret:
               parameterType: STRING
             collection_id:
+              parameterType: STRING
+            evalhub_experiment:
               parameterType: STRING
             evalhub_url:
               parameterType: STRING
@@ -189,6 +215,10 @@ spec:
             results:
               artifactType:
                 schemaTitle: system.Artifact
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
                 schemaVersion: 0.0.1
       comp-leaderboard:
         executorLabel: exec-leaderboard
@@ -273,10 +303,11 @@ spec:
               \ import *\n\ndef evaluate_collection(\n    model_name: str,\n    model_id:\
               \ str,\n    model_url: str,\n    auth_secret: str,\n    target: str,\n\
               \    tenant: str,\n    collection_id: str,\n    qualification_tag: str,\n\
-              \    evalhub_url: str,\n    queue: str,\n    run_name: str,\n    timeout_seconds:\
-              \ int,\n    results: dsl.Output[dsl.Artifact],\n):\n    \"\"\"Run one\
-              \ EvalHub collection on the model and keep the job body and results.\"\
-              \"\"\n    import json\n    import os\n    import re\n    import subprocess\n\
+              \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
+              \    run_name: str,\n    timeout_seconds: int,\n    results: dsl.Output[dsl.Artifact],\n\
+              \    scores: dsl.Output[dsl.Metrics],\n):\n    \"\"\"Run one EvalHub\
+              \ collection on the model and keep the job body and results.\"\"\"\n\
+              \    import json\n    import os\n    import re\n    import subprocess\n\
               \    import tempfile\n\n    import httpx\n    import yaml\n\n    work\
               \ = tempfile.mkdtemp()\n    profile = os.path.join(work, \"evalhub.yaml\"\
               )\n    with open(profile, \"w\") as f:\n        yaml.safe_dump({\"active_profile\"\
@@ -293,8 +324,8 @@ spec:
               , f\"model={model_name}\"],\n        \"model\": {\"url\": model_url,\
               \ \"name\": model_id, \"auth\": {\"secret_ref\": auth_secret}},\n  \
               \      \"collection\": {\"id\": collection_id},\n        \"experiment\"\
-              : {\"name\": qualification_tag, \"tags\": [{\"key\": k, \"value\": v}\
-              \ for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
+              : {\"name\": evalhub_experiment, \"tags\": [{\"key\": k, \"value\":\
+              \ v} for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
               , \"name\": queue},\n    }\n    path = os.path.join(work, \"eval.yaml\"\
               )\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body, f,\
               \ sort_keys=False)\n    print(open(path).read())\n\n    # The gate:\
@@ -320,10 +351,23 @@ spec:
               \ text=True).stdout\n    with open(results.path, \"w\") as f:\n    \
               \    json.dump({\"eval_yaml\": body, \"job\": job, \"results_csv\":\
               \ csv}, f, indent=1)\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    print(f\"{collection_id}: job {job_id} {state} (exit {run.returncode})\"\
-              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
-              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
-              \ not finish within {timeout_seconds}s (state {state})\")\n\n"
+              state\")\n    # Scalar metrics: logged by the pipeline server's MLflow\
+              \ integration to this task's nested run and shown\n    # in the KFP\
+              \ and MLflow run comparison views. A benchmark whose metrics are all\
+              \ zero had no successful\n    # requests, so it gets no score.\n   \
+              \ for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
+              \        t = b.get(\"test\") or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if isinstance(t.get(\"primary_score\"), (int, float)) and any(numbers):\n\
+              \            scores.log_metric(f\"{b['id']}.{t.get('primary_score_metric')}\"\
+              .replace(\"/\", \"_\").replace(\":\", \"_\"),\n                    \
+              \          float(t[\"primary_score\"]))\n            scores.log_metric(f\"\
+              {b['id']}.pass\".replace(\"/\", \"_\").replace(\":\", \"_\"), 1.0 if\
+              \ t.get(\"pass\") else 0.0)\n    print(f\"{collection_id}: job {job_id}\
+              \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
+              , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
+              job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
+              )\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -366,10 +410,11 @@ spec:
               \ import *\n\ndef evaluate_collection(\n    model_name: str,\n    model_id:\
               \ str,\n    model_url: str,\n    auth_secret: str,\n    target: str,\n\
               \    tenant: str,\n    collection_id: str,\n    qualification_tag: str,\n\
-              \    evalhub_url: str,\n    queue: str,\n    run_name: str,\n    timeout_seconds:\
-              \ int,\n    results: dsl.Output[dsl.Artifact],\n):\n    \"\"\"Run one\
-              \ EvalHub collection on the model and keep the job body and results.\"\
-              \"\"\n    import json\n    import os\n    import re\n    import subprocess\n\
+              \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
+              \    run_name: str,\n    timeout_seconds: int,\n    results: dsl.Output[dsl.Artifact],\n\
+              \    scores: dsl.Output[dsl.Metrics],\n):\n    \"\"\"Run one EvalHub\
+              \ collection on the model and keep the job body and results.\"\"\"\n\
+              \    import json\n    import os\n    import re\n    import subprocess\n\
               \    import tempfile\n\n    import httpx\n    import yaml\n\n    work\
               \ = tempfile.mkdtemp()\n    profile = os.path.join(work, \"evalhub.yaml\"\
               )\n    with open(profile, \"w\") as f:\n        yaml.safe_dump({\"active_profile\"\
@@ -386,8 +431,8 @@ spec:
               , f\"model={model_name}\"],\n        \"model\": {\"url\": model_url,\
               \ \"name\": model_id, \"auth\": {\"secret_ref\": auth_secret}},\n  \
               \      \"collection\": {\"id\": collection_id},\n        \"experiment\"\
-              : {\"name\": qualification_tag, \"tags\": [{\"key\": k, \"value\": v}\
-              \ for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
+              : {\"name\": evalhub_experiment, \"tags\": [{\"key\": k, \"value\":\
+              \ v} for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
               , \"name\": queue},\n    }\n    path = os.path.join(work, \"eval.yaml\"\
               )\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body, f,\
               \ sort_keys=False)\n    print(open(path).read())\n\n    # The gate:\
@@ -413,10 +458,23 @@ spec:
               \ text=True).stdout\n    with open(results.path, \"w\") as f:\n    \
               \    json.dump({\"eval_yaml\": body, \"job\": job, \"results_csv\":\
               \ csv}, f, indent=1)\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    print(f\"{collection_id}: job {job_id} {state} (exit {run.returncode})\"\
-              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
-              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
-              \ not finish within {timeout_seconds}s (state {state})\")\n\n"
+              state\")\n    # Scalar metrics: logged by the pipeline server's MLflow\
+              \ integration to this task's nested run and shown\n    # in the KFP\
+              \ and MLflow run comparison views. A benchmark whose metrics are all\
+              \ zero had no successful\n    # requests, so it gets no score.\n   \
+              \ for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
+              \        t = b.get(\"test\") or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if isinstance(t.get(\"primary_score\"), (int, float)) and any(numbers):\n\
+              \            scores.log_metric(f\"{b['id']}.{t.get('primary_score_metric')}\"\
+              .replace(\"/\", \"_\").replace(\":\", \"_\"),\n                    \
+              \          float(t[\"primary_score\"]))\n            scores.log_metric(f\"\
+              {b['id']}.pass\".replace(\"/\", \"_\").replace(\":\", \"_\"), 1.0 if\
+              \ t.get(\"pass\") else 0.0)\n    print(f\"{collection_id}: job {job_id}\
+              \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
+              , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
+              job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
+              )\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -459,10 +517,11 @@ spec:
               \ import *\n\ndef evaluate_collection(\n    model_name: str,\n    model_id:\
               \ str,\n    model_url: str,\n    auth_secret: str,\n    target: str,\n\
               \    tenant: str,\n    collection_id: str,\n    qualification_tag: str,\n\
-              \    evalhub_url: str,\n    queue: str,\n    run_name: str,\n    timeout_seconds:\
-              \ int,\n    results: dsl.Output[dsl.Artifact],\n):\n    \"\"\"Run one\
-              \ EvalHub collection on the model and keep the job body and results.\"\
-              \"\"\n    import json\n    import os\n    import re\n    import subprocess\n\
+              \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
+              \    run_name: str,\n    timeout_seconds: int,\n    results: dsl.Output[dsl.Artifact],\n\
+              \    scores: dsl.Output[dsl.Metrics],\n):\n    \"\"\"Run one EvalHub\
+              \ collection on the model and keep the job body and results.\"\"\"\n\
+              \    import json\n    import os\n    import re\n    import subprocess\n\
               \    import tempfile\n\n    import httpx\n    import yaml\n\n    work\
               \ = tempfile.mkdtemp()\n    profile = os.path.join(work, \"evalhub.yaml\"\
               )\n    with open(profile, \"w\") as f:\n        yaml.safe_dump({\"active_profile\"\
@@ -479,8 +538,8 @@ spec:
               , f\"model={model_name}\"],\n        \"model\": {\"url\": model_url,\
               \ \"name\": model_id, \"auth\": {\"secret_ref\": auth_secret}},\n  \
               \      \"collection\": {\"id\": collection_id},\n        \"experiment\"\
-              : {\"name\": qualification_tag, \"tags\": [{\"key\": k, \"value\": v}\
-              \ for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
+              : {\"name\": evalhub_experiment, \"tags\": [{\"key\": k, \"value\":\
+              \ v} for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
               , \"name\": queue},\n    }\n    path = os.path.join(work, \"eval.yaml\"\
               )\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body, f,\
               \ sort_keys=False)\n    print(open(path).read())\n\n    # The gate:\
@@ -506,10 +565,23 @@ spec:
               \ text=True).stdout\n    with open(results.path, \"w\") as f:\n    \
               \    json.dump({\"eval_yaml\": body, \"job\": job, \"results_csv\":\
               \ csv}, f, indent=1)\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    print(f\"{collection_id}: job {job_id} {state} (exit {run.returncode})\"\
-              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
-              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
-              \ not finish within {timeout_seconds}s (state {state})\")\n\n"
+              state\")\n    # Scalar metrics: logged by the pipeline server's MLflow\
+              \ integration to this task's nested run and shown\n    # in the KFP\
+              \ and MLflow run comparison views. A benchmark whose metrics are all\
+              \ zero had no successful\n    # requests, so it gets no score.\n   \
+              \ for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
+              \        t = b.get(\"test\") or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if isinstance(t.get(\"primary_score\"), (int, float)) and any(numbers):\n\
+              \            scores.log_metric(f\"{b['id']}.{t.get('primary_score_metric')}\"\
+              .replace(\"/\", \"_\").replace(\":\", \"_\"),\n                    \
+              \          float(t[\"primary_score\"]))\n            scores.log_metric(f\"\
+              {b['id']}.pass\".replace(\"/\", \"_\").replace(\":\", \"_\"), 1.0 if\
+              \ t.get(\"pass\") else 0.0)\n    print(f\"{collection_id}: job {job_id}\
+              \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
+              , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
+              job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
+              )\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -552,10 +624,11 @@ spec:
               \ import *\n\ndef evaluate_collection(\n    model_name: str,\n    model_id:\
               \ str,\n    model_url: str,\n    auth_secret: str,\n    target: str,\n\
               \    tenant: str,\n    collection_id: str,\n    qualification_tag: str,\n\
-              \    evalhub_url: str,\n    queue: str,\n    run_name: str,\n    timeout_seconds:\
-              \ int,\n    results: dsl.Output[dsl.Artifact],\n):\n    \"\"\"Run one\
-              \ EvalHub collection on the model and keep the job body and results.\"\
-              \"\"\n    import json\n    import os\n    import re\n    import subprocess\n\
+              \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
+              \    run_name: str,\n    timeout_seconds: int,\n    results: dsl.Output[dsl.Artifact],\n\
+              \    scores: dsl.Output[dsl.Metrics],\n):\n    \"\"\"Run one EvalHub\
+              \ collection on the model and keep the job body and results.\"\"\"\n\
+              \    import json\n    import os\n    import re\n    import subprocess\n\
               \    import tempfile\n\n    import httpx\n    import yaml\n\n    work\
               \ = tempfile.mkdtemp()\n    profile = os.path.join(work, \"evalhub.yaml\"\
               )\n    with open(profile, \"w\") as f:\n        yaml.safe_dump({\"active_profile\"\
@@ -572,8 +645,8 @@ spec:
               , f\"model={model_name}\"],\n        \"model\": {\"url\": model_url,\
               \ \"name\": model_id, \"auth\": {\"secret_ref\": auth_secret}},\n  \
               \      \"collection\": {\"id\": collection_id},\n        \"experiment\"\
-              : {\"name\": qualification_tag, \"tags\": [{\"key\": k, \"value\": v}\
-              \ for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
+              : {\"name\": evalhub_experiment, \"tags\": [{\"key\": k, \"value\":\
+              \ v} for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
               , \"name\": queue},\n    }\n    path = os.path.join(work, \"eval.yaml\"\
               )\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body, f,\
               \ sort_keys=False)\n    print(open(path).read())\n\n    # The gate:\
@@ -599,10 +672,23 @@ spec:
               \ text=True).stdout\n    with open(results.path, \"w\") as f:\n    \
               \    json.dump({\"eval_yaml\": body, \"job\": job, \"results_csv\":\
               \ csv}, f, indent=1)\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    print(f\"{collection_id}: job {job_id} {state} (exit {run.returncode})\"\
-              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
-              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
-              \ not finish within {timeout_seconds}s (state {state})\")\n\n"
+              state\")\n    # Scalar metrics: logged by the pipeline server's MLflow\
+              \ integration to this task's nested run and shown\n    # in the KFP\
+              \ and MLflow run comparison views. A benchmark whose metrics are all\
+              \ zero had no successful\n    # requests, so it gets no score.\n   \
+              \ for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
+              \        t = b.get(\"test\") or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if isinstance(t.get(\"primary_score\"), (int, float)) and any(numbers):\n\
+              \            scores.log_metric(f\"{b['id']}.{t.get('primary_score_metric')}\"\
+              .replace(\"/\", \"_\").replace(\":\", \"_\"),\n                    \
+              \          float(t[\"primary_score\"]))\n            scores.log_metric(f\"\
+              {b['id']}.pass\".replace(\"/\", \"_\").replace(\":\", \"_\"), 1.0 if\
+              \ t.get(\"pass\") else 0.0)\n    print(f\"{collection_id}: job {job_id}\
+              \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
+              , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
+              job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
+              )\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -645,10 +731,11 @@ spec:
               \ import *\n\ndef evaluate_collection(\n    model_name: str,\n    model_id:\
               \ str,\n    model_url: str,\n    auth_secret: str,\n    target: str,\n\
               \    tenant: str,\n    collection_id: str,\n    qualification_tag: str,\n\
-              \    evalhub_url: str,\n    queue: str,\n    run_name: str,\n    timeout_seconds:\
-              \ int,\n    results: dsl.Output[dsl.Artifact],\n):\n    \"\"\"Run one\
-              \ EvalHub collection on the model and keep the job body and results.\"\
-              \"\"\n    import json\n    import os\n    import re\n    import subprocess\n\
+              \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
+              \    run_name: str,\n    timeout_seconds: int,\n    results: dsl.Output[dsl.Artifact],\n\
+              \    scores: dsl.Output[dsl.Metrics],\n):\n    \"\"\"Run one EvalHub\
+              \ collection on the model and keep the job body and results.\"\"\"\n\
+              \    import json\n    import os\n    import re\n    import subprocess\n\
               \    import tempfile\n\n    import httpx\n    import yaml\n\n    work\
               \ = tempfile.mkdtemp()\n    profile = os.path.join(work, \"evalhub.yaml\"\
               )\n    with open(profile, \"w\") as f:\n        yaml.safe_dump({\"active_profile\"\
@@ -665,8 +752,8 @@ spec:
               , f\"model={model_name}\"],\n        \"model\": {\"url\": model_url,\
               \ \"name\": model_id, \"auth\": {\"secret_ref\": auth_secret}},\n  \
               \      \"collection\": {\"id\": collection_id},\n        \"experiment\"\
-              : {\"name\": qualification_tag, \"tags\": [{\"key\": k, \"value\": v}\
-              \ for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
+              : {\"name\": evalhub_experiment, \"tags\": [{\"key\": k, \"value\":\
+              \ v} for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
               , \"name\": queue},\n    }\n    path = os.path.join(work, \"eval.yaml\"\
               )\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body, f,\
               \ sort_keys=False)\n    print(open(path).read())\n\n    # The gate:\
@@ -692,10 +779,23 @@ spec:
               \ text=True).stdout\n    with open(results.path, \"w\") as f:\n    \
               \    json.dump({\"eval_yaml\": body, \"job\": job, \"results_csv\":\
               \ csv}, f, indent=1)\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    print(f\"{collection_id}: job {job_id} {state} (exit {run.returncode})\"\
-              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
-              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
-              \ not finish within {timeout_seconds}s (state {state})\")\n\n"
+              state\")\n    # Scalar metrics: logged by the pipeline server's MLflow\
+              \ integration to this task's nested run and shown\n    # in the KFP\
+              \ and MLflow run comparison views. A benchmark whose metrics are all\
+              \ zero had no successful\n    # requests, so it gets no score.\n   \
+              \ for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
+              \        t = b.get(\"test\") or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if isinstance(t.get(\"primary_score\"), (int, float)) and any(numbers):\n\
+              \            scores.log_metric(f\"{b['id']}.{t.get('primary_score_metric')}\"\
+              .replace(\"/\", \"_\").replace(\":\", \"_\"),\n                    \
+              \          float(t[\"primary_score\"]))\n            scores.log_metric(f\"\
+              {b['id']}.pass\".replace(\"/\", \"_\").replace(\":\", \"_\"), 1.0 if\
+              \ t.get(\"pass\") else 0.0)\n    print(f\"{collection_id}: job {job_id}\
+              \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
+              , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
+              job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
+              )\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -864,11 +964,13 @@ spec:
               )\n    h.append(\"<p class=note>Each cell is the newest qualification\
               \ result for that model; * marks the best value, \"\n             \"\
               green passes its gate, red fails it. Compare individual runs in the\
-              \ dashboard: Develop &amp; train &gt; \"\n             f\"Evaluations,\
-              \ select runs and click Compare (MLflow experiment {qualification_tag}).\
-              \ Production models \"\n             \"are reached through the MaaS\
-              \ gateway and candidates directly, so production latency includes the\
-              \ \"\n             \"gateway hop.</p>\")\n    style = (\"<style>body{font-family:system-ui,sans-serif;margin:24px;color:#151515}table{border-collapse:collapse;\"\
+              \ dashboard: Develop &amp; train &gt; \"\n             \"Evaluations,\
+              \ select runs and click Compare (MLflow experiment agentic-coding-evaluations),\
+              \ or compare \"\n             \"pipeline runs in the MLflow experiment\
+              \ agentic-coding-qualification. Production models \"\n             \"\
+              are reached through the MaaS gateway and candidates directly, so production\
+              \ latency includes the \"\n             \"gateway hop.</p>\")\n    style\
+              \ = (\"<style>body{font-family:system-ui,sans-serif;margin:24px;color:#151515}table{border-collapse:collapse;\"\
               \n             \"margin:8px 0 20px}th,td{border:1px solid #d2d2d2;padding:6px\
               \ 10px;text-align:left;vertical-align:top}\"\n             \"th{background:#f0f0f0}td.pass{background:#f3faf2}td.fail{background:#faeaea}small{color:#555}\"\
               \n             \"h2.promote{color:#3e8635}h2.hold{color:#c9190b}h2.base{color:#0066cc}.note{color:#555;font-size:.9em}</style>\"\
@@ -977,6 +1079,9 @@ spec:
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-latency-v1
+                evalhub_experiment:
+                  runtimeValue:
+                    constant: agentic-coding-evaluations
                 evalhub_url:
                   runtimeValue:
                     constant: https://evalhub.evalhub.svc.cluster.local:8443
@@ -1028,6 +1133,9 @@ spec:
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-throughput-v1
+                evalhub_experiment:
+                  runtimeValue:
+                    constant: agentic-coding-evaluations
                 evalhub_url:
                   runtimeValue:
                     constant: https://evalhub.evalhub.svc.cluster.local:8443
@@ -1079,6 +1187,9 @@ spec:
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-capability-v1
+                evalhub_experiment:
+                  runtimeValue:
+                    constant: agentic-coding-evaluations
                 evalhub_url:
                   runtimeValue:
                     constant: https://evalhub.evalhub.svc.cluster.local:8443
@@ -1130,6 +1241,9 @@ spec:
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-security-quick-v1
+                evalhub_experiment:
+                  runtimeValue:
+                    constant: agentic-coding-evaluations
                 evalhub_url:
                   runtimeValue:
                     constant: https://evalhub.evalhub.svc.cluster.local:8443
@@ -1181,6 +1295,9 @@ spec:
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-security-full-v1
+                evalhub_experiment:
+                  runtimeValue:
+                    constant: agentic-coding-evaluations
                 evalhub_url:
                   runtimeValue:
                     constant: https://evalhub.evalhub.svc.cluster.local:8443

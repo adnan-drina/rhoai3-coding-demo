@@ -45,8 +45,11 @@ COLLECTIONS = [
     ("security quick", "agentic-coding-security-quick-v1", 2 * 3600),
     ("security full", "agentic-coding-security-full-v1", 4 * 3600),
 ]
-# Fixed for the demo: one EvalHub tag and MLflow experiment for every qualification run.
+# Fixed for the demo: the EvalHub tag of every qualification job and the MLflow experiment of those jobs.
+# Pipeline runs themselves are tracked in the MLflow experiment chosen in the run form
+# (agentic-coding-qualification), so EvalHub's per-job runs use a separate experiment.
 QUALIFICATION_TAG = "agentic-coding-qualification"
+EVALHUB_EXPERIMENT = "agentic-coding-evaluations"
 EVALHUB_URL = "https://evalhub.evalhub.svc.cluster.local:8443"
 QUEUE = "lq-cpu-default"
 MAX_REGRESSION = 0.05
@@ -105,11 +108,13 @@ def evaluate_collection(
     tenant: str,
     collection_id: str,
     qualification_tag: str,
+    evalhub_experiment: str,
     evalhub_url: str,
     queue: str,
     run_name: str,
     timeout_seconds: int,
     results: dsl.Output[dsl.Artifact],
+    scores: dsl.Output[dsl.Metrics],
 ):
     """Run one EvalHub collection on the model and keep the job body and results."""
     import json
@@ -138,7 +143,7 @@ def evaluate_collection(
         "tags": [qualification_tag, f"target={target}", f"model={model_name}"],
         "model": {"url": model_url, "name": model_id, "auth": {"secret_ref": auth_secret}},
         "collection": {"id": collection_id},
-        "experiment": {"name": qualification_tag, "tags": [{"key": k, "value": v} for k, v in tags.items()]},
+        "experiment": {"name": evalhub_experiment, "tags": [{"key": k, "value": v} for k, v in tags.items()]},
         "queue": {"kind": "kueue", "name": queue},
     }
     path = os.path.join(work, "eval.yaml")
@@ -169,6 +174,16 @@ def evaluate_collection(
     with open(results.path, "w") as f:
         json.dump({"eval_yaml": body, "job": job, "results_csv": csv}, f, indent=1)
     state = (job.get("status") or {}).get("state")
+    # Scalar metrics: logged by the pipeline server's MLflow integration to this task's nested run and shown
+    # in the KFP and MLflow run comparison views. A benchmark whose metrics are all zero had no successful
+    # requests, so it gets no score.
+    for b in (job.get("results") or {}).get("benchmarks") or []:
+        t = b.get("test") or {}
+        numbers = [v for v in (b.get("metrics") or {}).values() if isinstance(v, (int, float))]
+        if isinstance(t.get("primary_score"), (int, float)) and any(numbers):
+            scores.log_metric(f"{b['id']}.{t.get('primary_score_metric')}".replace("/", "_").replace(":", "_"),
+                              float(t["primary_score"]))
+            scores.log_metric(f"{b['id']}.pass".replace("/", "_").replace(":", "_"), 1.0 if t.get("pass") else 0.0)
     print(f"{collection_id}: job {job_id} {state} (exit {run.returncode})")
     if state not in ("completed", "failed", "cancelled", "partially_failed"):
         raise RuntimeError(f"job {job_id} did not finish within {timeout_seconds}s (state {state})")
@@ -333,7 +348,8 @@ def leaderboard(
         h.append(f"<h3>{html.escape(title)}</h3><table><tr><th>Benchmark</th>{head}</tr>{''.join(body)}</table>")
     h.append("<p class=note>Each cell is the newest qualification result for that model; * marks the best value, "
              "green passes its gate, red fails it. Compare individual runs in the dashboard: Develop &amp; train &gt; "
-             f"Evaluations, select runs and click Compare (MLflow experiment {qualification_tag}). Production models "
+             "Evaluations, select runs and click Compare (MLflow experiment agentic-coding-evaluations), or compare "
+             "pipeline runs in the MLflow experiment agentic-coding-qualification. Production models "
              "are reached through the MaaS gateway and candidates directly, so production latency includes the "
              "gateway hop.</p>")
     style = ("<style>body{font-family:system-ui,sans-serif;margin:24px;color:#151515}table{border-collapse:collapse;"
@@ -367,7 +383,8 @@ def qualification(model_name: str = "qwen3-8-27b-int4"):
         step = _small(evaluate_collection(
             model_name=model_name, model_id=model.outputs["model_id"], model_url=model.outputs["model_url"],
             auth_secret=model.outputs["auth_secret"], target=model.outputs["target"], tenant=model.outputs["tenant"],
-            collection_id=collection_id, qualification_tag=QUALIFICATION_TAG, evalhub_url=EVALHUB_URL, queue=QUEUE,
+            collection_id=collection_id, qualification_tag=QUALIFICATION_TAG, evalhub_experiment=EVALHUB_EXPERIMENT,
+            evalhub_url=EVALHUB_URL, queue=QUEUE,
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, timeout_seconds=timeout,
         )).set_display_name(label)
         step.after(previous)
