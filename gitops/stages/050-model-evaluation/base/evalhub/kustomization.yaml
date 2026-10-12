@@ -11,3 +11,4 @@ resources:
   - postgresql-statefulset.yaml
   - postgresql-networkpolicy.yaml
   - evalhub.yaml
+  - mcp-access-rolebinding.yaml

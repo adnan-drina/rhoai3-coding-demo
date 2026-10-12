@@ -1,0 +1,25 @@
+# Lets the documented MCP principal reach the EvalHub MCP server (RHOAI 3.5 "Evaluating AI systems", 4.3:
+# register the MCP server with a ServiceAccount token that has EvalHub access). The MCP Service is fronted by
+# kube-rbac-proxy, which authorizes create on evalhubs/proxy for this EvalHub instance; the operator ships
+# that permission as Role evalhub-service-access-role, and this binds the evalhub-automation ServiceAccount
+# to it. Tenant-level actions are still authorized per tenant by the evaluator Role (2.29, 2.30).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-mcp-access
+  namespace: evalhub
+  labels:
+    app.kubernetes.io/name: evalhub-mcp-access
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "31"
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-automation
+    namespace: demo-sandbox
+roleRef:
+  kind: Role
+  name: evalhub-service-access-role
+  apiGroup: rbac.authorization.k8s.io
