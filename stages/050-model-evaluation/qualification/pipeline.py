@@ -120,15 +120,20 @@ def evaluate_collection(
     skip: bool,
     results: dsl.Output[dsl.Artifact],
     scores: dsl.Output[dsl.Metrics],
-):
-    """Run one EvalHub collection on the model and keep the job body and results."""
+) -> NamedTuple(
+        "Model", [("model_id", str), ("model_url", str), ("auth_secret", str), ("target", str), ("tenant", str)]):
+    """Run one EvalHub collection on the model and keep the job body and results. The model details are
+    passed on unchanged, so each step feeds the next and the run graph stays one sequential chain."""
     import json
+    from collections import namedtuple
+    Model = namedtuple("Model", ["model_id", "model_url", "auth_secret", "target", "tenant"])
+    passed_on = Model(model_id, model_url, auth_secret, target, tenant)
     if skip:
         print(f"{collection_id}: skipped by the run's skip parameter; no EvalHub job submitted")
         with open(results.path, "w") as f:
             json.dump({"collection_id": collection_id, "skipped": True}, f)
         scores.log_metric("skipped", 1.0)
-        return
+        return passed_on
     import os
     import re
     import subprocess
@@ -198,6 +203,7 @@ def evaluate_collection(
     print(f"{collection_id}: job {job_id} {state} (exit {run.returncode})")
     if state not in ("completed", "failed", "cancelled", "partially_failed"):
         raise RuntimeError(f"job {job_id} did not finish within {timeout_seconds}s (state {state})")
+    return passed_on
 
 
 @dsl.component(base_image=RUNTIME_IMAGE, packages_to_install=[EVALHUB_CLI], pip_index_urls=PIP_INDEX)
@@ -407,20 +413,20 @@ def qualification(
     skips = {"skip_latency": skip_latency, "skip_throughput": skip_throughput, "skip_capability": skip_capability,
              "skip_security_quick": skip_security_quick, "skip_security_full": skip_security_full}
     model = _small(resolve_model(model_name=model_name))
+    # Each step takes the model details from the step before it, so the graph is one chain.
     previous = model
     for label, skip_name, collection_id, timeout in COLLECTIONS:
         step = _small(_named(evaluate_collection, label)(
-            model_name=model_name, model_id=model.outputs["model_id"], model_url=model.outputs["model_url"],
-            auth_secret=model.outputs["auth_secret"], target=model.outputs["target"], tenant=model.outputs["tenant"],
+            model_name=model_name, model_id=previous.outputs["model_id"], model_url=previous.outputs["model_url"],
+            auth_secret=previous.outputs["auth_secret"], target=previous.outputs["target"],
+            tenant=previous.outputs["tenant"],
             collection_id=collection_id, qualification_tag=QUALIFICATION_TAG, evalhub_experiment=EVALHUB_EXPERIMENT,
             evalhub_url=EVALHUB_URL, queue=QUEUE,
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, timeout_seconds=timeout, skip=skips[skip_name],
         ))
-        step.after(previous)
         previous = step
     board = _small(leaderboard(
-        model_name=model_name, target=model.outputs["target"], tenant=model.outputs["tenant"],
+        model_name=model_name, target=previous.outputs["target"], tenant=previous.outputs["tenant"],
         qualification_tag=QUALIFICATION_TAG, evalhub_url=EVALHUB_URL, max_regression=MAX_REGRESSION,
         run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER,
     ))
-    board.after(previous)

@@ -11,12 +11,12 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v2
+  name: agentic-coding-model-qualification-v3
   namespace: evaluated-models
 spec:
   description: Evaluates one model on the agentic coding EvalHub collections and ranks
     it on the qualification leaderboard.
-  displayName: agentic-coding-model-qualification v2
+  displayName: agentic-coding-model-qualification v3
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -62,6 +62,17 @@ spec:
               artifactType:
                 schemaTitle: system.Metrics
                 schemaVersion: 0.0.1
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
       comp-latency:
         executorLabel: exec-latency
         inputDefinitions:
@@ -104,6 +115,17 @@ spec:
               artifactType:
                 schemaTitle: system.Metrics
                 schemaVersion: 0.0.1
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
       comp-leaderboard:
         executorLabel: exec-leaderboard
         inputDefinitions:
@@ -195,6 +217,17 @@ spec:
               artifactType:
                 schemaTitle: system.Metrics
                 schemaVersion: 0.0.1
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
       comp-security-quick:
         executorLabel: exec-security-quick
         inputDefinitions:
@@ -237,6 +270,17 @@ spec:
               artifactType:
                 schemaTitle: system.Metrics
                 schemaVersion: 0.0.1
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
       comp-throughput:
         executorLabel: exec-throughput
         inputDefinitions:
@@ -279,6 +323,17 @@ spec:
               artifactType:
                 schemaTitle: system.Metrics
                 schemaVersion: 0.0.1
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
     deploymentSpec:
       executors:
         exec-capability:
@@ -316,12 +371,19 @@ spec:
               \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
               \    run_name: str,\n    timeout_seconds: int,\n    skip: bool,\n  \
               \  results: dsl.Output[dsl.Artifact],\n    scores: dsl.Output[dsl.Metrics],\n\
-              ):\n    \"\"\"Run one EvalHub collection on the model and keep the job\
-              \ body and results.\"\"\"\n    import json\n    if skip:\n        print(f\"\
+              ) -> NamedTuple(\n        \"Model\", [(\"model_id\", str), (\"model_url\"\
+              , str), (\"auth_secret\", str), (\"target\", str), (\"tenant\", str)]):\n\
+              \    \"\"\"Run one EvalHub collection on the model and keep the job\
+              \ body and results. The model details are\n    passed on unchanged,\
+              \ so each step feeds the next and the run graph stays one sequential\
+              \ chain.\"\"\"\n    import json\n    from collections import namedtuple\n\
+              \    Model = namedtuple(\"Model\", [\"model_id\", \"model_url\", \"\
+              auth_secret\", \"target\", \"tenant\"])\n    passed_on = Model(model_id,\
+              \ model_url, auth_secret, target, tenant)\n    if skip:\n        print(f\"\
               {collection_id}: skipped by the run's skip parameter; no EvalHub job\
               \ submitted\")\n        with open(results.path, \"w\") as f:\n     \
               \       json.dump({\"collection_id\": collection_id, \"skipped\": True},\
-              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return\n\
+              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return passed_on\n\
               \    import os\n    import re\n    import subprocess\n    import tempfile\n\
               \n    import httpx\n    import yaml\n\n    work = tempfile.mkdtemp()\n\
               \    profile = os.path.join(work, \"evalhub.yaml\")\n    with open(profile,\
@@ -382,7 +444,7 @@ spec:
               \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
               , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
               job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
-              )\n\n"
+              )\n    return passed_on\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -428,12 +490,19 @@ spec:
               \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
               \    run_name: str,\n    timeout_seconds: int,\n    skip: bool,\n  \
               \  results: dsl.Output[dsl.Artifact],\n    scores: dsl.Output[dsl.Metrics],\n\
-              ):\n    \"\"\"Run one EvalHub collection on the model and keep the job\
-              \ body and results.\"\"\"\n    import json\n    if skip:\n        print(f\"\
+              ) -> NamedTuple(\n        \"Model\", [(\"model_id\", str), (\"model_url\"\
+              , str), (\"auth_secret\", str), (\"target\", str), (\"tenant\", str)]):\n\
+              \    \"\"\"Run one EvalHub collection on the model and keep the job\
+              \ body and results. The model details are\n    passed on unchanged,\
+              \ so each step feeds the next and the run graph stays one sequential\
+              \ chain.\"\"\"\n    import json\n    from collections import namedtuple\n\
+              \    Model = namedtuple(\"Model\", [\"model_id\", \"model_url\", \"\
+              auth_secret\", \"target\", \"tenant\"])\n    passed_on = Model(model_id,\
+              \ model_url, auth_secret, target, tenant)\n    if skip:\n        print(f\"\
               {collection_id}: skipped by the run's skip parameter; no EvalHub job\
               \ submitted\")\n        with open(results.path, \"w\") as f:\n     \
               \       json.dump({\"collection_id\": collection_id, \"skipped\": True},\
-              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return\n\
+              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return passed_on\n\
               \    import os\n    import re\n    import subprocess\n    import tempfile\n\
               \n    import httpx\n    import yaml\n\n    work = tempfile.mkdtemp()\n\
               \    profile = os.path.join(work, \"evalhub.yaml\")\n    with open(profile,\
@@ -494,7 +563,7 @@ spec:
               \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
               , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
               job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
-              )\n\n"
+              )\n    return passed_on\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -791,12 +860,19 @@ spec:
               \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
               \    run_name: str,\n    timeout_seconds: int,\n    skip: bool,\n  \
               \  results: dsl.Output[dsl.Artifact],\n    scores: dsl.Output[dsl.Metrics],\n\
-              ):\n    \"\"\"Run one EvalHub collection on the model and keep the job\
-              \ body and results.\"\"\"\n    import json\n    if skip:\n        print(f\"\
+              ) -> NamedTuple(\n        \"Model\", [(\"model_id\", str), (\"model_url\"\
+              , str), (\"auth_secret\", str), (\"target\", str), (\"tenant\", str)]):\n\
+              \    \"\"\"Run one EvalHub collection on the model and keep the job\
+              \ body and results. The model details are\n    passed on unchanged,\
+              \ so each step feeds the next and the run graph stays one sequential\
+              \ chain.\"\"\"\n    import json\n    from collections import namedtuple\n\
+              \    Model = namedtuple(\"Model\", [\"model_id\", \"model_url\", \"\
+              auth_secret\", \"target\", \"tenant\"])\n    passed_on = Model(model_id,\
+              \ model_url, auth_secret, target, tenant)\n    if skip:\n        print(f\"\
               {collection_id}: skipped by the run's skip parameter; no EvalHub job\
               \ submitted\")\n        with open(results.path, \"w\") as f:\n     \
               \       json.dump({\"collection_id\": collection_id, \"skipped\": True},\
-              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return\n\
+              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return passed_on\n\
               \    import os\n    import re\n    import subprocess\n    import tempfile\n\
               \n    import httpx\n    import yaml\n\n    work = tempfile.mkdtemp()\n\
               \    profile = os.path.join(work, \"evalhub.yaml\")\n    with open(profile,\
@@ -857,7 +933,7 @@ spec:
               \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
               , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
               job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
-              )\n\n"
+              )\n    return passed_on\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -903,12 +979,19 @@ spec:
               \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
               \    run_name: str,\n    timeout_seconds: int,\n    skip: bool,\n  \
               \  results: dsl.Output[dsl.Artifact],\n    scores: dsl.Output[dsl.Metrics],\n\
-              ):\n    \"\"\"Run one EvalHub collection on the model and keep the job\
-              \ body and results.\"\"\"\n    import json\n    if skip:\n        print(f\"\
+              ) -> NamedTuple(\n        \"Model\", [(\"model_id\", str), (\"model_url\"\
+              , str), (\"auth_secret\", str), (\"target\", str), (\"tenant\", str)]):\n\
+              \    \"\"\"Run one EvalHub collection on the model and keep the job\
+              \ body and results. The model details are\n    passed on unchanged,\
+              \ so each step feeds the next and the run graph stays one sequential\
+              \ chain.\"\"\"\n    import json\n    from collections import namedtuple\n\
+              \    Model = namedtuple(\"Model\", [\"model_id\", \"model_url\", \"\
+              auth_secret\", \"target\", \"tenant\"])\n    passed_on = Model(model_id,\
+              \ model_url, auth_secret, target, tenant)\n    if skip:\n        print(f\"\
               {collection_id}: skipped by the run's skip parameter; no EvalHub job\
               \ submitted\")\n        with open(results.path, \"w\") as f:\n     \
               \       json.dump({\"collection_id\": collection_id, \"skipped\": True},\
-              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return\n\
+              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return passed_on\n\
               \    import os\n    import re\n    import subprocess\n    import tempfile\n\
               \n    import httpx\n    import yaml\n\n    work = tempfile.mkdtemp()\n\
               \    profile = os.path.join(work, \"evalhub.yaml\")\n    with open(profile,\
@@ -969,7 +1052,7 @@ spec:
               \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
               , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
               job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
-              )\n\n"
+              )\n    return passed_on\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -1015,12 +1098,19 @@ spec:
               \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
               \    run_name: str,\n    timeout_seconds: int,\n    skip: bool,\n  \
               \  results: dsl.Output[dsl.Artifact],\n    scores: dsl.Output[dsl.Metrics],\n\
-              ):\n    \"\"\"Run one EvalHub collection on the model and keep the job\
-              \ body and results.\"\"\"\n    import json\n    if skip:\n        print(f\"\
+              ) -> NamedTuple(\n        \"Model\", [(\"model_id\", str), (\"model_url\"\
+              , str), (\"auth_secret\", str), (\"target\", str), (\"tenant\", str)]):\n\
+              \    \"\"\"Run one EvalHub collection on the model and keep the job\
+              \ body and results. The model details are\n    passed on unchanged,\
+              \ so each step feeds the next and the run graph stays one sequential\
+              \ chain.\"\"\"\n    import json\n    from collections import namedtuple\n\
+              \    Model = namedtuple(\"Model\", [\"model_id\", \"model_url\", \"\
+              auth_secret\", \"target\", \"tenant\"])\n    passed_on = Model(model_id,\
+              \ model_url, auth_secret, target, tenant)\n    if skip:\n        print(f\"\
               {collection_id}: skipped by the run's skip parameter; no EvalHub job\
               \ submitted\")\n        with open(results.path, \"w\") as f:\n     \
               \       json.dump({\"collection_id\": collection_id, \"skipped\": True},\
-              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return\n\
+              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return passed_on\n\
               \    import os\n    import re\n    import subprocess\n    import tempfile\n\
               \n    import httpx\n    import yaml\n\n    work = tempfile.mkdtemp()\n\
               \    profile = os.path.join(work, \"evalhub.yaml\")\n    with open(profile,\
@@ -1081,7 +1171,7 @@ spec:
               \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
               , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
               job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
-              )\n\n"
+              )\n    return passed_on\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -1104,14 +1194,13 @@ spec:
             componentRef:
               name: comp-capability
             dependentTasks:
-            - resolve-model
             - throughput
             inputs:
               parameters:
                 auth_secret:
                   taskOutputParameter:
                     outputParameterKey: auth_secret
-                    producerTask: resolve-model
+                    producerTask: throughput
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-capability-v1
@@ -1124,13 +1213,13 @@ spec:
                 model_id:
                   taskOutputParameter:
                     outputParameterKey: model_id
-                    producerTask: resolve-model
+                    producerTask: throughput
                 model_name:
                   componentInputParameter: model_name
                 model_url:
                   taskOutputParameter:
                     outputParameterKey: model_url
-                    producerTask: resolve-model
+                    producerTask: throughput
                 qualification_tag:
                   runtimeValue:
                     constant: agentic-coding-qualification
@@ -1145,11 +1234,11 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: resolve-model
+                    producerTask: throughput
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: resolve-model
+                    producerTask: throughput
                 timeout_seconds:
                   runtimeValue:
                     constant: 10800.0
@@ -1215,7 +1304,6 @@ spec:
             componentRef:
               name: comp-leaderboard
             dependentTasks:
-            - resolve-model
             - security-full
             inputs:
               parameters:
@@ -1236,11 +1324,11 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: resolve-model
+                    producerTask: security-full
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: resolve-model
+                    producerTask: security-full
             taskInfo:
               name: leaderboard
           resolve-model:
@@ -1258,14 +1346,13 @@ spec:
             componentRef:
               name: comp-security-full
             dependentTasks:
-            - resolve-model
             - security-quick
             inputs:
               parameters:
                 auth_secret:
                   taskOutputParameter:
                     outputParameterKey: auth_secret
-                    producerTask: resolve-model
+                    producerTask: security-quick
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-security-full-v1
@@ -1278,13 +1365,13 @@ spec:
                 model_id:
                   taskOutputParameter:
                     outputParameterKey: model_id
-                    producerTask: resolve-model
+                    producerTask: security-quick
                 model_name:
                   componentInputParameter: model_name
                 model_url:
                   taskOutputParameter:
                     outputParameterKey: model_url
-                    producerTask: resolve-model
+                    producerTask: security-quick
                 qualification_tag:
                   runtimeValue:
                     constant: agentic-coding-qualification
@@ -1299,11 +1386,11 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: resolve-model
+                    producerTask: security-quick
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: resolve-model
+                    producerTask: security-quick
                 timeout_seconds:
                   runtimeValue:
                     constant: 14400.0
@@ -1315,13 +1402,12 @@ spec:
               name: comp-security-quick
             dependentTasks:
             - capability
-            - resolve-model
             inputs:
               parameters:
                 auth_secret:
                   taskOutputParameter:
                     outputParameterKey: auth_secret
-                    producerTask: resolve-model
+                    producerTask: capability
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-security-quick-v1
@@ -1334,13 +1420,13 @@ spec:
                 model_id:
                   taskOutputParameter:
                     outputParameterKey: model_id
-                    producerTask: resolve-model
+                    producerTask: capability
                 model_name:
                   componentInputParameter: model_name
                 model_url:
                   taskOutputParameter:
                     outputParameterKey: model_url
-                    producerTask: resolve-model
+                    producerTask: capability
                 qualification_tag:
                   runtimeValue:
                     constant: agentic-coding-qualification
@@ -1355,11 +1441,11 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: resolve-model
+                    producerTask: capability
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: resolve-model
+                    producerTask: capability
                 timeout_seconds:
                   runtimeValue:
                     constant: 7200.0
@@ -1371,13 +1457,12 @@ spec:
               name: comp-throughput
             dependentTasks:
             - latency
-            - resolve-model
             inputs:
               parameters:
                 auth_secret:
                   taskOutputParameter:
                     outputParameterKey: auth_secret
-                    producerTask: resolve-model
+                    producerTask: latency
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-throughput-v1
@@ -1390,13 +1475,13 @@ spec:
                 model_id:
                   taskOutputParameter:
                     outputParameterKey: model_id
-                    producerTask: resolve-model
+                    producerTask: latency
                 model_name:
                   componentInputParameter: model_name
                 model_url:
                   taskOutputParameter:
                     outputParameterKey: model_url
-                    producerTask: resolve-model
+                    producerTask: latency
                 qualification_tag:
                   runtimeValue:
                     constant: agentic-coding-qualification
@@ -1411,11 +1496,11 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: resolve-model
+                    producerTask: latency
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: resolve-model
+                    producerTask: latency
                 timeout_seconds:
                   runtimeValue:
                     constant: 3600.0
