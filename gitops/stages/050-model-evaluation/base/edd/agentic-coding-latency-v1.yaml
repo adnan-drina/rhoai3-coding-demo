@@ -1,0 +1,44 @@
+# Agentic coding interactive latency (GuideLLM): one agent session at a time, traffic shaped like a coding
+# agent turn (8,000 prompt and 256 output tokens). Separate from throughput because EvalHub runs a
+# collection's benchmarks in parallel and latency must not be measured under saturation load.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evalhub-collection-agentic-coding-latency-v1
+  namespace: redhat-ods-applications
+  labels:
+    trustyai.opendatahub.io/evalhub-collection-type: system
+    trustyai.opendatahub.io/evalhub-collection-name: agentic-coding-latency-v1
+    app.kubernetes.io/name: evalhub-collection-agentic-coding-latency-v1
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+data:
+  agentic-coding-latency-v1.yaml: |
+    id: agentic-coding-latency-v1
+    name: Agentic coding latency v1
+    category: performance
+    description: >-
+      Does one agent session get a fast first token? Time to first token with one request in flight, using
+      an agentic request shape of 8,000 prompt and 256 output tokens and the Qwen 3.x tokenizer. A request
+      completes in well under the evaluation sidecar's 30 s request limit. Submit with model.url ending in /v1.
+    tags: [performance, latency, agentic-coding, guidellm, edd]
+    benchmarks:
+      - id: concurrent
+        provider_id: guidellm
+        weight: 1
+        primary_score:
+          metric: mean_ttft_ms
+          lower_is_better: true
+        pass_criteria:
+          threshold: 2000
+        parameters:
+          profile: concurrent
+          rate: 1
+          max_seconds: 120
+          data: prompt_tokens=8000,output_tokens=256
+          # Tokenizer used to size the synthetic prompts; shared by the Qwen 3.x models.
+          processor: RedHatAI/Qwen3.8-27B-INT4
+          request_type: chat_completions

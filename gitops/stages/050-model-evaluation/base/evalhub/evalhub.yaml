@@ -57,7 +57,8 @@ spec:
     - agentic-coding-capability-v1
     - agentic-coding-security-quick-v1
     - agentic-coding-security-full-v1
-    - agentic-coding-performance-v1
+    - agentic-coding-latency-v1
+    - agentic-coding-throughput-v1
   env:
     # The deployment helper discovers the native HTTPS address only after
     # MLflow is Available. The operator owns TLS trust and projected tokens.

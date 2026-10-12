@@ -29,7 +29,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "12"
 rules:
   - apiGroups: [""]
-    resources: [secrets]
+    resources: [secrets, configmaps]
     verbs: [create, get, patch, update]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -176,3 +176,6 @@ spec:
               oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-file=api-key="${WORK}/api-key" --from-file=key_id="${WORK}/key_id" \
                 --from-file=expires_at="${WORK}/expires_at" --from-file=subscription="${WORK}/subscription" --dry-run=client -o yaml | oc apply -f -
               echo "Secret ${NS}/${SECRET_NAME} holds the ${SUBSCRIPTION} key for EvalHub model.auth.secret_ref"
+              # The qualification pipeline reads the MaaS endpoint for production models from this ConfigMap.
+              oc create configmap qualification-endpoints -n "${NS}" --from-literal=maas_base_url="${MAAS_BASE_URL}/v1" \
+                --dry-run=client -o yaml | oc apply -f -

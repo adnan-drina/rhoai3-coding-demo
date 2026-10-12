@@ -4,4 +4,5 @@ resources:
   - agentic-coding-capability-v1.yaml
   - agentic-coding-security-quick-v1.yaml
   - agentic-coding-security-full-v1.yaml
-  - agentic-coding-performance-v1.yaml
+  - agentic-coding-latency-v1.yaml
+  - agentic-coding-throughput-v1.yaml
