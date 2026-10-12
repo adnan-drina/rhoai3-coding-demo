@@ -127,6 +127,9 @@ spec:
           - --language-model-only
           - --max-num-batched-tokens=4096
           - --max-num-seqs=16
+          # Model-card speculative decoding (RedHatAI/Qwen3.6-27B-FP8, "MTP"): the checkpoint ships its
+          # multi-token-prediction head (mtp.safetensors); two draft tokens per step, as the card recommends.
+          - --speculative-config={"method":"qwen3_next_mtp","num_speculative_tokens":2}
           # Model-card Best Practices (RedHatAI/Qwen3.6-27B-FP8): the server
           # default is instruct (non-thinking) mode with its sampling profile
           # temperature 0.7, top_p 0.80, top_k 20, min_p 0.0, presence 1.5,
