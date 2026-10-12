@@ -1,0 +1,145 @@
+# Pipeline server for the Evaluated Models project, configured as RHOAI 3.5 "Working with AI pipelines",
+# 1.1 Configure a pipeline server, describes it, with the values the dashboard's Configure pipeline server form
+# takes from the project's Pipelines connection (storage/). Like the dashboard (odh-dashboard v3.5.0,
+# configurePipelinesServer), the Sync hook stores the access and secret key in dashboard-dspa-secret and
+# creates the DataSciencePipelinesApplication "dspa" with: dspVersion v2, the connection's endpoint, bucket
+# and region, the default database on the cluster (documented as development and test only), pipeline
+# definitions stored in Kubernetes, caching configurable per pipeline and task, and no sample pipeline.
+# Connection settings cannot be changed on an existing pipeline server, so the hook only creates it and
+# fails if an existing server points at a different bucket or endpoint (delete and reconfigure instead).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pipeline-server-configurator
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: pipeline-server
+    app.kubernetes.io/component: pipelines
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pipeline-server-configurator
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: pipeline-server
+    app.kubernetes.io/component: pipelines
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [evaluation-models-pipelines-connection]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [dashboard-dspa-secret]
+    verbs: [get, patch]
+  - apiGroups: [datasciencepipelinesapplications.opendatahub.io]
+    resources: [datasciencepipelinesapplications]
+    verbs: [get, create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipeline-server-configurator
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: pipeline-server
+    app.kubernetes.io/component: pipelines
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pipeline-server-configurator
+subjects:
+  - kind: ServiceAccount
+    name: pipeline-server-configurator
+    namespace: evaluated-models
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: configure-pipeline-server
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: pipeline-server
+    app.kubernetes.io/component: pipelines
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 900
+  template:
+    spec:
+      serviceAccountName: pipeline-server-configurator
+      restartPolicy: Never
+      containers:
+        - name: configure
+          # Same reviewed OpenShift CLI image as the other Stage 050 jobs.
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          command: [/bin/bash, -c]
+          args:
+            - |
+              set -euo pipefail
+              set +x
+              umask 077
+              NS=evaluated-models; CONN=evaluation-models-pipelines-connection; T=--request-timeout=10s
+              val() { oc $T get secret "$CONN" -n "$NS" -o jsonpath="{.data.$1}" | base64 -d; }
+              # The storage hook fills the connection earlier in the same sync.
+              for i in $(seq 1 60); do [[ -n "$(val AWS_S3_BUCKET 2>/dev/null)" ]] && break; sleep 5; done
+              endpoint=$(val AWS_S3_ENDPOINT); bucket=$(val AWS_S3_BUCKET); region=$(val AWS_DEFAULT_REGION)
+              [[ -n "$endpoint" && -n "$bucket" ]] || { echo "ERROR: Pipelines connection is not populated" >&2; exit 1; }
+              scheme=${endpoint%%://*}; host=${endpoint#*://}; host=${host%/}; region=${region:-us-east-1}
+              # Object storage connection keys, stored the way the dashboard stores them.
+              oc $T create secret generic dashboard-dspa-secret -n "$NS" \
+                --from-literal=AWS_ACCESS_KEY_ID="$(val AWS_ACCESS_KEY_ID)" \
+                --from-literal=AWS_SECRET_ACCESS_KEY="$(val AWS_SECRET_ACCESS_KEY)" \
+                --dry-run=client -o yaml | oc $T apply -f - >/dev/null
+              if oc $T get dspa dspa -n "$NS" >/dev/null 2>&1; then
+                current=$(oc $T get dspa dspa -n "$NS" -o jsonpath='{.spec.objectStorage.externalStorage.host} {.spec.objectStorage.externalStorage.bucket}')
+                [[ "$current" == "$host $bucket" ]] || { echo "ERROR: pipeline server dspa uses '$current'; delete it and sync again to reconfigure" >&2; exit 1; }
+                echo "Pipeline server dspa already configured for $bucket"
+              else
+                cat <<YAML | oc $T create -f -
+              apiVersion: datasciencepipelinesapplications.opendatahub.io/v1
+              kind: DataSciencePipelinesApplication
+              metadata:
+                name: dspa
+                namespace: $NS
+              spec:
+                dspVersion: v2
+                objectStorage:
+                  externalStorage:
+                    host: $host
+                    scheme: $scheme
+                    bucket: $bucket
+                    region: $region
+                    s3CredentialsSecret:
+                      accessKey: AWS_ACCESS_KEY_ID
+                      secretKey: AWS_SECRET_ACCESS_KEY
+                      secretName: dashboard-dspa-secret
+                apiServer:
+                  enableSamplePipeline: false
+                  cacheEnabled: true
+                  pipelineStore: kubernetes
+              YAML
+              fi
+              for i in $(seq 1 120); do
+                ready=$(oc $T get dspa dspa -n "$NS" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+                [[ "$ready" == True ]] && { echo "Pipeline server dspa is Ready"; exit 0; }
+                sleep 5
+              done
+              oc $T get dspa dspa -n "$NS" -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.message}{"\n"}{end}' >&2
+              exit 1
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
