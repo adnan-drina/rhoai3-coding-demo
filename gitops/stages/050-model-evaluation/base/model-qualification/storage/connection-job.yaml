@@ -64,7 +64,14 @@ spec:
                   [[ "$tracking" == "050-model-evaluation:"* ]] || { echo "ERROR: Target connection is not component-owned" >&2; exit 1; }
                   rv=$(oc --request-timeout=10s get secret "$claim-connection" -n evaluated-models -o jsonpath='{.metadata.resourceVersion}')
                   [[ "$rv" =~ ^[0-9]+$ ]] || { echo "ERROR: Connection skeleton unavailable" >&2; exit 1; }
-                  printf '{"metadata":{"resourceVersion":"%s"},"data":{"AWS_ACCESS_KEY_ID":"%s","AWS_SECRET_ACCESS_KEY":"%s","AWS_S3_ENDPOINT":"%s","AWS_S3_BUCKET":"%s","AWS_DEFAULT_REGION":"%s"}}' "$rv" "$ak" "$sk" "$(encode "https://$host:$port")" "$(encode "$bucket")" "$(encode "$region")" | oc --request-timeout=10s patch secret "$claim-connection" -n evaluated-models --type merge --patch-file /dev/stdin >/dev/null
+                  endpoint="https://$host:$port"
+                  if [[ "$claim" == evaluation-models-pipelines ]]; then
+                    # Browser-reachable ODF S3 Route: the pipeline server signs artifact download links with this host.
+                    route=$(oc --request-timeout=10s get route s3 -n openshift-storage -o jsonpath='{.spec.host}')
+                    [[ "$route" =~ ^[a-zA-Z0-9.-]+$ ]] || { echo "ERROR: ODF S3 Route unavailable" >&2; exit 1; }
+                    endpoint="https://$route"
+                  fi
+                  printf '{"metadata":{"resourceVersion":"%s"},"data":{"AWS_ACCESS_KEY_ID":"%s","AWS_SECRET_ACCESS_KEY":"%s","AWS_S3_ENDPOINT":"%s","AWS_S3_BUCKET":"%s","AWS_DEFAULT_REGION":"%s"}}' "$rv" "$ak" "$sk" "$(encode "$endpoint")" "$(encode "$bucket")" "$(encode "$region")" | oc --request-timeout=10s patch secret "$claim-connection" -n evaluated-models --type merge --patch-file /dev/stdin >/dev/null
                   unset ak sk
                   echo "Connection runtime mapping completed for $claim"
                 done
