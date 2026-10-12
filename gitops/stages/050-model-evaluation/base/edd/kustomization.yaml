@@ -6,7 +6,8 @@ resources:
   - agentic-coding-security-full-v1.yaml
   - agentic-coding-latency-v1.yaml
   - agentic-coding-throughput-v1.yaml
-  - agentic-coding-capability-v2.yaml
+  - agentic-coding-capability-livecodebench-v1.yaml
+  - agentic-coding-capability-python-v1.yaml
   - agentic-coding-security-quick-v2.yaml
   - agentic-coding-security-full-v2.yaml
   - inspect-coding-provider.yaml

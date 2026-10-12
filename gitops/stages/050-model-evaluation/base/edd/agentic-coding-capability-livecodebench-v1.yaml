@@ -1,0 +1,54 @@
+# Evaluation-driven development criteria for agentic coding, capability dimension (RHOAI 3.5 "Evaluating AI
+# systems" 2.1 pass criteria and weights, 2.23 collection by ConfigMap). Versioned: change criteria in a new -v2.
+# Capability is split in two collections the pipeline runs one after the other: a LiveCodeBench request asks
+# for 16 samples and needs all 16 sequence slots of the served model, so a benchmark running beside it pushes
+# its requests past the evaluation sidecar's 30 s limit (EvalHub runs a collection's benchmarks in parallel).
+# The qualification leaderboard combines both into the weighted capability score (3:2:1, gate 0.50).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evalhub-collection-agentic-coding-capability-livecodebench-v1
+  namespace: redhat-ods-applications
+  labels:
+    trustyai.opendatahub.io/evalhub-collection-type: system
+    trustyai.opendatahub.io/evalhub-collection-name: agentic-coding-capability-livecodebench-v1
+    app.kubernetes.io/name: evalhub-collection-agentic-coding-capability-livecodebench-v1
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+data:
+  agentic-coding-capability-livecodebench-v1.yaml: |
+    id: agentic-coding-capability-livecodebench-v1
+    name: Agentic coding capability - LiveCodeBench v1
+    category: code
+    description: >-
+      Can the model solve problems it has not seen? LiveCodeBench v6 competitive programming after the model
+      cutoff, execution-scored pass@1 from 16 samples per problem. Runs alone: each 16-sample request uses all 16
+      sequence slots of the model. A code-only prompt and a 512-token cap keep a request inside the evaluation
+      sidecar's 30 s limit. Weight 3 of 6 in the leaderboard's capability score. Submit with model.url ending in /v1.
+    tags: [code, agentic-coding, execution, edd]
+    pass_criteria:
+      threshold: 0.25
+    benchmarks:
+      - id: lcb:codegeneration_v6
+        provider_id: lighteval
+        weight: 3
+        primary_score:
+          metric: codegen_pass@1
+          lower_is_better: false
+        pass_criteria:
+          threshold: 0.25
+        parameters:
+          provider: endpoint
+          num_few_shot: 0
+          num_examples: 100
+          parameters:
+            concurrent_requests: 1
+            api_max_retry: 1
+            system_prompt: "Answer with the complete Python program in a single ```python code block and nothing else."
+            generation_parameters:
+              temperature: 0.7
+              top_p: 0.8
+              max_new_tokens: 512

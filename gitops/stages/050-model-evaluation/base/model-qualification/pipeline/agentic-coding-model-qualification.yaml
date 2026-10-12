@@ -11,12 +11,12 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v6
+  name: agentic-coding-model-qualification-v7
   namespace: evaluated-models
 spec:
   description: Evaluates one model on the agentic coding EvalHub collections and ranks
     it on the qualification leaderboard.
-  displayName: agentic-coding-model-qualification v6
+  displayName: agentic-coding-model-qualification v7
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -144,8 +144,8 @@ spec:
               parameterType: STRING
             tenant:
               parameterType: STRING
-      comp-step-3-capability:
-        executorLabel: exec-step-3-capability
+      comp-step-3-livecodebench:
+        executorLabel: exec-step-3-livecodebench
         inputDefinitions:
           parameters:
             auth_secret:
@@ -197,8 +197,8 @@ spec:
               parameterType: STRING
             tenant:
               parameterType: STRING
-      comp-step-4-security-quick:
-        executorLabel: exec-step-4-security-quick
+      comp-step-4-python-tasks:
+        executorLabel: exec-step-4-python-tasks
         inputDefinitions:
           parameters:
             auth_secret:
@@ -250,8 +250,8 @@ spec:
               parameterType: STRING
             tenant:
               parameterType: STRING
-      comp-step-5-security-full:
-        executorLabel: exec-step-5-security-full
+      comp-step-5-security-quick:
+        executorLabel: exec-step-5-security-quick
         inputDefinitions:
           parameters:
             auth_secret:
@@ -303,10 +303,65 @@ spec:
               parameterType: STRING
             tenant:
               parameterType: STRING
-      comp-step-6-leaderboard:
-        executorLabel: exec-step-6-leaderboard
+      comp-step-6-security-full:
+        executorLabel: exec-step-6-security-full
         inputDefinitions:
           parameters:
+            auth_secret:
+              parameterType: STRING
+            collection_id:
+              parameterType: STRING
+            evalhub_experiment:
+              parameterType: STRING
+            evalhub_url:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_name:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            qualification_tag:
+              parameterType: STRING
+            queue:
+              parameterType: STRING
+            run_name:
+              parameterType: STRING
+            skip:
+              parameterType: BOOLEAN
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
+            timeout_seconds:
+              parameterType: NUMBER_INTEGER
+        outputDefinitions:
+          artifacts:
+            results:
+              artifactType:
+                schemaTitle: system.Artifact
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
+                schemaVersion: 0.0.1
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
+      comp-step-7-leaderboard:
+        executorLabel: exec-step-7-leaderboard
+        inputDefinitions:
+          parameters:
+            capability_threshold:
+              parameterType: NUMBER_DOUBLE
             evalhub_url:
               parameterType: STRING
             max_regression:
@@ -643,7 +698,7 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
-        exec-step-3-capability:
+        exec-step-3-livecodebench:
           container:
             args:
             - --executor_input
@@ -762,7 +817,7 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
-        exec-step-4-security-quick:
+        exec-step-4-python-tasks:
           container:
             args:
             - --executor_input
@@ -881,7 +936,7 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
-        exec-step-5-security-full:
+        exec-step-5-security-quick:
           container:
             args:
             - --executor_input
@@ -1000,7 +1055,126 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
-        exec-step-6-leaderboard:
+        exec-step-6-security-full:
+          container:
+            args:
+            - --executor_input
+            - '{{$}}'
+            - --function_to_execute
+            - evaluate_collection
+            command:
+            - sh
+            - -c
+            - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
+              \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
+              \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
+              \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+              3.9\"' && \"$0\" \"$@\"\n"
+            - sh
+            - -ec
+            - 'program_path=$(mktemp -d)
+
+
+              printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+              _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+              '
+            - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
+              \ import *\n\ndef evaluate_collection(\n    model_name: str,\n    model_id:\
+              \ str,\n    model_url: str,\n    auth_secret: str,\n    target: str,\n\
+              \    tenant: str,\n    collection_id: str,\n    qualification_tag: str,\n\
+              \    evalhub_experiment: str,\n    evalhub_url: str,\n    queue: str,\n\
+              \    run_name: str,\n    timeout_seconds: int,\n    skip: bool,\n  \
+              \  results: dsl.Output[dsl.Artifact],\n    scores: dsl.Output[dsl.Metrics],\n\
+              ) -> NamedTuple(\n        \"Model\", [(\"model_id\", str), (\"model_url\"\
+              , str), (\"auth_secret\", str), (\"target\", str), (\"tenant\", str)]):\n\
+              \    \"\"\"Run one EvalHub collection on the model and keep the job\
+              \ body and results. The model details are\n    passed on unchanged,\
+              \ so each step feeds the next and the run graph stays one sequential\
+              \ chain.\"\"\"\n    import json\n    from collections import namedtuple\n\
+              \    Model = namedtuple(\"Model\", [\"model_id\", \"model_url\", \"\
+              auth_secret\", \"target\", \"tenant\"])\n    passed_on = Model(model_id,\
+              \ model_url, auth_secret, target, tenant)\n    if skip:\n        print(f\"\
+              {collection_id}: skipped by the run's skip parameter; no EvalHub job\
+              \ submitted\")\n        with open(results.path, \"w\") as f:\n     \
+              \       json.dump({\"collection_id\": collection_id, \"skipped\": True},\
+              \ f)\n        scores.log_metric(\"skipped\", 1.0)\n        return passed_on\n\
+              \    import os\n    import re\n    import subprocess\n    import tempfile\n\
+              \n    import httpx\n    import yaml\n\n    work = tempfile.mkdtemp()\n\
+              \    profile = os.path.join(work, \"evalhub.yaml\")\n    with open(profile,\
+              \ \"w\") as f:\n        yaml.safe_dump({\"active_profile\": \"default\"\
+              ,\n                        \"profiles\": {\"default\": {\"base_url\"\
+              : evalhub_url, \"tenant\": tenant}}}, f)\n    env = dict(os.environ,\
+              \ EVALHUB_CONFIG=profile)\n    subprocess.run([\"evalhub\", \"health\"\
+              ], env=env, check=True)\n\n    version = collection_id.rsplit(\"-\"\
+              , 1)[-1]\n    tags = {\"qualification_run\": run_name, \"model\": model_name,\
+              \ \"target\": target,\n            \"collection\": collection_id, \"\
+              collection_version\": version}\n    body = {\n        \"name\": f\"\
+              {collection_id}-{model_name}-{run_name}\"[:120],\n        \"description\"\
+              : f\"Model qualification run {run_name}: {target} model {model_name}\
+              \ on {collection_id}\",\n        \"tags\": [qualification_tag, f\"target={target}\"\
+              , f\"model={model_name}\"],\n        \"model\": {\"url\": model_url,\
+              \ \"name\": model_id, \"auth\": {\"secret_ref\": auth_secret}},\n  \
+              \      \"collection\": {\"id\": collection_id},\n        \"experiment\"\
+              : {\"name\": evalhub_experiment, \"tags\": [{\"key\": k, \"value\":\
+              \ v} for k, v in tags.items()]},\n        \"queue\": {\"kind\": \"kueue\"\
+              , \"name\": queue},\n    }\n    path = os.path.join(work, \"eval.yaml\"\
+              )\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body, f,\
+              \ sort_keys=False)\n    print(open(path).read())\n\n    # The gate:\
+              \ --wait blocks until the job is terminal and exits 1 when the job fails\
+              \ (before printing it),\n    # so the job id comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read\n    # from the documented jobs endpoint with the same ServiceAccount\
+              \ token and service CA.\n    token = open(\"/var/run/secrets/kubernetes.io/serviceaccount/token\"\
+              ).read().strip()\n    response = httpx.get(f\"{evalhub_url}/api/v1/evaluations/jobs/{job_id}\"\
+              , timeout=60,\n                         headers={\"Authorization\":\
+              \ f\"Bearer {token}\", \"X-Tenant\": tenant},\n                    \
+              \     verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\")\n\
+              \    response.raise_for_status()\n    job = response.json()\n    csv\
+              \ = subprocess.run([\"evalhub\", \"eval\", \"results\", job_id, \"--format\"\
+              , \"csv\"],\n                         env=env, capture_output=True,\
+              \ text=True).stdout\n    with open(results.path, \"w\") as f:\n    \
+              \    json.dump({\"eval_yaml\": body, \"job\": job, \"results_csv\":\
+              \ csv}, f, indent=1)\n    state = (job.get(\"status\") or {}).get(\"\
+              state\")\n    # Scalar metrics: logged by the pipeline server's MLflow\
+              \ integration to this task's nested run and shown\n    # in the KFP\
+              \ and MLflow run comparison views. A benchmark whose metrics are all\
+              \ zero had no successful\n    # requests, so it gets no score.\n   \
+              \ for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
+              \        t = b.get(\"test\") or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if isinstance(t.get(\"primary_score\"), (int, float)) and any(numbers):\n\
+              \            scores.log_metric(f\"{b['id']}.{t.get('primary_score_metric')}\"\
+              .replace(\"/\", \"_\").replace(\":\", \"_\"),\n                    \
+              \          float(t[\"primary_score\"]))\n            scores.log_metric(f\"\
+              {b['id']}.pass\".replace(\"/\", \"_\").replace(\":\", \"_\"), 1.0 if\
+              \ t.get(\"pass\") else 0.0)\n    print(f\"{collection_id}: job {job_id}\
+              \ {state} (exit {run.returncode})\")\n    if state not in (\"completed\"\
+              , \"failed\", \"cancelled\", \"partially_failed\"):\n        raise RuntimeError(f\"\
+              job {job_id} did not finish within {timeout_seconds}s (state {state})\"\
+              )\n    return passed_on\n\n"
+            image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
+            resources:
+              cpuLimit: 0.5
+              cpuRequest: 0.1
+              memoryLimit: 0.536870912
+              memoryRequest: 0.268435456
+              resourceCpuLimit: 500m
+              resourceCpuRequest: 100m
+              resourceMemoryLimit: 512Mi
+              resourceMemoryRequest: 256Mi
+        exec-step-7-leaderboard:
           container:
             args:
             - --executor_input
@@ -1031,12 +1205,12 @@ spec:
             - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
               \ import *\n\ndef leaderboard(\n    model_name: str,\n    target: str,\n\
               \    tenant: str,\n    qualification_tag: str,\n    evalhub_url: str,\n\
-              \    max_regression: float,\n    run_name: str,\n    report: dsl.Output[dsl.HTML],\n\
-              \    scores: dsl.Output[dsl.Metrics],\n) -> str:\n    \"\"\"Rank every\
-              \ qualified model per benchmark; for a candidate, recommend PROMOTE\
-              \ or HOLD vs production.\"\"\"\n    import html\n    import json\n \
-              \   import os\n    import subprocess\n    import tempfile\n\n    import\
-              \ httpx\n    import yaml\n\n    profile = os.path.join(tempfile.mkdtemp(),\
+              \    max_regression: float,\n    capability_threshold: float,\n    run_name:\
+              \ str,\n    report: dsl.Output[dsl.HTML],\n    scores: dsl.Output[dsl.Metrics],\n\
+              ) -> str:\n    \"\"\"Rank every qualified model per benchmark; for a\
+              \ candidate, recommend PROMOTE or HOLD vs production.\"\"\"\n    import\
+              \ html\n    import json\n    import os\n    import subprocess\n    import\
+              \ tempfile\n\n    import httpx\n    import yaml\n\n    profile = os.path.join(tempfile.mkdtemp(),\
               \ \"evalhub.yaml\")\n    with open(profile, \"w\") as f:\n        yaml.safe_dump({\"\
               active_profile\": \"default\",\n                        \"profiles\"\
               : {\"default\": {\"base_url\": evalhub_url, \"tenant\": tenant}}}, f)\n\
@@ -1061,77 +1235,91 @@ spec:
               \ model = tag(job, \"model\")\n        if cid and model:\n         \
               \   latest[(model, cid)] = job\n    targets = {}\n    for (model, _),\
               \ job in latest.items():\n        targets[model] = tag(job, \"target\"\
-              ) or \"candidate\"\n    collections = sorted({cid for _, cid in latest},\
-              \ key=lambda c: [\"latency\", \"throughput\", \"capability\",\n    \
-              \                     \"security-quick\", \"security-full\"].index(next((k\
-              \ for k in [\"latency\", \"throughput\",\n                         \"\
-              capability\", \"security-quick\", \"security-full\"] if k in c), \"\
-              capability\")))\n    models = sorted(targets, key=lambda m: (targets[m]\
-              \ != \"production\", m != model_name, m))\n    production = next((m\
-              \ for m in models if targets[m] == \"production\"), None)\n\n    def\
-              \ describe(cid):\n        out = subprocess.run([\"evalhub\", \"collections\"\
-              , \"describe\", cid, \"--format\", \"json\"],\n                    \
-              \         env=env, capture_output=True, text=True, check=True).stdout\n\
-              \        c = json.loads(out)\n        return c[0] if isinstance(c, list)\
-              \ else c\n\n    def score(job, bdef):\n        \"\"\"Primary score and\
-              \ pass for one benchmark, or (None, False) when the run produced nothing.\"\
-              \"\"\n        if job is None:\n            return None, None\n     \
-              \   primary = bdef.get(\"primary_score\") or {}\n        metric, lower\
-              \ = primary.get(\"metric\", \"\"), bool(primary.get(\"lower_is_better\"\
-              ))\n        threshold = (bdef.get(\"pass_criteria\") or {}).get(\"threshold\"\
-              )\n        b = {x.get(\"id\"): x for x in (job.get(\"results\") or {}).get(\"\
-              benchmarks\") or []}.get(bdef[\"id\"]) or {}\n        numbers = [v for\
-              \ v in (b.get(\"metrics\") or {}).values() if isinstance(v, (int, float))]\n\
-              \        if not numbers or not any(numbers):\n            return None,\
-              \ False  # no metrics, or all zero: no request succeeded\n        t\
-              \ = b.get(\"test\") or {}\n        value = t.get(\"primary_score\",\
-              \ (b.get(\"metrics\") or {}).get(metric))\n        passed = t.get(\"\
-              pass\")\n        if passed is None and isinstance(value, (int, float))\
-              \ and threshold is not None:\n            passed = value <= threshold\
-              \ if lower else value >= threshold\n        return value, passed\n\n\
-              \    reasons, sections, capability = [], [], {}\n    for cid in collections:\n\
-              \        col = describe(cid)\n        rows = []\n        for bdef in\
-              \ col.get(\"benchmarks\") or []:\n            primary = bdef.get(\"\
-              primary_score\") or {}\n            metric, lower = primary.get(\"metric\"\
-              , \"\"), bool(primary.get(\"lower_is_better\"))\n            threshold\
-              \ = (bdef.get(\"pass_criteria\") or {}).get(\"threshold\")\n       \
-              \     cells = {m: score(latest.get((m, cid)), bdef) for m in models}\n\
-              \            for m, (v, _) in cells.items():\n                if isinstance(v,\
-              \ (int, float)):\n                    scores.log_metric(f\"{m}.{bdef['id']}.{metric}\"\
-              .replace(\"/\", \"_\"), float(v))\n            rows.append((bdef[\"\
-              id\"], metric, lower, threshold, cells))\n            if target == \"\
-              candidate\":\n                v, p = cells.get(model_name, (None, None))\n\
-              \                if p is not True:\n                    reasons.append(f\"\
-              {cid}/{bdef['id']}: misses its gate ({metric} {v}, threshold {threshold})\"\
-              )\n                pv = cells.get(production, (None, None))[0] if production\
-              \ else None\n                if isinstance(v, (int, float)) and isinstance(pv,\
-              \ (int, float)) and pv:\n                    delta = (v - pv) / abs(pv)\
-              \ * (-1 if lower else 1)\n                    if delta < -max_regression:\n\
-              \                        reasons.append(f\"{cid}/{bdef['id']}: {abs(delta):.0%}\
-              \ worse than production on {metric}\")\n        col_threshold = (col.get(\"\
-              pass_criteria\") or {}).get(\"threshold\")\n        col_scores = {m:\
-              \ ((latest.get((m, cid)) or {}).get(\"results\") or {}).get(\"test\"\
-              ) or {} for m in models}\n        if col.get(\"category\") == \"code\"\
-              :\n            capability = {m: t.get(\"score\") for m, t in col_scores.items()}\n\
-              \        if target == \"candidate\" and col_threshold is not None and\
-              \ col_scores.get(model_name, {}).get(\"pass\") is not True:\n      \
-              \      reasons.append(f\"{cid}: collection score {col_scores.get(model_name,\
+              ) or \"candidate\"\n    order = [\"latency\", \"throughput\", \"livecodebench\"\
+              , \"python\", \"capability\", \"security-quick\", \"security-full\"\
+              ]\n    collections = sorted({cid for _, cid in latest},\n          \
+              \               key=lambda c: order.index(next((k for k in order if\
+              \ k in c), \"capability\")))\n    models = sorted(targets, key=lambda\
+              \ m: (targets[m] != \"production\", m != model_name, m))\n    production\
+              \ = next((m for m in models if targets[m] == \"production\"), None)\n\
+              \n    def describe(cid):\n        out = subprocess.run([\"evalhub\"\
+              , \"collections\", \"describe\", cid, \"--format\", \"json\"],\n   \
+              \                          env=env, capture_output=True, text=True,\
+              \ check=True).stdout\n        c = json.loads(out)\n        return c[0]\
+              \ if isinstance(c, list) else c\n\n    def score(job, bdef):\n     \
+              \   \"\"\"Primary score and pass for one benchmark, or (None, False)\
+              \ when the run produced nothing.\"\"\"\n        if job is None:\n  \
+              \          return None, None\n        primary = bdef.get(\"primary_score\"\
+              ) or {}\n        metric, lower = primary.get(\"metric\", \"\"), bool(primary.get(\"\
+              lower_is_better\"))\n        threshold = (bdef.get(\"pass_criteria\"\
+              ) or {}).get(\"threshold\")\n        b = {x.get(\"id\"): x for x in\
+              \ (job.get(\"results\") or {}).get(\"benchmarks\") or []}.get(bdef[\"\
+              id\"]) or {}\n        numbers = [v for v in (b.get(\"metrics\") or {}).values()\
+              \ if isinstance(v, (int, float))]\n        if not numbers or not any(numbers):\n\
+              \            return None, False  # no metrics, or all zero: no request\
+              \ succeeded\n        t = b.get(\"test\") or {}\n        value = t.get(\"\
+              primary_score\", (b.get(\"metrics\") or {}).get(metric))\n        passed\
+              \ = t.get(\"pass\")\n        if passed is None and isinstance(value,\
+              \ (int, float)) and threshold is not None:\n            passed = value\
+              \ <= threshold if lower else value >= threshold\n        return value,\
+              \ passed\n\n    reasons, sections = [], []\n    weighted = {m: [] for\
+              \ m in models}  # (weight, value) of every code benchmark per model\n\
+              \    for cid in collections:\n        col = describe(cid)\n        rows\
+              \ = []\n        for bdef in col.get(\"benchmarks\") or []:\n       \
+              \     primary = bdef.get(\"primary_score\") or {}\n            metric,\
+              \ lower = primary.get(\"metric\", \"\"), bool(primary.get(\"lower_is_better\"\
+              ))\n            threshold = (bdef.get(\"pass_criteria\") or {}).get(\"\
+              threshold\")\n            cells = {m: score(latest.get((m, cid)), bdef)\
+              \ for m in models}\n            for m, (v, _) in cells.items():\n  \
+              \              if isinstance(v, (int, float)):\n                   \
+              \ scores.log_metric(f\"{m}.{bdef['id']}.{metric}\".replace(\"/\", \"\
+              _\"), float(v))\n            rows.append((bdef[\"id\"], metric, lower,\
+              \ threshold, cells))\n            if col.get(\"category\") == \"code\"\
+              :\n                for m, (v, _) in cells.items():\n               \
+              \     weighted[m].append((float(bdef.get(\"weight\") or 1), v))\n  \
+              \          if target == \"candidate\":\n                v, p = cells.get(model_name,\
+              \ (None, None))\n                if p is not True:\n               \
+              \     reasons.append(f\"{cid}/{bdef['id']}: misses its gate ({metric}\
+              \ {v}, threshold {threshold})\")\n                pv = cells.get(production,\
+              \ (None, None))[0] if production else None\n                if isinstance(v,\
+              \ (int, float)) and isinstance(pv, (int, float)) and pv:\n         \
+              \           delta = (v - pv) / abs(pv) * (-1 if lower else 1)\n    \
+              \                if delta < -max_regression:\n                     \
+              \   reasons.append(f\"{cid}/{bdef['id']}: {abs(delta):.0%} worse than\
+              \ production on {metric}\")\n        col_threshold = (col.get(\"pass_criteria\"\
+              ) or {}).get(\"threshold\")\n        col_scores = {m: ((latest.get((m,\
+              \ cid)) or {}).get(\"results\") or {}).get(\"test\") or {} for m in\
+              \ models}\n        if target == \"candidate\" and col_threshold is not\
+              \ None and col_scores.get(model_name, {}).get(\"pass\") is not True:\n\
+              \            reasons.append(f\"{cid}: collection score {col_scores.get(model_name,\
               \ {}).get('score')} misses {col_threshold}\")\n        sections.append((col.get(\"\
-              name\") or cid, rows, col_threshold, col_scores))\n\n    verdict = \"\
-              BASELINE RECORDED\" if target == \"production\" else None\n    if target\
-              \ == \"candidate\":\n        if production is None:\n            reasons.append(\"\
-              no production baseline yet: run this pipeline with the production model\
-              \ first\")\n        else:\n            c, p = capability.get(model_name),\
-              \ capability.get(production)\n            if not (isinstance(c, (int,\
-              \ float)) and isinstance(p, (int, float))):\n                reasons.append(\"\
-              no capability scores to compare\")\n            elif c <= p:\n     \
-              \           reasons.append(f\"capability score {c:.3f} does not beat\
-              \ production {p:.3f}\")\n        verdict = \"PROMOTE\" if not reasons\
-              \ else \"HOLD\"\n\n    def fmt(v):\n        return f\"{v:.4g}\" if isinstance(v,\
-              \ (int, float)) else \"-\"\n\n    def cell(v, p, best):\n        cls\
-              \ = {True: \"pass\", False: \"fail\"}.get(p, \"na\")\n        star =\
-              \ \" *\" if best else \"\"\n        return f\"<td class={cls}>{fmt(v)}{star}</td>\"\
-              \n\n    head = \"\".join(f\"<th>{html.escape(m)}<br><small>{targets[m]}</small></th>\"\
+              name\") or cid, rows, col_threshold, col_scores))\n\n    # Weighted\
+              \ capability score over every code benchmark (LiveCodeBench 3, MBPP\
+              \ 2, HumanEval 1); a model\n    # needs a result for each of them to\
+              \ get one.\n    capability = {m: (sum(w * v for w, v in pairs) / sum(w\
+              \ for w, _ in pairs)\n                      if pairs and all(isinstance(v,\
+              \ (int, float)) for _, v in pairs) else None)\n                  for\
+              \ m, pairs in weighted.items()}\n    for m, c in capability.items():\n\
+              \        if c is not None:\n            scores.log_metric(f\"{m}.capability.weighted\"\
+              , float(c))\n    if target == \"candidate\":\n        c = capability.get(model_name)\n\
+              \        if c is None:\n            reasons.append(\"no complete capability\
+              \ result (LiveCodeBench, MBPP and HumanEval)\")\n        elif c < capability_threshold:\n\
+              \            reasons.append(f\"capability score {c:.3f} misses its gate\
+              \ {capability_threshold}\")\n    verdict = \"BASELINE RECORDED\" if\
+              \ target == \"production\" else None\n    if target == \"candidate\"\
+              :\n        if production is None:\n            reasons.append(\"no production\
+              \ baseline yet: run this pipeline with the production model first\"\
+              )\n        else:\n            c, p = capability.get(model_name), capability.get(production)\n\
+              \            if not (isinstance(c, (int, float)) and isinstance(p, (int,\
+              \ float))):\n                reasons.append(\"no capability scores to\
+              \ compare\")\n            elif c <= p:\n                reasons.append(f\"\
+              capability score {c:.3f} does not beat production {p:.3f}\")\n     \
+              \   verdict = \"PROMOTE\" if not reasons else \"HOLD\"\n\n    def fmt(v):\n\
+              \        return f\"{v:.4g}\" if isinstance(v, (int, float)) else \"\
+              -\"\n\n    def cell(v, p, best):\n        cls = {True: \"pass\", False:\
+              \ \"fail\"}.get(p, \"na\")\n        star = \" *\" if best else \"\"\n\
+              \        return f\"<td class={cls}>{fmt(v)}{star}</td>\"\n\n    head\
+              \ = \"\".join(f\"<th>{html.escape(m)}<br><small>{targets[m]}</small></th>\"\
               \ for m in models)\n    h = [\"<h1>Agentic coding model leaderboard</h1>\"\
               ,\n         f\"<p class=note>Run {html.escape(run_name)} evaluated <b>{html.escape(model_name)}</b>\
               \ ({target}).</p>\",\n         f\"<h2 class={'promote' if verdict ==\
@@ -1141,11 +1329,16 @@ spec:
               \ reasons else\n                 f\"<p>{html.escape(model_name)} passes\
               \ every gate, beats production on capability and is not more \"\n  \
               \               f\"than {max_regression:.0%} worse on any benchmark.</p>\"\
-              )\n    for title, rows, col_threshold, col_scores in sections:\n   \
-              \     body = []\n        for bid, metric, lower, threshold, cells in\
-              \ rows:\n            vals = [v for v, _ in cells.values() if isinstance(v,\
-              \ (int, float))]\n            best = (min(vals) if lower else max(vals))\
-              \ if vals else None\n            body.append(f\"<tr><td>{html.escape(bid)}<br><small>{html.escape(metric)},\
+              )\n    h.append(f\"<h3>Capability (weighted 3:2:1, gate {capability_threshold})</h3><table><tr><th>Score</th>{head}</tr>\"\
+              \n             \"<tr><td>LiveCodeBench, MBPP, HumanEval</td>\"\n   \
+              \          + \"\".join(cell(capability[m], None if capability[m] is\
+              \ None else capability[m] >= capability_threshold,\n               \
+              \             False) for m in models) + \"</tr></table>\")\n    for\
+              \ title, rows, col_threshold, col_scores in sections:\n        body\
+              \ = []\n        for bid, metric, lower, threshold, cells in rows:\n\
+              \            vals = [v for v, _ in cells.values() if isinstance(v, (int,\
+              \ float))]\n            best = (min(vals) if lower else max(vals)) if\
+              \ vals else None\n            body.append(f\"<tr><td>{html.escape(bid)}<br><small>{html.escape(metric)},\
               \ \"\n                        f\"{'lower' if lower else 'higher'} is\
               \ better, gate {fmt(threshold)}</small></td>\"\n                   \
               \     + \"\".join(cell(cells[m][0], cells[m][1], cells[m][0] == best\
@@ -1309,10 +1502,10 @@ spec:
                     constant: 3600.0
             taskInfo:
               name: step-2-throughput
-          step-3-capability:
+          step-3-livecodebench:
             cachingOptions: {}
             componentRef:
-              name: comp-step-3-capability
+              name: comp-step-3-livecodebench
             dependentTasks:
             - step-2-throughput
             inputs:
@@ -1323,7 +1516,7 @@ spec:
                     producerTask: step-2-throughput
                 collection_id:
                   runtimeValue:
-                    constant: agentic-coding-capability-v2
+                    constant: agentic-coding-capability-livecodebench-v1
                 evalhub_experiment:
                   runtimeValue:
                     constant: agentic-coding-evaluations
@@ -1350,7 +1543,7 @@ spec:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
                 skip:
-                  componentInputParameter: skip_capability
+                  componentInputParameter: skip_livecodebench
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
@@ -1361,21 +1554,76 @@ spec:
                     producerTask: step-2-throughput
                 timeout_seconds:
                   runtimeValue:
-                    constant: 10800.0
+                    constant: 7200.0
             taskInfo:
-              name: step-3-capability
-          step-4-security-quick:
+              name: step-3-livecodebench
+          step-4-python-tasks:
             cachingOptions: {}
             componentRef:
-              name: comp-step-4-security-quick
+              name: comp-step-4-python-tasks
             dependentTasks:
-            - step-3-capability
+            - step-3-livecodebench
             inputs:
               parameters:
                 auth_secret:
                   taskOutputParameter:
                     outputParameterKey: auth_secret
-                    producerTask: step-3-capability
+                    producerTask: step-3-livecodebench
+                collection_id:
+                  runtimeValue:
+                    constant: agentic-coding-capability-python-v1
+                evalhub_experiment:
+                  runtimeValue:
+                    constant: agentic-coding-evaluations
+                evalhub_url:
+                  runtimeValue:
+                    constant: https://evalhub.evalhub.svc.cluster.local:8443
+                model_id:
+                  taskOutputParameter:
+                    outputParameterKey: model_id
+                    producerTask: step-3-livecodebench
+                model_name:
+                  componentInputParameter: model_name
+                model_url:
+                  taskOutputParameter:
+                    outputParameterKey: model_url
+                    producerTask: step-3-livecodebench
+                qualification_tag:
+                  runtimeValue:
+                    constant: agentic-coding-qualification
+                queue:
+                  runtimeValue:
+                    constant: lq-cpu-default
+                run_name:
+                  runtimeValue:
+                    constant: '{{$.pipeline_job_name}}'
+                skip:
+                  componentInputParameter: skip_python_tasks
+                target:
+                  taskOutputParameter:
+                    outputParameterKey: target
+                    producerTask: step-3-livecodebench
+                tenant:
+                  taskOutputParameter:
+                    outputParameterKey: tenant
+                    producerTask: step-3-livecodebench
+                timeout_seconds:
+                  runtimeValue:
+                    constant: 3600.0
+            taskInfo:
+              name: step-4-python-tasks
+          step-5-security-quick:
+            cachingOptions: {}
+            componentRef:
+              name: comp-step-5-security-quick
+            dependentTasks:
+            - step-4-python-tasks
+            inputs:
+              parameters:
+                auth_secret:
+                  taskOutputParameter:
+                    outputParameterKey: auth_secret
+                    producerTask: step-4-python-tasks
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-security-quick-v2
@@ -1388,13 +1636,13 @@ spec:
                 model_id:
                   taskOutputParameter:
                     outputParameterKey: model_id
-                    producerTask: step-3-capability
+                    producerTask: step-4-python-tasks
                 model_name:
                   componentInputParameter: model_name
                 model_url:
                   taskOutputParameter:
                     outputParameterKey: model_url
-                    producerTask: step-3-capability
+                    producerTask: step-4-python-tasks
                 qualification_tag:
                   runtimeValue:
                     constant: agentic-coding-qualification
@@ -1409,28 +1657,28 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: step-3-capability
+                    producerTask: step-4-python-tasks
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: step-3-capability
+                    producerTask: step-4-python-tasks
                 timeout_seconds:
                   runtimeValue:
-                    constant: 7200.0
+                    constant: 3600.0
             taskInfo:
-              name: step-4-security-quick
-          step-5-security-full:
+              name: step-5-security-quick
+          step-6-security-full:
             cachingOptions: {}
             componentRef:
-              name: comp-step-5-security-full
+              name: comp-step-6-security-full
             dependentTasks:
-            - step-4-security-quick
+            - step-5-security-quick
             inputs:
               parameters:
                 auth_secret:
                   taskOutputParameter:
                     outputParameterKey: auth_secret
-                    producerTask: step-4-security-quick
+                    producerTask: step-5-security-quick
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-security-full-v2
@@ -1443,13 +1691,13 @@ spec:
                 model_id:
                   taskOutputParameter:
                     outputParameterKey: model_id
-                    producerTask: step-4-security-quick
+                    producerTask: step-5-security-quick
                 model_name:
                   componentInputParameter: model_name
                 model_url:
                   taskOutputParameter:
                     outputParameterKey: model_url
-                    producerTask: step-4-security-quick
+                    producerTask: step-5-security-quick
                 qualification_tag:
                   runtimeValue:
                     constant: agentic-coding-qualification
@@ -1464,24 +1712,27 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: step-4-security-quick
+                    producerTask: step-5-security-quick
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: step-4-security-quick
+                    producerTask: step-5-security-quick
                 timeout_seconds:
                   runtimeValue:
-                    constant: 14400.0
+                    constant: 10800.0
             taskInfo:
-              name: step-5-security-full
-          step-6-leaderboard:
+              name: step-6-security-full
+          step-7-leaderboard:
             cachingOptions: {}
             componentRef:
-              name: comp-step-6-leaderboard
+              name: comp-step-7-leaderboard
             dependentTasks:
-            - step-5-security-full
+            - step-6-security-full
             inputs:
               parameters:
+                capability_threshold:
+                  runtimeValue:
+                    constant: 0.5
                 evalhub_url:
                   runtimeValue:
                     constant: https://evalhub.evalhub.svc.cluster.local:8443
@@ -1499,22 +1750,26 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: step-5-security-full
+                    producerTask: step-6-security-full
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: step-5-security-full
+                    producerTask: step-6-security-full
             taskInfo:
-              name: step-6-leaderboard
+              name: step-7-leaderboard
       inputDefinitions:
         parameters:
           model_name:
             parameterType: STRING
-          skip_capability:
+          skip_latency:
             defaultValue: false
             isOptional: true
             parameterType: BOOLEAN
-          skip_latency:
+          skip_livecodebench:
+            defaultValue: false
+            isOptional: true
+            parameterType: BOOLEAN
+          skip_python_tasks:
             defaultValue: false
             isOptional: true
             parameterType: BOOLEAN
@@ -1561,7 +1816,7 @@ spec:
                     constant: pipeline-tasks-service-ca
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
-            exec-step-3-capability:
+            exec-step-3-livecodebench:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:
@@ -1569,7 +1824,7 @@ spec:
                     constant: pipeline-tasks-service-ca
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
-            exec-step-4-security-quick:
+            exec-step-4-python-tasks:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:
@@ -1577,7 +1832,7 @@ spec:
                     constant: pipeline-tasks-service-ca
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
-            exec-step-5-security-full:
+            exec-step-5-security-quick:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:
@@ -1585,7 +1840,15 @@ spec:
                     constant: pipeline-tasks-service-ca
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
-            exec-step-6-leaderboard:
+            exec-step-6-security-full:
+              configMapAsVolume:
+              - configMapName: pipeline-tasks-service-ca
+                configMapNameParameter:
+                  runtimeValue:
+                    constant: pipeline-tasks-service-ca
+                mountPath: /etc/pki/ca-trust/source/anchors
+                optional: false
+            exec-step-7-leaderboard:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:

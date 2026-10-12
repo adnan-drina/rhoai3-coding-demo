@@ -8,7 +8,8 @@ evaluations run unless a switch is set). The model name resolves as follows:
   - any other name is a production model served through MaaS: endpoint from ConfigMap qualification-endpoints,
     model auth Secret evalhub-model-auth-maas.
 
-Graph: resolve model -> latency -> throughput -> capability -> security quick -> security full -> leaderboard.
+Graph: resolve model -> latency -> throughput -> LiveCodeBench -> Python tasks -> security quick -> security full
+-> leaderboard.
 A skipped evaluation step still runs in its place and ends without submitting an EvalHub job: KFP does not let a
 step depend on a step inside a dsl.If, so conditions would break the order the performance numbers need.
 Each collection step follows the EvalHub CI/CD pattern ("Add automated AI evaluations to your CI/CD
@@ -47,9 +48,12 @@ SERVICE_CA_CONFIGMAP = "pipeline-tasks-service-ca"
 COLLECTIONS = [
     ("step-1-latency", "skip_latency", "agentic-coding-latency-v1", 3600),
     ("step-2-throughput", "skip_throughput", "agentic-coding-throughput-v1", 3600),
-    ("step-3-capability", "skip_capability", "agentic-coding-capability-v2", 3 * 3600),
-    ("step-4-security-quick", "skip_security_quick", "agentic-coding-security-quick-v2", 2 * 3600),
-    ("step-5-security-full", "skip_security_full", "agentic-coding-security-full-v2", 4 * 3600),
+    # Capability runs as two collections one after the other: LiveCodeBench needs every sequence slot of the
+    # model, so it runs alone; the leaderboard combines both into the weighted capability score.
+    ("step-3-livecodebench", "skip_livecodebench", "agentic-coding-capability-livecodebench-v1", 2 * 3600),
+    ("step-4-python-tasks", "skip_python_tasks", "agentic-coding-capability-python-v1", 3600),
+    ("step-5-security-quick", "skip_security_quick", "agentic-coding-security-quick-v2", 3600),
+    ("step-6-security-full", "skip_security_full", "agentic-coding-security-full-v2", 3 * 3600),
 ]
 # Fixed for the demo: the EvalHub tag of every qualification job and the MLflow experiment of those jobs.
 # Pipeline runs themselves are tracked in the MLflow experiment chosen in the run form
@@ -59,6 +63,8 @@ EVALHUB_EXPERIMENT = "agentic-coding-evaluations"
 EVALHUB_URL = "https://evalhub.evalhub.svc.cluster.local:8443"
 QUEUE = "lq-cpu-default"
 MAX_REGRESSION = 0.05
+# Gate for the weighted capability score across the code collections (benchmark weights 3:2:1).
+CAPABILITY_THRESHOLD = 0.5
 
 
 @dsl.component(base_image=RUNTIME_IMAGE)
@@ -216,6 +222,7 @@ def leaderboard(
     qualification_tag: str,
     evalhub_url: str,
     max_regression: float,
+    capability_threshold: float,
     run_name: str,
     report: dsl.Output[dsl.HTML],
     scores: dsl.Output[dsl.Metrics],
@@ -263,9 +270,9 @@ def leaderboard(
     targets = {}
     for (model, _), job in latest.items():
         targets[model] = tag(job, "target") or "candidate"
-    collections = sorted({cid for _, cid in latest}, key=lambda c: ["latency", "throughput", "capability",
-                         "security-quick", "security-full"].index(next((k for k in ["latency", "throughput",
-                         "capability", "security-quick", "security-full"] if k in c), "capability")))
+    order = ["latency", "throughput", "livecodebench", "python", "capability", "security-quick", "security-full"]
+    collections = sorted({cid for _, cid in latest},
+                         key=lambda c: order.index(next((k for k in order if k in c), "capability")))
     models = sorted(targets, key=lambda m: (targets[m] != "production", m != model_name, m))
     production = next((m for m in models if targets[m] == "production"), None)
 
@@ -293,7 +300,8 @@ def leaderboard(
             passed = value <= threshold if lower else value >= threshold
         return value, passed
 
-    reasons, sections, capability = [], [], {}
+    reasons, sections = [], []
+    weighted = {m: [] for m in models}  # (weight, value) of every code benchmark per model
     for cid in collections:
         col = describe(cid)
         rows = []
@@ -306,6 +314,9 @@ def leaderboard(
                 if isinstance(v, (int, float)):
                     scores.log_metric(f"{m}.{bdef['id']}.{metric}".replace("/", "_"), float(v))
             rows.append((bdef["id"], metric, lower, threshold, cells))
+            if col.get("category") == "code":
+                for m, (v, _) in cells.items():
+                    weighted[m].append((float(bdef.get("weight") or 1), v))
             if target == "candidate":
                 v, p = cells.get(model_name, (None, None))
                 if p is not True:
@@ -317,12 +328,24 @@ def leaderboard(
                         reasons.append(f"{cid}/{bdef['id']}: {abs(delta):.0%} worse than production on {metric}")
         col_threshold = (col.get("pass_criteria") or {}).get("threshold")
         col_scores = {m: ((latest.get((m, cid)) or {}).get("results") or {}).get("test") or {} for m in models}
-        if col.get("category") == "code":
-            capability = {m: t.get("score") for m, t in col_scores.items()}
         if target == "candidate" and col_threshold is not None and col_scores.get(model_name, {}).get("pass") is not True:
             reasons.append(f"{cid}: collection score {col_scores.get(model_name, {}).get('score')} misses {col_threshold}")
         sections.append((col.get("name") or cid, rows, col_threshold, col_scores))
 
+    # Weighted capability score over every code benchmark (LiveCodeBench 3, MBPP 2, HumanEval 1); a model
+    # needs a result for each of them to get one.
+    capability = {m: (sum(w * v for w, v in pairs) / sum(w for w, _ in pairs)
+                      if pairs and all(isinstance(v, (int, float)) for _, v in pairs) else None)
+                  for m, pairs in weighted.items()}
+    for m, c in capability.items():
+        if c is not None:
+            scores.log_metric(f"{m}.capability.weighted", float(c))
+    if target == "candidate":
+        c = capability.get(model_name)
+        if c is None:
+            reasons.append("no complete capability result (LiveCodeBench, MBPP and HumanEval)")
+        elif c < capability_threshold:
+            reasons.append(f"capability score {c:.3f} misses its gate {capability_threshold}")
     verdict = "BASELINE RECORDED" if target == "production" else None
     if target == "candidate":
         if production is None:
@@ -351,6 +374,10 @@ def leaderboard(
         h.append("<ul>" + "".join(f"<li>{html.escape(r)}</li>" for r in reasons) + "</ul>" if reasons else
                  f"<p>{html.escape(model_name)} passes every gate, beats production on capability and is not more "
                  f"than {max_regression:.0%} worse on any benchmark.</p>")
+    h.append(f"<h3>Capability (weighted 3:2:1, gate {capability_threshold})</h3><table><tr><th>Score</th>{head}</tr>"
+             "<tr><td>LiveCodeBench, MBPP, HumanEval</td>"
+             + "".join(cell(capability[m], None if capability[m] is None else capability[m] >= capability_threshold,
+                            False) for m in models) + "</tr></table>")
     for title, rows, col_threshold, col_scores in sections:
         body = []
         for bid, metric, lower, threshold, cells in rows:
@@ -408,11 +435,13 @@ def qualification(
     model_name: str,
     skip_latency: bool = False,
     skip_throughput: bool = False,
-    skip_capability: bool = False,
+    skip_livecodebench: bool = False,
+    skip_python_tasks: bool = False,
     skip_security_quick: bool = False,
     skip_security_full: bool = False,
 ):
-    skips = {"skip_latency": skip_latency, "skip_throughput": skip_throughput, "skip_capability": skip_capability,
+    skips = {"skip_latency": skip_latency, "skip_throughput": skip_throughput, "skip_livecodebench": skip_livecodebench,
+             "skip_python_tasks": skip_python_tasks,
              "skip_security_quick": skip_security_quick, "skip_security_full": skip_security_full}
     model = _small(_named(resolve_model, "step-0-resolve-model")(model_name=model_name))
     # Each step takes the model details from the step before it, so the graph is one chain.
@@ -427,8 +456,8 @@ def qualification(
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, timeout_seconds=timeout, skip=skips[skip_name],
         ))
         previous = step
-    board = _small(_named(leaderboard, "step-6-leaderboard")(
+    board = _small(_named(leaderboard, "step-7-leaderboard")(
         model_name=model_name, target=previous.outputs["target"], tenant=previous.outputs["tenant"],
         qualification_tag=QUALIFICATION_TAG, evalhub_url=EVALHUB_URL, max_regression=MAX_REGRESSION,
-        run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER,
+        capability_threshold=CAPABILITY_THRESHOLD, run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER,
     ))
