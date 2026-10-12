@@ -23,6 +23,9 @@ RUNTIME_IMAGE = (
     "@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429"
 )
 EVALHUB_CLI = "eval-hub-sdk[cli]==1.0.5"
+# The runtime image's default package index carries eval-hub-sdk only up to 0.4.4; the EvalHub CLI the
+# article uses (and the rest of this stage pins) is 1.0.5 on PyPI.
+PIP_INDEX = ["https://pypi.org/simple"]
 # The SDK trusts the OpenShift service CA when it is present at this path.
 SERVICE_CA_DIR = "/etc/pki/ca-trust/source/anchors"
 SERVICE_CA_CONFIGMAP = "pipelines-service-ca"
@@ -35,7 +38,7 @@ COLLECTIONS = [
 ]
 
 
-@dsl.component(base_image=RUNTIME_IMAGE, packages_to_install=[EVALHUB_CLI])
+@dsl.component(base_image=RUNTIME_IMAGE, packages_to_install=[EVALHUB_CLI], pip_index_urls=PIP_INDEX)
 def evaluate_collection(
     collection_id: str,
     collection_version: str,
@@ -129,7 +132,7 @@ def evaluate_collection(
         raise RuntimeError("; ".join(problems))
 
 
-@dsl.component(base_image=RUNTIME_IMAGE, packages_to_install=[EVALHUB_CLI])
+@dsl.component(base_image=RUNTIME_IMAGE, packages_to_install=[EVALHUB_CLI], pip_index_urls=PIP_INDEX)
 def leaderboard(
     evalhub_url: str,
     tenant: str,

@@ -11,12 +11,12 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v3
+  name: agentic-coding-model-qualification-v4
   namespace: evaluated-models
 spec:
   description: Runs the agentic coding EvalHub collections on the production model
     and a candidate, then publishes a leaderboard and a promote/hold recommendation.
-  displayName: agentic-coding-model-qualification v3
+  displayName: agentic-coding-model-qualification v4
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -229,7 +229,9 @@ spec:
             - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
               \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
               \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
               \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
               \ 'kfp==2.14.6' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
               3.9\"' && \"$0\" \"$@\"\n"
             - sh
@@ -332,7 +334,9 @@ spec:
             - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
               \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
               \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
               \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
               \ 'kfp==2.14.6' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
               3.9\"' && \"$0\" \"$@\"\n"
             - sh
@@ -435,7 +439,9 @@ spec:
             - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
               \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
               \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
               \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
               \ 'kfp==2.14.6' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
               3.9\"' && \"$0\" \"$@\"\n"
             - sh
@@ -538,7 +544,9 @@ spec:
             - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
               \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
               \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
               \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
               \ 'kfp==2.14.6' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
               3.9\"' && \"$0\" \"$@\"\n"
             - sh
@@ -641,7 +649,9 @@ spec:
             - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
               \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
               \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
               \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
+              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
               \ 'kfp==2.14.6' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
               3.9\"' && \"$0\" \"$@\"\n"
             - sh
