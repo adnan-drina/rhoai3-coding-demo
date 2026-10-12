@@ -188,6 +188,11 @@ def leaderboard(
                 t = b.get("test") or {}
                 vals[r] = t.get("primary_score", (b.get("metrics") or {}).get(metric))
                 passes[r] = t.get("pass")
+                numbers = [v for v in (b.get("metrics") or {}).values() if isinstance(v, (int, float))]
+                if numbers and not any(numbers):
+                    # Every metric zero means no request succeeded; a lower-is-better gate would pass it.
+                    vals[r], passes[r] = None, False
+                    reasons.append(f"{cid}/{bid}: {r} produced no successful requests (all metrics 0)")
                 if passes[r] is None and isinstance(vals[r], (int, float)) and threshold is not None:
                     passes[r] = vals[r] <= threshold if lower else vals[r] >= threshold
                 if isinstance(vals[r], (int, float)):
@@ -285,7 +290,7 @@ def qualification(
     baseline_auth_secret: str = "evalhub-model-auth-maas",
     candidate_model_name: str = "qwen3-8-27b-int4",
     candidate_model_url: str = "https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1",
-    candidate_auth_secret: str = "",
+    candidate_auth_secret: str = "qualification-model-ca",
     collection_version: str = "v1",
     experiment: str = "agentic-coding-qualification",
     queue: str = "lq-cpu-default",

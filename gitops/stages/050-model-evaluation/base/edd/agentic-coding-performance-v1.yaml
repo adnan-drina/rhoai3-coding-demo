@@ -53,6 +53,9 @@ data:
           threshold: 60
         parameters:
           profile: throughput
+          # Maximum concurrent requests at saturation; GuideLLM's throughput profile requires it. Matches
+          # the vLLM --max-num-seqs of both Qwen deployments.
+          rate: 16
           max_seconds: 180
           data: prompt_tokens=8000,output_tokens=512
           # Tokenizer used to size the synthetic prompts; shared by the Qwen 3.x models.

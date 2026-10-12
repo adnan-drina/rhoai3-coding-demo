@@ -11,12 +11,12 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v4
+  name: agentic-coding-model-qualification-v5
   namespace: evaluated-models
 spec:
   description: Runs the agentic coding EvalHub collections on the production model
     and a candidate, then publishes a leaderboard and a promote/hold recommendation.
-  displayName: agentic-coding-model-qualification v4
+  displayName: agentic-coding-model-qualification v5
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -699,10 +699,16 @@ spec:
               \ = {}, {}\n            for r in roles:\n                b = by_bench[r].get(bid)\
               \ or {}\n                t = b.get(\"test\") or {}\n               \
               \ vals[r] = t.get(\"primary_score\", (b.get(\"metrics\") or {}).get(metric))\n\
-              \                passes[r] = t.get(\"pass\")\n                if passes[r]\
-              \ is None and isinstance(vals[r], (int, float)) and threshold is not\
-              \ None:\n                    passes[r] = vals[r] <= threshold if lower\
-              \ else vals[r] >= threshold\n                if isinstance(vals[r],\
+              \                passes[r] = t.get(\"pass\")\n                numbers\
+              \ = [v for v in (b.get(\"metrics\") or {}).values() if isinstance(v,\
+              \ (int, float))]\n                if numbers and not any(numbers):\n\
+              \                    # Every metric zero means no request succeeded;\
+              \ a lower-is-better gate would pass it.\n                    vals[r],\
+              \ passes[r] = None, False\n                    reasons.append(f\"{cid}/{bid}:\
+              \ {r} produced no successful requests (all metrics 0)\")\n         \
+              \       if passes[r] is None and isinstance(vals[r], (int, float)) and\
+              \ threshold is not None:\n                    passes[r] = vals[r] <=\
+              \ threshold if lower else vals[r] >= threshold\n                if isinstance(vals[r],\
               \ (int, float)):\n                    scores.log_metric(f\"{r}.{bid}.{metric}\"\
               .replace(\"/\", \"_\"), float(vals[r]))\n            b, c = vals[\"\
               baseline\"], vals[\"candidate\"]\n            delta = None\n       \
@@ -1006,7 +1012,7 @@ spec:
             isOptional: true
             parameterType: STRING
           candidate_auth_secret:
-            defaultValue: ''
+            defaultValue: qualification-model-ca
             isOptional: true
             parameterType: STRING
           candidate_model_name:
