@@ -11,12 +11,12 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v1
+  name: agentic-coding-model-qualification-v2
   namespace: evaluated-models
 spec:
   description: Runs the agentic coding EvalHub collections on the production model
     and a candidate, then publishes a leaderboard and a promote/hold recommendation.
-  displayName: agentic-coding-model-qualification v1
+  displayName: agentic-coding-model-qualification v2
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -572,9 +572,9 @@ spec:
               \ does not improve the capability score ({capability_delta:+.3f})\"\
               )\n    verdict = \"PROMOTE\" if not reasons else \"HOLD\"\n\n    def\
               \ fmt(v):\n        return f\"{v:.4g}\" if isinstance(v, (int, float))\
-              \ else (\"\u2014\" if v is None else str(v))\n\n    def badge(p):\n\
-              \        return {True: \"pass\", False: \"fail\"}.get(p, \"n/a\")\n\n\
-              \    h = [f\"<h1>Model qualification {html.escape(qualification_id)}</h1>\"\
+              \ else (\"-\" if v is None else str(v))\n\n    def badge(p):\n     \
+              \   return {True: \"pass\", False: \"fail\"}.get(p, \"n/a\")\n\n   \
+              \ h = [f\"<h1>Model qualification {html.escape(qualification_id)}</h1>\"\
               ,\n         f\"<p><b>Baseline (production):</b> {html.escape(baseline_model)}<br>\"\
               \n         f\"<b>Candidate:</b> {html.escape(candidate_model)}</p>\"\
               ,\n         f\"<h2>Recommendation: {verdict}</h2>\"]\n    md = [f\"\
@@ -592,11 +592,11 @@ spec:
               \ state in sections:\n        h.append(f\"<h3>{html.escape(col.get('name')\
               \ or cid)}</h3>\")\n        md += [f\"### {col.get('name') or cid}\"\
               , \"\",\n               \"| Benchmark | Metric | Better | Threshold\
-              \ | Baseline | Candidate | \u0394 (candidate better > 0) |\",\n    \
-              \           \"|---|---|---|---|---|---|---|\"]\n        body = []\n\
-              \        for bid, w, metric, better, thr, b, bp, c, cp, delta in rows:\n\
-              \            d = \"\u2014\" if delta is None else f\"{delta:+.1%}\"\n\
-              \            body.append(f\"<tr><td>{html.escape(bid)}</td><td>{w}</td><td>{html.escape(metric)}</td><td>{better}</td>\"\
+              \ | Baseline | Candidate | Change (positive = candidate better) |\"\
+              ,\n               \"|---|---|---|---|---|---|---|\"]\n        body =\
+              \ []\n        for bid, w, metric, better, thr, b, bp, c, cp, delta in\
+              \ rows:\n            d = \"-\" if delta is None else f\"{delta:+.1%}\"\
+              \n            body.append(f\"<tr><td>{html.escape(bid)}</td><td>{w}</td><td>{html.escape(metric)}</td><td>{better}</td>\"\
               \n                        f\"<td>{fmt(thr)}</td><td>{fmt(b)} ({badge(bp)})</td><td>{fmt(c)}\
               \ ({badge(cp)})</td>\"\n                        f\"<td>{d}</td></tr>\"\
               )\n            md.append(f\"| {bid} | {metric} | {better} | {fmt(thr)}\
@@ -613,7 +613,7 @@ spec:
               <table>{head}{''.join(body)}</table>\")\n        h.append(f\"<p class=note>Jobs:\
               \ baseline {state['baseline']}, candidate {state['candidate']}.</p>\"\
               )\n        md.append(\"\")\n    h.append(\"<p class=note>Compare the\
-              \ individual runs in the dashboard: Develop &amp; train \u2192 Evaluations,\
+              \ individual runs in the dashboard: Develop &amp; train -> Evaluations,\
               \ \"\n             \"select the runs of this qualification and click\
               \ Compare (MLflow experiment \"\n             \"agentic-coding-qualification,\
               \ tag qualification_id). The baseline is reached through the MaaS \"\
@@ -1545,7 +1545,7 @@ spec:
                   runtimeValue:
                     constant: 7200.0
             taskInfo:
-              name: "performance-v1 \xB7 baseline"
+              name: 'performance-v1: baseline'
           run-collection-2:
             cachingOptions: {}
             componentRef:
@@ -1581,7 +1581,7 @@ spec:
                   runtimeValue:
                     constant: 7200.0
             taskInfo:
-              name: "performance-v1 \xB7 candidate"
+              name: 'performance-v1: candidate'
           run-collection-3:
             cachingOptions: {}
             componentRef:
@@ -1620,7 +1620,7 @@ spec:
                   runtimeValue:
                     constant: 7200.0
             taskInfo:
-              name: "capability-v1 \xB7 baseline"
+              name: 'capability-v1: baseline'
           run-collection-4:
             cachingOptions: {}
             componentRef:
@@ -1659,7 +1659,7 @@ spec:
                   runtimeValue:
                     constant: 7200.0
             taskInfo:
-              name: "capability-v1 \xB7 candidate"
+              name: 'capability-v1: candidate'
           run-collection-5:
             cachingOptions: {}
             componentRef:
@@ -1698,7 +1698,7 @@ spec:
                   runtimeValue:
                     constant: 7200.0
             taskInfo:
-              name: "security-quick-v1 \xB7 baseline"
+              name: 'security-quick-v1: baseline'
           run-collection-6:
             cachingOptions: {}
             componentRef:
@@ -1737,7 +1737,7 @@ spec:
                   runtimeValue:
                     constant: 7200.0
             taskInfo:
-              name: "security-quick-v1 \xB7 candidate"
+              name: 'security-quick-v1: candidate'
           run-collection-7:
             cachingOptions: {}
             componentRef:
@@ -1776,7 +1776,7 @@ spec:
                   runtimeValue:
                     constant: 14400.0
             taskInfo:
-              name: "security-full-v1 \xB7 baseline"
+              name: 'security-full-v1: baseline'
           run-collection-8:
             cachingOptions: {}
             componentRef:
@@ -1815,7 +1815,7 @@ spec:
                   runtimeValue:
                     constant: 14400.0
             taskInfo:
-              name: "security-full-v1 \xB7 candidate"
+              name: 'security-full-v1: candidate'
       inputDefinitions:
         parameters:
           baseline_auth_secret:

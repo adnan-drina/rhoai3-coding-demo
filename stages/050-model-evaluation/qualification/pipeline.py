@@ -11,7 +11,8 @@ ServiceAccount token and the OpenShift service CA, so no credential is passed as
 are tracked in one MLflow experiment, where the dashboard's Evaluations > Compare view shows the runs
 side by side.
 
-Compile: stages/050-model-evaluation/qualification/compile.sh
+Compile: stages/050-model-evaluation/qualification/compile.sh. Keep the source ASCII-only: the pipeline
+server's default MariaDB stores the compiled spec in a latin1 column and rejects other characters.
 """
 
 from typing import NamedTuple
@@ -224,7 +225,7 @@ def leaderboard(
     verdict = "PROMOTE" if not reasons else "HOLD"
 
     def fmt(v):
-        return f"{v:.4g}" if isinstance(v, (int, float)) else ("—" if v is None else str(v))
+        return f"{v:.4g}" if isinstance(v, (int, float)) else ("-" if v is None else str(v))
 
     def badge(p):
         return {True: "pass", False: "fail"}.get(p, "n/a")
@@ -247,11 +248,11 @@ def leaderboard(
     for cid, col, rows, col_test, col_threshold, state in sections:
         h.append(f"<h3>{html.escape(col.get('name') or cid)}</h3>")
         md += [f"### {col.get('name') or cid}", "",
-               "| Benchmark | Metric | Better | Threshold | Baseline | Candidate | Δ (candidate better > 0) |",
+               "| Benchmark | Metric | Better | Threshold | Baseline | Candidate | Change (positive = candidate better) |",
                "|---|---|---|---|---|---|---|"]
         body = []
         for bid, w, metric, better, thr, b, bp, c, cp, delta in rows:
-            d = "—" if delta is None else f"{delta:+.1%}"
+            d = "-" if delta is None else f"{delta:+.1%}"
             body.append(f"<tr><td>{html.escape(bid)}</td><td>{w}</td><td>{html.escape(metric)}</td><td>{better}</td>"
                         f"<td>{fmt(thr)}</td><td>{fmt(b)} ({badge(bp)})</td><td>{fmt(c)} ({badge(cp)})</td>"
                         f"<td>{d}</td></tr>")
@@ -266,7 +267,7 @@ def leaderboard(
         h.append(f"<table>{head}{''.join(body)}</table>")
         h.append(f"<p class=note>Jobs: baseline {state['baseline']}, candidate {state['candidate']}.</p>")
         md.append("")
-    h.append("<p class=note>Compare the individual runs in the dashboard: Develop &amp; train → Evaluations, "
+    h.append("<p class=note>Compare the individual runs in the dashboard: Develop &amp; train -> Evaluations, "
              "select the runs of this qualification and click Compare (MLflow experiment "
              "agentic-coding-qualification, tag qualification_id). The baseline is reached through the MaaS "
              "gateway and the candidate directly, so latency includes the gateway hop for the baseline only.</p>")
@@ -321,7 +322,7 @@ def qualification(
                 queue=queue, evalhub_url=evalhub_url, tenant=tenant, qualification_id=qualification_id,
                 timeout_seconds=timeouts.get(collection, 2 * 3600),
             )
-            task.set_display_name(f"{collection.removeprefix('agentic-coding-')} · {role}")
+            task.set_display_name(f"{collection.removeprefix('agentic-coding-')}: {role}")
             task.set_caching_options(False)
             task.set_cpu_request("100m").set_memory_request("256Mi").set_cpu_limit("500m").set_memory_limit("512Mi")
             kubernetes.use_config_map_as_volume(task, config_map_name=SERVICE_CA_CONFIGMAP, mount_path=SERVICE_CA_DIR)
