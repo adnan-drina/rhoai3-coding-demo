@@ -11,12 +11,12 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v9
+  name: agentic-coding-model-qualification-v10
   namespace: evaluated-models
 spec:
   description: Evaluates one model on the agentic coding EvalHub collections and ranks
     it on the qualification leaderboard.
-  displayName: agentic-coding-model-qualification v9
+  displayName: agentic-coding-model-qualification v10
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -1263,40 +1263,46 @@ spec:
               metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
               \ if not numbers or not any(numbers):\n            return None, False\
               \  # no metrics, or all zero: no request succeeded\n        t = b.get(\"\
-              test\") or {}\n        value = t.get(\"primary_score\", (b.get(\"metrics\"\
-              ) or {}).get(metric))\n        passed = t.get(\"pass\")\n        if\
-              \ passed is None and isinstance(value, (int, float)) and threshold is\
-              \ not None:\n            passed = value <= threshold if lower else value\
-              \ >= threshold\n        return value, passed\n\n    reasons, sections\
-              \ = [], []\n    weighted = {m: [] for m in models}  # (weight, value)\
-              \ of every code benchmark per model\n    for cid in collections:\n \
-              \       col = describe(cid)\n        rows = []\n        for bdef in\
-              \ col.get(\"benchmarks\") or []:\n            primary = bdef.get(\"\
-              primary_score\") or {}\n            metric, lower = primary.get(\"metric\"\
-              , \"\"), bool(primary.get(\"lower_is_better\"))\n            threshold\
-              \ = (bdef.get(\"pass_criteria\") or {}).get(\"threshold\")\n       \
-              \     cells = {m: score(latest.get((m, cid)), bdef) for m in models}\n\
-              \            for m, (v, _) in cells.items():\n                if isinstance(v,\
-              \ (int, float)):\n                    scores.log_metric(f\"{m}.{bdef['id']}.{metric}\"\
-              .replace(\"/\", \"_\"), float(v))\n            rows.append((bdef[\"\
-              id\"], metric, lower, threshold, cells))\n            if col.get(\"\
-              category\") == \"code\":\n                for m, (v, _) in cells.items():\n\
-              \                    weighted[m].append((float(bdef.get(\"weight\")\
-              \ or 1), v))\n            if target == \"candidate\":\n            \
-              \    v, p = cells.get(model_name, (None, None))\n                if\
-              \ p is not True:\n                    reasons.append(f\"{cid}/{bdef['id']}:\
-              \ misses its gate ({metric} {v}, threshold {threshold})\")\n       \
-              \         pv = cells.get(production, (None, None))[0] if production\
-              \ else None\n                if isinstance(v, (int, float)) and isinstance(pv,\
-              \ (int, float)) and pv:\n                    delta = (v - pv) / abs(pv)\
-              \ * (-1 if lower else 1)\n                    if delta < -max_regression:\n\
-              \                        reasons.append(f\"{cid}/{bdef['id']}: {abs(delta):.0%}\
-              \ worse than production on {metric}\")\n        col_threshold = (col.get(\"\
-              pass_criteria\") or {}).get(\"threshold\")\n        col_scores = {m:\
-              \ ((latest.get((m, cid)) or {}).get(\"results\") or {}).get(\"test\"\
-              ) or {} for m in models}\n        if target == \"candidate\" and col_threshold\
-              \ is not None and col_scores.get(model_name, {}).get(\"pass\") is not\
-              \ True:\n            reasons.append(f\"{cid}: collection score {col_scores.get(model_name,\
+              test\") or {}\n        metrics = b.get(\"metrics\") or {}\n        #\
+              \ Providers may report the metric under a prefix (LightEval: \"lcb:codegeneration_v6.codegen_pass@1\"\
+              ); EvalHub\n        # then computes no test result, so match the unique\
+              \ key that ends with the configured metric name.\n        prefixed =\
+              \ [v for k, v in metrics.items() if k.endswith(\".\" + metric) and isinstance(v,\
+              \ (int, float))]\n        value = t.get(\"primary_score\", metrics.get(metric,\
+              \ prefixed[0] if len(set(prefixed)) == 1 else None))\n        passed\
+              \ = t.get(\"pass\")\n        if passed is None and isinstance(value,\
+              \ (int, float)) and threshold is not None:\n            passed = value\
+              \ <= threshold if lower else value >= threshold\n        return value,\
+              \ passed\n\n    reasons, sections = [], []\n    weighted = {m: [] for\
+              \ m in models}  # (weight, value) of every code benchmark per model\n\
+              \    for cid in collections:\n        col = describe(cid)\n        rows\
+              \ = []\n        for bdef in col.get(\"benchmarks\") or []:\n       \
+              \     primary = bdef.get(\"primary_score\") or {}\n            metric,\
+              \ lower = primary.get(\"metric\", \"\"), bool(primary.get(\"lower_is_better\"\
+              ))\n            threshold = (bdef.get(\"pass_criteria\") or {}).get(\"\
+              threshold\")\n            cells = {m: score(latest.get((m, cid)), bdef)\
+              \ for m in models}\n            for m, (v, _) in cells.items():\n  \
+              \              if isinstance(v, (int, float)):\n                   \
+              \ scores.log_metric(f\"{m}.{bdef['id']}.{metric}\".replace(\"/\", \"\
+              _\"), float(v))\n            rows.append((bdef[\"id\"], metric, lower,\
+              \ threshold, cells))\n            if col.get(\"category\") == \"code\"\
+              :\n                for m, (v, _) in cells.items():\n               \
+              \     weighted[m].append((float(bdef.get(\"weight\") or 1), v))\n  \
+              \          if target == \"candidate\":\n                v, p = cells.get(model_name,\
+              \ (None, None))\n                if p is not True:\n               \
+              \     reasons.append(f\"{cid}/{bdef['id']}: misses its gate ({metric}\
+              \ {v}, threshold {threshold})\")\n                pv = cells.get(production,\
+              \ (None, None))[0] if production else None\n                if isinstance(v,\
+              \ (int, float)) and isinstance(pv, (int, float)) and pv:\n         \
+              \           delta = (v - pv) / abs(pv) * (-1 if lower else 1)\n    \
+              \                if delta < -max_regression:\n                     \
+              \   reasons.append(f\"{cid}/{bdef['id']}: {abs(delta):.0%} worse than\
+              \ production on {metric}\")\n        col_threshold = (col.get(\"pass_criteria\"\
+              ) or {}).get(\"threshold\")\n        col_scores = {m: ((latest.get((m,\
+              \ cid)) or {}).get(\"results\") or {}).get(\"test\") or {} for m in\
+              \ models}\n        if target == \"candidate\" and col_threshold is not\
+              \ None and col_scores.get(model_name, {}).get(\"pass\") is not True:\n\
+              \            reasons.append(f\"{cid}: collection score {col_scores.get(model_name,\
               \ {}).get('score')} misses {col_threshold}\")\n        sections.append((col.get(\"\
               name\") or cid, rows, col_threshold, col_scores))\n\n    # Weighted\
               \ capability score over every code benchmark (LiveCodeBench 3, MBPP\

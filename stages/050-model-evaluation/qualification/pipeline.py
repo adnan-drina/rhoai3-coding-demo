@@ -297,7 +297,11 @@ def leaderboard(
         if not numbers or not any(numbers):
             return None, False  # no metrics, or all zero: no request succeeded
         t = b.get("test") or {}
-        value = t.get("primary_score", (b.get("metrics") or {}).get(metric))
+        metrics = b.get("metrics") or {}
+        # Providers may report the metric under a prefix (LightEval: "lcb:codegeneration_v6.codegen_pass@1"); EvalHub
+        # then computes no test result, so match the unique key that ends with the configured metric name.
+        prefixed = [v for k, v in metrics.items() if k.endswith("." + metric) and isinstance(v, (int, float))]
+        value = t.get("primary_score", metrics.get(metric, prefixed[0] if len(set(prefixed)) == 1 else None))
         passed = t.get("pass")
         if passed is None and isinstance(value, (int, float)) and threshold is not None:
             passed = value <= threshold if lower else value >= threshold
