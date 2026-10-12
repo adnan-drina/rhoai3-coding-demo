@@ -50,7 +50,7 @@ COLLECTIONS = [
     ("step-2-throughput", "skip_throughput", "agentic-coding-throughput-v2", 3600),
     # Capability runs as two collections one after the other: LiveCodeBench needs every sequence slot of the
     # model, so it runs alone; the leaderboard combines both into the weighted capability score.
-    ("step-3-livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v1", 2 * 3600),
+    ("step-3-livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v2", 2 * 3600),
     ("step-4-python-tasks", "skip_python_tasks", "agentic-coding-python-tasks-v1", 3600),
     ("step-5-security-quick", "skip_security_quick", "agentic-coding-security-quick-v2", 3600),
     ("step-6-security-full", "skip_security_full", "agentic-coding-security-full-v2", 3 * 3600),

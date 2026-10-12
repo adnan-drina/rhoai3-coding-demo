@@ -85,6 +85,8 @@ spec:
         # One prefill pass for an agent turn of up to 16k prompt tokens, with room for the MTP draft tokens.
         - --max-num-batched-tokens=16384
         - --max-num-seqs=16
+        # Overlap CPU scheduling with GPU execution between decode steps (vLLM async scheduling).
+        - --async-scheduling
         # Model-card speculative decoding (RedHatAI/Qwen3.8-27B-INT4, native MTP, three draft tokens); the
         # checkpoint ships model_mtp.safetensors. The card's DSpark draft is not supported by this vLLM build.
         - --speculative-config={"method":"mtp","num_speculative_tokens":3}

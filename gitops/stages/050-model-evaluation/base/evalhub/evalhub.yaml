@@ -61,6 +61,7 @@ spec:
     - agentic-coding-capability-v1
     - agentic-coding-security-quick-v1
     - agentic-coding-livecodebench-v1
+    - agentic-coding-livecodebench-v2
     - agentic-coding-python-tasks-v1
     - agentic-coding-security-quick-v2
     - agentic-coding-security-full-v2
