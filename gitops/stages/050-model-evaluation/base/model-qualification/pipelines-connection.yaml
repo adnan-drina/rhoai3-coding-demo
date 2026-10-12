@@ -1,0 +1,132 @@
+# Dashboard connection (S3) for the pipeline server's bucket, as the AI Coding Sandbox project has for its
+# buckets (Stage 010 sandbox-storage): the Secret is a GitOps-owned skeleton and a Sync hook copies the
+# ObjectBucketClaim's generated endpoint, bucket and keys into it, so no credential is stored in Git.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: evaluated-models-pipelines-connection
+  namespace: evaluated-models
+  labels:
+    opendatahub.io/dashboard: "true"
+    app.kubernetes.io/name: qualification-pipelines
+    app.kubernetes.io/component: storage-connections
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false,ServerSideApply=true
+    opendatahub.io/connection-type-protocol: s3
+    openshift.io/display-name: Pipelines
+    openshift.io/description: Object storage bucket evaluated-models-pipelines used by the pipeline server
+type: Opaque
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pipelines-connection-provisioner
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: qualification-pipelines
+    app.kubernetes.io/component: storage-connections
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pipelines-connection-provisioner
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: qualification-pipelines
+    app.kubernetes.io/component: storage-connections
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [objectbucket.io]
+    resources: [objectbucketclaims]
+    resourceNames: [qualification-pipelines]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets, configmaps]
+    resourceNames: [qualification-pipelines]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [evaluated-models-pipelines-connection]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipelines-connection-provisioner
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: qualification-pipelines
+    app.kubernetes.io/component: storage-connections
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pipelines-connection-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: pipelines-connection-provisioner
+    namespace: evaluated-models
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: provision-pipelines-connection
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: qualification-pipelines
+    app.kubernetes.io/component: storage-connections
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      serviceAccountName: pipelines-connection-provisioner
+      restartPolicy: Never
+      containers:
+        - name: configure
+          # Same reviewed OpenShift CLI image as the other Stage 050 jobs.
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          command: [/bin/bash, -c]
+          args:
+            - |
+              set -euo pipefail
+              set +x
+              umask 077
+              NS=evaluated-models; CLAIM=qualification-pipelines; TARGET=evaluated-models-pipelines-connection
+              T=--request-timeout=10s
+              encode() { printf '%s' "$1" | base64 | tr -d '\n'; }
+              deadline=$((SECONDS + 300))
+              while true; do
+                phase=$(oc $T get obc "$CLAIM" -n "$NS" -o jsonpath='{.status.phase}' 2>/dev/null || true)
+                if [[ "$phase" == Bound ]]; then
+                  ak=$(oc $T get secret "$CLAIM" -n "$NS" -o jsonpath='{.data.AWS_ACCESS_KEY_ID}' 2>/dev/null || true)
+                  sk=$(oc $T get secret "$CLAIM" -n "$NS" -o jsonpath='{.data.AWS_SECRET_ACCESS_KEY}' 2>/dev/null || true)
+                  host=$(oc $T get cm "$CLAIM" -n "$NS" -o jsonpath='{.data.BUCKET_HOST}' 2>/dev/null || true)
+                  port=$(oc $T get cm "$CLAIM" -n "$NS" -o jsonpath='{.data.BUCKET_PORT}' 2>/dev/null || true)
+                  bucket=$(oc $T get cm "$CLAIM" -n "$NS" -o jsonpath='{.data.BUCKET_NAME}' 2>/dev/null || true)
+                  [[ -n "$ak" && -n "$sk" && -n "$host" && -n "$port" && -n "$bucket" ]] && break
+                fi
+                (( SECONDS < deadline )) || { echo "ERROR: generated bucket inputs unavailable" >&2; exit 1; }
+                sleep 5
+              done
+              [[ "$host" =~ ^[a-zA-Z0-9.-]+$ && "$port" == 443 && "$bucket" == evaluated-models-pipelines ]] || { echo "ERROR: bucket identity or HTTPS endpoint differs from the reviewed request" >&2; exit 1; }
+              region=$(oc $T get cm "$CLAIM" -n "$NS" -o jsonpath='{.data.BUCKET_REGION}'); region="${region:-us-east-1}"
+              rv=$(oc $T get secret "$TARGET" -n "$NS" -o jsonpath='{.metadata.resourceVersion}')
+              [[ "$rv" =~ ^[0-9]+$ ]] || { echo "ERROR: connection skeleton unavailable" >&2; exit 1; }
+              printf '{"metadata":{"resourceVersion":"%s"},"data":{"AWS_ACCESS_KEY_ID":"%s","AWS_SECRET_ACCESS_KEY":"%s","AWS_S3_ENDPOINT":"%s","AWS_S3_BUCKET":"%s","AWS_DEFAULT_REGION":"%s"}}' \
+                "$rv" "$ak" "$sk" "$(encode "https://$host:$port")" "$(encode "$bucket")" "$(encode "$region")" \
+                | oc $T patch secret "$TARGET" -n "$NS" --type merge --patch-file /dev/stdin >/dev/null
+              unset ak sk
+              echo "Connection $TARGET mapped to bucket $bucket"
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}

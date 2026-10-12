@@ -4,21 +4,19 @@ metadata:
   name: agentic-coding-model-qualification
   namespace: evaluated-models
 spec:
-  description: Evaluates one model (the production model on MaaS, or a candidate InferenceService
-    in this project) on the agentic coding EvalHub collections and ranks it on the
-    qualification leaderboard.
+  description: Evaluates one model on the agentic coding EvalHub collections and ranks
+    it on the qualification leaderboard.
   displayName: Agentic coding model qualification
 ---
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v6
+  name: agentic-coding-model-qualification-v7
   namespace: evaluated-models
 spec:
-  description: Evaluates one model (the production model on MaaS, or a candidate InferenceService
-    in this project) on the agentic coding EvalHub collections and ranks it on the
-    qualification leaderboard.
-  displayName: agentic-coding-model-qualification v6
+  description: Evaluates one model on the agentic coding EvalHub collections and ranks
+    it on the qualification leaderboard.
+  displayName: agentic-coding-model-qualification v7
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -958,9 +956,8 @@ spec:
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
     pipelineInfo:
-      description: Evaluates one model (the production model on MaaS, or a candidate
-        InferenceService in this project) on the agentic coding EvalHub collections
-        and ranks it on the qualification leaderboard.
+      description: Evaluates one model on the agentic coding EvalHub collections and
+        ranks it on the qualification leaderboard.
       name: agentic-coding-model-qualification
     root:
       dag:

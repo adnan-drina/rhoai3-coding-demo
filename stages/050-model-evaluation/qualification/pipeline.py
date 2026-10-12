@@ -357,8 +357,8 @@ def _small(task):
 
 @dsl.pipeline(
     name="agentic-coding-model-qualification",
-    description="Evaluates one model (the production model on MaaS, or a candidate InferenceService in this "
-                "project) on the agentic coding EvalHub collections and ranks it on the qualification leaderboard.",
+    description="Evaluates one model on the agentic coding EvalHub collections and ranks it on the "
+                "qualification leaderboard.",
 )
 def qualification(model_name: str = "qwen3-8-27b-int4"):
     model = _small(resolve_model(model_name=model_name)).set_display_name("resolve model")

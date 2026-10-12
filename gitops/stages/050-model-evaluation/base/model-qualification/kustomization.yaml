@@ -5,6 +5,7 @@ resources:
   - access.yaml
   - local-queues.yaml
   - pipeline-server.yaml
+  - pipelines-connection.yaml
   - pipeline
   - maas-key-provisioner.yaml
   - candidate-qwen3-8-27b-int4.yaml
