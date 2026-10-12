@@ -11,17 +11,17 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v4
+  name: agentic-coding-model-qualification-v5
   namespace: evaluated-models
 spec:
   description: Evaluates one model on the agentic coding EvalHub collections and ranks
     it on the qualification leaderboard.
-  displayName: agentic-coding-model-qualification v4
+  displayName: agentic-coding-model-qualification v5
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
-      comp-0-resolve-model:
-        executorLabel: exec-0-resolve-model
+      comp-step-0-resolve-model:
+        executorLabel: exec-step-0-resolve-model
         inputDefinitions:
           parameters:
             model_name:
@@ -38,61 +38,8 @@ spec:
               parameterType: STRING
             tenant:
               parameterType: STRING
-      comp-1-latency:
-        executorLabel: exec-1-latency
-        inputDefinitions:
-          parameters:
-            auth_secret:
-              parameterType: STRING
-            collection_id:
-              parameterType: STRING
-            evalhub_experiment:
-              parameterType: STRING
-            evalhub_url:
-              parameterType: STRING
-            model_id:
-              parameterType: STRING
-            model_name:
-              parameterType: STRING
-            model_url:
-              parameterType: STRING
-            qualification_tag:
-              parameterType: STRING
-            queue:
-              parameterType: STRING
-            run_name:
-              parameterType: STRING
-            skip:
-              parameterType: BOOLEAN
-            target:
-              parameterType: STRING
-            tenant:
-              parameterType: STRING
-            timeout_seconds:
-              parameterType: NUMBER_INTEGER
-        outputDefinitions:
-          artifacts:
-            results:
-              artifactType:
-                schemaTitle: system.Artifact
-                schemaVersion: 0.0.1
-            scores:
-              artifactType:
-                schemaTitle: system.Metrics
-                schemaVersion: 0.0.1
-          parameters:
-            auth_secret:
-              parameterType: STRING
-            model_id:
-              parameterType: STRING
-            model_url:
-              parameterType: STRING
-            target:
-              parameterType: STRING
-            tenant:
-              parameterType: STRING
-      comp-2-throughput:
-        executorLabel: exec-2-throughput
+      comp-step-1-latency:
+        executorLabel: exec-step-1-latency
         inputDefinitions:
           parameters:
             auth_secret:
@@ -144,8 +91,8 @@ spec:
               parameterType: STRING
             tenant:
               parameterType: STRING
-      comp-3-capability:
-        executorLabel: exec-3-capability
+      comp-step-2-throughput:
+        executorLabel: exec-step-2-throughput
         inputDefinitions:
           parameters:
             auth_secret:
@@ -197,8 +144,8 @@ spec:
               parameterType: STRING
             tenant:
               parameterType: STRING
-      comp-4-security-quick:
-        executorLabel: exec-4-security-quick
+      comp-step-3-capability:
+        executorLabel: exec-step-3-capability
         inputDefinitions:
           parameters:
             auth_secret:
@@ -250,8 +197,8 @@ spec:
               parameterType: STRING
             tenant:
               parameterType: STRING
-      comp-5-security-full:
-        executorLabel: exec-5-security-full
+      comp-step-4-security-quick:
+        executorLabel: exec-step-4-security-quick
         inputDefinitions:
           parameters:
             auth_secret:
@@ -303,8 +250,61 @@ spec:
               parameterType: STRING
             tenant:
               parameterType: STRING
-      comp-6-leaderboard:
-        executorLabel: exec-6-leaderboard
+      comp-step-5-security-full:
+        executorLabel: exec-step-5-security-full
+        inputDefinitions:
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            collection_id:
+              parameterType: STRING
+            evalhub_experiment:
+              parameterType: STRING
+            evalhub_url:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_name:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            qualification_tag:
+              parameterType: STRING
+            queue:
+              parameterType: STRING
+            run_name:
+              parameterType: STRING
+            skip:
+              parameterType: BOOLEAN
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
+            timeout_seconds:
+              parameterType: NUMBER_INTEGER
+        outputDefinitions:
+          artifacts:
+            results:
+              artifactType:
+                schemaTitle: system.Artifact
+                schemaVersion: 0.0.1
+            scores:
+              artifactType:
+                schemaTitle: system.Metrics
+                schemaVersion: 0.0.1
+          parameters:
+            auth_secret:
+              parameterType: STRING
+            model_id:
+              parameterType: STRING
+            model_url:
+              parameterType: STRING
+            target:
+              parameterType: STRING
+            tenant:
+              parameterType: STRING
+      comp-step-6-leaderboard:
+        executorLabel: exec-step-6-leaderboard
         inputDefinitions:
           parameters:
             evalhub_url:
@@ -336,7 +336,7 @@ spec:
               parameterType: STRING
     deploymentSpec:
       executors:
-        exec-0-resolve-model:
+        exec-step-0-resolve-model:
           container:
             args:
             - --executor_input
@@ -405,7 +405,7 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
-        exec-1-latency:
+        exec-step-1-latency:
           container:
             args:
             - --executor_input
@@ -524,7 +524,7 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
-        exec-2-throughput:
+        exec-step-2-throughput:
           container:
             args:
             - --executor_input
@@ -643,7 +643,7 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
-        exec-3-capability:
+        exec-step-3-capability:
           container:
             args:
             - --executor_input
@@ -762,7 +762,7 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
-        exec-4-security-quick:
+        exec-step-4-security-quick:
           container:
             args:
             - --executor_input
@@ -881,7 +881,7 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
-        exec-5-security-full:
+        exec-step-5-security-full:
           container:
             args:
             - --executor_input
@@ -1000,7 +1000,7 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
-        exec-6-leaderboard:
+        exec-step-6-leaderboard:
           container:
             args:
             - --executor_input
@@ -1189,28 +1189,28 @@ spec:
     root:
       dag:
         tasks:
-          0-resolve-model:
+          step-0-resolve-model:
             cachingOptions: {}
             componentRef:
-              name: comp-0-resolve-model
+              name: comp-step-0-resolve-model
             inputs:
               parameters:
                 model_name:
                   componentInputParameter: model_name
             taskInfo:
-              name: 0-resolve-model
-          1-latency:
+              name: step-0-resolve-model
+          step-1-latency:
             cachingOptions: {}
             componentRef:
-              name: comp-1-latency
+              name: comp-step-1-latency
             dependentTasks:
-            - 0-resolve-model
+            - step-0-resolve-model
             inputs:
               parameters:
                 auth_secret:
                   taskOutputParameter:
                     outputParameterKey: auth_secret
-                    producerTask: 0-resolve-model
+                    producerTask: step-0-resolve-model
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-latency-v1
@@ -1223,13 +1223,13 @@ spec:
                 model_id:
                   taskOutputParameter:
                     outputParameterKey: model_id
-                    producerTask: 0-resolve-model
+                    producerTask: step-0-resolve-model
                 model_name:
                   componentInputParameter: model_name
                 model_url:
                   taskOutputParameter:
                     outputParameterKey: model_url
-                    producerTask: 0-resolve-model
+                    producerTask: step-0-resolve-model
                 qualification_tag:
                   runtimeValue:
                     constant: agentic-coding-qualification
@@ -1244,28 +1244,28 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: 0-resolve-model
+                    producerTask: step-0-resolve-model
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: 0-resolve-model
+                    producerTask: step-0-resolve-model
                 timeout_seconds:
                   runtimeValue:
                     constant: 3600.0
             taskInfo:
-              name: 1-latency
-          2-throughput:
+              name: step-1-latency
+          step-2-throughput:
             cachingOptions: {}
             componentRef:
-              name: comp-2-throughput
+              name: comp-step-2-throughput
             dependentTasks:
-            - 1-latency
+            - step-1-latency
             inputs:
               parameters:
                 auth_secret:
                   taskOutputParameter:
                     outputParameterKey: auth_secret
-                    producerTask: 1-latency
+                    producerTask: step-1-latency
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-throughput-v1
@@ -1278,13 +1278,13 @@ spec:
                 model_id:
                   taskOutputParameter:
                     outputParameterKey: model_id
-                    producerTask: 1-latency
+                    producerTask: step-1-latency
                 model_name:
                   componentInputParameter: model_name
                 model_url:
                   taskOutputParameter:
                     outputParameterKey: model_url
-                    producerTask: 1-latency
+                    producerTask: step-1-latency
                 qualification_tag:
                   runtimeValue:
                     constant: agentic-coding-qualification
@@ -1299,28 +1299,28 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: 1-latency
+                    producerTask: step-1-latency
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: 1-latency
+                    producerTask: step-1-latency
                 timeout_seconds:
                   runtimeValue:
                     constant: 3600.0
             taskInfo:
-              name: 2-throughput
-          3-capability:
+              name: step-2-throughput
+          step-3-capability:
             cachingOptions: {}
             componentRef:
-              name: comp-3-capability
+              name: comp-step-3-capability
             dependentTasks:
-            - 2-throughput
+            - step-2-throughput
             inputs:
               parameters:
                 auth_secret:
                   taskOutputParameter:
                     outputParameterKey: auth_secret
-                    producerTask: 2-throughput
+                    producerTask: step-2-throughput
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-capability-v1
@@ -1333,13 +1333,13 @@ spec:
                 model_id:
                   taskOutputParameter:
                     outputParameterKey: model_id
-                    producerTask: 2-throughput
+                    producerTask: step-2-throughput
                 model_name:
                   componentInputParameter: model_name
                 model_url:
                   taskOutputParameter:
                     outputParameterKey: model_url
-                    producerTask: 2-throughput
+                    producerTask: step-2-throughput
                 qualification_tag:
                   runtimeValue:
                     constant: agentic-coding-qualification
@@ -1354,28 +1354,28 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: 2-throughput
+                    producerTask: step-2-throughput
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: 2-throughput
+                    producerTask: step-2-throughput
                 timeout_seconds:
                   runtimeValue:
                     constant: 10800.0
             taskInfo:
-              name: 3-capability
-          4-security-quick:
+              name: step-3-capability
+          step-4-security-quick:
             cachingOptions: {}
             componentRef:
-              name: comp-4-security-quick
+              name: comp-step-4-security-quick
             dependentTasks:
-            - 3-capability
+            - step-3-capability
             inputs:
               parameters:
                 auth_secret:
                   taskOutputParameter:
                     outputParameterKey: auth_secret
-                    producerTask: 3-capability
+                    producerTask: step-3-capability
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-security-quick-v1
@@ -1388,13 +1388,13 @@ spec:
                 model_id:
                   taskOutputParameter:
                     outputParameterKey: model_id
-                    producerTask: 3-capability
+                    producerTask: step-3-capability
                 model_name:
                   componentInputParameter: model_name
                 model_url:
                   taskOutputParameter:
                     outputParameterKey: model_url
-                    producerTask: 3-capability
+                    producerTask: step-3-capability
                 qualification_tag:
                   runtimeValue:
                     constant: agentic-coding-qualification
@@ -1409,28 +1409,28 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: 3-capability
+                    producerTask: step-3-capability
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: 3-capability
+                    producerTask: step-3-capability
                 timeout_seconds:
                   runtimeValue:
                     constant: 7200.0
             taskInfo:
-              name: 4-security-quick
-          5-security-full:
+              name: step-4-security-quick
+          step-5-security-full:
             cachingOptions: {}
             componentRef:
-              name: comp-5-security-full
+              name: comp-step-5-security-full
             dependentTasks:
-            - 4-security-quick
+            - step-4-security-quick
             inputs:
               parameters:
                 auth_secret:
                   taskOutputParameter:
                     outputParameterKey: auth_secret
-                    producerTask: 4-security-quick
+                    producerTask: step-4-security-quick
                 collection_id:
                   runtimeValue:
                     constant: agentic-coding-security-full-v1
@@ -1443,13 +1443,13 @@ spec:
                 model_id:
                   taskOutputParameter:
                     outputParameterKey: model_id
-                    producerTask: 4-security-quick
+                    producerTask: step-4-security-quick
                 model_name:
                   componentInputParameter: model_name
                 model_url:
                   taskOutputParameter:
                     outputParameterKey: model_url
-                    producerTask: 4-security-quick
+                    producerTask: step-4-security-quick
                 qualification_tag:
                   runtimeValue:
                     constant: agentic-coding-qualification
@@ -1464,22 +1464,22 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: 4-security-quick
+                    producerTask: step-4-security-quick
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: 4-security-quick
+                    producerTask: step-4-security-quick
                 timeout_seconds:
                   runtimeValue:
                     constant: 14400.0
             taskInfo:
-              name: 5-security-full
-          6-leaderboard:
+              name: step-5-security-full
+          step-6-leaderboard:
             cachingOptions: {}
             componentRef:
-              name: comp-6-leaderboard
+              name: comp-step-6-leaderboard
             dependentTasks:
-            - 5-security-full
+            - step-5-security-full
             inputs:
               parameters:
                 evalhub_url:
@@ -1499,13 +1499,13 @@ spec:
                 target:
                   taskOutputParameter:
                     outputParameterKey: target
-                    producerTask: 5-security-full
+                    producerTask: step-5-security-full
                 tenant:
                   taskOutputParameter:
                     outputParameterKey: tenant
-                    producerTask: 5-security-full
+                    producerTask: step-5-security-full
             taskInfo:
-              name: 6-leaderboard
+              name: step-6-leaderboard
       inputDefinitions:
         parameters:
           model_name:
@@ -1537,7 +1537,7 @@ spec:
       kubernetes:
         deploymentSpec:
           executors:
-            exec-0-resolve-model:
+            exec-step-0-resolve-model:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:
@@ -1545,7 +1545,7 @@ spec:
                     constant: pipeline-tasks-service-ca
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
-            exec-1-latency:
+            exec-step-1-latency:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:
@@ -1553,7 +1553,7 @@ spec:
                     constant: pipeline-tasks-service-ca
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
-            exec-2-throughput:
+            exec-step-2-throughput:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:
@@ -1561,7 +1561,7 @@ spec:
                     constant: pipeline-tasks-service-ca
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
-            exec-3-capability:
+            exec-step-3-capability:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:
@@ -1569,7 +1569,7 @@ spec:
                     constant: pipeline-tasks-service-ca
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
-            exec-4-security-quick:
+            exec-step-4-security-quick:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:
@@ -1577,7 +1577,7 @@ spec:
                     constant: pipeline-tasks-service-ca
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
-            exec-5-security-full:
+            exec-step-5-security-full:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:
@@ -1585,7 +1585,7 @@ spec:
                     constant: pipeline-tasks-service-ca
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
-            exec-6-leaderboard:
+            exec-step-6-leaderboard:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:
