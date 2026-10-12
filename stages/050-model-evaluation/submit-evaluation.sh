@@ -30,6 +30,7 @@ Options:
   --model-url URL          OpenAI-compatible base URL (default: the MaaS gateway api listener)
   --secret-ref NAME        Tenant Secret with the api-key (default: evalhub-model-auth-maas)
   --tenant NS              EvalHub tenant namespace (default: demo-sandbox)
+  --no-oci-export          Do not export result artifacts to the internal registry (default: export, 3.5 guide 2.19)
   --queue NAME             Kueue LocalQueue in the tenant (default: lq-cpu-default; '' to submit without a queue)
   --name NAME              Job name (default: coding-v1-<model>-<UTC timestamp>)
   --experiment NAME        MLflow experiment (default: agentic-coding-qualification)
@@ -49,13 +50,13 @@ Options:
 USAGE
 }
 
-MODEL_NAME=""; MODEL_URL=""; SECRET_REF="evalhub-model-auth-maas"; TENANT="demo-sandbox"; QUEUE="lq-cpu-default"; NAME=""; EXPERIMENT="agentic-coding-qualification"
+MODEL_NAME=""; MODEL_URL=""; SECRET_REF="evalhub-model-auth-maas"; TENANT="demo-sandbox"; QUEUE="lq-cpu-default"; OCI_EXPORT="true"; NAME=""; EXPERIMENT="agentic-coding-qualification"
 COLLECTION=""; PROVIDER="lighteval"; BENCHMARK="lcb:codegeneration_v6"; NUM_EXAMPLES=""; CONCURRENT="1"; MAX_NEW_TOKENS="512"; TEMPERATURE="0.7"; TOP_P="0.8"
 THRESHOLD="0.25"; SYSTEM_PROMPT="Answer with the complete Python program in a single \`\`\`python code block and nothing else."; STATUS_ID=""; WAIT="false"; DRY_RUN="false"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --model-name) MODEL_NAME="$2"; shift 2;; --model-url) MODEL_URL="$2"; shift 2;; --secret-ref) SECRET_REF="$2"; shift 2;;
-    --tenant) TENANT="$2"; shift 2;; --queue) QUEUE="$2"; shift 2;; --name) NAME="$2"; shift 2;; --experiment) EXPERIMENT="$2"; shift 2;;
+    --tenant) TENANT="$2"; shift 2;; --queue) QUEUE="$2"; shift 2;; --no-oci-export) OCI_EXPORT="false"; shift;; --name) NAME="$2"; shift 2;; --experiment) EXPERIMENT="$2"; shift 2;;
     --collection) COLLECTION="$2"; shift 2;; --provider) PROVIDER="$2"; shift 2;; --benchmark) BENCHMARK="$2"; shift 2;; --num-examples) NUM_EXAMPLES="$2"; shift 2;;
     --concurrent-requests) CONCURRENT="$2"; shift 2;; --max-new-tokens) MAX_NEW_TOKENS="$2"; shift 2;;
     --temperature) TEMPERATURE="$2"; shift 2;; --top-p) TOP_P="$2"; shift 2;; --threshold) THRESHOLD="$2"; shift 2;;
@@ -112,10 +113,16 @@ if [[ -z "$MODEL_URL" ]]; then
 fi
 short="${MODEL_NAME##*/}"; bench="${BENCHMARK//[^a-zA-Z0-9]/-}"; [[ -n "$NAME" ]] || NAME="${COLLECTION:-$bench}-${short}-$(date -u +%Y%m%dT%H%M%SZ)"
 
+OCI_HOST=""
+if [[ "$OCI_EXPORT" == "true" ]]; then
+  OCI_HOST="$(oc get route default-route -n openshift-image-registry --request-timeout=10s -o jsonpath='{.spec.host}' 2>/dev/null || true)"
+  [[ -n "$OCI_HOST" ]] || echo "[WARN] internal registry route not found; submitting without OCI export" >&2
+fi
+export TENANT_NS="$TENANT"
 BODY="$(mktemp)"; trap 'rm -f "$BODY"' EXIT
 MODEL_NAME="$MODEL_NAME" MODEL_URL="$MODEL_URL" SECRET_REF="$SECRET_REF" NAME="$NAME" EXPERIMENT="$EXPERIMENT" COLLECTION="$COLLECTION" \
 PROVIDER="$PROVIDER" BENCHMARK="$BENCHMARK" NUM_EXAMPLES="$NUM_EXAMPLES" CONCURRENT="$CONCURRENT" MAX_NEW_TOKENS="$MAX_NEW_TOKENS" TEMPERATURE="$TEMPERATURE" \
-TOP_P="$TOP_P" THRESHOLD="$THRESHOLD" SYSTEM_PROMPT="$SYSTEM_PROMPT" QUEUE="$QUEUE" python3 - > "$BODY" <<'PY'
+TOP_P="$TOP_P" THRESHOLD="$THRESHOLD" SYSTEM_PROMPT="$SYSTEM_PROMPT" QUEUE="$QUEUE" OCI_HOST="$OCI_HOST" python3 - > "$BODY" <<'PY'
 import json, os
 e = os.environ
 body = {"name": e["NAME"], "tags": ["stage-050", "coding"],
@@ -127,6 +134,9 @@ body = {"name": e["NAME"], "tags": ["stage-050", "coding"],
             {"key": "benchmark", "value": e["COLLECTION"] or (e["PROVIDER"] + ":" + e["BENCHMARK"])},
             {"key": "access_path", "value": "maas"},
             {"key": "submitted_by", "value": "submit-evaluation.sh"}]}}
+if e["OCI_HOST"]:
+    body["exports"] = {"oci": {"coordinates": {"oci_host": e["OCI_HOST"], "oci_repository": e.get("TENANT_NS", "demo-sandbox") + "/evaluation-results"},
+                               "k8s": {"connection": "evalhub-oci-registry"}}}
 if e["QUEUE"]:
     body["queue"] = {"kind": "kueue", "name": e["QUEUE"]}  # RHOAI 3.5 Evaluating AI systems 2.8/2.10
 if e["COLLECTION"]:

@@ -128,6 +128,7 @@ For this repo:
 - `lm_evaluation_harness`: always pass `tokenizer` (Hugging Face repository of the served model); only log-likelihood tasks fit the sidecar limit.
 - `guidellm`: always bound with `max_seconds` or `max_requests`.
 - SWE-bench: patch generation works; EvalHub grading does not on 3.5.1 (adapters get no Kubernetes token).
+- OCI export goes to the internal registry through its default route (`evalhub-oci-registry` Secret, repository `demo-sandbox/evaluation-results`); the sidecar rejects the registry's service-CA certificate.
 - CLI/SDK/MCP clients authenticate as `demo-sandbox/evalhub-automation`; the MCP server needs `spec.mcp.authSecret`, an `evalhubs/proxy` grant for clients and `EVALHUB_TENANT` pinned to the tenant, none of which section 4.3 states.
 
 ## Workflow
