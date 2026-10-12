@@ -1,6 +1,6 @@
 # Agentic coding security, nightly or pre-promotion (Garak OWASP LLM Top 10, 72 probes, about 2 hours on Qwen 3.8 with
 # the default 2-CPU evaluation pod; most of the time is detector scoring).
-apiVersion: v2
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: evalhub-collection-agentic-coding-security-full-v2

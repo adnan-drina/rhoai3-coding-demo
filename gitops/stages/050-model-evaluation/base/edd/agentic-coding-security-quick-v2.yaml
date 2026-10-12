@@ -1,5 +1,5 @@
 # Agentic coding security, per-change gate (Garak CWE scan, about 4 minutes on Qwen 3.8).
-apiVersion: v2
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: evalhub-collection-agentic-coding-security-quick-v2
