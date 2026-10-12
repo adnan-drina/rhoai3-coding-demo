@@ -1,0 +1,92 @@
+# AI Pipelines server for model qualification (RHOAI 3.5 "Working with AI pipelines", 1.1 Configure a
+# pipeline server): an S3-compatible bucket with write access, pipeline definitions stored in Kubernetes
+# (the dashboard default) and caching configurable per pipeline and task. The bucket is an ODF Multicloud
+# Object Gateway ObjectBucketClaim; its generated Secret carries the access and secret key. The default
+# on-cluster MariaDB is the documented development and test option, which fits this demo project; a
+# production pipeline server uses an external MySQL or MariaDB database instead.
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: qualification-pipelines
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: qualification-pipelines
+    app.kubernetes.io/component: storage
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Prune=false,Delete=false
+spec:
+  bucketName: evaluated-models-pipelines
+  storageClassName: openshift-storage.noobaa.io
+---
+# The Multicloud Object Gateway S3 service presents a service-serving certificate, which the cluster
+# trust bundle does not include; the pipeline server trusts it through spec.apiServer.cABundle.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pipelines-service-ca
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: qualification-pipelines
+    app.kubernetes.io/component: configuration
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    service.beta.openshift.io/inject-cabundle: "true"
+---
+# Same name the dashboard gives a pipeline server ("dspa"), so the project's Pipelines tab manages it.
+apiVersion: datasciencepipelinesapplications.opendatahub.io/v1
+kind: DataSciencePipelinesApplication
+metadata:
+  name: dspa
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: qualification-pipelines
+    app.kubernetes.io/component: pipelines
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  dspVersion: v2
+  apiServer:
+    deploy: true
+    pipelineStore: kubernetes
+    cacheEnabled: true
+    cABundle:
+      configMapName: pipelines-service-ca
+      configMapKey: service-ca.crt
+  database:
+    mariaDB:
+      deploy: true
+  objectStorage:
+    externalStorage:
+      host: s3.openshift-storage.svc
+      port: "443"
+      scheme: https
+      region: us-east-1
+      bucket: evaluated-models-pipelines
+      s3CredentialsSecret:
+        secretName: qualification-pipelines
+        accessKey: AWS_ACCESS_KEY_ID
+        secretKey: AWS_SECRET_ACCESS_KEY
+---
+# The pipeline steps run as the server's pipeline-runner ServiceAccount and call EvalHub with its token;
+# EvalHub authorises tenant requests with the same Role as the platform admins (access.yaml).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: qualification-pipeline-evalhub-access
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: qualification-pipelines
+    app.kubernetes.io/component: rbac
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: evalhub-evaluator
+subjects:
+  - kind: ServiceAccount
+    name: pipeline-runner-dspa
+    namespace: evaluated-models
