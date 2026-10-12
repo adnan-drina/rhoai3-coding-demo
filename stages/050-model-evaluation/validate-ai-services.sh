@@ -73,6 +73,8 @@ def owned_deployment(kind, cr, namespace):
         if any(owner.get("kind") == kind and owner.get("uid") == uid
                and owner.get("controller") is True
                for owner in item.get("metadata", {}).get("ownerReferences", []))
+        # The server deployment carries the CR's name; EvalHub with spec.mcp also owns evalhub-mcp.
+        and item.get("metadata", {}).get("name") == cr.get("metadata", {}).get("name")
     ]
     check(f"{kind} has one current operator-owned deployment",
           len(matches) == 1 and fresh_workload(matches[0]))
