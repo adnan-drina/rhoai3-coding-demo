@@ -121,7 +121,12 @@ e = os.environ
 body = {"name": e["NAME"], "tags": ["stage-050", "coding"],
         "model": {"url": e["MODEL_URL"], "name": e["MODEL_NAME"], "auth": {"secret_ref": e["SECRET_REF"]}},
         "pass_criteria": {"threshold": float(e["THRESHOLD"])},
-        "experiment": {"name": e["EXPERIMENT"]}}
+        # Experiment tags make MLflow history queryable by model, benchmark and source (3.5 guide 2.20, ExperimentConfig.tags).
+        "experiment": {"name": e["EXPERIMENT"], "tags": [
+            {"key": "model", "value": e["MODEL_NAME"].split("/")[-1]},
+            {"key": "benchmark", "value": e["COLLECTION"] or (e["PROVIDER"] + ":" + e["BENCHMARK"])},
+            {"key": "access_path", "value": "maas"},
+            {"key": "submitted_by", "value": "submit-evaluation.sh"}]}}
 if e["QUEUE"]:
     body["queue"] = {"kind": "kueue", "name": e["QUEUE"]}  # RHOAI 3.5 Evaluating AI systems 2.8/2.10
 if e["COLLECTION"]:

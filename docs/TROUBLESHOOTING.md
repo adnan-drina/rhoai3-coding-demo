@@ -2642,3 +2642,23 @@ oc logs -n demo-sandbox <pod> -c adapter | grep -E 'kube-config|Instances evalua
 ```
 
 **Recover:** None inside EvalHub on 3.5.1; the predictions remain in the tenant bucket under `swebench/<run>/`. Raise with Red Hat (BACKLOG).
+
+## EvalHub MCP Server Returns 403, 401 Or "Forbidden" From Its Tools
+
+**Affected stage:** Stage 050, EvalHub MCP server (`spec.mcp`) on RHOAI 3.5.1
+
+**Symptom and cause (in the order they appear when following section 4.3 of the 3.5 guide):**
+
+| Symptom | Cause | Configured remedy |
+|---|---|---|
+| `initialize` returns 403 `verb=create, resource=evalhubs, subresource=proxy` | The MCP Service is fronted by kube-rbac-proxy, which authorizes `create evalhubs/proxy` on the instance; the guide's "EvalHub access" (2.29) does not grant it | RoleBinding `evalhub/evalhub-mcp-access` binds `demo-sandbox/evalhub-automation` to the operator Role `evalhub-service-access-role` |
+| Tools fail with `eval-hub API error (HTTP 401)` | The MCP server calls the EvalHub API with no credentials unless `spec.mcp.authSecret` names a Secret with a `token` key; the guide omits this field | ServiceAccount `evalhub/evalhub-mcp-client`, its token Secret `evalhub-mcp-client-token`, evaluator Role in `demo-sandbox` |
+| Tools fail with `HTTP 403 Forbidden` | The MCP server uses tenant `EVALHUB_TENANT` (default: the instance namespace `evalhub`) and does not forward the client's `x-tenant` | `spec.mcp.env` sets `EVALHUB_TENANT=demo-sandbox` |
+
+The guide's `mcp.port: 3001` and `oc expose service evalhub-mcp` steps do not apply to 3.5.1: the CRD has no `port` field and the operator creates the Service on 8443 and a re-encrypt Route itself.
+
+**Diagnose:**
+
+```bash
+oc logs deploy/evalhub-mcp -n evalhub -c evalhub-mcp --since=10m | grep -E 'Request failed|error'
+```
