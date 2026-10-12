@@ -55,7 +55,8 @@ spec:
     - toxicity-and-ethical-principles
     # Evaluation-driven development criteria for the agentic coding demo (edd/ ConfigMaps).
     - agentic-coding-capability-v1
-    - agentic-coding-security-v1
+    - agentic-coding-security-quick-v1
+    - agentic-coding-security-full-v1
     - agentic-coding-performance-v1
   env:
     # The deployment helper discovers the native HTTPS address only after
