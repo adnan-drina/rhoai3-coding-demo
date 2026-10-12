@@ -1,7 +1,9 @@
 # Project storage for Evaluated Models, replicating the AI Coding Sandbox pattern (Stage 010 sandbox-storage):
 # ODF ObjectBucketClaims with fixed bucket names, dashboard S3 connections owned by GitOps as Secret skeletons,
 # and a Sync hook that maps each claim's generated endpoint, bucket and keys into its connection. The
-# Pipelines connection supplies the pipeline server's object storage.
+# Pipelines connection supplies the pipeline server's object storage. The same hook adds the project's
+# dashboard-visible cluster storage (PVC), as the sandbox project has; it is created by the hook rather than
+# tracked by Argo CD because the gp3-csi class binds on first use and a Pending PVC would hold the sync.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

@@ -13,5 +13,6 @@ metadata:
     argocd.argoproj.io/sync-wave: "12"
     argocd.argoproj.io/sync-options: Prune=false,Delete=false,ServerSideApply=true
     opendatahub.io/connection-type-protocol: s3
+    opendatahub.io/connection-type-ref: s3
     openshift.io/display-name: Models
 type: Opaque

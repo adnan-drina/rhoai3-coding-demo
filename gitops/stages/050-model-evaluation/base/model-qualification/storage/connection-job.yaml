@@ -68,3 +68,25 @@ spec:
                   unset ak sk
                   echo "Connection runtime mapping completed for $claim"
                 done
+                # Project cluster storage (dashboard-visible PVC), as the AI Coding Sandbox project has.
+                cat <<'PVC' | oc --request-timeout=10s apply -f - >/dev/null
+                apiVersion: v1
+                kind: PersistentVolumeClaim
+                metadata:
+                  name: evaluated-models-storage
+                  namespace: evaluated-models
+                  labels:
+                    opendatahub.io/dashboard: "true"
+                    app.kubernetes.io/name: evaluated-models-storage
+                    app.kubernetes.io/part-of: rhoai-platform
+                  annotations:
+                    openshift.io/display-name: Evaluated Models storage
+                    openshift.io/description: Shared working storage for model evaluation in this project
+                spec:
+                  accessModes: [ReadWriteOnce]
+                  storageClassName: gp3-csi
+                  resources:
+                    requests:
+                      storage: 20Gi
+                PVC
+                echo "Cluster storage evaluated-models-storage present"
