@@ -38,6 +38,11 @@ spec:
     enabled: true
     transport: http
     authSecret: evalhub-mcp-client-token
+    # The 3.5.1 MCP server sends every call for the tenant in EVALHUB_TENANT (default: the instance
+    # namespace) and does not forward the client's x-tenant header, so pin it to the evaluation tenant.
+    env:
+      - name: EVALHUB_TENANT
+        value: demo-sandbox
   collections:
     - coding-v1
     - instruction-following-v1
