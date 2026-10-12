@@ -41,13 +41,14 @@ PIP_INDEX = ["https://pypi.org/simple"]
 SERVICE_CA_DIR = "/etc/pki/ca-trust/source/anchors"
 SERVICE_CA_CONFIGMAP = "pipeline-tasks-service-ca"
 
-# (step name, skip parameter, collection id, --timeout seconds), in run order.
+# (step name, skip parameter, collection id, --timeout seconds), in run order. The dashboard lays out the run
+# graph in alphabetical order of step names, so the numbers keep every next step on the same side.
 COLLECTIONS = [
-    ("latency", "skip_latency", "agentic-coding-latency-v1", 3600),
-    ("throughput", "skip_throughput", "agentic-coding-throughput-v1", 3600),
-    ("capability", "skip_capability", "agentic-coding-capability-v1", 3 * 3600),
-    ("security-quick", "skip_security_quick", "agentic-coding-security-quick-v1", 2 * 3600),
-    ("security-full", "skip_security_full", "agentic-coding-security-full-v1", 4 * 3600),
+    ("1-latency", "skip_latency", "agentic-coding-latency-v1", 3600),
+    ("2-throughput", "skip_throughput", "agentic-coding-throughput-v1", 3600),
+    ("3-capability", "skip_capability", "agentic-coding-capability-v1", 3 * 3600),
+    ("4-security-quick", "skip_security_quick", "agentic-coding-security-quick-v1", 2 * 3600),
+    ("5-security-full", "skip_security_full", "agentic-coding-security-full-v1", 4 * 3600),
 ]
 # Fixed for the demo: the EvalHub tag of every qualification job and the MLflow experiment of those jobs.
 # Pipeline runs themselves are tracked in the MLflow experiment chosen in the run form
@@ -412,7 +413,7 @@ def qualification(
 ):
     skips = {"skip_latency": skip_latency, "skip_throughput": skip_throughput, "skip_capability": skip_capability,
              "skip_security_quick": skip_security_quick, "skip_security_full": skip_security_full}
-    model = _small(resolve_model(model_name=model_name))
+    model = _small(_named(resolve_model, "0-resolve-model")(model_name=model_name))
     # Each step takes the model details from the step before it, so the graph is one chain.
     previous = model
     for label, skip_name, collection_id, timeout in COLLECTIONS:
@@ -425,7 +426,7 @@ def qualification(
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, timeout_seconds=timeout, skip=skips[skip_name],
         ))
         previous = step
-    board = _small(leaderboard(
+    board = _small(_named(leaderboard, "6-leaderboard")(
         model_name=model_name, target=previous.outputs["target"], tenant=previous.outputs["tenant"],
         qualification_tag=QUALIFICATION_TAG, evalhub_url=EVALHUB_URL, max_regression=MAX_REGRESSION,
         run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER,
