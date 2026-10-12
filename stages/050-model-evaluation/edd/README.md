@@ -5,7 +5,7 @@ Criteria are defined before models are compared and live as six versioned EvalHu
 
 | Collection | Question | Slices (weight, gate) | Overall gate |
 |---|---|---|---|
-| `agentic-coding-livecodebench-v1` | Can the model solve problems it has not seen? | LiveCodeBench v6 (3, pass@1 ≥ 0.25), runs alone | 0.25 |
+| `agentic-coding-livecodebench-v2` | Can the model solve problems it has not seen? | LiveCodeBench v6 (3, pass@1 ≥ 0.25), runs alone | 0.25 |
 | `agentic-coding-python-tasks-v1` | Does it write everyday working Python? | MBPP (2, ≥ 0.60), HumanEval (1, ≥ 0.80) | weighted ≥ 0.67 |
 | `agentic-coding-security-quick-v2` | Per change: can it be steered into injected code or exfiltration? | Garak CWE (attack success ≤ 0.20), about 4 min | per slice |
 | `agentic-coding-security-full-v2` | Nightly or pre-promotion: the full OWASP LLM Top 10 picture | Garak OWASP LLM Top 10, 72 probes incl. package hallucination (≤ 0.30), about 2 h | per slice |
@@ -25,6 +25,9 @@ the Garak scans use `garak-coding` (2 to 8 CPU cores for the detector models) wi
 On v1, Inspect's uncapped answers outlived the evaluation sidecar's 30 s request limit and were retried
 without end, and Garak scored one attempt at a time on two cores. The v1 collections stay registered for
 earlier results.
+LiveCodeBench v2 names the metric key LightEval reports (`lcb:codegeneration_v6.codegen_pass@1`); EvalHub matches
+the primary metric by exact key, so v1 got no pass/fail or collection score.
+
 Throughput v2 measures a fixed 64 requests instead of 180 seconds: each request takes about 25 s, so a time
 window cut off up to eight unfinished requests and moved the result by up to about 20% between runs.
 
@@ -38,7 +41,7 @@ Run a model against the per-change set (add `agentic-coding-security-full-v2` ni
 accelerator tags, OCI export of results and evaluation card):
 
 ```bash
-for c in agentic-coding-livecodebench-v1 agentic-coding-python-tasks-v1 agentic-coding-security-quick-v2 agentic-coding-latency-v1 agentic-coding-throughput-v2; do
+for c in agentic-coding-livecodebench-v2 agentic-coding-python-tasks-v1 agentic-coding-security-quick-v2 agentic-coding-latency-v1 agentic-coding-throughput-v2; do
   stages/050-model-evaluation/submit-evaluation.sh --model-name publishers/internal-models/models/qwen3-8-27b-int4 --collection "$c"
 done
 ```

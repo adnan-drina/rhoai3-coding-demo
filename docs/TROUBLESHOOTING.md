@@ -2706,3 +2706,21 @@ oc exec -n evaluated-models "$P" -- bash -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PAS
 
 Each step's `task_name` must equal the label in the graph, and its `pod_name` must be an existing pod.
 
+## Qwen Serving Change Never Finishes Rolling Out
+
+**Affected stage:** Stage 040 `qwen3-6-27b` (`LLMInferenceService`), one GPU per worker node
+
+**Symptom:** After a serving argument change syncs, the new `qwen3-6-27b-kserve-*` pod stays `SchedulingGated` or `Pending` while the old one keeps running. Deleting the old pod only brings it back.
+
+**Likely cause:** The workload Deployment rolls out with `maxSurge 25%` and `maxUnavailable 25%`. With one replica, `maxUnavailable` rounds down to 0, so the old ReplicaSet keeps its pod while the new pod waits for the node's only GPU. Deleting old pods makes the old ReplicaSet recreate them, and the two compete for the GPU.
+
+**Recover:** Restart through the replica count; Argo CD ignores `/spec/replicas` on this resource:
+
+```bash
+oc patch llminferenceservice qwen3-6-27b -n internal-models --type=merge -p '{"spec":{"replicas":0}}'
+# wait until no qwen3-6-27b-kserve-<hash> workload pod is left, then
+oc patch llminferenceservice qwen3-6-27b -n internal-models --type=merge -p '{"spec":{"replicas":1}}'
+```
+
+The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` and does not need this.
+
