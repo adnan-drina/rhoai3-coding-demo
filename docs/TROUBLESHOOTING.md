@@ -2625,3 +2625,20 @@ curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
 | `lighteval` | Score 0.0 with `BadGatewayError` | 16 samples per request exceed the 30 s sidecar limit | See "EvalHub Lighteval Job Completes With Score 0.0" above |
 
 **Recover:** Pass the parameters above in **Benchmark parameters** (dashboard) or `benchmarks[].parameters` (REST). The sidecar timeout is a Red Hat item in BACKLOG.
+
+## SWE-bench Grading Job Fails With "Invalid kube-config file"
+
+**Affected stage:** Stage 050, community `swebench` provider on RHOAI 3.5.1
+
+**Symptom:** The EvalHub job for `swebench_verified` downloads the predictions from S3 and fails within seconds with `Invalid kube-config file. No configuration found.` and `Instances evaluated: 0`.
+
+**Likely cause:** The community adapter grades by creating one Kubernetes Job per instance and loads in-cluster credentials to do so. EvalHub 3.5.1 runs every adapter container with `automountServiceAccountToken: false` and keeps credentials in the sidecar, so the adapter has no service account token. This is a design boundary of the 3.5.1 job model, not a missing grant: RBAC and the `anyuid` SCC are in place.
+
+**Diagnose:**
+
+```bash
+oc get job -n demo-sandbox <job> -o jsonpath='{.spec.template.spec.automountServiceAccountToken}'
+oc logs -n demo-sandbox <pod> -c adapter | grep -E 'kube-config|Instances evaluated'
+```
+
+**Recover:** None inside EvalHub on 3.5.1; the predictions remain in the tenant bucket under `swebench/<run>/`. Raise with Red Hat (BACKLOG).

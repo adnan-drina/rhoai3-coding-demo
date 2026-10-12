@@ -159,3 +159,7 @@ Stop and correct the work if any of these are true:
 - A risk-assessment result is reported from the EvalHub aggregate
   `attack_success_rate` without cross-checking the garak report — the
   aggregate has been observed wrong (`0.0` vs a real ~0.24).
+
+- An `lm_evaluation_harness` job against a non-Hugging-Face model id omits the `tokenizer` parameter.
+- A `guidellm` job carries no `max_seconds` or `max_requests` bound.
+- A generative benchmark's single request is expected to exceed the 30 s evaluation sidecar limit.
