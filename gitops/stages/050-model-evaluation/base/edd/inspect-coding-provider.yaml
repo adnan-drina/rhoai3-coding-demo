@@ -1,4 +1,4 @@
-# System-owned EvalHub provider for the two Inspect coding benchmarks of agentic-coding-capability-v2 (RHOAI
+# System-owned EvalHub provider for the two Inspect coding benchmarks of agentic-coding-python-tasks-v1 (RHOAI
 # 3.5 "Evaluating AI systems", Add a custom provider by using a ConfigMap). Same community Inspect adapter as
 # the built-in `inspect` provider (pinned by digest), with generation bounds set through Inspect's
 # INSPECT_EVAL_* environment variables (runtime.k8s.env, as in the operator's provider definitions). Without

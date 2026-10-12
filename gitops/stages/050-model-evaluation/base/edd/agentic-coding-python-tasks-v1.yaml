@@ -7,20 +7,20 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: evalhub-collection-agentic-coding-capability-python-v1
+  name: evalhub-collection-agentic-coding-python-tasks-v1
   namespace: redhat-ods-applications
   labels:
     trustyai.opendatahub.io/evalhub-collection-type: system
-    trustyai.opendatahub.io/evalhub-collection-name: agentic-coding-capability-python-v1
-    app.kubernetes.io/name: evalhub-collection-agentic-coding-capability-python-v1
+    trustyai.opendatahub.io/evalhub-collection-name: agentic-coding-python-tasks-v1
+    app.kubernetes.io/name: evalhub-collection-agentic-coding-python-tasks-v1
     app.kubernetes.io/part-of: rhoai-platform
     app.kubernetes.io/component: evaluation
     app.kubernetes.io/managed-by: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "10"
 data:
-  agentic-coding-capability-python-v1.yaml: |
-    id: agentic-coding-capability-python-v1
+  agentic-coding-python-tasks-v1.yaml: |
+    id: agentic-coding-python-tasks-v1
     name: Agentic coding capability - Python tasks v1
     category: code
     description: >-

@@ -5,8 +5,8 @@ Criteria are defined before models are compared and live as six versioned EvalHu
 
 | Collection | Question | Slices (weight, gate) | Overall gate |
 |---|---|---|---|
-| `agentic-coding-capability-livecodebench-v1` | Can the model solve problems it has not seen? | LiveCodeBench v6 (3, pass@1 ≥ 0.25), runs alone | 0.25 |
-| `agentic-coding-capability-python-v1` | Does it write everyday working Python? | MBPP (2, ≥ 0.60), HumanEval (1, ≥ 0.80) | weighted ≥ 0.67 |
+| `agentic-coding-livecodebench-v1` | Can the model solve problems it has not seen? | LiveCodeBench v6 (3, pass@1 ≥ 0.25), runs alone | 0.25 |
+| `agentic-coding-python-tasks-v1` | Does it write everyday working Python? | MBPP (2, ≥ 0.60), HumanEval (1, ≥ 0.80) | weighted ≥ 0.67 |
 | `agentic-coding-security-quick-v2` | Per change: can it be steered into injected code or exfiltration? | Garak CWE (attack success ≤ 0.20), about 4 min | per slice |
 | `agentic-coding-security-full-v2` | Nightly or pre-promotion: the full OWASP LLM Top 10 picture | Garak OWASP LLM Top 10, 72 probes incl. package hallucination (≤ 0.30), about 2 h | per slice |
 | `agentic-coding-latency-v1` | Does one agent turn start fast enough? | GuideLLM `concurrent`, one session, 8k-in/256-out for 120 s: mean TTFT (≤ 2,000 ms) | per slice |
@@ -35,7 +35,7 @@ Run a model against the per-change set (add `agentic-coding-security-full-v2` ni
 accelerator tags, OCI export of results and evaluation card):
 
 ```bash
-for c in agentic-coding-capability-livecodebench-v1 agentic-coding-capability-python-v1 agentic-coding-security-quick-v2 agentic-coding-latency-v1 agentic-coding-throughput-v1; do
+for c in agentic-coding-livecodebench-v1 agentic-coding-python-tasks-v1 agentic-coding-security-quick-v2 agentic-coding-latency-v1 agentic-coding-throughput-v1; do
   stages/050-model-evaluation/submit-evaluation.sh --model-name publishers/internal-models/models/qwen3-8-27b-int4 --collection "$c"
 done
 ```

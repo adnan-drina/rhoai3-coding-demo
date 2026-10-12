@@ -60,8 +60,8 @@ spec:
     # Evaluation-driven development criteria for the agentic coding demo (edd/ ConfigMaps).
     - agentic-coding-capability-v1
     - agentic-coding-security-quick-v1
-    - agentic-coding-capability-livecodebench-v1
-    - agentic-coding-capability-python-v1
+    - agentic-coding-livecodebench-v1
+    - agentic-coding-python-tasks-v1
     - agentic-coding-security-quick-v2
     - agentic-coding-security-full-v2
     - agentic-coding-security-full-v1
