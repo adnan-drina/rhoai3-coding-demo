@@ -31,6 +31,12 @@ spec:
     # Community SWE-bench adapter (eval-hub-contrib, pinned by digest in swebench/provider-configmap.yaml),
     # approved by the operator on 2026-10-09; not a Red Hat built-in provider.
     - swebench
+  # EvalHub MCP server for AI coding agents (RHOAI 3.5 "Evaluating AI systems", 4.3 Deploy the EvalHub MCP
+  # server). The 3.5.1 CRD has no port field; the operator chooses the port and exposes the evalhub-mcp
+  # Service (published by a TLS Route in this directory).
+  mcp:
+    enabled: true
+    transport: http
   collections:
     - coding-v1
     - instruction-following-v1

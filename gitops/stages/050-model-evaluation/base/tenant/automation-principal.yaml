@@ -1,0 +1,38 @@
+---
+# ServiceAccount principal for programmatic EvalHub access: the SDK and CLI (RHOAI 3.5 "Evaluating AI
+# systems", 2.4 Install the EvalHub SDK and CLI), CI/CD pipelines and MCP agents (2.29 Grant access to
+# EvalHub, principal type ServiceAccount). Bound to the same documented evaluator Role as the user groups;
+# tokens are issued on demand with `oc create token evalhub-automation -n demo-sandbox`.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: evalhub-automation
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: evalhub-automation
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-automation-access
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: evalhub-automation-access
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-automation
+    namespace: demo-sandbox
+roleRef:
+  kind: Role
+  name: evalhub-evaluator
+  apiGroup: rbac.authorization.k8s.io
