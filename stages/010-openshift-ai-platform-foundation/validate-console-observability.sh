@@ -16,6 +16,9 @@ assert len(source['targetRevision'])==40 and s['sync']['status']=='Synced' and s
 x=get('uiplugins.observability.openshift.io','monitoring');assert x['spec']['type']=='Monitoring' and x['spec']['monitoring']['perses']['enabled'] is True,'Native Perses UI disabled'
 assert x['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('010-console-observability:'),'UIPlugin tracking differs'
 assert 'monitoring-plugin' in get('console.operator.openshift.io','cluster')['spec'].get('plugins',[]),'Monitoring plugin unregistered'
+plugins=get('console.operator.openshift.io','cluster')['spec'].get('plugins',[])
+for name in ['gitops-plugin','odf-console']:
+ assert name in plugins,name+' console plugin not enabled'
 ns='openshift-cluster-observability-operator'
 servers=[p for p in get('perses',ns=ns)['items'] if any(o.get('uid')==x['metadata']['uid'] for o in p['metadata'].get('ownerReferences',[]))]
 assert len(servers)==1,'Expected one console-owned Perses'
