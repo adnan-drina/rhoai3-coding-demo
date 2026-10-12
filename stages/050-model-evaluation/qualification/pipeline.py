@@ -23,6 +23,7 @@ OpenShift service CA); no credential is a parameter. Compile with compile.py (Wo
 pipeline server's default MariaDB stores the compiled spec in a latin1 column.
 """
 
+import copy
 from typing import NamedTuple
 
 from kfp import dsl, kubernetes
@@ -40,13 +41,13 @@ PIP_INDEX = ["https://pypi.org/simple"]
 SERVICE_CA_DIR = "/etc/pki/ca-trust/source/anchors"
 SERVICE_CA_CONFIGMAP = "pipeline-tasks-service-ca"
 
-# (display name, skip parameter, collection id, --timeout seconds), in run order.
+# (step name, skip parameter, collection id, --timeout seconds), in run order.
 COLLECTIONS = [
     ("latency", "skip_latency", "agentic-coding-latency-v1", 3600),
     ("throughput", "skip_throughput", "agentic-coding-throughput-v1", 3600),
     ("capability", "skip_capability", "agentic-coding-capability-v1", 3 * 3600),
-    ("security quick", "skip_security_quick", "agentic-coding-security-quick-v1", 2 * 3600),
-    ("security full", "skip_security_full", "agentic-coding-security-full-v1", 4 * 3600),
+    ("security-quick", "skip_security_quick", "agentic-coding-security-quick-v1", 2 * 3600),
+    ("security-full", "skip_security_full", "agentic-coding-security-full-v1", 4 * 3600),
 ]
 # Fixed for the demo: the EvalHub tag of every qualification job and the MLflow experiment of those jobs.
 # Pipeline runs themselves are tracked in the MLflow experiment chosen in the run form
@@ -374,6 +375,15 @@ def leaderboard(
     return verdict
 
 
+def _named(component, name):
+    # Each step is its own component name rather than one component with display-name overrides: the task
+    # key, which the run metadata records as task_name, then equals the step label the dashboard looks up
+    # for logs and inputs/outputs.
+    named = copy.deepcopy(component)
+    named.component_spec.name = name
+    return named
+
+
 def _small(task):
     task.set_caching_options(False)
     task.set_cpu_request("100m").set_memory_request("256Mi").set_cpu_limit("500m").set_memory_limit("512Mi")
@@ -396,21 +406,21 @@ def qualification(
 ):
     skips = {"skip_latency": skip_latency, "skip_throughput": skip_throughput, "skip_capability": skip_capability,
              "skip_security_quick": skip_security_quick, "skip_security_full": skip_security_full}
-    model = _small(resolve_model(model_name=model_name)).set_display_name("resolve model")
+    model = _small(resolve_model(model_name=model_name))
     previous = model
     for label, skip_name, collection_id, timeout in COLLECTIONS:
-        step = _small(evaluate_collection(
+        step = _small(_named(evaluate_collection, label)(
             model_name=model_name, model_id=model.outputs["model_id"], model_url=model.outputs["model_url"],
             auth_secret=model.outputs["auth_secret"], target=model.outputs["target"], tenant=model.outputs["tenant"],
             collection_id=collection_id, qualification_tag=QUALIFICATION_TAG, evalhub_experiment=EVALHUB_EXPERIMENT,
             evalhub_url=EVALHUB_URL, queue=QUEUE,
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, timeout_seconds=timeout, skip=skips[skip_name],
-        )).set_display_name(label)
+        ))
         step.after(previous)
         previous = step
     board = _small(leaderboard(
         model_name=model_name, target=model.outputs["target"], tenant=model.outputs["tenant"],
         qualification_tag=QUALIFICATION_TAG, evalhub_url=EVALHUB_URL, max_regression=MAX_REGRESSION,
         run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER,
-    )).set_display_name("leaderboard")
+    ))
     board.after(previous)
