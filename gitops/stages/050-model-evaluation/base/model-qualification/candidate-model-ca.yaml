@@ -84,8 +84,8 @@ spec:
                 app.kubernetes.io/name=candidate-model-ca app.kubernetes.io/part-of=rhoai-platform >/dev/null
               echo "qualification-model-ca ready"
           resources:
-            requests: {cpu: 50m, memory: 64Mi}
-            limits: {cpu: 200m, memory: 128Mi}
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
           volumeMounts:
             - name: service-ca
               mountPath: /service-ca
