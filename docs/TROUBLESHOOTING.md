@@ -2612,3 +2612,16 @@ curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
 ```
 
 `stages/050-model-evaluation/submit-evaluation.sh` submits the same job from the terminal. The `inspect/swe-bench` card cannot run on 3.5.1 regardless of the model (see the SWE-bench notes in the Stage 050 README).
+
+## EvalHub Provider Jobs Fail Or Never Finish Against MaaS Models
+
+**Affected stage:** Stage 050 built-in providers, RHOAI 3.5.1 (verified 2026-10-12 against Qwen 3.8 through MaaS and Kueue)
+
+| Provider | Symptom | Cause | Required benchmark parameters |
+|---|---|---|---|
+| `lm_evaluation_harness` | `Repo id must be in the form 'repo_name' or 'namespace/repo_name'` | The adapter loads the tokenizer from the model name; MaaS model ids are not Hugging Face repositories | `"tokenizer": "<HF repo of the served model>"`, for example `RedHatAI/Qwen3.8-27B-INT4` (the guide's chapter 3 example uses the same parameter) |
+| `lm_evaluation_harness` | Generative tasks (IFEval, GSM8K) fail with HTTP 502 on `/v1/completions` | Each generation runs to the task's default budget (IFEval 1,280 tokens, about 32 s at 25 ms per token) and the evaluation sidecar aborts model requests after 30 s; `gen_kwargs` is not applied by the 3.5.1 adapter | None available; log-likelihood tasks (ARC, HellaSwag, MMLU) work |
+| `guidellm` | A job runs for tens of minutes with thousands of requests and no result | Catalog benchmarks such as `quick_perf_test` pass no bounds, so an unbounded sweep runs | `"max_seconds": <n>` or `"max_requests": <n>`, plus `"rate"` for `concurrent`/`constant` |
+| `lighteval` | Score 0.0 with `BadGatewayError` | 16 samples per request exceed the 30 s sidecar limit | See "EvalHub Lighteval Job Completes With Score 0.0" above |
+
+**Recover:** Pass the parameters above in **Benchmark parameters** (dashboard) or `benchmarks[].parameters` (REST). The sidecar timeout is a Red Hat item in BACKLOG.
