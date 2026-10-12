@@ -4,6 +4,7 @@ resources:
   - namespace.yaml
   - access.yaml
   - local-queues.yaml
+  - storage
   - maas-key-provisioner.yaml
   - candidate-qwen3-8-27b-int4.yaml
   - candidate-model-auth.yaml

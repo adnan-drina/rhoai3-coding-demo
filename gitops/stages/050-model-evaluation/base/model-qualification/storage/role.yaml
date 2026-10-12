@@ -1,0 +1,29 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: evaluated-models-s3-connections
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: evaluated-models-storage
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: storage-connections
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [objectbucket.io]
+    resources: [objectbucketclaims]
+    resourceNames: [evaluation-models-models, evaluation-models-workbench, evaluation-models-pipelines]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [evaluation-models-models, evaluation-models-workbench, evaluation-models-pipelines]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [evaluation-models-models, evaluation-models-workbench, evaluation-models-pipelines, evaluation-models-models-connection, evaluation-models-workbench-connection, evaluation-models-pipelines-connection]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [evaluation-models-models-connection, evaluation-models-workbench-connection, evaluation-models-pipelines-connection]
+    verbs: [patch]
