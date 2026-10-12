@@ -5,7 +5,9 @@
 # usage attribution apply. The key is minted by the Stage 050 provisioner ServiceAccount that owns this
 # subscription; both private Qwen models are covered so the same identity can qualify either one.
 # The hourly token limit sits above what the single-GPU servers can produce, so governance meters the
-# evaluation without becoming its bottleneck.
+# evaluation without becoming its bottleneck. The external models are covered too, with a tighter paid-
+# provider quota: they are evaluated like the private ones and serve as judge models (a judge must differ
+# from the model under test, 3.5 guide chapter 7).
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata:
@@ -33,6 +35,21 @@ spec:
       namespace: internal-models
       tokenRateLimits:
         - limit: 5000000
+          window: 1h
+    - name: gpt-6-luna
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+    - name: claude-sonnet-5-5
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+    - name: nemotron-3-ultra-550b-a55b
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 1000000
           window: 1h
   tokenMetadata:
     organizationId: rhoai3-coding-demo
@@ -63,6 +80,12 @@ spec:
       namespace: internal-models
     - name: qwen3-6-27b
       namespace: internal-models
+    - name: gpt-6-luna
+      namespace: external-models
+    - name: claude-sonnet-5-5
+      namespace: external-models
+    - name: nemotron-3-ultra-550b-a55b
+      namespace: external-models
   meteringMetadata:
     organizationId: rhoai3-coding-demo
     costCenter: ai-platform
