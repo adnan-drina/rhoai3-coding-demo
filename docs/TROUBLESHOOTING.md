@@ -2336,9 +2336,9 @@ The pipeline still needs a push to build — fix the App scope (or seed a run) f
 **Diagnose:**
 
 ```bash
-oc get pods -n demo-sandbox -l 'job-name' -o name | grep '<job-id-prefix>'
-oc logs -n demo-sandbox <pod> -c sidecar | grep -E 'Proxying model request|Error proxying model request'
-oc get cm -n demo-sandbox <job-id-prefix>-...-spec -o jsonpath='{.data.sidecar_config\.json}' | jq .model
+oc get pods -n evaluated-models -l 'job-name' -o name | grep '<job-id-prefix>'
+oc logs -n evaluated-models <pod> -c sidecar | grep -E 'Proxying model request|Error proxying model request'
+oc get cm -n evaluated-models <job-id-prefix>-...-spec -o jsonpath='{.data.sidecar_config\.json}' | jq .model
 ```
 
 **Recover:** Keep each request under 30 seconds: both Stage 040 Qwen profiles admit 16 concurrent sequences since 2026-10-09 (a 16-sample request then takes about 14 seconds), keep the helper's code-only system prompt and 512-token cap, and bound the job with `--num-examples` so it ends inside the adapter's one-hour limit. If every sample reports `finish_reason: length` with empty content, the model is serving thinking mode by default (Qwen 3.6): the adapter cannot pass `enable_thinking` per request and Qwen 3.6 ignores `/no_think`, so the server default must be non-thinking with the card's non-thinking sampling, as on Qwen 3.8. Delete the zero-score probe (`DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true`) and its MLflow run so comparisons stay clean. The timeout itself is a Red Hat item (BACKLOG).
@@ -2349,7 +2349,7 @@ oc get cm -n demo-sandbox <job-id-prefix>-...-spec -o jsonpath='{.data.sidecar_c
 
 **Symptom:** On a validated model's detail page, **Performance insights** works but **Safety and security insights** shows only a spinner. The Eval Hub UI pod logs `Access forbidden ... user does not have permission to access EvalHub in this namespace` for `GET /api/v1/catalog/sources/<source>/security_artifacts/<model>?namespace=rhoai-model-registries`.
 
-**Likely cause:** The tab is served by the Eval Hub BFF, which runs the documented tenant authorization (SubjectAccessReview for `get` on the virtual resource `evaluations.trustyai.opendatahub.io` in the request namespace) on every namespaced call, and the model catalog page passes its own namespace. Users who only hold Eval Hub access in their project (`demo-sandbox`) get 403 in `rhoai-model-registries`, and the 3.5.1 tab renders a 403 as a spinner rather than an error. The data itself is fine: the model-registry BFF returns the model's security artifacts.
+**Likely cause:** The tab is served by the Eval Hub BFF, which runs the documented tenant authorization (SubjectAccessReview for `get` on the virtual resource `evaluations.trustyai.opendatahub.io` in the request namespace) on every namespaced call, and the model catalog page passes its own namespace. Users who only hold Eval Hub access in their project (`evaluated-models`) get 403 in `rhoai-model-registries`, and the 3.5.1 tab renders a 403 as a spinner rather than an error. The data itself is fine: the model-registry BFF returns the model's security artifacts.
 
 **Diagnose:**
 
@@ -2596,7 +2596,7 @@ curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
 
 **Symptom:** On **Start evaluation run**, the **Model** dropdown is empty apart from **Other (External endpoint)**, so a deployed Qwen model cannot be picked.
 
-**Likely cause:** The Eval Hub UI lists `InferenceService` (`serving.kserve.io/v1beta1`) objects in the selected project only. The private Qwen models are `LLMInferenceService` deployments (Distributed Inference with llm-d) in `internal-models`, which that listing never includes, and the evaluation project `demo-sandbox` hosts no InferenceService. This is a product limitation, not a configuration error.
+**Likely cause:** The Eval Hub UI lists `InferenceService` (`serving.kserve.io/v1beta1`) objects in the selected project only. The private Qwen models are `LLMInferenceService` deployments (Distributed Inference with llm-d) in `internal-models`, which that listing never includes, and the evaluation project `evaluated-models` lists only the candidate InferenceServices deployed there (such as `qwen3-8-27b-int4` while it runs). This is a product limitation for production models, not a configuration error.
 
 **Recover:** Evaluate the governed models through the gateway the way the documented REST path does. Choose **Other (External endpoint)** and enter:
 
@@ -2640,8 +2640,8 @@ curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
 **Diagnose:**
 
 ```bash
-oc get job -n demo-sandbox <job> -o jsonpath='{.spec.template.spec.automountServiceAccountToken}'
-oc logs -n demo-sandbox <pod> -c adapter | grep -E 'kube-config|Instances evaluated'
+oc get job -n evaluated-models <job> -o jsonpath='{.spec.template.spec.automountServiceAccountToken}'
+oc logs -n evaluated-models <pod> -c adapter | grep -E 'kube-config|Instances evaluated'
 ```
 
 **Recover:** None inside EvalHub on 3.5.1; the predictions remain in the tenant bucket under `swebench/<run>/`. Raise with Red Hat (BACKLOG).
@@ -2654,9 +2654,9 @@ oc logs -n demo-sandbox <pod> -c adapter | grep -E 'kube-config|Instances evalua
 
 | Symptom | Cause | Configured remedy |
 |---|---|---|
-| `initialize` returns 403 `verb=create, resource=evalhubs, subresource=proxy` | The MCP Service is fronted by kube-rbac-proxy, which authorizes `create evalhubs/proxy` on the instance; the guide's "EvalHub access" (2.29) does not grant it | RoleBinding `evalhub/evalhub-mcp-access` binds `demo-sandbox/evalhub-automation` to the operator Role `evalhub-service-access-role` |
-| Tools fail with `eval-hub API error (HTTP 401)` | The MCP server calls the EvalHub API with no credentials unless `spec.mcp.authSecret` names a Secret with a `token` key; the guide omits this field | ServiceAccount `evalhub/evalhub-mcp-client`, its token Secret `evalhub-mcp-client-token`, evaluator Role in `demo-sandbox` |
-| Tools fail with `HTTP 403 Forbidden` | The MCP server uses tenant `EVALHUB_TENANT` (default: the instance namespace `evalhub`) and does not forward the client's `x-tenant` | `spec.mcp.env` sets `EVALHUB_TENANT=demo-sandbox` |
+| `initialize` returns 403 `verb=create, resource=evalhubs, subresource=proxy` | The MCP Service is fronted by kube-rbac-proxy, which authorizes `create evalhubs/proxy` on the instance; the guide's "EvalHub access" (2.29) does not grant it | RoleBinding `evalhub/evalhub-mcp-access` binds `evaluated-models/evalhub-automation` to the operator Role `evalhub-service-access-role` |
+| Tools fail with `eval-hub API error (HTTP 401)` | The MCP server calls the EvalHub API with no credentials unless `spec.mcp.authSecret` names a Secret with a `token` key; the guide omits this field | ServiceAccount `evalhub/evalhub-mcp-client`, its token Secret `evalhub-mcp-client-token`, evaluator Role in `evaluated-models` |
+| Tools fail with `HTTP 403 Forbidden` | The MCP server uses tenant `EVALHUB_TENANT` (default: the instance namespace `evalhub`) and does not forward the client's `x-tenant` | `spec.mcp.env` sets `EVALHUB_TENANT=evaluated-models` |
 
 The guide's `mcp.port: 3001` and `oc expose service evalhub-mcp` steps do not apply to 3.5.1: the CRD has no `port` field and the operator creates the Service on 8443 and a re-encrypt Route itself.
 

@@ -121,15 +121,15 @@ For this repo:
 
 ## Project Defaults (verified on RHOAI 3.5.1)
 
-- Evaluations reach models through the MaaS gateway with the documented API-key Secret (`model.auth.secret_ref: evalhub-model-auth-maas`, section 2.15) and the `evaluation-sandbox` subscription, routed through the tenant LocalQueue `lq-cpu-default` (section 2.8).
+- Evaluations reach models through the MaaS gateway with the documented API-key Secret (`model.auth.secret_ref: evalhub-model-auth-maas`, section 2.15) and the `model-qualification` subscription, routed through the tenant LocalQueue `lq-cpu-default` (section 2.8).
 - The dashboard **Start evaluation run** lists only `InferenceService` objects of the project; LLMInferenceService and MaaS models are entered through **Other (External endpoint)**.
 - Every model request passes the evaluation sidecar, which aborts after 30 s; size generation so one request finishes inside it.
 - `lighteval`: code-only system prompt and `max_new_tokens: 512`; models must admit 16 concurrent sequences for LiveCodeBench.
 - `lm_evaluation_harness`: always pass `tokenizer` (Hugging Face repository of the served model); only log-likelihood tasks fit the sidecar limit.
 - `guidellm`: always bound with `max_seconds` or `max_requests`.
 - SWE-bench: patch generation works; EvalHub grading does not on 3.5.1 (adapters get no Kubernetes token).
-- OCI export goes to the internal registry through its default route (`evalhub-oci-registry` Secret, repository `demo-sandbox/evaluation-results`); the sidecar rejects the registry's service-CA certificate.
-- CLI/SDK/MCP clients authenticate as `demo-sandbox/evalhub-automation`; the MCP server needs `spec.mcp.authSecret`, an `evalhubs/proxy` grant for clients and `EVALHUB_TENANT` pinned to the tenant, none of which section 4.3 states.
+- OCI export goes to the internal registry through its default route (`evalhub-oci-registry` Secret, repository `evaluated-models/evaluation-results`); the sidecar rejects the registry's service-CA certificate.
+- CLI/SDK/MCP clients authenticate as `evaluated-models/evalhub-automation`; the MCP server needs `spec.mcp.authSecret`, an `evalhubs/proxy` grant for clients and `EVALHUB_TENANT` pinned to the tenant, none of which section 4.3 states.
 
 ## Workflow
 
