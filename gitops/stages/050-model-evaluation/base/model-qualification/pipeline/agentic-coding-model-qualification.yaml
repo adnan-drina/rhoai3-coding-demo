@@ -11,12 +11,12 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v8
+  name: agentic-coding-model-qualification-v9
   namespace: evaluated-models
 spec:
   description: Evaluates one model on the agentic coding EvalHub collections and ranks
     it on the qualification leaderboard.
-  displayName: agentic-coding-model-qualification v8
+  displayName: agentic-coding-model-qualification v9
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -362,6 +362,8 @@ spec:
           parameters:
             capability_threshold:
               parameterType: NUMBER_DOUBLE
+            collection_ids:
+              parameterType: LIST
             evalhub_url:
               parameterType: STRING
             max_regression:
@@ -1205,12 +1207,13 @@ spec:
             - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
               \ import *\n\ndef leaderboard(\n    model_name: str,\n    target: str,\n\
               \    tenant: str,\n    qualification_tag: str,\n    evalhub_url: str,\n\
-              \    max_regression: float,\n    capability_threshold: float,\n    run_name:\
-              \ str,\n    report: dsl.Output[dsl.HTML],\n    scores: dsl.Output[dsl.Metrics],\n\
-              ) -> str:\n    \"\"\"Rank every qualified model per benchmark; for a\
-              \ candidate, recommend PROMOTE or HOLD vs production.\"\"\"\n    import\
-              \ html\n    import json\n    import os\n    import subprocess\n    import\
-              \ tempfile\n\n    import httpx\n    import yaml\n\n    profile = os.path.join(tempfile.mkdtemp(),\
+              \    max_regression: float,\n    capability_threshold: float,\n    collection_ids:\
+              \ list,\n    run_name: str,\n    report: dsl.Output[dsl.HTML],\n   \
+              \ scores: dsl.Output[dsl.Metrics],\n) -> str:\n    \"\"\"Rank every\
+              \ qualified model per benchmark; for a candidate, recommend PROMOTE\
+              \ or HOLD vs production.\"\"\"\n    import html\n    import json\n \
+              \   import os\n    import subprocess\n    import tempfile\n\n    import\
+              \ httpx\n    import yaml\n\n    profile = os.path.join(tempfile.mkdtemp(),\
               \ \"evalhub.yaml\")\n    with open(profile, \"w\") as f:\n        yaml.safe_dump({\"\
               active_profile\": \"default\",\n                        \"profiles\"\
               : {\"default\": {\"base_url\": evalhub_url, \"tenant\": tenant}}}, f)\n\
@@ -1232,66 +1235,68 @@ spec:
               ]):\n        if (job.get(\"status\") or {}).get(\"state\") not in (\"\
               completed\", \"partially_failed\", \"failed\"):\n            continue\n\
               \        cid = (job.get(\"collection\") or {}).get(\"id\")\n       \
-              \ model = tag(job, \"model\")\n        if cid and model:\n         \
-              \   latest[(model, cid)] = job\n    targets = {}\n    for (model, _),\
-              \ job in latest.items():\n        targets[model] = tag(job, \"target\"\
-              ) or \"candidate\"\n    order = [\"latency\", \"throughput\", \"livecodebench\"\
-              , \"python\", \"capability\", \"security-quick\", \"security-full\"\
-              ]\n    collections = sorted({cid for _, cid in latest},\n          \
-              \               key=lambda c: order.index(next((k for k in order if\
-              \ k in c), \"capability\")))\n    models = sorted(targets, key=lambda\
-              \ m: (targets[m] != \"production\", m != model_name, m))\n    production\
-              \ = next((m for m in models if targets[m] == \"production\"), None)\n\
-              \n    def describe(cid):\n        out = subprocess.run([\"evalhub\"\
-              , \"collections\", \"describe\", cid, \"--format\", \"json\"],\n   \
-              \                          env=env, capture_output=True, text=True,\
-              \ check=True).stdout\n        c = json.loads(out)\n        return c[0]\
-              \ if isinstance(c, list) else c\n\n    def score(job, bdef):\n     \
-              \   \"\"\"Primary score and pass for one benchmark, or (None, False)\
-              \ when the run produced nothing.\"\"\"\n        if job is None:\n  \
-              \          return None, None\n        primary = bdef.get(\"primary_score\"\
-              ) or {}\n        metric, lower = primary.get(\"metric\", \"\"), bool(primary.get(\"\
-              lower_is_better\"))\n        threshold = (bdef.get(\"pass_criteria\"\
-              ) or {}).get(\"threshold\")\n        b = {x.get(\"id\"): x for x in\
-              \ (job.get(\"results\") or {}).get(\"benchmarks\") or []}.get(bdef[\"\
-              id\"]) or {}\n        numbers = [v for v in (b.get(\"metrics\") or {}).values()\
-              \ if isinstance(v, (int, float))]\n        if not numbers or not any(numbers):\n\
-              \            return None, False  # no metrics, or all zero: no request\
-              \ succeeded\n        t = b.get(\"test\") or {}\n        value = t.get(\"\
-              primary_score\", (b.get(\"metrics\") or {}).get(metric))\n        passed\
-              \ = t.get(\"pass\")\n        if passed is None and isinstance(value,\
-              \ (int, float)) and threshold is not None:\n            passed = value\
-              \ <= threshold if lower else value >= threshold\n        return value,\
-              \ passed\n\n    reasons, sections = [], []\n    weighted = {m: [] for\
-              \ m in models}  # (weight, value) of every code benchmark per model\n\
-              \    for cid in collections:\n        col = describe(cid)\n        rows\
-              \ = []\n        for bdef in col.get(\"benchmarks\") or []:\n       \
-              \     primary = bdef.get(\"primary_score\") or {}\n            metric,\
-              \ lower = primary.get(\"metric\", \"\"), bool(primary.get(\"lower_is_better\"\
-              ))\n            threshold = (bdef.get(\"pass_criteria\") or {}).get(\"\
-              threshold\")\n            cells = {m: score(latest.get((m, cid)), bdef)\
-              \ for m in models}\n            for m, (v, _) in cells.items():\n  \
-              \              if isinstance(v, (int, float)):\n                   \
-              \ scores.log_metric(f\"{m}.{bdef['id']}.{metric}\".replace(\"/\", \"\
-              _\"), float(v))\n            rows.append((bdef[\"id\"], metric, lower,\
-              \ threshold, cells))\n            if col.get(\"category\") == \"code\"\
-              :\n                for m, (v, _) in cells.items():\n               \
-              \     weighted[m].append((float(bdef.get(\"weight\") or 1), v))\n  \
-              \          if target == \"candidate\":\n                v, p = cells.get(model_name,\
-              \ (None, None))\n                if p is not True:\n               \
-              \     reasons.append(f\"{cid}/{bdef['id']}: misses its gate ({metric}\
-              \ {v}, threshold {threshold})\")\n                pv = cells.get(production,\
-              \ (None, None))[0] if production else None\n                if isinstance(v,\
-              \ (int, float)) and isinstance(pv, (int, float)) and pv:\n         \
-              \           delta = (v - pv) / abs(pv) * (-1 if lower else 1)\n    \
-              \                if delta < -max_regression:\n                     \
-              \   reasons.append(f\"{cid}/{bdef['id']}: {abs(delta):.0%} worse than\
-              \ production on {metric}\")\n        col_threshold = (col.get(\"pass_criteria\"\
-              ) or {}).get(\"threshold\")\n        col_scores = {m: ((latest.get((m,\
-              \ cid)) or {}).get(\"results\") or {}).get(\"test\") or {} for m in\
-              \ models}\n        if target == \"candidate\" and col_threshold is not\
-              \ None and col_scores.get(model_name, {}).get(\"pass\") is not True:\n\
-              \            reasons.append(f\"{cid}: collection score {col_scores.get(model_name,\
+              \ model = tag(job, \"model\")\n        # Only the collections this pipeline\
+              \ version runs: results of earlier criteria versions stay in\n     \
+              \   # EvalHub but are not compared with the current ones.\n        if\
+              \ cid and model and cid in collection_ids:\n            latest[(model,\
+              \ cid)] = job\n    targets = {}\n    for (model, _), job in latest.items():\n\
+              \        targets[model] = tag(job, \"target\") or \"candidate\"\n  \
+              \  order = [\"latency\", \"throughput\", \"livecodebench\", \"python\"\
+              , \"capability\", \"security-quick\", \"security-full\"]\n    collections\
+              \ = sorted({cid for _, cid in latest},\n                         key=lambda\
+              \ c: order.index(next((k for k in order if k in c), \"capability\")))\n\
+              \    models = sorted(targets, key=lambda m: (targets[m] != \"production\"\
+              , m != model_name, m))\n    production = next((m for m in models if\
+              \ targets[m] == \"production\"), None)\n\n    def describe(cid):\n \
+              \       out = subprocess.run([\"evalhub\", \"collections\", \"describe\"\
+              , cid, \"--format\", \"json\"],\n                             env=env,\
+              \ capture_output=True, text=True, check=True).stdout\n        c = json.loads(out)\n\
+              \        return c[0] if isinstance(c, list) else c\n\n    def score(job,\
+              \ bdef):\n        \"\"\"Primary score and pass for one benchmark, or\
+              \ (None, False) when the run produced nothing.\"\"\"\n        if job\
+              \ is None:\n            return None, None\n        primary = bdef.get(\"\
+              primary_score\") or {}\n        metric, lower = primary.get(\"metric\"\
+              , \"\"), bool(primary.get(\"lower_is_better\"))\n        threshold =\
+              \ (bdef.get(\"pass_criteria\") or {}).get(\"threshold\")\n        b\
+              \ = {x.get(\"id\"): x for x in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []}.get(bdef[\"id\"]) or {}\n        numbers = [v for v in (b.get(\"\
+              metrics\") or {}).values() if isinstance(v, (int, float))]\n       \
+              \ if not numbers or not any(numbers):\n            return None, False\
+              \  # no metrics, or all zero: no request succeeded\n        t = b.get(\"\
+              test\") or {}\n        value = t.get(\"primary_score\", (b.get(\"metrics\"\
+              ) or {}).get(metric))\n        passed = t.get(\"pass\")\n        if\
+              \ passed is None and isinstance(value, (int, float)) and threshold is\
+              \ not None:\n            passed = value <= threshold if lower else value\
+              \ >= threshold\n        return value, passed\n\n    reasons, sections\
+              \ = [], []\n    weighted = {m: [] for m in models}  # (weight, value)\
+              \ of every code benchmark per model\n    for cid in collections:\n \
+              \       col = describe(cid)\n        rows = []\n        for bdef in\
+              \ col.get(\"benchmarks\") or []:\n            primary = bdef.get(\"\
+              primary_score\") or {}\n            metric, lower = primary.get(\"metric\"\
+              , \"\"), bool(primary.get(\"lower_is_better\"))\n            threshold\
+              \ = (bdef.get(\"pass_criteria\") or {}).get(\"threshold\")\n       \
+              \     cells = {m: score(latest.get((m, cid)), bdef) for m in models}\n\
+              \            for m, (v, _) in cells.items():\n                if isinstance(v,\
+              \ (int, float)):\n                    scores.log_metric(f\"{m}.{bdef['id']}.{metric}\"\
+              .replace(\"/\", \"_\"), float(v))\n            rows.append((bdef[\"\
+              id\"], metric, lower, threshold, cells))\n            if col.get(\"\
+              category\") == \"code\":\n                for m, (v, _) in cells.items():\n\
+              \                    weighted[m].append((float(bdef.get(\"weight\")\
+              \ or 1), v))\n            if target == \"candidate\":\n            \
+              \    v, p = cells.get(model_name, (None, None))\n                if\
+              \ p is not True:\n                    reasons.append(f\"{cid}/{bdef['id']}:\
+              \ misses its gate ({metric} {v}, threshold {threshold})\")\n       \
+              \         pv = cells.get(production, (None, None))[0] if production\
+              \ else None\n                if isinstance(v, (int, float)) and isinstance(pv,\
+              \ (int, float)) and pv:\n                    delta = (v - pv) / abs(pv)\
+              \ * (-1 if lower else 1)\n                    if delta < -max_regression:\n\
+              \                        reasons.append(f\"{cid}/{bdef['id']}: {abs(delta):.0%}\
+              \ worse than production on {metric}\")\n        col_threshold = (col.get(\"\
+              pass_criteria\") or {}).get(\"threshold\")\n        col_scores = {m:\
+              \ ((latest.get((m, cid)) or {}).get(\"results\") or {}).get(\"test\"\
+              ) or {} for m in models}\n        if target == \"candidate\" and col_threshold\
+              \ is not None and col_scores.get(model_name, {}).get(\"pass\") is not\
+              \ True:\n            reasons.append(f\"{cid}: collection score {col_scores.get(model_name,\
               \ {}).get('score')} misses {col_threshold}\")\n        sections.append((col.get(\"\
               name\") or cid, rows, col_threshold, col_scores))\n\n    # Weighted\
               \ capability score over every code benchmark (LiveCodeBench 3, MBPP\
@@ -1461,7 +1466,7 @@ spec:
                     producerTask: step-1-latency
                 collection_id:
                   runtimeValue:
-                    constant: agentic-coding-throughput-v1
+                    constant: agentic-coding-throughput-v2
                 evalhub_experiment:
                   runtimeValue:
                     constant: agentic-coding-evaluations
@@ -1733,6 +1738,15 @@ spec:
                 capability_threshold:
                   runtimeValue:
                     constant: 0.5
+                collection_ids:
+                  runtimeValue:
+                    constant:
+                    - agentic-coding-latency-v1
+                    - agentic-coding-throughput-v2
+                    - agentic-coding-livecodebench-v1
+                    - agentic-coding-python-tasks-v1
+                    - agentic-coding-security-quick-v2
+                    - agentic-coding-security-full-v2
                 evalhub_url:
                   runtimeValue:
                     constant: https://evalhub.evalhub.svc.cluster.local:8443

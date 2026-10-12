@@ -47,7 +47,7 @@ SERVICE_CA_CONFIGMAP = "pipeline-tasks-service-ca"
 # rejects task names that begin with a digit, hence the "step-" prefix).
 COLLECTIONS = [
     ("step-1-latency", "skip_latency", "agentic-coding-latency-v1", 3600),
-    ("step-2-throughput", "skip_throughput", "agentic-coding-throughput-v1", 3600),
+    ("step-2-throughput", "skip_throughput", "agentic-coding-throughput-v2", 3600),
     # Capability runs as two collections one after the other: LiveCodeBench needs every sequence slot of the
     # model, so it runs alone; the leaderboard combines both into the weighted capability score.
     ("step-3-livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v1", 2 * 3600),
@@ -223,6 +223,7 @@ def leaderboard(
     evalhub_url: str,
     max_regression: float,
     capability_threshold: float,
+    collection_ids: list,
     run_name: str,
     report: dsl.Output[dsl.HTML],
     scores: dsl.Output[dsl.Metrics],
@@ -265,7 +266,9 @@ def leaderboard(
             continue
         cid = (job.get("collection") or {}).get("id")
         model = tag(job, "model")
-        if cid and model:
+        # Only the collections this pipeline version runs: results of earlier criteria versions stay in
+        # EvalHub but are not compared with the current ones.
+        if cid and model and cid in collection_ids:
             latest[(model, cid)] = job
     targets = {}
     for (model, _), job in latest.items():
@@ -459,5 +462,6 @@ def qualification(
     board = _small(_named(leaderboard, "step-7-leaderboard")(
         model_name=model_name, target=previous.outputs["target"], tenant=previous.outputs["tenant"],
         qualification_tag=QUALIFICATION_TAG, evalhub_url=EVALHUB_URL, max_regression=MAX_REGRESSION,
-        capability_threshold=CAPABILITY_THRESHOLD, run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER,
+        capability_threshold=CAPABILITY_THRESHOLD, collection_ids=[c[2] for c in COLLECTIONS],
+        run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER,
     ))
