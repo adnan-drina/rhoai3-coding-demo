@@ -2623,6 +2623,9 @@ curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
 | `lm_evaluation_harness` | Generative tasks (IFEval, GSM8K) fail with HTTP 502 on `/v1/completions` | Each generation runs to the task's default budget (IFEval 1,280 tokens, about 32 s at 25 ms per token) and the evaluation sidecar aborts model requests after 30 s; `gen_kwargs` is not applied by the 3.5.1 adapter | None available; log-likelihood tasks (ARC, HellaSwag, MMLU) work |
 | `guidellm` | A job runs for tens of minutes with thousands of requests and no result | Catalog benchmarks such as `quick_perf_test` pass no bounds, so an unbounded sweep runs | `"max_seconds": <n>` or `"max_requests": <n>`, plus `"rate"` for `concurrent`/`constant` |
 | `lighteval` | Score 0.0 with `BadGatewayError` | 16 samples per request exceed the 30 s sidecar limit | See "EvalHub Lighteval Job Completes With Score 0.0" above |
+| `inspect`, `garak` | Requests answer 404 (Inspect retries silently for hours) or MaaS says `subscription ... does not include model chat/completions` (Garak) | These clients append `/chat/completions` to the model URL as given; the other providers add `/v1` themselves | `model.url` ending in `/v1`; LightEval and GuideLLM accept it too, so collections use `/v1` |
+| `inspect` | `num_examples` ignored; the whole dataset runs | The shipped `community-inspect:v0.5.0` adapter reads `max_samples` | `"max_samples": <n>` |
+| `inspect` | `inspect/agentdojo` fails with `email-validator is not installed` | Missing dependency in the shipped image | None; Red Hat item |
 
 **Recover:** Pass the parameters above in **Benchmark parameters** (dashboard) or `benchmarks[].parameters` (REST). The sidecar timeout is a Red Hat item in BACKLOG.
 
@@ -2662,3 +2665,13 @@ The guide's `mcp.port: 3001` and `oc expose service evalhub-mcp` steps do not ap
 ```bash
 oc logs deploy/evalhub-mcp -n evalhub -c evalhub-mcp --since=10m | grep -E 'Request failed|error'
 ```
+
+## Evaluation Score Shows "-" Or Thousands Of Percent
+
+**Affected stage:** Stage 050, Evaluations page, RHOAI 3.5.1
+
+**Symptom:** An evaluation's **Evaluation score** is `-` (for example a plain Inspect MBPP job), or an absurd percentage such as 3040% (a GuideLLM job).
+
+**Likely cause:** The score is the weighted average of each benchmark's primary metric (3.5 guide 2.1), rendered as a percentage of a 0–1 value. Catalog entries without a primary metric (Inspect) produce no score; raw-unit metrics (GuideLLM milliseconds and tokens per second) are multiplied by 100. Garak's attack success rate is shown as the score although lower is better.
+
+**Recover:** Run benchmarks through the `agentic-coding-*` collections, which declare a primary metric and threshold for every benchmark. Read capability scores as percentages; for security read the score as attack success rate (lower is better); for performance read the per-benchmark Pass/Fail and the metrics, not the headline percentage. Red Hat item in BACKLOG.
