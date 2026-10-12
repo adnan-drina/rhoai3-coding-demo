@@ -64,6 +64,19 @@ subjects:
     name: candidate-model-client
     namespace: evaluated-models
 ---
+# Public OpenShift service CA, injected by the service CA operator; source of the Secret's ca_cert.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: candidate-model-service-ca
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: candidate-model-auth
+    app.kubernetes.io/component: evaluation
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+    service.beta.openshift.io/inject-cabundle: "true"
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -158,4 +171,4 @@ spec:
       volumes:
         - name: service-ca
           configMap:
-            name: pipelines-service-ca
+            name: candidate-model-service-ca
