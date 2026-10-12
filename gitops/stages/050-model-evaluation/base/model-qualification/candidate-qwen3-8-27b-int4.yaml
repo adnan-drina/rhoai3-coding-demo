@@ -51,9 +51,9 @@ metadata:
     kueue.x-k8s.io/queue-name: lq-gpu-reserved-demo
   annotations:
     openshift.io/display-name: Qwen3.8 27B INT4 (candidate)
-    # Stopped until a GPU is free (the dashboard's Stop/Start model control). Both L40S nodes serve the
-    # MaaS models; set to "false" once the GPU schedule allows the qualification to run.
-    serving.kserve.io/stop: "true"
+    # Dashboard Stop/Start control. Runs while Qwen 3.8 is stopped in internal-models (two L40S nodes:
+    # Qwen 3.6 production + this candidate); set to "true" to hand the GPU back.
+    serving.kserve.io/stop: "false"
     serving.kserve.io/deploymentMode: RawDeployment
     security.opendatahub.io/enable-auth: "true"
     opendatahub.io/hardware-profile-name: gpu-reserved-demo

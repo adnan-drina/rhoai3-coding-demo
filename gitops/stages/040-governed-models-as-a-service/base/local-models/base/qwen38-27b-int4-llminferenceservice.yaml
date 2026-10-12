@@ -37,7 +37,7 @@ spec:
     # This model is not a Red Hat validated model on RHOAI 3.4. A successful
     # local load is compatibility with the installed runtime, not validation.
     uri: hf://RedHatAI/Qwen3.8-27B-INT4:7fb3aaca2d21c0db4716572945208db40cef9966
-  replicas: 1
+  replicas: 0
   router:
     gateway:
       refs:
