@@ -1,0 +1,54 @@
+---
+# Identity the EvalHub MCP server uses to call the EvalHub API (EvalHub CRD spec.mcp.authSecret: a Secret
+# with a "token" key; the 3.5 guide's MCP procedure (4.3) omits this, so without it every tool call returns
+# 401). The token is a ServiceAccount token Secret populated by Kubernetes, never stored in Git. The
+# ServiceAccount is an EvalHub principal of type ServiceAccount (2.29) with the evaluator Role in the tenant,
+# so MCP agents act as this delegated service identity and are authorized per tenant like any client.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: evalhub-mcp-client
+  namespace: evalhub
+  labels:
+    app.kubernetes.io/name: evalhub-mcp-client
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "29"
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: evalhub-mcp-client-token
+  namespace: evalhub
+  labels:
+    app.kubernetes.io/name: evalhub-mcp-client
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    kubernetes.io/service-account.name: evalhub-mcp-client
+    argocd.argoproj.io/sync-wave: "29"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-mcp-client-access
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: evalhub-mcp-client-access
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "29"
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-mcp-client
+    namespace: evalhub
+roleRef:
+  kind: Role
+  name: evalhub-evaluator
+  apiGroup: rbac.authorization.k8s.io

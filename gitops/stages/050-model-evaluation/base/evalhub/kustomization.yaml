@@ -12,3 +12,4 @@ resources:
   - postgresql-networkpolicy.yaml
   - evalhub.yaml
   - mcp-access-rolebinding.yaml
+  - mcp-client-identity.yaml
