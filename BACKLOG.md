@@ -28,7 +28,7 @@ Zero-replica provider MachineSets, the preinstalled Keycloak PVC and platform re
 - [ ] Stage 060 runtime: `openshell-runtime` is still pinned to `07a29a29`; its MaaS subscriptions `hermes-private-qwen38` and `opencode-private-qwen38` still name the retired `qwen3-8-27b-int4`. Re-pinning to main is gated by the runtime prerequisites hook, which needs `openshell-credentials` `key-encryption-key` (Secret is empty) and the `openshell-runtime-ready` approval ConfigMap (absent) since before 2026-10-13. Redeploy through `stages/060-agent-runtime-and-agentops/deploy-runtime.sh` once the runtime credentials are restored.
 - [ ] Publish the Stage 120 OpenCode scaffold and the Stage 130 golden scaffold (`run-defaults.json` now defaults to `qwen3-8-27b`) to their live repositories; the drift checks flag the difference until then.
 - [ ] Stage 050 pipeline v12: summary metrics/params/tags on the parent MLflow run via the documented `injectUserEnvVars` path, `dsl.If` for skipped steps (verified plan in `tmp/model-study/STUDY.md`).
-- [ ] Stage 050 qualification baseline: with Qwen 3.6 retired, the pipeline's "production" comparison resolves to `qwen3-8-27b`; the INT4 candidate in `evaluated-models` can be retired or re-pointed.
+- [ ] Stage 050 qualification baseline: with Qwen 3.6 removed, the pipeline's "production" comparison resolves to `qwen3-8-27b`; the INT4 candidate in `evaluated-models` can be retired or re-pointed.
 
 ## Migration reliability package M-1..M-7 (2026-09-30, unpublished)
 

@@ -2772,3 +2772,19 @@ RHOAI_STAGE040_EXPECTED_REVISION=<Stage 040 revision> RHOAI_STAGE060_EXPECTED_RE
 ```
 
 Change an Application's revision with `oc patch --type merge` on `spec.source.targetRevision` (and `spec.ignoreDifferences` when needed), not by re-applying the whole object.
+
+## A Listener Or List Entry Removed From Git Stays On The Live Resource
+
+**Affected stage:** Stage 040 `maas-default-gateway` (any Application using `ServerSideDiff=true`)
+
+**Symptom:** After removing the `qwen3-6` listener from Git and syncing, the Application reports `Synced`, but `oc get gateway maas-default-gateway -n openshift-ingress` still lists the listener (with zero attached routes) and Stage 040 validation fails on listener isolation.
+
+**Likely cause:** With server-side apply and diff, Argo CD removes only fields its own field manager owns. The listener entry was written by an earlier client-side deploy, so it is not Argo's to delete and the diff shows nothing.
+
+**Recover:** Remove the stale entry once, guarded by name, then confirm the Application stays Synced:
+
+```bash
+oc patch gateway maas-default-gateway -n openshift-ingress --type json \
+  -p '[{"op":"test","path":"/spec/listeners/1/name","value":"qwen3-6"},{"op":"remove","path":"/spec/listeners/1"}]'
+```
+

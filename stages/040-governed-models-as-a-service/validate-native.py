@@ -361,7 +361,7 @@ def main():
             need(any(m.get("path", {}).get("value") == "/v1/chat/completions" and any(h.get("name", "").lower() == "x-gateway-model-name" and h.get("type", "Exact") == "Exact" and h.get("value") == canonical for h in m.get("headers", [])) for rule in selected[0]["spec"]["rules"] for m in rule.get("matches", [])), "Shared API route lacks canonical body-model disambiguation")
         if parked:
             print("[PASS] Explicitly delegated model compute is parked; configuration/route preserved, inference not qualified")
-    need(len([r for r in routes if any(p.get("name") == "maas-default-gateway" for p in r["spec"].get("parentRefs", []))]) == 2, "Extra route would invalidate dedicated inference listeners")
+    need(len([r for r in routes if any(p.get("name") == "maas-default-gateway" for p in r["spec"].get("parentRefs", []))]) == len(models), "Extra route would invalidate dedicated inference listeners")
     print("[PASS] Three-listener isolation, exact native model configuration/routes and active workloads; parked compute is separate from inference acceptance")
     for d in [o for o in desired if o["kind"] == "LLMInferenceServiceConfig"]:
         m = d["metadata"]

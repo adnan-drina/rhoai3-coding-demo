@@ -10,7 +10,7 @@ Qwen models are hosted in the Internal Models project on the two Stage 020 GPU w
 
 ## What This Stage Adds
 
-- The default private coding model `qwen3-8-27b`: Qwen 3.8 27B in Red Hat's NVFP4 build on one NVIDIA RTX PRO 6000 Blackwell (Stage 020 `gpu-rtxpro6000` profile), with MTP speculative decoding and the full 262,144-token window; it admits 16 concurrent sequences so Stage 050 evaluation requests (16 samples each) decode in one batch. Qwen 3.6 27B FP8 is retired: declared, stopped, and absent from developer subscriptions and tools.
+- The default private coding model `qwen3-8-27b`: Qwen 3.8 27B in Red Hat's NVFP4 build on one NVIDIA RTX PRO 6000 Blackwell (Stage 020 `gpu-rtxpro6000` profile), with MTP speculative decoding and the full 262,144-token window; it admits 16 concurrent sequences so Stage 050 evaluation requests (16 samples each) decode in one batch. The deployed quantization shows in the dashboard: the display name (`Qwen3.8 27B NVFP4`), the description (`Model id: qwen3-8-27b, quantization: NVFP4, context 262,144-token`) and the label `demo.rhoai.io/quantization`. The Model Registry lists both prepared builds, `Qwen3.8-27B-NVFP4` (linked to the deployment) and `Qwen3.8-27B-FP8`. Qwen 3.6 27B FP8 was removed on 2026-10-13.
 - Native MaaS API key storage, subscriptions, authentication and token quotas.
 - Reusable single-node topology and queue-routing configurations, with native NVIDIA accelerator templates.
 - Approved GPT-6 Luna access through the native OpenAI external-provider integration.
