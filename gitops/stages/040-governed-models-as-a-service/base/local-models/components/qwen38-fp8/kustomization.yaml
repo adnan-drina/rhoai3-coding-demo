@@ -18,7 +18,7 @@ patches:
         value: Qwen3.8 27B FP8
       - op: replace
         path: /metadata/annotations/openshift.io~1description
-        value: "Qwen 3.8 27B, FP8 quantization (Qwen/Qwen3.8-27B-FP8 @017b9c7a), on one NVIDIA RTX PRO 6000 Blackwell; MTP speculative decoding; 262,144-token context. Model id qwen3-8-27b is format-neutral."
+        value: "Model id: qwen3-8-27b, quantization: FP8, context 262,144-token"
       - op: replace
         path: /spec/model/uri
         value: hf://Qwen/Qwen3.8-27B-FP8:017b9c7af6b5689d5dd426a76e0bc077eb5ca20a
@@ -42,4 +42,4 @@ patches:
         value: Qwen3.8 27B FP8
       - op: replace
         path: /metadata/annotations/openshift.io~1description
-        value: "Qwen 3.8 27B, FP8 quantization (Qwen/Qwen3.8-27B-FP8 @017b9c7a), on one NVIDIA RTX PRO 6000 Blackwell; MTP speculative decoding; 262,144-token context. Model id qwen3-8-27b is format-neutral."
+        value: "Model id: qwen3-8-27b, quantization: FP8, context 262,144-token"

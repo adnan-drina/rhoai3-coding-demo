@@ -22,7 +22,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "16"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     openshift.io/display-name: Qwen3.8 27B NVFP4
-    openshift.io/description: "Qwen 3.8 27B, NVFP4 quantization (RedHatAI/Qwen3.8-27B-NVFP4 @2889ddee), on one NVIDIA RTX PRO 6000 Blackwell; MTP speculative decoding; 262,144-token context. Model id qwen3-8-27b is format-neutral."
+    openshift.io/description: "Model id: qwen3-8-27b, quantization: NVFP4, context 262,144-token"
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
     # Stage 020 RTX PRO 6000 (g7e.2xlarge) profile; its Kueue flavor places the
