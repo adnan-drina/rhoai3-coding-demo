@@ -14,7 +14,7 @@ argocd app sync --help 2>&1 | grep -q -- '--core' || { echo 'An argocd client wi
 [[ "$(oc config view --minify -o jsonpath='{.contexts[0].context.namespace}')" == openshift-gitops ]] || { echo 'Set the kube-context namespace to openshift-gitops for argocd --core' >&2; exit 1; }
 REVISION="${RHOAI_STAGE060_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
 [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || exit 1
-[[ "$(git -C "$REPO_ROOT" ls-remote origin refs/heads/codex/stage-010-foundation-35 | awk '{print $1}')" == "$REVISION" ]] || { echo 'Published revision mismatch' >&2; exit 1; }
+[[ "$(git -C "$REPO_ROOT" ls-remote origin "refs/heads/${GIT_REPO_BRANCH:-main}" | awk '{print $1}')" == "$REVISION" ]] || { echo 'Published revision mismatch' >&2; exit 1; }
 git -C "$REPO_ROOT" diff --exit-code "$REVISION" -- gitops/stages/060-agent-runtime-and-agentops gitops/argocd/app-of-apps/060-agent-runtime-and-agentops-runtime.yaml "$SCRIPT_DIR" scripts/platform/check-operator-policy.py >/dev/null
 if [[ "${1:-}" == '--finish' ]]; then
   python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"

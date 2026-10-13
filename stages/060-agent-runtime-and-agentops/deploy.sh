@@ -12,7 +12,7 @@ argocd app sync --help 2>&1 | grep -q -- '--core' || { echo 'An argocd client wi
 REVISION="${RHOAI_STAGE060_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
 [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo 'Immutable revision required' >&2; exit 1; }
 # Bind immutable remote source and the exact task-owned local content before writing.
-PUBLISHED="$(git -C "$REPO_ROOT" ls-remote origin refs/heads/codex/stage-010-foundation-35 | awk '{print $1}')"
+PUBLISHED="$(git -C "$REPO_ROOT" ls-remote origin "refs/heads/${GIT_REPO_BRANCH:-main}" | awk '{print $1}')"
 [[ "$PUBLISHED" == "$REVISION" ]] || { echo 'Revision is not the published task branch' >&2; exit 1; }
 git -C "$REPO_ROOT" diff --exit-code "$REVISION" -- gitops/stages/060-agent-runtime-and-agentops gitops/argocd/app-of-apps/060-agent-runtime-and-agentops.yaml stages/060-agent-runtime-and-agentops/deploy.sh stages/060-agent-runtime-and-agentops/setup-identity.py >/dev/null || { echo 'Scoped source differs from selected revision' >&2; exit 1; }
 # Preflight is read-only; own App is the first write. Refuse foreign/active ownership.

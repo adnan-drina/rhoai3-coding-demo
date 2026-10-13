@@ -9,6 +9,7 @@ import base64
 import gzip
 import hashlib
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -113,8 +114,9 @@ def run(args):
     require(guard.returncode == 0, 'Shared environment/login guard failed; expected cluster identifier is required')
     published = subprocess.run(['git', '-C', str(ROOT), 'show', args.revision + ':' + str(Path(__file__).resolve().relative_to(ROOT))], capture_output=True)
     require(published.returncode == 0 and published.stdout == Path(__file__).read_bytes(), 'Helper must match selected published revision')
-    remote = subprocess.run(['git', 'ls-remote', REPO, 'refs/heads/codex/stage-010-foundation-35'], capture_output=True, text=True, timeout=30)
-    require(remote.returncode == 0 and remote.stdout.split() == [args.revision, 'refs/heads/codex/stage-010-foundation-35'], 'Selected SHA is not the published reviewed branch head')
+    branch = 'refs/heads/' + os.environ.get('GIT_REPO_BRANCH', 'main')
+    remote = subprocess.run(['git', 'ls-remote', REPO, branch], capture_output=True, text=True, timeout=30)
+    require(remote.returncode == 0 and remote.stdout.split() == [args.revision, branch], 'Selected SHA is not the published reviewed branch head')
     app = oc('get', 'application', APP, '-n', 'openshift-gitops', '-o', 'json')
     spec = app['spec']
     source = {'repoURL': REPO, 'path': SOURCE, 'targetRevision': args.revision}
