@@ -53,7 +53,9 @@ metadata:
     openshift.io/display-name: Qwen3.8 27B INT4 (candidate)
     # Dashboard Stop/Start control. Runs while Qwen 3.8 is stopped in internal-models (two L40S nodes:
     # Qwen 3.6 production + this candidate); set to "true" to hand the GPU back.
-    serving.kserve.io/stop: "false"
+    # Stopped after the 2026-10-13 tuning runs to free the GPU (GPU nodes scaled to zero); set "false" to
+    # start the candidate again.
+    serving.kserve.io/stop: "true"
     serving.kserve.io/deploymentMode: RawDeployment
     security.opendatahub.io/enable-auth: "true"
     opendatahub.io/hardware-profile-name: gpu-reserved-demo
