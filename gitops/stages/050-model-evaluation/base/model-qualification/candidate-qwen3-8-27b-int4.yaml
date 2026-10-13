@@ -60,7 +60,9 @@ metadata:
     security.opendatahub.io/enable-auth: "true"
     opendatahub.io/hardware-profile-name: gpu-reserved-demo
     opendatahub.io/hardware-profile-namespace: redhat-ods-applications
-    argocd.argoproj.io/sync-wave: "21"
+    # Last wave: a stopped candidate (serving.kserve.io/stop) reports Suspended, and Argo CD waits for each
+    # wave to be healthy, so any later wave would never sync while the candidate is stopped.
+    argocd.argoproj.io/sync-wave: "40"
 spec:
   predictor:
     minReplicas: 1
