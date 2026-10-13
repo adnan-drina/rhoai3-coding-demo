@@ -1,7 +1,7 @@
 # Optional H100 pool: one MachineSet per us-east-2 zone, all at zero replicas.
 # A Machine API MachineSet launches in exactly one subnet/zone and never retries
 # another zone, so "any zone with capacity" means one MachineSet per zone.
-# Scale through scripts/platform/h100-capacity-probe.sh, never the L40S resume helper.
+# Scale through scripts/platform/gpu-capacity-probe.sh --pool h100, never the L40S resume helper.
 ---
 apiVersion: machine.openshift.io/v1beta1
 kind: MachineSet

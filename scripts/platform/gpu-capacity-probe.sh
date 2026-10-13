@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Probe AWS H100 (p5.4xlarge) launch capacity, one us-east-2 zone at a time.
+# Probe AWS GPU launch capacity (H100 p5.4xlarge, RTX PRO 6000 g7e.2xlarge), one us-east-2 zone at a time.
 #
-# For each zone: scale its zero-replica H100 MachineSet to 1, record what AWS
+# For each zone: scale its zero-replica <pool> MachineSet to 1, record what AWS
 # answers (Running, Failed with reason, or still Provisioning with the
 # Machine API's last error), then always scale back to 0 and remove the
 # Machine. A Running machine is billed until it is removed; with --gpu the
 # probe also waits for the node to advertise nvidia.com/gpu before removing it.
 #
-# Usage: h100-capacity-probe.sh [--zones "a b c"] [--timeout-min 10] [--gpu]
-# Receipt: tmp/h100-capacity-probe-<UTC timestamp>.json (tmp/ is gitignored)
+# Usage: gpu-capacity-probe.sh [--pool h100|rtxpro6000] [--zones "a b c"] [--timeout-min 10] [--gpu]
+# Receipt: tmp/<pool>-capacity-probe-<UTC timestamp>.jsonl (tmp/ is gitignored)
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -16,9 +16,10 @@ source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
 
-ZONES="a b c"; TIMEOUT_MIN=10; GPU=false
+POOL=h100; ZONES="a b c"; TIMEOUT_MIN=10; GPU=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --pool) POOL="$2"; shift 2 ;;
     --zones) ZONES="$2"; shift 2 ;;
     --timeout-min) TIMEOUT_MIN="$2"; shift 2 ;;
     --gpu) GPU=true; shift ;;
@@ -26,9 +27,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+[[ "$POOL" =~ ^(h100|rtxpro6000)$ ]] || { echo "Unknown pool: $POOL" >&2; exit 2; }
 NS=openshift-machine-api
 INFRA="$(oc get infrastructure cluster -o jsonpath='{.status.infrastructureName}')"
-RECEIPT="$REPO_ROOT/tmp/h100-capacity-probe-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
+RECEIPT="$REPO_ROOT/tmp/$POOL-capacity-probe-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
 mkdir -p "$REPO_ROOT/tmp"
 
 machine_of() { oc get machine -n "$NS" -l "machine.openshift.io/cluster-api-machineset=$1" -o name | head -1; }
@@ -45,7 +47,7 @@ CURRENT=""
 trap '[[ -n "$CURRENT" ]] && cleanup "$CURRENT"' EXIT INT TERM
 
 for z in $ZONES; do
-  ms="$INFRA-gpu-h100-us-east-2$z"
+  ms="$INFRA-gpu-$POOL-us-east-2$z"
   oc get machineset "$ms" -n "$NS" >/dev/null
   [[ "$(oc get machineset "$ms" -n "$NS" -o jsonpath='{.spec.replicas}')" == 0 ]] || { echo "$ms is not at zero replicas; refusing" >&2; exit 1; }
   CURRENT="$ms"
@@ -80,6 +82,6 @@ print(json.dumps({"machine":m["metadata"]["name"],"phase":s.get("phase"),"errorR
   echo "$(date -u +%H:%M:%SZ) $ms back to 0"
 done
 
-# Wait until no H100 Machine remains, so nothing keeps billing after the probe.
-until [[ -z "$(oc get machine -n "$NS" -l cluster-api/accelerator=nvidia-h100 -o name 2>/dev/null; for z in $ZONES; do machine_of "$INFRA-gpu-h100-us-east-2$z"; done)" ]]; do sleep 15; done
-echo "No H100 Machines remain. Receipt: $RECEIPT"
+# Wait until no probed Machine remains, so nothing keeps billing after the probe.
+until [[ -z "$(for z in $ZONES; do machine_of "$INFRA-gpu-$POOL-us-east-2$z"; done)" ]]; do sleep 15; done
+echo "No $POOL probe Machines remain. Receipt: $RECEIPT"
