@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Register only the two pinned local models; never archive unrelated records.
+# Register the deployed local model and every prepared format alternate; never archive unrelated records.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -41,28 +41,50 @@ try:
  # the registry title is the checkpoint repository name (Qwen3.8-27B-NVFP4 or Qwen3.8-27B-FP8).
  rendered=subprocess.run(['oc','kustomize',str(root/'gitops/stages/040-governed-models-as-a-service/base/local-models/base')],capture_output=True,text=True,check=True).stdout
  models={o['metadata']['name']:o for o in json.loads(subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_stream(STDIN.read).compact)'],input=rendered,capture_output=True,text=True,check=True).stdout) if o.get('kind')=='LLMInferenceService'}
- for name in ['qwen3-6-27b','qwen3-8-27b']:
-  expected=models[name];uri=expected['spec']['model']['uri'];title=uri.split('/')[-1].split(':')[0]
-  revision=uri.rsplit(':',1)[1];assert len(revision)==40,'Model source must be immutable'
+ QUANT={'NVFP4':'NVFP4 (FP4 weights, FP8 attention)','FP8':'FP8 block-128','INT4':'INT4 W4A16'}
+ def register(uri):
+  """Registered model per checkpoint (title = repository name), version per immutable revision, one artifact."""
+  title=uri.split('/')[-1].split(':')[0];revision=uri.rsplit(':',1)[1];assert len(revision)==40,'Model source must be immutable'
+  quant=next((v for k,v in QUANT.items() if title.upper().endswith('-'+k)),'unquantized')
+  matches=[x for x in items('/registered_models') if x['name']==title];assert len(matches)<=1,'Ambiguous registered model name'
+  model=matches[0] if matches else api('/registered_models',{'name':title,'owner':'rhoai3-coding-demo','description':'Quantization: '+quant+'. Pinned model artifact used by the project ('+uri.split('://')[1].split(':')[0]+'). Runtime and GPU compatibility are qualified separately; this is not a Red Hat validated-model claim.'})
+  version_name='source-'+revision
+  versions=[x for x in items('/registered_models/'+model['id']+'/versions') if x['name']==version_name];assert len(versions)<=1,'Ambiguous registered model version'
+  version=versions[0] if versions else api('/model_versions',{'name':version_name,'registeredModelId':model['id'],'description':'Quantization: '+quant+'. Immutable source '+revision})
+  artifacts=items('/model_versions/'+version['id']+'/artifacts')
+  assert not artifacts or (len(artifacts)==1 and artifacts[0].get('uri')==uri),'Existing version artifact differs; no overwrite'
+  if not artifacts:api('/model_versions/'+version['id']+'/artifacts',{'name':'model-source','uri':uri,'artifactType':'model-artifact','modelFormatName':'vLLM','modelFormatVersion':'1'})
+  return title,model['id'],version['id']
+ active={}
+ for name in ['qwen3-8-27b']:
+  expected=models[name];uri=expected['spec']['model']['uri']
   llmi=get('llminferenceservices.serving.kserve.io',name,ns)
   assert llmi['spec']['model']['uri']==uri and llmi['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('040-governed-models-as-a-service:'),'Model source/ownership differs'
   assert isinstance(llmi['metadata'].get('generation'),int) and llmi.get('status',{}).get('observedGeneration')==llmi['metadata']['generation'],'Model readiness is stale'
   parked=llmi['spec'].get('replicas')==0
   if not parked:assert any(c.get('type')=='Ready' and c.get('status')=='True' for c in llmi.get('status',{}).get('conditions',[])),'Active model must be ready before registry publication'
-  matches=[x for x in items('/registered_models') if x['name']==title];assert len(matches)<=1,'Ambiguous registered model name'
-  model=matches[0] if matches else api('/registered_models',{'name':title,'owner':'rhoai3-coding-demo','description':'Pinned RedHatAI model artifact used by the project. Runtime and GPU compatibility are qualified separately; this is not a Red Hat validated-model claim.'})
-  model_id=model['id'];existing_labels=llmi['metadata'].get('labels',{});assert not existing_labels.get('modelregistry.opendatahub.io/registered-model-id') or existing_labels['modelregistry.opendatahub.io/registered-model-id']==model_id,'Existing model registry identity differs; no reassignment'
-  version_name='source-'+revision
-  versions=[x for x in items('/registered_models/'+model_id+'/versions') if x['name']==version_name];assert len(versions)<=1,'Ambiguous registered model version'
-  version=versions[0] if versions else api('/model_versions',{'name':version_name,'registeredModelId':model_id,'description':'Immutable source '+revision})
-  version_id=version['id'];assert not existing_labels.get('modelregistry.opendatahub.io/model-version-id') or existing_labels['modelregistry.opendatahub.io/model-version-id']==version_id,'Existing model version identity differs; no reassignment'
-  artifacts=items('/model_versions/'+version_id+'/artifacts')
-  assert not artifacts or (len(artifacts)==1 and artifacts[0].get('uri')==uri),'Existing version artifact differs; no overwrite'
-  if not artifacts:api('/model_versions/'+version_id+'/artifacts',{'name':'model-source','uri':uri,'artifactType':'model-artifact','modelFormatName':'vLLM','modelFormatVersion':'1'})
+  title,model_id,version_id=register(uri);active[name]=uri
+  existing=llmi['metadata'].get('labels',{}).get('modelregistry.opendatahub.io/registered-model-id')
+  if existing and existing!=model_id:
+   # Relink only for a format switch: the linked entry must be another checkpoint, never a same-name duplicate.
+   linked=api('/registered_models/'+existing);assert linked.get('name')!=title,'Existing model registry identity differs; no reassignment'
+   print('NOTE Format switch: deployment relinked from '+linked.get('name','?')+' to '+title)
   labels=dict(llmi['metadata'].get('labels',{}));labels.update({'modelregistry.opendatahub.io/name':registry,'modelregistry.opendatahub.io/registered-model-id':model_id,'modelregistry.opendatahub.io/model-version-id':version_id})
   patch=[{'op':'test','path':'/metadata/resourceVersion','value':llmi['metadata']['resourceVersion']},{'op':'add','path':'/metadata/labels','value':labels}]
   oc(['patch','llminferenceservices.serving.kserve.io',name,'-n',ns,'--type=json','--patch-file=/dev/stdin','-o','json'],patch)
-  print('PASS Registered pinned metadata; parked runtime not qualified: '+name if parked else 'PASS Registered pinned source and native deployment linkage: '+name)
+  print(('PASS Registered pinned metadata; parked runtime not qualified: ' if parked else 'PASS Registered pinned source and native deployment linkage: ')+name+' -> '+title)
+ # Prepared alternates: every format component under local-models/components registers its artifact
+ # (no deployment linkage), so the registry lists each build that can be switched on.
+ import shutil,tempfile
+ lm=root/'gitops/stages/040-governed-models-as-a-service/base/local-models'
+ for comp in sorted(x.name for x in (lm/'components').iterdir() if x.is_dir()):
+  with tempfile.TemporaryDirectory() as tmp:
+   shutil.copytree(lm,Path(tmp)/'local-models');k=Path(tmp)/'local-models/base/kustomization.yaml'
+   k.write_text(k.read_text()+'\ncomponents:\n  - ../components/'+comp+'\n')
+   alt=subprocess.run(['oc','kustomize',str(Path(tmp)/'local-models/base')],capture_output=True,text=True,check=True).stdout
+  for o in json.loads(subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_stream(STDIN.read).compact)'],input=alt,capture_output=True,text=True,check=True).stdout):
+   if o.get('kind')=='LLMInferenceService' and o['spec']['model']['uri']!=active.get(o['metadata']['name']):
+    title,_,_=register(o['spec']['model']['uri']);print('PASS Registered prepared alternate (component '+comp+', not deployed): '+title)
 except (RuntimeError,AssertionError,KeyError,ValueError,subprocess.SubprocessError) as error:
  raise SystemExit('ERROR: registry publication stopped ('+type(error).__name__+'); inspect native readiness/source ownership') from None
 PY

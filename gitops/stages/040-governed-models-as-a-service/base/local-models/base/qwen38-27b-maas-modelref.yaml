@@ -5,13 +5,16 @@ metadata:
   namespace: internal-models
   labels:
     app.kubernetes.io/name: qwen3-8-27b
+    # Quantization of the served checkpoint; the qwen38-fp8 component sets fp8.
+    demo.rhoai.io/quantization: nvfp4
     app.kubernetes.io/component: maas-model-ref
     demo.rhoai.io/provider: local
   annotations:
     argocd.argoproj.io/sync-wave: "17"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     # Models tab title; native catalog IDs use the resolved publisher/model alias.
-    openshift.io/display-name: Qwen3.8 27B
+    openshift.io/display-name: Qwen3.8 27B NVFP4
+    openshift.io/description: "Qwen 3.8 27B, NVFP4 quantization (RedHatAI/Qwen3.8-27B-NVFP4 @2889ddee), on one NVIDIA RTX PRO 6000 Blackwell; MTP speculative decoding; 262,144-token context. Model id qwen3-8-27b is format-neutral."
 spec:
   modelRef:
     kind: LLMInferenceService

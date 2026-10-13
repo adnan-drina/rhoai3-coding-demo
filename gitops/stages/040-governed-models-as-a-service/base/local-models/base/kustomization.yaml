@@ -7,8 +7,6 @@ resources:
   - single-node-router.yaml
   - single-node-topology.yaml
   - local-queue.yaml
-  - qwen27b-llminferenceservice.yaml
-  - qwen27b-maas-modelref.yaml
   - qwen38-27b-llminferenceservice.yaml
   - qwen38-27b-maas-modelref.yaml
 

@@ -5,6 +5,8 @@ metadata:
   namespace: internal-models
   labels:
     app.kubernetes.io/name: qwen3-8-27b
+    # Quantization of the served checkpoint; the qwen38-fp8 component sets fp8.
+    demo.rhoai.io/quantization: nvfp4
     app.kubernetes.io/component: local-llm
     inference.optimization/acceleratorName: RTX-PRO-6000
     kueue.x-k8s.io/queue-name: lq-gpu-rtxpro6000
@@ -19,7 +21,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "16"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    openshift.io/display-name: Qwen3.8 27B
+    openshift.io/display-name: Qwen3.8 27B NVFP4
+    openshift.io/description: "Qwen 3.8 27B, NVFP4 quantization (RedHatAI/Qwen3.8-27B-NVFP4 @2889ddee), on one NVIDIA RTX PRO 6000 Blackwell; MTP speculative decoding; 262,144-token context. Model id qwen3-8-27b is format-neutral."
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
     # Stage 020 RTX PRO 6000 (g7e.2xlarge) profile; its Kueue flavor places the
@@ -49,7 +52,7 @@ spec:
           sectionName: api
     route: {}
     scheduler:
-      # Same lean single-replica profile as qwen3-6-27b: prefix-cache scoring
+      # Lean single-replica profile: prefix-cache scoring
       # only helps when more than one replica exists. The operator still
       # schedules the picker on CPU capacity.
       config:
