@@ -10,7 +10,7 @@ Qwen models are hosted in the Internal Models project on the two Stage 020 GPU w
 
 ## What This Stage Adds
 
-- Registered Qwen 3.6 27B FP8, parked at zero replicas, and active Qwen 3.8 27B INT4 on one exclusive GPU; both profiles admit 16 concurrent sequences so Stage 050 evaluation requests (16 samples each) decode in one batch.
+- The default private coding model `qwen3-8-27b`: Qwen 3.8 27B in Red Hat's NVFP4 build on one NVIDIA RTX PRO 6000 Blackwell (Stage 020 `gpu-rtxpro6000` profile), with MTP speculative decoding and the full 262,144-token window; it admits 16 concurrent sequences so Stage 050 evaluation requests (16 samples each) decode in one batch. Qwen 3.6 27B FP8 is retired: declared, stopped, and absent from developer subscriptions and tools.
 - Native MaaS API key storage, subscriptions, authentication and token quotas.
 - Reusable single-node topology and queue-routing configurations, with native NVIDIA accelerator templates.
 - Approved GPT-6 Luna access through the native OpenAI external-provider integration.
@@ -20,7 +20,9 @@ Qwen models are hosted in the Internal Models project on the two Stage 020 GPU w
 
 ## What To Notice And Why It Matters
 
-Clients use the common `/v1` base and the canonical `publishers/internal-models/models/<model-name>` local model IDs. MaaS preserves a common governance boundary. The two full GPUs are this project's model-memory choice; the configuration does not enable time slicing or automatic scaling.
+Clients use the common `/v1` base and the canonical `publishers/internal-models/models/<model-name>` local model IDs. MaaS preserves a common governance boundary. One full GPU per model is this project's model-memory choice; the configuration does not enable time slicing or automatic scaling.
+
+The model id `qwen3-8-27b` names the model, not its quantization. The 2026-10-13 serving study measured Qwen 3.8 on the candidate GPUs and formats: on the RTX PRO 6000, the NVFP4 build reaches a 776 ms first token on 8K-token agent prompts and 302.6 output tokens per second, about 3.3 times the former L40S INT4 setup at less than half the cost per token, with coding scores equal to FP8 and within run-to-run noise of the unquantized model. Blackwell's FP4 tensor cores are what make NVFP4 the natural format here, and its small footprint leaves room for six concurrent full-window requests. An FP8 build of the same model is prepared as a one-line alternative (`local-models/components/qwen38-fp8`); the final choice between the two follows the next Hermes migration run.
 
 GPT-6 Luna uses the OpenAI Chat Completions protocol. Function calls require `reasoning_effort: none`. OpenAI Responses built-in tools are outside this connection's protocol. External requests leave the cluster for the approved provider.
 

@@ -198,9 +198,8 @@ Using the quarkus-agent tools, list this project's extensions and summarize what
 
 **What you should see:** a plan that reads like your team's conventions, because it is steered by them.
 
-> Model tip: the default is Qwen3.8 27B INT4 (`qwen3-8-27b-int4`, 262K
-> deployed context). Switch the picker to `qwen3-6-27b` (131K) when you
-> want the FP8 model. The picker is a governed menu, not a credential decision.
+> Model tip: the default is Qwen3.8 27B (`qwen3-8-27b`, NVFP4 on an RTX PRO 6000,
+> 262K deployed context). The picker is a governed menu, not a credential decision.
 
 ![Plan artifacts](images/speckit-plan.png)
 

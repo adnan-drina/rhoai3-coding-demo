@@ -20,6 +20,16 @@ The [baseline inventory](docs/OPERATIONS.md#fresh-environment-baseline-2026-10-0
 Zero-replica provider MachineSets, the preinstalled Keycloak PVC and platform revision pods are not project cleanup candidates. Historical validation stays historical; obsolete project resources need purpose, owner, replacement behavior and a validated removal condition before deletion.
 
 
+## Default model switch follow-ups (2026-10-13)
+
+`qwen3-8-27b` (Qwen 3.8 NVFP4 on RTX PRO 6000) is the default; Qwen 3.6 is retired. Study: [OPERATIONS](docs/OPERATIONS.md#model-serving-study-and-default-model-2026-10-13).
+
+- [ ] Choose NVFP4 or FP8 for good after the next Hermes migration run (looping behaviour); FP8 is one component away (`local-models/components/qwen38-fp8`).
+- [ ] Stage 060 runtime: `openshell-runtime` is still pinned to `07a29a29`; its MaaS subscriptions `hermes-private-qwen38` and `opencode-private-qwen38` still name the retired `qwen3-8-27b-int4`. Re-pinning to main is gated by the runtime prerequisites hook, which needs `openshell-credentials` `key-encryption-key` (Secret is empty) and the `openshell-runtime-ready` approval ConfigMap (absent) since before 2026-10-13. Redeploy through `stages/060-agent-runtime-and-agentops/deploy-runtime.sh` once the runtime credentials are restored.
+- [ ] Publish the Stage 120 OpenCode scaffold and the Stage 130 golden scaffold (`run-defaults.json` now defaults to `qwen3-8-27b`) to their live repositories; the drift checks flag the difference until then.
+- [ ] Stage 050 pipeline v12: summary metrics/params/tags on the parent MLflow run via the documented `injectUserEnvVars` path, `dsl.If` for skipped steps (verified plan in `tmp/model-study/STUDY.md`).
+- [ ] Stage 050 qualification baseline: with Qwen 3.6 retired, the pipeline's "production" comparison resolves to `qwen3-8-27b`; the INT4 candidate in `evaluated-models` can be retired or re-pointed.
+
 ## Migration reliability package M-1..M-7 (2026-09-30, unpublished)
 
 Branch `feat/migration-reliability-m1-m7` (base `next/after-v28` `26bc9c2b`); status per ID in
@@ -352,7 +362,7 @@ Compatibility objectives (`loop.compatibility_objectives: v1`) and plan semantic
 
 - [ ] Confirm whether governed model access, dashboard discovery, subscription assignment, API keys, quotas, rate limits, token limits and usage visibility are GA or a preview for the target release.
 - [ ] Confirm whether `ExternalModel` and external inference through the same MaaS subscription are supported enough to drop any remaining upstream coexistence assumption.
-- [ ] `qwen3-8-27b-int4` is local compatibility, not a Red Hat validated-model-matrix row. Do not relabel a passing local inference test as validation.
+- [ ] `qwen3-8-27b` (RedHatAI NVFP4, and the prepared FP8) is local compatibility, not a Red Hat validated-model-matrix row; the RTX PRO 6000 appears in Red Hat AI 3.5 supported accelerators but in no quantization table. Do not relabel a passing local inference test as validation.
 
 ## Workarounds still required
 

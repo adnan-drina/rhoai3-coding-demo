@@ -42,7 +42,7 @@ accelerator tags, OCI export of results and evaluation card):
 
 ```bash
 for c in agentic-coding-livecodebench-v2 agentic-coding-python-tasks-v1 agentic-coding-security-quick-v2 agentic-coding-latency-v1 agentic-coding-throughput-v2; do
-  stages/050-model-evaluation/submit-evaluation.sh --model-name publishers/internal-models/models/qwen3-8-27b-int4 --collection "$c"
+  stages/050-model-evaluation/submit-evaluation.sh --model-name publishers/internal-models/models/qwen3-8-27b --collection "$c"
 done
 ```
 

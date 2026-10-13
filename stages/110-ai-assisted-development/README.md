@@ -96,8 +96,7 @@ This is the brownfield service you will extend. It is already deployed, already 
 
 | Model | Context | When to use |
 |-------|---------|-------------|
-| `qwen3-8-27b-int4` | 262K | Default: local Qwen3.8 27B INT4 through MaaS |
-| `qwen3-6-27b` | 131K | Alternate: local Qwen3.6 27B FP8 through MaaS |
+| `qwen3-8-27b` | 262K | Default and only private model: local Qwen3.8 27B (NVFP4 on RTX PRO 6000) through MaaS |
 
 3. Configuration comes from `~/.config/kilo/kilo.jsonc` (and `kilo.json`) — platform-provisioned, no personal API keys. Governance rules live in `~/.config/kilo/AGENTS.md`.
 4. Send a first prompt to see the model respond. This is your "hello world"; ask whatever you like. For example:
@@ -106,7 +105,7 @@ This is the brownfield service you will extend. It is already deployed, already 
 Explore our project code and report what REST endpoints this service exposes.
 ```
 
-**What you should see:** the Kilo Code panel with the model picker on `qwen3-8-27b-int4`, and `qwen3-6-27b` still listed, plus a streamed answer to your first prompt.
+**What you should see:** the Kilo Code panel with the model picker on `qwen3-8-27b`, plus a streamed answer to your first prompt.
 
 ![Kilo Code panel with model picker](images/kilo-panel-models.png) ![Kilo first prompt response](images/kilo-first-prompt-response.png)
 

@@ -829,9 +829,9 @@ Stage 020 supplies the GPU-capacity resume workflow consumed by Stage 040 models
 ./scripts/platform/resume-gpu-demo.sh resume
 ```
 
-The `resume` command requests a sync of the existing Stage 020 revision, scales only its verified GPU MachineSet back to two replicas, waits for native GPU/operator readiness and runs readiness validation. It does not delete Machines, patch node labels, sync model stages or repair generated ReplicaSets. Model and functional acceptance remain separate; scale-to-zero is intentional cost control, not a passing GPU-capacity check.
+The `resume` command requests a sync of the existing Stage 020 revision, scales the selected pool's verified MachineSet up (default: one RTX PRO 6000 `g7e.2xlarge` in `us-east-2a`; `GPU_POOL=l40s` selects the L40S pool, `GPU_ZONE` another zone, and an explicit replica count up to two), waits for native GPU/operator readiness and runs readiness validation. It does not delete Machines, patch node labels, sync model stages or repair generated ReplicaSets. Model and functional acceptance remain separate; scale-to-zero is intentional cost control, not a passing GPU-capacity check.
 
-To scale GPU capacity down for shutdown:
+To scale GPU capacity down for shutdown (every reviewed GPU pool goes to zero, so no forgotten pool keeps billing):
 
 ```bash
 ./scripts/platform/resume-gpu-demo.sh down
@@ -869,6 +869,8 @@ gh api -X PATCH "repos/adnan-drina/coolstore-inventory-service/git/refs/heads/go
 Or: `git push origin main:golden --force`.
 
 ## Qwen 3.8 INT4 alongside Qwen 3.6
+
+> Superseded on 2026-10-13 by [Model serving study and default model](#model-serving-study-and-default-model-2026-10-13): the served model is now `qwen3-8-27b` (NVFP4 on RTX PRO 6000) and Qwen 3.6 is retired. The INT4 history below is kept for the record; the Stage 050 evaluation candidate still serves the INT4 build.
 
 `qwen3-8-27b-int4` is a second governed local model. It is not a Red Hat validated model. The validated-model matrix reviewed on 2026-09-22 has no `RedHatAI/Qwen3.8-27B-INT4` entry and no modelcar. The service runs on the installed RHOAI 3.4 operator vLLM through `hf://RedHatAI/Qwen3.8-27B-INT4:7fb3aaca2d21c0db4716572945208db40cef9966`. Recorded runtime image: `registry.redhat.io/rhaii/vllm-cuda-rhel9@sha256:dd65c7ed88a9369b962f1299ed19c6c8819ff0a64595c10e32f1e82ab0750e27` (running image ID `sha256:d2ed07d307845135c089bc7644b64734b9349d517abf746c9aa0aa23ed263da5`, vLLM `0.18.0+rhaiv.14`). The retained context is `--max-model-len=262144`. A 246077-token needle recall passed with a 512-token output reserve. A 128-token cap failed that shape at 222077 tokens. Stage 040's README has the comparison with Qwen 3.6.
 
@@ -929,6 +931,37 @@ If the `argocd` CLI is unavailable, use the OpenShift GitOps UI and choose casca
 - [OpenShift CLI documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/cli_tools/openshift-cli-oc)
 - [Argo CD documentation](https://argo-cd.readthedocs.io/)
 
+## Model serving study and default model (2026-10-13)
+
+**Decision.** The default private coding model is `qwen3-8-27b`: `RedHatAI/Qwen3.8-27B-NVFP4` (pinned `2889ddee`) on one NVIDIA RTX PRO 6000 Blackwell Server Edition (`g7e.2xlarge`, Stage 020 profile `gpu-rtxpro6000`, queue `lq-gpu-rtxpro6000`). The model id is format-neutral. `Qwen/Qwen3.8-27B-FP8` (pinned `017b9c7a`) is prepared as a one-line alternative; the final choice follows the next Hermes migration run, because the open question there is agent looping behaviour, which benchmarks do not measure. Qwen 3.6 is retired: its LLMInferenceService and MaaSModelRef stay declared at zero replicas and it is absent from developer subscriptions, tools and run defaults.
+
+**Method.** Same qualification pipeline (v11) for every arm: latency (8K-token prompt, 8 concurrent agents), throughput (64 requests), LiveCodeBench v6 and the python-tasks collection (MBPP, HumanEval). Serving args identical to production (MTP speculative decoding with 3 tokens, batched tokens 16384, async scheduling, FP8 KV cache, 262,144-token window). A long-context check hid a fact in a 26K/130K/248K-token prompt and asked for it. Cost per million output tokens is the On-Demand price divided by measured throughput. Single runs; LiveCodeBench varies about plus or minus 0.03 run to run.
+
+| Qwen 3.8 | TTFT 8K x8 | tok/s | ITL | $/M output | LCB / MBPP / HumanEval | Full 262K requests in KV |
+|---|---|---|---|---|---|---|
+| NVFP4, RTX PRO 6000 | 776 ms | 302.6 | 11.2 ms | 3.09 | 0.21 / 0.91 / 0.85 | 6.37 |
+| FP8, RTX PRO 6000 | 966 ms | 249.8 | 12.3 ms | 3.74 | 0.20 / 0.87 / 0.90 | 5.77 |
+| BF16, RTX PRO 6000 (reference) | 1,448 ms | 155.6 | 18.4 ms | 6.00 | 0.24 / 0.89 / 0.90 | 3.29 |
+| INT4 W4A16, L40S (former) | 2,565 ms | 92.6 | ~16 ms | 6.73 | 0.24-0.22 / 0.88 / 0.87 | about 1 |
+| INT4 W4A16, one A100 40 GB | 2,806 ms | 86.5 | 14.1 ms | 8.80 (all 8 GPUs busy) | not run | not run |
+
+All three RTX PRO 6000 formats recalled the hidden fact at 248K prompt tokens (first token after 53-62 s). NVFP4 runs on vLLM's native FlashInfer CUTLASS NVFP4 kernel. INT4 W4A16 and MXFP4 were not carried onto Blackwell: INT4 runs weight-only with BF16 compute (NVFP4 has the same footprint with FP4 compute) and MXFP4 uses coarser scaling.
+
+**Instance and capacity findings (us-east-2, On-Demand, 2026-10-13).** Prices from the AWS pricing feed: `g6e.2xlarge` 2.242, `g7e.2xlarge` 3.363, `p4d.24xlarge` 21.96 (8 GPUs), `p5.4xlarge` 6.88 $/h. `g7e.2xlarge` launched within seconds in `us-east-2a`. `p5.4xlarge` (H100) returned `InsufficientInstanceCapacity` in all three zones for 25 minutes; the "try another zone" text in that error is generic and every zone named the other two. `p4d.24xlarge` (A100) launched in 2a and 2b but one A100 was slower than one L40S for this model and AWS sells it only as an 8-GPU node; the A100 MachineSets were removed. Spot is not available in this account: every Spot request was refused by an organization service control policy. `g6e.4xlarge` would not help: on `g6e.2xlarge` vLLM peaked at 1.1 CPU cores and 22.5 GB memory with no CPU throttling.
+
+**Switching to FP8.** Enable the component in `gitops/stages/040-governed-models-as-a-service/base/local-models/base/kustomization.yaml`:
+
+```yaml
+components:
+  - ../components/qwen38-fp8
+```
+
+It swaps the checkpoint and sets `VLLM_USE_DEEP_GEMM=0` (required on this GPU, see TROUBLESHOOTING). Publish, re-pin Stage 040, then run `register-model-cards.sh`; the registry entry takes the checkpoint name (`Qwen3.8-27B-FP8`). Clients keep the same `qwen3-8-27b` id.
+
+**Capacity probe.** `scripts/platform/gpu-capacity-probe.sh --pool h100|rtxpro6000 [--zones "a b c"] [--gpu]` scales one zone's zero-replica MachineSet to one, records AWS's answer under `tmp/`, and always returns to zero.
+
+**Study records.** `tmp/model-study/STUDY.md` (gitignored) holds the per-run log, `results.jsonl`, the ISVC generator and the long-context test.
+
 ## Model selection record (current estate and history)
 
 The demo's default posture serves ONE local model on 1× g6e.2xlarge (1×
@@ -942,8 +975,8 @@ The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
 
 | Seat | Model | Why selected | Serving notes |
 |---|---|---|---|
-| Hermes main / Kanban workers | `qwen3-8-27b-int4` via named provider `qwen38` (`api_mode: chat_completions`) | AD-008 primary. MaaS gateway; declared context 220,000 under the served 262,144 window; output cap 8,192. Alias `qwen27b` switches to `qwen3-6-27b` and then needs `model.context_length` 110000 | Common gateway `/v1` in both MaaS base variables; wire IDs are `publishers/internal-models/models/qwen3-8-27b-int4` and `publishers/internal-models/models/qwen3-6-27b`. The short profile lookup keys stay stable. Managed Scope `providers.qwen38` with `discover_models: false` |
-| OpenCode coding worker | `qwen38/qwen3-8-27b-int4` | Same default; `qwen27b/qwen3-6-27b` stays in the picker | Common MaaS `/v1`, canonical namespace-qualified model ID, same authorized API key |
+| Hermes main / Kanban workers | `qwen3-8-27b` via named provider `qwen38` (`api_mode: chat_completions`) | AD-008 primary; default of `model-profiles.json` and the Stage 130 golden `run-defaults.json` since 2026-10-13. MaaS gateway; declared context 220,000 under the served 262,144 window; output cap 8,192. | NVFP4 on one RTX PRO 6000 (`g7e.2xlarge`); FP8 prepared as a component. Qwen 3.6 retired. |
+| OpenCode coding worker | `qwen38/qwen3-8-27b` | Same default; the only enabled provider | Common MaaS `/v1`, canonical namespace-qualified model ID, same authorized API key |
 
 **How to add another Hermes model:** named `providers.<name>` entry + managed `.env` secret + explicit `models:` map (`discover_models: false`). Change `model.default` only if it is the new main.
 

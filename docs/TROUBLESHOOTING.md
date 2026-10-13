@@ -2601,7 +2601,7 @@ curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
 **Recover:** Evaluate the governed models through the gateway the way the documented REST path does. Choose **Other (External endpoint)** and enter:
 
 - **Endpoint URL:** the MaaS gateway, `https://maas.<cluster domain>` (no `/v1`; the adapter appends it).
-- **Model name:** the MaaS model id, for example `publishers/internal-models/models/qwen3-8-27b-int4` or `publishers/internal-models/models/qwen3-6-27b`.
+- **Model name:** the MaaS model id, for example `publishers/internal-models/models/qwen3-8-27b`.
 - **API key secret:** `evalhub-model-auth-maas`, the Stage 050 Secret the sidecar resolves (its `api-key` entry).
 - **Benchmark parameters** for LiveCodeBench (lighteval), so a 16-sample request stays inside the sidecar's 30-second limit and the job inside the adapter's hour:
 
@@ -2708,19 +2708,67 @@ Each step's `task_name` must equal the label in the graph, and its `pod_name` mu
 
 ## Qwen Serving Change Never Finishes Rolling Out
 
-**Affected stage:** Stage 040 `qwen3-6-27b` (`LLMInferenceService`), one GPU per worker node
+**Affected stage:** Stage 040 `qwen3-8-27b` (and the retired `qwen3-6-27b`) (`LLMInferenceService`), one GPU per worker node
 
-**Symptom:** After a serving argument change syncs, the new `qwen3-6-27b-kserve-*` pod stays `SchedulingGated` or `Pending` while the old one keeps running. Deleting the old pod only brings it back.
+**Symptom:** After a serving argument change syncs, the new `qwen3-8-27b-kserve-*` pod stays `SchedulingGated` or `Pending` while the old one keeps running. Deleting the old pod only brings it back.
 
 **Likely cause:** The workload Deployment rolls out with `maxSurge 25%` and `maxUnavailable 25%`. With one replica, `maxUnavailable` rounds down to 0, so the old ReplicaSet keeps its pod while the new pod waits for the node's only GPU. Deleting old pods makes the old ReplicaSet recreate them, and the two compete for the GPU.
 
 **Recover:** Restart through the replica count; Argo CD ignores `/spec/replicas` on this resource:
 
 ```bash
-oc patch llminferenceservice qwen3-6-27b -n internal-models --type=merge -p '{"spec":{"replicas":0}}'
-# wait until no qwen3-6-27b-kserve-<hash> workload pod is left, then
-oc patch llminferenceservice qwen3-6-27b -n internal-models --type=merge -p '{"spec":{"replicas":1}}'
+oc patch llminferenceservice qwen3-8-27b -n internal-models --type=merge -p '{"spec":{"replicas":0}}'
+# wait until no qwen3-8-27b-kserve-<hash> workload pod is left, then
+oc patch llminferenceservice qwen3-8-27b -n internal-models --type=merge -p '{"spec":{"replicas":1}}'
 ```
 
 The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` and does not need this.
 
+
+## Qwen 3.8 FP8 Crashes At Startup On RTX PRO 6000 ("Unknown recipe")
+
+**Affected stage:** Stage 040 `qwen3-8-27b` with the `qwen38-fp8` component (or any FP8 block-scaled checkpoint) on `g7e.2xlarge`
+
+**Symptom:** The vLLM container loads the weights, never becomes ready and exits after about four minutes. The log ends with `RuntimeError: Assertion error (.../external/deepgemm/.../layout.hpp:76): Unknown recipe` from `deep_gemm_warmup`, followed by `Engine core initialization failed`. The same log earlier says `Auto-disabled DeepGemm for model_type=qwen3_5_text on Blackwell`.
+
+**Likely cause:** vLLM 0.24.0+rhaiv.13 still runs the DeepGEMM kernel warm-up although it auto-disabled DeepGEMM for this model. DeepGEMM targets sm90/sm100 (H100, B200); the RTX PRO 6000 is sm120 and has no recipe. vLLM had already selected `CutlassFp8BlockScaledMMKernel`, which supports this GPU. NVFP4 is unaffected (FlashInfer CUTLASS NVFP4 path).
+
+**Recover:** Set `VLLM_USE_DEEP_GEMM=0` on the serving container. The `qwen38-fp8` component already does; add it to any other FP8 deployment on this GPU. Measured result with it: 966 ms TTFT, 249.8 tok/s.
+
+## GPU Machine Stays Provisioning Or Fails: Capacity Or Spot Policy
+
+**Affected stage:** Stage 020 GPU MachineSets (`g7e.2xlarge`, `p5.4xlarge`)
+
+**Symptom:** A scaled-up GPU Machine stays `Provisioning` with condition `MachineCreationFailed: ... InsufficientInstanceCapacity ... You can currently get ... capacity by not specifying an Availability Zone ... or choosing us-east-2a, us-east-2b`; or, for a Spot MachineSet, the Machine fails within seconds with `not authorized to perform: ec2:RunInstances ... with an explicit deny in a service control policy`.
+
+**Likely cause:** `InsufficientInstanceCapacity` is an AWS 5xx answer, so the Machine API keeps retrying the same subnet. The zone suggestion is generic text: each zone names the others, and on 2026-10-13 all three refused `p5.4xlarge` at once. A Machine always launches into one subnet, so "no zone" is not an option from OpenShift. The Spot denial comes from the AWS organization that owns this account, not from the cluster.
+
+**Recover:** Scale the zero-replica MachineSet of another zone (`scripts/platform/gpu-capacity-probe.sh` tries zones one at a time and always returns to zero), or wait and retry. For Spot, ask the account owner; nothing in the cluster can lift the policy. Scale the stuck MachineSet back to zero so it stops retrying.
+
+## Stage 020 Sync Hangs On job-enable-dsc-kueue After An Operator Update
+
+**Affected stage:** Stage 020
+
+**Symptom:** The Stage 020 Application stays in `Running` with `waiting for completion of hook batch/Job/job-enable-dsc-kueue`; the hook pod logs `Native Kueue prerequisites not ready` and fails after ten minutes.
+
+**Likely cause:** Before `c3f3e959` the hook waited for the fixed CSV `kueue-operator.v1.4.2`. With Automatic approval the operator rolled to a newer CSV in the same channel, so the pinned name never reported `Succeeded`.
+
+**Recover:** The hook now reads `status.installedCSV` from the `kueue-operator` Subscription through a namespaced Role. On an older pinned revision, re-pin Stage 020 to a revision with that fix; terminate a stuck operation by setting `status.operationState.phase` to `Terminating` on the Application.
+
+## Application OutOfSync On Delegated ConfigMaps, Or Playground MCP Entries Vanish
+
+**Affected stage:** Stage 040 (also any stage Application edited by hand)
+
+**Symptom:** `040-governed-models-as-a-service` stays `OutOfSync` on `authorino-service-ca` and `gen-ai-aa-mcp-servers` although only ignored `data` keys differ, and a manual sync does not clear it. After such a sync, the Gen AI playground lists no OpenShift-MCP servers and `validate.sh` reports `Studio catalog field is missing or drifted`.
+
+**Likely cause:** The Application lost its `argocd.argoproj.io/compare-options: ServerSideDiff=true` annotation (and the other app-of-apps annotations), typically after `oc apply` of a JSON copy of the Application with bare metadata. Without server-side diff, the delegated `data` fields are compared and a sync writes the ConfigMap with Git's empty `data`.
+
+**Recover:** Restore the annotations from `gitops/argocd/app-of-apps/<stage>.yaml` (`oc annotate application ... --overwrite`, one key at a time) and hard-refresh. Republish the playground entries with Stage 040's own publisher, as `deploy.sh` does:
+
+```bash
+RHOAI_STAGE040_EXPECTED_REVISION=<Stage 040 revision> RHOAI_STAGE060_EXPECTED_REVISION=<agent-tools revision> \
+  python3 stages/040-governed-models-as-a-service/publish-catalog-mcp.py --key OpenShift-MCP --defer-if-absent
+# repeat with --key OpenShift-MCP-ReadWrite
+```
+
+Change an Application's revision with `oc patch --type merge` on `spec.source.targetRevision` (and `spec.ignoreDifferences` when needed), not by re-applying the whole object.
