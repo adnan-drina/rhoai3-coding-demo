@@ -2788,3 +2788,7 @@ The reused RHBK 26.4 operator serves `KeycloakRealmImport` at `k8s.keycloak.org/
 ## Stage 070 identity hook stops after an existing demo user
 
 An absent federated-identity link returns 404 to DELETE. The hook now measures the link first: retain a correct OpenShift UID, delete only a stale link, and create a missing link directly. Unknown/read errors still refuse. Tests execute the actual shell function for missing, current and stale links.
+
+## Stage 070 shared-namespace upgrades or MaaS discovery refuse
+
+Pipelines and TAS keep Automatic approval on versioned channels in the shared `openshift-operators` namespace. Dedicated Dev Spaces/RHDH/MTA installs use the exact reviewed allowlist, including DWO 0.43.0; their approval hook does not approve unrelated shared-namespace plans. MaaS consumers select the unique listener with a `maas.` hostname, independent of the listener name; zero or multiple matches refuse. Historical analyzer nonzero exceptions remain limited to the measured 8.2.1 defect and do not waive MTA 8.3 failures.

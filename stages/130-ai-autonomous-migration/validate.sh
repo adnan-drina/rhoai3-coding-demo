@@ -21,12 +21,12 @@ log_step "MTA Instance"
 check "Tackle CR exists" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.metadata.name}'" \
   "mta"
-check "Tackle LLM proxy disabled (Lightspeed off until needed)" \
+check "Tackle LLM proxy enabled (inference separately qualified)" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_proxy_enabled}'" \
-  "false"
-check "Tackle Solution Server disabled (Lightspeed off until needed)" \
+  "true"
+check "Tackle Solution Server enabled (inference separately qualified)" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_solution_server_enabled}'" \
-  "false"
+  "true"
 check "Tackle hub auth enabled (built-in OIDC provider)" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.feature_auth_required}'" \
   "true"
@@ -282,9 +282,13 @@ check_factory_mta_destfile() {
     check "factory destfile uses baked redhat.java 1.47.0 (mta-java dependency): $label" \
         "grep -q '/opt/rhoai3/extensions/java.vsix' '$destfile' && echo present || echo missing" \
         "present"
-    check "factory destfile sets HUB_URL to the internal hub service: $label" \
-        "grep -q 'mta-ui.openshift-mta.svc.cluster.local:8080' '$destfile' && echo present || echo missing" \
-        "present"
+    if [[ "$destfile" == "$SKELETON_080" ]]; then
+        check "factory destfile receives authenticated Hub Route: $label" \
+            "grep -q 'values.mtaHubUrl' '$destfile' && echo present || echo missing" "present"
+    else
+        check "generic golden leaves Hub binding to the factory: $label" \
+            "grep -q 'name: HUB_URL' '$destfile' && echo bound || echo unbound" "unbound"
+    fi
     check "factory destfile sets FORCE_HUB_ENABLED: $label" \
         "grep -q 'FORCE_HUB_ENABLED' '$destfile' && echo present || echo missing" \
         "present"
@@ -520,8 +524,8 @@ check "080 K2 refuses complete after a red bound gate" \
 check "080 inventory-legacy-surface scan root is fence-legal" \
   "awk '/inventory-entry-points.py/{getline; print}' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/analysis/inventory-legacy-surface/SKILL.md' | grep -c '/projects/.derived/legacy-at-3' || echo 0" \
   "0"
-check "080 catalog Locations use a stable Argo ref not a SHA blob" \
-  "python3 '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/jobs/catalog-location-selftest.py' >/dev/null && echo 1 || echo 0" \
+check "080 catalog, templates and Locations bind to one verified release" \
+  "python3 '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/jobs/catalog/render_catalog.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 K2 env-assignment selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k2_selftest.py' >/dev/null && echo 1 || echo 0" \

@@ -85,7 +85,7 @@ components:
         # gateway's ingress certificate.
         - name: NODE_USE_SYSTEM_CA
           value: "1"
-        # MTA extension pack, downloaded by init-migration-tools below.
+        # MTA extensions are checksum-verified and baked into the workspace image.
         - name: DEFAULT_EXTENSIONS
           value: "/opt/rhoai3/extensions/mta-vscode-extension.vsix;/opt/rhoai3/extensions/mta-core.vsix;/opt/rhoai3/extensions/java.vsix;/opt/rhoai3/extensions/mta-java.vsix"
         # Authenticated Hub Route resolved by the platform catalog.

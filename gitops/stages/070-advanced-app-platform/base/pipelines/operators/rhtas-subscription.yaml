@@ -8,7 +8,7 @@ metadata:
 spec:
   name: rhtas-operator
   channel: stable-v1.5
-  installPlanApproval: Manual
+  installPlanApproval: Automatic
   source: redhat-operators
   sourceNamespace: openshift-marketplace
   startingCSV: rhtas-operator.v1.5.0

@@ -111,7 +111,7 @@ def blocks_for(root: Path, bundle: dict[str, Any], worklist: dict[str, Any], dec
         block("MTA_MISSING", "mta", "MTA producer status is %r" % mta.get("status"))
     else:
         if not mta.get("admissible"):
-            block("MTA_PROVENANCE", "mta", "analysis was not produced by the pinned MTA CLI 8.2 artifact (%s); kantra is provisional" % (mta.get("provenance") or "unknown"))
+            block("MTA_PROVENANCE", "mta", "analysis was not produced by the pinned MTA CLI artifact (%s); kantra is provisional" % (mta.get("provenance") or "unknown"))
         if not (mta.get("canary") or {}).get("fired"):
             block("CANARY_MISSING", "mta", "canary rule %r did not fire; the effective ruleset is unproven" % (mta.get("canary") or {}).get("rule_id"))
         inc = mta.get("incidents") or {}

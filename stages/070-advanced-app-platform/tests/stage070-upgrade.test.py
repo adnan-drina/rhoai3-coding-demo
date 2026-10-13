@@ -279,6 +279,19 @@ curl() {
                 self.assertEqual(trace.read_text().splitlines() if trace.exists() else [], expected)
 
 
+class GatewayAndPolicy(unittest.TestCase):
+    def test_maas_host_from_current_gateway_not_listener_name(self):
+        gateway = yaml.safe_load((ROOT / 'gitops/stages/040-governed-models-as-a-service/base/gateway/base/gateway.yaml').read_text())
+        self.assertEqual(ai.gateway_host(gateway), 'maas.placeholder.example.com')
+        for listeners in ([], [{'name':'https','hostname':'qwen3-8-maas.example'}], [{'hostname':'maas.one.example'},{'hostname':'maas.two.example'}]):
+            with self.assertRaises(ValueError): ai.gateway_host({'spec':{'listeners':listeners}})
+
+    def test_shared_operator_namespace_keeps_automatic(self):
+        for name in ('pipelines-subscription.yaml','rhtas-subscription.yaml'):
+            sub=yaml.safe_load((BASE/'pipelines/operators'/name).read_text())
+            self.assertEqual(sub['spec']['installPlanApproval'],'Automatic')
+
+
 class InitialInstall(unittest.TestCase):
     def test_reused_keycloak_served_import_api(self):
         realm = yaml.safe_load((BASE / 'identity/rhbk-instance/realm-platform.yaml').read_text())

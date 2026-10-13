@@ -97,7 +97,7 @@ SONARQUBE_HOST=$(oc get route sonarqube -n sonarqube \
 # platform Gateway and internal Service; render refuses
 # to publish without valid values.
 MAAS_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress \
-  -o jsonpath='{.spec.listeners[?(@.name=="https")].hostname}' 2>/dev/null || true)
+  -o json | python3 -c 'import json,sys; hosts=[l.get("hostname","") for l in json.load(sys.stdin)["spec"]["listeners"] if l.get("hostname","").startswith("maas.")]; assert len(hosts)==1, "Expected one maas. listener"; print(hosts[0])')
 MAAS_INTERNAL_IP=$(oc get service maas-gateway-internal -n openshift-ingress \
   -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
 

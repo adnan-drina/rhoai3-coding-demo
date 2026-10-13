@@ -43,7 +43,7 @@ case "$args" in
   *"get route devspaces"*) echo -n "devspaces.${FAKE_DOMAIN}";;
   *"get route coolstore-inventory-service"*) echo -n "coolstore.${FAKE_DOMAIN}";;
   *"get route sonarqube"*) echo -n "sonarqube.${FAKE_DOMAIN}";;
-  *"get gateway maas-default-gateway"*) echo -n "${FAKE_MAAS_HOST}";;
+  *"get gateway maas-default-gateway"*) printf '{"spec":{"listeners":[{"name":"api","hostname":"%s"},{"name":"qwen3-8","hostname":"qwen3-8-maas.example"}]}}' "${FAKE_MAAS_HOST}";;
   *"get service maas-gateway-internal"*) echo -n "${FAKE_MAAS_IP}";;
   *"get configmap catalog-runtime-rhdh"*"annotations"*) exit 1;;
   *"get configmap catalog-runtime-rhdh"*) exit 0;;
@@ -185,7 +185,7 @@ def _end_to_end_case(revision: str, host: str, ip: str, domain: str) -> int:
         td = Path(d)
         bundle, repo = _stage(td, revision)
         rcode, out, log = _generate(td, bundle, repo, revision, "https://not-a-host/", ip, domain)
-        if rcode == 0 or "CATALOG_RENDER" not in out or Path(str(log) + ".published").exists():
+        if rcode == 0 or not any(marker in out for marker in ("CATALOG_RENDER", "Expected one maas. listener")) or Path(str(log) + ".published").exists():
             return _fail("a failed render publishes nothing: rc=%s %s" % (rcode, out[-600:]))
     return 0
 
@@ -218,7 +218,7 @@ def main() -> int:
     if _python36_case() or _coverage_case() or _bundle_name_case():
         return 1
     if (_end_to_end_case("a" * 40, "maas.apps.example.test", "172.30.250.250", "apps.example.test")
-            or _end_to_end_case("0123456789abcdef0123456789abcdef01234567", "gw.cluster-b.lab", "10.0.4.7", "cluster-b.lab")):
+            or _end_to_end_case("0123456789abcdef0123456789abcdef01234567", "maas.cluster-b.lab", "10.0.4.7", "cluster-b.lab")):
         return 1
     print("OK: rhdh catalog bundle (the renderer runs on the Job image's Python 3.6; every template and catalog file is bundled; a catalog-only change renames the bundle "
           "and the Job and CronJob follow; an old generator against a new catalog and a placeholder-free template skew are "

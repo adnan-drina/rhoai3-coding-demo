@@ -67,7 +67,7 @@ The first slice must not install the reference workshop's entire application sta
 | Source render | Stage 070 base rendered successfully with Kustomize; this does not establish admission or runtime correctness |
 | Live access | Guarded, read-only OpenShift inspection; no Secret values read |
 
-The target API was `https://api.ocp.h275t.sandbox1768.opentlc.com:6443`, not the older `grnl8` cluster referenced in historical migration records. Historical README success claims were treated as historical evidence, not current installation status.
+The target API was `https://api.<cluster-domain>:6443`, not the older `grnl8` cluster referenced in historical migration records. Historical README success claims were treated as historical evidence, not current installation status.
 
 ### Live prerequisites
 
@@ -77,7 +77,7 @@ The target API was `https://api.ocp.h275t.sandbox1768.opentlc.com:6443`, not the
 | OpenShift GitOps | 1.21.5 | Retain; introduce one Stage 070 owner after checking legacy ownership |
 | cert-manager | 1.20.1 | Reuse for GitLab where required; do not install a second cert-manager |
 | RHBK | 26.4.16-opr.1, `stable-v26.4`, namespace `keycloak` | Reuse the Ready `keycloak/keycloak` instance; its operator is namespace-scoped |
-| Keycloak endpoint | `sso.apps.ocp.h275t.sandbox1768.opentlc.com` | Add Stage 070 clients to the existing service; preserve existing `sso` and `openshell` realm ownership |
+| Keycloak endpoint | `sso.apps.<cluster-domain>` | Add Stage 070 clients to the existing service; preserve existing `sso` and `openshell` realm ownership |
 | Keycloak database | PostgreSQL 16; one ready instance | Not the source stage's proposed PostgreSQL 15 database; no replacement is required for this migration |
 | RHOAI / RHCL | 3.5.1 / 1.4.3 | Reconcile old MaaS paths with the newer gateway implementation |
 | ODF / MCG | 4.22.5-rhodf | Object-store capability exists, but a bucket still needs explicit provisioning and testing |

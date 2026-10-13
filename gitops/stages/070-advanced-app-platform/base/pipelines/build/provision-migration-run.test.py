@@ -146,7 +146,7 @@ def _provision(td: Path, run: str, commit: str, **env_extra: str) -> tuple[int, 
                CLI_IMAGE="registry.example/ose-cli@sha256:" + "2" * 64,
                **dict({"OB_EXECUTION": _param_default("outcome-board-execution"),
                        "OB_TRUST": _param_default("outcome-board-measurement-trust"), "REQUEST_OWNER": "owner",
-                       "REQUEST_RAW_BASE": (td / "raw").as_uri()}, **env_extra))
+                       "REQUEST_RAW_BASE": (td / "raw").as_uri(), "REQUEST_PROVIDER": "github", "REQUEST_PROJECT_ID": ""}, **env_extra))
     p = subprocess.run(["bash", str(td / "provision.sh")], env=env, capture_output=True, text=True)
     state = json.loads((td / "state.json").read_text()) if (td / "state.json").exists() else {"objects": {}, "applied": []}
     return p.returncode, p.stdout + p.stderr, state

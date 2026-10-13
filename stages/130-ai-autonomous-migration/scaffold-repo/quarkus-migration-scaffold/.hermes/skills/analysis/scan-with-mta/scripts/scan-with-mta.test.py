@@ -229,34 +229,34 @@ def main() -> int:
             return _fail("insight canary: fired=%s, must never be an obligation" % fired)
         doc["violations"]["rhoai3-canary-00001"] = doc["insights"].pop("rhoai3-canary-00001")
         findings.write_text(json.dumps(doc), encoding="utf-8")
-        # a real mta-cli binary on the pinned 8.2 line → admissible; measured sha recorded
+        # a real mta-cli binary on the pinned 8.3 line → admissible; measured sha recorded
         mta = t / "mta" / "mta-cli"
         mta.parent.mkdir()
-        mta.write_bytes(b"#!/bin/sh\necho mta-cli 8.2.1\n")
+        mta.write_bytes(b"#!/bin/sh\necho mta-cli 8.3.0\n")
         (t / "mta" / "java-external-provider").write_bytes(b"\x7fELF")
         argv_file.write_text("\n".join([str(mta), "analyze", "--input", "/analysis", "--target", "quarkus", "--rules", "x"]), encoding="utf-8")
         common = [sys.executable, str(RECEIPT), str(root), "--cli", str(mta), "--input", "/analysis", "--targets", "quarkus", "--rules-dir", str(root / ".hermes" / "planning" / "mta-rules"), "--canary-id", "rhoai3-canary-00001", "--findings", str(findings), "--argv-file", str(argv_file)]
         golden_pin = load_json(GOLDEN / ".hermes" / "pins.json")["pins"]["mta_cli"]
-        if golden_pin.get("version") != "8.2":
-            return _fail("golden pins.mta_cli must pin the 8.2 line: %s" % golden_pin)
+        if golden_pin.get("version") != "8.3":
+            return _fail("golden pins.mta_cli must pin the 8.3 line: %s" % golden_pin)
         frozen = golden_pin.get("artifact_sha256")
         if frozen is not None and not (isinstance(frozen, str) and len(frozen) == 64 and all(c in "0123456789abcdef" for c in frozen) and str(golden_pin.get("artifact") or "").strip()):
             return _fail("a frozen golden artifact_sha256 must be a real sha256 with its artifact provenance named (never fabricated): %s" % golden_pin)
-        # the fake 8.2 binary below cannot match a frozen digest: test the line rule on an unfrozen copy
+        # the fake 8.3 binary below cannot match a frozen digest: test the line rule on an unfrozen copy
         golden_pin = dict(golden_pin, artifact_sha256=None)
         pins = load_json(root / ".hermes" / "pins.json")
         pins["pins"]["mta_cli"] = dict(golden_pin)
         (root / ".hermes" / "pins.json").write_text(json.dumps(pins, indent=2), encoding="utf-8")
         sha = hashlib.sha256(mta.read_bytes()).hexdigest()
-        p = _run(common + ["--cli-version", "mta-cli 8.2.1"])
+        p = _run(common + ["--cli-version", "mta-cli 8.3.0"])
         rec = load_json(root / "evidence" / "producers" / "mta.json")
-        if p.returncode != 0 or rec["tool"]["admissible"] is not True or rec["tool"]["provenance"] != "mta-cli-8.2-artifact" or rec["tool"]["version"] != "8.2" or rec["tool"]["artifact_sha256"] != sha or rec["tool"]["version_measured"] != "mta-cli 8.2.1":
-            return _fail("8.2-line binary under the 8.2 pin must be admissible with measured provenance: %s" % rec["tool"])
+        if p.returncode != 0 or rec["tool"]["admissible"] is not True or rec["tool"]["provenance"] != "mta-cli-8.3-artifact" or rec["tool"]["version"] != "8.3" or rec["tool"]["artifact_sha256"] != sha or rec["tool"]["version_measured"] != "mta-cli 8.3.0":
+            return _fail("8.3-line binary under the 8.3 pin must be admissible with measured provenance: %s" % rec["tool"])
         # version outside the pinned line → non-admissible
         _run(common + ["--cli-version", "mta-cli 8.1.0"])
         rec = load_json(root / "evidence" / "producers" / "mta.json")
         if rec["tool"]["admissible"] is not False or not any("outside the pinned line" in r for r in rec["reasons"]):
-            return _fail("8.1 binary under the 8.2 pin must be refused: %s" % rec["reasons"])
+            return _fail("8.1 binary under the 8.3 pin must be refused: %s" % rec["reasons"])
         # unmeasurable version → non-admissible
         _run(common)
         if load_json(root / "evidence" / "producers" / "mta.json")["tool"]["admissible"] is not False:
@@ -264,23 +264,23 @@ def main() -> int:
         # frozen digest: match admits, mismatch refuses
         pins["pins"]["mta_cli"]["artifact_sha256"] = sha
         (root / ".hermes" / "pins.json").write_text(json.dumps(pins, indent=2), encoding="utf-8")
-        _run(common + ["--cli-version", "mta-cli 8.2.1"])
+        _run(common + ["--cli-version", "mta-cli 8.3.0"])
         if load_json(root / "evidence" / "producers" / "mta.json")["tool"]["admissible"] is not True:
             return _fail("frozen digest match must be admissible")
         pins["pins"]["mta_cli"]["artifact_sha256"] = "0" * 64
         (root / ".hermes" / "pins.json").write_text(json.dumps(pins, indent=2), encoding="utf-8")
-        _run(common + ["--cli-version", "mta-cli 8.2.1"])
+        _run(common + ["--cli-version", "mta-cli 8.3.0"])
         rec = load_json(root / "evidence" / "producers" / "mta.json")
         if rec["tool"]["admissible"] is not False or not any("frozen artifact_sha256" in r for r in rec["reasons"]):
             return _fail("frozen digest mismatch must be refused: %s" % rec["reasons"])
-        # kantra under the 8.2 pin stays provisional even when it claims 8.2
+        # kantra under the 8.3 pin stays provisional even when it claims 8.3
         pins["pins"]["mta_cli"] = dict(golden_pin)
         (root / ".hermes" / "pins.json").write_text(json.dumps(pins, indent=2), encoding="utf-8")
         argv_file.write_text("\n".join([str(kantra), "analyze", "--input", "/analysis", "--target", "quarkus", "--rules", "x"]), encoding="utf-8")
-        _run([sys.executable, str(RECEIPT), str(root), "--cli", str(kantra), "--input", "/analysis", "--targets", "quarkus", "--rules-dir", str(root / ".hermes" / "planning" / "mta-rules"), "--canary-id", "rhoai3-canary-00001", "--findings", str(findings), "--argv-file", str(argv_file), "--cli-version", "kantra 8.2.0"])
+        _run([sys.executable, str(RECEIPT), str(root), "--cli", str(kantra), "--input", "/analysis", "--targets", "quarkus", "--rules-dir", str(root / ".hermes" / "planning" / "mta-rules"), "--canary-id", "rhoai3-canary-00001", "--findings", str(findings), "--argv-file", str(argv_file), "--cli-version", "kantra 8.3.0"])
         rec = load_json(root / "evidence" / "producers" / "mta.json")
         if rec["tool"]["admissible"] is not False or rec["tool"]["provenance"] != "kantra-fallback":
-            return _fail("kantra must stay provisional under the 8.2 pin: %s" % rec["tool"])
+            return _fail("kantra must stay provisional under the 8.3 pin: %s" % rec["tool"])
         p = _run([sys.executable, str(RECEIPT), str(root), "--cli", str(kantra), "--input", "/analysis", "--targets", "quarkus", "--rules-dir", str(root / ".hermes" / "planning" / "mta-rules"), "--canary-id", "rhoai3-canary-00001", "--findings", str(findings), "--argv-file", str(argv_file)])
         # --source refused
         argv_file.write_text("\n".join([str(kantra), "analyze", "--source", "springboot"]), encoding="utf-8")
@@ -313,7 +313,7 @@ def main() -> int:
         p = _run([sys.executable, str(INTACT), str(dest2)])
         if p.returncode != 1 or "FROZEN_INPUT" not in p.stderr:
             return _fail("transformed copy must refuse before analysis: %s" % p.stderr)
-    print("OK: scan-with-mta (rescan floor judges verification/mta-rescan/findings.json: tree digest + stamp after the last M3 commit, a copy of M1 refused; kantra provisional; 8.2-line pin admits a measured 8.2 binary; 8.1/unmeasured/frozen-digest-mismatch refused; --source refused; canary missing refuses; transformed input refuses)")
+    print("OK: scan-with-mta (rescan floor judges verification/mta-rescan/findings.json: tree digest + stamp after the last M3 commit, a copy of M1 refused; kantra provisional; 8.3-line pin admits a measured 8.3 binary; 8.1/unmeasured/frozen-digest-mismatch refused; --source refused; canary missing refuses; transformed input refuses)")
     return 0
 
 

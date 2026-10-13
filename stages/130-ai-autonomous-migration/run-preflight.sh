@@ -192,7 +192,10 @@ for secret in (receipt['workspaceSecret'],receipt['fixtureSecret']):
 # public ELB, which drops silent tool-call streams. The factory stamps a pod
 # hostAlias at creation; v12 started without one (it was a manual step) and
 # this preflight passed it, so the route is now a launch requirement.
-maas_host = oc('get','gateway','maas-default-gateway','-n','openshift-ingress','-o','jsonpath={.spec.listeners[?(@.name=="https")].hostname}').strip()
+maas_listeners = json.loads(oc('get','gateway','maas-default-gateway','-n','openshift-ingress','-o','json'))['spec']['listeners']
+maas_hosts = [l.get('hostname','') for l in maas_listeners if l.get('hostname','').startswith('maas.')]
+need(len(maas_hosts) == 1, 'Expected exactly one maas. API listener')
+maas_host = maas_hosts[0]
 maas_ip = oc('get','service','maas-gateway-internal','-n','openshift-ingress','-o','jsonpath={.spec.clusterIP}').strip()
 need(bool(re.fullmatch(r'[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*', maas_host))
      and bool(re.fullmatch(r'\d+\.\d+\.\d+\.\d+', maas_ip)), 'MaaS gateway host or internal IP unavailable')

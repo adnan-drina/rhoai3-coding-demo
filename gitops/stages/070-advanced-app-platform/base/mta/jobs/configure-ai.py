@@ -21,12 +21,18 @@ def active_key(row, principal, subscription):
     return status == 'active'
 
 
+def gateway_host(gateway):
+    hosts = [l.get('hostname', '') for l in gateway['spec']['listeners'] if l.get('hostname', '').startswith('maas.')]
+    if len(hosts) != 1: raise ValueError('Expected exactly one maas. API listener')
+    return hosts[0]
+
+
 def main():
     principal = 'system:serviceaccount:openshift-mta:mta-maas-provisioner'
     sub = 'mta-migration-ai'
     bearer = Path('/var/run/secrets/kubernetes.io/serviceaccount/token').read_text().strip()
     gateway = oc('get', 'gateway.gateway.networking.k8s.io', 'maas-default-gateway', '-n', 'openshift-ingress', '-o', 'json')
-    host = next(l['hostname'] for l in gateway['spec']['listeners'] if l['name'] == 'https')
+    host = gateway_host(gateway)
     base = 'https://' + host
 
     def request(method, path, data=None):
