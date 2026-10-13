@@ -486,3 +486,8 @@ Claude Sonnet 5.5 is registered with `apiFormat: openai-chat` and `path: /v1/cha
 Local hosting moved to internal-models; governance stays models-as-a-service. Common `/v1` passed bounded Qwen 3.8 SSE, GPT JSON and MiniMax JSON requests. Native catalog endpoints select the common API hostname. API-host namespace-qualified local legacy path returned HTTP 503, while the same path on the retained model hostname passed SSE; native listener-specific processing cause remains unresolved. Keep compatibility listeners pending explicit retirement acceptance; no generated route/Envoy patch. Parked Qwen 3.6 is not inference-qualified.
 
 Native Studio PVC restoration preserved its exact saved response and profile UUIDs/settings; temporary restore resources are removed. Two historical cached model IDs remain unreferenced, with no supported unregister API exposed by the installed build. Fresh helper persistence is source-reviewed, fresh E2E untested. No Claude test was resumed and no quota was reset.
+
+## Stage 070 remaining live qualification
+
+- Complete the GitLab → Developer Hub → Dev Spaces → exact-SHA Tekton build → project-scoped Sonar gate → internal registry digest → delivery Git → Argo/HTTP workflow, with models stopped. Source compilation and service readiness do not replace this proof.
+- MTA 8.3.0 Solution Server currently fails on missing `greenlet`; the native agentic controller is OOMKilled at the operator's fixed128Mi limit. Preserve these as vendor startup failures until an official compatible release or documented configuration resolves them. No live package install or operator-owned Deployment override is part of this release. AI inference remains unqualified while models are stopped.

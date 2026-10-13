@@ -4,9 +4,9 @@
 # therefore the pipeline — fails when the gate fails. The custom platform
 # gate fails on any new issue, which makes the demo's fail-forward moment
 # deterministic.
-# Credentials come from the sonarqube-credentials Secret that the SonarQube
-# PostSync configuration job provisions into every namespace labeled
-# rhoai3.redhat.com/pipeline-project=true.
+# Credentials come from the project-analysis token that the trusted project
+# enrollment creates for this exact Sonar project. The control token is never
+# injected into source-controlled Maven.
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
@@ -45,6 +45,5 @@ spec:
         # Image-provided mvn (repo wrappers need gzip the image lacks)
         mvn -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
           -Dsonar.host.url="${SONAR_HOST_URL}" \
-          -Dsonar.token="${SONAR_TOKEN}" \
           -Dsonar.projectKey="$(params.SONAR_PROJECT_KEY)" \
           -Dsonar.qualitygate.wait=true

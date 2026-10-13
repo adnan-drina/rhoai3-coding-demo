@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 if [[ "${1:-}" == --static ]]; then
-  for test in internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py security-boundaries.test.py sonarqube-bootstrap.test.py; do
+  for test in internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py security-boundaries.test.py sonarqube-bootstrap.test.py sonarqube-scope.test.py; do
     "$PYTHON" "$SCRIPT_DIR/tests/$test"
   done
   "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/jobs/catalog/render_catalog.test.py"

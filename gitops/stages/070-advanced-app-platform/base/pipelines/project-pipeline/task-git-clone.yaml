@@ -36,7 +36,7 @@ spec:
     script: |
       #!/usr/bin/env sh
       set -eu
-      case "$REPO_URL" in https://gitlab.*/*.git) ;; *) echo 'Unregistered GitLab source URL' >&2; exit 2 ;; esac
+      case "$REPO_URL" in https://gitlab-gitlab-system.*/rhoai-workloads/*.git) ;; *) echo 'Unregistered GitLab source URL' >&2; exit 2 ;; esac
       test "${#REVISION}" -eq 40
       case "$REVISION" in *[!0-9a-f]*) echo 'Source revision is not immutable' >&2; exit 2 ;; esac
       test -s "$AUTH_DIR/.git-credentials"

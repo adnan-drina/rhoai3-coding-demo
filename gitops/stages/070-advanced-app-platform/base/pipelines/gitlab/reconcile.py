@@ -10,9 +10,103 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import quote
+from urllib.parse import urlencode
 
 SHA = re.compile(r'^[0-9a-f]{40}$')
 NAME = re.compile(r'^[a-z][a-z0-9-]{2,40}$')
+SONAR_KEY = 'rhoai3.io/sonar-project-key'
+SONAR_TYPE = 'rhoai3.io/sonar-token-type'
+SONAR_NAME = 'rhoai3.io/sonar-token-name'
+
+
+class Sonar:
+    def __init__(self, host, token):
+        self.host, self.token = host.rstrip('/'), token
+
+    def request(self, method, path, data=None):
+        payload = None if data is None else urlencode(data).encode()
+        auth = base64.b64encode((self.token + ':').encode()).decode()
+        req = urllib.request.Request(self.host + '/api/' + path, payload,
+                                     {'Authorization': 'Basic ' + auth}, method=method)
+        with urllib.request.urlopen(req, timeout=30) as response:
+            body = response.read()
+            return json.loads(body) if body else None
+
+
+def scanner_binding(secret, name, project_id):
+    annotations = secret.get('metadata', {}).get('annotations', {})
+    if (annotations.get(SONAR_KEY) != name
+            or annotations.get(SONAR_TYPE) != 'PROJECT_ANALYSIS_TOKEN'
+            or annotations.get(SONAR_NAME) != 'gitlab-project-' + str(project_id)
+            or not all(secret.get('data', {}).get(k) for k in ('host', 'token'))):
+        raise ValueError('Scanner credential is not bound to this project analysis token')
+    return secret
+
+
+def ensure_project_scanner(name, ns, project_id):
+    # Only the platform-pinned bootstrap receives this control credential.
+    # Source-controlled Maven and IDE containers receive a project analysis token.
+    control = oc('get', 'secret', 'sonarqube-credentials', '-n', 'app-platform-build', '-o', 'json')['data']
+    if not control.get('host') or not control.get('token'):
+        raise ValueError('Platform Sonar control credential is incomplete')
+    host = base64.b64decode(control['host']).decode()
+    sonar = Sonar(host, base64.b64decode(control['token']).decode())
+    projects = sonar.request('GET', 'projects/search?' + urlencode({'projects': name}))['components']
+    if not projects:
+        sonar.request('POST', 'projects/create', {'project': name, 'name': name, 'visibility': 'private'})
+    elif len(projects) != 1 or projects[0]['key'] != name:
+        raise ValueError('Sonar project identity mismatch')
+    token_name = 'gitlab-project-' + str(project_id)
+    tokens = sonar.request('GET', 'user_tokens/search')['userTokens']
+    match = [t for t in tokens if t['name'] == token_name]
+    try:
+        stored = oc('get', 'secret', 'sonarqube-credentials', '-n', ns, '-o', 'json')
+    except subprocess.CalledProcessError as error:
+        if '(NotFound)' not in error.stderr: raise
+        stored = None
+    if stored is not None:
+        scanner_binding(stored, name, project_id)
+        if (len(match) != 1 or match[0].get('type') != 'PROJECT_ANALYSIS_TOKEN'
+                or match[0].get('projectKey') != name
+                or base64.b64decode(stored['data']['host']).decode() != host
+                or not Sonar(host, base64.b64decode(stored['data']['token']).decode()).request(
+                    'GET', 'authentication/validate').get('valid')):
+            raise ValueError('Stored project token failed verification; preserve it for reconciliation')
+        return stored
+    if match:
+        raise ValueError('Project token exists without its Secret; refuse blind rotation')
+    token = sonar.request('POST', 'user_tokens/generate', {
+        'name': token_name, 'type': 'PROJECT_ANALYSIS_TOKEN', 'projectKey': name})
+    if token.get('type') != 'PROJECT_ANALYSIS_TOKEN' or not token.get('token'):
+        raise ValueError('Sonar did not emit a project analysis token')
+    emitted = [t for t in sonar.request('GET', 'user_tokens/search')['userTokens'] if t['name'] == token_name]
+    if (len(emitted) != 1 or emitted[0].get('type') != 'PROJECT_ANALYSIS_TOKEN'
+            or emitted[0].get('projectKey') != name):
+        raise ValueError('Emitted token metadata is not bound to this Sonar project')
+    doc = resource('Secret', 'sonarqube-credentials', ns, {'type': 'Opaque',
+        'stringData': {'host': host, 'token': token['token']}}, 'v1')
+    doc['metadata']['annotations'] = {SONAR_KEY: name, SONAR_TYPE: 'PROJECT_ANALYSIS_TOKEN', SONAR_NAME: token_name}
+    return oc('create', '-f', '-', '-o', 'json', document=doc)
+
+
+def mount_project_scanner(name, ns, row, project_id):
+    source = scanner_binding(oc('get', 'secret', 'sonarqube-credentials', '-n', ns, '-o', 'json'), name, project_id)
+    if row['kind'] == 'imported-application':
+        targets = [('wksp-ai-developer', 'agentic-coolstore'), ('wksp-ai-admin', 'agentic-coolstore')]
+    else:
+        persona = {'user:default/ai-developer': 'wksp-ai-developer', 'user:default/ai-admin': 'wksp-ai-admin'}
+        if row.get('requester') not in persona: raise ValueError('No approved workspace persona')
+        targets = [(persona[row['requester']], name)]
+    for target_ns, workspace in targets:
+        secret = resource('Secret', name + '-sonar-credentials', target_ns, {'type': 'Opaque',
+            'data': {'SONAR_HOST': source['data']['host'], 'SONAR_TOKEN': source['data']['token']}}, 'v1')
+        secret['metadata']['labels'].update({'controller.devfile.io/mount-to-devworkspace': 'true',
+                                             'controller.devfile.io/watch-secret': 'true'})
+        secret['metadata']['annotations'] = {SONAR_KEY: name, SONAR_TYPE: 'PROJECT_ANALYSIS_TOKEN',
+            SONAR_NAME: 'gitlab-project-' + str(project_id), 'controller.devfile.io/mount-as': 'env',
+            'controller.devfile.io/mount-to-devworkspace-include': workspace,
+            'controller.devfile.io/mount-on-start': 'true'}
+        apply(secret)
 
 
 def oc(*args, document=None):
@@ -192,11 +286,7 @@ def bootstrap_project(api, row, project, commit, config, import_receipt=None):
     ensure_delivery(api, name, ns, project['id'], config, repo)
     # No build is seeded until the trusted stack and its credentials are present.
     oc('get', 'pipeline', 'app-push', '-n', ns, '-o', 'json')
-    scanner = oc('get', 'secret', 'sonarqube-credentials', '-n', 'app-platform-build', '-o', 'json')['data']
-    if not scanner.get('host') or not scanner.get('token'):
-        raise ValueError('Platform scanner credentials are incomplete')
-    apply(resource('Secret', 'sonarqube-credentials', ns, {'type': 'Opaque',
-          'data': {'host': scanner['host'], 'token': scanner['token']}}, 'v1'))
+    ensure_project_scanner(name, ns, project['id'])
     route_host = oc('get', 'route', 'gitlab-webhook', '-n', ns, '-o', 'json')['spec']['host']
     hook_url = 'https://' + route_host
     hooks = api.request('GET', f"projects/{project['id']}/hooks")
@@ -302,6 +392,7 @@ def enroll(api, row, project, commit, config, import_receipt=None):
         raise ValueError('Platform-owned project bootstrap is not yet complete')
     if row['kind'] == 'migration':
         provision_migration(name, row, project, config)
+    mount_project_scanner(name, ns, row, project['id'])
 
 
 def main():

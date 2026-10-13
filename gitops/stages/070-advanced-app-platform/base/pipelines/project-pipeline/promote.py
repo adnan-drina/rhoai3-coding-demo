@@ -74,7 +74,7 @@ def validate_runtime(objects, name, namespace, image):
 
 
 def clean_git(directory, repository, credential_file):
-    if not re.fullmatch(r'https://gitlab\.[a-z0-9.-]+/rhoai-workloads/[a-z0-9-]+\.git', repository):
+    if not re.fullmatch(r'https://gitlab-gitlab-system\.[a-z0-9.-]+/rhoai-workloads/[a-z0-9-]+\.git', repository):
         raise ValueError('Promotion source is not a registered private workload repository')
     env = {key: os.environ[key] for key in ('PATH', 'SSL_CERT_FILE', 'SSL_CERT_DIR') if key in os.environ}
     env.update(HOME=str(directory), GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null',

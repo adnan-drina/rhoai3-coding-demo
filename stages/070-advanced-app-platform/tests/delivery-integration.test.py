@@ -39,10 +39,10 @@ class Checkout(unittest.TestCase):
         self.sha = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
         (repo / 'proof.txt').write_text('second version\n')
         subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qam', 'second'], check=True)
-        self.url = 'https://gitlab.example.test/rhoai-workloads/test.git'
+        self.url = 'https://gitlab-gitlab-system.example.test/rhoai-workloads/test.git'
         auth = self.root / 'auth'
         auth.mkdir()
-        (auth / '.git-credentials').write_text('https://test:synthetic@gitlab.example.test\n')
+        (auth / '.git-credentials').write_text('https://test:synthetic@gitlab-gitlab-system.example.test\n')
         self.env = dict(os.environ, REPO_URL=self.url, REVISION=self.sha, AUTH_DIR=str(auth),
                         COMMIT_RESULT=str(self.root / 'result'), GIT_TERMINAL_PROMPT='0',
                         GIT_CONFIG_COUNT='1', GIT_CONFIG_KEY_0='url.file://' + str(repo) + '.insteadOf',
@@ -85,8 +85,9 @@ class Enrollment(unittest.TestCase):
         self.api = unittest.mock.Mock()
         self.api.request.side_effect = lambda method, path, data=None: [] if method == 'GET' else {}
         self.patches = [patch.object(scm, 'oc', side_effect=self.oc), patch.object(scm, 'apply'),
-                        patch.object(scm, 'ensure_delivery')]
+                        patch.object(scm, 'ensure_delivery'), patch.object(scm, 'Sonar')]
         self.mocks = [p.start() for p in self.patches]
+        self.mocks[3].return_value.request.side_effect = lambda method, path, data=None: ({'components': [{'key': 'example'}]} if path.startswith('projects/search') else {'userTokens': [{'name':'gitlab-project-42','type':'PROJECT_ANALYSIS_TOKEN','projectKey':'example'}]} if path == 'user_tokens/search' else {'valid': True})
         for p in self.patches: self.addCleanup(p.stop)
 
     def oc(self, *args, document=None):
@@ -96,7 +97,7 @@ class Enrollment(unittest.TestCase):
             self.created[key] = document
             return document
         kind, name = args[1:3]
-        if name == 'sonarqube-credentials': return {'data': self.scanner}
+        if name == 'sonarqube-credentials': return {'data': self.scanner, 'metadata': {'annotations': {scm.SONAR_KEY: 'example', scm.SONAR_TYPE: 'PROJECT_ANALYSIS_TOKEN', scm.SONAR_NAME: 'gitlab-project-42'}}}
         if kind == 'pipeline': return {'metadata': {'name': name}}
         if kind == 'route': return {'spec': {'host': 'listener.example.test'}}
         if name == 'gitlab-read-source': return {'data': {}}

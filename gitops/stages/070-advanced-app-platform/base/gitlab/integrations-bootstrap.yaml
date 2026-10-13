@@ -187,7 +187,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: configure
-        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        image: quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:0a69b62aff536713184641d409a7a8c13b3bce9d041cbdf3f63a7f0f4d2b5b30
         command:
         - python3
         - /bootstrap/bootstrap-scm.py

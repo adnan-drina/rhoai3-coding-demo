@@ -18,6 +18,14 @@ rules:
   verbs:
   - get
   - create
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - sonarqube-credentials
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

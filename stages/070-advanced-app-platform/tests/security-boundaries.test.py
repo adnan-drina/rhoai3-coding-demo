@@ -38,7 +38,7 @@ class Coordinator(unittest.TestCase):
             return {'status':{'health':{'status':'Healthy'},'sync':{'status':'Synced','revision':'2'*40},'operationState':{'phase':'Succeeded'}}}
         self.oc=oc
     def enroll(self):
-        with patch.object(scm,'oc',side_effect=self.oc),patch.object(scm,'apply',side_effect=self.writes.append):
+        with patch.object(scm,'oc',side_effect=self.oc),patch.object(scm,'apply',side_effect=self.writes.append),patch.object(scm,'mount_project_scanner'):
             scm.enroll(self.api,self.row,self.project,{'id':'1'*40,'parent_ids':[]},self.config)
     def test_only_platform_application_is_dispatched(self):
         self.enroll()
@@ -156,7 +156,7 @@ class NativeProject(unittest.TestCase):
     def test_coordinator_has_no_secret_or_rbac_write(self):
         rs=list(yaml.safe_load_all((BASE/'pipelines/gitlab/reconciler.yaml').read_text()))
         cluster=next(r for r in rs if r['kind']=='ClusterRole' and r['metadata']['name']=='project-provisioner')
-        self.assertEqual(cluster['rules'],[{'apiGroups':[''],'resources':['namespaces'],'verbs':['get','create']}])
+        self.assertEqual(cluster['rules'],[{'apiGroups':[''],'resources':['namespaces'],'verbs':['get','create']}, {'apiGroups':[''],'resources':['secrets'],'resourceNames':['sonarqube-credentials'],'verbs':['get']}])
         for r in rs:
             if r['kind']=='Role' and r['metadata']['name'].startswith('project-provisioner'):
                 for rule in r['rules']:
@@ -236,7 +236,7 @@ class SourcePromotion(unittest.TestCase):
         seen=[]
         def checked(argv,**kwargs):seen.append((argv,kwargs));return actual(argv,**kwargs)
         with patch.dict(os.environ,{'GIT_CONFIG_COUNT':'1','GIT_CONFIG_KEY_0':'core.hooksPath','GIT_CONFIG_VALUE_0':'/attacker','GIT_DIR':str(self.repo/'.git'),'GIT_WORK_TREE':str(self.repo)}),patch.object(promote.subprocess,'check_output',side_effect=checked):
-            git=promote.clean_git(clean,'https://gitlab.example.test/rhoai-workloads/example.git',Path('/safe/credentials'))
+            git=promote.clean_git(clean,'https://gitlab-gitlab-system.example.test/rhoai-workloads/example.git',Path('/safe/credentials'))
         self.assertTrue(all('GIT_CONFIG_COUNT' not in env['env'] and 'GIT_DIR' not in env['env'] for _,env in seen))
         self.assertTrue(all('--no-replace-objects' in argv for argv,_ in seen))
         # Populate the fresh bare repo with the fixture, never copy its configuration/refs.

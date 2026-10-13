@@ -1,6 +1,6 @@
 # Stage 070: Advanced Application Platform
 
-> **Release status:** the integrated source and reviewed P0 follow-up are published on `main` through `7b121dd1`. The first install is paused before developer-project enrollment while the security follow-up is validated. GitLab and developer workflows are not yet qualified; models remain stopped. This release targets a fresh installation, not an in-place PostgreSQL/SonarQube or legacy Keycloak migration.
+> **Release status:** Stage 070 installation and live developer-workflow validation are in progress. GitLab login and private repository access, core GitLab/Dev Spaces/SonarQube readiness and the Sonar quality-gate configuration have passed live checks. Build, delivery, workspace and portal acceptance remain separate checks. Models remain stopped. This is a fresh installation; existing database migration and backup/restore are not qualified.
 
 ## Why This Matters
 
