@@ -1,35 +1,14 @@
+# Stage 040 desired state: the union of its component Applications (gitops/argocd/app-of-apps/040-*/).
+# Argo CD syncs each component from apps/<component>; validators read this aggregate.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-labels:
-  - includeSelectors: false
-    pairs:
-      app.kubernetes.io/part-of: rhoai3-coding-demo
-      demo.rhoai.io/stage: "040"
-
 resources:
-  - prerequisites/lws/base
-  - prerequisites/rhcl/base
-  - database/base
-  - access/base
-  - gateway/base
-  - governance/base
-  - local-models/base
-  - external-models/base
-  - policies/base
-  - studio/base
-  - mcp/base
-  - observability
-  - jobs/base
-  - monitoring/base
-
-# The native AITenant controller owns this namespace's component label.
-replacements:
-  - sourceValue: modelsasservice
-    targets:
-      - select:
-          version: v1
-          kind: Namespace
-          name: models-as-a-service
-        fieldPaths:
-          - metadata.labels.app\.kubernetes\.io/part-of
+  - ../apps/maas-operators
+  - ../apps/maas-database
+  - ../apps/gateway-governance
+  - ../apps/maas-platform
+  - ../apps/local-models
+  - ../apps/external-models
+  - ../apps/model-access
+  - ../apps/genai-studio

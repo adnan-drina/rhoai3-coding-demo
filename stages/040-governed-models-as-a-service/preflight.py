@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Read-only Stage040 ownership and retained database prerequisites."""
 import base64,json,os,subprocess,sys
+from pathlib import Path
 from urllib.parse import quote,urlparse
-APP='040-governed-models-as-a-service'
+sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'scripts/shared'))
+import stage_apps
 def get(kind,name=None,ns=None):
  command=['oc','--request-timeout=10s','get',kind]+([name] if name else [])+(['-n',ns] if ns else [])+(['--ignore-not-found'] if name else [])+['-o','json']
  r=subprocess.run(command,capture_output=True,text=True,timeout=15)
@@ -12,10 +14,8 @@ def reconciled(x):
  s=x.get('status',{});source=x['spec']['source'];op=s.get('operationState',{});result=op.get('syncResult',{})
  return s.get('sync',{}).get('status')=='Synced' and s['sync'].get('revision')==source['targetRevision'] and s.get('health',{}).get('status')=='Healthy' and op.get('phase')=='Succeeded' and result.get('revision')==source['targetRevision'] and result.get('source',{}).get('path')==source['path']
 def tracked(x):
- group=x['apiVersion'].split('/')[0] if '/' in x['apiVersion'] else ''
- m=x['metadata'];namespace=m.get('namespace') or 'openshift-gitops'
- expected=APP+':'+group+'/'+x['kind']+':'+namespace+'/'+m['name']
- return m.get('annotations',{}).get('argocd.argoproj.io/tracking-id','')==expected
+ # Exact tracking id of the Stage 040 component Application that renders x.
+ return stage_apps.tracked('040',x)
 try:
  for kind,namespace in [('serviceaccount','redhat-ods-applications'),('clusterrole',None),('clusterrolebinding',None),('job','redhat-ods-applications')]:
   item=get(kind,'prepare-maas-route-access',namespace)
@@ -41,11 +41,13 @@ try:
  assert {'/spec/components/aigateway','/spec/components/ogx'}<=paths,'Complete the reviewed retention-safe AIGateway/Studio delegation before Stage040'
  dashboard_paths={p for i in entries if i.get('group')=='opendatahub.io' and i.get('kind')=='OdhDashboardConfig' and i.get('name')=='odh-dashboard-config' and i.get('namespace')=='redhat-ods-applications' for p in i.get('jsonPointers',[])}
  assert {'/spec/dashboardConfig/'+field for field in ['genAiStudio','genAiTracing','modelAsService','vLLMDeploymentOnMaaS','externalModels','llmdTemplates','guardrails','agentConfigManagement','promptManagement']}<=dashboard_paths,'Complete reviewed dashboard delegation before Stage040'
- existing=get('applications.argoproj.io',APP,'openshift-gitops')
- if existing:
-  e=existing['spec'];assert not existing['metadata'].get('ownerReferences') and not existing['metadata'].get('deletionTimestamp') and not e.get('sources'),'Foreign or terminating Application'
-  assert e['project']=='rhoai-demo' and e['source']['repoURL']==os.environ['GIT_REPO_URL'] and e['source']['path']=='gitops/stages/040-governed-models-as-a-service/base','Unexpected Application source'
-  assert e['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Unexpected Application destination'
+ assert not get('applications.argoproj.io','040-governed-models-as-a-service','openshift-gitops'),'Retired single Stage040 Application still exists; finish the component move (docs/OPERATIONS.md)'
+ for desired in stage_apps.components('040'):
+  existing=get('applications.argoproj.io',desired['metadata']['name'],'openshift-gitops')
+  if existing:
+   e=existing['spec'];assert not existing['metadata'].get('ownerReferences') and not existing['metadata'].get('deletionTimestamp') and not e.get('sources'),'Foreign or terminating Application'
+   assert e['project']=='rhoai-demo' and e['source']['repoURL']==os.environ['GIT_REPO_URL'] and e['source']['path']==desired['spec']['source']['path'],'Unexpected Application source'
+   assert e['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Unexpected Application destination'
  for ns in ['models-as-a-service','internal-models','models-as-a-service-db','kuadrant-system','external-models','openshift-lws-operator']:
   n=get('namespace',ns)
   if n:assert not n['metadata'].get('ownerReferences') and not n['metadata'].get('deletionTimestamp') and tracked(n),'Existing namespace requires reviewed adoption'
@@ -82,7 +84,7 @@ try:
  if credential:
   secret=get('secret','maas-postgres-credentials','models-as-a-service-db')
   assert not secret['metadata'].get('ownerReferences') and not secret['metadata'].get('deletionTimestamp'),'Database credential ownership differs'
-  assert secret['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','') in ('',APP+':/Secret:models-as-a-service-db/maas-postgres-credentials'),'Database credential tracking differs'
+  assert stage_apps.runtime_tracking_ok('040',secret),'Database credential tracking differs'
   def decode(x,key):
    try:return base64.b64decode(x['data'][key],validate=True).decode()
    except Exception:raise RuntimeError('Existing database credential/configuration is incomplete') from None
@@ -93,7 +95,7 @@ try:
    if present:
     connection=get('secret','maas-db-config',namespace)
     assert not connection['metadata'].get('ownerReferences') and not connection['metadata'].get('deletionTimestamp'),'MaaS database configuration ownership differs'
-    assert connection['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','') in ('',APP+':/Secret:'+namespace+'/maas-db-config'),'MaaS database configuration tracking differs'
+    assert stage_apps.runtime_tracking_ok('040',connection),'MaaS database configuration tracking differs'
     assert decode(connection,'DB_CONNECTION_URL')==uri,'Existing MaaS database configuration differs; restore original matching credentials'
  if database:assert tracked(database) and not database['metadata'].get('deletionTimestamp'),'Unreviewed PostgreSQL ownership'
  for pvc in pvcs:

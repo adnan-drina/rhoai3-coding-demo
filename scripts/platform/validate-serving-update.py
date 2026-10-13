@@ -9,8 +9,12 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 
-STAGES = {"030": "030-private-model-serving", "040": "040-governed-models-as-a-service"}
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
+import stage_apps  # noqa: E402
+
+STAGES = {"030": "030-private-model-serving", "040": None}  # 040 is checked through its component Applications
 ENV = dict(os.environ)
 
 
@@ -25,6 +29,10 @@ def get(kind, name, namespace=None):
 
 
 def validate(stage):
+    if stage_apps.is_regrouped(stage):
+        problems = stage_apps.stage_problems(stage, repo_url=ENV["GIT_REPO_URL"])
+        assert not problems, "Existing serving source must be reconciled before update: " + "; ".join(problems)
+        return validate_platform()
     name = STAGES[stage]
     app = get("application", name, "openshift-gitops")
     spec, status, metadata = app["spec"], app["status"], app["metadata"]
@@ -34,6 +42,10 @@ def validate(stage):
     assert not metadata.get("ownerReferences") and not metadata.get("deletionTimestamp"), "Foreign/terminating Application"
     assert not spec.get("sources") and spec["project"] == "rhoai-demo" and spec["destination"] == {"server": "https://kubernetes.default.svc", "namespace": "openshift-gitops"} and source.get("repoURL") == ENV["GIT_REPO_URL"] and source.get("path") == "gitops/stages/" + name + "/base", "Existing serving Application identity differs"
     assert status["sync"]["status"] == "Synced" and status["sync"]["revision"] == source["targetRevision"] and status["health"]["status"] == "Healthy" and operation.get("phase") == "Succeeded" and result.get("revision") == source["targetRevision"] and result.get("source", {}).get("path") == source["path"], "Existing serving source must be reconciled before update"
+    validate_platform()
+
+
+def validate_platform():
     dsc = get("datasciencecluster", "default-dsc")
     assert dsc["spec"]["components"]["kserve"]["managementState"] == "Managed" and any(c.get("type") == "KserveReady" and c.get("status") == "True" for c in dsc["status"].get("conditions", [])), "Native KServe is not ready"
     policy = get("clusterpolicy", "gpu-cluster-policy")
@@ -60,6 +72,7 @@ def main():
     if checked.returncode:
         raise RuntimeError("Project cluster identity guard failed")
     ENV.update(json.loads(checked.stdout))
+    os.environ.update(ENV)  # stage_apps reads Applications with the guarded environment
     validate(args.stage)
 
 

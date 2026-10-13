@@ -481,14 +481,14 @@ Deploy stages in order:
 
 Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 070 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 070's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
 
-Each script applies one file from `gitops/argocd/app-of-apps/`. GitOps stages are the `stages/*/` directories that have `deploy.sh`; the matching Application is `gitops/argocd/app-of-apps/<directory-name>.yaml`. Workflow-only stages omit `deploy.sh` and have no Application.
+Each script applies its stage's Applications from `gitops/argocd/app-of-apps/`. GitOps stages are the `stages/*/` directories that have `deploy.sh`; the matching Application is `gitops/argocd/app-of-apps/<directory-name>.yaml`, or, for a stage split into component Applications, one file per component in `gitops/argocd/app-of-apps/<directory-name>/`. Workflow-only stages omit `deploy.sh` and have no Application.
 
 | Stage | Argo CD app | Purpose |
 |------|-------------|---------|
 | 010 | `010-openshift-ai-platform-foundation` | OpenShift AI platform foundation |
 | 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
 | 030 | `030-private-model-serving` | Local private model serving |
-| 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, external models, MCP context |
+| 040 | `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access`, `040-genai-studio` | MaaS operators, PostgreSQL (data), Gateway with Kuadrant/Authorino, MaaS enablement and monitoring, private models, external models, subscriptions and auth policies, Gen AI studio playground and MCP list |
 | 050 | `070-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA, coolstore dev environment |
 | 060 | *(workflow-only)* | AI-assisted development on stage 070 workspaces |
 | 070 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
@@ -535,26 +535,50 @@ oc get applications -n openshift-gitops \
 
 Argo CD SSO administration uses the dedicated `rhoai-gitops-admins` OpenShift Group with the confirmed `admin` member and an additive operator-managed Argo RBAC mapping. Direct OpenShift User cluster-admin bindings do not supply this Dex group claim. Keep the default Argo role empty; refresh the SSO session after group membership changes. See [the SSO visibility troubleshooting procedure](TROUBLESHOOTING.md#argo-cd-applications-missing-after-openshift-sso-login). The targeted access repair preserves Application revisions and all other Argo settings; it does not require a foundation sync.
 
-Inspect an application:
+Inspect an application, or every component Application of a stage:
 
 ```bash
-oc get application 040-governed-models-as-a-service -n openshift-gitops -o yaml
+oc get application 040-local-models -n openshift-gitops -o yaml
+oc get applications -n openshift-gitops -l demo.rhoai.io/stage=040
+python3 scripts/shared/stage_apps.py status 040
 ```
 
 List resources managed by an application:
 
 ```bash
-oc get application 040-governed-models-as-a-service -n openshift-gitops -o json \
+oc get application 040-local-models -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | [.kind,.namespace,.name,.status,.health.status] | @tsv'
+```
+
+Find which component Application owns an object:
+
+```bash
+python3 scripts/shared/stage_apps.py owner 040 ConfigMap gen-ai-aa-mcp-servers redhat-ods-applications
 ```
 
 Force a sync from the CLI if needed:
 
 ```bash
-argocd app sync 040-governed-models-as-a-service
+argocd app sync 040-local-models
 ```
 
 If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for automated sync. Most applications have automated sync enabled.
+
+### Stage component Applications
+
+Stage 040 is deployed as several component Applications instead of one large one, so a model switch, a policy change or a failing hook touches only its own component, and data lives in components that never prune it. Each component renders `gitops/stages/<stage>/apps/<component>/` and keeps the stage prefix; `base/` renders their union for validation. `deploy.sh` applies all components at one reviewed revision and validation requires each of them Synced and Healthy at that revision. The layout rules are in `.agents/rules/gitops.md`.
+
+### Moving objects between Applications
+
+Moving an object to another Application must never delete and recreate it. The Applications have no `resources-finalizer`, so deleting an Application leaves its objects in place.
+
+1. Record the source Application's `status.resources` and the UIDs of those objects; back up delegated data (for example the `gen-ai-aa-mcp-servers` ConfigMap).
+2. Stop automated sync on the source: `oc patch application <old> -n openshift-gitops --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'`. Never `oc apply` a JSON copy of an Application.
+3. Apply the new Applications at the reviewed revision. Their sync takes over the objects by rewriting the `argocd.argoproj.io/tracking-id` annotation; nothing is created or deleted. Check that every recorded object now carries a new tracking id and the same UID.
+4. Delete the source Application (no finalizer, so no cascade). Remove leftovers that no new Application renders only after checking them by name.
+5. Run the stage `validate.sh`.
+
+To roll back, re-create the previous Application at its last revision with automated sync off, sync it so it takes the objects back, delete the component Applications (no cascade), then turn automated sync on again.
 
 ## Developer Workflow Branch Validation
 
@@ -697,7 +721,7 @@ Canonical validation passed exact Application reconciliation, current native DSC
 
 ### Stage 040
 
-Stage 040 source targets native OpenShift AI 3.5 AIGateway/MaaS and GenAI Studio. It preserves the retained Stage 010 bridge and Stage 030 registry/serving foundation. The ordinary deployment's first write is its own immutable Application; run the reviewed `scripts/platform/delegate-maas-fields.sh` separately before the first existing-cluster deployment. This merges only exact component/dashboard delegation paths and does not repoint the core Application.
+Stage 040 source targets native OpenShift AI 3.5 AIGateway/MaaS and GenAI Studio. It preserves the retained Stage 010 bridge and Stage 030 registry/serving foundation. It is deployed as eight component Applications (see [Stage component Applications](#stage-component-applications)); the cluster's Gateway hostnames are a source patch on `040-gateway-governance`, model replica delegation lives on `040-local-models` and the playground MCP field delegation on `040-genai-studio`. The ordinary deployment's first write is its own immutable component Applications; run the reviewed `scripts/platform/delegate-maas-fields.sh` separately before the first existing-cluster deployment. This merges only exact component/dashboard delegation paths and does not repoint the core Application.
 
 Persistent Manual OLM subscriptions select RHCL 1.4.3, Authorino 1.4.3, DNS 0.6.0, Limitador 1.4.2, Service Mesh 3.4.3 and LWS 1.0.1. The native OpenShift Gateway controller supplies the existing accepted GatewayClass; installing the Mesh operator is not proof of an initialized Istio instance. Native operators own generated workloads. Do not patch their CSVs, Deployments or monitoring operands.
 
@@ -884,7 +908,7 @@ For a full cleanup, prefer an explicit Argo CD cascade delete from the OpenShift
 
 ```bash
 argocd app delete 070-advanced-app-platform --cascade
-argocd app delete 040-governed-models-as-a-service --cascade
+for app in $(python3 scripts/shared/stage_apps.py names 040); do argocd app delete "$app" --cascade; done
 argocd app delete 030-private-model-serving --cascade
 argocd app delete 020-gpu-infrastructure-private-ai --cascade
 argocd app delete 010-openshift-ai-platform-foundation --cascade

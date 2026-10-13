@@ -1,0 +1,24 @@
+# MaaS PostgreSQL (data): namespaces and StatefulSet are Prune=false,Delete=false.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: rhoai3-coding-demo
+      demo.rhoai.io/stage: "040"
+
+resources:
+  - ../../base/database/base
+  - ../../base/jobs/database
+
+# The native AITenant controller owns this namespace's component label.
+replacements:
+  - sourceValue: modelsasservice
+    targets:
+      - select:
+          version: v1
+          kind: Namespace
+          name: models-as-a-service
+        fieldPaths:
+          - metadata.labels.app\.kubernetes\.io/part-of

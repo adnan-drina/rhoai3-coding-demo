@@ -7,9 +7,11 @@ REPO_ROOT="$ROOT_DIR"
 source "$ROOT_DIR/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
+export REPO_ROOT
 python3 - <<'PY'
-import base64,json,os,subprocess,time
-NS='external-models';NAME=os.environ.get('RHOAI_STAGE040_PROVIDER_SECRET','openai-provider-api-key');assert NAME in ('openai-provider-api-key','anthropic-provider-api-key','nvidia-provider-api-key'),'Unreviewed provider credential';APP='040-governed-models-as-a-service'
+import base64,json,os,subprocess,sys,time
+sys.path.insert(0,os.environ['REPO_ROOT']+'/scripts/shared');import stage_apps
+NS='external-models';NAME=os.environ.get('RHOAI_STAGE040_PROVIDER_SECRET','openai-provider-api-key');assert NAME in ('openai-provider-api-key','anthropic-provider-api-key','nvidia-provider-api-key'),'Unreviewed provider credential';APP='040-external-models'
 ROTATE=os.environ.get('RHOAI_STAGE040_ROTATE_PROVIDER_SECRET','false').lower()
 assert ROTATE in ('true','false'),'Rotation flag must be explicitly true or false'
 assert ROTATE!='true' or NAME=='openai-provider-api-key','Explicit rotation is scoped to the OpenAI provider'
@@ -27,7 +29,7 @@ try:
  else:raise RuntimeError('Provider namespace did not reconcile')
  target=get(NS)
  if target:
-  assert target['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','') in ('', APP+':/Secret:'+NS+'/'+NAME),'Existing provider credential is tracked by another Application'
+  assert stage_apps.runtime_tracking_ok('040',target),'Existing provider credential is tracked by another Application'
   assert not target['metadata'].get('ownerReferences') and not target['metadata'].get('deletionTimestamp'),'Existing provider credential requires reviewed ownership'
   encoded=target.get('data',{}).get('api-key','');assert base64.b64decode(encoded,validate=True),'Existing provider credential is incomplete'
   assert target['metadata'].get('labels',{}).get('inference.llm-d.ai/ipp-managed')=='true','Existing native provider credential metadata differs'

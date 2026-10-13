@@ -1,0 +1,15 @@
+# MaaS enablement in the DataScienceCluster, admin access, telemetry, monitoring and dashboards.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: rhoai3-coding-demo
+      demo.rhoai.io/stage: "040"
+
+resources:
+  - ../../base/access/base
+  - ../../base/jobs/platform
+  - ../../base/observability
+  - ../../base/monitoring/base

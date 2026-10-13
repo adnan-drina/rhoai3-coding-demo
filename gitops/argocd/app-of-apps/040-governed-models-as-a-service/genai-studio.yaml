@@ -2,25 +2,26 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: 040-governed-models-as-a-service
+  name: 040-genai-studio
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/instance: openshift-gitops
-    app.kubernetes.io/name: governed-models-as-a-service
-    app.kubernetes.io/component: application
+    app.kubernetes.io/name: genai-studio
+    app.kubernetes.io/component: genai-studio
     app.kubernetes.io/managed-by: argocd
     demo.rhoai.io/stage: '040'
   annotations:
     argocd.argoproj.io/sync-wave: '4'
     argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/040-governed-models-as-a-service"
     argocd.argoproj.io/compare-options: ServerSideDiff=true
+    demo.rhoai.io/deploy-order: '7'
 spec:
   project: rhoai-demo
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/040-governed-models-as-a-service/base
+    path: gitops/stages/040-governed-models-as-a-service/apps/genai-studio
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops
@@ -40,39 +41,6 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
-  - group: ''
-    kind: Secret
-    name: maas-postgres-credentials
-    namespace: models-as-a-service-db
-    jsonPointers:
-    - "/data"
-  - group: ''
-    kind: Secret
-    name: maas-db-config
-    namespace: redhat-ai-gateway-infra
-    jsonPointers:
-    - "/data"
-  - group: serving.kserve.io
-    kind: LLMInferenceService
-    name: qwen3-8-27b
-    namespace: internal-models
-    jsonPointers:
-    - "/spec/replicas"
-    - "/metadata/labels/modelregistry.opendatahub.io~1name"
-    - "/metadata/labels/modelregistry.opendatahub.io~1registered-model-id"
-    - "/metadata/labels/modelregistry.opendatahub.io~1model-version-id"
-  - group: ''
-    kind: Secret
-    name: maas-gateway-tls
-    namespace: openshift-ingress
-    jsonPointers:
-    - "/data"
-  - group: ''
-    kind: ConfigMap
-    name: authorino-service-ca
-    namespace: kuadrant-system
-    jsonPointers:
-    - "/data/service-ca.crt"
   - group: ''
     kind: ConfigMap
     name: gen-ai-aa-mcp-servers

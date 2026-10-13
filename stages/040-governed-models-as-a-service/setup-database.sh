@@ -6,11 +6,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
+export REPO_ROOT
 python3 - "$@" <<'PY'
-import argparse,base64,json,secrets,subprocess,time
+import argparse,base64,json,os,secrets,subprocess,sys,time
+sys.path.insert(0,os.environ['REPO_ROOT']+'/scripts/shared');import stage_apps
 from urllib.parse import quote
 p=argparse.ArgumentParser();p.add_argument('--fresh-database',action='store_true');args=p.parse_args()
-ns='models-as-a-service-db';app='040-governed-models-as-a-service'
+ns='models-as-a-service-db';app='040-maas-database'
 def oc(arguments,payload=None):
  r=subprocess.run(['oc','--request-timeout=10s']+arguments,input=json.dumps(payload) if payload else None,capture_output=True,text=True,timeout=15)
  if r.returncode:raise RuntimeError('Native database API operation failed; no credential details returned')
@@ -19,7 +21,7 @@ def get(kind,name,namespace=None):
  return oc(['get',kind,name]+(['-n',namespace] if namespace else [])+['--ignore-not-found','-o','json'])
 def safe_secret(obj,name,namespace):
  assert not obj['metadata'].get('ownerReferences') and not obj['metadata'].get('deletionTimestamp'),'Runtime database Secret ownership differs'
- assert obj['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','') in ('',app+':/Secret:'+namespace+'/'+name),'Runtime database Secret tracking differs'
+ assert stage_apps.runtime_tracking_ok('040',obj),'Runtime database Secret tracking differs'
 def decode(s,key):
  try:return base64.b64decode(s['data'][key],validate=True).decode()
  except Exception:raise RuntimeError('Existing database Secret has missing or invalid keys') from None

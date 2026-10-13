@@ -48,7 +48,9 @@ Red Hat OpenShift AI 3.5, OpenShift Container Platform 4.22, Red Hat Connectivit
 
 ## Deploy And Validate
 
-Use the reviewed published branch configured in your private environment. Keep the Argo CD CLI compatible with the installed GitOps version: the deploy helper uses its native nonselective hook sync once if selective reconciliation leaves the tracing capability unset.
+Use the reviewed published branch configured in your private environment. Keep the Argo CD CLI compatible with the installed GitOps version: the deploy helper uses its native nonselective hook sync once per component if selective reconciliation skipped its hooks or leaves the tracing capability unset.
+
+The stage is deployed as eight Argo CD Applications, one per component, all at the same reviewed revision: `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access` and `040-genai-studio`. Switching a model or changing who may use it syncs only that component.
 
 ```bash
 ./stages/040-governed-models-as-a-service/deploy.sh

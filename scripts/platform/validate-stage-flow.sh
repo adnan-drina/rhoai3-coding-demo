@@ -122,6 +122,37 @@ seen_ids = []
 gitops_stage_names = set()
 gitops_paths = []
 application_names = set()
+regrouped_stages = []
+
+
+def check_stage_app(stage_id, name, app_path, component):
+    app = load_mapping(app_path)
+    metadata = app.get("metadata") or {}
+    spec = app.get("spec") or {}
+    source = spec.get("source") or {}
+    labels = metadata.get("labels") or {}
+    annotations = metadata.get("annotations") or {}
+    expected_path = f"gitops/stages/{name}/" + ("overlays/environment" if stage_id == "020" else "base")
+    if component:
+        expected_path = f"gitops/stages/{name}/apps/{app_path.stem}"
+        if metadata.get("name") != f"{stage_id}-{app_path.stem}":
+            fail(f"{app_path.relative_to(repo)} must be named {stage_id}-{app_path.stem}")
+
+    app_name = metadata.get("name")
+    if not isinstance(app_name, str) or not app_name or app_name in application_names:
+        fail(f"stage {stage_id} Argo CD app requires a unique metadata.name")
+    application_names.add(app_name)
+    if spec.get("project") != "rhoai-demo":
+        fail(f"stage {stage_id} Argo CD app project must be rhoai-demo")
+    if source.get("path") != expected_path:
+        fail(f"stage {stage_id} Argo CD app source.path must be {expected_path}")
+    if labels.get("demo.rhoai.io/stage") != stage_id:
+        fail(f"stage {stage_id} Argo CD app missing demo.rhoai.io/stage label")
+    mgp = annotations.get("argocd.argoproj.io/manifest-generate-paths", "")
+    if not (mgp == "." or mgp.startswith("/gitops/stages/")):
+        # relative entries resolve against source.path (existence is checked below)
+        fail(f"stage {stage_id} Argo CD app manifest-generate-paths must be '.' or a '/gitops/stages/...' path, got {mgp!r}")
+
 
 for stage_dir in stage_dirs:
     name = stage_dir.name
@@ -157,7 +188,19 @@ for stage_dir in stage_dirs:
     if not deploy_path.stat().st_mode & 0o111:
         fail(f"stage {stage_id} deploy.sh is not executable: {deploy_path.relative_to(repo)}")
 
-    if not app_path.exists():
+    component_dir = app_root / name
+    if component_dir.is_dir():
+        # Regrouped stage: one Application per component, each rendering gitops/stages/<stage>/apps/<component>;
+        # base/ is their union (checked by scripts/shared/stage_apps.py check-static below).
+        regrouped_stages.append(stage_id)
+        app_paths = sorted(component_dir.glob("*.yaml"))
+        if not app_paths:
+            fail(f"stage {stage_id} component directory has no Applications: {component_dir.relative_to(repo)}")
+        if app_path.exists():
+            fail(f"stage {stage_id} has both {app_path.relative_to(repo)} and component Applications")
+    else:
+        app_paths = [app_path]
+    if not component_dir.is_dir() and not app_path.exists():
         fail(f"stage {stage_id} Argo CD app does not exist: {app_path.relative_to(repo)}")
     if not (gitops_path / "kustomization.yaml").exists():
         fail(
@@ -167,31 +210,10 @@ for stage_dir in stage_dirs:
     else:
         gitops_paths.append(str(gitops_path.relative_to(repo)))
 
-    if not app_path.exists():
-        continue
+    for app_path in app_paths:
+        if app_path.exists():
+            check_stage_app(stage_id, name, app_path, component_dir.is_dir())
 
-    app = load_mapping(app_path)
-    metadata = app.get("metadata") or {}
-    spec = app.get("spec") or {}
-    source = spec.get("source") or {}
-    labels = metadata.get("labels") or {}
-    annotations = metadata.get("annotations") or {}
-    expected_path = f"gitops/stages/{name}/" + ("overlays/environment" if stage_id == "020" else "base")
-
-    app_name = metadata.get("name")
-    if not isinstance(app_name, str) or not app_name or app_name in application_names:
-        fail(f"stage {stage_id} Argo CD app requires a unique metadata.name")
-    application_names.add(app_name)
-    if spec.get("project") != "rhoai-demo":
-        fail(f"stage {stage_id} Argo CD app project must be rhoai-demo")
-    if source.get("path") != expected_path:
-        fail(f"stage {stage_id} Argo CD app source.path must be {expected_path}")
-    if labels.get("demo.rhoai.io/stage") != stage_id:
-        fail(f"stage {stage_id} Argo CD app missing demo.rhoai.io/stage label")
-    mgp = annotations.get("argocd.argoproj.io/manifest-generate-paths", "")
-    if not (mgp == "." or mgp.startswith("/gitops/stages/")):
-        # relative entries resolve against source.path (existence is checked below)
-        fail(f"stage {stage_id} Argo CD app manifest-generate-paths must be '.' or a '/gitops/stages/...' path, got {mgp!r}")
 
 if seen_ids != sorted(seen_ids):
     fail(f"stage ids must be in ascending directory order: {seen_ids}")
@@ -201,7 +223,7 @@ if stage_dirs and not gitops_stage_names:
 
 if app_root.is_dir():
     deployed_names = set()
-    for app_path in sorted(app_root.glob("*.yaml")):
+    for app_path in sorted([*app_root.glob("*.yaml"), *app_root.glob("*/*.yaml")]):
         app = load_mapping(app_path)
         metadata = app.get("metadata") or {}
         source = (app.get("spec") or {}).get("source") or {}
@@ -230,7 +252,7 @@ if gitops_stages_root.is_dir():
 # annotation matches no commit (B3, 2026-09-24: stage 040 policy change not
 # refreshed). Each entry must be "." or start with "/" and exist.
 if app_root.is_dir():
-    for app_path in sorted(app_root.glob("*.yaml")):
+    for app_path in sorted([*app_root.glob("*.yaml"), *app_root.glob("*/*.yaml")]):
         text = app_path.read_text(encoding="utf-8")
         m = re.search(r"argocd\.argoproj\.io/manifest-generate-paths:\s*(\S+)", text)
         if not m:
@@ -258,6 +280,8 @@ if errors:
 
 for path in gitops_paths:
     print(path)
+for stage_id in regrouped_stages:
+    print("regrouped:" + stage_id)
 PY
 
 log_success "Stage layout is consistent"
@@ -265,6 +289,10 @@ log_success "Stage layout is consistent"
 log_step "Rendering stage Kustomize bases"
 while IFS= read -r gitops_path; do
     [[ -n "$gitops_path" ]] || continue
+    if [[ "$gitops_path" == regrouped:* ]]; then
+        python3 "$REPO_ROOT/scripts/shared/stage_apps.py" check-static "${gitops_path#regrouped:}"
+        continue
+    fi
     log_info "kustomize build $gitops_path"
     kustomize build "$REPO_ROOT/$gitops_path" >/dev/null
 done <"$TMP_PATHS"

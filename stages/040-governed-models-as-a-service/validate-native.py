@@ -16,9 +16,13 @@ import sys
 import tarfile
 import tempfile
 
-APP = "040-governed-models-as-a-service"
-SOURCE = "gitops/stages/" + APP + "/base"
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts/shared"))
+import stage_apps  # noqa: E402
+
+# base/ renders the union of the stage's component Applications (it references ../apps/*).
+STAGE_DIR = "gitops/stages/040-governed-models-as-a-service"
+SOURCE = STAGE_DIR + "/base"
 TIMEOUT = os.environ.get("RHOAI_OC_REQUEST_TIMEOUT", "10s")
 
 
@@ -95,21 +99,12 @@ def csv_owner(obj, csv):
                for o in obj["metadata"].get("ownerReferences", []))
 
 
-def app_ready(app, expected=None):
-    source = app["spec"]["source"]
-    revision = source.get("targetRevision", "")
-    need(re.fullmatch(r"[0-9a-f]{40}", revision), "Stage040 Application revision is not immutable")
-    need(not expected or expected == revision, "Stage040 differs from requested revision")
-    need(source.get("path") == SOURCE, "Stage040 Application source path differs")
-    s = app.get("status", {})
-    need(s.get("sync", {}).get("status") == "Synced" and s.get("sync", {}).get("revision") == revision,
-         "Stage040 has not synchronized its current revision")
-    need(s.get("health", {}).get("status") == "Healthy", "Stage040 Application is not Healthy")
-    op = s.get("operationState", {})
-    need(op.get("phase") == "Succeeded", "Stage040 operation did not succeed")
-    result = op.get("syncResult", {})
-    need(result.get("revision") == revision and result.get("source", {}).get("path") == SOURCE,
-         "Stage040 operation revision/path is stale")
+def stage_ready(expected=None):
+    # Every component Application: exact source path, one immutable revision, Synced, Healthy, last sync succeeded.
+    problems = stage_apps.stage_problems("040", expected)
+    need(not problems, "Stage040 components not reconciled: " + "; ".join(problems))
+    need(not stage_apps.get_application("040-governed-models-as-a-service"),
+         "Retired single Stage040 Application still exists")
 
 
 def selector_matches(selector, labels):
@@ -183,16 +178,16 @@ def rendered():
     if deployed_revision:
         need(re.fullmatch(r"[0-9a-f]{40}", deployed_revision), "Deployed validation requires an immutable commit SHA")
         need(deployed_revision == os.environ.get("RHOAI_STAGE040_EXPECTED_REVISION"), "Deployed validation revision differs from expected Application revision")
-        app_ready(get("application", APP, "openshift-gitops"), deployed_revision)
-        archive = subprocess.run(["git", "-C", str(ROOT), "archive", deployed_revision, SOURCE], capture_output=True, timeout=30)
+        stage_ready(deployed_revision)
+        archive = subprocess.run(["git", "-C", str(ROOT), "archive", deployed_revision, STAGE_DIR], capture_output=True, timeout=30)
         need(archive.returncode == 0, "Deployed source revision is not available locally")
         with tempfile.TemporaryDirectory(prefix="stage040-deployed-") as directory:
             destination = Path(directory)
             with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as stream:
                 for member in stream.getmembers():
                     path = Path(member.name)
-                    in_source = member.name.startswith(SOURCE + "/")
-                    ancestor = member.isdir() and (member.name.rstrip("/") == SOURCE or SOURCE.startswith(member.name.rstrip("/") + "/"))
+                    in_source = member.name.startswith(STAGE_DIR + "/")
+                    ancestor = member.isdir() and (member.name.rstrip("/") == STAGE_DIR or STAGE_DIR.startswith(member.name.rstrip("/") + "/"))
                     need(not path.is_absolute() and ".." not in path.parts and (in_source or ancestor), "Deployed source archive path is invalid")
                     target = destination / path
                     if member.isdir():
@@ -217,8 +212,8 @@ def main():
     if not os.environ.get("RHOAI_STAGE040_DEPLOYED_REVISION"):
         subprocess.run(["python3", str(ROOT / "scripts/platform/check-operator-policy.py"), str(ROOT / SOURCE), "--verify"], check=True)
     desired = rendered()
-    app = get("application", APP, "openshift-gitops")
-    app_ready(app, os.environ.get("RHOAI_STAGE040_EXPECTED_REVISION"))
+    stage_ready(os.environ.get("RHOAI_STAGE040_EXPECTED_REVISION"))
+    app = get("application", "040-local-models", "openshift-gitops")  # owns the model replica delegation
     print("[PASS] Exact immutable Stage040 sync and successful operation")
     subscriptions = [o for o in desired if o["kind"] == "Subscription"]
     need(len(subscriptions) == 6, "Reviewed operator selection is incomplete")
@@ -368,7 +363,7 @@ def main():
         obj = get("llminferenceserviceconfigs.serving.kserve.io", m["name"], m["namespace"])
         need(obj.get("spec") == d["spec"], "Reusable serving template specification differs")
         need(not obj["metadata"].get("ownerReferences") and not obj["metadata"].get("deletionTimestamp"), "Reusable serving template ownership differs")
-        tracking = APP + ":serving.kserve.io/LLMInferenceServiceConfig:" + m["namespace"] + "/" + m["name"]
+        tracking = stage_apps.expected_tracking("040", d)
         need(obj["metadata"].get("annotations", {}).get("argocd.argoproj.io/tracking-id") == tracking, "Reusable serving template is not stage-owned")
         need(all(obj["metadata"].get("labels", {}).get(k) == v for k, v in m["labels"].items()), "Reusable serving template discovery labels differ")
         if m["labels"]["opendatahub.io/config-type"] == "router":

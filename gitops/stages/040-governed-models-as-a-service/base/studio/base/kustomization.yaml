@@ -8,3 +8,4 @@ resources:
 - agent-prompt-provisioner-rbac.yaml
 - agent-prompt-provisioner-job.yaml
 - agent-profile-openshift-ops-assistant.yaml
+- genai-playground-state-pvc.yaml

@@ -18,7 +18,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'stages/060-agent-runtime-and-agentops'))
 from native_api import guarded, need, oc, persona, private_receipt
 
-APP = '040-governed-models-as-a-service'
+# The Stage 040 component Application that renders the discovery ConfigMap and delegates its published keys.
+APP = '040-genai-studio'
+SOURCE = 'gitops/stages/040-governed-models-as-a-service/apps/genai-studio'
 NAMESPACE = 'redhat-ods-applications'
 CM = 'gen-ai-aa-mcp-servers'
 KEY = 'OpenShift-MCP'
@@ -45,7 +47,7 @@ def get(env, kind, name, namespace, optional=False):
 def app_guard(app, expected):
     spec = app['spec']; source = spec['source']; status = app.get('status', {})
     need(not app['metadata'].get('ownerReferences') and not app['metadata'].get('deletionTimestamp') and not app.get('operation'), 'Stage040 Application is foreign, terminating or busy')
-    need(spec.get('project') == 'rhoai-demo' and not spec.get('sources') and source.get('repoURL') == 'https://github.com/adnan-drina/rhoai3-coding-demo.git' and source.get('path') == 'gitops/stages/' + APP + '/base' and spec.get('destination') == {'server': 'https://kubernetes.default.svc', 'namespace': 'openshift-gitops'}, 'Stage040 Application identity differs')
+    need(spec.get('project') == 'rhoai-demo' and not spec.get('sources') and source.get('repoURL') == 'https://github.com/adnan-drina/rhoai3-coding-demo.git' and source.get('path') == SOURCE and spec.get('destination') == {'server': 'https://kubernetes.default.svc', 'namespace': 'openshift-gitops'}, 'Stage040 Application identity differs')
     revision = source.get('targetRevision', '')
     need(isinstance(expected, str) and re.fullmatch('[0-9a-f]{40}', expected) and revision == expected, 'Stage040 source differs from supplied reviewed revision')
     operation = status.get('operationState', {}); result = operation.get('syncResult', {})

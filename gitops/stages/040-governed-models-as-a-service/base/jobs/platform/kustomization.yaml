@@ -1,0 +1,16 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- enable-maas-binding.yaml
+- enable-maas-dashboard-binding.yaml
+- enable-maas-dashboard-role.yaml
+- enable-maas-job.yaml
+- enable-maas-role.yaml
+- enable-maas-serviceaccount.yaml
+- enable-maas-telemetry-binding.yaml
+- enable-maas-telemetry-role.yaml
+- prepare-maas-route-access-clusterrole.yaml
+- prepare-maas-route-access-clusterrolebinding.yaml
+- prepare-maas-route-access-job.yaml
+- prepare-maas-route-access-serviceaccount.yaml

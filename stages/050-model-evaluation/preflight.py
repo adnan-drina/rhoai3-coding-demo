@@ -6,6 +6,9 @@ import sys
 import os
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/shared"))
+import stage_apps  # noqa: E402
+
 APP = "050-model-evaluation"
 NAMESPACE = "redhat-ods-applications"
 
@@ -77,7 +80,7 @@ def main():
     require({"/spec/components/trustyai", "/spec/components/mlflowoperator"} <= delegated,
             "Foundation has not delegated both evaluation components; complete reviewed handoff first.")
     # The EvalHub tenant is Stage 050's own Evaluated Models namespace; no foundation delegation is needed.
-    for dependency in ["030-private-model-serving", "040-governed-models-as-a-service"]:
+    for dependency in ["030-private-model-serving", *stage_apps.names("040")]:
         app = get("application", dependency, "openshift-gitops")
         require(app.get("status", {}).get("sync", {}).get("status") == "Synced", "Serving/MaaS source must remain reconciled; stopped model compute is allowed.")
     dsc = get("datasciencecluster", "default-dsc")

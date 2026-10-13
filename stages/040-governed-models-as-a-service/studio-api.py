@@ -16,11 +16,14 @@ import re
 import socket
 import ssl
 import subprocess
+import sys
 import time
 import uuid
 from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts/shared"))
+import stage_apps  # noqa: E402
 NAMESPACE = "demo-sandbox"
 SOURCE_IMAGE = "registry.redhat.io/rhoai/odh-mod-arch-gen-ai-rhel9@sha256:9fccbc4215f2c3c792eeaa5a4081826fe4e6cbeb69d5f9aa4572ad06c4b2aecc"
 
@@ -55,7 +58,11 @@ def oc(*args):
 def stage_ready(stage, revision):
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise RuntimeError("Supply the reviewed published 40-character stage revision.")
-    name = {"040": "040-governed-models-as-a-service", "050": "050-model-evaluation"}[stage]
+    if stage_apps.is_regrouped(stage):
+        if stage_apps.stage_problems(stage, revision, "https://github.com/adnan-drina/rhoai3-coding-demo.git"):
+            raise RuntimeError("Exact native stage Application source/readiness guard failed.")
+        return
+    name = {"050": "050-model-evaluation"}[stage]
     app = json.loads(oc("get", "application", name, "-n", "openshift-gitops", "-o", "json"))
     spec, status = app["spec"], app.get("status", {})
     source = spec.get("source", {})
@@ -245,7 +252,7 @@ def persist_new_playground(created_name):
     """
     pvc = json.loads(oc("get", "pvc", "genai-playground-state", "-n", NAMESPACE, "-o", "json"))
     if (pvc["metadata"].get("deletionTimestamp") or pvc["metadata"].get("annotations", {}).get(
-            "argocd.argoproj.io/tracking-id", "") != "040-governed-models-as-a-service:/PersistentVolumeClaim:demo-sandbox/genai-playground-state"):
+            "argocd.argoproj.io/tracking-id", "") != "040-genai-studio:/PersistentVolumeClaim:demo-sandbox/genai-playground-state"):
         raise RuntimeError("Native playground persistence requires the stage-owned retained PVC.")
     deadline = time.monotonic() + 30
     while True:

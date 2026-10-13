@@ -65,7 +65,7 @@ oc get applications -n openshift-gitops \
 For a specific app:
 
 ```bash
-APP=040-governed-models-as-a-service
+APP=040-local-models   # python3 scripts/shared/stage_apps.py names 040 lists the Stage 040 components
 oc get application "$APP" -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | select(.status != "Synced" or .health.status != "Healthy") | [.kind,.namespace,.name,.status,.health.status,.message] | @tsv'
 ```
@@ -458,7 +458,7 @@ oc rollout status deployment/maas-api -n redhat-ods-applications
 Then re-run:
 
 ```bash
-argocd app sync 040-governed-models-as-a-service
+argocd app sync 040-maas-platform
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
@@ -718,7 +718,7 @@ oc get tenant default-tenant \
 - Avoid adding a second broad subscription with overlapping model refs. The MaaS controller generates token-rate-limit policy names per model, so overlapping subscriptions can create policy conflicts.
 
 ```bash
-argocd app sync 040-governed-models-as-a-service
+argocd app sync 040-maas-platform
 argocd app sync 050-approved-external-model-access
 
 GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
@@ -750,7 +750,7 @@ The logs must show successful key creation, but must not print full API keys. On
 - Generate a new one-time key.
 
 ```bash
-argocd app sync 040-governed-models-as-a-service
+argocd app sync 040-maas-platform
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
@@ -777,7 +777,7 @@ curl -k -s -o /dev/null -w '%{http_code}\n' "https://${GRAFANA_HOST}/"
 oc patch grafana grafana -n grafana --type=merge \
   -p '{"spec":{"route":{"spec":{"port":{"targetPort":"oauth-proxy"},"tls":{"termination":"reencrypt","insecureEdgeTerminationPolicy":"Redirect"}}}}}'
 
-oc patch application 040-governed-models-as-a-service -n openshift-gitops \
+oc patch application 040-maas-platform -n openshift-gitops \
   --type=merge -p '{"operation":{"sync":{}}}'
 ```
 
@@ -808,9 +808,9 @@ The proxy args should include:
 **Recover:**
 
 ```bash
-oc annotate application 040-governed-models-as-a-service -n openshift-gitops \
+oc annotate application 040-maas-platform -n openshift-gitops \
   argocd.argoproj.io/refresh=hard --overwrite
-oc patch application 040-governed-models-as-a-service -n openshift-gitops \
+oc patch application 040-maas-platform -n openshift-gitops \
   --type=merge -p '{"operation":{"sync":{}}}'
 oc wait --for=condition=complete job/job-configure-grafana-oauth -n grafana --timeout=180s
 oc rollout status deployment/grafana-deployment -n grafana --timeout=180s
@@ -840,9 +840,9 @@ Do not print or commit the runtime bearer token value. If `secureJsonData.httpHe
 **Recover:**
 
 ```bash
-oc annotate application 040-governed-models-as-a-service -n openshift-gitops \
+oc annotate application 040-maas-platform -n openshift-gitops \
   argocd.argoproj.io/refresh=hard --overwrite
-oc patch application 040-governed-models-as-a-service -n openshift-gitops \
+oc patch application 040-maas-platform -n openshift-gitops \
   --type=merge -p '{"operation":{"sync":{}}}'
 oc wait --for=condition=complete job/job-configure-grafana-sa -n grafana --timeout=180s
 oc rollout status deployment/grafana-deployment -n grafana --timeout=180s
@@ -2730,14 +2730,14 @@ The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` a
 
 **Affected stage:** Stage 040 (also any stage Application edited by hand)
 
-**Symptom:** `040-governed-models-as-a-service` stays `OutOfSync` on `authorino-service-ca` and `gen-ai-aa-mcp-servers` although only ignored `data` keys differ, and a manual sync does not clear it. After such a sync, the Gen AI playground lists no OpenShift-MCP servers and `validate.sh` reports `Studio catalog field is missing or drifted`.
+**Symptom:** `040-gateway-governance` stays `OutOfSync` on `authorino-service-ca`, or `040-genai-studio` on `gen-ai-aa-mcp-servers` (before 2026-10-14 both were in `040-governed-models-as-a-service`), although only ignored `data` keys differ, and a manual sync does not clear it. After such a sync, the Gen AI playground lists no OpenShift-MCP servers and `validate.sh` reports `Studio catalog field is missing or drifted`.
 
 **Likely cause:** Two separate causes, both seen on 2026-10-13:
 
 - An explicit sync started by patching `operation.sync` (for example `{"operation":{"sync":{"revision":"<sha>"}}}`) does not carry the Application's `syncPolicy.syncOptions`, so `RespectIgnoreDifferences=true` is not applied: the sync writes Git's empty `data` over the delegated ConfigMap fields and the playground loses its MCP entries. Automatic syncs keep the option.
 - The Application lost its `argocd.argoproj.io/compare-options: ServerSideDiff=true` annotation (and the other app-of-apps annotations) after `oc apply` of a JSON copy with bare metadata, so the delegated `data` fields show as a diff.
 
-**Recover:** Restore the annotations from `gitops/argocd/app-of-apps/<stage>.yaml` (`oc annotate application ... --overwrite`, one key at a time) and hard-refresh. Republish the playground entries with Stage 040's own publisher, as `deploy.sh` does:
+**Recover:** Restore the annotations from the Application file in `gitops/argocd/app-of-apps/` (`oc annotate application ... --overwrite`, one key at a time) and hard-refresh. Republish the playground entries with Stage 040's own publisher, as `deploy.sh` does:
 
 ```bash
 RHOAI_STAGE040_EXPECTED_REVISION=<Stage 040 revision> RHOAI_STAGE060_EXPECTED_REVISION=<agent-tools revision> \

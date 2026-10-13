@@ -10,17 +10,16 @@ python3 - "$REPO_ROOT" <<'PY'
 import json,os,re,ssl,subprocess,sys,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
 root=Path(sys.argv[1]);ns='internal-models';registry='demo-registry'
+sys.path.insert(0,str(root/'scripts/shared'));import stage_apps
 def oc(args,payload=None):
  r=subprocess.run(['oc','--request-timeout=10s']+args,input=json.dumps(payload) if payload else None,capture_output=True,text=True,timeout=15)
  if r.returncode:raise RuntimeError('Native registry/model API operation failed')
  return json.loads(r.stdout) if r.stdout.strip() else None
 def get(kind,name,namespace):return oc(['get',kind,name,'-n',namespace,'-o','json'])
 try:
- app=get('applications.argoproj.io','040-governed-models-as-a-service','openshift-gitops');s=app['status'];spec=app['spec'];result=s.get('operationState',{}).get('syncResult',{})
- source=spec['source'];revision=os.environ.get('RHOAI_STAGE040_EXPECTED_REVISION') or subprocess.run(['git','-C',str(root),'rev-parse','HEAD'],capture_output=True,text=True,timeout=10,check=True).stdout.strip()
- assert re.fullmatch(r'[0-9a-f]{40}',revision) and source['targetRevision']==revision and source['repoURL']==os.environ['GIT_REPO_URL'] and source['path']=='gitops/stages/040-governed-models-as-a-service/base','Reviewed immutable source differs'
- assert spec['project']=='rhoai-demo' and spec['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'} and not spec.get('sources') and not app['metadata'].get('ownerReferences') and not app['metadata'].get('deletionTimestamp'),'Application ownership differs'
- assert s['sync']['status']=='Synced' and s['sync']['revision']==spec['source']['targetRevision'] and s['health']['status']=='Healthy' and s.get('operationState',{}).get('phase')=='Succeeded' and result.get('revision')==spec['source']['targetRevision'] and result.get('source',{}).get('path')==spec['source']['path'],'Stage040 must reconcile before model registration'
+ revision=os.environ.get('RHOAI_STAGE040_EXPECTED_REVISION') or subprocess.run(['git','-C',str(root),'rev-parse','HEAD'],capture_output=True,text=True,timeout=10,check=True).stdout.strip()
+ assert re.fullmatch(r'[0-9a-f]{40}',revision),'Reviewed immutable source differs'
+ assert not stage_apps.stage_problems('040',revision,os.environ['GIT_REPO_URL'],root),'Stage040 must reconcile before model registration'
  mr=get('modelregistries.modelregistry.opendatahub.io',registry,'rhoai-model-registries');base='https://'+mr['status']['hosts'][0]+'/api/model_registry/v1alpha3'
  token=subprocess.run(['oc','whoami','-t'],capture_output=True,text=True,timeout=10,check=True).stdout.strip()
  class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -59,7 +58,7 @@ try:
  for name in ['qwen3-8-27b']:
   expected=models[name];uri=expected['spec']['model']['uri']
   llmi=get('llminferenceservices.serving.kserve.io',name,ns)
-  assert llmi['spec']['model']['uri']==uri and llmi['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('040-governed-models-as-a-service:'),'Model source/ownership differs'
+  assert llmi['spec']['model']['uri']==uri and llmi['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('040-local-models:'),'Model source/ownership differs'
   assert isinstance(llmi['metadata'].get('generation'),int) and llmi.get('status',{}).get('observedGeneration')==llmi['metadata']['generation'],'Model readiness is stale'
   parked=llmi['spec'].get('replicas')==0
   if not parked:assert any(c.get('type')=='Ready' and c.get('status')=='True' for c in llmi.get('status',{}).get('conditions',[])),'Active model must be ready before registry publication'

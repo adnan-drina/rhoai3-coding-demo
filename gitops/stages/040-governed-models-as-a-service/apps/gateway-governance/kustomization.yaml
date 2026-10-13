@@ -1,0 +1,14 @@
+# MaaS Gateway with its TLS certificate, Kuadrant and Authorino.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: rhoai3-coding-demo
+      demo.rhoai.io/stage: "040"
+
+resources:
+  - ../../base/governance/base
+  - ../../base/gateway/base
+  - ../../base/jobs/gateway
