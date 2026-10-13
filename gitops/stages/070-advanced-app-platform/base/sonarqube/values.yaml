@@ -13,7 +13,7 @@ community:
   buildNumber: 26.9.0.129388
 image:
   repository: docker.io/library/sonarqube
-  tag: 26.9.0.129388-community@sha256:c0f1160bccfa435db4168c2d7df69af3c3ea7bfeb87395613014048fb33a68c1
+  tag: 26.9.0.129388-community
 initSysctl:
   enabled: false
 initFs:

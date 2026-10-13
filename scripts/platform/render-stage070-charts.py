@@ -143,13 +143,18 @@ def gitlab_documents(documents, images):
     return result
 
 
-def sonarqube_documents(documents):
+def sonarqube_documents(documents, images):
     for document in documents:
         if document['kind'] == 'Pod' and 'test' in document['metadata'].get('annotations', {}).get('helm.sh/hook', ''):
             continue
         if document['kind'] in ('SecurityContextConstraints', 'ClusterRoleBinding'):
             raise ValueError('Unexpected chart privilege; SCC/sysctl initialization must stay disabled')
         document['metadata']['namespace'] = 'sonarqube'
+        if document['kind'] in ('Deployment', 'StatefulSet', 'Job'):
+            pod = document['spec']['template']['spec']
+            for container in (pod.get('containers') or []) + (pod.get('initContainers') or []):
+                image = container['image']
+                container['image'] = image.rsplit(':', 1)[0] + '@' + images[image]
         annotate(document, 10 if document['kind'] == 'StatefulSet' else 6)
         yield document
 
@@ -203,7 +208,7 @@ def main():
             '--kube-version', lock['kubernetes_version'], *capabilities, '--skip-tests', '-f', str(BASE / entry['name'] / 'values.yaml')], text=True)
         documents = [document for document in yaml.safe_load_all(raw) if document]
         documents = (gitlab_documents(documents, lock['gitlab_images']) if entry['name'] == 'gitlab'
-                     else sonarqube_documents(documents))
+                     else sonarqube_documents(documents, lock['sonarqube_images']))
         files = output_files(documents)
         destination = BASE / entry['name'] / 'generated'
         if args.check:

@@ -13,7 +13,7 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     app.kubernetes.io/part-of: developer-platform
     app.kubernetes.io/component: sonarqube
-    app.kubernetes.io/version: 26.9.0.129388-community@sha256:c0f1160bccfa435db4168c2d7df69af3
+    app.kubernetes.io/version: 26.9.0.129388-community
   namespace: sonarqube
   annotations:
     argocd.argoproj.io/sync-wave: '10'
@@ -40,7 +40,7 @@ spec:
       initContainers: null
       containers:
       - name: sonarqube
-        image: docker.io/library/sonarqube:26.9.0.129388-community@sha256:c0f1160bccfa435db4168c2d7df69af3c3ea7bfeb87395613014048fb33a68c1
+        image: docker.io/library/sonarqube@sha256:c0f1160bccfa435db4168c2d7df69af3c3ea7bfeb87395613014048fb33a68c1
         imagePullPolicy: IfNotPresent
         ports:
         - name: http

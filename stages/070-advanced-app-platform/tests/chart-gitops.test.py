@@ -52,6 +52,11 @@ class NativeDelivery(unittest.TestCase):
                     self.assertIn('target',metric)
                     self.assertNotIn('targetAverageUtilization',metric)
         self.assertEqual(seen,set(expected))
+    def test_sonarqube_version_label_is_not_the_image_digest(self):
+        row=next(r for r in self.resources if r['kind']=='StatefulSet' and r['metadata']['name']=='sonarqube')
+        self.assertEqual(row['metadata']['labels']['app.kubernetes.io/version'],'26.9.0.129388-community')
+        self.assertEqual(row['spec']['template']['spec']['containers'][0]['image'],
+                         'docker.io/library/sonarqube@sha256:c0f1160bccfa435db4168c2d7df69af3c3ea7bfeb87395613014048fb33a68c1')
 
     def test_native_order_preserves_credentials_and_migrations(self):
         rows = {(d['kind'], d['metadata']['name']): d for d in self.resources

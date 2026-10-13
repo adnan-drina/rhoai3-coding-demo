@@ -24,6 +24,9 @@
       "sha256": "1e367fb662e8d5c73d7b24adc5f7c1639d23be737a80fcd79eda07df21fc70bc"
     }
   ],
+  "sonarqube_images": {
+    "docker.io/library/sonarqube:26.9.0.129388-community": "sha256:c0f1160bccfa435db4168c2d7df69af3c3ea7bfeb87395613014048fb33a68c1"
+  },
   "gitlab_images": {
     "registry.gitlab.com/gitlab-org/build/cng/certificates:v19.4.2": "sha256:34d6f158b84c962f95cce5505be96cf8645807261da1e45995531901b3c97d51",
     "registry.gitlab.com/gitlab-org/build/cng/gitaly:v19.4.2": "sha256:a85b70c915e7a0363808c764369d70170aef22ff436c1642bafcc0874e3be2a4",
