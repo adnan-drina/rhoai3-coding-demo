@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 
 def oc(*args):
-    return json.loads(subprocess.check_output(['oc', *args], text=True))
+    return json.loads(subprocess.check_output(['oc', *args], universal_newlines=True))
 
 
 def issuer_configuration(host):

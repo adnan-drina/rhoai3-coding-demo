@@ -16,7 +16,7 @@ def policy(existing):
 
 def main():
     resource = json.loads(subprocess.check_output(['oc', 'get', 'argocd', 'openshift-gitops',
-        '-n', 'openshift-gitops', '-o', 'json'], text=True))
+        '-n', 'openshift-gitops', '-o', 'json'], universal_newlines=True))
     spec = resource['spec']
     patch = {'spec': {'extraConfig': {'accounts.rhdh': 'apiKey'},
                      'rbac': {'policy': policy(spec.get('rbac', {}).get('policy', ''))}}}
@@ -24,9 +24,9 @@ def main():
                     '--type=merge', '-p', json.dumps(patch)], check=True)
     for _ in range(60):
         account = subprocess.check_output(['oc', 'get', 'configmap', 'argocd-cm',
-            '-n', 'openshift-gitops', '-o', 'json'], text=True)
+            '-n', 'openshift-gitops', '-o', 'json'], universal_newlines=True)
         rbac = subprocess.check_output(['oc', 'get', 'configmap', 'argocd-rbac-cm',
-            '-n', 'openshift-gitops', '-o', 'json'], text=True)
+            '-n', 'openshift-gitops', '-o', 'json'], universal_newlines=True)
         if json.loads(account)['data'].get('accounts.rhdh') == 'apiKey' and all(
                 row in json.loads(rbac)['data'].get('policy.csv', '').splitlines() for row in RULES):
             print('Scoped Argo read account reconciled; existing policies retained')

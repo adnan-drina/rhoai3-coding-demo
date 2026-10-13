@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def oc(*args, data=None):
-    result = subprocess.run(['oc', *args], input=None if data is None else json.dumps(data), capture_output=True, text=True, check=True)
+    result = subprocess.run(['oc', *args], input=None if data is None else json.dumps(data), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
     return json.loads(result.stdout) if result.stdout.lstrip().startswith('{') else None
 
 

@@ -2766,3 +2766,9 @@ The workspace image must match the reviewed digest and its MTA binary/VSIX lock.
 A missing Hub endpoint refuses the migration template. Check the named MTA Route, catalog annotation and workspace `HUB_URL`; TLS verification remains enabled. The MTA LLM proxy and native Gateway must use the owner-bound MaaS key and model. Models are intentionally stopped during this upgrade, so an inference failure is not settled until the operator restarts them and runs the agreed functional checks. Unknown key lookup/status must preserve the current Secret and refuse rotation.
 
 A non-root Buildah failure requires the actual TaskRun Pod, applied SCC, user-namespace annotations, volume permissions and registry service CA. Only `image-builder` receives `pipelines-scc` use and namespace image push. Do not add privileged mode, host mounts, TLS bypass or workspace-wide build permissions as a workaround.
+
+## Stage 070 setup hook fails on Python subprocess keywords
+
+**Symptom:** the first Argo reader hook raises `TypeError: __init__() got an unexpected keyword argument 'text'`.
+
+The pinned `ose-cli` image uses Python 3.6. All Stage 070 Python hooks use `universal_newlines=True` and explicit `stdout`/`stderr` pipes rather than the Python 3.7 aliases. Publish that source correction and resync the failed hook; do not skip setup or invent readiness. The focused hook-runtime test guards the shared scripts.

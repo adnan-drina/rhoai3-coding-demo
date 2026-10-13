@@ -82,7 +82,7 @@ def main():
     if not directory.is_dir() or directory.is_symlink(): raise ValueError('Runtime artifact directory missing or redirected')
     for file in directory.rglob('*'):
         if file.is_symlink(): raise ValueError('Runtime artifacts must not contain symbolic links')
-    output = subprocess.check_output(['oc', 'create', '--dry-run=client', '-f', str(directory), '-o', 'json'], text=True)
+    output = subprocess.check_output(['oc', 'create', '--dry-run=client', '-f', str(directory), '-o', 'json'], universal_newlines=True)
     decoded = json.loads(output)
     objects = validate_runtime(decoded.get('items', [decoded]), name, ns, image)
     token = Path('/credentials/token').read_text().strip()
@@ -119,7 +119,7 @@ def main():
         with urllib.request.urlopen(request, timeout=30) as response: app = json.load(response)
         status = app.get('status', {})
         if status.get('sync', {}).get('revision') == commit and status['sync']['status'] == 'Synced' and status.get('health', {}).get('status') == 'Healthy':
-            deployed = json.loads(subprocess.check_output(['oc', 'get', 'deployment', name, '-n', ns, '-o', 'json'], text=True))
+            deployed = json.loads(subprocess.check_output(['oc', 'get', 'deployment', name, '-n', ns, '-o', 'json'], universal_newlines=True))
             containers = deployed['spec']['template']['spec']['containers']
             if any(c['name'] == name and c['image'] == image for c in containers) and deployed.get('status', {}).get('availableReplicas', 0) >= 1:
                 Path(os.environ['RESULT_PATH']).write_text(commit)

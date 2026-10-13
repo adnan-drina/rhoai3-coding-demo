@@ -17,7 +17,7 @@ NAME = re.compile(r'^[a-z][a-z0-9-]{2,40}$')
 
 def oc(*args, document=None):
     result = subprocess.run(['oc', *args], input=None if document is None else json.dumps(document),
-                            text=True, capture_output=True, check=True)
+                            universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     return json.loads(result.stdout) if result.stdout.strip().startswith('{') else result.stdout.strip()
 
 

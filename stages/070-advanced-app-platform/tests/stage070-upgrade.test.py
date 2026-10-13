@@ -241,4 +241,24 @@ class IntegratedContract(unittest.TestCase):
         self.assertNotIn('oc delete pod', (BASE / 'devspaces/workspace-sonar-credentials.yaml').read_text())
 
 
+
+
+class HookRuntime(unittest.TestCase):
+    def test_python36_subprocess_contract(self):
+        # The exact pinned ose-cli image runs Python 3.6. Newer keyword aliases
+        # failed the real first-sync hook before its first API read.
+        import ast
+        scripts = [BASE / p for p in (
+            'gitlab/configure-argocd-reader.py', 'gitlab/bootstrap.py',
+            'gitlab/bootstrap-oidc.py', 'gitlab/bootstrap-scm.py',
+            'pipelines/gitlab/reconcile.py', 'pipelines/project-pipeline/promote.py',
+            'pipelines/signing/configure-signing.py', 'mta/jobs/configure-ai.py')]
+        for script in scripts:
+            tree = ast.parse(script.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                    if isinstance(node.func.value, ast.Name) and node.func.value.id == 'subprocess':
+                        with self.subTest(script=script.name, line=node.lineno):
+                            self.assertFalse({'text', 'capture_output'} & {k.arg for k in node.keywords})
+
 if __name__ == '__main__': unittest.main()

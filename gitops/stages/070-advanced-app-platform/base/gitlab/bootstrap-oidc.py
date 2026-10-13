@@ -9,7 +9,7 @@ from urllib.parse import urlencode, quote
 
 def oc(*args, document=None):
     result = subprocess.run(['oc', *args], input=None if document is None else json.dumps(document),
-                            capture_output=True, text=True, check=True)
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
     return json.loads(result.stdout)
 
 

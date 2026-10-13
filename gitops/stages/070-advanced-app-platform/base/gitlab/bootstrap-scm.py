@@ -33,7 +33,7 @@ def sync_platform_revision(source_url, mirror_url, revision, token):
         env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'HOME': work}
         git = ['git', '-c', 'credential.helper=store --file=' + str(auth), '--git-dir=' + work + '/repo']
         def run(*args):
-            return subprocess.run(git + list(args), env=env, capture_output=True, text=True, check=True, timeout=300)
+            return subprocess.run(git + list(args), env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True, timeout=300)
         run('init', '--bare')
         run('remote', 'add', 'origin', mirror_url)
         run('fetch', '--no-tags', 'origin', 'main:refs/remotes/origin/main')
@@ -125,7 +125,7 @@ def check_oidc_identity(user, subject):
 
 
 def oc(*args, data=None):
-    result = subprocess.run(['oc', *args], input=None if data is None else json.dumps(data), capture_output=True, text=True, check=True)
+    result = subprocess.run(['oc', *args], input=None if data is None else json.dumps(data), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
     return json.loads(result.stdout) if result.stdout.lstrip().startswith('{') else None
 
 
@@ -152,7 +152,7 @@ def main():
     if len(pods) != 1: raise RuntimeError('Expected exactly one Ready GitLab toolbox')
     # Ruby runs only in the platform-owned toolbox, never in an application workspace.
     ruby = "u=User.find_by_username!('root'); t=u.personal_access_tokens.create!(name:'stage070-bootstrap',scopes:['api'],expires_at:1.day.from_now); puts t.token"
-    output = subprocess.check_output(['oc', 'exec', '-n', 'gitlab-system', pods[0]['metadata']['name'], '-c', 'toolbox', '--', 'gitlab-rails', 'runner', ruby], text=True)
+    output = subprocess.check_output(['oc', 'exec', '-n', 'gitlab-system', pods[0]['metadata']['name'], '-c', 'toolbox', '--', 'gitlab-rails', 'runner', ruby], universal_newlines=True)
     token = output.strip().splitlines()[-1]
     if not token.startswith('glpat-'): raise RuntimeError('GitLab bootstrap PAT was not produced')
 
