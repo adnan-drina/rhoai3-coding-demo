@@ -281,9 +281,9 @@ def main():
     listeners = {l["name"]: l for l in gateway["spec"].get("listeners", [])}
     expected_gateway = next(o for o in desired if o["kind"] == "Gateway")
     expected_listeners = {l["name"]: l for l in expected_gateway["spec"]["listeners"]}
-    need(set(listeners) == {"api", "qwen3-6", "qwen3-8"}, "Gateway listener set differs")
+    need(set(listeners) == {"api", "qwen3-8"}, "Gateway listener set differs")
     domains = {l.get("hostname") for l in listeners.values()}
-    need(len(domains) == 3 and all(h and "*" not in h and "placeholder" not in h for h in domains), "Gateway hostnames are unresolved or not isolated")
+    need(len(domains) == 2 and all(h and "*" not in h and "placeholder" not in h for h in domains), "Gateway hostnames are unresolved or not isolated")
     namespaces = {n: get("namespace", n) for n in ("models-as-a-service", "internal-models", "external-models", "redhat-ai-gateway-infra")}
     for ns in (*namespaces, "redhat-ods-applications"):
         obj = namespaces.get(ns) or get("namespace", ns)
@@ -314,7 +314,7 @@ def main():
             route_ready(route, "api", gateway_controller)
     need(any(any(r.get("name") == "maas-default-gateway" for r in x["spec"].get("parentRefs", [])) for x in api_routes), "Native MaaS API route is absent")
     models = [o for o in desired if o["kind"] == "LLMInferenceService"]
-    need(len(models) == 2, "Reviewed two-model scope differs")
+    need(len(models) == 1, "Reviewed single local model scope differs")
     workloads = sum((get(k, ns="internal-models")["items"] for k in ("deployments", "statefulsets", "leaderworkersets.leaderworkerset.x-k8s.io")), [])
     for d in models:
         obj = get("llminferenceservices.serving.kserve.io", d["metadata"]["name"], "internal-models")

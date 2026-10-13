@@ -246,7 +246,7 @@ def run():
             model_id = catalog_id(ref, desired)
             need(model_id in indexed and indexed[model_id].get("ready") is True, "Approved model is missing or not ready in persona catalog")
             endpoint = indexed[model_id].get("url", "")
-            expected_host = listeners["api" if external else ("qwen3-6" if name == "qwen3-6-27b" else "qwen3-8")]["hostname"]
+            expected_host = listeners["api" if external else "qwen3-8"]["hostname"]
             need(urlsplit(endpoint).hostname == expected_host, "Native model discovery selects wrong listener hostname")
             model_inputs = [o for o in desired if o["kind"] == "ExternalModel" and o["metadata"]["namespace"] == ns and o["metadata"]["name"] == name]
             native_messages = external and len(model_inputs) == 1 and model_inputs[0]["spec"]["externalProviderRefs"][0].get("apiFormat") == "messages"

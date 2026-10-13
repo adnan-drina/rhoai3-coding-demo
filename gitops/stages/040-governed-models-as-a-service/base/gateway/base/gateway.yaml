@@ -46,27 +46,6 @@ spec:
       - group: ''
         kind: Secret
         name: maas-gateway-tls
-  - name: qwen3-6
-    port: 443
-    protocol: HTTPS
-    hostname: qwen3-6-maas.placeholder.example.com
-    allowedRoutes:
-      namespaces:
-        from: Selector
-        selector:
-          matchLabels:
-            maas-gateway-access: "true"
-          matchExpressions:
-          - key: kubernetes.io/metadata.name
-            operator: In
-            values:
-            - internal-models
-    tls:
-      mode: Terminate
-      certificateRefs:
-      - group: ''
-        kind: Secret
-        name: maas-gateway-tls
   - name: qwen3-8
     port: 443
     protocol: HTTPS
