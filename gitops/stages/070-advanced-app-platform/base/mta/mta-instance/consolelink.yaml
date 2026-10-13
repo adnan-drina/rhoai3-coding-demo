@@ -3,7 +3,7 @@ kind: ConsoleLink
 metadata:
   name: mta
   annotations:
-    argocd.argoproj.io/sync-wave: "15"
+    argocd.argoproj.io/sync-wave: "9"
 spec:
   href: https://mta.placeholder.example.com
   location: ApplicationMenu

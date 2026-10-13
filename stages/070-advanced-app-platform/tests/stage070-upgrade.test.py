@@ -293,6 +293,18 @@ class GatewayAndPolicy(unittest.TestCase):
 
 
 class InitialInstall(unittest.TestCase):
+    def test_mta_configurator_can_read_only_the_objects_it_patches(self):
+        rows=list(yaml.safe_load_all((BASE/'mta/jobs/configure-ai.yaml').read_text()))
+        role=next(r for r in rows if r['kind']=='Role' and r['metadata']['namespace']=='openshift-mta')
+        for resource,name in (('tackles','mta'),('gateways','maas-qwen')):
+            rule=next(r for r in role['rules'] if resource in r['resources'])
+            self.assertEqual(set(rule['verbs']),{'get','patch'})
+            self.assertEqual(rule['resourceNames'],[name])
+        link=yaml.safe_load((BASE/'mta/mta-instance/consolelink.yaml').read_text())
+        sso=list(yaml.safe_load_all((BASE/'mta/jobs/configure-mta-platform-sso.yaml').read_text()))
+        job=next(r for r in sso if r['kind']=='Job')
+        self.assertLess(int(link['metadata']['annotations']['argocd.argoproj.io/sync-wave']),int(job['metadata']['annotations']['argocd.argoproj.io/sync-wave']))
+
     def test_reused_keycloak_served_import_api(self):
         realm = yaml.safe_load((BASE / 'identity/rhbk-instance/realm-platform.yaml').read_text())
         self.assertEqual(realm['apiVersion'], 'k8s.keycloak.org/v2alpha1')

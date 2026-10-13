@@ -2248,6 +2248,8 @@ Stuck pre-fix Jobs (pull policy Always baked into their pods) must be deleted fo
 
 ## Stage 070 GitLab project enrollment is pending
 
+If the MTA AI hook can patch but gets Forbidden reading `mta` or `maas-qwen`, retain named-resource bounds and add GET: the patch client reads the object first. Its Role needs get/patch only for these two names. The MTA launcher link must also be installed before the SSO hook patches it; placing the link in a later wave deadlocks the first sync.
+
 If a project Application is refused by its AppProject source allowlist, compare the actual GitLab Route host with the committed pattern. This installation uses OpenShift's generated `gitlab-gitlab-system.<ingress-domain>` host. The allowlists retain the platform/delivery group restrictions and the admission policy additionally requires the trusted release's exact URL and revision. Do not broaden the repository allowlist to all sources.
 
 If the GitLab storage hook gets HTTP 400 while setting the temporary-backup bucket policy, read the bound backup `ObjectBucket` identity. NooBaa assigns an account suffix, so constructing an email from the bucket name is incorrect. The bootstrap reads only `obc-gitlab-system-gitlab-backups`, verifies its bucket binding and uses its account ARN. The policy grants only that backup account access to the temporary bucket. Do not replace it with a wildcard principal or storage-administrator credentials.
