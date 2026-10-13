@@ -14,6 +14,20 @@ resources:
 # left unset in the template — pin it to this instance's namespace.
 patches:
   - target:
+      kind: ImageStream
+      name: application-image
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: coolstore-inventory-service
+  - target:
+      kind: RoleBinding
+      name: pipeline-image-builder
+    patch: |-
+      - op: replace
+        path: /subjects/0/namespace
+        value: coolstore-dev
+  - target:
       kind: RoleBinding
       name: pipeline-read-build-config
     patch: |-

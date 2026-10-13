@@ -1,13 +1,13 @@
 # RHDH Backstage instance — references app-config, dynamic plugins, and secrets.
 # The operator creates the Route automatically (route.enabled defaults to true).
-# Ref: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html-single/configuring_red_hat_developer_hub/index
+# Ref: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index
 apiVersion: rhdh.redhat.com/v1alpha5
 kind: Backstage
 metadata:
   name: developer-hub
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-wave: "18"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   # Prevent the RHDH first-boot migration surge-race. The operator's default
@@ -62,4 +62,4 @@ spec:
           value: /opt/app-root/src/k8s-ca/ca.crt
       secrets:
         - name: rhdh-secrets
-        - name: rhdh-github
+        - name: rhdh-gitlab

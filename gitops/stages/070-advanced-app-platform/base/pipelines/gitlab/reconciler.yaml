@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: project-provisioner
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: '13'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: project-provisioner
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - create
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  - configmaps
+  - serviceaccounts
+  verbs:
+  - get
+  - create
+  - patch
+  - update
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - roles
+  - rolebindings
+  - clusterrolebindings
+  verbs:
+  - get
+  - create
+  - patch
+  - update
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  resourceNames:
+  - tekton-triggers-eventlistener-clusterroles
+  verbs:
+  - bind
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns
+  verbs:
+  - get
+  - create
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelines
+  verbs:
+  - get
+- apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  verbs:
+  - get
+  - create
+  - patch
+  - update
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  verbs:
+  - get
+  - create
+  - patch
+  - update
+- apiGroups:
+  - triggers.tekton.dev
+  resources:
+  - eventlisteners
+  - triggertemplates
+  - triggerbindings
+  - triggers
+  - interceptors
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: project-provisioner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: project-provisioner
+subjects:
+- kind: ServiceAccount
+  name: project-provisioner
+  namespace: app-platform-build
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: project-provisioner
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: '13'
+spec:
+  schedule: '*/2 * * * *'
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 600
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: project-provisioner
+          restartPolicy: Never
+          containers:
+          - name: enroll
+            image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+            command:
+            - python3
+            - /scripts/reconcile.py
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: credentials
+              mountPath: /credentials
+              readOnly: true
+          volumes:
+          - name: scripts
+            configMap:
+              name: gitlab-project-reconciler
+          - name: config
+            configMap:
+              name: gitlab-platform-config
+          - name: credentials
+            secret:
+              secretName: gitlab-enroller

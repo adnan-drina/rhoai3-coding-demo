@@ -1,0 +1,322 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gitlab-bootstrap
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gitlab-bootstrap
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - gitlab-database
+  - gitlab-cache
+  - gitlab-initial-root
+  - gitlab-oidc
+  - gitlab-lfs
+  - gitlab-artifacts
+  - gitlab-uploads
+  - gitlab-packages
+  - gitlab-backups
+  - gitlab-backup-tmp
+  - gitlab-storage-lfs
+  - gitlab-storage-artifacts
+  - gitlab-storage-uploads
+  - gitlab-storage-packages
+  - gitlab-storage-backups
+  verbs:
+  - get
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - create
+- apiGroups:
+  - objectbucket.io
+  resources:
+  - objectbucketclaims
+  verbs:
+  - get
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  resourceNames:
+  - gitlab-migrations
+  - gitlab-sidekiq
+  - gitlab-toolbox
+  - gitlab-webservice
+  - gitlab-gitlab-chart-info
+  - gitlab-initial-release
+  - gitlab-lfs
+  - gitlab-artifacts
+  - gitlab-uploads
+  - gitlab-packages
+  - gitlab-backups
+  - gitlab-backup-tmp
+  - gitlab-runtime-buckets
+  verbs:
+  - get
+  - patch
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  verbs:
+  - create
+- apiGroups:
+  - ''
+  resources:
+  - persistentvolumeclaims
+  resourceNames:
+  - gitlab-postgresql-data
+  verbs:
+  - get
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  resourceNames:
+  - gitlab-webservice-default
+  - gitlab-sidekiq-all-in-1-v2
+  - gitlab-toolbox
+  verbs:
+  - get
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  resourceNames:
+  - gitlab
+  verbs:
+  - get
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - gitlab-storage-lfs
+  - gitlab-storage-artifacts
+  - gitlab-storage-uploads
+  - gitlab-storage-packages
+  - gitlab-storage-backups
+  verbs:
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gitlab-bootstrap
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+subjects:
+- kind: ServiceAccount
+  name: gitlab-bootstrap
+  namespace: gitlab-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gitlab-bootstrap
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gitlab-bootstrap
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+rules:
+- apiGroups:
+  - config.openshift.io
+  resources:
+  - ingresses
+  resourceNames:
+  - cluster
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gitlab-bootstrap
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+subjects:
+- kind: ServiceAccount
+  name: gitlab-bootstrap
+  namespace: gitlab-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: gitlab-bootstrap
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gitlab-bootstrap
+  namespace: openshift-storage
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+rules:
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  resourceNames:
+  - s3
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gitlab-bootstrap
+  namespace: openshift-storage
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+subjects:
+- kind: ServiceAccount
+  name: gitlab-bootstrap
+  namespace: gitlab-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gitlab-bootstrap
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gitlab-bootstrap
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: '6'
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 2
+  template:
+    spec:
+      serviceAccountName: gitlab-bootstrap
+      restartPolicy: Never
+      containers:
+      - name: bootstrap
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        command:
+        - python3
+        - /bootstrap/bootstrap.py
+        - prepare
+        volumeMounts:
+        - name: bootstrap
+          mountPath: /bootstrap
+          readOnly: true
+        - name: runtime
+          mountPath: /runtime
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: bootstrap
+        configMap:
+          name: gitlab-bootstrap
+      - name: runtime
+        configMap:
+          name: gitlab-runtime-templates
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gitlab-record-release
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: '12'
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 2
+  template:
+    spec:
+      serviceAccountName: gitlab-bootstrap
+      restartPolicy: Never
+      containers:
+      - name: bootstrap
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        command:
+        - python3
+        - /bootstrap/bootstrap.py
+        - record-version
+        volumeMounts:
+        - name: bootstrap
+          mountPath: /bootstrap
+          readOnly: true
+        - name: runtime
+          mountPath: /runtime
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: bootstrap
+        configMap:
+          name: gitlab-bootstrap
+      - name: runtime
+        configMap:
+          name: gitlab-runtime-templates
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gitlab-bootstrap-oidc
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+rules:
+- apiGroups: ['']
+  resources: [secrets]
+  resourceNames: [keycloak-initial-admin]
+  verbs: [get]
+- apiGroups: [route.openshift.io]
+  resources: [routes]
+  resourceNames: [keycloak]
+  verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gitlab-bootstrap-oidc
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gitlab-bootstrap-oidc
+subjects:
+- kind: ServiceAccount
+  name: gitlab-bootstrap
+  namespace: gitlab-system

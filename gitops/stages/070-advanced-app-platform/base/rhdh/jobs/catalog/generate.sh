@@ -29,18 +29,22 @@ APP_SYNC_REVISION=$(oc get application 070-advanced-app-platform -n openshift-gi
   -o jsonpath='{.status.operationState.syncResult.revision}' 2>/dev/null || true)
 [ -z "$APP_SYNC_REVISION" ] && APP_SYNC_REVISION=$(oc get application 070-advanced-app-platform -n openshift-gitops \
   -o jsonpath='{.status.sync.revision}' 2>/dev/null || true)
-APP_REPO_URL=$(oc get application 070-advanced-app-platform -n openshift-gitops \
-  -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
-[ -z "$APP_REPO_URL" ] && APP_REPO_URL="https://github.com/adnan-drina/rhoai3-coding-demo.git"
-REPO_NO_GIT="${APP_REPO_URL%.git}"
+# The private GitLab mirror must contain this exact bundle revision before
+# the portal publishes any template links. No stale GitHub reader fallback.
+SCM_CONFIG_FILE="${SCM_CONFIG_FILE:-/gitlab-config/platform.json}"
+REPO_NO_GIT=$(python3 - "${SCM_CONFIG_FILE}" <<'PYSCM'
+import json, sys
+value = json.load(open(sys.argv[1]))['PLATFORM_CATALOG_REPO']
+if not value.startswith('https://gitlab.') or '\n' in value:
+    raise SystemExit('Invalid GitLab platform catalog repository')
+print(value[:-4] if value.endswith('.git') else value)
+PYSCM
+)
 if [ -n "${CATALOG_RAW_BASE:-}" ]; then
-  # tests only: a file:// repository standing in for raw.githubusercontent.com
+  # Tests only: a file:// repository standing in for the private GitLab API.
   RAW_BASE="${CATALOG_RAW_BASE}"
-elif [[ "$REPO_NO_GIT" =~ ^https://github.com/([^/]+)/([^/]+)$ ]]; then
-  RAW_BASE="https://raw.githubusercontent.com/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
 else
-  echo "ERROR: Unsupported repo URL '${APP_REPO_URL}'"
-  exit 1
+  RAW_BASE="gitlab+${REPO_NO_GIT}"
 fi
 
 if [ "${SKIP_IF_CURRENT:-false}" = "true" ]; then
@@ -104,7 +108,8 @@ ${RENDER} render --bundle "${BUNDLE}" --out ${BUNDLE}/.catalog-runtime.yaml \
   --revision "${APP_SYNC_REVISION}" --devspaces-url "https://${DEVSPACES_HOST}" --rhdh-url "" \
   --coolstore-url "https://${COOLSTORE_HOST:-coolstore-pending.local}" \
   --sonarqube-url "https://${SONARQUBE_HOST:-sonarqube-pending.local}" \
-  --maas-host "${MAAS_HOST}" --maas-internal-ip "${MAAS_INTERNAL_IP}"
+  --maas-host "${MAAS_HOST}" --maas-internal-ip "${MAAS_INTERNAL_IP}" \
+  --scm-config "${SCM_CONFIG_FILE}"
 
 python3 - ${BUNDLE}/.catalog-runtime.yaml ${BUNDLE}/.catalog-patch.json "${APP_SYNC_REVISION}" "${BUNDLE_ID}" <<'PY'
 import json

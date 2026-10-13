@@ -1,0 +1,74 @@
+{
+  "schema": {
+    "description": "GatewaySpec defines the desired state of a Gateway.",
+    "properties": {
+      "credentialRef": {
+        "description": "CredentialRef references a Secret containing the API credential.",
+        "properties": {
+          "key": {
+            "description": "Key is the key within the Secret that contains the credential value.\nWhen set, the credential is a single value (e.g. a bearer token) and\nis injected into sandbox containers as KONVEYOR_LLM_API_KEY.\nWhen omitted, the credential spans multiple environment variables\n(e.g. AWS SigV4: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,\nAWS_REGION) and the whole Secret is exposed to the sandbox container\nvia envFrom, with the Secret's keys as the variable names.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "secretName": {
+            "description": "SecretName is the name of the Secret in the same namespace.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "secretName"
+        ],
+        "type": "object"
+      },
+      "endpoint": {
+        "description": "Endpoint is the base URL of the LLM service.",
+        "minLength": 1,
+        "type": "string"
+      },
+      "model": {
+        "description": "Model is the model served by this gateway. Each Gateway serves\nexactly one provider/model combination, mirroring the OpenShell\ngateway model where one gateway = one model.",
+        "properties": {
+          "contextWindow": {
+            "description": "ContextWindow is the maximum context window size in tokens.\nUsed to validate that an Agent's always-loaded rules fit within budget.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Name is the model identifier (e.g. \"claude-sonnet-4-20250514\", \"gpt-4o\").",
+            "minLength": 1,
+            "type": "string"
+          },
+          "tier": {
+            "description": "Tier is an optional label for the model's capability tier\n(e.g. \"premium\", \"efficient\").",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextWindow",
+          "name"
+        ],
+        "type": "object"
+      },
+      "provider": {
+        "description": "Provider is the runtime provider identifier (e.g. \"anthropic\",\n\"openai\", \"gcp-vertex-ai\"). Injected as KONVEYOR_LLM_PROVIDER\nso the harness can map credentials to provider-specific env vars.\nThis is a pre-OpenShell shim \u2014 when OpenShell is integrated,\ninference.local eliminates the need for provider-specific\ncredential mapping and this field is removed.",
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "credentialRef",
+      "endpoint",
+      "model",
+      "provider"
+    ],
+    "type": "object"
+  },
+  "source": {
+    "image": "registry.redhat.io/mta/mta-operator-bundle@sha256:1f47b6e52b57df8a66cc51be5167485bfbdbba4933d4ebd895e1856c72d43edd",
+    "crd": "gateways.konveyor.io",
+    "api_version": "v1alpha1",
+    "crd_sha256": "b1d45b53f6f6227a72450351f040e43388001eb89face9d7eb95a8ecab6b04f4"
+  }
+}

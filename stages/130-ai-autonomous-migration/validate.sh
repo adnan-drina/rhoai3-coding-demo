@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║  Stage 130: Autonomous Application Migration (MTA 8.2)     ║"
+echo "║  Stage 130: Autonomous Application Migration (MTA 8.3)     ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -268,19 +268,19 @@ check_factory_mta_destfile() {
     local label="$1"
     local destfile="$2"
     check "factory destfile declares MTA default extensions: $label" \
-        "grep -q '/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/redhat-java.vsix;/tmp/mta-java.vsix' '$destfile' && echo present || echo missing" \
+        "grep -q '/opt/rhoai3/extensions/mta-vscode-extension.vsix;/opt/rhoai3/extensions/mta-core.vsix;/opt/rhoai3/extensions/java.vsix;/opt/rhoai3/extensions/mta-java.vsix' '$destfile' && echo present || echo missing" \
         "present"
-    check "factory destfile downloads MTA VS Code extension 8.2.0: $label" \
-        "grep -q 'redhat.mta-vscode-extension-8.2.0.vsix' '$destfile' && echo present || echo missing" \
+    check "factory destfile uses baked MTA VS Code extension 8.3.1: $label" \
+        "grep -q '/opt/rhoai3/extensions/mta-vscode-extension.vsix' '$destfile' && echo present || echo missing" \
         "present"
-    check "factory destfile downloads MTA core extension 8.2.0: $label" \
-        "grep -q 'redhat.mta-core-8.2.0.vsix' '$destfile' && echo present || echo missing" \
+    check "factory destfile uses baked MTA core extension 8.3.1: $label" \
+        "grep -q '/opt/rhoai3/extensions/mta-core.vsix' '$destfile' && echo present || echo missing" \
         "present"
-    check "factory destfile downloads MTA Java extension 8.2.0: $label" \
-        "grep -q 'redhat.mta-java-8.2.0.vsix' '$destfile' && echo present || echo missing" \
+    check "factory destfile uses baked MTA Java extension 8.3.1: $label" \
+        "grep -q '/opt/rhoai3/extensions/mta-java.vsix' '$destfile' && echo present || echo missing" \
         "present"
-    check "factory destfile downloads redhat.java 1.47.0 (mta-java dependency): $label" \
-        "grep -q 'redhat.java-1.47.0.vsix' '$destfile' && echo present || echo missing" \
+    check "factory destfile uses baked redhat.java 1.47.0 (mta-java dependency): $label" \
+        "grep -q '/opt/rhoai3/extensions/java.vsix' '$destfile' && echo present || echo missing" \
         "present"
     check "factory destfile sets HUB_URL to the internal hub service: $label" \
         "grep -q 'mta-ui.openshift-mta.svc.cluster.local:8080' '$destfile' && echo present || echo missing" \
@@ -853,8 +853,8 @@ check "080 Spec Kit residue scan is clean (skills, kernel, lib, planning)" \
 check "080 pins.json planner activation is not-activated on golden" \
   "python3 -c \"import json,pathlib; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']; print(p.get('planner',{}).get('activation'))\"" \
   "not-activated"
-check "080 pins.json: structure_extractor pinned to the toolchain JDK, mta_cli pinned 8.2 with a measured 64-hex artifact digest and named artifact, no retired optional producers" \
-  "python3 -c \"import json,pathlib,re; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']; m=p.get('mta_cli',{}); print('ok' if p.get('structure_extractor',{}).get('version')=='jdk-21' and m.get('version')=='8.2' and re.fullmatch(r'[0-9a-f]{64}', str(m.get('artifact_sha256') or '')) and str(m.get('artifact') or '').strip() and 'spoon' not in p and 'jqassistant' not in p and 'context_probe' not in p else 'bad')\"" \
+check "080 pins.json: structure_extractor pinned to the toolchain JDK, mta_cli pinned 8.3 with a measured 64-hex artifact digest and named artifact, no retired optional producers" \
+  "python3 -c \"import json,pathlib,re; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']; m=p.get('mta_cli',{}); print('ok' if p.get('structure_extractor',{}).get('version')=='jdk-21' and m.get('version')=='8.3' and re.fullmatch(r'[0-9a-f]{64}', str(m.get('artifact_sha256') or '')) and str(m.get('artifact') or '').strip() and 'spoon' not in p and 'jqassistant' not in p and 'context_probe' not in p else 'bad')\"" \
   "ok"
 check "080 K2 hook vetoes worker graph mutation (kanban_create/link/swarm/decompose)" \
   "grep -c 'GRAPH_MUTATION_TOOLS' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \

@@ -1,0 +1,44 @@
+fullnameOverride: sonarqube
+OpenShift:
+  enabled: true
+  createSCC: false
+  route:
+    enabled: true
+    host: ''
+    tls:
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+community:
+  enabled: true
+  buildNumber: 26.9.0.129388
+image:
+  repository: docker.io/library/sonarqube
+  tag: 26.9.0.129388-community@sha256:c0f1160bccfa435db4168c2d7df69af3c3ea7bfeb87395613014048fb33a68c1
+initSysctl:
+  enabled: false
+initFs:
+  enabled: false
+elasticsearch:
+  bootstrapChecks: true
+jdbcOverwrite:
+  enabled: true
+  jdbcUrl: jdbc:postgresql://sonardb.sonarqube.svc:5432/sonar
+  jdbcUsername: sonar
+  jdbcSecretName: sonardb
+  jdbcSecretPasswordKey: database-password
+persistence:
+  enabled: true
+  storageClass: gp3-csi
+  size: 10Gi
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+monitoringPasscodeSecretName: sonarqube-monitoring
+monitoringPasscodeSecretKey: passcode
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    memory: 4Gi
+agentOrchestrator:
+  enabled: false

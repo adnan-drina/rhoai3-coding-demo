@@ -1,12 +1,10 @@
-# CheCluster instance — matches quickstart configuration
-# Ref: https://github.com/rh-ai-quickstart/maas-code-assistant
 apiVersion: org.eclipse.che/v2
 kind: CheCluster
 metadata:
   name: devspaces
   namespace: openshift-devspaces
   annotations:
-    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-wave: '10'
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
   labels:
     app.kubernetes.io/part-of: devspaces
@@ -20,29 +18,28 @@ spec:
     devWorkspace: {}
     devfileRegistry: {}
     pluginRegistry:
-      openVSXURL: "https://open-vsx.org"
+      openVSXURL: https://open-vsx.org
+    metrics:
+      enable: true
   containerRegistry: {}
   devEnvironments:
     startTimeoutSeconds: 1200
     secondsOfInactivityBeforeIdling: -1
-    # Default is 1 running workspace per user: starting any second workspace
-    # (e.g. a stray dashboard click on agentic-coolstore) silently stops the
-    # active one — observed 2026-07-21 killing an in-flight speckit session.
-    # Three keeps the preserved migration workspace running while two fresh
-    # disposable workspaces qualify cross-run isolation. This is capacity,
-    # not parallel migration execution; disposable auto-start stays disabled.
     maxNumberOfRunningWorkspacesPerUser: 3
-    # Trusted sources: the dashboard shows an "untrusted source" dialog for
-    # every factory URL until this allowlist exists server-side; with it
-    # configured the dialog is skipped and sources outside the list are
-    # refused. Every golden and per-run repo the app-migration template
-    # creates lives under this owner (Dev Spaces 3.29 Administration Guide,
-    # "Restrict which URLs can create workspaces"; wildcards supported).
     allowedSources:
       urls:
-        - "https://github.com/adnan-drina/*"
+      - https://gitlab.pending.invalid/rhoai-workloads/*
     storage:
-      pvcStrategy: per-user
+      pvcStrategy: per-workspace
+      perWorkspaceStrategyPvcConfig:
+        claimSize: 20Gi
+        storageClass: gp3-csi
     defaultNamespace:
       autoProvision: true
+    persistUserHome:
+      enabled: true
+    containerResourceCaps:
+      limits:
+        cpu: '6'
+        memory: 12Gi
   networking: {}

@@ -69,7 +69,7 @@ def _coverage_case() -> int:
     listed = _listed()
     # A test kept beside its template (app-migration-template.test.py) is not bundle content.
     want = {p.relative_to(RHDH).as_posix() for d in ("templates", "catalog") for p in (RHDH / d).rglob("*")
-            if p.is_file() and not p.name.endswith(".test.py")}
+            if p.is_file() and '__pycache__' not in p.parts and not p.name.endswith(".test.py")}
     want |= {"jobs/catalog/generate.sh", "jobs/catalog/render_catalog.py"}
     missing = sorted(want - set(listed.values()))
     if missing:
@@ -125,7 +125,16 @@ def _generate(td: Path, bundle: Path, repo: Path, revision: str, host: str, ip: 
     oc.write_text(FAKE_OC, encoding="utf-8")
     oc.chmod(oc.stat().st_mode | stat.S_IEXEC)
     log = td / "oc"
-    env = dict(os.environ, PATH="%s:%s" % (bindir, os.environ.get("PATH", "")), FAKE_OC_LOG=str(log),
+    config = td / "platform.json"
+    config.write_text(json.dumps({
+        'GITLAB_HOST': 'gitlab.' + domain, 'GITLAB_BASE_URL': 'https://gitlab.' + domain,
+        'GITLAB_WORKLOAD_GROUP': 'rhoai-workloads', 'GITLAB_REGISTRATION_PROJECT_ID': 42,
+        'PLATFORM_CATALOG_REPO': 'https://gitlab.' + domain + '/rhoai-platform/demo.git',
+        'MTA_HUB_URL': 'https://mta.' + domain,
+        'agentic-quarkus-scaffold': 'https://gitlab.' + domain + '/rhoai-platform/application/-/tree/' + revision,
+        'quarkus-migration-scaffold-v2': 'https://gitlab.' + domain + '/rhoai-platform/migration/-/tree/' + revision,
+    }))
+    env = dict(os.environ, SCM_CONFIG_FILE=str(config), PATH="%s:%s" % (bindir, os.environ.get("PATH", "")), FAKE_OC_LOG=str(log),
                FAKE_REVISION=revision, FAKE_MAAS_HOST=host, FAKE_MAAS_IP=ip, FAKE_DOMAIN=domain,
                BUNDLE_DIR=str(bundle), CATALOG_RAW_BASE=repo.as_uri())
     p = subprocess.run(["bash", str(bundle / "jobs__catalog__generate.sh")], env=env, capture_output=True, text=True)
@@ -147,7 +156,7 @@ def _end_to_end_case(revision: str, host: str, ip: str, domain: str) -> int:
         if ann.get("rhoai3.redhat.com/catalog-revision") != revision or ann.get("rhoai3.redhat.com/catalog-bundle") != rc.digest(rc.bundle_files(bundle)):
             return _fail("the published catalog is stamped with its revision and bundle id: %s" % ann)
         locations = re.findall(r"target:\s+(\S*templates/[^/]+/template\.yaml)", body)
-        if len(locations) != 2 or not all("/blob/%s/" % revision in t for t in locations):
+        if len(locations) != 2 or not all("/-/blob/%s/" % revision in t for t in locations):
             return _fail("template Locations resolve at the bundle revision, never a branch: %s" % locations)
         if "tree/%s" % revision not in body or "__RHOAI3_" in body or "placeholder.example.com" in body:
             return _fail("every link is pinned and every placeholder resolved")

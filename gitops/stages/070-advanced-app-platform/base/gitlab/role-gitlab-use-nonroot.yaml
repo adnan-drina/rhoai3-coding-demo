@@ -1,0 +1,16 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gitlab-use-nonroot
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+rules:
+- apiGroups:
+  - security.openshift.io
+  resources:
+  - securitycontextconstraints
+  resourceNames:
+  - nonroot-v2
+  verbs:
+  - use

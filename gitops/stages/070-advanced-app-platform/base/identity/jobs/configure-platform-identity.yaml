@@ -1,67 +1,73 @@
-# PostSync Job: configures OpenShift OAuth federation in the platform RHBK.
-#
-# Creates an openshift-v4 identity provider in the `platform` realm so demo
-# users log in with their cluster credentials, patches the platform-keycloak
-# OAuthClient with a generated secret and the live RHBK redirect URI, and
-# pre-creates the demo users with identity-provider links so first login
-# skips the profile-completion step of the first-broker-login flow.
-#
-# RHBK 26 serves at the root path (no /auth prefix, unlike the
-# MTA-operator-managed Keycloak): realms live under /realms/<realm> and the
-# Admin API under /admin/realms/<realm>. The Operator stores the bootstrap
-# admin credentials in the <cr-name>-initial-admin Secret.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: job-configure-platform-identity
-  namespace: rhbk
+  namespace: keycloak
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '1'
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: job-configure-platform-identity
-  namespace: rhbk
+  namespace: keycloak
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '1'
 rules:
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get"]
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: job-configure-platform-identity
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '1'
 rules:
-- apiGroups: ["oauth.openshift.io"]
-  resources: ["oauthclients"]
-  verbs: ["get", "patch"]
-- apiGroups: ["route.openshift.io"]
-  resources: ["routes"]
-  verbs: ["get", "list"]
-- apiGroups: ["user.openshift.io"]
-  resources: ["users"]
-  verbs: ["get"]
+- apiGroups:
+  - oauth.openshift.io
+  resources:
+  - oauthclients
+  verbs:
+  - get
+  - patch
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - user.openshift.io
+  resources:
+  - users
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: job-configure-platform-identity
-  namespace: rhbk
+  namespace: keycloak
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '1'
 subjects:
 - kind: ServiceAccount
   name: job-configure-platform-identity
-  namespace: rhbk
+  namespace: keycloak
 roleRef:
   kind: Role
   name: job-configure-platform-identity
@@ -72,12 +78,13 @@ kind: ClusterRoleBinding
 metadata:
   name: job-configure-platform-identity
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '1'
 subjects:
 - kind: ServiceAccount
   name: job-configure-platform-identity
-  namespace: rhbk
+  namespace: keycloak
 roleRef:
   kind: ClusterRole
   name: job-configure-platform-identity
@@ -87,10 +94,11 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: job-configure-platform-identity
-  namespace: rhbk
+  namespace: keycloak
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '1'
 spec:
   backoffLimit: 6
   activeDeadlineSeconds: 1800
@@ -107,7 +115,7 @@ spec:
         - |
           set -euo pipefail
 
-          RHBK_URL="http://platform-rhbk-service.rhbk.svc:8080"
+          RHBK_URL=""
           REALM="platform"
           IDP_ALIAS="openshift"
           OAUTH_CLIENT_NAME="platform-keycloak"
@@ -116,7 +124,7 @@ spec:
           echo "Discovering RHBK route..."
           RHBK_HOST=""
           for i in {1..30}; do
-            RHBK_HOST=$(oc get route platform-rhbk -n rhbk -o jsonpath='{.spec.host}' 2>/dev/null || true)
+            RHBK_HOST=$(oc get route keycloak -n keycloak -o jsonpath='{.spec.host}' 2>/dev/null || true)
             if [ -n "$RHBK_HOST" ]; then break; fi
             echo "Waiting for RHBK route... ($i/30)"
             sleep 10
@@ -126,6 +134,7 @@ spec:
             exit 1
           fi
           RHBK_EXTERNAL_URL="https://${RHBK_HOST}"
+          RHBK_URL="$RHBK_EXTERNAL_URL"
           REDIRECT_URI="${RHBK_EXTERNAL_URL}/realms/${REALM}/broker/${IDP_ALIAS}/endpoint"
           echo "RHBK URL: ${RHBK_EXTERNAL_URL}"
           echo "Redirect URI: ${REDIRECT_URI}"
@@ -158,14 +167,14 @@ spec:
 
           # --- 5. Get RHBK admin token ---
           echo "Getting RHBK admin token..."
-          RHBK_ADMIN_USER=$(oc get secret platform-rhbk-initial-admin -n rhbk \
+          RHBK_ADMIN_USER=$(oc get secret keycloak-initial-admin -n keycloak \
             -o jsonpath='{.data.username}' | base64 -d)
-          RHBK_ADMIN_PASS=$(oc get secret platform-rhbk-initial-admin -n rhbk \
+          RHBK_ADMIN_PASS=$(oc get secret keycloak-initial-admin -n keycloak \
             -o jsonpath='{.data.password}' | base64 -d)
 
           ADMIN_TOKEN=""
           for i in {1..60}; do
-            ADMIN_TOKEN=$(curl -s -X POST \
+            ADMIN_TOKEN=$(curl -fsS -X POST \
               "${RHBK_URL}/realms/master/protocol/openid-connect/token" \
               -d "grant_type=password&client_id=admin-cli&username=${RHBK_ADMIN_USER}&password=${RHBK_ADMIN_PASS}" \
               2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || echo "")
@@ -227,19 +236,19 @@ spec:
 
           if [ "$EXISTING_IDP" = "200" ]; then
             echo "Updating existing IdP '${IDP_ALIAS}'..."
-            HTTP_CODE=$(curl -s -X PUT -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+            HTTP_CODE=$(curl -fsS -X PUT -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
               "${RHBK_URL}/admin/realms/${REALM}/identity-provider/instances/${IDP_ALIAS}" \
               -d "${IDP_PAYLOAD}" -o /dev/null -w "%{http_code}" 2>/dev/null)
           else
             echo "Creating new IdP '${IDP_ALIAS}'..."
-            HTTP_CODE=$(curl -s -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+            HTTP_CODE=$(curl -fsS -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
               "${RHBK_URL}/admin/realms/${REALM}/identity-provider/instances" \
               -d "${IDP_PAYLOAD}" -o /dev/null -w "%{http_code}" 2>/dev/null)
           fi
           echo "IdP response: HTTP ${HTTP_CODE}"
           if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "204" ]; then
             echo "ERROR: Failed to configure IdP (HTTP ${HTTP_CODE})"
-            curl -s -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+            curl -fsS -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
               "${RHBK_URL}/admin/realms/${REALM}/identity-provider/instances" \
               -d "${IDP_PAYLOAD}" 2>&1
             exit 1
@@ -266,7 +275,7 @@ spec:
             EXISTS=$(echo "$EXISTING" | python3 -c "import sys,json; print('yes' if len(json.load(sys.stdin))>0 else 'no')" 2>/dev/null)
 
             if [ "$EXISTS" != "yes" ]; then
-              curl -s -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+              curl -fsS -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
                 "${RHBK_URL}/admin/realms/${REALM}/users" \
                 -d "{\"username\":\"${USERNAME}\",\"enabled\":true,\"emailVerified\":true,\"email\":\"${EMAIL}\",\"firstName\":\"${FIRST}\",\"lastName\":\"${LAST}\"}" \
                 -o /dev/null
@@ -280,10 +289,10 @@ spec:
               | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])" 2>/dev/null)
 
             # Delete stale link if userId changed, then create with correct UID
-            curl -s -X DELETE -H "${AUTH_HEADER}" \
+            curl -fsS -X DELETE -H "${AUTH_HEADER}" \
               "${RHBK_URL}/admin/realms/${REALM}/users/${USER_ID}/federated-identity/${IDP_ALIAS}" \
               -o /dev/null 2>/dev/null
-            curl -s -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+            curl -fsS -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
               "${RHBK_URL}/admin/realms/${REALM}/users/${USER_ID}/federated-identity/${IDP_ALIAS}" \
               -d "{\"identityProvider\":\"${IDP_ALIAS}\",\"userId\":\"${OCP_USER_UID}\",\"userName\":\"${USERNAME}\"}" \
               -o /dev/null

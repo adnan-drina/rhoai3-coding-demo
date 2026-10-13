@@ -19,7 +19,6 @@ resources:
   - workspace-maas-model-endpoint.yaml
   - migration-workspace-maas-egress-networkpolicy.yaml
   - workspace-api-egress-adminnetworkpolicy.yaml
-  - workspace-git-credentials.yaml
   - workspace-sonar-credentials.yaml
   - migration-run-resources-rbac.yaml
   - migration-workspace-name-policy.yaml

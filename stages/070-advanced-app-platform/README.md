@@ -1,168 +1,90 @@
 # Stage 070: Advanced Application Platform
 
-> **Status:** consolidated platform stage.
-> This stage owns every component the AI development stages consume, as
-> kustomize components: `identity` (platform RHBK for OpenShift-brokered
-> sign-in), `devspaces` (Dev Spaces + workspaces + MaaS keys),
-> `pipelines` (Pipelines/TAS operators, the webhook dispatcher, and the
-> reusable `project-pipeline` base — every project runs its OWN pipeline in
-> its own namespace), `sonarqube` (fail-on-new-issue quality gate), `rhdh`
-> (Developer Hub), `mta` (Migration Toolkit for Applications), and `coolstore`
-> (the deployed stage 070 dev environment). The `agentic-quarkus-scaffold`
-> golden-path template (stage 070) is registered in the catalog; golden
-> repositories bootstrap via `scripts/demo/bootstrap-scaffold-repos.sh`. Pipeline,
-> SonarQube, dispatcher, and scaffolded-project flows are live-validated
-> (see docs/OPERATIONS.md, 2026-07-13 entries).
-> Anchor article: [Trusted software factory: Building trust in the agentic AI era](https://developers.redhat.com/articles/2026/05/13/trusted-software-factory-building-trust-agentic-ai-era).
+> **Release status:** implementation on `codex/stage070-gitlab-upgrade`; Stage 070 has not been deployed. The MTA workspace candidate passed a bounded CLI/Java-provider check on OpenShift. This does not qualify portal login, delivery, signing or AI migration. See the [release plan](../../docs/migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status).
 
 ## Why This Matters
 
-Stages 010–040 build the governed model platform. Before a single developer prompt is issued, the enterprise also needs the **application platform layer** that AI-driven development will run on: a developer portal where every workflow starts as a self-service template, and a delivery path where every change exits through pipelines with quality gates and provenance.
+Private models help protect source code, but developers also need a reliable route from an approved project to a tested application. This stage connects self-service, private source control, managed workspaces, modernization and delivery. Platform teams own the shared services and credentials; developers work in their own repositories and project namespaces.
 
-That is this stage's job. The AI development maturity ladder (stages 110–130) does not treat self-service and trusted delivery as separate rungs — they are constants. Every rung enters through the portal and exits through the pipeline: *self-service in, trusted delivery out, at every maturity level.*
-
-Without a portal, the AI platform remains scattered across dashboards, routes, namespaces, and README files. Without delivery gates, AI-multiplied output multiplies the question auditors ask: *who built this artifact, from what, and can we prove it?* This stage answers both before the developer arc begins.
+[Red Hat Developer Hub](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10) provides the software catalog and templates. [OpenShift Dev Spaces](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30) provides the workspace. OpenShift Pipelines and Argo CD carry an approved change through quality checks into a deployment reconciled from Git.
 
 ## Architecture
 
-Red Hat Developer Hub provides the portal surface: software catalog, TechDocs, and (in Phase 3) golden-path templates that provision per-run repositories for the AI development stages. Red Hat OpenShift Pipelines provides the Tekton runtime for build pipelines; Red Hat Trusted Artifact Signer provides the sigstore stack (Fulcio CA, Rekor transparency log) for signing and attestation once the Securesign instance is configured.
+```text
+Existing platform: OpenShift · Keycloak · NooBaa · MaaS · internal registry
+                                    |
+Stage 070: Developer Hub -> private GitLab project -> Dev Spaces workspace
+                                    |
+                          per-project Tekton pipeline
+                                    |
+                  compile/test -> SonarQube gate -> image digest
+                                    |
+                       platform-owned GitLab delivery repo
+                                    |
+                         Argo CD -> application namespace
 
-Operator co-tenancy note: both delivery operators install into `openshift-operators` with `Automatic` approval. Stage 040 deploys Red Hat Connectivity Link subscriptions with `Manual` approval in the same namespace, and OLM applies the most restrictive approval to shared InstallPlans. A Sync hook Job (`approve-installplans.yaml`) approves pending InstallPlans that carry the Pipelines or TAS CSVs.
+MTA Hub + Developer Lightspeed + Solution Server + Agentic Migration Factory
+                         -> governed MaaS access
+TAS: persistent signing services; signed delivery remains to be qualified
+```
 
-**Identity:** RHDH OIDC brokers through the standalone platform RHBK (realm `platform`) that this stage's `identity` component deploys: RHBK Operator (channel `stable-v26`), a PostgreSQL backing store, an edge-terminated Route, a `KeycloakRealmImport` for the realm shell, and a PostSync job that wires the `openshift-v4` identity provider, the `platform-keycloak` OAuthClient, and the demo users. The PostSync jobs wait and retry, so ordering resolves within a single Application sync. MTA 8.2's built-in Hub OIDC provider federates to the same platform realm (`platform-sso` IdentityProvider CR + `mta-hub` client, wired by the `configure-mta-platform-sso` PostSync job), with `idp_primary` auto-redirecting the MTA console to platform SSO — one identity broker for RHDH and MTA, which is also what makes the `slim` overlay usable.
+- New in this stage: GitLab CE, developer workspaces, the portal, delivery tooling, SonarQube and MTA with its AI components.
+- Reused: the existing Keycloak service, NooBaa, MaaS and internal image registry. Stage 060 remains the owner of the installed Agent Sandbox controller.
+- Source, delivery configuration and shared platform configuration have separate permissions. GitLab runs without a second container registry or GitLab runners; Tekton is the build engine.
 
 ## What This Stage Adds
 
-This stage adds the application-platform layer every dev-arc rung consumes, organized as seven components under [`gitops/stages/070-advanced-app-platform/base/`](../../gitops/stages/070-advanced-app-platform/base/):
+- **Private GitLab workflows.** Existing demo users sign in through the platform realm. Templates create private repositories and request platform enrollment of their immutable first commit. Project-bound webhooks trigger only that project's main-branch builds.
+- **Managed development.** Dev Spaces 3.30.2 uses one persistent volume per workspace, authenticated GitLab access, explicit source allowlists and retained migration worker identities. The MTA image contains verified 8.3 tools and editor extensions.
+- **Developer Hub 1.10.5.** Catalog, templates and TechDocs come from one pinned GitLab platform revision. Kubernetes, Topology, Tekton and Argo integrations make the project's delivery visible in the portal.
+- **GitOps delivery.** Pipelines 1.24.0 checks out an exact commit, builds/tests, enforces the SonarQube gate and pushes to the internal registry. Promotion writes the image digest into a platform-owned delivery repository and waits for Argo and the deployment to agree.
+- **Modernization with AI.** MTA 8.3.0 enables the LLM proxy, Solution Server and native Agentic Migration Factory. Its credential uses an owner-bound MaaS subscription. Models remain stopped until the operator authorizes validation.
+- **Persistent shared services.** GitLab CE 19.4.2 and SonarQube Community Build 26.9 use dedicated PostgreSQL services. TAS 1.5.0 retains signing roots and service data. GitLab object storage uses six scoped NooBaa claims.
 
-- **identity** — the standalone platform Red Hat build of Keycloak (namespace `rhbk`, realm `platform`): RHBK Operator, PostgreSQL, edge Route, realm import, and the PostSync job that federates OpenShift OAuth (`openshift-v4` IdP + `platform-keycloak` OAuthClient) and pre-creates the demo users.
-- **devspaces** — Red Hat OpenShift Dev Spaces (CheCluster), persona namespaces, Che Code editor policy with Kilo Code, MaaS API key provisioning, and the Stage 110 `agentic-coolstore` catalog workspace.
-- **pipelines** — OpenShift Pipelines (channel `pipelines-1.22`) and Trusted Artifact Signer (channel `stable-v1.4`) operators, `pipelines-console-plugin` enablement (sync-wave 10) for pipeline execution statistics and approval tasks in the web console, the InstallPlan approval hook for Stage 040 co-tenancy, and the **per-project pipeline model**: every project namespace runs its own `app-push` pipeline (clone → Maven build → SonarQube gate → image build → `:latest` retag) instantiated from the `pipelines/project-pipeline` kustomize template. `app-platform-build` hosts only the webhook dispatcher (the GitHub App has a single endpoint) and the `project-provisioner` CronJob that reconciles build credentials into every namespace labeled `rhoai3.redhat.com/pipeline-project=true`.
-- **sonarqube** — SonarQube + PostgreSQL and a PostSync job that rotates the admin password, provisions the scanner token, and sets a custom default quality gate that fails on any new issue.
-- **rhdh** — Red Hat Developer Hub 1.9, OIDC brokered to OpenShift OAuth via the platform RHBK (`identity` component), runtime-generated catalog, TechDocs, ConsoleLink, and the OpenShift integration plugins (Kubernetes, Topology, Tekton CI tab, Argo CD) backed by the read-only `rhdh-kubernetes-reader` ServiceAccount.
-- **mta** — Migration Toolkit for Applications 8.2 (analysis + inventory; Developer Lightspeed/Kai disabled until the demo needs it). Stage 130 analysis runs in factory workspaces created from the `app-migration` template (MTA VS Code extension pack + hub wiring in that destfile), not from a standing `mca-coolstore` DevWorkspace.
-- **coolstore** — the deployed Coolstore dev environment (`coolstore-inventory-service` in `coolstore-dev`): the demo starts from a running brownfield system, not an empty cluster. The Deployment pins the `:latest` image that every successful pipeline run republishes (`tag-latest` task); `deploy.sh` seeds the first green run. The brownfield `mca-coolstore` monolith itself stays source-only — it is the MTA analysis target, not a workload this pipeline can build.
+The reference [OpenShift Developer Days project](https://github.com/rhpds/ocp-dev-days-rdshw-gitops) informs the integration patterns. Product versions, credential boundaries and deployment checks are reviewed independently. Chart-based services are rendered during authoring into ordinary checked-in resources; deployment uses Kustomize, with no Helm runtime.
 
-The `overlays/slim` variant deploys the platform without MTA; RHDH sign-in works there because the `identity` component owns the platform realm.
-
-**Developer entry points per stage:**
-
-- **Stage 110** enters through the **catalog**, not a template: the `coolstore-inventory-service` component links straight into the governed Dev Spaces workspace; pushes to its repo run coolstore's own pipeline in `coolstore-dev`.
-- **Stage 120** enters through the one **golden-path template** (`agentic-quarkus-scaffold`, in `base/rhdh/templates/`): it scaffolds a fresh corporate-standard Quarkus app into a per-run GitHub repo (topic `rhoai3-golden-path`) with its own namespace and pipeline instance — verified against the Backstage GitHub scaffolder module (`publish:github` with `protectDefaultBranch: false` so the demo can push to `main`).
-- **Stage 130** enters through the **`app-migration` golden-path template** (in `base/rhdh/templates/`): it takes the Git URL of a legacy application plus a project name, publishes a per-run Quarkus **destination** repo (catalog-registered, with its own namespace and pipeline, exactly like stage 070), and its workspace clones the legacy code side by side as a read-only, workspace-only project — the legacy app is never cataloged; `migration.yaml` in the destination records the provenance.
-
-Webhooks are not created per repo: a GitHub App installed on all repositories delivers push events to the shared dispatcher EventListener, which routes each repository to its project's own pipeline.
-
-Factory links explicitly select the destination's `main` branch and existing
-workspace name. Stage 130 permits one workspace name per declared migration
-run: a creation policy rejects suffixed copies that would otherwise share its
-database and worker identity. Existing workspaces remain startable. Interrupted
-workspace/editor creation is recovered under the original name; it does not
-authorize a second migration seat.
-
-## External Setup (one-time, outside the cluster)
-
-1. **Golden repositories** under `github.com/adnan-drina`: run `./scripts/demo/bootstrap-scaffold-repos.sh` (requires `gh` auth with `repo` scope). Re-running force-pushes golden state — that is the reset.
-2. **GitHub PAT** (classic, `repo` scope) in `.env` as `GITHUB_TOKEN`: used by RHDH (scaffolder repo creation + catalog reads) and the pipeline's git-clone for private repos. A GitHub App cannot replace it here — installation tokens cannot create repositories under a personal account.
-3. **GitHub App** (Settings → Developer settings → GitHub Apps) for webhook delivery: webhook URL = the `app-platform-listener` Route URL, webhook secret = `GITHUB_WEBHOOK_SECRET` from `.env`. Repository permissions: **Contents: Read-only** (required to subscribe to push events) plus the mandatory Metadata: Read-only. Subscribe to **Push** events and install on **All repositories** (covers future template-created repos). No client secret or private key is needed — the App only delivers webhooks.
-
-   > **Two settings silently break self-service if wrong — recheck BOTH on
-   > every fresh cluster:**
-   > - **Webhook URL is cluster-specific.** The App has ONE App-level webhook
-   >   URL embedding the cluster ingress domain. Swapping `.env` re-points the
-   >   *cluster* but NOT the App — GitHub keeps delivering to the previous
-   >   cluster until you update the URL in GitHub → App settings → General →
-   >   Webhook. Set it to
-   >   `https://$(oc get route app-platform-listener -n app-platform-build -o jsonpath='{.spec.host}')`.
-   > - **Repository access must be "All repositories,"** not "Only select
-   >   repositories," or scaffolder-created repos fall outside the App's scope.
-   >
-   > Either mistake produces the same symptom: the repo is created but gets no
-   > Argo CD app, pipeline, or build, with no cluster-side error. Verify via
-   > App settings → Advanced → Recent Deliveries. See TROUBLESHOOTING →
-   > "Scaffolded Project Does Not Self-Provision."
-4. **quay.io** (optional): create an organization/namespace and a robot account with push permission; set `IMAGE_REGISTRY`, `QUAY_ROBOT_USER`, `QUAY_ROBOT_TOKEN` in `.env`. Without these the pipeline pushes to the internal OpenShift registry.
-
-## What To Notice And Why It Matters
-
-- **The platform layer comes before the developer arc.** Portal, pipelines, and signing infrastructure exist before stage 070 issues the first prompt — so every AI workflow lands on governed rails instead of retrofitting them.
-- **Self-service surface.** Catalog entities make ownership, lifecycle, tags, source links, and workflow docs visible; component-specific Dev Spaces links route developers into the correct controlled workspace.
-- **Delivery evidence, operator-managed.** The Tekton stack is operator-managed and ready; TAS awaits its Securesign instance. AI-generated code needs the same supply-chain evidence as human-written code.
-- **Operator co-tenancy is a real platform skill.** The InstallPlan hook shows how later stages must account for earlier stages' subscription approval policies in shared namespaces.
-
-## How Red Hat And Open Source Make It Work
-
-Red Hat Developer Hub packages Backstage for OpenShift with operator-based deployment, supported configuration, and dynamic plugin management. The catalog is generated at deploy time: a Sync hook Job resolves Dev Spaces and TechDocs placeholders with cluster-specific URLs into a runtime ConfigMap; a PostSync Job discovers routes, creates the OIDC client, generates session secrets, patches `rhdh-secrets`, and restarts the deployment.
-
-Red Hat OpenShift Pipelines brings Tekton with Pipelines-as-Code and Tekton Chains for automated SLSA provenance. Red Hat Trusted Artifact Signer packages sigstore (Fulcio, Rekor, Cosign) with OIDC-bound signing identities. In the implementation phase these combine with SonarQube quality gates into the shared delivery path used by all three AI development stages.
+The `slim` overlay omits MTA. Application migration requires the full overlay; its template refuses a missing MTA Hub endpoint.
 
 ## Trust Boundaries
 
-Developer Hub is a discovery and self-service surface: it links to approved platform paths rather than embedding provider secrets or kubeconfigs. The OIDC client secret and session secret are generated at deploy time and stored in the `rhdh-secrets` Kubernetes Secret — not committed to Git. Build pipelines execute in a controlled namespace with scoped RBAC. Signing identities are bound to the platform's OIDC issuer — no long-lived signing keys in the cluster; Rekor provides tamper-evident records. Production deployment policies should gate on attestation verification, not on pipeline success alone. Stage 130 migration workers receive a platform-provisioned per-run ServiceAccount; operator-owned DevWorkspace default RBAC is left in place, so existing legacy workspace accounts keep their broader permissions until those workspaces are removed.
+GitLab publisher, enrollment, catalog, clone and delivery identities have separate credentials. A webhook can request a build, not provision a project. Only the image-build Task receives the build SCC and registry push permission. Runtime workloads receive no API token. Migration workers retain their existing restricted identities and run-control contract; no existing migration run is reset or upgraded by this release.
+
+The ordinary delivery contract requires a passing quality gate and an exact internal image digest. A configured TAS service is not proof of signed delivery. Signature/attestation production, verification and any blocking signed-promotion policy are explicitly pending live qualification. GitLab CE and SonarQube Community Build are upstream components, separate from Red Hat product support.
 
 ## Red Hat Products Used
 
-- **[Red Hat Developer Hub](https://www.redhat.com/en/technologies/cloud-computing/developer-hub)** provides the enterprise developer portal and software catalog.
-- **[Red Hat OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/)** provides Tekton-based CI/CD, Pipelines-as-Code, and Tekton Chains for provenance.
-- **[Red Hat Trusted Artifact Signer](https://access.redhat.com/products/red-hat-trusted-artifact-signer)** provides the sigstore stack (Fulcio, Rekor, Cosign) for signing and attestation.
-- **[Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak)** provides the platform OIDC identity broker (realm `platform`), deployed standalone by this stage's `identity` component.
-- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides runtime, routes, console launcher integration, and OAuth identity foundation.
-
-## Open Source Projects To Know
-
-- [Backstage](https://backstage.io/) is the upstream developer portal framework behind Developer Hub.
-- [TechDocs](https://backstage.io/docs/features/techdocs/) turns repository documentation into portal-hosted docs.
-- [Tekton](https://tekton.dev/) is the cloud-native CI/CD framework behind OpenShift Pipelines.
-- [Tekton Chains](https://tekton.dev/docs/chains/) provides automated SLSA provenance and in-toto attestation.
-- [sigstore](https://www.sigstore.dev/) provides keyless signing with transparency-log guarantees (Cosign, Fulcio, Rekor).
-- [SLSA](https://slsa.dev/) is the framework for supply-chain integrity levels.
-
-## Demo Script
-
-### Part 1 — The platform layer, before the first prompt
-
-**Know.** Stages 010–040 governed the models. This stage governs the application side: one portal where every AI development workflow will start, one delivery path where every AI-generated change will be proven. The maturity ladder you are about to climb (110–130) enters through this portal and exits through these pipelines at every rung.
-
-**Show.**
-- Open Developer Hub from the console launcher; sign in via OIDC to the MTA Keycloak realm (OpenShift identity is federated into Keycloak as a broker — one identity chain, end to end).
-- Open the catalog: components with ownership, lifecycle, source links, and Dev Spaces links that open the exact governed workspace — no assembling repository URLs.
-- Open TechDocs for the developer workspace guide: the platform documents itself where developers already are.
-
-### Part 2 — Trusted delivery talk track (base setup)
-
-**Know.** Agents will soon produce code faster than humans can hand-verify provenance. Auditors do not accept "the agent said it was fine". The Trusted Software Factory answer: prove what was built and how — SLSA provenance, signatures, SBOMs — on the same pipelines the platform already runs.
-
-**Show (today, base setup).**
-- OpenShift console, Pipelines view: the Tekton stack is operator-managed; each project namespace runs its own `app-push` pipeline instantiated from the shared `project-pipeline` base.
-- Operators view: Trusted Artifact Signer installed — the sigstore stack awaiting its Securesign instance.
-- Talk track: in the implementation phase, every push from stages 110–130 goes through build, SonarQube quality gate, and (with Chains + TAS) signed SLSA attestation. "The same platform that lets agents write code proves what was built from it."
+| Product | Role |
+|---|---|
+| Red Hat Developer Hub | Catalog, TechDocs and project templates |
+| Red Hat OpenShift Dev Spaces | Managed IDE and workspace lifecycle |
+| Red Hat OpenShift Pipelines | Builds, tests and quality-gated delivery |
+| Red Hat Trusted Artifact Signer | Signing services and trust-root lifecycle |
+| Migration Toolkit for Applications | Analysis, Developer Lightspeed and migration services |
+| Red Hat build of Keycloak | Reused platform identity broker |
+| OpenShift / OpenShift Data Foundation | GitOps, registry, storage, RBAC and NooBaa |
 
 ## Deploy And Validate
 
+Review the full feature-branch diff and the [release checklist](../../docs/migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status) before publishing and deploying. Keep the models stopped during platform installation.
+
 ```bash
+./stages/070-advanced-app-platform/validate.sh --static
 ./stages/070-advanced-app-platform/deploy.sh
 ./stages/070-advanced-app-platform/validate.sh
 ```
 
-Manifests: [`gitops/stages/070-advanced-app-platform/base/`](../../gitops/stages/070-advanced-app-platform/base/)
+Static checks need the [test dependencies](tests/requirements.txt), Kustomize and Git. Live deployment uses the repository's cluster guard. [Operations](../../docs/OPERATIONS.md#stage-070-gitlab-release) contains deployment order, credentials, lifecycle and acceptance. [Troubleshooting](../../docs/TROUBLESHOOTING.md#stage-070-gitlab-project-enrollment-is-pending) covers refusal and recovery.
 
-Flow dependency: Stage 040 (Governed Models-as-a-Service). `deploy.sh` provisions the build-pipeline secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application, then seeds the coolstore dev environment: it sets the `rhoai3-golden-path` topic on `coolstore-inventory-service`, creates a seed PipelineRun, waits for it to go green (cold cache ~15 min), and rolls the `coolstore-dev` deployment onto the fresh `:latest` image. Re-running `deploy.sh` skips the seed when the deployment is already Available.
-
-Validation notes: `validate.sh` treats a missing Securesign instance as a warning, not a failure — it arrives with the implementation phase. Stages 110–130 each keep a read-only `validate.sh` that checks this stage's resources from their demo's perspective.
+Source: [Stage 070 Kustomize resources](../../gitops/stages/070-advanced-app-platform/base/). The root platform Application retains its GitHub bootstrap source; project tooling, owned goldens, catalog and delivery use GitLab. A full platform-root cutover is a separate reviewed step.
 
 ## References
 
-| Topic | Link |
-|-------|------|
-| Red Hat Developer Hub 1.9 documentation | https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9 |
-| Red Hat Advanced Developer Suite | https://www.redhat.com/en/products/advanced-developer-suite |
-| RHDH authentication | https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html-single/authentication_in_red_hat_developer_hub/authentication_in_red_hat_developer_hub |
-| RHDH dynamic plugins | https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html/installing_and_viewing_plugins_in_red_hat_developer_hub/index |
-| Trusted software factory article | https://developers.redhat.com/articles/2026/05/13/trusted-software-factory-building-trust-agentic-ai-era |
-| Red Hat Trusted Artifact Signer | https://access.redhat.com/products/red-hat-trusted-artifact-signer |
-| Red Hat OpenShift Pipelines documentation | https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/ |
-| SLSA framework | https://slsa.dev/ |
+- [Dev Spaces 3.30 administration](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30)
+- [RHDH 1.10 Tekton configuration](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/configuring_dynamic_plugins/enable-the-tekton-plugin_configuring-dynamic-plugins)
+- [Pipelines 1.24 security](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index)
+- [MTA 8.3 documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3)
+- [GitLab OpenShift deployment guidance](https://docs.gitlab.com/charts/installation/cloud/openshift/)
 
 ## Next Stage
 
-[Stage 110: AI-Assisted Development](../110-ai-assisted-development/README.md) starts the maturity ladder: one-shot prompts in a governed workspace, entering through this stage's portal and exiting through its pipelines.
+[Stage 110: AI-Assisted Development](../110-ai-assisted-development/README.md) starts the developer workflow in the governed workspace and delivers through this stage's pipeline.

@@ -1,27 +1,16 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
-# MTA component:
-# Migration Toolkit for Applications 8.2 with Red Hat Developer Lightspeed
-# configured to use MaaS models.
-# The stage 080 demo consumes this stack; omit this component via
-# overlays/slim when the migration rung is not being demoed.
-# Ref: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2
-
 resources:
-  # Wave 0-2: MTA Operator
-  - mta-operator/namespace.yaml
-  - mta-operator/operatorgroup.yaml
-  - mta-operator/subscription.yaml
-  # Wave 10: Tackle CR (MTA 8.2: built-in Hub OIDC provider, auth
-  # enforced, idp_primary auto-redirect to platform SSO; Lightspeed/Kai
-  # disabled until the demo needs it)
-  - mta-instance/tackle.yaml
-  # Wave 15: ConsoleLink (OpenShift launcher menu entry)
-  - mta-instance/consolelink.yaml
-  # PostSync: federate the Hub OIDC provider to the platform realm
-  # (realm roles + mta-hub client in identity/'s RHBK, IdP client Secret,
-  # IdentityProvider CR, hub restart)
-  - jobs/configure-mta-platform-sso.yaml
-  # PostSync: mta-hub-config ConfigMaps (external hub URL) per workspace namespace
-  - jobs/mta-hub-workspace-config.yaml
+- mta-operator/namespace.yaml
+- mta-operator/operatorgroup.yaml
+- mta-operator/subscription.yaml
+- mta-instance/tackle.yaml
+- mta-instance/consolelink.yaml
+- jobs/configure-mta-platform-sso.yaml
+- jobs/mta-hub-workspace-config.yaml
+- jobs/configure-ai.yaml
+configMapGenerator:
+- name: mta-ai-bootstrap
+  namespace: openshift-mta
+  files:
+  - jobs/configure-ai.py

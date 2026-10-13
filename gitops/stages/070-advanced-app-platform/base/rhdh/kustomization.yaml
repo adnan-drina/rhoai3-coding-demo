@@ -2,10 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Red Hat Developer Hub component (from the former portal stage base).
-# RHDH 1.9 as the internal developer portal with OIDC auth via the
+# RHDH 1.10 as the internal developer portal with OIDC auth via the
 # identity component's platform RHBK (realm `platform`) and a software
 # catalog generated at deploy time.
-# Ref: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9
+# Ref: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10
 
 resources:
   # Wave 0-2: RHDH Operator
@@ -20,7 +20,7 @@ resources:
   - rhdh-instance/kubernetes-reader.yaml
   # Runtime catalog generation: the bundle below + Sync hook + refresh CronJob
   - jobs/generate-rhdh-catalog.yaml
-  # Wave 10: Backstage CR (RHDH instance)
+  # Wave 18: Backstage CR (RHDH instance)
   - rhdh-instance/backstage.yaml
   # Wave 15: ConsoleLink (OpenShift launcher menu entry)
   - rhdh-instance/consolelink.yaml

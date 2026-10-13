@@ -1,22 +1,20 @@
-# MTA 8.2 instance (analysis-focused: Developer Lightspeed / Kai disabled
-# until the demo needs it — see BACKLOG "Developer Lightspeed re-enable").
-# Ref: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/installing_the_migration_toolkit_for_applications/index
 apiVersion: tackle.konveyor.io/v1alpha1
 kind: Tackle
 metadata:
   name: mta
   namespace: openshift-mta
   annotations:
-    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-wave: '10'
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
-  rwx_supported: "false"
-  kai_llm_proxy_enabled: false
-  kai_solution_server_enabled: false
-  # MTA 8.2 built-in Hub OIDC provider with authentication enforced.
-  # Sign-in federates to the platform realm (identity component) through
-  # the platform-sso IdentityProvider CR, applied by the
-  # configure-mta-platform-sso PostSync job; idp_primary auto-redirects
-  # the console to platform SSO (same OpenShift login as RHDH).
+  rwx_supported: 'false'
+  kai_llm_proxy_enabled: true
+  kai_solution_server_enabled: true
   feature_auth_required: true
   idp_primary: true
+  kai_llm_provider: openai
+  kai_llm_model: qwen3-8-27b
+  kai_enable_trace: 'false'
+  kai_database_volume_size: 5Gi
+  agentic_enabled: true
+  agentic_steer_enabled: false

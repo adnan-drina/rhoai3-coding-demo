@@ -169,6 +169,12 @@ spec:
       type: string
       default: https://raw.githubusercontent.com
       description: Content-addressed raw file endpoint for the scaffolding commit.
+    - name: request-provider
+      type: string
+      default: gitlab
+    - name: request-project-id
+      type: string
+      default: ""
   results:
     - name: receipt
       type: string
@@ -200,6 +206,10 @@ spec:
           value: $(params.outcome-board-execution)
         - name: OB_TRUST
           value: $(params.outcome-board-measurement-trust)
+        - name: REQUEST_PROVIDER
+          value: $(params.request-provider)
+        - name: REQUEST_PROJECT_ID
+          value: $(params.request-project-id)
         - name: REQUEST_OWNER
           value: $(params.request-repository-owner)
         - name: REQUEST_RAW_BASE
@@ -610,14 +620,23 @@ spec:
           CONTRACT_JSON="$(python3 - "${RUN}" "${SCAFFOLD}" "${TASKRUN}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                              "${REQUEST_RAW_BASE}/${REQUEST_OWNER}/${RUN}/${SCAFFOLD}/run-budget.json" \
                              "${OB_EXECUTION}" "${OB_TRUST}" <<'PYCONTRACT'
-        import json, sys, urllib.request
+        import json, sys, urllib.request, os
+        from urllib.parse import quote
         run, scaffold, taskrun, at, url, execution, trust = sys.argv[1:8]
         doc = {"schema": "rhoai3.run-control/v1", "run_id": run, "scaffold_commit": scaffold, "activation": "pilot",
                "authorized_by": "provision-migration-run:" + taskrun,
-               "authorization": {"event": "scaffolding push (HMAC-verified webhook, created branch, migration-run topic)",
+               "authorization": {"event": "publisher-authored enrollment (registered project, immutable first commit)",
                                  "scaffold_commit": scaffold, "taskrun": taskrun, "provisioned_at": at}}
         try:
-            with urllib.request.urlopen(url, timeout=20) as fh:
+            request_headers = {}
+            if os.environ['REQUEST_PROVIDER'] == 'gitlab':
+                project_id = os.environ['REQUEST_PROJECT_ID']
+                if not project_id.isdecimal():
+                    raise ValueError('GitLab project identity missing')
+                url = os.environ['REQUEST_RAW_BASE'].rstrip('/') + '/' + project_id + '/repository/files/run-budget.json/raw?ref=' + scaffold
+                token_data = json.loads(__import__('subprocess').check_output(['oc', 'get', 'secret', 'migration-source-' + run, '-n', 'app-platform-build', '-o', 'json']))
+                request_headers['PRIVATE-TOKEN'] = __import__('base64').b64decode(token_data['data']['token']).decode()
+            with urllib.request.urlopen(urllib.request.Request(url, headers=request_headers), timeout=20) as fh:
                 decl = json.loads(fh.read(1 << 20).decode("utf-8"))
             if not isinstance(decl, dict) or decl.get("run_id") != run:
                 raise ValueError("declaration names another run")

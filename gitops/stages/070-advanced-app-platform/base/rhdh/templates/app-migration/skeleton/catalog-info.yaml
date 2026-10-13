@@ -9,8 +9,8 @@ metadata:
     legacy source application is workspace-only (see the
     demo.rhoai.io/migrated-from annotation) and intentionally not cataloged.
   annotations:
-    github.com/project-slug: adnan-drina/${{ values.name }}
-    backstage.io/source-location: url:https://github.com/adnan-drina/${{ values.name }}
+    gitlab.com/project-slug: ${{ values.gitlabGroup }}/${{ values.name }}
+    backstage.io/source-location: url:${{ values.gitlabBaseUrl }}/${{ values.gitlabGroup }}/${{ values.name }}
     # Migration provenance: the legacy repository this component replaces.
     demo.rhoai.io/migrated-from: ${{ values.legacyRepoUrl }}
     # RHDH OpenShift tabs: PipelineRuns in <name>-dev carry this label
@@ -24,9 +24,9 @@ metadata:
     - migration
     - quarkus
   links:
-    - url: https://github.com/adnan-drina/${{ values.name }}
+    - url: ${{ values.gitlabBaseUrl }}/${{ values.gitlabGroup }}/${{ values.name }}
       title: Source Repo
-      icon: github
+      icon: gitlab
     - url: ${{ values.devspacesUrl }}
       title: Dev Spaces
       icon: catalog

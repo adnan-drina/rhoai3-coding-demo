@@ -11,7 +11,7 @@ The executable source of truth remains the scripts:
 
 - `stages/NNN-*/deploy.sh`
 - `stages/NNN-*/validate.sh`
-- `scripts/demo/bootstrap-scaffold-repos.sh` (golden GitHub reset for stages 070/080)
+- `scripts/demo/bootstrap-scaffold-repos.sh` (read-only report of Stage 120/130 GitLab goldens)
 
 Use this guide to understand when to run those scripts, what they do, and how to interpret the results.
 
@@ -1139,3 +1139,53 @@ python3 stages/060-agent-runtime-and-agentops/qualify-hermes.py --confinement-on
 Set `RHOAI_STAGE060_OPENSHELL_CLI` to the reviewed pinned CLI path. The consolidated receipt separates the 13 protocol gates from these negative checks; timeout, missing files and generic HTTP errors are not accepted as policy-denial proof.
 
 The owner-only client (`owner-client.py --check` / `--trace`) runs from the source worktree with the guarded bootstrap kubeconfig, the pinned CLI, the genuine `ai-admin` persona inputs and the private SDK environment pinned by `client-requirements.txt`; `--revision` must be the published isolated live tree the runtime Application is pinned to (`07a29a29…` on 2026-10-09). If `--check` fails `placeholderNotRealKey` for one agent while its exec placeholder is valid, the long-running agent process holds a superseded credential placeholder revision: natively stop and start that retained Sandbox (identity compared before and after) rather than deleting or re-minting anything. Traces land in MLflow experiment `agent-runtime-traces` in workspace `ai-agents`; receipts stay owner-only under `/private/tmp/060-client-receipts/`.
+
+## Stage 070 GitLab release
+
+The feature branch `codex/stage070-gitlab-upgrade` contains the integrated source release. It is not deployed. The models remain stopped. Review the complete diff, [version/acceptance plan](migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status) and data-retention changes before source publication and installation.
+
+### Installation and acceptance
+
+1. Check the target cluster guard, existing Keycloak, NooBaa/gp3, persistent internal registry, free worker capacity and operator catalog pins. No model needs to be started for this step.
+2. Publish the reviewed platform revision through the ordinary repository workflow. The root Stage 070 Application still bootstraps from the public platform repository; changing all root Applications to GitLab is a separate cutover.
+3. Run `stages/070-advanced-app-platform/deploy.sh`. Its first mutation applies the Stage Application. Argo owns secret generation, OBC wiring, GitLab migrations, identity integrations and project tooling. It does not require a GitHub PAT/App or distribute Quay credentials.
+4. Run `stages/070-advanced-app-platform/validate.sh`. A ready resource is not proof of a user workflow. Independently test the two demo users' GitLab/RHDH/Dev Spaces sign-in, private checkout, catalog/template loading and same-workspace reopen.
+5. Qualify one project end to end: publisher enrollment of the first commit, exactly one initial build, private clone, a passing scan, a deliberate quality-gate failure that prevents promotion, an internal-registry digest push/pull, a GitLab delivery commit and matching Argo/deployment read-back. Replay enrollment and webhook events; confirm no duplicate runs or foreign-project authority. Verify the build Pod's user-namespace annotations, applied SCC and UID mapping; ordinary build Tasks use `app-builder`, only image building uses `image-builder`.
+6. Rehearse GitLab object-store/database/Gitaly recovery and the relevant SonarQube/TAS restore. Never claim recoverability from PVC existence alone. Signed delivery is not in the current ordinary promotion contract: separately prove a signature/attestation bound to its identity and exact image, then review a blocking signing policy.
+7. Once platform readiness passes, the operator can restart the models and authorize MTA Developer Lightspeed, Solution Server and native agentic workflow tests. No model inference or migration worker is launched by the static checks.
+
+The native Agent Sandbox controller remains Stage 060-owned. MTA 8.3 uses the existing controller; no duplicate controller is installed. On the current live cluster that controller is Ready. Its compatibility with MTA's full agentic workflow remains to be exercised.
+
+### Source reproduction
+
+```bash
+python3 -m venv tmp/stage070-tests
+./tmp/stage070-tests/bin/pip install -r stages/070-advanced-app-platform/tests/requirements.txt
+PYTHON=./tmp/stage070-tests/bin/python ./stages/070-advanced-app-platform/validate.sh --static
+./tmp/stage070-tests/bin/python scripts/platform/render-stage070-charts.py --check
+./scripts/platform/validate-stage-flow.sh
+```
+
+GitLab and SonarQube are ordinary Kustomize resources under `base/<component>/generated/`. Their upstream archives, versions, authoring Helm version, images and licenses are locked in `scripts/platform/stage070-charts.lock.json`. To update them, edit values/lock, regenerate with `render-stage070-charts.py`, and review the full generated diff. Deployment does not run Helm, chart inflation or a GitLab chart operator.
+
+A wave-0 hook configures the canonical Argo `rhdh` read account while preserving existing RBAC. The GitLab sequence is: version precondition (wave 4), persistent shared secrets (5), scoped OBC connection/configuration (6), database/cache (7), Gitaly (8), migrations (9), services (10), successful-version receipt (12), integrations (14), then catalog and portal. Identity federation precedes these. MTA and RHDH credentials use Sync hooks in the same wave as their operands to avoid waiting for PostSync before startup. The project reconciler waits for pipeline/scanner readiness before seeding a build.
+
+### Shared workspace image
+
+The checked-in Dockerfile extends the immutable published Hermes parent and replaces only MTA tools/extensions. `stages/070-advanced-app-platform/workspace-image/artifacts.lock.json` binds the official Linux amd64 MTA archive/binary and all four VSIX packages. Downloads stay outside Git. The current candidate digest is `sha256:e4ac365b3818773ea1d8f67202200011a95089d05ee53ca2652efa353de968e0` in `quay.io/rhoai3-coding-demo/rhoai3-ws-080`.
+
+Start the selected Podman machine, then use `scripts/platform/build-stage070-workspace-image.sh <Linux-amd64-MTA-ZIP> <reviewed-tag>`. This stages verified artifacts, builds for amd64 and checks hashes, Java 21, Node and the preserved Hermes stamp. Adding `--push` explicitly publishes the shared candidate to Quay. Read back its digest and review pin changes before deployment. The script selects the rootless connection and never prunes or repairs a store. Ordinary application builds always target the internal registry.
+
+The candidate ran a bounded MTA 8.3.0/Java 21 custom-rule canary on OpenShift; the CLI and Java-field incidents passed. The first fixture used `VARIABLE_DECLARATION` for a field and failed; corrected `FIELD_DECLARATION` evidence is retained in `tmp/stage070-implementation/live/`. The temporary namespace was retired. This proves tool usability on a small source fixture, not full migration or AI behavior.
+
+### GitLab ownership and lifecycle
+
+GitLab integration bootstrap creates scoped publisher, enrollment, catalog and repository readers, Dev Spaces OAuth, subject-bound demo-user memberships and private platform/workload/delivery groups. Existing tokens are reused only while their recorded identity and expiry are valid; expired or unknown credentials refuse and require operator renewal. Generated passwords/tokens remain in Secrets, never in Git.
+
+The platform mirror retains reviewed Git history. A missing current revision can be fast-forwarded from the declared public upstream using an ephemeral bootstrap credential; divergent history refuses. Owned goldens are published from the exact platform revision as one ordinary atomic commit, with complete-tree checks and no force push. Catalog, templates and TechDocs use that private mirror revision. Platform root cutover is not implicit.
+
+`bootstrap-scaffold-repos.sh` reports the current GitLab golden URLs. `check-gitlab-golden.py` compares private goldens against authoring files without printing the reader token. There is no GitHub-reset or force-push fallback.
+
+For lifecycle helpers, set `GITLAB_OPERATOR_TOKEN_FILE` to an uncommitted scoped token file. `reset-coolstore-demo.sh --yes` stops only matching workspaces, restores the registered repository baseline through a normal commit and retains PVC/local changes. `delete-scaffolded-project.sh <project> --yes` checks registration ID/URL/group before archiving the repository and retiring its project resources. Migration resource retirement uses the platform pipeline. Workspace PVCs and delivery history remain. The helper refuses Stage-owned imports such as Coolstore; those are managed through the stage's GitOps source.
+
+Retain GitLab database/Gitaly/object-store data, encryption Secrets and the successful-version receipt during recovery. An existing database without a trustworthy prior version refuses migration. A database downgrade is a supported restore operation, not a reverted image pin. Do not delete earlier live GitHub/Quay resources solely because this source no longer consumes them; retire old writers during the separately reviewed cutover.

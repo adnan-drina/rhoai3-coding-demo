@@ -16,6 +16,6 @@ resources:
   # Wave 5: PostgreSQL
   - postgresql.yaml
   # Wave 10: SonarQube deployment + service + route
-  - sonarqube.yaml
+  - generated
   # PostSync: rotate admin password, provision pipeline token, custom gate
   - configure-sonarqube.yaml

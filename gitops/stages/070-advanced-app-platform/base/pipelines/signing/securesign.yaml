@@ -1,0 +1,60 @@
+# TAS 1.5.0 schema: retained RWO claims fit this cluster's gp3 storage.
+apiVersion: rhtas.redhat.com/v1
+kind: Securesign
+metadata:
+  name: platform
+  namespace: trusted-artifact-signer
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Prune=false
+spec:
+  fulcio:
+    config:
+      # Sync hook resolves this exact field from the existing Keycloak Route.
+      oidcIssuers:
+      - clientID: trusted-artifact-signer
+        issuer: https://issuer.pending.invalid/realms/platform
+        issuerURL: https://issuer.pending.invalid/realms/platform
+        type: email
+    ingress:
+      enabled: true
+    signer:
+      certificateChain:
+        organizationName: RHOAI coding demo
+  trillian:
+    database:
+      create: true
+      pvc:
+        size: 10Gi
+        accessModes: [ReadWriteOnce]
+        storageClass: gp3-csi
+        retain: true
+  rekor:
+    ingress:
+      enabled: true
+    attestations:
+      enabled: true
+      pvc:
+        size: 5Gi
+        accessModes: [ReadWriteOnce]
+        storageClass: gp3-csi
+        retain: true
+  tuf:
+    ingress:
+      enabled: true
+    pvc:
+      size: 1Gi
+      accessModes: [ReadWriteOnce]
+      storageClass: gp3-csi
+      retain: true
+  tsa:
+    ingress:
+      enabled: true
+    signer:
+      certificateChain:
+        intermediateCA:
+        - organizationName: RHOAI coding demo
+        leafCA:
+          organizationName: RHOAI coding demo
+        rootCA:
+          organizationName: RHOAI coding demo

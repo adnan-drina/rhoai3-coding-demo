@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stage070-argocd-reader-setup
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stage070-argocd-reader-setup
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [argocds]
+    resourceNames: [openshift-gitops]
+    verbs: [get, patch]
+  - apiGroups: ['']
+    resources: [configmaps]
+    resourceNames: [argocd-cm, argocd-rbac-cm]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-argocd-reader-setup
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stage070-argocd-reader-setup
+subjects:
+  - kind: ServiceAccount
+    name: stage070-argocd-reader-setup
+    namespace: openshift-gitops
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stage070-argocd-reader-setup
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 180
+  template:
+    spec:
+      serviceAccountName: stage070-argocd-reader-setup
+      restartPolicy: Never
+      containers:
+        - name: configure
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          command: [python3, /setup/configure-argocd-reader.py]
+          volumeMounts:
+            - name: setup
+              mountPath: /setup
+              readOnly: true
+      volumes:
+        - name: setup
+          configMap:
+            name: stage070-argocd-reader-setup

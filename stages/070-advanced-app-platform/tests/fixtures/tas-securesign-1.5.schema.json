@@ -1,0 +1,315 @@
+{
+  "schema": {
+    "required": [
+      "fulcio"
+    ],
+    "type": "object",
+    "properties": {
+      "fulcio": {
+        "required": [
+          "config",
+          "signer"
+        ],
+        "type": "object",
+        "properties": {
+          "config": {
+            "type": "object",
+            "properties": {
+              "oidcIssuers": {
+                "type": "array",
+                "items": {
+                  "required": [
+                    "clientID",
+                    "issuer",
+                    "type"
+                  ],
+                  "type": "object",
+                  "properties": {
+                    "clientID": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "issuer": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "issuerURL": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "enum": [
+                        "buildkite-job",
+                        "email",
+                        "github-workflow",
+                        "codefresh-workflow",
+                        "gitlab-pipeline",
+                        "chainguard-identity",
+                        "kubernetes",
+                        "spiffe",
+                        "uri",
+                        "username",
+                        "ci-provider"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "ingress": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "signer": {
+            "required": [
+              "certificateChain"
+            ],
+            "type": "object",
+            "properties": {
+              "certificateChain": {
+                "type": "object",
+                "properties": {
+                  "organizationName": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "trillian": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "object",
+            "properties": {
+              "create": {
+                "type": "boolean"
+              },
+              "pvc": {
+                "type": "object",
+                "properties": {
+                  "size": {
+                    "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$"
+                  },
+                  "accessModes": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "ReadWriteOnce",
+                        "ReadOnlyMany",
+                        "ReadWriteMany",
+                        "ReadWriteOncePod"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "storageClass": {
+                    "type": "string"
+                  },
+                  "retain": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "rekor": {
+        "type": "object",
+        "properties": {
+          "ingress": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "attestations": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "pvc": {
+                "type": "object",
+                "properties": {
+                  "size": {
+                    "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$"
+                  },
+                  "accessModes": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "ReadWriteOnce",
+                        "ReadOnlyMany",
+                        "ReadWriteMany",
+                        "ReadWriteOncePod"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "storageClass": {
+                    "type": "string"
+                  },
+                  "retain": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "tuf": {
+        "type": "object",
+        "properties": {
+          "ingress": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pvc": {
+            "type": "object",
+            "properties": {
+              "size": {
+                "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$"
+              },
+              "accessModes": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "ReadWriteOnce",
+                    "ReadOnlyMany",
+                    "ReadWriteMany",
+                    "ReadWriteOncePod"
+                  ],
+                  "type": "string"
+                }
+              },
+              "storageClass": {
+                "type": "string"
+              },
+              "retain": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "tsa": {
+        "required": [
+          "signer"
+        ],
+        "type": "object",
+        "properties": {
+          "ingress": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "signer": {
+            "required": [
+              "certificateChain"
+            ],
+            "type": "object",
+            "properties": {
+              "certificateChain": {
+                "type": "object",
+                "properties": {
+                  "intermediateCA": {
+                    "type": "array",
+                    "items": {
+                      "required": [
+                        "organizationName"
+                      ],
+                      "type": "object",
+                      "properties": {
+                        "organizationName": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "leafCA": {
+                    "required": [
+                      "organizationName"
+                    ],
+                    "type": "object",
+                    "properties": {
+                      "organizationName": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "rootCA": {
+                    "required": [
+                      "organizationName"
+                    ],
+                    "type": "object",
+                    "properties": {
+                      "organizationName": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "source": {
+    "image": "registry.redhat.io/rhtas/rhtas-operator-bundle@sha256:2076b50d7075f87c4e6d1b6c8438695802a30386c0366d6edeac15063b3560ed",
+    "crd": "securesigns.rhtas.redhat.com",
+    "api_version": "v1",
+    "crd_sha256": "9defcdafe14a0004532e5ebeb0c38e144973d19884dc7c0d4473a89343423755",
+    "scope": "Official field/type constraints for the configured subset, not CEL admission or unused optional fields"
+  }
+}

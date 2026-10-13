@@ -22,12 +22,10 @@ spec:
         app.kubernetes.io/part-of: ${{ values.name }}
         backstage.io/kubernetes-id: ${{ values.name }}
     spec:
-      imagePullSecrets:
-        - name: quay-pull-secret
       containers:
         - name: ${{ values.name }}
           # Bootstrap tag only — deploy-app pins the PipelineRun revision tag (V6 P4.1).
-          image: quay.io/rhoai3-coding-demo/${{ values.name }}:latest
+          image: image-registry.openshift-image-registry.svc:5000/${{ values.name }}-dev/${{ values.name }}:bootstrap
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
