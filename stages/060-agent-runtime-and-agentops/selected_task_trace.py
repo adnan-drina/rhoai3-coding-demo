@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 SDK_VERSION = '3.14.0'
 WORKSPACE = 'ai-agents'
 EXPERIMENT = 'agent-runtime-traces'
-MODEL = 'publishers/internal-models/models/qwen3-8-27b-int4'
+MODEL = 'publishers/internal-models/models/qwen3-8-27b'
 COVERAGE = 'native-api-client-observation; no native internal spans'
 FIELDS = {'experiment_id','source_revision','image_digest','sandbox_id','provider_id','session_id','model','subscription'}
 TOOLS = {'hermes': {'write_file','patch','terminal','read_file','search_files'},

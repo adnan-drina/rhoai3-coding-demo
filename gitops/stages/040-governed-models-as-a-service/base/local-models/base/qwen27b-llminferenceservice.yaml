@@ -28,7 +28,9 @@ spec:
   model:
     name: qwen3-6-27b
     uri: hf://RedHatAI/Qwen3.6-27B-FP8:57d986c3ab0397a811e5150190eff67f76fab6e0
-  replicas: 1
+  # Retired 2026-10-13: kept declared but stopped, and removed from developer-facing
+  # defaults; Qwen 3.8 (qwen3-8-27b) is the default. Scale to 1 to bring it back.
+  replicas: 0
   router:
     gateway:
       refs:

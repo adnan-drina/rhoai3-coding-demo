@@ -26,7 +26,7 @@ Usage:
   swebench-run.sh submit --run <run id> --model-name <maas model id> [--subset verified|lite] [--experiment NAME] [--wait]
 
 Options:
-  --model-name NAME   MaaS model id, e.g. publishers/internal-models/models/qwen3-8-27b-int4
+  --model-name NAME   MaaS model id, e.g. publishers/internal-models/models/qwen3-8-27b
   --run ID            Run id (lowercase, digits, dashes); bucket prefix swebench/<run>/
   --subset NAME       verified (default, 500 instances) or lite (300)
   --count N           First N instances of the subset in dataset order (default 10)

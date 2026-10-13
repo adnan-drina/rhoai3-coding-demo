@@ -52,8 +52,8 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Che Code editor configuration sets Kilo Code default model: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'kilo-code.new.model.providerID.: .qwen38' && echo present || echo missing" \
         "present"
-    check "Che Code editor configuration defaults Kilo to qwen3-8-27b-int4: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'kilo-code.new.model.modelID.: .qwen3-8-27b-int4' && echo present || echo missing" \
+    check "Che Code editor configuration defaults Kilo to qwen3-8-27b: $ns" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'kilo-code.new.model.modelID.: .qwen3-8-27b' && echo present || echo missing" \
         "present"
     check "Che Code editor configuration disables Workspace Trust so Kilo activates: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'security.workspace.trust.enabled.: false' && echo present || echo missing" \
@@ -141,18 +141,15 @@ check "DevWorkspace MaaS key provisioner Job completed" \
 check "DevWorkspace AI tools init ConfigMap exists" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
     "devspace-ai-tools-init"
-check "Init script defaults Kilo to qwen3-8-27b-int4" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'qwen38/qwen3-8-27b-int4' && echo present || echo missing" \
+check "Init script defaults Kilo to qwen3-8-27b" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'qwen38/qwen3-8-27b' && echo present || echo missing" \
     "present"
 # the generated provider's SHAPE (enabled, OpenAI-compatible, MaaS route, key, model), not a string anywhere
-check "Init script configures Kilo provider qwen38 (qwen3-8-27b-int4)" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | python3 \"$REPO_ROOT/scripts/demo/check-kilo-provider.py\" qwen38 qwen3-8-27b-int4 qwen3-8-27b-int4" \
+check "Init script configures Kilo provider qwen38 (qwen3-8-27b)" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | python3 \"$REPO_ROOT/scripts/demo/check-kilo-provider.py\" qwen38 qwen3-8-27b qwen3-8-27b" \
     "provider-ok"
-check "Init script keeps Kilo provider qwen27b (qwen3-6-27b) selectable" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | python3 \"$REPO_ROOT/scripts/demo/check-kilo-provider.py\" qwen27b qwen3-6-27b qwen3-6-27b" \
-    "provider-ok"
-check "Init script allow-lists the MaaS Qwen providers for Kilo" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'enabled_providers.: \\[\"qwen38\", \"qwen27b\"\\]' && echo present || echo missing" \
+check "Init script allow-lists only the MaaS Qwen 3.8 provider for Kilo" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'enabled_providers.: \\[\"qwen38\"\\]' && echo present || echo missing" \
     "present"
 check "Init script writes kilo.jsonc (Kilo 7.4 primary config)" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'kilo.jsonc' && echo present || echo missing" \

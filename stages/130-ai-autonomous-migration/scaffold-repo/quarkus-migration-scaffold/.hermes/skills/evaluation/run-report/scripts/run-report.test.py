@@ -494,11 +494,11 @@ class RunReportTest(unittest.TestCase):
                     "final_state": {"parity": {"disabled": {"verdicts": {"ep:a": "PASS", "ep:b": "FAIL"}}}},
                     "classification": {"value": "assisted", "reasons": []},
                     "timeline": {}, "cost": {}, "loop_work": {"cards": {}, "retries": {}}}
-        out = rr.compare(rep("qwen3-6-27b", "g1", "v9"), [("v10", rep("qwen3-8-27b-int4", "g2", "v10"))])
+        out = rr.compare(rep("qwen3-6-27b", "g1", "v9"), [("v10", rep("qwen3-8-27b", "g2", "v10"))])
         d = out["differing_pins"]
         self.assertIn("model_provider", d["differs"])
         self.assertEqual(d["differs"]["model_provider"]["v9"], {"cfg#model.default": "qwen3-6-27b"})
-        self.assertEqual(d["differs"]["model_provider"]["v10"], {"cfg#model.default": "qwen3-8-27b-int4"})
+        self.assertEqual(d["differs"]["model_provider"]["v10"], {"cfg#model.default": "qwen3-8-27b"})
         self.assertIn("installed_goldens", d["differs"])
         # a pin that is the SAME is not reported as differing, or the caveat means nothing
         self.assertNotIn("toolchain", d["differs"])

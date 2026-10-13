@@ -66,24 +66,25 @@ class Preflight(unittest.TestCase):
             with self.subTest(model=model):
                 self.assertEqual(gaps(table, model, defaults), [])
         missing = copy.deepcopy(table)
-        missing['profiles']['qwen3-6-27b'].pop('run_input_token_budget')
-        self.assertEqual(gaps(missing, 'qwen3-8-27b-int4', defaults), [])          # only the SELECTED model counts
-        self.assertIn('RUN_TOKEN_BUDGET', gaps(missing, 'qwen3-6-27b', defaults)[0])
+        missing['profiles']['other-model'] = copy.deepcopy(table['profiles']['qwen3-8-27b'])
+        missing['profiles']['other-model'].pop('run_input_token_budget')
+        self.assertEqual(gaps(missing, 'qwen3-8-27b', defaults), [])          # only the SELECTED model counts
+        self.assertIn('RUN_TOKEN_BUDGET', gaps(missing, 'other-model', defaults)[0])
         for bad in (0, -1, True, '12000000', None):
             other = copy.deepcopy(table)
-            other['profiles']['qwen3-8-27b-int4']['run_input_token_budget'] = bad
+            other['profiles']['qwen3-8-27b']['run_input_token_budget'] = bad
             with self.subTest(bad=bad):
-                self.assertTrue(gaps(other, 'qwen3-8-27b-int4', defaults))
+                self.assertTrue(gaps(other, 'qwen3-8-27b', defaults))
         no_retry = copy.deepcopy(table)
-        no_retry['profiles']['qwen3-8-27b-int4']['loop_escalation'].pop('retry_start_turns')
-        self.assertIn('retry_start_turns', gaps(no_retry, 'qwen3-8-27b-int4', defaults)[0])
+        no_retry['profiles']['qwen3-8-27b']['loop_escalation'].pop('retry_start_turns')
+        self.assertIn('retry_start_turns', gaps(no_retry, 'qwen3-8-27b', defaults)[0])
         self.assertIn('RUN_TOKEN_BUDGET', gaps(table, 'unserved-model', defaults)[0])
-        self.assertIn('RUN_TOKEN_BUDGET', gaps(None, 'qwen3-8-27b-int4', defaults)[0])
+        self.assertIn('RUN_TOKEN_BUDGET', gaps(None, 'qwen3-8-27b', defaults)[0])
         for key in ('run_input_token_budget', 'no_accepted_checkpoint_minutes'):
             d = copy.deepcopy(defaults)
             d['budget'].pop(key)
             with self.subTest(key=key):
-                self.assertEqual(gaps(table, 'qwen3-8-27b-int4', d), ['RUN_STOPS: run-defaults.json budget.%s is not a positive integer' % key])
+                self.assertEqual(gaps(table, 'qwen3-8-27b', d), ['RUN_STOPS: run-defaults.json budget.%s is not a positive integer' % key])
 
 
 if __name__ == '__main__':

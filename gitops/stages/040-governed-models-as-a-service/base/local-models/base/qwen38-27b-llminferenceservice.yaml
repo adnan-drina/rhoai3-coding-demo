@@ -1,43 +1,43 @@
 apiVersion: serving.kserve.io/v1alpha2
 kind: LLMInferenceService
 metadata:
-  name: qwen3-8-27b-int4
+  name: qwen3-8-27b
   namespace: internal-models
   labels:
-    app.kubernetes.io/name: qwen3-8-27b-int4
+    app.kubernetes.io/name: qwen3-8-27b
     app.kubernetes.io/component: local-llm
-    inference.optimization/acceleratorName: L40S
-    kueue.x-k8s.io/queue-name: lq-gpu-reserved-demo
+    inference.optimization/acceleratorName: RTX-PRO-6000
+    kueue.x-k8s.io/queue-name: lq-gpu-rtxpro6000
     llm-d.ai/deployment-mode: single-gpu-per-replica
     opendatahub.io/dashboard: "true"
     opendatahub.io/genai-asset: "true"
     # Deployments tab on the model card. Ids are assigned by demo-registry.
-    # This cluster: Qwen3.8-27B-INT4 is registered model 6, version v1.0 is 8.
+    # register-model-cards.sh registers the NVFP4 artifact and stamps the ids.
     # register-model-cards.sh restamps these after a fresh registry, and
     # Argo CD ignores drift on the three modelregistry labels.
     modelregistry.opendatahub.io/name: demo-registry
   annotations:
     argocd.argoproj.io/sync-wave: "16"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    openshift.io/display-name: Qwen3.8 27B INT4
+    openshift.io/display-name: Qwen3.8 27B
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
-    # Same Stage 020 HardwareProfile and reserved queue as qwen3-6-27b.
-    # One nvidia.com/gpu request is exclusive-card placement: time-slicing
-    # is off, so the two models land on different GPU nodes.
-    opendatahub.io/hardware-profile-name: gpu-reserved-demo
+    # Stage 020 RTX PRO 6000 (g7e.2xlarge) profile; its Kueue flavor places the
+    # pod. Chosen by the 2026-10-13 serving study (docs/OPERATIONS.md).
+    opendatahub.io/hardware-profile-name: gpu-rtxpro6000
     opendatahub.io/hardware-profile-namespace: redhat-ods-applications
 spec:
   model:
-    name: qwen3-8-27b-int4
+    name: qwen3-8-27b
     # Pinned revision. KServe storage-initializer form is
     # hf://owner/model[:revision]. No official OCI modelcar is listed for
     # this checkpoint in the Red Hat validated-model matrix (reviewed
     # 2026-09-22), so the documented Hugging Face URI is the artifact source.
     # This model is not a Red Hat validated model on RHOAI 3.4. A successful
     # local load is compatibility with the installed runtime, not validation.
-    uri: hf://RedHatAI/Qwen3.8-27B-INT4:7fb3aaca2d21c0db4716572945208db40cef9966
-  replicas: 0
+    uri: hf://RedHatAI/Qwen3.8-27B-NVFP4:2889ddeeda282f17fc9e159a42125e535159a5e5
+  # Default coding model since 2026-10-13. Argo ignores replicas; scale with oc.
+  replicas: 1
   router:
     gateway:
       refs:
@@ -72,12 +72,12 @@ spec:
             failureMode: FailOpen
             group: ""
             kind: Service
-            name: qwen3-8-27b-int4-epp-service
+            name: qwen3-8-27b-epp-service
             port:
               number: 9002
           selector:
             matchLabels:
-              app.kubernetes.io/name: qwen3-8-27b-int4
+              app.kubernetes.io/name: qwen3-8-27b
               app.kubernetes.io/part-of: llminferenceservice
               kserve.io/component: workload
           targetPorts:
@@ -91,26 +91,18 @@ spec:
           - python
           - -m
           - vllm.entrypoints.openai.api_server
-        # RedHatAI/Qwen3.8-27B-INT4 on one L40S, text-only.
-        # Checkpoint: Qwen3_5ForConditionalGeneration, compressed-tensors
-        # pack-quantized W4A16 (group 128). recipe.yaml uses AWQ smoothing
-        # only; the export is compressed-tensors, so there is no AWQ loader.
-        # FP8 KV scales ship in the artifact (k_scale/v_scale).
-        # Speculative decoding is off. The card's dspark-preview drafter is
-        # not a supported method on the installed runtime, and the sibling
-        # MTP weights are not enabled.
-        # 131072 was the starting context. The retained setting is 262144
-        # after a 246077-token needle recall with a 512-token output reserve.
-        # A 128-token cap was not enough at 222077 tokens because thinking
-        # consumed it. These lengths are measured on this cluster, not a
-        # Red Hat capacity certification. Batched tokens stay 4096 and
-        # gpu-memory-utilization stays 0.90. max-num-seqs is 16 so a Stage 050
-        # evaluation request with 16 samples (lighteval LiveCodeBench) decodes
-        # in one batch and finishes inside the evaluation sidecar's 30-second
-        # request limit. The cap reserves no memory per sequence (vLLM reports
-        # a 637,281-token KV pool, 2.43 full-context requests); it lets short
-        # requests share the pool, and sixteen concurrent full-context
-        # sessions would be preempted rather than refused.
+        # RedHatAI/Qwen3.8-27B-NVFP4 on one RTX PRO 6000 Blackwell (96 GB), text-only.
+        # Checkpoint: compressed-tensors mixed precision, NVFP4 MLP with FP8
+        # attention; vLLM runs it on the native FlashInfer CUTLASS NVFP4 kernel.
+        # The MTP head is kept, so MTP speculative decoding runs per the card
+        # (3 tokens). Batched tokens 16384 and async scheduling match the
+        # measured study profile: 776 ms TTFT at 8k prompts x8, 302.6 tok/s,
+        # 6.37 concurrent full-262144-token requests in the KV pool, and a
+        # needle recalled at 248K prompt tokens. max-num-seqs is 16 so a
+        # Stage 050 evaluation request with 16 samples decodes in one batch.
+        # These are measurements on this cluster, not a Red Hat certification.
+        # FP8 is the measured fallback; on this GPU (sm120) it needs
+        # VLLM_USE_DEEP_GEMM=0 (TROUBLESHOOTING).
         # Hybrid prefix caching uses mamba-cache-mode=align because this
         # runtime rejects mode "all".
         # Use Qwen 3.8's recommended non-thinking sampling and mode together.
@@ -137,8 +129,10 @@ spec:
           - --kv-cache-dtype=fp8
           - --gpu-memory-utilization=0.90
           - --language-model-only
-          - --max-num-batched-tokens=4096
+          - --max-num-batched-tokens=16384
           - --max-num-seqs=16
+          - --async-scheduling
+          - '--speculative-config={"method":"mtp","num_speculative_tokens":3}'
           - --override-generation-config={"temperature":0.7,"top_p":0.8,"top_k":20,"min_p":0.0,"presence_penalty":1.5,"repetition_penalty":1.0}
           - --default-chat-template-kwargs={"enable_thinking":false}
           - --reasoning-parser=qwen3

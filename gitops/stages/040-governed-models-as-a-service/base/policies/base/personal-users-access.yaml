@@ -19,12 +19,7 @@ spec:
     users:
       - kube:admin
   modelRefs:
-    - name: qwen3-6-27b
-      namespace: internal-models
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
-    - name: qwen3-8-27b-int4
+    - name: qwen3-8-27b
       namespace: internal-models
       tokenRateLimits:
         - limit: 1000000
@@ -71,9 +66,7 @@ spec:
     users:
       - kube:admin
   modelRefs:
-    - name: qwen3-6-27b
-      namespace: internal-models
-    - name: qwen3-8-27b-int4
+    - name: qwen3-8-27b
       namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
@@ -106,12 +99,7 @@ spec:
     users:
       - ai-developer
   modelRefs:
-    - name: qwen3-6-27b
-      namespace: internal-models
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
-    - name: qwen3-8-27b-int4
+    - name: qwen3-8-27b
       namespace: internal-models
       tokenRateLimits:
         - limit: 1000000
@@ -158,9 +146,7 @@ spec:
     users:
       - ai-developer
   modelRefs:
-    - name: qwen3-6-27b
-      namespace: internal-models
-    - name: qwen3-8-27b-int4
+    - name: qwen3-8-27b
       namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
@@ -193,12 +179,7 @@ spec:
     users:
       - ai-admin
   modelRefs:
-    - name: qwen3-6-27b
-      namespace: internal-models
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
-    - name: qwen3-8-27b-int4
+    - name: qwen3-8-27b
       namespace: internal-models
       tokenRateLimits:
         - limit: 1000000
@@ -245,9 +226,7 @@ spec:
     users:
       - ai-admin
   modelRefs:
-    - name: qwen3-6-27b
-      namespace: internal-models
-    - name: qwen3-8-27b-int4
+    - name: qwen3-8-27b
       namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models

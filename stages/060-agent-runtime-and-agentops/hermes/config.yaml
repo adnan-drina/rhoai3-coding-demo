@@ -1,7 +1,7 @@
 # A fresh standalone profile, separate from Stage 130 migration profiles.
 model:
   provider: qwen38
-  default: publishers/internal-models/models/qwen3-8-27b-int4
+  default: publishers/internal-models/models/qwen3-8-27b
   base_url: ''
   api_mode: chat_completions
   context_length: 262144
@@ -12,7 +12,7 @@ providers:
     key_env: MAAS_API_KEY
     discover_models: false
     models:
-      publishers/internal-models/models/qwen3-8-27b-int4:
+      publishers/internal-models/models/qwen3-8-27b:
         context_length: 262144
 agent:
   max_turns: 4

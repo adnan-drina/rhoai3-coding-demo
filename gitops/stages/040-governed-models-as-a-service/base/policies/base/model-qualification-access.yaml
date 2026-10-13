@@ -25,7 +25,7 @@ spec:
       - system:serviceaccount:evaluated-models:evalhub-maas-key-provisioner
   priority: 70
   modelRefs:
-    - name: qwen3-8-27b-int4
+    - name: qwen3-8-27b
       namespace: internal-models
       tokenRateLimits:
         - limit: 5000000
@@ -75,7 +75,7 @@ spec:
     users:
       - system:serviceaccount:evaluated-models:evalhub-maas-key-provisioner
   modelRefs:
-    - name: qwen3-8-27b-int4
+    - name: qwen3-8-27b
       namespace: internal-models
     - name: qwen3-6-27b
       namespace: internal-models

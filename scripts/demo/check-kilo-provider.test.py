@@ -14,14 +14,13 @@ docs = yaml.safe_load_all((ROOT / "gitops/stages/070-advanced-app-platform/base/
 S = next(d for d in docs if d and d.get("kind") == "ConfigMap" and "init-ai-tools.sh" in (d.get("data") or {}))["data"]["init-ai-tools.sh"]
 
 cases = [
-    (S, ("qwen27b", "qwen3-6-27b", "qwen3-6-27b"), "ok"),
-    (S, ("qwen38", "qwen3-8-27b-int4", "qwen3-8-27b-int4"), "ok"),
-    (S.replace('"enabled_providers": ["qwen38", "qwen27b"]', '"enabled_providers": ["qwen38"]'), ("qwen27b", "qwen3-6-27b", "qwen3-6-27b"), "enabled_providers"),
-    (S.replace("${MAAS_BASE_URL}/v1", "${MAAS_BASE_URL}/internal-models/qwen3-6-27b/v1"), ("qwen27b", "qwen3-6-27b", "qwen3-6-27b"), "baseURL"),
-    (S.replace('"publishers/internal-models/models/qwen3-6-27b": {', '"qwen3-6-27b": {'), ("qwen27b", "qwen3-6-27b", "qwen3-6-27b"), "models has no"),
-    (S.replace("qwen38/publishers/internal-models/models/qwen3-8-27b-int4", "qwen38/qwen3-8-27b-int4"), ("qwen38", "qwen3-8-27b-int4", "qwen3-8-27b-int4"), "default model selector"),
-    (S.replace("publishers/internal-models/models/", "publishers/models-as-a-service/models/"), ("qwen38", "qwen3-8-27b-int4", "qwen3-8-27b-int4"), "models has no"),
-    ("echo no kilo here", ("qwen27b", "qwen3-6-27b", "qwen3-6-27b"), "no kilo.jsonc"),
+    (S, ("qwen38", "qwen3-8-27b", "qwen3-8-27b"), "ok"),
+    (S.replace('"enabled_providers": ["qwen38"]', '"enabled_providers": []'), ("qwen38", "qwen3-8-27b", "qwen3-8-27b"), "enabled_providers"),
+    (S.replace("${MAAS_BASE_URL}/v1", "${MAAS_BASE_URL}/internal-models/qwen3-8-27b/v1"), ("qwen38", "qwen3-8-27b", "qwen3-8-27b"), "baseURL"),
+    (S.replace('"publishers/internal-models/models/qwen3-8-27b": {', '"qwen3-8-27b": {'), ("qwen38", "qwen3-8-27b", "qwen3-8-27b"), "models has no"),
+    (S.replace("qwen38/publishers/internal-models/models/qwen3-8-27b", "qwen38/qwen3-8-27b"), ("qwen38", "qwen3-8-27b", "qwen3-8-27b"), "default model selector"),
+    (S.replace("publishers/internal-models/models/", "publishers/models-as-a-service/models/"), ("qwen38", "qwen3-8-27b", "qwen3-8-27b"), "models has no"),
+    ("echo no kilo here", ("qwen38", "qwen3-8-27b", "qwen3-8-27b"), "no kilo.jsonc"),
 ]
 ok = True
 for text, args, want in cases:

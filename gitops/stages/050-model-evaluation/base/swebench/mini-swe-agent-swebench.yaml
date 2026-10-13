@@ -185,7 +185,7 @@ model:
     If you have completed your assignment, please consult the first message about how to
     submit your solution (you will not be able to continue working on this task after that).
     {%- endif %}
-  model_name: "openai/publishers/internal-models/models/qwen3-8-27b-int4"
+  model_name: "openai/publishers/internal-models/models/qwen3-8-27b"
   model_kwargs:
     custom_llm_provider: openai
     drop_params: true

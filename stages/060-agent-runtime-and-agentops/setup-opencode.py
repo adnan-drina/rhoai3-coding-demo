@@ -21,7 +21,7 @@ NAME = 'opencode'
 WORKSPACE = 'ai-agents'
 PROVIDER = 'opencode-maas-qwen38'
 SUBSCRIPTION = 'opencode-private-qwen38'
-MODEL = 'publishers/internal-models/models/qwen3-8-27b-int4'
+MODEL = 'publishers/internal-models/models/qwen3-8-27b'
 DIGEST = 'sha256:86922260052003a80883880b40fa4245ae7645b25a4ee5f988ec7f1daca93d09'
 module = importlib.util.spec_from_file_location('inference_checks', Path(__file__).with_name('qualify-inference.py'))
 checks = importlib.util.module_from_spec(module); module.loader.exec_module(checks)
@@ -85,14 +85,14 @@ class Setup:
         subscription=self.get('maassubscription',self.subscription,'models-as-a-service')
         desired_subscription=yaml.safe_load((ROOT/('gitops/stages/060-agent-runtime-and-agentops/runtime/'+self.name+'/subscription.yaml')).read_text())['spec']
         need(subscription['spec']==desired_subscription,'Dedicated subscription differs from its complete reviewed scope')
-        need(subscription['spec']['owner']=={'users':['ai-admin']} and len(subscription['spec']['modelRefs'])==1 and subscription['spec']['modelRefs'][0]['name']=='qwen3-8-27b-int4' and subscription['spec']['modelRefs'][0]['namespace']=='internal-models','Private subscription scope differs')
+        need(subscription['spec']['owner']=={'users':['ai-admin']} and len(subscription['spec']['modelRefs'])==1 and subscription['spec']['modelRefs'][0]['name']=='qwen3-8-27b' and subscription['spec']['modelRefs'][0]['namespace']=='internal-models','Private subscription scope differs')
         need(any(c.get('type')=='Ready' and c.get('status')=='True' and c.get('observedGeneration')==subscription['metadata']['generation'] for c in subscription.get('status',{}).get('conditions',[])),'Dedicated subscription is not Ready')
         stream=self.get('imagestreamtag',self.image_tag,self.workspace)
         need(stream['image']['metadata']['name']==self.image_digest,'Rehomed immutable image is absent')
         gateway=self.get('gateway','maas-default-gateway','openshift-ingress')
         host=[v['hostname'] for v in gateway['spec']['listeners'] if v['name']=='api']
         need(len(host)==1,'Common MaaS listener is ambiguous');self.host=host[0];self.api='https://'+self.host
-        serving=self.get('llminferenceservice','qwen3-8-27b-int4','internal-models')
+        serving=self.get('llminferenceservice','qwen3-8-27b','internal-models')
         need('--max-model-len=262144' in json.dumps(serving['spec']),'OpenCode context limit differs from actual serving configuration')
         status,catalog=checks.http(self.api+'/v1/models',self.user_token)
         need(status==200 and any(m.get('id')==self.model and m.get('ready') for m in catalog.get('data',[])),'Canonical Qwen model is not available to ai-admin')

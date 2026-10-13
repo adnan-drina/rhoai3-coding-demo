@@ -15,5 +15,5 @@ data:
   sandbox-name: opencode
   provider-name: opencode-maas-qwen38
   subscription-name: opencode-private-qwen38
-  model-id: publishers/internal-models/models/qwen3-8-27b-int4
+  model-id: publishers/internal-models/models/qwen3-8-27b
   key-expiry: 30d

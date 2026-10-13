@@ -26,7 +26,7 @@ Usage:
   submit-evaluation.sh --status <job id> [--wait]
 
 Options:
-  --model-name NAME        MaaS model id, e.g. publishers/internal-models/models/qwen3-8-27b-int4 (required to submit)
+  --model-name NAME        MaaS model id, e.g. publishers/internal-models/models/qwen3-8-27b (required to submit)
   --model-url URL          OpenAI-compatible base URL (default: the MaaS gateway api listener)
   --secret-ref NAME        Tenant Secret with the api-key (default: evalhub-model-auth-maas)
   --tenant NS              EvalHub tenant namespace (default: evaluated-models)

@@ -119,7 +119,7 @@ class Launch(unittest.TestCase):
         if not PROFILES.is_file():
             self.skipTest("the platform profile table is not in this checkout (a published golden)")
         table = json.loads(PROFILES.read_text())
-        self.assertEqual(WL.retry_start_turns(dict(table, default_model="qwen3-8-27b-int4")), 8)
+        self.assertEqual(WL.retry_start_turns(dict(table, default_model="qwen3-8-27b")), 8)
         self.assertEqual(WL.retry_start_turns(dict(table, default_model="qwen3-6-27b")), 0)
 
     def test_other_invocations_pass_through_unchanged(self):

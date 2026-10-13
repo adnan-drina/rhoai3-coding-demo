@@ -26,7 +26,7 @@ data:
       displayName: OpenShift Ops Assistant
       description: Audits the model platform with read-only OpenShift tools - which models are served, who may use them and whether they are healthy. Qwen 3.8 through MaaS; no token needed.
       model:
-        id: publishers/internal-models/models/qwen3-8-27b-int4
+        id: publishers/internal-models/models/qwen3-8-27b
         uri: https://maas-default-gateway-data-science-gateway-class.openshift-ingress.svc.cluster.local
         sourceType: maas
       prompt:

@@ -9,5 +9,5 @@ resources:
   - local-queue.yaml
   - qwen27b-llminferenceservice.yaml
   - qwen27b-maas-modelref.yaml
-  - qwen38-27b-int4-llminferenceservice.yaml
-  - qwen38-27b-int4-maas-modelref.yaml
+  - qwen38-27b-llminferenceservice.yaml
+  - qwen38-27b-maas-modelref.yaml

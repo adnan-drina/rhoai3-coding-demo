@@ -15,7 +15,7 @@ spec:
   owner:
     users: [ai-admin]
   modelRefs:
-  - name: qwen3-8-27b-int4
+  - name: qwen3-8-27b
     namespace: internal-models
     tokenRateLimits:
     - limit: 100000

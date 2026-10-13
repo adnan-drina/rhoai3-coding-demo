@@ -1,18 +1,18 @@
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSModelRef
 metadata:
-  name: qwen3-8-27b-int4
+  name: qwen3-8-27b
   namespace: internal-models
   labels:
-    app.kubernetes.io/name: qwen3-8-27b-int4
+    app.kubernetes.io/name: qwen3-8-27b
     app.kubernetes.io/component: maas-model-ref
     demo.rhoai.io/provider: local
   annotations:
     argocd.argoproj.io/sync-wave: "17"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     # Models tab title; native catalog IDs use the resolved publisher/model alias.
-    openshift.io/display-name: Qwen3.8 27B INT4
+    openshift.io/display-name: Qwen3.8 27B
 spec:
   modelRef:
     kind: LLMInferenceService
-    name: qwen3-8-27b-int4
+    name: qwen3-8-27b

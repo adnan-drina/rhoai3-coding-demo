@@ -155,38 +155,14 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
-  name: maas-private-code-model-qwen27b
-  title: Qwen3.6 27B FP8
-  description: |
-    Private MaaS alternate for source-code work. Kilo Code, OpenCode, and
-    Hermes default to Qwen3.8 27B INT4 and keep this model selectable.
-  annotations:
-    rhoai3.redhat.com/model-id: qwen3-6-27b
-    rhoai3.redhat.com/model-path: private-maas
-    rhoai3.redhat.com/data-classification: source-code-context
-  links:
-    - url: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
-      title: Getting Started
-      icon: docs
-  tags:
-    - maas
-    - private-model
-    - source-code
-spec:
-  type: ai-model
-  owner: ai-modernization-team
----
-apiVersion: backstage.io/v1alpha1
-kind: Resource
-metadata:
   name: maas-private-code-model-qwen
-  title: Qwen3.8 27B INT4
+  title: Qwen3.8 27B
   description: |
-    Private MaaS default for Kilo Code, OpenCode, and Hermes. Qwen3.6 27B
-    FP8 remains in the same picker for a switch. Context is the deployed
-    262144-token window.
+    Private MaaS model for Kilo Code, OpenCode, and Hermes, served as NVFP4
+    on an RTX PRO 6000 Blackwell GPU. Context is the deployed 262144-token
+    window.
   annotations:
-    rhoai3.redhat.com/model-id: qwen3-8-27b-int4
+    rhoai3.redhat.com/model-id: qwen3-8-27b
     rhoai3.redhat.com/model-path: private-maas
     rhoai3.redhat.com/data-classification: source-code-context
   links:

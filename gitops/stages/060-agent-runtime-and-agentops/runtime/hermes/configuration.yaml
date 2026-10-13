@@ -15,6 +15,6 @@ data:
   sandbox-name: hermes
   provider-name: hermes-maas-qwen38
   subscription-name: hermes-private-qwen38
-  model-id: publishers/internal-models/models/qwen3-8-27b-int4
+  model-id: publishers/internal-models/models/qwen3-8-27b
   key-expiry: 30d
   image-digest: sha256:b20974ad1bd66f081a48455458f1a7e9f882efa882bbbfb173f94d395a32116c

@@ -66,7 +66,7 @@ log_step "MaaS prerequisites from earlier stages"
 check "workspace MaaS key Secret exists (Stage 070)" \
   "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
   "maas-devspace-api-keys"
-check "qwen27b model key provisioned" \
+check "MaaS model key provisioned (MAAS_API_KEY_QWEN27B serves Qwen 3.8)" \
   "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_KEY_QWEN27B}' | wc -c | tr -d ' ' | awk '{print (\$1>10)?\"yes\":\"no\"}'" \
   "yes"
 

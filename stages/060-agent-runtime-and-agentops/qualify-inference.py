@@ -55,8 +55,8 @@ WORKSPACE = "openshell-developer"
 TEMPLATE = "oc-transport-11816"
 SANDBOX = "oc-inference-check"
 PROFILE = PROVIDER = "maas-qwen38"
-RESOURCE_MODEL = "qwen3-8-27b-int4"
-MODEL = "publishers/internal-models/models/qwen3-8-27b-int4"
+RESOURCE_MODEL = "qwen3-8-27b"
+MODEL = "publishers/internal-models/models/qwen3-8-27b"
 MODEL_PATH = "/v1"
 DIRECTORY = "/sandbox/workspace"
 TLS = ssl.create_default_context()
@@ -442,7 +442,7 @@ class Run:
     def launch(self):
         config = {"$schema": "https://opencode.ai/config.json", "autoupdate": False, "share": "disabled", "enabled_providers": ["qwen38"],
                   "provider": {"qwen38": {"npm": "@ai-sdk/openai-compatible", "name": "MaaS Qwen3.8",
-                                          "models": {MODEL: {"name": "Qwen3.8 27B INT4", "limit": {"context": 262144, "output": OUTPUT_TOKEN_LIMIT}}},
+                                          "models": {MODEL: {"name": "Qwen3.8 27B", "limit": {"context": 262144, "output": OUTPUT_TOKEN_LIMIT}}},
                                           "options": {"apiKey": "{env:MAAS_API_KEY}", "baseURL": "https://" + self.model_host + MODEL_PATH, "timeout": 60000}}},
                   "model": "qwen38/" + MODEL, "small_model": "qwen38/" + MODEL,
                   "permission": {"edit": "deny", "bash": "deny", "webfetch": "deny"}}

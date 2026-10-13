@@ -1,7 +1,7 @@
 # The native gateway retains the real key; the agent receives a placeholder.
 id: hermes-maas-qwen38
 display_name: MaaS Qwen3.8
-description: Governed OpenAI-compatible chat completions for qwen3-8-27b-int4 on Models-as-a-Service
+description: Governed OpenAI-compatible chat completions for qwen3-8-27b on Models-as-a-Service
 category: inference
 inference_capable: true
 credentials:

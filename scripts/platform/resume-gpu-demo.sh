@@ -9,7 +9,17 @@ source "$REPO_ROOT/scripts/shared/lib.sh"
 
 ARGOCD_NAMESPACE="${ARGOCD_NAMESPACE:-openshift-gitops}"
 MODEL_NAMESPACE="${MODEL_NAMESPACE:-internal-models}"
-GPU_MACHINESET_REPLICAS="${GPU_MACHINESET_REPLICAS:-2}"
+# Default GPU pool since 2026-10-13: one RTX PRO 6000 (g7e.2xlarge) serves Qwen 3.8.
+# GPU_POOL=l40s selects the former L40S (g6e.2xlarge) pool.
+GPU_POOL="${GPU_POOL:-rtxpro6000}"
+GPU_ZONE="${GPU_ZONE:-us-east-2a}"
+GPU_MACHINESET_REPLICAS="${GPU_MACHINESET_REPLICAS:-1}"
+case "$GPU_POOL" in
+    rtxpro6000) GPU_POOL_LABEL=nvidia-rtxpro6000; GPU_POOL_INSTANCE=g7e.2xlarge ;;
+    l40s)       GPU_POOL_LABEL=nvidia-gpu;        GPU_POOL_INSTANCE=g6e.2xlarge ;;
+    *) echo "Unknown GPU_POOL '$GPU_POOL' (rtxpro6000 or l40s)" >&2; exit 2 ;;
+esac
+GPU_POOL_LABELS='["nvidia-gpu","nvidia-rtxpro6000","nvidia-h100"]'
 GPU_RESUME_TIMEOUT_SECONDS="${GPU_RESUME_TIMEOUT_SECONDS:-1800}"
 GPU_RESUME_POLL_SECONDS="${GPU_RESUME_POLL_SECONDS:-15}"
 
@@ -24,14 +34,16 @@ Usage:
 Commands:
   status   Show GPU MachineSet, GPU node, Kueue queue, and private model state.
   up       Scale GPU MachineSet up and wait for allocatable GPUs.
-  down     Scale GPU MachineSet to zero. Model pods become unavailable.
+  down     Scale every reviewed GPU MachineSet (all pools) to zero. Model pods become unavailable.
   resume   First-class recovery path after shutdown:
            sync Stage 020, scale GPU capacity up, validate Stage 020,
            leave existing model resources unchanged; validate model stages separately.
 
 Environment overrides:
+  GPU_POOL                       rtxpro6000 (default, g7e.2xlarge) or l40s (g6e.2xlarge).
+  GPU_ZONE                       Zone of the RTX PRO 6000 MachineSet. Default: us-east-2a.
   GPU_MACHINESET_NAME            Explicit GPU MachineSet name.
-  GPU_MACHINESET_REPLICAS        Desired GPU MachineSet replicas. Default: 2.
+  GPU_MACHINESET_REPLICAS        Desired GPU MachineSet replicas. Default: 1.
   GPU_RESUME_TIMEOUT_SECONDS     Wait timeout for GPU/model recovery. Default: 1800.
   GPU_RESUME_POLL_SECONDS        Poll interval. Default: 15.
   ARGOCD_NAMESPACE               Argo CD namespace. Default: openshift-gitops.
@@ -46,7 +58,7 @@ require_tools() {
 
 discover_gpu_machineset() {
     local matches
-    matches="$(oc --request-timeout=10s get machineset -n openshift-machine-api -o json | jq -r '.items[] | select(.metadata.labels["cluster-api/accelerator"] == "nvidia-gpu" and .spec.template.spec.providerSpec.value.instanceType == "g6e.2xlarge") | .metadata.name')"
+    matches="$(oc --request-timeout=10s get machineset -n openshift-machine-api -o json | jq -r '.items[] | select(.metadata.labels["cluster-api/accelerator"] == $label and .spec.template.spec.providerSpec.value.instanceType == $itype and ($zone == "" or .spec.template.spec.providerSpec.value.placement.availabilityZone == $zone)) | .metadata.name' --arg label "$GPU_POOL_LABEL" --arg itype "$GPU_POOL_INSTANCE" --arg zone "$([[ $GPU_POOL == rtxpro6000 ]] && echo "$GPU_ZONE")")"
     [[ $(printf '%s\n' "$matches" | sed '/^$/d' | wc -l | tr -d ' ') == 1 ]] || { log_error "Select one unambiguous reviewed GPU MachineSet"; return 1; }
     [[ -z "${GPU_MACHINESET_NAME:-}" || "$GPU_MACHINESET_NAME" == "$matches" ]] || { log_error "Explicit MachineSet differs from reviewed GPU pool"; return 1; }
     oc --request-timeout=10s get machineset "$matches" -n openshift-machine-api -o json | jq -e '.metadata.ownerReferences == null and (.metadata.annotations["argocd.argoproj.io/tracking-id"] | startswith("020-gpu-infrastructure-private-ai:"))' >/dev/null || { log_error "GPU pool ownership is not Stage 020"; return 1; }
@@ -109,8 +121,8 @@ wait_for_gpu_capacity() {
 
     log_info "Waiting for $expected GPU node(s) with allocatable nvidia.com/gpu"
     while (( elapsed < timeout )); do
-        ready_nodes="$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get nodes -l nvidia.com/gpu.present=true --no-headers 2>/dev/null | grep -c ' Ready ' || true)"
-        alloc_nodes="$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get nodes -l nvidia.com/gpu.present=true -o json 2>/dev/null \
+        ready_nodes="$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get nodes -l "cluster-api/accelerator=$GPU_POOL_LABEL" --no-headers 2>/dev/null | grep -c ' Ready ' || true)"
+        alloc_nodes="$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get nodes -l "cluster-api/accelerator=$GPU_POOL_LABEL" -o json 2>/dev/null \
             | jq '[.items[] | select(((.status.allocatable["nvidia.com/gpu"] // "0") | tonumber) >= 1)] | length' 2>/dev/null || echo 0)"
 
         if [[ "$ready_nodes" -ge "$expected" && "$alloc_nodes" -ge "$expected" ]]; then
@@ -158,7 +170,7 @@ scale_gpu_up() {
     local ms
     ms="$(gpu_machineset_or_fail)"
 
-    [[ "$replicas" == 2 ]] || { log_error "Reviewed topology requires two GPU workers"; return 1; }
+    [[ "$replicas" =~ ^[12]$ ]] || { log_error "Reviewed topology is one or two GPU workers per pool"; return 1; }
     log_info "Scaling GPU MachineSet $ms to $replicas"
     oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" scale machineset "$ms" -n openshift-machine-api --replicas="$replicas"
     wait_for_gpu_capacity "$replicas"
@@ -167,10 +179,12 @@ scale_gpu_up() {
 
 scale_gpu_down() {
     local ms
-    ms="$(gpu_machineset_or_fail)"
-
-    log_warn "Scaling GPU MachineSet $ms to 0. Private model pods will become unavailable."
-    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" scale machineset "$ms" -n openshift-machine-api --replicas=0
+    # Every reviewed GPU pool, so no forgotten pool keeps billing.
+    for ms in $(oc --request-timeout=10s get machineset -n openshift-machine-api -o json \
+        | jq -r --argjson labels "$GPU_POOL_LABELS" '.items[] | select((.metadata.labels["cluster-api/accelerator"] // "") as $l | $labels | index($l)) | select(.spec.replicas > 0) | .metadata.name'); do
+        log_warn "Scaling GPU MachineSet $ms to 0. Private model pods will become unavailable."
+        oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" scale machineset "$ms" -n openshift-machine-api --replicas=0
+    done
 }
 
 run_validation() {
@@ -217,14 +231,14 @@ print_status() {
         | column -t || true
 
     log_step "Kueue Queues"
-    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get resourceflavor gpu-l40s 2>/dev/null || true
-    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get clusterqueue cq-gpu-reserved-demo 2>/dev/null || true
-    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get localqueue lq-gpu-reserved-demo -n demo-sandbox 2>/dev/null || true
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get resourceflavor gpu-l40s gpu-rtxpro6000 2>/dev/null || true
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get clusterqueue cq-gpu-reserved-demo cq-gpu-rtxpro6000 2>/dev/null || true
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get localqueue -n demo-sandbox 2>/dev/null || true
     oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get workloads.kueue.x-k8s.io -n "$MODEL_NAMESPACE" 2>/dev/null || true
 
     log_step "Private Models"
     oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get llminferenceservice -n "$MODEL_NAMESPACE" 2>/dev/null || true
-    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get pods -n "$MODEL_NAMESPACE" 2>/dev/null | grep -E 'NAME|qwen|qwen3-6-27b|router-scheduler' || true
+    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get pods -n "$MODEL_NAMESPACE" 2>/dev/null | grep -E 'NAME|qwen|router-scheduler' || true
 }
 
 resume_from_zero() {

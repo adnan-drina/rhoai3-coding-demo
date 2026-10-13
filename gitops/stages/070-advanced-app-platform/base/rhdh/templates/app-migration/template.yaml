@@ -105,13 +105,11 @@ spec:
         model:
           title: Worker model
           type: string
-          default: qwen3-6-27b
+          default: qwen3-8-27b
           enum:
-            - qwen3-6-27b
-            - qwen3-8-27b-int4
+            - qwen3-8-27b
           enumNames:
-            - Qwen 3.6 27B (FP8, 131K window)
-            - Qwen 3.8 27B INT4 (262K window, loop escalation)
+            - Qwen 3.8 27B (NVFP4, 262K window, loop escalation)
           description: |
             The model every worker of this run uses. Recorded once, in the
             destination's initial commit (run-budget.json model); the

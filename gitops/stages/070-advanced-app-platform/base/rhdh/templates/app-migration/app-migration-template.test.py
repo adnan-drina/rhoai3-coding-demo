@@ -28,7 +28,7 @@ SKELETON = HERE / "skeleton"
 TEMPLATE = HERE / "template.yaml"
 
 
-def render(name: str, protocol: str, model: str = "qwen3-6-27b") -> str:
+def render(name: str, protocol: str, model: str = "qwen3-8-27b") -> str:
     import jinja2
     env = jinja2.Environment(variable_start_string="${{", variable_end_string="}}", undefined=jinja2.StrictUndefined,
                              keep_trailing_newline=True)

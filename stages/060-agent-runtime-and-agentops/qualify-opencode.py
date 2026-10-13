@@ -34,7 +34,7 @@ checks = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checks)
 setup = None
 NAME, WORKSPACE = 'opencode', 'ai-agents'
-MODEL = 'publishers/internal-models/models/qwen3-8-27b-int4'
+MODEL = 'publishers/internal-models/models/qwen3-8-27b'
 DIRECTORY = '/sandbox/workspace'
 TEST_COMMAND = 'python3 -c "from qualification_add import add; assert add(2, 3) == 5; assert add(-2, 2) == 0"'
 GATES = ('ownedRuntime', 'authenticatedHealth', 'invalidPasswordDenied', 'missingPasswordDenied',

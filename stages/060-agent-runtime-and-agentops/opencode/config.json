@@ -10,8 +10,8 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "MaaS Qwen3.8",
       "models": {
-        "publishers/internal-models/models/qwen3-8-27b-int4": {
-          "name": "Qwen3.8 27B INT4",
+        "publishers/internal-models/models/qwen3-8-27b": {
+          "name": "Qwen3.8 27B",
           "limit": {
             "context": 262144,
             "output": 1024
@@ -25,8 +25,8 @@
       }
     }
   },
-  "model": "qwen38/publishers/internal-models/models/qwen3-8-27b-int4",
-  "small_model": "qwen38/publishers/internal-models/models/qwen3-8-27b-int4",
+  "model": "qwen38/publishers/internal-models/models/qwen3-8-27b",
+  "small_model": "qwen38/publishers/internal-models/models/qwen3-8-27b",
   "permission": {
     "edit": "allow",
     "bash": "ask",

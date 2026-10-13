@@ -37,7 +37,7 @@ try:
    response=api(path+('?' + urllib.parse.urlencode({'nextPageToken':cursor}) if cursor else ''));values+=response.get('items',[]);cursor=response.get('nextPageToken')
    if not cursor:return values
   raise RuntimeError('Registry pagination exceeded bounded limit')
- for file,title in [('qwen27b-llminferenceservice.yaml','Qwen3.6-27B-FP8'),('qwen38-27b-int4-llminferenceservice.yaml','Qwen3.8-27B-INT4')]:
+ for file,title in [('qwen27b-llminferenceservice.yaml','Qwen3.6-27B-FP8'),('qwen38-27b-llminferenceservice.yaml','Qwen3.8-27B-NVFP4')]:
   path=root/'gitops/stages/040-governed-models-as-a-service/base/local-models/base'/file
   expected=json.loads(subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_file(ARGV[0]))',str(path)],capture_output=True,text=True,check=True).stdout)
   name=expected['metadata']['name'];uri=expected['spec']['model']['uri'];revision=uri.rsplit(':',1)[1];assert len(revision)==40,'Model source must be immutable'
