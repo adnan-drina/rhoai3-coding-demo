@@ -12,3 +12,21 @@ spec:
     namespace: openshift-machine-api
     jsonPointers:
     - "/spec/replicas"
+  - group: machine.openshift.io
+    kind: MachineSet
+    name: ocp-wzxl7-gpu-h100-us-east-2a
+    namespace: openshift-machine-api
+    jsonPointers:
+    - "/spec/replicas"
+  - group: machine.openshift.io
+    kind: MachineSet
+    name: ocp-wzxl7-gpu-h100-us-east-2b
+    namespace: openshift-machine-api
+    jsonPointers:
+    - "/spec/replicas"
+  - group: machine.openshift.io
+    kind: MachineSet
+    name: ocp-wzxl7-gpu-h100-us-east-2c
+    namespace: openshift-machine-api
+    jsonPointers:
+    - "/spec/replicas"

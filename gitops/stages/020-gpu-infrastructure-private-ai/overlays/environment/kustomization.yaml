@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - ../../base
   - machineset-gpu.yaml
+  - machineset-h100.yaml
