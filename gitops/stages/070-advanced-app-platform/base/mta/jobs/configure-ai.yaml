@@ -171,7 +171,7 @@ spec:
     secretName: kai-api-keys
     key: OPENAI_API_KEY
   model:
-    name: qwen3-8-27b
+    name: publishers/internal-models/models/qwen3-8-27b
     contextWindow: 262144
     tier: efficient
 ---

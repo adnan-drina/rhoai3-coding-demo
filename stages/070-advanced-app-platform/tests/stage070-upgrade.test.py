@@ -102,6 +102,14 @@ class RuntimeArtifact(unittest.TestCase):
 
 
 class IntegratedContract(unittest.TestCase):
+    def test_mta_consumers_use_the_governed_model_id(self):
+        tackle = yaml.safe_load((BASE / 'mta/mta-instance/tackle.yaml').read_text())
+        gateway = next(row for row in yaml.safe_load_all((BASE / 'mta/jobs/configure-ai.yaml').read_text())
+                       if row['kind'] == 'Gateway')
+        alias = 'publishers/internal-models/models/qwen3-8-27b'
+        self.assertEqual(tackle['spec']['kai_llm_model'], alias)
+        self.assertEqual(gateway['spec']['model']['name'], alias)
+
     def test_argo_reader_keeps_existing_policy_and_is_idempotent(self):
         current = 'g, system:cluster-admins, role:admin\np, role:other, applications, get, other/*, allow\n'
         updated = reader.policy(current)

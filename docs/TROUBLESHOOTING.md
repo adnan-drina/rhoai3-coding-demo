@@ -2248,6 +2248,10 @@ Stuck pre-fix Jobs (pull policy Always baked into their pods) must be deleted fo
 
 ## Stage 070 GitLab project enrollment is pending
 
+SonarQube 26.9 refuses an initial password lacking a special character. The setup Job now generates all required character classes, persists a pending `sonarqube-admin` credential before the API change, and verifies it on every retry. A timeout or interrupted Job preserves that credential. If neither the pending credential nor the default authenticates, reconcile the existing credential explicitly; do not reset the database or generate another password blindly.
+
+If MTA's proxy reports that `qwen3-8-27b` is unavailable, compare its configured ID with authenticated MaaS `/v1/models` metadata. Both the Tackle proxy and native Gateway use `publishers/internal-models/models/qwen3-8-27b`. Metadata discovery and proxy startup can be checked while model replicas remain zero; that does not qualify inference.
+
 If SonarQube's StatefulSet is refused for an invalid version label containing `@sha256:`, keep the friendly tag in chart values and the digest in the chart image lock. The renderer pins the actual container image separately. A digest belongs in the image reference, not in the chart's version label. Verify the rendered StatefulSet with a server dry-run before restarting the native sync.
 
 If the MTA AI hook can patch but gets Forbidden reading `mta` or `maas-qwen`, retain named-resource bounds and add GET: the patch client reads the object first. Its Role needs get/patch only for these two names. The MTA launcher link must also be installed before the SSO hook patches it; placing the link in a later wave deadlocks the first sync.

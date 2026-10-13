@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 if [[ "${1:-}" == --static ]]; then
-  for test in internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py security-boundaries.test.py; do
+  for test in internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py security-boundaries.test.py sonarqube-bootstrap.test.py; do
     "$PYTHON" "$SCRIPT_DIR/tests/$test"
   done
   "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/jobs/catalog/render_catalog.test.py"
@@ -95,6 +95,8 @@ check 'MTA AI proxy enabled' "oc get tackle mta -n openshift-mta -o jsonpath='{.
 check 'MTA Solution Server enabled' "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_solution_server_enabled}'" 'true'
 check 'MTA agentic component enabled' "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.agentic_enabled}'" 'true'
 check 'MTA native Gateway credential binding' "oc get gateways.konveyor.io maas-qwen -n openshift-mta -o jsonpath='{.spec.credentialRef.secretName}'" 'kai-api-keys'
+check 'MTA proxy uses MaaS canonical model ID' "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_model}'" 'publishers/internal-models/models/qwen3-8-27b'
+check 'MTA Gateway uses the same canonical model ID' "oc get gateways.konveyor.io maas-qwen -n openshift-mta -o jsonpath='{.spec.model.name}'" 'publishers/internal-models/models/qwen3-8-27b'
 check 'MTA credential provisioned' "oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.metadata.name}'" 'kai-api-keys'
 check 'MTA uses governed MaaS endpoint' "oc get gateways.konveyor.io maas-qwen -n openshift-mta -o jsonpath='{.spec.endpoint}' | contains -E '^https://maas\\..*/v1$' && echo GOVERNED" 'GOVERNED'
 

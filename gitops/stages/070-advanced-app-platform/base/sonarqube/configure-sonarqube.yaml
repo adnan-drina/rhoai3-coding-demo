@@ -120,26 +120,8 @@ spec:
               [ -n "${up}" ] || { echo "ERROR: SonarQube did not come up"; exit 1; }
 
               # --- 1. Admin password ---
-              if oc get secret sonarqube-admin -n sonarqube >/dev/null 2>&1; then
-                ADMIN_PASS=$(oc get secret sonarqube-admin -n sonarqube -o jsonpath='{.data.password}' | base64 -d)
-                echo "Using existing admin password secret"
-              else
-                ADMIN_PASS=$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 24)
-                code=$(curl -s -o /dev/null -w '%{http_code}' -u admin:admin \
-                  -X POST "${SONAR}/api/users/change_password" \
-                  --data-urlencode "login=admin" \
-                  --data-urlencode "previousPassword=admin" \
-                  --data-urlencode "password=${ADMIN_PASS}")
-                if [ "${code}" != "204" ]; then
-                  echo "ERROR: could not rotate default admin password (HTTP ${code})"
-                  echo "If the password was changed manually, create the sonarqube-admin secret."
-                  exit 1
-                fi
-                oc create secret generic sonarqube-admin -n sonarqube \
-                  --from-literal=username=admin \
-                  --from-literal=password="${ADMIN_PASS}"
-                echo "Admin password rotated and stored in sonarqube-admin secret"
-              fi
+              ADMIN_PASS=$(python3 /scripts/bootstrap-admin.py)
+              echo "Admin password verified against its preserved secret"
               AUTH="admin:${ADMIN_PASS}"
 
               # --- 2. Scanner token for the pipeline ---
@@ -194,3 +176,11 @@ spec:
               curl -s -u "${AUTH}" -X POST "${SONAR}/api/qualitygates/set_as_default" \
                 --data-urlencode "name=${GATE}" >/dev/null
               echo "'${GATE}' set as default quality gate"
+          volumeMounts:
+            - name: admin-bootstrap
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: admin-bootstrap
+          configMap:
+            name: sonarqube-admin-bootstrap

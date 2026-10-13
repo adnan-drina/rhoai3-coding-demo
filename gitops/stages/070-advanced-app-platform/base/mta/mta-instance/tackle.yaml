@@ -13,7 +13,7 @@ spec:
   feature_auth_required: true
   idp_primary: true
   kai_llm_provider: openai
-  kai_llm_model: qwen3-8-27b
+  kai_llm_model: publishers/internal-models/models/qwen3-8-27b
   kai_enable_trace: 'false'
   kai_database_volume_size: 5Gi
   agentic_enabled: true

@@ -17,5 +17,13 @@ resources:
   - postgresql.yaml
   # Wave 10: SonarQube deployment + service + route
   - generated
-  # PostSync: rotate admin password, provision pipeline token, custom gate
+  # Sync: rotate admin password, provision pipeline token, custom gate
   - configure-sonarqube.yaml
+configMapGenerator:
+  - name: sonarqube-admin-bootstrap
+    namespace: sonarqube
+    files:
+      - bootstrap-admin.py
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "10"
