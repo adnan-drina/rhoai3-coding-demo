@@ -16,7 +16,8 @@ assert s['source']==source and s['project']=='rhoai-demo' and s['destination']==
 operation=app['status']['operationState'];assert operation['phase'] in ('Running','Succeeded') and operation['syncResult']['revision']==args.revision and operation['syncResult']['source']==source
 assert 'RespectIgnoreDifferences=true' in s['syncPolicy']['syncOptions']
 for kind,name,pointers in [('Secret','openshell-credentials',['/data/key-encryption-key']),('ConfigMap','openshell-identity',['/data/issuer']),('ConfigMap','openshell-runtime-ready',['/data/controller-ready','/data/source-revision','/data/controller-csv-uid'])]:
-    assert any(i.get('group','')=='' and i.get('kind')==kind and i.get('name')==name and i.get('namespace')==NS and i.get('jsonPointers')==pointers for i in s.get('ignoreDifferences',[])),'Missing narrow runtime field delegation'
+    # a769444a delegates the whole runtime-owned data map (/data); the original narrow per-field form is also accepted.
+    assert any(i.get('group','')=='' and i.get('kind')==kind and i.get('name')==name and i.get('namespace')==NS and i.get('jsonPointers') in (pointers,['/data']) for i in s.get('ignoreDifferences',[])),'Missing runtime field delegation'
 def tracked(obj):
     m=obj['metadata'];group=obj['apiVersion'].split('/')[0] if '/' in obj['apiVersion'] else ''
     expected=APP+':'+group+'/'+obj['kind']+':'+m.get('namespace',NS)+'/'+m['name']
