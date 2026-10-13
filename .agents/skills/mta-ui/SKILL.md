@@ -2,7 +2,7 @@
 name: mta-ui
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "mta"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -16,11 +16,19 @@ description: >
 
 # MTA User Interface
 
-Use this skill to ground Migration Toolkit for Applications (MTA) 8.2
+Use this skill to ground Migration Toolkit for Applications (MTA) 8.3
 web UI guidance in the official Configuring and Managing the MTA User
 Interface guide. The MTA UI enables portfolio-level and application-level
 assessment, analysis, tagging, migration wave management, and deployment
 asset generation.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **MTA 8.3**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -118,9 +126,16 @@ target profiles, archetypes, and discovery manifests.
 | Migration | Application inventory, assessment, analysis, migration waves |
 | Administration | Credentials, repositories, proxy, stakeholders, tags, Jira, generators, source platforms |
 
+## Native MTA Agents
+
+Chapter 14 in the 8.3 UI guide adds sandboxed single-agent and multistage
+workflows as Developer Preview. See the current-update section of the
+extraction for prerequisites, Tackle agentic fields and Gateway configuration.
+This is distinct from an analysis task or the existing Hermes migration loop.
+
 ## Workflow
 
-1. Confirm the target MTA version (8.2) and deployment type.
+1. Confirm the target MTA version (8.3) and deployment type.
 2. Read `references/official-doc-extraction.md` for UI procedures.
 3. Identify the task: configuration, assessment, analysis, migration
    wave, platform awareness, or asset generation.

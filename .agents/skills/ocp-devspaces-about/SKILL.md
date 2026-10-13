@@ -2,7 +2,7 @@
 name: ocp-devspaces-about
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "ocp"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -11,7 +11,7 @@ description: >
   Use when documenting, reviewing, or explaining OpenShift Dev Spaces concepts,
   architecture, DevWorkspace operator, workspace lifecycle, supported IDEs,
   and cloud development environment capabilities from the official OpenShift
-  Dev Spaces 3.28 documentation. Do NOT use for installing (use
+  Dev Spaces 3.30 documentation. Do NOT use for installing (use
   ocp-devspaces-install), administration (use ocp-devspaces-admin), user
   workflows (use ocp-devspaces-user-guide), or release notes (use
   ocp-devspaces-release-notes).
@@ -20,8 +20,16 @@ description: >
 # OCP Dev Spaces About
 
 Use this skill to ground OpenShift Dev Spaces conceptual guidance in the
-official Red Hat OpenShift Dev Spaces 3.28 "Discover" guide for the active
+official Red Hat OpenShift Dev Spaces 3.30 "Discover" guide for the active
 baseline in `docs/PLATFORM_BASELINE.md`.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **Dev Spaces 3.30**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -83,8 +91,8 @@ DWO operands: controller-manager deployment and webhook-server deployment.
 6. DWO reconciles the CR, creating pod, services, routes, secrets, PVs
 7. User is redirected to the running workspace IDE
 
-Workspaces are rebuilt from the devfile on each start; `/home/user` persists
-across restarts by default.
+Workspace containers are recreated on start. Persistence depends on the
+selected PVC strategy, mounted volumes and persistUserHome configuration.
 
 ### Gateway
 

@@ -1,3 +1,35 @@
+# Current Verified Guidance — MTA 8.3
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index
+- https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index
+
+## Current decisions
+- Use YAML rules with unique ruleID, labels, effort, category, conditions and actions. XML rules were removed; the 8.3 guide's XML abstract is stale and conflicts with its YAML procedures and release notes.
+- Providers determine supported locations and conditions. Test positive, negative and wildcard-import cases on the actual 8.3 provider. MTA-6530 remains open; no incident is not proof of no use.
+- Use `mta-cli rules test` for current rule-test workflows. Rule labels/source-target filters affect inclusion; retain deterministic test inputs and output identities.
+- Where the guide has conflicting category/support descriptions, verify the actual provider/schema and record the ambiguity. Do not turn historical 8.2 observations into 8.3 guarantees.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+8.3 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep MTA rule authoring content grounded in official

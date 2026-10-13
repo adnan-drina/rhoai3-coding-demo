@@ -2,13 +2,13 @@
 name: ocp-devspaces-admin
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "ocp"
   platform-baseline: "repo"
   ocp-baseline: "repo"
   skill-group: "OpenShift Platform"
 description: >
-  Use when administering Red Hat OpenShift Dev Spaces 3.28, including
+  Use when administering Red Hat OpenShift Dev Spaces 3.30, including
   CheCluster CR customization, storage configuration, workspace limits,
   user management, RBAC, networking, TLS certificates, and monitoring.
   Do NOT use for concepts (use ocp-devspaces-about), installing (use
@@ -19,14 +19,22 @@ description: >
 # OCP Dev Spaces Administration
 
 Use this skill to ground OpenShift Dev Spaces administration guidance in the
-official Red Hat OpenShift Dev Spaces 3.28 Administration Guide.
+official Red Hat OpenShift Dev Spaces 3.30 Configure and Integrate topics.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **Dev Spaces 3.30**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
 Read `references/source-capture.md` before using product behavior. Official Red
 Hat documentation is product authority. Detailed CheCluster CR field values,
 storage strategies, networking, RBAC, monitoring, and troubleshooting procedures
-come from the Administration Guide captured in
+come from the current Configure topics reviewed in
 `references/official-doc-extraction.md`.
 
 ## Key Administration Areas
@@ -43,20 +51,22 @@ each component. Key top-level spec sections:
   defaultNamespace, security, nodeSelector
 - `spec.networking` — hostname, TLS, auth, proxy, domain, labels, annotations
 
-Edit with `oc edit checluster/devspaces -n openshift-devspaces` or `oc patch`.
+For this project edit the Git-managed CheCluster and reconcile with Argo CD;
+inspect the resulting CR to validate the change.
 
 ### Storage Configuration
 
-Three strategies controlled by `spec.devEnvironments.storage.pvc.pvcStrategy`:
+Three strategies controlled by `spec.devEnvironments.storage.pvcStrategy`:
 
-- `per-user` (default) — single RWX PVC shared across all user workspaces
-  (requires ReadWriteMany; default 10Gi)
-- `per-workspace` — each workspace gets its own PVC (default 5Gi)
+- `per-user` (default) — shared user PVC; inspect its access mode and
+  concurrent-workspace restrictions rather than assuming RWX
+- `per-workspace` — each workspace gets its own PVC; size it explicitly
 - `ephemeral` — no persistent storage; changes lost on stop
 
 Storage classes set via `perUserStrategyPvcConfig.storageClass` and
-`perWorkspaceStrategyPvcConfig.storageClass`. Persistent user home
-(`/home/user`) enabled by default via `spec.devEnvironments.persistUserHome`.
+`perWorkspaceStrategyPvcConfig.storageClass`.
+Configure home persistence through `spec.devEnvironments.persistUserHome`;
+verify its schema, mounts and restart behavior rather than assuming a default.
 
 ### Workspace Limits and Quotas
 

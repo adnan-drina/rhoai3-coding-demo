@@ -1,3 +1,38 @@
+# Current Verified Guidance — Dev Spaces 3.30
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-ref_checluster_custom_resource_fields
+- https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_setting_up_the_gitlab_authorized_application
+- https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_applying_the_gitlab_authorized_application_secret
+
+## Current decisions
+- PVC strategy is `spec.devEnvironments.storage.pvcStrategy`, not `storage.pvc.pvcStrategy`. Strategy-specific class/size fields are under `storage.pvc.perUserStrategyPvcConfig` and `perWorkspaceStrategyPvcConfig`.
+- Per-user is the documented default strategy; it does not universally require RWX. Check the actual PVC access mode and concurrent-workspace constraints. Per-workspace storage is the project's selected strategy.
+- Home persistence is configured with `spec.devEnvironments.persistUserHome`; verify its schema rather than inferring filesystem persistence from a workspace start.
+- Change the Git-managed CheCluster, then verify the reconciled state. Do not edit the live Operator-owned deployment as configuration authority.
+- Native GitLab OAuth uses a Secret labeled `app.kubernetes.io/part-of: che.eclipse.org` and `app.kubernetes.io/component: oauth-scm-configuration`, annotated `che.eclipse.org/oauth-scm-server: gitlab` and `che.eclipse.org/scm-server-endpoint: <https-gitlab-url>`, with `id` and `secret` keys.
+- GitLab app callback is `https://<devspaces>/api/oauth/callback`; the guide specifies Confidential, expiring access tokens, and api/write_repository/openid scopes. Create/store values outside Git. OAuth is separate from the user's OpenShift login and the pipeline service identity.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+3.30 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep Dev Spaces administration content grounded in the

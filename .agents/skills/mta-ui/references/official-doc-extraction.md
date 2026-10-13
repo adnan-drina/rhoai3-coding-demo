@@ -1,3 +1,36 @@
+# Current Verified Guidance — MTA 8.3
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index
+- https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/installing_the_migration_toolkit_for_applications/index
+
+## Current decisions
+- Inventory, credentials, assessment questionnaires, archetypes, migration waves, analysis profiles, reports and Task Manager remain separate capabilities. A finished analysis is not a migrated or deployed application.
+- Hub OIDC can federate an external IdP. A fresh MTA install does not require an Operator-created dedicated Keycloak database; verify current roles/scopes rather than copying old tackle-* role mappings.
+- For internal GitLab, bind credentials to the relevant applications and trust the approved certificate chain. Do not use the documented insecure-repository switches as the project's default.
+- Chapter 14 adds MTA Agents (Developer Preview): Agent Sandbox Operator, shared application Git branch with push access, Gateway/provider configuration, skill cards and workflows. Enable with `agentic_enabled`; `agentic_steer_enabled` controls interactive input.
+- A multistage agent workflow hands off through Git and builds/tests in its verification stage. It does not establish HTTP parity, deployment or full release unless those are explicitly measured.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+8.3 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep MTA UI content grounded in official Red Hat

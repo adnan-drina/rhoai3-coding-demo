@@ -1,3 +1,37 @@
+# Current Verified Guidance — Developer Hub 1.10
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index
+- https://access.redhat.com/support/policy/updates/developerhub
+
+## Current decisions
+- Current 1.10 release notes include 1.10.5 and identify Backstage 1.49.4 / Node.js 24. Plugin compatibility and packaging must match the actual RHDH patch and image.
+- Tekton, Quay and scaffolder Quay wrappers are removed from the embedded packages and are Community-supported. The Roadie Argo CD scaffolder wrapper is also removed. Use the officially listed OCI reference and verified digest instead of a guessed ./dynamic-plugins/dist path.
+- The GitLab catalog/org/scaffolder modules listed as bundled are distinct from the Community GitLab UI/backend plugins. Do not infer package availability from a frontend name.
+- Bulk Import repository listing requires the signed-in user's SCM OAuth token; service integration credentials do not substitute. Keep portal OIDC login, GitLab OAuth, catalog discovery and scaffolder credentials separate.
+- The older upgrade guide lists OCP 4.18–4.21, but the current official lifecycle matrix explicitly includes OCP 4.22 for RHDH 1.10. Use the current matrix for support claims. Live upgrade/readiness qualification is still separate.
+- 1.10.5 fixes dynamic-plugin override cleanup, startup SQLite crashes and stale Orchestrator/Lightspeed catalog links. Verify loaded packages and rendered configuration after upgrade, not only the CSV phase.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+1.10 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep RHDH 1.10 release note content grounded in official

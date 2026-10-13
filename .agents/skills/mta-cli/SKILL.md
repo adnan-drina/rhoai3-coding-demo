@@ -2,7 +2,7 @@
 name: mta-cli
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "mta"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -17,7 +17,15 @@ description: >
 # MTA CLI
 
 Use this skill for command-line application analysis, transformation, and
-platform asset generation with Migration Toolkit for Applications (MTA) 8.2.
+platform asset generation with Migration Toolkit for Applications (MTA) 8.3.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **MTA 8.3**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -40,8 +48,8 @@ generating deployment manifests, and reviewing analysis reports.
 
 ### Containerless Mode
 
-Default for Java applications. Runs analysis directly on the local machine
-without Podman or Docker. Requires `mvn` on `PATH` and `JVM_MAX_MEM` set.
+Default for Java applications. Requires JDK 17+, Maven 3.9.9+, JAVA_HOME,
+`mvn` on PATH and an explicitly sized JVM_MAX_MEM.
 Disable with `--run-local=false` to use container runtime.
 
 ### Container Mode
@@ -66,15 +74,14 @@ technologies, custom rules, and label selectors.
    - Non-Java language analysis
    - Profile-based analysis from MTA Hub
 5. Run analysis and review reports.
-6. Optionally run transformations (`transform openrewrite`).
+6. Optionally run transformations (`openrewrite`).
 7. Optionally generate deployment manifests (`discover` / `generate helm`).
 
 ### Single Application Analysis
 
-Prefer `--target` only when unlabeled custom rules must participate (MTA 7.1
-documents that `--source`/`--target` exclude unlabeled rules; 8.2 docs omit
-that note but 8.2 runs still show the behavior — see
-`references/official-doc-extraction.md`):
+Select the intended target and confirm that all required rules match the
+source/target label filters. Unlabeled-rule behavior measured on 8.2 does
+not qualify 8.3; verify inclusion on the upgraded provider:
 
 ```shell
 mta-cli analyze --input <path_to_input> \
@@ -82,12 +89,12 @@ mta-cli analyze --input <path_to_input> \
   --target <target_name>
 ```
 
-Add `--source` only when every needed rule carries a matching source label.
+When adding `--source`, verify matching source labels and the actual rules selected.
 
 ### List Available Targets
 
-8.2 docs lead with the rules subcommand; the analyze flag form may still work
-— confirm on the installed binary:
+8.3 uses the rules subcommand; the analyze flag is a deprecated
+compatibility form, not the default for new scripts:
 
 ```shell
 mta-cli rules list-targets
@@ -107,16 +114,16 @@ mta-cli analyze --input <path_to_input> \
 
 ```shell
 mta-cli config login
-mta-cli config sync --url https://github.com/<repo> \
-  --application-path <path> --insecure
+mta-cli config sync --url https://<git-host>/<group>/<repo> \
+  --application-path <path>
 mta-cli analyze -i <path> -o <report_path> --overwrite --mode source-only
 ```
 
 ### Source Code Transformation
 
 ```shell
-mta-cli transform openrewrite --list-targets
-mta-cli transform openrewrite --input=<source_path> --target=<recipe>
+mta-cli openrewrite --list-targets
+mta-cli openrewrite --input=<source_path> --target=<recipe>
 ```
 
 Requires container runtime. Available recipes: `javax`-to-`jakarta` imports,
@@ -174,8 +181,8 @@ mta-cli generate helm --chart-dir <chart> --input <discovery.yaml> \
 ```shell
 mta-cli rules list-targets
 mta-cli analyze --list-targets
-mta-cli analyze --list-providers
-mta-cli analyze --list-sources
+mta-cli provider list
+mta-cli rules list-sources
 ```
 
 ## Known Issues

@@ -1,66 +1,28 @@
 # Source Capture
 
-## Official Sources
-
 | Field | Value |
-|-------|-------|
-| Product family | Red Hat OpenShift Pipelines |
-| Baseline source | `docs/PLATFORM_BASELINE.md` |
-| Documentation category | About |
-| Official guide | About OpenShift Pipelines |
-| Source URL | https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html-single/about_openshift_pipelines/index |
-| Multi-page URL | https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/about_openshift_pipelines/index |
-| Capture date | 2026-07-06 |
+|---|---|
+| Product | OpenShift Pipelines |
+| Documentation version | 1.24 |
+| Baseline authority | `docs/PLATFORM_BASELINE.md` |
+| Reviewed | 2026-10-13 |
+| Source type | Public versioned Red Hat documentation, browser/search-tool rendered content |
+| Retrieval | Browser read succeeded; direct HTTP and some search-tool routes were denied. No inaccessible page was treated as captured. |
+| Scope | Current decisions in `official-doc-extraction.md`; earlier detailed extraction retained with its original provenance |
+| Qualification | Documentation review only; no live installation, workload or model test |
 
-## Captured Sections
+## Official sources read
 
-From About OpenShift Pipelines:
+- https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index
+- https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index
 
-- Chapter 1: About Red Hat OpenShift Pipelines (product overview, release cadence note)
-- Chapter 2: Understanding OpenShift Pipelines
-  - Key features
-  - Tasks (steps, pods, containers)
-  - When expressions (input, operator, values)
-  - Finally tasks (parallel execution after pipeline tasks)
-  - TaskRun (instantiation, automatic creation by PipelineRun)
-  - Pipelines (task ordering, runAfter, workspaces, params)
-  - PipelineRun (binding, status tracking, volumeClaimTemplate)
-  - Pod templates (PipelineRun and TaskRun, securityContext)
-  - Workspaces (declaration, backing storage, sharing)
-  - StepActions (reusable step definitions, resolvers, env-based params)
-  - Triggers (TriggerBinding, TriggerTemplate, Trigger, EventListener, interceptors)
+## Sections and boundaries
 
-## Source Boundaries
+Read the matching workflow's prerequisites, configuration/usage and verification
+sections and the current release/support changes recorded in the extraction.
+Keep documented previews, deprecated commands, historical observations and
+project-specific GitOps policy distinct. Exact installed patches, image digests,
+extension packages and operator schemas require deployment qualification.
 
-This skill covers the "About OpenShift Pipelines" guide only. It provides
-conceptual understanding of Tekton CRDs, pipeline architecture, and trigger
-components. It does not cover:
-
-- Installation and configuration (separate guide)
-- Creating CI/CD solutions with pipelines (separate guide)
-- Pipelines as Code (separate guide)
-- Security (separate guide)
-- Observability (separate guide)
-- Resolver configuration details beyond basic references
-
-## API Versions Documented
-
-| Resource | API Version |
-|----------|-------------|
-| Task | `tekton.dev/v1` |
-| TaskRun | `tekton.dev/v1` |
-| Pipeline | `tekton.dev/v1` |
-| PipelineRun | `tekton.dev/v1` |
-| StepAction | `tekton.dev/v1` |
-| TriggerBinding | `triggers.tekton.dev/v1` |
-| TriggerTemplate | `triggers.tekton.dev/v1` |
-| Trigger | `triggers.tekton.dev/v1` |
-| EventListener | `triggers.tekton.dev/v1` |
-
-## Related Official Sources To Add Later
-
-- Installing and configuring OpenShift Pipelines
-- Creating CI/CD solutions for applications using OpenShift Pipelines
-- Pipelines as Code documentation
-- OpenShift Pipelines security documentation
-- OpenShift Pipelines observability documentation
+The detailed reference is not a claim that every older paragraph was recaptured.
+The current decisions identify the verified updates and take precedence.

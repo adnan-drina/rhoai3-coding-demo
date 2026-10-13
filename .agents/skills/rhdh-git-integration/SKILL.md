@@ -2,7 +2,7 @@
 name: rhdh-git-integration
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "rhdh"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -21,6 +21,15 @@ description: >
 Configure Red Hat Developer Hub 1.10 to integrate with GitHub and GitLab
 Git providers for repository discovery, catalog entity ingestion, and bulk
 import workflows.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **Developer Hub 1.10**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
+
 
 ## When to Use
 

@@ -2,7 +2,7 @@
 name: mta-vscode
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "mta"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -16,11 +16,19 @@ description: >
 
 # MTA VS Code Extension
 
-Use this skill to ground Migration Toolkit for Applications (MTA) 8.2
+Use this skill to ground Migration Toolkit for Applications (MTA) 8.3
 VS Code extension guidance in the official Configuring and Using the
 Visual Studio Code Extension for MTA guide. The extension enables
 in-IDE application analysis, issue identification, and guided code
 remediation for migration and modernization.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **MTA 8.3**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -112,7 +120,7 @@ Resolution workflow:
 
 ## Workflow
 
-1. Confirm the target MTA version (8.2).
+1. Confirm the target MTA version (8.3).
 2. Read `references/official-doc-extraction.md` for extension procedures.
 3. Identify the task: installation, configuration, analysis, issue
    resolution, or Hub connection.

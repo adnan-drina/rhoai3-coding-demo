@@ -2,7 +2,7 @@
 name: mta-intellij
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "mta"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -17,11 +17,19 @@ description: >
 
 # MTA IntelliJ IDEA Plugin
 
-Use this skill to ground Migration Toolkit for Applications (MTA) 8.2 IntelliJ
+Use this skill to ground Migration Toolkit for Applications (MTA) 8.3 IntelliJ
 IDEA plugin guidance in the official IntelliJ IDEA Plugin Guide. The MTA plugin
 analyzes projects using customizable rulesets, marks issues in source code,
 provides guidance to fix issues, and offers automatic code replacement where
 possible.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **MTA 8.3**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -74,7 +82,7 @@ Supported migration paths include:
    Otherwise, right-click a configuration and select **New configuration**.
 3. Complete configuration fields:
    - **CLI**: path to the `mta-cli` executable (e.g.,
-     `$HOME/mta-cli-8.1.2.GA-redhat/bin/mta-cli`)
+     `<reviewed-install-dir>/mta-cli`)
    - **Input**: click **Add** and enter the input file or directory
    - **Target**: select one or more target migration paths
 4. Right-click the new configuration and select **Run Analysis**.

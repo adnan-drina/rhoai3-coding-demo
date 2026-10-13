@@ -2,7 +2,7 @@
 name: ocp-pipelines-security
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "ocp"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -11,7 +11,7 @@ description: >
   Use when securing OpenShift Pipelines: Tekton Chains supply chain security,
   SLSA provenance, image signing, OCI storage, transparency logs, secret
   management, Git SSH authentication, pipeline authentication with repositories,
-  and security contexts for OpenShift Pipelines 1.22. Do NOT use for installing
+  and security contexts for OpenShift Pipelines 1.24. Do NOT use for installing
   pipelines (use ocp-pipelines-install-config), creating CI/CD pipelines (use
   ocp-pipelines-cicd), or Pipelines as Code (use ocp-pipelines-as-code).
 ---
@@ -19,8 +19,16 @@ description: >
 # OCP Pipelines Security
 
 Use this skill to ground OpenShift Pipelines security guidance in the
-official Red Hat OpenShift Pipelines 1.22 securing guide for the active
+official Red Hat OpenShift Pipelines 1.24 securing guide for the active
 baseline in `docs/PLATFORM_BASELINE.md`.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **OpenShift Pipelines 1.24**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -141,7 +149,7 @@ unprivileged builds.
 
 ## Related Skills
 
-- Use `ocp-pipelines-release-notes` for OpenShift Pipelines 1.22 release notes,
+- Use `ocp-pipelines-release-notes` for OpenShift Pipelines 1.24 release notes,
   version compatibility, and known issues.
 - Use `ocp-cicd-builds` for OpenShift build strategies and BuildConfig.
 - Use `ocp-gitops-operator` for OpenShift GitOps and Argo CD behavior.
