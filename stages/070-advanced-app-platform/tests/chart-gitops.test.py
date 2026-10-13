@@ -112,6 +112,20 @@ class NativeDelivery(unittest.TestCase):
 
 
 class BootstrapLifecycle(unittest.TestCase):
+    def test_backup_policy_uses_bound_account_identity_not_a_guessed_email(self):
+        claim={'spec':{'objectBucketName':'obc-gitlab-system-gitlab-backups'}}
+        obj={'spec':{'endpoint':{'bucketName':'owned'},'additionalState':{'arn':'arn:aws:iam::'+'a'*24+':root'}}}
+        with patch.object(bootstrap,'oc',return_value=obj) as read:
+            self.assertEqual(bootstrap.backup_principal(claim,'owned'),obj['spec']['additionalState']['arn'])
+            read.assert_called_once_with('get','objectbucket','obc-gitlab-system-gitlab-backups','-o','json')
+            with self.assertRaises(RuntimeError):bootstrap.backup_principal(claim,'foreign')
+        with patch.object(bootstrap,'oc') as read:
+            with self.assertRaises(RuntimeError):bootstrap.backup_principal({'spec':{'objectBucketName':'foreign'}},'owned')
+            read.assert_not_called()
+        obj['spec']['additionalState']['arn']='*'
+        with patch.object(bootstrap,'oc',return_value=obj):
+            with self.assertRaises(RuntimeError):bootstrap.backup_principal(claim,'owned')
+
     def setUp(self):
         self.target = {'gitlabVersion': 'v19.4.2', 'gitlabChartVersion': '10.4.2'}
 

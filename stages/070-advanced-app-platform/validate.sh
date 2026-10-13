@@ -46,7 +46,7 @@ done
 
 log_step 'GitLab native deployment and scoped NooBaa storage'
 check 'GitLab release recorded after migrations/readiness' \
-  "oc get configmap gitlab-gitlab-chart-info -n gitlab-system -o jsonpath='{.data.gitlabVersion}'" 'v19.4.2'
+  "oc get configmap gitlab-gitlab-chart-info -n gitlab-system -o jsonpath='{.data.gitlabVersion}' | sed 's/^v//'" '19.4.2'
 check 'GitLab webservice ready' "oc get deployment gitlab-webservice-default -n gitlab-system -o jsonpath='{.status.readyReplicas}'" '1'
 check 'GitLab Gitaly ready' "oc get statefulset gitlab-gitaly -n gitlab-system -o jsonpath='{.status.readyReplicas}'" '1'
 check 'GitLab sidekiq ready' "oc get deployment gitlab-sidekiq-all-in-1-v2 -n gitlab-system -o jsonpath='{.status.readyReplicas}'" '1'

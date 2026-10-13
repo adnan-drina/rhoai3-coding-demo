@@ -102,10 +102,23 @@ def runtime_data(templates, host, domain, claims):
     return result
 
 
-def put_temp_policy(endpoint, bucket, access, key, backup_bucket):
+def backup_principal(claim, bucket):
+    name = claim.get('spec', {}).get('objectBucketName')
+    if name != 'obc-gitlab-system-gitlab-backups':
+        raise RuntimeError('Backup ObjectBucket identity differs from its scoped claim')
+    obj = oc('get', 'objectbucket', name, '-o', 'json')
+    if obj.get('spec', {}).get('endpoint', {}).get('bucketName') != bucket:
+        raise RuntimeError('Backup ObjectBucket does not name the claimed bucket')
+    principal = obj['spec'].get('additionalState', {}).get('arn', '')
+    if not re.fullmatch(r'arn:aws:iam::[0-9a-f]{24}:root', principal):
+        raise RuntimeError('Backup ObjectBucket has no supported account ARN')
+    return principal
+
+
+def put_temp_policy(endpoint, bucket, access, key, principal):
     """Grant only the backup OBC account access to the separate temporary bucket."""
     body = json.dumps({'Version': '2012-10-17', 'Statement': [{
-        'Effect': 'Allow', 'Principal': {'AWS': ['obc-account.' + backup_bucket + '@noobaa.io']},
+        'Effect': 'Allow', 'Principal': {'AWS': [principal]},
         'Action': ['s3:ListBucket', 's3:GetObject', 's3:PutObject', 's3:DeleteObject',
                    's3:AbortMultipartUpload', 's3:ListBucketMultipartUploads', 's3:ListMultipartUploadParts'],
         'Resource': ['arn:aws:s3:::' + bucket, 'arn:aws:s3:::' + bucket + '/*']}]}).encode()
@@ -151,6 +164,7 @@ def main():
     secret('gitlab-cache', {'password': secrets.token_urlsafe(32)})
     secret('gitlab-initial-root', {'password': secrets.token_urlsafe(32)})
     claims = {}
+    backup_claim = None
     for feature in FEATURES:
         for attempt in range(90):
             obc = oc('get', 'obc', 'gitlab-' + feature, '-n', NAMESPACE, '-o', 'json')
@@ -163,6 +177,8 @@ def main():
         credentials = oc('get', 'secret', 'gitlab-' + feature, '-n', NAMESPACE, '-o', 'json')['data']
         decode = lambda name: base64.b64decode(credentials[name]).decode()
         claims[feature] = (config['BUCKET_NAME'], decode('AWS_ACCESS_KEY_ID'), decode('AWS_SECRET_ACCESS_KEY'))
+        if feature == 'backups':
+            backup_claim = obc
     host = oc('get', 'route', 's3', '-n', 'openshift-storage', '-o', 'json')['spec']['host']
     endpoint = 'https://' + host
     for feature in FEATURES[:4]:
@@ -172,7 +188,7 @@ def main():
             'aws_secret_access_key': key, 'endpoint': endpoint, 'path_style': True,
             'enable_signature_v4_streaming': False})}, derived=True)
     bucket, access, key = claims['backup-tmp']
-    put_temp_policy(endpoint, bucket, access, key, claims['backups'][0])
+    put_temp_policy(endpoint, bucket, access, key, backup_principal(backup_claim, claims['backups'][0]))
     _, access, key = claims['backups']
     secret('gitlab-storage-backups', {'config': f'[default]\naccess_key = {access}\nsecret_key = {key}\nhost_base = {host}\nhost_bucket = {host}\nuse_https = True\nsignature_v2 = False\nbucket_location = us-east-1\n'}, derived=True)
     domain = oc('get', 'ingress.config.openshift.io', 'cluster', '-o', 'json')['spec']['domain']
