@@ -13,7 +13,7 @@ def run(args,payload=None):
  assert r.returncode==0,'Native delegation API operation failed'
  return json.loads(r.stdout) if r.stdout.strip() else None
 a=run(['get','applications.argoproj.io',name,'-n',ns,'-o','json']);spec=a['spec'];source=copy.deepcopy(spec['source']);status=a['status'];op=status.get('operationState',{});result=op.get('syncResult',{})
-bridges={'882f327fb25dd047ca7144058b6cca46e693df3a':'gitops/stages/030-private-model-serving/migration/foundation-omit','eb75e6654ab73734c59b576235801561973efd2f':'gitops/stages/050-model-evaluation/migration/foundation-omit'}
+bridges={'882f327fb25dd047ca7144058b6cca46e693df3a':'gitops/stages/030-private-model-serving/migration/foundation-omit','eb75e6654ab73734c59b576235801561973efd2f':'gitops/stages/050-model-evaluation/migration/foundation-omit','c33790242e05da96dc4349373b154074e2277192':'gitops/stages/050-model-evaluation/migration/foundation-omit'}
 assert bridges.get(source['targetRevision'])==source['path'],'Expected reviewed retained-foundation bridge'
 assert status['sync']['status']=='Synced' and status['sync']['revision']==source['targetRevision'] and status['health']['status']=='Healthy' and op.get('phase')=='Succeeded' and result.get('revision')==source['targetRevision'] and result.get('source',{}).get('path')==source['path'],'Retained foundation has not reconciled'
 assert not a['metadata'].get('ownerReferences') and not a['metadata'].get('deletionTimestamp') and not spec.get('sources') and source['repoURL']==os.environ['GIT_REPO_URL'] and spec['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'} and spec['project']=='rhoai-demo' and 'RespectIgnoreDifferences=true' in spec['syncPolicy']['syncOptions'],'Unexpected foundation ownership'
