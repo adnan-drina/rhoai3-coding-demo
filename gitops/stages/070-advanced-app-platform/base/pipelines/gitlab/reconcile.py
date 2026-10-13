@@ -43,6 +43,11 @@ def scanner_binding(secret, name, project_id):
     return secret
 
 
+def sonar_token_project(token):
+    project = token.get('project')
+    return project.get('key') if isinstance(project, dict) else None
+
+
 def ensure_project_scanner(name, ns, project_id):
     # Only the platform-pinned bootstrap receives this control credential.
     # Source-controlled Maven and IDE containers receive a project analysis token.
@@ -67,7 +72,7 @@ def ensure_project_scanner(name, ns, project_id):
     if stored is not None:
         scanner_binding(stored, name, project_id)
         if (len(match) != 1 or match[0].get('type') != 'PROJECT_ANALYSIS_TOKEN'
-                or match[0].get('projectKey') != name
+                or sonar_token_project(match[0]) != name
                 or base64.b64decode(stored['data']['host']).decode() != host
                 or not Sonar(host, base64.b64decode(stored['data']['token']).decode()).request(
                     'GET', 'authentication/validate').get('valid')):
@@ -81,7 +86,7 @@ def ensure_project_scanner(name, ns, project_id):
         raise ValueError('Sonar did not emit a project analysis token')
     emitted = [t for t in sonar.request('GET', 'user_tokens/search')['userTokens'] if t['name'] == token_name]
     if (len(emitted) != 1 or emitted[0].get('type') != 'PROJECT_ANALYSIS_TOKEN'
-            or emitted[0].get('projectKey') != name):
+            or sonar_token_project(emitted[0]) != name):
         raise ValueError('Emitted token metadata is not bound to this Sonar project')
     doc = resource('Secret', 'sonarqube-credentials', ns, {'type': 'Opaque',
         'stringData': {'host': host, 'token': token['token']}}, 'v1')

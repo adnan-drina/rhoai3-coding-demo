@@ -29,7 +29,7 @@ class Scope(unittest.TestCase):
             if path == 'user_tokens/search': return {'userTokens': self.tokens}
             if path == 'authentication/validate': return {'valid': True}
             if path == 'user_tokens/generate':
-                self.tokens = [dict(data)]
+                self.tokens = [{'name':data['name'], 'type':data['type'], 'project': {'key':data['projectKey']}}]
                 return {**data, 'token': 'project-only-secret'}
             raise AssertionError(path)
         self.client.request.side_effect = request
@@ -54,17 +54,22 @@ class Scope(unittest.TestCase):
         self.assertEqual(len(self.writes), 1)
 
     def test_lost_secret_never_rotates_an_existing_token(self):
-        self.tokens = [{'name': 'gitlab-project-42', 'type': 'PROJECT_ANALYSIS_TOKEN', 'projectKey': 'example'}]
+        self.tokens = [{'name': 'gitlab-project-42', 'type': 'PROJECT_ANALYSIS_TOKEN', 'project': {'key': 'example'}}]
         with self.assertRaisesRegex(ValueError, 'without its Secret'): self.ensure()
         self.assertFalse(self.writes)
         self.assertFalse(any(c[0] == 'POST' for c in self.calls))
 
     def test_foreign_or_user_token_cannot_be_reused(self):
         self.ensure()
-        for change in ({'type': 'USER_TOKEN'}, {'projectKey': 'foreign'}):
-            self.tokens = [{'name': 'gitlab-project-42', 'type': 'PROJECT_ANALYSIS_TOKEN', 'projectKey': 'example', **change}]
+        for change in ({'type': 'USER_TOKEN'}, {'project': {'key': 'foreign'}}):
+            self.tokens = [{'name': 'gitlab-project-42', 'type': 'PROJECT_ANALYSIS_TOKEN', 'project': {'key': 'example'}, **change}]
             with self.assertRaises(ValueError): self.ensure()
         self.assertEqual(len(self.writes), 1)
+
+    def test_top_level_project_key_does_not_substitute_for_server_metadata(self):
+        self.ensure()
+        self.tokens = [{'name': 'gitlab-project-42', 'type': 'PROJECT_ANALYSIS_TOKEN', 'projectKey': 'example'}]
+        with self.assertRaises(ValueError): self.ensure()
 
     def test_missing_control_and_malformed_binding_fail_closed(self):
         self.control['data'].pop('token')
