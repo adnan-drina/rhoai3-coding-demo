@@ -5,7 +5,7 @@
 # openshift-v4 identity provider, demo users) is applied idempotently by the
 # configure-platform-identity Sync job against the Admin API.
 # Ref: https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/operator_guide/realm-import-
-apiVersion: k8s.keycloak.org/v2beta1
+apiVersion: k8s.keycloak.org/v2alpha1
 kind: KeycloakRealmImport
 metadata:
   name: platform-realm

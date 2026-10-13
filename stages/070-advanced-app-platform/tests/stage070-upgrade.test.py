@@ -243,6 +243,20 @@ class IntegratedContract(unittest.TestCase):
 
 
 
+class InitialInstall(unittest.TestCase):
+    def test_reused_keycloak_served_import_api(self):
+        realm = yaml.safe_load((BASE / 'identity/rhbk-instance/realm-platform.yaml').read_text())
+        self.assertEqual(realm['apiVersion'], 'k8s.keycloak.org/v2alpha1')
+        self.assertEqual(realm['spec']['keycloakCRName'], 'keycloak')
+
+    def test_native_tasks_follow_operator_install(self):
+        for path in (BASE / 'pipelines/project-pipeline').glob('*.yaml'):
+            for resource in yaml.safe_load_all(path.read_text()):
+                if isinstance(resource, dict) and resource.get('kind') in ('Task', 'Pipeline'):
+                    with self.subTest(resource=resource['metadata']['name']):
+                        self.assertGreaterEqual(int(resource['metadata'].get('annotations', {}).get('argocd.argoproj.io/sync-wave', '0')), 20)
+
+
 class HookRuntime(unittest.TestCase):
     def test_python36_subprocess_contract(self):
         # The exact pinned ose-cli image runs Python 3.6. Newer keyword aliases

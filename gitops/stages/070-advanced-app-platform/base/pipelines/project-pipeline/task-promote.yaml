@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: promote-gitlab-runtime
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
 spec:
   params:
     - name: IMAGE

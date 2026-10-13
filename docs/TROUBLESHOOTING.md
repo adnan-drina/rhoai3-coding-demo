@@ -2772,3 +2772,7 @@ A non-root Buildah failure requires the actual TaskRun Pod, applied SCC, user-na
 **Symptom:** the first Argo reader hook raises `TypeError: __init__() got an unexpected keyword argument 'text'`.
 
 The pinned `ose-cli` image uses Python 3.6. All Stage 070 Python hooks use `universal_newlines=True` and explicit `stdout`/`stderr` pipes rather than the Python 3.7 aliases. Publish that source correction and resync the failed hook; do not skip setup or invent readiness. The focused hook-runtime test guards the shared scripts.
+
+## Stage 070 first sync cannot map the realm import or promotion Task
+
+The reused RHBK 26.4 operator serves `KeycloakRealmImport` at `k8s.keycloak.org/v2alpha1`; use the served API rather than the Keycloak resource's API. Native Tasks and Pipelines wait at wave 20, after the Pipelines operator and CRDs. A missing-resource dry-run exception cannot make an early actual apply succeed. Publish the API/order correction and retry Stage 070 through Argo; do not install a second identity operator or apply Tasks outside GitOps.
