@@ -2792,3 +2792,9 @@ An absent federated-identity link returns 404 to DELETE. The hook now measures t
 ## Stage 070 shared-namespace upgrades or MaaS discovery refuse
 
 Pipelines and TAS keep Automatic approval on versioned channels in the shared `openshift-operators` namespace. Dedicated Dev Spaces/RHDH/MTA installs use the exact reviewed allowlist, including DWO 0.43.0; their approval hook does not approve unrelated shared-namespace plans. MaaS consumers select the unique listener with a `maas.` hostname, independent of the listener name; zero or multiple matches refuse. Historical analyzer nonzero exceptions remain limited to the measured 8.2.1 defect and do not waive MTA 8.3 failures.
+
+### Stage 070 review hold and project setup
+
+If full installation is paused, inspect the Stage 070 Application’s automation and operation state before interpreting missing operands as runtime failures. Operator-only selective sync does not enroll projects. A project request remains pending until the platform-pinned child Application is Synced at its exact revision and its bootstrap operation succeeds; Healthy resources alone are insufficient. Admission refusal of a foreign source, renderer patch, credential name or migration identity must be retained as a refusal, not worked around by a broader AppProject/Role.
+
+After a failed retirement, keep the immutable platform retirement record, failed PipelineRun and namespace. The deterministic run is not recreated by repeating the helper; diagnose the failure and review a native retry. A missing namespace can be resolved through the preserved identity, never through a guessed registration. Models remain stopped throughout Stage 070 deployment and resource validation.

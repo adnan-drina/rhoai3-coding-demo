@@ -1,0 +1,190 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../project-pipeline
+- ../gitlab
+- parameters.yaml
+- serviceaccount.yaml
+- role.yaml
+- rolebinding.yaml
+- platform-input-binding.yaml
+- run-provisioning-binding.yaml
+- delivery-role.yaml
+- delivery-binding.yaml
+- readback-role.yaml
+- readback-binding.yaml
+- listener-sa.yaml
+- listener-role.yaml
+- listener-binding.yaml
+- listener-cluster-binding.yaml
+- job.yaml
+- run-provisioning-role.yaml
+replacements:
+- source:
+    kind: ConfigMap
+    name: project-enrollment-request
+    fieldPath: metadata.annotations.[rhoai3.io/project-namespace]
+  targets:
+  - select:
+      kind: ServiceAccount
+    fieldPaths:
+    - metadata.namespace
+    options:
+      create: true
+  - select:
+      kind: Task
+    fieldPaths:
+    - metadata.namespace
+    options:
+      create: true
+  - select:
+      kind: Pipeline
+    fieldPaths:
+    - metadata.namespace
+    options:
+      create: true
+  - select:
+      kind: ConfigMap
+    fieldPaths:
+    - metadata.namespace
+    options:
+      create: true
+  - select:
+      kind: PersistentVolumeClaim
+    fieldPaths:
+    - metadata.namespace
+    options:
+      create: true
+  - select:
+      kind: ImageStream
+    fieldPaths:
+    - metadata.namespace
+    options:
+      create: true
+  - select:
+      kind: Job
+    fieldPaths:
+    - metadata.namespace
+    options:
+      create: true
+  - select:
+      kind: Role
+      name: ^(project-enrollment|gitlab-listener|pipeline-read-build-config|harness-pipeline-observer)$
+    fieldPaths:
+    - metadata.namespace
+    options:
+      create: true
+  - select:
+      kind: RoleBinding
+      name: ^(project-enrollment|gitlab-listener|pipeline-.*|harness-pipeline-observer)$
+    fieldPaths:
+    - metadata.namespace
+    options:
+      create: true
+  - select:
+      kind: RoleBinding
+      name: ^(unassigned\..*|gitlab-listener|pipeline-image-builder|pipeline-userns-builder|pipeline-read-build-config|project-enrollment)$
+    fieldPaths:
+    - subjects.0.namespace
+    options:
+      create: true
+  - select:
+      kind: ClusterRoleBinding
+    fieldPaths:
+    - subjects.0.namespace
+    options:
+      create: true
+- source:
+    kind: ConfigMap
+    name: project-enrollment-request
+    fieldPath: metadata.annotations.[rhoai3.io/project-name]
+  targets:
+  - select:
+      kind: ImageStream
+      name: application-image
+    fieldPaths:
+    - metadata.name
+- source:
+    kind: ConfigMap
+    name: project-enrollment-request
+    fieldPath: metadata.annotations.[rhoai3.io/project-name]
+  targets:
+  - select:
+      kind: Role
+      name: ^unassigned\.delivery$
+    fieldPaths:
+    - rules.1.resourceNames.0
+    options:
+      delimiter: '-'
+      index: 3
+  - select:
+      kind: Role
+      name: ^unassigned\.delivery$
+    fieldPaths:
+    - rules.3.resourceNames.0
+    options:
+      delimiter: '-'
+      index: 1
+  - select:
+      kind: Role
+      name: ^unassigned\.readback$
+    fieldPaths:
+    - rules.0.resourceNames.0
+    options:
+      delimiter: '-'
+      index: 1
+  - select:
+      kind: Role
+      name: ^unassigned\.runs$
+    fieldPaths:
+    - rules.0.resourceNames.0
+    options:
+      delimiter: '-'
+      index: 2
+- source:
+    kind: ConfigMap
+    name: project-enrollment-request
+    fieldPath: metadata.annotations.[rhoai3.io/project-name]
+  targets:
+  - select:
+      kind: Role
+      name: ^unassigned\..*
+    fieldPaths:
+    - metadata.name
+    options:
+      delimiter: .
+      index: 0
+- source:
+    kind: ConfigMap
+    name: project-enrollment-request
+    fieldPath: metadata.annotations.[rhoai3.io/project-name]
+  targets:
+  - select:
+      kind: RoleBinding
+      name: ^unassigned\.(delivery|readback|runs)$
+    fieldPaths:
+    - roleRef.name
+    options:
+      delimiter: .
+      index: 0
+  - select:
+      kind: RoleBinding
+      name: ^unassigned\..*
+    fieldPaths:
+    - metadata.name
+    options:
+      delimiter: .
+      index: 0
+- source:
+    kind: ConfigMap
+    name: project-enrollment-request
+    fieldPath: metadata.annotations.[rhoai3.io/project-name]
+  targets:
+  - select:
+      kind: ClusterRoleBinding
+      name: ^unassigned\..*
+    fieldPaths:
+    - metadata.name
+    options:
+      delimiter: .
+      index: 0

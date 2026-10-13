@@ -93,6 +93,3 @@ spec:
       value: $(tasks.build-and-push.results.IMAGE_URL)
     - name: SOURCE_COMMIT
       value: $(tasks.clone-source.results.COMMIT)
-    workspaces:
-    - name: source
-      workspace: source

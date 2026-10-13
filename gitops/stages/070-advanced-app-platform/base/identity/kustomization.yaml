@@ -1,6 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - rhbk-instance/oauthclient.yaml
-  - rhbk-instance/realm-platform.yaml
-  - jobs/configure-platform-identity.yaml
+- rhbk-instance/oauthclient.yaml
+- rhbk-instance/realm-platform.yaml
+- jobs/configure-platform-identity.yaml
+- jobs/scm-identity-role.yaml
+- jobs/scm-identity-binding.yaml
+configMapGenerator:
+- name: stage070-scm-identity
+  namespace: keycloak
+  files:
+  - jobs/configure-scm-identity.py

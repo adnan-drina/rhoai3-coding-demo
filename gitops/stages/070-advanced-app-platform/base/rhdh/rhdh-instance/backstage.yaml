@@ -37,6 +37,10 @@ spec:
     extraFiles:
       mountPath: /opt/app-root/src
       configMaps:
+        - name: rhdh-rbac-policies
+          mountPath: /opt/app-root/src/rbac
+          containers:
+            - backstage-backend
         - name: catalog-runtime-rhdh
           mountPath: /opt/app-root/src/catalog
           containers:

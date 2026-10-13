@@ -63,18 +63,11 @@ def validate_request(row, project, commit, group_id, import_receipt=None):
 
 
 def resource(kind, name, ns, spec, api='rbac.authorization.k8s.io/v1'):
-    return {'apiVersion': api, 'kind': kind, 'metadata': {'name': name, 'namespace': ns}, **spec}
+    return {'apiVersion': api, 'kind': kind, 'metadata': {'name': name, 'namespace': ns, 'labels': {'app.kubernetes.io/part-of':'developer-platform','app.kubernetes.io/managed-by':'argocd','demo.rhoai.io/stage':'070'}}, **spec}
 
 
 def trigger_resources(name, ns, project_id, repo, sha):
     listener = 'gitlab-listener'
-    role = resource('Role', listener, ns, {'rules': [
-        {'apiGroups': ['tekton.dev'], 'resources': ['pipelineruns'], 'verbs': ['create']},
-        {'apiGroups': [''], 'resources': ['secrets'], 'resourceNames': ['gitlab-webhook'], 'verbs': ['get']},
-        {'apiGroups': ['triggers.tekton.dev'], 'resources': ['eventlisteners', 'triggerbindings', 'triggertemplates', 'triggers', 'interceptors'], 'verbs': ['get', 'list', 'watch']} ]})
-    subject = [{'kind': 'ServiceAccount', 'name': listener, 'namespace': ns}]
-    binding = resource('RoleBinding', listener, ns, {'roleRef': {'apiGroup': 'rbac.authorization.k8s.io', 'kind': 'Role', 'name': listener}, 'subjects': subject})
-    cluster_binding = {'apiVersion': 'rbac.authorization.k8s.io/v1', 'kind': 'ClusterRoleBinding', 'metadata': {'name': 'gitlab-listener-' + name}, 'subjects': subject, 'roleRef': {'apiGroup': 'rbac.authorization.k8s.io', 'kind': 'ClusterRole', 'name': 'tekton-triggers-eventlistener-clusterroles'}}
     template = resource('TriggerTemplate', 'gitlab-push', ns, {'spec': {'params': [{'name': 'revision'}], 'resourcetemplates': [pipeline_run(name, ns, project_id, repo, '$(tt.params.revision)')] }}, 'triggers.tekton.dev/v1beta1')
     event = resource('EventListener', 'gitlab', ns, {'spec': {'serviceAccountName': listener, 'triggers': [{
         'name': 'registered-main-push', 'interceptors': [
@@ -82,7 +75,7 @@ def trigger_resources(name, ns, project_id, repo, sha):
             {'ref': {'name': 'cel'}, 'params': [{'name': 'filter', 'value': f"body.project.id == {project_id} && body.project.git_http_url == '{repo}' && body.ref == 'refs/heads/main' && has(body.checkout_sha) && body.checkout_sha.matches('^[0-9a-f]{{40}}$') && body.checkout_sha != '{'0'*40}'"}]}],
         'bindings': [{'name': 'revision', 'value': '$(body.checkout_sha)'}], 'template': {'ref': 'gitlab-push'}}]}}, 'triggers.tekton.dev/v1beta1')
     route = resource('Route', 'gitlab-webhook', ns, {'spec': {'to': {'kind': 'Service', 'name': 'el-gitlab'}, 'port': {'targetPort': 8080}, 'tls': {'termination': 'edge', 'insecureEdgeTerminationPolicy': 'Redirect'}}}, 'route.openshift.io/v1')
-    return [resource('ServiceAccount', listener, ns, {}, 'v1'), role, binding, cluster_binding, template, event, route]
+    return [template, event, route]
 
 
 def pipeline_run(name, ns, project_id, repo, revision):
@@ -106,7 +99,32 @@ def ensure_secret(name, ns, data):
     return oc('create', '-f', '-', '-o', 'json', document=resource('Secret', name, ns, {'type': 'Opaque', 'stringData': data}, 'v1'))
 
 
-def ensure_delivery(api, name, ns, source_project, config):
+def ensure_delivery_branch(api, project_id, allow_initial_reset):
+    """Use GitLab Free's basic branch API, before granting the writer token."""
+    path = 'projects/%s/protected_branches' % project_id
+    try:
+        current = api.request('GET', path + '/main')
+    except urllib.error.HTTPError as error:
+        if error.code != 404: raise
+        current = None
+    def valid(row):
+        return (row is not None and row.get('allow_force_push') is False
+                and len(row.get('push_access_levels',[])) == 1
+                and row['push_access_levels'][0].get('access_level') == 30
+                and not row['push_access_levels'][0].get('user_id')
+                and not row['push_access_levels'][0].get('group_id'))
+    if valid(current): return
+    if current:
+        if not allow_initial_reset:
+            raise ValueError('Delivery branch protection changed after writer issuance; reviewed repair required')
+        api.request('DELETE', path + '/main')
+    api.request('POST', path, {'name':'main', 'push_access_level':30,
+                             'merge_access_level':40, 'allow_force_push':False})
+    if not valid(api.request('GET', path + '/main')):
+        raise ValueError('Delivery writer cannot safely push its protected branch')
+
+
+def ensure_delivery(api, name, ns, source_project, config, source_repo):
     path = config['GITLAB_DELIVERY_GROUP'] + '/' + name + '-deployment'
     try:
         delivery = api.request('GET', 'projects/' + quote(path, safe=''))
@@ -121,29 +139,36 @@ def ensure_delivery(api, name, ns, source_project, config):
         raise ValueError('Delivery repository is not in the platform-owned group')
     try:
         oc('get', 'secret', 'gitlab-delivery-writer', '-n', ns, '-o', 'json')
+        writer_exists = True
     except subprocess.CalledProcessError as error:
         if '(NotFound)' not in error.stderr: raise
+        writer_exists = False
+    ensure_delivery_branch(api, delivery['id'], allow_initial_reset=not writer_exists)
+    if not writer_exists:
         import datetime
         expiry = (datetime.date.today() + datetime.timedelta(days=90)).isoformat()
-        token = api.request('POST', f"projects/{delivery['id']}/access_tokens", {'name': 'tekton-promoter', 'scopes': ['api'], 'access_level': 40, 'expires_at': expiry})
+        token = api.request('POST', f"projects/{delivery['id']}/access_tokens", {'name': 'tekton-promoter', 'scopes': ['api'], 'access_level': 30, 'expires_at': expiry})
         ensure_secret('gitlab-delivery-writer', ns, {'token': token['token'], 'expires_at': expiry})
-    clone = ensure_secret('gitlab-delivery-reader-' + name, 'openshift-gitops', {})
+    try:
+        clone = oc('get', 'secret', 'gitlab-delivery-reader-' + name, '-n', 'openshift-gitops', '-o', 'json')
+    except subprocess.CalledProcessError as error:
+        if '(NotFound)' not in error.stderr: raise
+        clone = {}
     if not clone.get('data'):
         token = api.request('POST', f"projects/{delivery['id']}/deploy_tokens", {'name': 'argocd-reader', 'scopes': ['read_repository']})
-        apply(resource('Secret', 'gitlab-delivery-reader-' + name, 'openshift-gitops', {'type': 'Opaque', 'stringData': {'type': 'git', 'url': delivery['http_url_to_repo'], 'username': token['username'], 'password': token['token']}}, 'v1') | {'metadata': {'name': 'gitlab-delivery-reader-' + name, 'namespace': 'openshift-gitops', 'labels': {'argocd.argoproj.io/secret-type': 'repository'}}})
-    reader = oc('get', 'secret', 'rhdh-argocd-reader', '-n', 'openshift-gitops', '-o', 'json')['data']['token']
-    ensure_secret('argocd-delivery-reader', ns, {'token': base64.b64decode(reader).decode()})
-    apply(resource('ConfigMap', 'project-delivery-config', ns, {'data': {'delivery.json': json.dumps({'repo_name': name, 'source_project_id': source_project, 'delivery_project_id': delivery['id'], 'gitlab_base_url': config['GITLAB_BASE_URL'], 'argocd_url': config['ARGOCD_URL']})}}, 'v1'))
-    apply(resource('Application', 'runtime-' + name, 'openshift-gitops', {'spec': {'project': 'rhoai-demo', 'source': {'repoURL': delivery['http_url_to_repo'], 'targetRevision': 'main', 'path': '.'}, 'destination': {'server': 'https://kubernetes.default.svc', 'namespace': ns}, 'syncPolicy': {'automated': {'prune': True, 'selfHeal': True}, 'retry': {'limit': 10, 'backoff': {'duration': '5s', 'factor': 2, 'maxDuration': '3m'}}, 'syncOptions': ['ServerSideDiff=true', 'RespectIgnoreDifferences=true']}}}, 'argoproj.io/v1alpha1'))
+        secret = resource('Secret', 'gitlab-delivery-reader-' + name, 'openshift-gitops', {'type': 'Opaque', 'stringData': {'type': 'git', 'url': delivery['http_url_to_repo'], 'username': token['username'], 'password': token['token']}}, 'v1')
+        secret['metadata']['labels'] = {'argocd.argoproj.io/secret-type': 'repository'}
+        apply(secret)
+    apply(resource('ConfigMap', 'project-delivery-config', ns, {'data': {'delivery.json': json.dumps({'repo_name': name, 'source_project_id': source_project, 'source_repo': source_repo, 'delivery_project_id': delivery['id'], 'gitlab_base_url': config['GITLAB_BASE_URL'], 'argocd_url': config['ARGOCD_URL']})}}, 'v1'))
+    apply(resource('Application', 'runtime-' + name, 'openshift-gitops', {'spec': {'project': 'runtime-projects', 'source': {'repoURL': delivery['http_url_to_repo'], 'targetRevision': 'main', 'path': '.'}, 'destination': {'server': 'https://kubernetes.default.svc', 'namespace': ns}, 'syncPolicy': {'automated': {'prune': True, 'selfHeal': True}, 'retry': {'limit': 10, 'backoff': {'duration': '5s', 'factor': 2, 'maxDuration': '3m'}}, 'syncOptions': ['ServerSideDiff=true', 'RespectIgnoreDifferences=true']}}}, 'argoproj.io/v1alpha1'))
 
 
-def enroll(api, row, project, commit, config, import_receipt=None):
+def bootstrap_project(api, row, project, commit, config, import_receipt=None):
     name = validate_request(row, project, commit, int(config['GITLAB_WORKLOAD_GROUP_ID']), import_receipt)
     ns = row['namespace'] if import_receipt is not None else name + '-dev'
     repo = project['http_url_to_repo']
-    namespace = resource('Namespace', ns, '', {}, 'v1')
-    namespace['metadata']['labels'] = {'rhoai3.redhat.com/pipeline-project': 'true'}
-    apply(namespace)
+    if os.environ.get('POD_NAMESPACE') != ns:
+        raise ValueError('Project bootstrap is outside its own namespace')
     registration = {'project_id': project['id'], 'repo_url': repo, 'initial_commit': row['initial_commit'], 'kind': row['kind']}
     try:
         old = oc('get', 'configmap', 'project-registration', '-n', ns, '-o', 'json')['data']['registration.json']
@@ -162,17 +187,9 @@ def enroll(api, row, project, commit, config, import_receipt=None):
         host = config['GITLAB_HOST']
         ensure_secret('gitlab-read-source', ns, {'.git-credentials': f"https://{token['username']}:{quote(token['token'], safe='')}@{host}", '.gitconfig': '[credential]\n  helper = store\n'})
     hook = ensure_secret('gitlab-webhook', ns, {'token': secrets.token_urlsafe(32)})
-    for obj in trigger_resources(name, ns, project['id'], repo, row['initial_commit']): apply(obj)
-    # Bootstrap only from platform manifests at a platform revision, not from the application repository.
-    application = resource('Application', 'project-' + name, 'openshift-gitops', {'spec': {
-        'project': 'rhoai-demo', 'source': {'repoURL': config['PLATFORM_REPO_URL'], 'targetRevision': config['PLATFORM_REVISION'], 'path': 'gitops/stages/070-advanced-app-platform/base/pipelines/project-pipeline', 'kustomize': {'namespace': ns, 'patches': [{'target': {'kind': 'ImageStream', 'name': 'application-image'}, 'patch': json.dumps([{'op': 'replace', 'path': '/metadata/name', 'value': name}])}, {'target': {'kind': 'RoleBinding', 'name': 'pipeline-image-builder'}, 'patch': json.dumps([{'op': 'add', 'path': '/subjects/0/namespace', 'value': ns}])}, {'target': {'kind': 'RoleBinding', 'name': 'pipeline-userns-builder'}, 'patch': json.dumps([{'op': 'add', 'path': '/subjects/0/namespace', 'value': ns}])}, {'target': {'kind': 'RoleBinding', 'name': 'pipeline-read-build-config'}, 'patch': json.dumps([{'op': 'add', 'path': '/subjects/0/namespace', 'value': ns}])}]}},
-        'destination': {'server': 'https://kubernetes.default.svc', 'namespace': ns},
-        'syncPolicy': {'automated': {'prune': True, 'selfHeal': True}, 'retry': {'limit': 10, 'backoff': {'duration': '5s', 'factor': 2, 'maxDuration': '3m'}}, 'syncOptions': ['SkipDryRunOnMissingResource=true', 'RespectIgnoreDifferences=true']}}}, 'argoproj.io/v1alpha1')
-    if import_receipt is None:
-        apply(application)
-    # Coolstore's delivery tooling is already owned by Stage 070; never create
-    # a second Argo owner for it. Only its runtime uses delivery Git.
-    ensure_delivery(api, name, ns, project['id'], config)
+    for obj in trigger_resources(name, ns, project['id'], repo, row['initial_commit']):
+        if obj['kind'] in ('TriggerTemplate', 'EventListener', 'Route'): apply(obj)
+    ensure_delivery(api, name, ns, project['id'], config, repo)
     # No build is seeded until the trusted stack and its credentials are present.
     oc('get', 'pipeline', 'app-push', '-n', ns, '-o', 'json')
     scanner = oc('get', 'secret', 'sonarqube-credentials', '-n', 'app-platform-build', '-o', 'json')['data']
@@ -216,35 +233,97 @@ def enroll(api, row, project, commit, config, import_receipt=None):
             if '(AlreadyExists)' not in error.stderr: raise
 
 
+def authorize_requester(api, row, project, config):
+    ref = row.get('requester', '')
+    identities = config.get('GITLAB_REQUESTER_IDS', {})
+    if ref not in identities: raise ValueError('Requester is not an approved portal identity')
+    person = api.request('GET', 'users/' + str(identities[ref]))
+    member = api.request('GET', "projects/%s/members/all/%s" % (project['id'], identities[ref]))
+    if person.get('state') != 'active' or 'user:default/' + person.get('username', '') != ref or member.get('access_level', 0) < 30:
+        raise ValueError('Requester is inactive or lacks this project membership')
+
+
+def project_application(name, ns, row, config):
+    return resource('Application', 'project-' + name, 'openshift-gitops', {'spec': {
+        'project': 'platform-projects',
+        'source': {'repoURL': config['PLATFORM_REPO_URL'], 'targetRevision': config['PLATFORM_REVISION'],
+                   'path': 'gitops/stages/070-advanced-app-platform/base/pipelines/project-enrollment',
+                   'kustomize': {'commonAnnotations': {'rhoai3.io/project-name': name, 'rhoai3.io/project-namespace': ns,
+                                                       'rhoai3.io/enrollment': json.dumps(row, sort_keys=True)}}},
+        'destination': {'server': 'https://kubernetes.default.svc', 'namespace': ns},
+        # The child, not the root stage, owns these objects. Preserve only
+        # controller-assigned CA data and the bound PVC's volume identity.
+        'ignoreDifferences': [
+            {'group':'','kind':'ConfigMap','name':'pipeline-registry-ca','namespace':ns,'jsonPointers':['/data']},
+            {'group':'','kind':'PersistentVolumeClaim','name':'maven-cache','namespace':ns,'jsonPointers':['/spec/volumeName']}],
+        'syncPolicy': {'automated': {'prune': True, 'selfHeal': True}, 'syncOptions': ['SkipDryRunOnMissingResource=true','RespectIgnoreDifferences=true']}}}, 'argoproj.io/v1alpha1')
+
+
+def enroll(api, row, project, commit, config, import_receipt=None):
+    name = validate_request(row, project, commit, int(config['GITLAB_WORKLOAD_GROUP_ID']), import_receipt)
+    if import_receipt is None: authorize_requester(api, row, project, config)
+    ns = row['namespace'] if import_receipt else name + '-dev'
+    try:
+        existing = oc('get', 'namespace', ns, '-o', 'json')
+        if import_receipt is None and existing['metadata'].get('labels', {}).get('rhoai3.io/gitlab-project-id') != str(project['id']):
+            raise ValueError('Namespace is not owned by this GitLab project')
+    except subprocess.CalledProcessError as error:
+        if '(NotFound)' not in error.stderr: raise
+        namespace = resource('Namespace', ns, '', {}, 'v1')
+        namespace['metadata']['labels'] = {'rhoai3.redhat.com/pipeline-project':'true','rhoai3.io/gitlab-project-id':str(project['id'])}
+        oc('create', '-f', '-', document=namespace)
+    apply(project_application(name, ns, row, config))
+    app = oc('get', 'application', 'project-' + name, '-n', 'openshift-gitops', '-o', 'json')
+    status = app.get('status',{})
+    if (status.get('health',{}).get('status') != 'Healthy'
+            or status.get('sync',{}).get('status') != 'Synced'
+            or status.get('sync',{}).get('revision') != config['PLATFORM_REVISION']
+            or status.get('operationState',{}).get('phase') != 'Succeeded') :
+        raise ValueError('Platform-owned project bootstrap is not yet complete')
+
+
 def main():
-    config = json.loads(Path('/config/platform.json').read_text())
-    api = GitLab(config['GITLAB_BASE_URL'], Path('/credentials/token').read_text().strip())
-    seeds = oc('get', 'configmap', 'gitlab-import-seeds', '-n', 'app-platform-build', '-o', 'json')
+    config = json.loads(oc('get','configmap','gitlab-platform-config','-n','app-platform-build','-o','json')['data']['platform.json'])
+    api = GitLab(config['GITLAB_BASE_URL'], base64.b64decode(oc('get','secret','gitlab-enroller','-n','app-platform-build','-o','json')['data']['token']).decode())
+    if os.environ.get('MODE') == 'bootstrap':
+        row = json.loads(os.environ['ENROLLMENT'])
+        if row.get('kind') == 'imported-application':
+            seeds = oc('get','configmap','gitlab-import-seeds','-n','app-platform-build','-o','json')
+            if not seeds.get('immutable'): raise ValueError('Import seed is not immutable')
+            rows = json.loads(seeds['data']['seeds.json'])
+            if len(rows) != 1: raise ValueError('Expected exactly one imported application seed')
+            receipt = rows[0]
+            if row != receipt: raise ValueError('Foreign imported enrollment')
+        else:
+            receipt = None
+        project = api.request('GET','projects/' + str(row['project_id']))
+        commit = api.request('GET', 'projects/%s/repository/commits/%s' % (project['id'], row['initial_commit']))
+        if receipt is None: authorize_requester(api,row,project,config)
+        bootstrap_project(api,row,project,commit,config,receipt)
+        return
+    seeds = oc('get','configmap','gitlab-import-seeds','-n','app-platform-build','-o','json')
     if not seeds.get('immutable'): raise ValueError('Imported-app seeds must be immutable')
     for row in json.loads(seeds['data']['seeds.json']):
-        project = api.request('GET', 'projects/' + str(row['project_id']))
-        commit = api.request('GET', f"projects/{project['id']}/repository/commits/{row['initial_commit']}")
-        try:
-            enroll(api, row, project, commit, config, import_receipt=row)
-        except (subprocess.CalledProcessError, ValueError):
-            print('Imported app enrollment waiting for platform delivery tooling')
-    for page in range(1, 11):
-        issues = api.request('GET', f"projects/{config['GITLAB_REGISTRATION_PROJECT_ID']}/issues?state=opened&labels=platform-enrollment&per_page=100&page={page}")
+        project = api.request('GET','projects/' + str(row['project_id']))
+        commit = api.request('GET','projects/%s/repository/commits/%s' % (project['id'],row['initial_commit']))
+        try: enroll(api,row,project,commit,config,row)
+        except (ValueError,subprocess.CalledProcessError): print('Imported project bootstrap pending')
+    for page in range(1,11):
+        issues = api.request('GET', "projects/%s/issues?state=opened&labels=platform-enrollment&per_page=100&page=%s" % (config['GITLAB_REGISTRATION_PROJECT_ID'],page))
         for issue in issues:
             if issue['author']['id'] != int(config['GITLAB_PUBLISHER_USER_ID']):
                 print('REFUSE enrollment: author is not the trusted publisher'); continue
             try:
-                row = json.loads(issue['description'])
-                project = api.request('GET', 'projects/' + str(row['project_id']))
-                commit = api.request('GET', f"projects/{project['id']}/repository/commits/{row['initial_commit']}")
-                enroll(api, row, project, commit, config)
-                api.request('PUT', f"projects/{config['GITLAB_REGISTRATION_PROJECT_ID']}/issues/{issue['iid']}", {'state_event': 'close'})
-                print('Enrollment complete:', project['path'])
-            except (ValueError, KeyError, subprocess.CalledProcessError, urllib.error.HTTPError) as error:
-                print('Enrollment pending:', issue['iid'], type(error).__name__)
-        if len(issues) < 100: break
-    else:
-        raise RuntimeError('Enrollment pagination bound reached')
+                row=json.loads(issue['description'])
+                project=api.request('GET','projects/' + str(row['project_id']))
+                commit=api.request('GET','projects/%s/repository/commits/%s' % (project['id'],row['initial_commit']))
+                enroll(api,row,project,commit,config)
+                api.request('PUT','projects/%s/issues/%s' % (config['GITLAB_REGISTRATION_PROJECT_ID'],issue['iid']),{'state_event':'close'})
+                print('Enrollment complete:',project['path'])
+            except (ValueError,KeyError,subprocess.CalledProcessError,urllib.error.HTTPError) as error:
+                print('Enrollment pending:',issue['iid'],type(error).__name__)
+        if len(issues)<100: break
+    else: raise RuntimeError('Enrollment pagination bound reached')
 
 
 if __name__ == '__main__': main()

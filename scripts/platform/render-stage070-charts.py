@@ -102,9 +102,8 @@ def gitlab_documents(documents, images):
             data = document.get('data', {})
             if any('example.invalid' in text or 'pending-' in text for text in data.values()):
                 runtime[name] = data
-                # Only keys requiring cluster-derived values have a separate writer.
-                document['data'] = {key: text for key, text in data.items()
-                                    if 'example.invalid' not in text and 'pending-' not in text}
+                # Preserve the full canonical config in Git; hooks write a separate
+                # derived ConfigMap, so future chart changes remain visible to Argo.
         if kind in ('Deployment', 'StatefulSet', 'Job', 'CronJob'):
             pod = (document['spec']['jobTemplate']['spec']['template']['spec']
                    if kind == 'CronJob' else document['spec']['template']['spec'])
@@ -127,9 +126,15 @@ def gitlab_documents(documents, images):
         result.append(document)
     if release is None or not runtime:
         raise ValueError('Chart no longer produces expected release/runtime configuration')
-    result.append({'apiVersion': 'v1', 'kind': 'ConfigMap',
-                   'metadata': {'name': 'gitlab-runtime-buckets', 'namespace': 'gitlab-system',
-                                'annotations': {'argocd.argoproj.io/sync-wave': '3'}}, 'data': {}})
+    for document in result:
+        if document['kind'] not in ('Deployment','StatefulSet','Job','CronJob'):
+            continue
+        pod = (document['spec']['jobTemplate']['spec']['template']['spec']
+               if document['kind'] == 'CronJob' else document['spec']['template']['spec'])
+        for volume in pod.get('volumes', []):
+            ref = volume.get('configMap', {})
+            if ref.get('name') in runtime and ref['name'] != 'gitlab-runtime-buckets':
+                ref['name'] += '-runtime'
     result.append({'apiVersion': 'v1', 'kind': 'ConfigMap',
                    'metadata': {'name': 'gitlab-runtime-templates', 'namespace': 'gitlab-system',
                                 'annotations': {'argocd.argoproj.io/sync-wave': '3'}},

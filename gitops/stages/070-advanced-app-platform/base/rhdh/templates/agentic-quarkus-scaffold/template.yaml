@@ -70,20 +70,14 @@ spec:
       title: Enroll ${{ parameters.name }}
       labels: platform-enrollment
       confidential: true
-      description: '{"project_id": ${{ steps.publish.output.projectId }}, "initial_commit": "${{ steps.publish.output.commitHash }}", "kind": "application"}'
-  - id: register
-    name: Register in catalog
-    action: catalog:register
-    input:
-      repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
-      catalogInfoPath: /catalog-info.yaml
+      description: '{"project_id": ${{ steps.publish.output.projectId }}, "initial_commit": "${{ steps.publish.output.commitHash }}", "kind": "application", "requester": "${{ user.ref }}"}'
   output:
     links:
     - title: Source repository
       url: ${{ steps.publish.output.remoteUrl }}
     - title: Open in catalog
       icon: catalog
-      entityRef: ${{ steps.register.output.entityRef }}
+      entityRef: component:default/${{ parameters.name }}
     text:
     - title: Next steps
-      content: "The publish above already bootstrapped your project: Argo CD is\ncreating the `<name>-dev` namespace with the project's own delivery\npipeline, and build credentials arrive within two minutes.\n\nOpen the repository in Dev Spaces and start OpenCode in the\nterminal. The project ships spec-kit: run `/speckit.specify` with\nyour requirements (the stage 070 exercise provides coolstore-catalog\nbriefs) \u2014 it creates `specs/<n>-<feature>/spec.md` \u2014 then\n`/speckit.plan`, `/speckit.tasks`, and `/speckit.implement`. The\nagent reads AGENTS.md and `.opencode/skills/` \u2014 corporate\nstandards steer the build. Every push to `main` runs the project's\nown pipeline in `<name>-dev` with the SonarQube quality gate.\n"
+      content: "The publish above requested platform enrollment. The catalog discovers your project automatically; Argo CD is\ncreating the `<name>-dev` namespace with the project's own delivery\npipeline, and build credentials arrive within two minutes.\n\nOpen the repository in Dev Spaces and start OpenCode in the\nterminal. The project ships spec-kit: run `/speckit.specify` with\nyour requirements (the stage 070 exercise provides coolstore-catalog\nbriefs) \u2014 it creates `specs/<n>-<feature>/spec.md` \u2014 then\n`/speckit.plan`, `/speckit.tasks`, and `/speckit.implement`. The\nagent reads AGENTS.md and `.opencode/skills/` \u2014 corporate\nstandards steer the build. Every push to `main` runs the project's\nown pipeline in `<name>-dev` with the SonarQube quality gate.\n"

@@ -106,7 +106,8 @@ class Enrollment(unittest.TestCase):
         raise subprocess.CalledProcessError(1, args, stderr='(NotFound)')
 
     def enroll(self):
-        scm.enroll(self.api, self.row, self.project, self.commit, self.config)
+        with patch.dict(os.environ, POD_NAMESPACE='example-dev'):
+            scm.bootstrap_project(self.api, self.row, self.project, self.commit, self.config)
 
     def test_initial_build_is_once_and_bound(self):
         self.enroll()
@@ -139,6 +140,19 @@ class Lifecycle(unittest.TestCase):
         lifecycle.check_registration('example', row, project)
         for changes in ({'id': 43}, {'path': 'foreign'}, {'http_url_to_repo': 'https://outside.test/a.git'}):
             with self.assertRaises(ValueError): lifecycle.check_registration('example', row, {**project, **changes})
+
+    def test_registration_survives_project_namespace_deletion(self):
+        row={'project_id':42,'repo_url':'https://gitlab.example.test/rhoai-workloads/example.git','initial_commit':'a'*40,'kind':'migration'}
+        error=subprocess.CalledProcessError(1,['oc'],stderr='(NotFound)')
+        saved={'data':{'retirement.json':json.dumps({'name':'example','namespace':'example-dev','registration':row})}}
+        with patch.object(lifecycle,'oc',side_effect=[error,saved]):
+            self.assertEqual(lifecycle.registration('example'),('example-dev',row))
+        saved['data']['retirement.json']=json.dumps({'name':'foreign','namespace':'example-dev','registration':row})
+        with patch.object(lifecycle,'oc',side_effect=[error,saved]),self.assertRaises(ValueError):
+            lifecycle.registration('example')
+        with patch.object(lifecycle,'oc',side_effect=subprocess.CalledProcessError(1,['oc'],stderr='Forbidden')) as query,self.assertRaises(subprocess.CalledProcessError):
+            lifecycle.registration('example')
+        self.assertEqual(query.call_count,1)
 
     def test_retire_never_deletes_stage_owned_import(self):
         with self.assertRaises(ValueError): lifecycle.check_action('retire', 'coolstore-inventory-service', {'kind': 'imported-application'})

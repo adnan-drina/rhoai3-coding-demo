@@ -135,7 +135,7 @@ metadata:
     argocd.argoproj.io/sync-wave: '12'
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: Role
   name: gitlab-integrations-bootstrap
 subjects:
 - kind: ServiceAccount
@@ -280,8 +280,8 @@ metadata:
     argocd.argoproj.io/sync-wave: '12'
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: gitlab-integrations-bootstrap
+  kind: Role
+  name: gitlab-standing-workspace-source
 subjects:
 - kind: ServiceAccount
   name: gitlab-integrations-bootstrap
@@ -296,8 +296,8 @@ metadata:
     argocd.argoproj.io/sync-wave: '12'
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: gitlab-integrations-bootstrap
+  kind: Role
+  name: gitlab-standing-workspace-source
 subjects:
 - kind: ServiceAccount
   name: gitlab-integrations-bootstrap
@@ -318,3 +318,100 @@ subjects:
 - kind: ServiceAccount
   name: gitlab-integrations-bootstrap
   namespace: gitlab-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gitlab-standing-workspace-source
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: '12'
+rules:
+- apiGroups:
+  - workspace.devfile.io
+  resources:
+  - devworkspaces
+  resourceNames:
+  - agentic-coolstore
+  verbs:
+  - get
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gitlab-standing-workspace-source
+  namespace: wksp-ai-admin
+  annotations:
+    argocd.argoproj.io/sync-wave: '12'
+rules:
+- apiGroups:
+  - workspace.devfile.io
+  resources:
+  - devworkspaces
+  resourceNames:
+  - agentic-coolstore
+  verbs:
+  - get
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gitlab-integrations-bootstrap
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: '12'
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - rhdh-argocd-reader
+  - openshift-gitops-cluster
+  verbs:
+  - get
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - gitlab-platform-reader
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  resourceNames:
+  - stage070-project-release
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  - configmaps
+  verbs:
+  - create
+- apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  resourceNames:
+  - 070-advanced-app-platform
+  verbs:
+  - get
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  resourceNames:
+  - openshift-gitops-server
+  verbs:
+  - get

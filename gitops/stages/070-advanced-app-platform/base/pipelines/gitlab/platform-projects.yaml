@@ -1,0 +1,47 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform-projects
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: '12'
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/name: platform-projects
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+spec:
+  sourceRepos:
+  - https://gitlab.*/rhoai-platform/rhoai3-coding-demo.git
+  destinations:
+  - server: https://kubernetes.default.svc
+    namespace: '*-dev'
+  - server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  - server: https://kubernetes.default.svc
+    namespace: app-platform-build
+  clusterResourceWhitelist:
+  - group: rbac.authorization.k8s.io
+    kind: ClusterRoleBinding
+  namespaceResourceWhitelist:
+  - group: ''
+    kind: ServiceAccount
+  - group: ''
+    kind: Secret
+  - group: ''
+    kind: ConfigMap
+  - group: ''
+    kind: PersistentVolumeClaim
+  - group: rbac.authorization.k8s.io
+    kind: Role
+  - group: rbac.authorization.k8s.io
+    kind: RoleBinding
+  - group: batch
+    kind: Job
+  - group: tekton.dev
+    kind: Task
+  - group: tekton.dev
+    kind: Pipeline
+  - group: image.openshift.io
+    kind: ImageStream

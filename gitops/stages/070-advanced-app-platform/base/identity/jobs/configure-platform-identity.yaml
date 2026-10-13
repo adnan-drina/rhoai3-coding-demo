@@ -4,8 +4,6 @@ metadata:
   name: job-configure-platform-identity
   namespace: keycloak
   annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
     argocd.argoproj.io/sync-wave: '1'
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -14,14 +12,14 @@ metadata:
   name: job-configure-platform-identity
   namespace: keycloak
   annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
     argocd.argoproj.io/sync-wave: '1'
 rules:
 - apiGroups:
   - ''
   resources:
   - secrets
+  resourceNames:
+  - keycloak-initial-admin
   verbs:
   - get
 ---
@@ -30,8 +28,6 @@ kind: ClusterRole
 metadata:
   name: job-configure-platform-identity
   annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
     argocd.argoproj.io/sync-wave: '1'
 rules:
 - apiGroups:
@@ -61,8 +57,6 @@ metadata:
   name: job-configure-platform-identity
   namespace: keycloak
   annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
     argocd.argoproj.io/sync-wave: '1'
 subjects:
 - kind: ServiceAccount
@@ -78,8 +72,6 @@ kind: ClusterRoleBinding
 metadata:
   name: job-configure-platform-identity
   annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
     argocd.argoproj.io/sync-wave: '1'
 subjects:
 - kind: ServiceAccount
@@ -318,3 +310,13 @@ spec:
           echo "RHBK URL: ${RHBK_EXTERNAL_URL}"
           echo "Realm: ${REALM} (OIDC discovery: ${RHBK_EXTERNAL_URL}/realms/${REALM})"
           echo "Users see 'Log in with OpenShift' on the realm login page"
+
+          SCM_IDENTITY_URL="$RHBK_URL" SCM_ADMIN_TOKEN="$ADMIN_TOKEN" python3 /scripts/configure-scm-identity.py
+        volumeMounts:
+          - name: scm
+            mountPath: /scripts
+            readOnly: true
+      volumes:
+        - name: scm
+          configMap:
+            name: stage070-scm-identity

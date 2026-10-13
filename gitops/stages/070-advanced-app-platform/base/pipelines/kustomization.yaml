@@ -15,8 +15,12 @@ resources:
 - build/task-provision-migration-run.yaml
 - build/pipeline-provision-migration-run.yaml
 - gitlab/reconciler.yaml
-configMapGenerator:
-- name: gitlab-project-reconciler
-  namespace: app-platform-build
-  files:
-  - gitlab/reconcile.py
+- gitlab
+- gitlab/runtime-projects.yaml
+- gitlab/platform-projects.yaml
+- gitlab/application-policy.yaml
+- gitlab/application-policy-binding.yaml
+- gitlab/bootstrap-secret-policy.yaml
+- gitlab/bootstrap-secret-policy-binding.yaml
+- gitlab/provisioning-policy.yaml
+- gitlab/provisioning-policy-binding.yaml

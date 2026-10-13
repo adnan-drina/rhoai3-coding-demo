@@ -5,7 +5,6 @@ resources:
 - configmap-gitlab-gitlab-exporter.yaml
 - configmap-gitlab-gitlab-upgrade-check.yaml
 - configmap-gitlab-migrations.yaml
-- configmap-gitlab-runtime-buckets.yaml
 - configmap-gitlab-runtime-templates.yaml
 - configmap-gitlab-shared-secrets.yaml
 - configmap-gitlab-sidekiq.yaml

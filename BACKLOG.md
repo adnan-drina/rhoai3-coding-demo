@@ -2,13 +2,13 @@
 
 Open limitations and the evidence needed to understand them. Completed narratives remain in Git history; `tmp/` holds local evidence excluded from Git.
 
-## Stage 070 integrated upgrade — source implementation (2026-10-13)
+## Stage 070 integrated upgrade — first install paused (2026-10-13)
 
-Branch `codex/stage070-gitlab-upgrade` contains the integrated GitLab CE, Keycloak reuse, Dev Spaces/devfile, RHDH, Pipelines/TAS, SonarQube and MTA 8.3 AI configuration. [Release status and remaining exits](docs/migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status). This replaces the earlier partial registry slice; Stage 070 is not deployed.
+Integrated source is published on `main` through `7b121dd1` (including the approved P0 review correction). The pending security package is isolated on `codex/stage070-release`; no other contributor’s primary-checkout changes are included. [Release status and remaining exits](docs/migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status). The first install remains intentionally paused before project enrollment. Operator-only installation does not qualify the full release.
 
 GitLab CE 19.4.2/chart 10.4.2 and SonarQube Community Build 26.9/chart 2026.5.1002 deploy as native Kustomize resources. Project checkout, enrollment, quality gate and deployment use GitLab, scoped credentials and internal image digests. The shared workspace candidate `sha256:e4ac365b…` is published in Quay and passed a bounded MTA 8.3.0/Java-provider canary. No models were called or restarted. Product skills for MTA, Dev Spaces, Pipelines and selected RHDH topics were refreshed to the current documentation versions.
 
-Open release exits: full human diff review and source publication; live GitLab/OAuth/import/factory and Dev Spaces checks; Pipelines user-namespace/SCC build/push/pull; positive and negative Sonar quality gates; digest promotion/Argo read-back; stateful restart/restore; signed-delivery proof; MTA AI/native-agent qualification after model restart. Platform root GitHub-to-GitLab cutover remains separate. Configured TAS is not signed delivery. No historical migration run is upgraded.
+Open release exits: security-follow-up publication/read-back and completion of the paused installation; live GitLab/OAuth/import/factory and Dev Spaces checks; Pipelines user-namespace/SCC build/push/pull; positive and negative Sonar quality gates; digest promotion/Argo read-back; stateful restart/restore; signed-delivery proof; MTA AI/native-agent qualification after model restart. Platform root GitHub-to-GitLab cutover remains separate. Configured TAS is not signed delivery. No historical migration run is upgraded.
 
 ## Fresh-environment migration gates (2026-10-05)
 

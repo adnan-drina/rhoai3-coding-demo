@@ -18,7 +18,7 @@ destination (the golden's planner library):
    MTA_RESCAN_STALE_INPUT, its findings kept only as .stale, the scratch copy
    removed and the report left for diagnosis; a failed analyzer leaves no
    scratch copy either;
-5. the fake takes `--json-output` as the pinned 8.2.1 boolean (a value after it
+5. the current-release fake takes `--json-output` as the 8.3 boolean (a value after it
    is refused), and the analyzer's exit is judged (judge-analyzer-exit.py): a
    clean exit is recorded as such; the known 8.2.1 dependency-JSON marshal
    defect after a completed analysis is accepted with its nonzero exit and
@@ -48,8 +48,8 @@ import json, os, sys, time
 from pathlib import Path
 a = sys.argv[1:]
 if a[:1] != ["analyze"]:
-    print(os.environ.get("FAKE_VERSION", "version: 8.2.1")); raise SystemExit(0)
-# the pinned 8.2.1 flag is a boolean: a value after it is a stray argument
+    print(os.environ.get("FAKE_VERSION", "version: 8.3.0")); raise SystemExit(0)
+# the 8.3 flag is a boolean: a value after it is a stray argument
 j = a.index("--json-output")
 if j + 1 < len(a) and not a[j + 1].startswith("--"):
     print("Error: unexpected argument %s" % a[j + 1], file=sys.stderr); raise SystemExit(2)
@@ -207,7 +207,7 @@ def main() -> int:
                 or ev.get("compatibility_exception") is not None:
             return _fail("a clean exit is recorded as such: rc=%s %s" % (p.returncode, ev))
         # 5a. the one known 8.2.1 defect: accepted, its nonzero exit and reason recorded, findings intact
-        p = rescan("run-g", FAKE_MODE="defect")
+        p = rescan("run-g", FAKE_MODE="defect", FAKE_VERSION="version: 8.2.1")
         if p.returncode != 0:
             return _fail("the known 8.2.1 dependency-JSON marshal defect after a completed analysis is accepted: %s"
                          % (p.stdout + p.stderr)[-600:])
@@ -230,7 +230,7 @@ def main() -> int:
             "run-n": ({"FAKE_MODE": "incomplete"}, "does not report 'Analysis complete!'"),
         }
         for run, (env, why) in refusals.items():
-            p = rescan(run, **env)
+            p = rescan(run, **dict({"FAKE_VERSION": "version: 8.2.1"}, **env))
             verdict = out / "analyzer-verdict.json"
             if p.returncode == 0 or "MTA_ANALYZER_FAILED" not in p.stderr or why not in p.stderr:
                 return _fail("%s must be refused (%s): rc=%s %s" % (env, why, p.returncode, p.stderr[-400:]))

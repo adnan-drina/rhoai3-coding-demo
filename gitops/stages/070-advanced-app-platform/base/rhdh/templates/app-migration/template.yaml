@@ -193,20 +193,14 @@ spec:
       title: Enroll ${{ parameters.name }}
       labels: platform-enrollment
       confidential: true
-      description: '{"project_id": ${{ steps.publish.output.projectId }}, "initial_commit": "${{ steps.publish.output.commitHash }}", "kind": "migration"}'
-  - id: register
-    name: Register destination in catalog
-    action: catalog:register
-    input:
-      repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
-      catalogInfoPath: /catalog-info.yaml
+      description: '{"project_id": ${{ steps.publish.output.projectId }}, "initial_commit": "${{ steps.publish.output.commitHash }}", "kind": "migration", "requester": "${{ user.ref }}"}'
   output:
     links:
     - title: Destination repository
       url: ${{ steps.publish.output.remoteUrl }}
     - title: Open in catalog
       icon: catalog
-      entityRef: ${{ steps.register.output.entityRef }}
+      entityRef: component:default/${{ parameters.name }}
     text:
     - title: Next steps
-      content: "The publish above already bootstrapped your project: Argo CD is\ncreating the `<name>-dev` namespace with the project's own\ndelivery pipeline, and build credentials arrive within two\nminutes.\n\nOpen the destination repository in Dev Spaces: the workspace\nclones the legacy application to `/projects/legacy` (read-only,\nworkspace-only) next to `/projects/modernized` (this repository),\nwith the MTA analysis extension preconfigured against the\nplatform hub. Run the MTA analysis of the legacy project first \u2014\nits findings are the migration's ground truth \u2014 then build the\nmodernized service in `/projects/modernized`. Every push to\n`main` runs the project's own pipeline in `<name>-dev` with the\nSonarQube quality gate.\n"
+      content: "The publish above requested platform enrollment. The catalog discovers your project automatically; Argo CD is\ncreating the `<name>-dev` namespace with the project's own\ndelivery pipeline, and build credentials arrive within two\nminutes.\n\nOpen the destination repository in Dev Spaces: the workspace\nclones the legacy application to `/projects/legacy` (read-only,\nworkspace-only) next to `/projects/modernized` (this repository),\nwith the MTA analysis extension preconfigured against the\nplatform hub. Run the MTA analysis of the legacy project first \u2014\nits findings are the migration's ground truth \u2014 then build the\nmodernized service in `/projects/modernized`. Every push to\n`main` runs the project's own pipeline in `<name>-dev` with the\nSonarQube quality gate.\n"

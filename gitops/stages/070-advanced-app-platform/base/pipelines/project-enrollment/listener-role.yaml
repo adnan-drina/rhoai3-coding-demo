@@ -1,0 +1,40 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gitlab-listener
+  annotations:
+    argocd.argoproj.io/sync-wave: '20'
+  namespace: unassigned-dev
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/name: gitlab-listener
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+rules:
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns
+  verbs:
+  - create
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
+  resourceNames:
+  - gitlab-webhook
+- apiGroups:
+  - triggers.tekton.dev
+  resources:
+  - eventlisteners
+  - triggerbindings
+  - triggertemplates
+  - triggers
+  - interceptors
+  verbs:
+  - get
+  - list
+  - watch

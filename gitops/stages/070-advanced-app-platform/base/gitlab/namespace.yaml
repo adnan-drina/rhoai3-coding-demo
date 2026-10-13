@@ -4,3 +4,4 @@ metadata:
   name: gitlab-system
   annotations:
     argocd.argoproj.io/sync-wave: '0'
+    argocd.argoproj.io/sync-options: Prune=false

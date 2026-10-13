@@ -92,7 +92,7 @@ spec:
       serviceAccountName: enable-pipelines-console-plugin
       containers:
         - name: enable-plugin
-          image: 'image-registry.openshift-image-registry.svc:5000/openshift/tools:latest'
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
           env:
             - name: PLUGIN_NAME
               value: pipelines-console-plugin

@@ -5,4 +5,3 @@ kind: Kustomization
 # seeded into GitLab delivery Git and reconciled by runtime-coolstore.
 resources:
   - namespace.yaml
-  - pipeline

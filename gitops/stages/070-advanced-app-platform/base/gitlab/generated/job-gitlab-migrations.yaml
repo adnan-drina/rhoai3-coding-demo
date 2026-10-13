@@ -137,7 +137,7 @@ spec:
       volumes:
       - name: migrations-config
         configMap:
-          name: gitlab-migrations
+          name: gitlab-migrations-runtime
       - name: init-migrations-secrets
         projected:
           defaultMode: 256

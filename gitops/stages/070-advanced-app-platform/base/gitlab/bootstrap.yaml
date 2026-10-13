@@ -34,6 +34,7 @@ rules:
   - gitlab-storage-uploads
   - gitlab-storage-packages
   - gitlab-storage-backups
+  - stage070-scm-provisioner
   verbs:
   - get
 - apiGroups:
@@ -53,10 +54,10 @@ rules:
   resources:
   - configmaps
   resourceNames:
-  - gitlab-migrations
-  - gitlab-sidekiq
-  - gitlab-toolbox
-  - gitlab-webservice
+  - gitlab-migrations-runtime
+  - gitlab-sidekiq-runtime
+  - gitlab-toolbox-runtime
+  - gitlab-webservice-runtime
   - gitlab-gitlab-chart-info
   - gitlab-initial-release
   - gitlab-lfs
@@ -113,6 +114,19 @@ rules:
   - gitlab-storage-backups
   verbs:
   - patch
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - patch
+  resourceNames:
+  - gitlab-oidc
+  - gitlab-storage-lfs
+  - gitlab-storage-artifacts
+  - gitlab-storage-uploads
+  - gitlab-storage-packages
+  - gitlab-storage-backups
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -296,14 +310,14 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '3'
 rules:
-- apiGroups: ['']
-  resources: [secrets]
-  resourceNames: [keycloak-initial-admin]
-  verbs: [get]
-- apiGroups: [route.openshift.io]
-  resources: [routes]
-  resourceNames: [keycloak]
-  verbs: [get]
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  resourceNames:
+  - keycloak
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

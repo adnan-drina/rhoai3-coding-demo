@@ -33,7 +33,7 @@ spec:
         app.kubernetes.io/version: v19.4.2
         queue-pod-name: all-in-1
       annotations:
-        checksum/configmap: 445c79a0728a0e8e6a6f09257c5fdc49ab8048d5c956d6e89d7fdb0d24ae7eef
+        checksum/configmap: 27a005ce7d9f22885314ef324bde876ddab5e24a53cc42609107616e12fe2797
         cluster-autoscaler.kubernetes.io/safe-to-evict: 'true'
         gitlab.com/prometheus_scrape: 'true'
         gitlab.com/prometheus_port: '3807'

@@ -1,0 +1,77 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: project-enrollment
+  annotations:
+    argocd.argoproj.io/sync-wave: '20'
+  namespace: unassigned-dev
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/name: project-enrollment
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  - configmaps
+  verbs:
+  - create
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
+  - patch
+  - update
+  resourceNames:
+  - gitlab-read-source
+  - gitlab-webhook
+  - gitlab-delivery-writer
+  - sonarqube-credentials
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - patch
+  - update
+  resourceNames:
+  - project-registration
+  - project-delivery-config
+  - initial-build-receipt
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelines
+  verbs:
+  - get
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns
+  verbs:
+  - create
+- apiGroups:
+  - triggers.tekton.dev
+  resources:
+  - eventlisteners
+  - triggertemplates
+  verbs:
+  - get
+  - create
+  - patch
+  - update
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  verbs:
+  - get
+  - create
+  - patch
+  - update

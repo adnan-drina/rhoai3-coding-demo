@@ -35,6 +35,14 @@ data:
             signIn:
               resolvers:
                 - resolver: preferredUsernameMatchingUserEntityName
+    permission:
+      enabled: true
+      rbac:
+        admin:
+          users:
+            - name: user:default/ai-admin
+        pluginsWithPermission: [catalog, scaffolder, permission]
+        policies-csv-file: /opt/app-root/src/rbac/rbac-policies.csv
     signInPage: oidc
     integrations:
       gitlab:
@@ -81,10 +89,24 @@ data:
       # golden-path templates) are removed instead of lingering as orphans.
       orphanStrategy: delete
       rules:
-        - allow: [Component, System, API, Resource, Location, Template, User, Group, Domain]
+        - allow: [Component, System, API, Resource, Location, User, Group, Domain]
+      providers:
+        gitlab:
+          workloads:
+            host: ${GITLAB_HOST}
+            group: rhoai-workloads
+            branch: main
+            entityFilename: catalog-info.yaml
+            schedule:
+              frequency: { minutes: 1 }
+              timeout: { minutes: 1 }
+              initialDelay: { seconds: 15 }
       locations:
         - type: file
           target: ${RHDH_CATALOG_URL}
+          # Only the platform-owned pinned catalog can introduce templates.
+          rules:
+            - allow: [Component, System, API, Resource, Location, Template, User, Group, Domain]
     techdocs:
       builder: local
       generator:

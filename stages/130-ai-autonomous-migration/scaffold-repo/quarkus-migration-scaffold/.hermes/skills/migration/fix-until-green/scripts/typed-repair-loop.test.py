@@ -127,7 +127,7 @@ import json, sys
 from pathlib import Path
 a = sys.argv[1:]
 if a[:1] != ["analyze"]:
-    print("version: 8.2.1"); raise SystemExit(0)
+    print("version: 8.3.0"); raise SystemExit(0)
 inp, rep = Path(a[a.index("--input") + 1]), Path(a[a.index("--output") + 1])
 uri = "file://%s" % (inp / "pom.xml")
 rep.mkdir(parents=True, exist_ok=True)

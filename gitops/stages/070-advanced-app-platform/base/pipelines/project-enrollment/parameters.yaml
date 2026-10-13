@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: project-enrollment-request
+  annotations:
+    argocd.argoproj.io/sync-wave: '20'
+    rhoai3.io/project-name: unassigned
+    rhoai3.io/project-namespace: unassigned-dev
+    rhoai3.io/enrollment: '{}'
+  namespace: unassigned-dev
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/name: project-enrollment-request
+    app.kubernetes.io/component: project-enrollment
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+data: {}

@@ -1,0 +1,30 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stage070-scm-identity
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/name: stage070-scm-identity
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - create
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - stage070-scm-provisioner
+  verbs:
+  - get
+  - patch
+  - update

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """mta-analyze-legacy.sh (M1) judges the analyzer's exit like the rescan does.
 
-The fake analyzer of mta-rescan-destination.test.py (the pinned 8.2.1 shape:
+The fake analyzer of mta-rescan-destination.test.py (the 8.3 clean-exit shape plus explicit historical 8.2.1 cases:
 `--json-output` is a boolean, findings in <output>/output.json, the optional
 dependency-JSON marshal defect) analyzes a frozen copy of a one-file legacy
 source:
@@ -86,7 +86,7 @@ def main() -> int:
         if "--json-output" not in argv or argv[argv.index("--json-output") + 1] != "--overwrite":
             return _fail("the receipt records the argv, --json-output without a value: %s" % argv)
         # 2. the known defect: accepted, exit status and exception recorded
-        p = analyze(FAKE_MODE="defect")
+        p = analyze(FAKE_MODE="defect", FAKE_VERSION="version: 8.2.1")
         rec = json.loads(receipt.read_text()) if receipt.is_file() else {}
         exc = (rec.get("analyzer_exit") or {}).get("compatibility_exception") or {}
         ev = (json.loads(findings.read_text()).get("execution_evidence") or {}) if findings.is_file() else {}
@@ -96,7 +96,7 @@ def main() -> int:
             return _fail("the findings' execution evidence records the exception: %s" % ev)
         # 3. anything else fails M1, with a failed receipt and no findings
         for mode, why in (("defect+other", "another error"), ("truncated", "does not parse")):
-            p = analyze(FAKE_MODE=mode)
+            p = analyze(FAKE_MODE=mode, FAKE_VERSION="version: 8.2.1")
             rec = json.loads(receipt.read_text()) if receipt.is_file() else {}
             ax = rec.get("analyzer_exit") or {}
             if p.returncode == 0 or rec.get("status") != "failed" or rec.get("exit_status") != 1 \

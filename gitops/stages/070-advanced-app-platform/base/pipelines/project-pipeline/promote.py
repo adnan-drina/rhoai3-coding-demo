@@ -3,6 +3,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -34,7 +35,7 @@ def validate_runtime(objects, name, namespace, image):
             raise ValueError('Application service must be ClusterIP')
         if kind == 'Route':
             spec = obj['spec']
-            if spec.get('host') or spec.get('wildcardPolicy', 'None') != 'None' or spec.get('alternateBackends'):
+            if spec.get('host') or spec.get('subdomain') or spec.get('wildcardPolicy', 'None') != 'None' or spec.get('alternateBackends'):
                 raise ValueError('Application cannot claim a host or foreign backend')
             if spec['to'].get('name') != name:
                 raise ValueError('Route must target this application service')
@@ -72,16 +73,58 @@ def validate_runtime(objects, name, namespace, image):
     return result
 
 
+def clean_git(directory, repository, credential_file):
+    if not re.fullmatch(r'https://gitlab\.[a-z0-9.-]+/rhoai-workloads/[a-z0-9-]+\.git', repository):
+        raise ValueError('Promotion source is not a registered private workload repository')
+    env = {key: os.environ[key] for key in ('PATH', 'SSL_CERT_FILE', 'SSL_CERT_DIR') if key in os.environ}
+    env.update(HOME=str(directory), GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null',
+               GIT_NO_REPLACE_OBJECTS='1', GIT_TERMINAL_PROMPT='0')
+    argv = ['git', '--no-replace-objects', '-c', 'core.hooksPath=/dev/null',
+            '-c', 'protocol.file.allow=never', '-c', 'credential.helper=store --file=' + str(credential_file),
+            '-C', str(directory)]
+    def git(*args):
+        return subprocess.check_output(argv + list(args), env=env, stderr=subprocess.PIPE)
+    git('init', '--bare', '.')
+    git('remote', 'add', 'origin', repository)
+    return git
+
+
+def committed_artifacts(git, sha, directory):
+    rows = git('ls-tree', '-r', '-z', sha, '--', 'k8s-run', 'k8s').split(b'\0')
+    files = []
+    for row in rows:
+        if not row: continue
+        header, name = row.split(b'\t', 1)
+        mode, kind, _digest = header.split()
+        path = name.decode('utf-8')
+        if mode not in (b'100644', b'100755') or kind != b'blob':
+            raise ValueError('Runtime artifacts cannot contain links or submodules')
+        if '..' in Path(path).parts: raise ValueError('Unsafe committed artifact path')
+        files.append(path)
+    prefix = 'k8s-run/' if any(p.startswith('k8s-run/') for p in files) else 'k8s/'
+    selected = [p for p in files if p.startswith(prefix)]
+    if not selected: raise ValueError('No runtime artifacts at the requested source commit')
+    for index, path in enumerate(selected):
+        if Path(path).suffix not in ('.yaml', '.yml', '.json'): continue
+        (directory / (str(index) + Path(path).suffix)).write_bytes(git('show', sha + ':' + path))
+    if not list(directory.iterdir()): raise ValueError('No declarative runtime artifacts')
+
+
 def main():
     config = json.loads(Path('/config/delivery.json').read_text())
     name, ns = config['repo_name'], os.environ['NAMESPACE']
     sha, image = os.environ['SOURCE_COMMIT'], os.environ['IMAGE']
     if not re.fullmatch('[0-9a-f]{40}', sha): raise ValueError('Source commit is not immutable')
-    root = Path(os.environ['SOURCE_DIR'])
-    directory = root / ('k8s-run' if (root / 'k8s-run').is_dir() else 'k8s')
-    if not directory.is_dir() or directory.is_symlink(): raise ValueError('Runtime artifact directory missing or redirected')
-    for file in directory.rglob('*'):
-        if file.is_symlink(): raise ValueError('Runtime artifacts must not contain symbolic links')
+    # This Task never mounts the build workspace. Its fresh repository and Git
+    # configuration cannot inherit developer-written refs, grafts or hooks.
+    temporary = tempfile.TemporaryDirectory(prefix='promotion-')
+    root = Path(temporary.name)
+    git = clean_git(root, config['source_repo'], Path('/source-credentials/.git-credentials'))
+    git('fetch', '--no-tags', 'origin', sha)
+    if git('rev-parse', sha + '^{commit}').decode().strip() != sha:
+        raise ValueError('Fetched source does not match the requested commit')
+    directory = root / 'artifacts'; directory.mkdir()
+    committed_artifacts(git, sha, directory)
     output = subprocess.check_output(['oc', 'create', '--dry-run=client', '-f', str(directory), '-o', 'json'], universal_newlines=True)
     decoded = json.loads(output)
     objects = validate_runtime(decoded.get('items', [decoded]), name, ns, image)
@@ -102,8 +145,7 @@ def main():
             if previous['image'] != image: raise ValueError('Same source identity cannot promote a different image')
             commit = previous['deployment_commit'] if previous.get('deployment_commit') else remote['last_commit_id']
         else:
-            # The clone Task retains full source history. An older or diverged build cannot roll back delivery.
-            subprocess.run(['git', '-C', str(root), 'merge-base', '--is-ancestor', previous['source_commit'], sha], check=True)
+            git('merge-base', '--is-ancestor', previous['source_commit'], sha)
             commit = None
     else: commit = None
     if commit is None:
@@ -112,11 +154,10 @@ def main():
         artifact = api('GET', project, 'repository/files/runtime.json?ref=main')
         actions.append({'action': 'update', 'file_path': 'runtime.json', 'content': json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': objects}, sort_keys=True), 'last_commit_id': artifact['last_commit_id']})
         commit = api('POST', project, 'repository/commits', {'branch': 'main', 'commit_message': 'deploy: ' + name + ' ' + sha[:12], 'actions': actions})['id']
-    argo_token = Path('/argo/token').read_text().strip()
     deadline = time.monotonic() + 900
     while time.monotonic() < deadline:
-        request = urllib.request.Request(config['argocd_url'] + '/api/v1/applications/' + quote('runtime-' + name), headers={'Authorization': 'Bearer ' + argo_token})
-        with urllib.request.urlopen(request, timeout=30) as response: app = json.load(response)
+        app = json.loads(subprocess.check_output(['oc', 'get', 'application', 'runtime-' + name,
+                         '-n', 'openshift-gitops', '-o', 'json'], universal_newlines=True))
         status = app.get('status', {})
         if status.get('sync', {}).get('revision') == commit and status['sync']['status'] == 'Synced' and status.get('health', {}).get('status') == 'Healthy':
             deployed = json.loads(subprocess.check_output(['oc', 'get', 'deployment', name, '-n', ns, '-o', 'json'], universal_newlines=True))

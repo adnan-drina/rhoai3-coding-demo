@@ -3467,8 +3467,9 @@ def _generated_body_case() -> int:
                 or a3["path"] != "pom.xml" or "another build's output" not in a3["advice"]["request_rejection"]["first_action"]):
             return _fail("a stale target/ is read from the pom's option state and the spec's required list; the routing holds: %s %s"
                          % (a3["path"], {k: gb3.get(k) for k in ("stale_generated", "creator_seen", "required", "missing_required", "required_from", "option")}))
-        # ... and with the spec unreadable, the routing this obligation was LAST ISSUED on holds (the issued card / rejected row)
-        (root / "src/main/resources/openapi.yml").write_text("openapi: 3.0.0\ncomponents:\n  schemas:\n    Account: &anchor\n      description: >\n        folded\n")
+        # An undefined alias is unreadable with PyYAML and the strict fallback.
+        # The routing this obligation was LAST ISSUED on holds (issued card / rejected row).
+        (root / "src/main/resources/openapi.yml").write_text("openapi: 3.0.0\ncomponents:\n  schemas:\n    Account:\n      description: *undefined_spec_anchor\n")
         from planner.canonical import write_canonical
         from planner.paths import LOOP_ISSUED
         write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "task_id": "t_pomcard", "cluster": "c:pom", "items": [a["id"]], "write_set": ["pom.xml"]})

@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: project-enrollment
+  annotations:
+    argocd.argoproj.io/sync-wave: '22'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+  namespace: unassigned-dev
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/name: project-enrollment
+    app.kubernetes.io/component: project-enrollment
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  template:
+    spec:
+      serviceAccountName: project-enrollment
+      restartPolicy: Never
+      containers:
+      - name: bootstrap
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        command:
+        - python3
+        - /scripts/reconcile.py
+        env:
+        - name: MODE
+          value: bootstrap
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: ENROLLMENT
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['rhoai3.io/enrollment']
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: scripts
+        configMap:
+          name: gitlab-project-reconciler
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault

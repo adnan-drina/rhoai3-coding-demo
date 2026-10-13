@@ -13,8 +13,6 @@ spec:
   results:
     - name: DEPLOYMENT_COMMIT
       type: string
-  workspaces:
-    - name: source
   steps:
     - name: promote
       image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
@@ -24,8 +22,6 @@ spec:
           value: $(params.IMAGE)
         - name: SOURCE_COMMIT
           value: $(params.SOURCE_COMMIT)
-        - name: SOURCE_DIR
-          value: $(workspaces.source.path)
         - name: RESULT_PATH
           value: $(results.DEPLOYMENT_COMMIT.path)
         - name: NAMESPACE
@@ -42,8 +38,8 @@ spec:
         - name: credentials
           mountPath: /credentials
           readOnly: true
-        - name: argo
-          mountPath: /argo
+        - name: source-credentials
+          mountPath: /source-credentials
           readOnly: true
   volumes:
     - name: scripts
@@ -55,6 +51,6 @@ spec:
     - name: credentials
       secret:
         secretName: gitlab-delivery-writer
-    - name: argo
+    - name: source-credentials
       secret:
-        secretName: argocd-delivery-reader
+        secretName: gitlab-read-source

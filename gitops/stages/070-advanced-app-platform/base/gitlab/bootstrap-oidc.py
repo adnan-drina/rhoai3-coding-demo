@@ -27,11 +27,11 @@ def provider(issuer, host, client_secret):
 def main():
     sso_host = oc('get', 'route', 'keycloak', '-n', 'keycloak', '-o', 'json')['spec']['host']
     gitlab_host = oc('get', 'route', 'gitlab', '-n', 'gitlab-system', '-o', 'json')['spec']['host']
-    admin = oc('get', 'secret', 'keycloak-initial-admin', '-n', 'keycloak', '-o', 'json')['data']
-    credentials = {key: base64.b64decode(admin[key]).decode() for key in ('username', 'password')}
+    admin = oc('get', 'secret', 'stage070-scm-provisioner', '-n', 'gitlab-system', '-o', 'json')['data']
+    credentials = {key: base64.b64decode(admin[key]).decode() for key in ('client_id', 'client_secret')}
     base = 'https://' + sso_host
-    req = urllib.request.Request(base + '/realms/master/protocol/openid-connect/token',
-        urlencode({'grant_type': 'password', 'client_id': 'admin-cli', **credentials}).encode(),
+    req = urllib.request.Request(base + '/realms/platform/protocol/openid-connect/token',
+        urlencode({'grant_type': 'client_credentials', **credentials}).encode(),
         {'Content-Type': 'application/x-www-form-urlencoded'}, method='POST')
     with urllib.request.urlopen(req, timeout=30) as response: token = json.load(response)['access_token']
 

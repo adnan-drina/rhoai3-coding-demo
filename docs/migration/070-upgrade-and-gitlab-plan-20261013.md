@@ -1,6 +1,6 @@
 # Stage 070 upgrade and GitLab migration plan
 
-**Status:** approved for implementation; work started on `codex/stage070-gitlab-upgrade`. No deployment approval implied. **Assessment date:** 2026-10-13. No project code, manifests, scripts, live configuration or credentials were changed during this assessment.
+**Status:** approved for implementation and deployment; integrated source and the P0 review correction are published on `main` through `7b121dd1`. The first install is paused before developer-project enrollment pending the security follow-up. **Assessment date:** 2026-10-13. No project code, manifests, scripts, live configuration or credentials were changed during this assessment.
 
 **MTA revision, 2026-10-13:** the deployment target is now the latest available **8.3.x**, with Developer Lightspeed, the LLM proxy, Solution Server and native Agentic Migration Factory configured in this release. The earlier 8.2-first recommendation is withdrawn. Section 5.8 records the deeper component review and implementation decisions.
 
@@ -8,9 +8,9 @@ This plan supersedes the **Gitea recommendation** in [the earlier SCM proposal](
 
 ## Implementation status
 
-**Chart deployment policy:** all chart-based additions in this release are converted into ordinary checked-in manifests under component `generated/` directories and composed with Kustomize. Helm is required only to regenerate/verify source. Secret generation, supported-version checks and migrations use explicit Argo CD hooks; generated credentials stay out of Git. GitLab host/bucket substitutions are confined to declared ConfigMap keys, while all other fields remain GitOps-owned.
+**Chart deployment policy:** all chart-based additions in this release are converted into ordinary checked-in manifests under component `generated/` directories and composed with Kustomize. Helm is required only to regenerate/verify source. Secret generation, supported-version checks and migrations use explicit Argo CD hooks; generated credentials stay out of Git. Canonical GitLab templates remain fully GitOps-owned. The bootstrap writes separate runtime ConfigMaps derived from the current templates, Route and bucket claims; canonical config is not hidden by ignoreDifferences.
 
-Implementation began from platform `c10e131c` on 2026-10-13. The integrated source is authored on the feature branch. It is not deployed or accepted. The assessment below remains the design baseline; historical observations are not fresh release evidence.
+Implementation began from platform `c10e131c` on 2026-10-13. The integrated source is published; the first install is partial and not accepted. Security review work continues in an isolated release checkout. The assessment below remains the design baseline; historical observations are not fresh release evidence.
 
 | Work package | Implemented source | Remaining qualification |
 |---|---|---|
@@ -1046,3 +1046,13 @@ One bounded end-to-end slice must establish:
 Until the GitLab path passes, keep old project endpoints available for controlled rollback and avoid dual event delivery or dual Git writers. After cutover, classify every remaining active GitHub reference: justified upstream dependency, archived/test fixture, or unresolved migration item. Completion means no unclassified GitHub runtime dependency, not zero occurrences of the word GitHub.
 
 **Status:** complete source-based integration design and reference trace; no GitLab objects, repository imports, Kubernetes resources, credentials, hooks or pipeline runs were created or changed. No live GitHub metadata audit, GitLab API reconciliation, server-side admission or end-to-end execution was performed.
+
+### Review correction and qualification boundary
+
+The follow-up separates restricted `runtime-projects` from platform-pinned `platform-projects`; the coordinator has no Secret/RBAC write permission. Per-project native setup owns RBAC/Triggers, constrained admission validates source and renderer scope, and promotion uses a fresh exact-commit repository without the build PVC. RHDH permits only administrators to register locations/templates; native GitLab discovery imports workload components. The publisher is Maintainer, requester identity/membership is checked, auto-created GitLab users are blocked, and downstream SCM Jobs use a realm-scoped service client. Complete live authorization/admission, factory, private-checkout, quality-gate and delivery checks remain required before acceptance.
+
+This is a **fresh-install release**. Existing SonarQube PostgreSQL 15 data requires a supported database migration and SonarQube upgrade procedure; changing the image to 16 on the same PVC is refused as a migration plan. Before moving an old `rhbk` realm, export/backup it and protect its namespace against pruning, validate the existing `keycloak/keycloak` replacement, then separately authorize decommission. No old realm, PVC, repository or image is deleted by this release.
+
+Skill refresh validation is scoped to the 28 changed product skills. The committed repository-wide validator has 14 pre-existing `rhoai-*` description errors; an earlier zero-error run used another contributor’s uncommitted primary-checkout fixes and is not evidence for this release. Release commits `180749e7` and `92edb6ea`, as well as the other implementation corrections, were AI-assisted with Codex; their metadata is retained rather than rewritten.
+
+The shared Pipelines/TAS Subscriptions retain Automatic approval on versioned minor channels. Pipelines advanced natively from its 1.24.0 starting CSV to **1.24.1**, observed Succeeded; TAS **1.5.0** is Succeeded. The validator checks the selected minor line and the actual installed CSV’s success rather than treating startingCSV as an exact-version lock. The dedicated Dev Spaces/RHDH/MTA approval allowlist does not approve shared-namespace plans.

@@ -1,0 +1,43 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: stage070-project-provisioning
+  annotations:
+    argocd.argoproj.io/sync-wave: '12'
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/name: stage070-project-provisioning
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - tekton.dev
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      resources:
+      - pipelineruns
+  matchConditions:
+  - name: project-bootstrap-in-platform
+    expression: request.namespace == 'app-platform-build' && request.userInfo.username.startsWith('system:serviceaccount:')
+      && request.userInfo.username.endsWith(':project-enrollment')
+  variables:
+  - name: run
+    expression: request.userInfo.username.split(':')[2].substring(0, request.userInfo.username.split(':')[2].size()-4)
+  validations:
+  - expression: object.metadata.name == 'provision-' + variables.run && object.spec.pipelineRef.name
+      == 'provision-migration-run' && !has(object.spec.pipelineSpec) && !has(object.spec.taskRunSpecs)
+      && !has(object.spec.workspaces) && object.spec.taskRunTemplate.serviceAccountName
+      == 'migration-run-provisioner' && !has(object.spec.taskRunTemplate.podTemplate)
+    message: Project bootstrap may start only its own governed migration provisioner
+  - expression: object.spec.params.size() == 6 && object.spec.params.all(p, p.name
+      in ['run-name','scaffold-commit','request-repository-owner','request-raw-base','request-provider','request-project-id'])
+      && object.spec.params.exists(p, p.name == 'run-name' && p.value == variables.run)
+      && object.spec.params.exists(p, p.name == 'request-provider' && p.value == 'gitlab')
+      && object.spec.params.exists(p, p.name == 'scaffold-commit' && p.value.matches('^[0-9a-f]{40}$'))
+    message: Migration request must retain its own identity and immutable source

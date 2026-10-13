@@ -34,6 +34,7 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
+  # The service-ca controller injects this bundle after namespace creation.
   - group: ''
     kind: ConfigMap
     name: pipeline-registry-ca
@@ -65,6 +66,8 @@ spec:
     jsonPointers:
     - /spec/href
     - /spec/applicationMenu/imageURL
+  # DWO resolves HOST_USERS, its cluster configuration reference and SCC.
+  # Starting/stopping a workspace is user lifecycle, not GitOps drift.
   - group: workspace.devfile.io
     kind: DevWorkspace
     jsonPointers:
@@ -73,6 +76,7 @@ spec:
     - .spec.template.components[]?.container?.env[]? | select(.name == "HOST_USERS")
     - .spec.template.attributes."controller.devfile.io/devworkspace-config"
     - .spec.template.attributes."controller.devfile.io/scc"
+  # Bound PVC fields are assigned by the storage controller; keep their data.
   - group: ''
     kind: PersistentVolumeClaim
     jsonPointers:
@@ -89,49 +93,15 @@ spec:
     jsonPointers:
     - /secret
     - /redirectURIs
-  - group: ''
-    kind: ConfigMap
-    namespace: gitlab-system
-    name: gitlab-migrations
-    jsonPointers:
-    - /data/gitlab.yml.erb
-    - /data/pages_redirect_uri
-  - group: ''
-    kind: ConfigMap
-    namespace: gitlab-system
-    name: gitlab-sidekiq
-    jsonPointers:
-    - /data/gitlab.yml.erb
-  - group: ''
-    kind: ConfigMap
-    namespace: gitlab-system
-    name: gitlab-toolbox
-    jsonPointers:
-    - /data/gitlab.yml.erb
-  - group: ''
-    kind: ConfigMap
-    namespace: gitlab-system
-    name: gitlab-webservice
-    jsonPointers:
-    - /data/gitlab.yml.erb
-  - group: ''
-    kind: ConfigMap
-    name: gitlab-runtime-buckets
-    namespace: gitlab-system
-    jsonPointers:
-    - /data/lfs
-    - /data/artifacts
-    - /data/uploads
-    - /data/packages
-    - /data/backups
-    - /data/backup-tmp
   - group: org.eclipse.che
     kind: CheCluster
     name: devspaces
     namespace: openshift-devspaces
     jsonPointers:
     - /spec/devEnvironments/allowedSources/urls
-    - /spec/gitServices/gitlab
+    jqPathExpressions:
+    - .spec.gitServices.gitlab[]? | select(.secretName == "gitlab-oauth-config") |
+      .endpoint
   - group: tackle.konveyor.io
     kind: Tackle
     name: mta

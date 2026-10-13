@@ -4,7 +4,7 @@ passes every case (the producer-replay cases are their own suites and run in
 the release check on their own); then the M-7 additions:
 
 - fresh MTA: with no CLI resolvable the case is NOT-RUN naming why; with a
-  fake MTA CLI (the pinned 8.2.1 shape of mta-rescan-destination.test.py) the
+  fake MTA CLI (the current 8.3 shape of mta-rescan-destination.test.py) the
   M1 MTA producer runs on two clean frozen copies and their semantic findings
   compare PASS (named non-admissible in the claim boundary); a CLI whose
   findings drift between runs is FAIL;

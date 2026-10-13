@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: runtime-projects
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: '12'
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/name: runtime-projects
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+spec:
+  sourceRepos:
+  - https://gitlab.*/rhoai-delivery/*
+  destinations:
+  - server: https://kubernetes.default.svc
+    namespace: '*-dev'
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+  - group: apps
+    kind: Deployment
+  - group: ''
+    kind: Service
+  - group: route.openshift.io
+    kind: Route
+  - group: ''
+    kind: PersistentVolumeClaim
+  - group: ''
+    kind: ConfigMap

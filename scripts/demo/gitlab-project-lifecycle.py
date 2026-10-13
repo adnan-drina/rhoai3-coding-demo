@@ -16,12 +16,20 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def oc(*args):
-    return json.loads(subprocess.check_output(['oc', *args], text=True))
+    result = subprocess.run(['oc', *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    return json.loads(result.stdout)
 
 
 def registration(name):
     ns = 'coolstore-dev' if name == 'coolstore-inventory-service' else name + '-dev'
-    row = json.loads(oc('get', 'configmap', 'project-registration', '-n', ns, '-o', 'json')['data']['registration.json'])
+    try:
+        row = json.loads(oc('get', 'configmap', 'project-registration', '-n', ns, '-o', 'json')['data']['registration.json'])
+    except subprocess.CalledProcessError as error:
+        if '(NotFound)' not in (error.stderr or ''): raise
+        saved = oc('get', 'configmap', 'retired-project-' + name, '-n', 'app-platform-build', '-o', 'json')
+        packet = json.loads(saved['data']['retirement.json'])
+        if packet['name'] != name or packet['namespace'] != ns: raise ValueError('Foreign retirement record')
+        row = packet['registration']
     return ns, row
 
 
@@ -70,6 +78,17 @@ def main():
     if project['path_with_namespace'] != config['GITLAB_WORKLOAD_GROUP'] + '/' + args.name:
         raise RuntimeError('Lifecycle target is outside the registered workload group')
     check_action(args.action, args.name, row)
+    if args.action == 'retire':
+        packet = {'name':args.name, 'namespace':ns, 'registration':row}
+        tombstone = {'apiVersion':'v1','kind':'ConfigMap','metadata':{
+            'name':'retired-project-'+args.name,'namespace':'app-platform-build'},
+            'immutable':True,'data':{'retirement.json':json.dumps(packet,sort_keys=True)}}
+        try:
+            old = oc('get','configmap',tombstone['metadata']['name'],'-n','app-platform-build','-o','json')
+            if old.get('data') != tombstone['data']:raise ValueError('Retirement record identity changed')
+        except subprocess.CalledProcessError as error:
+            if '(NotFound)' not in (error.stderr or ''):raise
+            subprocess.run(['oc','create','-f','-'],input=json.dumps(tombstone),text=True,check=True,stdout=subprocess.DEVNULL)
     # Stop matching workspaces; retain their PVCs and local changes. Never wipe
     # a shared volume or change an unrelated/historical workspace.
     for namespace in ('wksp-ai-developer', 'wksp-ai-admin'):
@@ -104,19 +123,41 @@ def main():
         return
     # Archiving is the persistent retirement guard: the reconciler cannot
     # recreate resources for this project, even after its namespace is gone.
-    api('POST', f'projects/{pid}/archive')
+    if not project.get('archived'):
+        api('POST', f'projects/{pid}/archive')
     if row['kind'] == 'migration':
         run = {'apiVersion': 'tekton.dev/v1', 'kind': 'PipelineRun',
-               'metadata': {'generateName': 'retire-' + args.name + '-', 'namespace': 'app-platform-build'},
+               'metadata': {'name': 'retire-' + args.name, 'namespace': 'app-platform-build'},
                'spec': {'taskRunTemplate': {'serviceAccountName': 'migration-run-provisioner'},
                         'pipelineRef': {'name': 'provision-migration-run'},
                         'params': [{'name': 'run-name', 'value': args.name}, {'name': 'scaffold-commit', 'value': row['initial_commit']}, {'name': 'mode', 'value': 'retire'}, {'name': 'request-project-id', 'value': str(pid)}]}}
-        result = subprocess.run(['oc', 'create', '-f', '-', '-o', 'json'], input=json.dumps(run), text=True, capture_output=True, check=True)
-        run_name = json.loads(result.stdout)['metadata']['name']
-        subprocess.run(['oc', 'wait', 'pipelinerun', run_name, '-n', 'app-platform-build',
-                        '--for=condition=Succeeded', '--timeout=600s'], check=True)
+        try:
+            recorded = oc('get','pipelinerun',run['metadata']['name'],'-n','app-platform-build','-o','json')
+        except subprocess.CalledProcessError as error:
+            if '(NotFound)' not in (error.stderr or ''):raise
+            result = subprocess.run(['oc','create','-f','-','-o','json'],input=json.dumps(run),text=True,capture_output=True,check=True)
+            recorded = json.loads(result.stdout)
+        expected = {p['name']:p['value'] for p in run['spec']['params']}
+        actual = {p['name']:p['value'] for p in recorded['spec']['params']}
+        if actual != expected or recorded['spec']['pipelineRef'] != run['spec']['pipelineRef']:
+            raise ValueError('Existing retirement PipelineRun has another identity')
+        conditions = recorded.get('status',{}).get('conditions',[])
+        if any(c.get('type')=='Succeeded' and c.get('status')=='False' for c in conditions):
+            raise RuntimeError('Retirement pipeline failed; preserve it, repair its cause and review a native retry. Namespace retained.')
+        subprocess.run(['oc','wait','pipelinerun',run['metadata']['name'],'-n','app-platform-build',
+                        '--for=condition=Succeeded','--timeout=600s'],check=True)
     for app in ('project-' + args.name, 'runtime-' + args.name):
         subprocess.run(['oc', 'delete', 'application', app, '-n', 'openshift-gitops', '--ignore-not-found'], check=True)
+    # Child Applications have no destructive finalizers. Remove only their
+    # registered cross-namespace grants; repository and delivery history remain.
+    for namespace, kind, names in (
+            ('app-platform-build','rolebinding',[args.name+'.inputs',args.name+'.runs']),
+            ('app-platform-build','role',[args.name+'.runs']),
+            ('openshift-gitops','rolebinding',[args.name+'.delivery',args.name+'.readback']),
+            ('openshift-gitops','role',[args.name+'.delivery',args.name+'.readback']),
+            ('openshift-gitops','secret',['gitlab-delivery-reader-'+args.name])):
+        subprocess.run(['oc','delete',kind,*names,'-n',namespace,'--ignore-not-found'],check=True)
+    subprocess.run(['oc','delete','clusterrolebinding',args.name+'.listener','--ignore-not-found'],check=True)
     subprocess.run(['oc', 'delete', 'namespace', ns, '--ignore-not-found'], check=True)
     print('Project retired. GitLab repository archived; workspace PVCs and delivery history retained.')
 

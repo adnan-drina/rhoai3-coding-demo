@@ -18,82 +18,6 @@ rules:
   verbs:
   - get
   - create
-- apiGroups:
-  - ''
-  resources:
-  - secrets
-  - configmaps
-  - serviceaccounts
-  verbs:
-  - get
-  - create
-  - patch
-  - update
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resources:
-  - roles
-  - rolebindings
-  - clusterrolebindings
-  verbs:
-  - get
-  - create
-  - patch
-  - update
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resources:
-  - clusterroles
-  resourceNames:
-  - tekton-triggers-eventlistener-clusterroles
-  verbs:
-  - bind
-- apiGroups:
-  - tekton.dev
-  resources:
-  - pipelineruns
-  verbs:
-  - get
-  - create
-- apiGroups:
-  - tekton.dev
-  resources:
-  - pipelines
-  verbs:
-  - get
-- apiGroups:
-  - argoproj.io
-  resources:
-  - applications
-  verbs:
-  - get
-  - create
-  - patch
-  - update
-- apiGroups:
-  - route.openshift.io
-  resources:
-  - routes
-  verbs:
-  - get
-  - create
-  - patch
-  - update
-- apiGroups:
-  - triggers.tekton.dev
-  resources:
-  - eventlisteners
-  - triggertemplates
-  - triggerbindings
-  - triggers
-  - interceptors
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - patch
-  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -138,19 +62,110 @@ spec:
             - name: scripts
               mountPath: /scripts
               readOnly: true
-            - name: config
-              mountPath: /config
-              readOnly: true
-            - name: credentials
-              mountPath: /credentials
-              readOnly: true
           volumes:
           - name: scripts
             configMap:
               name: gitlab-project-reconciler
-          - name: config
-            configMap:
-              name: gitlab-platform-config
-          - name: credentials
-            secret:
-              secretName: gitlab-enroller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: project-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: '13'
+  namespace: app-platform-build
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  verbs:
+  - get
+  resourceNames:
+  - gitlab-platform-config
+  - gitlab-import-seeds
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
+  resourceNames:
+  - gitlab-enroller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: project-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: '13'
+  namespace: app-platform-build
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: project-provisioner
+subjects:
+- kind: ServiceAccount
+  name: project-provisioner
+  namespace: app-platform-build
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: project-provisioner-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: '13'
+  namespace: openshift-gitops
+rules:
+- apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  verbs:
+  - get
+  - create
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: project-provisioner-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: '13'
+  namespace: openshift-gitops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: project-provisioner-applications
+subjects:
+- kind: ServiceAccount
+  name: project-provisioner
+  namespace: app-platform-build
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: project-enrollment-inputs
+  annotations:
+    argocd.argoproj.io/sync-wave: '13'
+  namespace: app-platform-build
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
+  resourceNames:
+  - gitlab-enroller
+  - sonarqube-credentials
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  verbs:
+  - get
+  resourceNames:
+  - gitlab-platform-config
+  - gitlab-import-seeds

@@ -1,0 +1,34 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: unassigned.runs
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: '20'
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/name: unassigned.runs
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
+  resourceNames:
+  - migration-source-placeholder
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - create
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns
+  verbs:
+  - create

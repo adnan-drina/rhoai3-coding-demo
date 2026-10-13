@@ -37,7 +37,7 @@ def secret(name, data, derived=False):
     if existing:
         if derived:
             return oc('patch', 'secret', name, '-n', NAMESPACE, '--type=merge',
-                      '-p', json.dumps({'stringData': data}))
+                      '--patch-file=/dev/stdin', document={'stringData': data})
         return existing
     return oc('create', '-f', '-', '-o', 'json', document={
         'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': name, 'namespace': NAMESPACE},
@@ -182,7 +182,7 @@ def main():
         raise RuntimeError('GitLab Route has no host in the expected ingress domain')
     templates = json.loads(Path('/runtime/templates.json').read_text())
     for name, data in runtime_data(templates, route_host, domain, claims).items():
-        configmap(name, data)
+        configmap(name if name == 'gitlab-runtime-buckets' else name + '-runtime', data)
     print('GitLab native manifests configured from the Route and six scoped claims')
 
 

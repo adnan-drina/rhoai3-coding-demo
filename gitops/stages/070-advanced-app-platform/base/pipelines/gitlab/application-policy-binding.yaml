@@ -1,0 +1,20 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: stage070-project-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: '12'
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/name: stage070-project-applications
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+spec:
+  policyName: stage070-project-applications
+  paramRef:
+    name: stage070-project-release
+    namespace: openshift-gitops
+    parameterNotFoundAction: Deny
+  validationActions:
+  - Deny

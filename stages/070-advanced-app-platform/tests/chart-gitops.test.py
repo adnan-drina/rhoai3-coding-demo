@@ -4,6 +4,7 @@ import importlib.util
 import json
 import subprocess
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import yaml
@@ -53,17 +54,25 @@ class NativeDelivery(unittest.TestCase):
         # Applying the new target must never overwrite the previous installed version.
         self.assertNotIn(('ConfigMap', 'gitlab-gitlab-chart-info'), rows)
 
-    def test_derived_keys_only_have_narrow_argo_ignores(self):
+    def test_derived_config_is_separate_from_canonical_chart(self):
         templates = next(d for d in self.resources if d['kind'] == 'ConfigMap'
                          and d['metadata']['name'] == 'gitlab-runtime-templates')
         app = yaml.safe_load((ROOT / 'gitops/argocd/app-of-apps/070-advanced-app-platform.yaml').read_text())
+        static = {r['metadata']['name']: r for r in self.resources if r['kind'] == 'ConfigMap'}
         for name, data in json.loads(templates['data']['templates.json']).items():
-            derived = {'/data/' + key.replace('~', '~0').replace('/', '~1') for key, text in data.items()
-                       if 'example.invalid' in text or 'pending-' in text}
-            ignore = next(d for d in app['spec']['ignoreDifferences']
-                          if d.get('name') == name and d.get('namespace') == 'gitlab-system')
-            self.assertEqual(set(ignore['jsonPointers']), derived)
-            self.assertNotIn('/data', ignore['jsonPointers'])
+            if name != 'gitlab-runtime-buckets':
+                self.assertEqual(static[name]['data'], data)
+                self.assertNotIn(name+'-runtime', static)
+            self.assertFalse(any(r.get('kind')=='ConfigMap' and r.get('name')==name
+                                 for r in app['spec']['ignoreDifferences']))
+        for row in self.resources:
+            if row['kind'] not in ('Deployment','StatefulSet','Job','CronJob'): continue
+            pod = (row['spec']['jobTemplate']['spec']['template']['spec'] if row['kind']=='CronJob'
+                   else row['spec']['template']['spec'])
+            for volume in pod.get('volumes',[]):
+                if volume.get('configMap',{}).get('name','').endswith('-runtime'):
+                    source=volume['configMap']['name'][:-8]
+                    self.assertIn(source, json.loads(templates['data']['templates.json']))
 
     def test_images_are_immutable_and_application_has_no_api_token(self):
         for document in self.resources:
@@ -91,6 +100,14 @@ class NativeDelivery(unittest.TestCase):
 class BootstrapLifecycle(unittest.TestCase):
     def setUp(self):
         self.target = {'gitlabVersion': 'v19.4.2', 'gitlabChartVersion': '10.4.2'}
+
+    def test_derived_secret_values_are_not_command_arguments(self):
+        with patch.object(bootstrap,'optional',return_value={'data':{}}),patch.object(bootstrap,'oc') as command:
+            bootstrap.secret('gitlab-storage-uploads',{'connection':'synthetic-sensitive-value'},derived=True)
+        argv=command.call_args.args
+        self.assertNotIn('synthetic-sensitive-value',str(argv))
+        self.assertIn('--patch-file=/dev/stdin',argv)
+        self.assertEqual(command.call_args.kwargs,{'document':{'stringData':{'connection':'synthetic-sensitive-value'}}})
 
     def test_initial_install_and_same_release_retry(self):
         self.assertEqual(bootstrap.upgrade_action(self.target, None, None, False), 'initialize')

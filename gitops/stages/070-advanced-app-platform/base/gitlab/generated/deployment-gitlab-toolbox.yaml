@@ -33,7 +33,7 @@ spec:
         app.kubernetes.io/name: gitlab
         app.kubernetes.io/version: v19.4.2
       annotations:
-        checksum/config: 4da18045bea8d8fc8be4a61f5bc5ea5c9617bc1bfbd68d278b8925dcf692c4df
+        checksum/config: e5bb039d176ad915ae3b05497c069952a68b306dfebdbd86387dd0a56acfc36a
         cluster-autoscaler.kubernetes.io/safe-to-evict: 'true'
     spec:
       securityContext:

@@ -53,7 +53,7 @@ class Enrollment(unittest.TestCase):
 
     def test_webhook_cannot_provision_or_select_another_project(self):
         resources = scm.trigger_resources('example', 'example-dev', 42, 'https://gitlab.example/rhoai-workloads/example.git', self.sha)
-        role = next(r for r in resources if r['kind'] == 'Role')
+        role = yaml.safe_load((BASE / 'pipelines/project-enrollment/listener-role.yaml').read_text())
         writes = [r for r in role['rules'] if 'create' in r['verbs']]
         self.assertEqual(writes, [{'apiGroups': ['tekton.dev'], 'resources': ['pipelineruns'], 'verbs': ['create']}])
         event = next(r for r in resources if r['kind'] == 'EventListener')

@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 if [[ "${1:-}" == --static ]]; then
-  for test in internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py; do
+  for test in internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py security-boundaries.test.py; do
     "$PYTHON" "$SCRIPT_DIR/tests/$test"
   done
   "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/jobs/catalog/render_catalog.test.py"
@@ -25,12 +25,23 @@ for row in \
   'openshift-devspaces devspaces devspacesoperator.v3.30.2' \
   'rhdh-operator rhdh rhdh-operator.v1.10.5' \
   'openshift-mta mta-operator mta-operator.v8.3.0' \
-  'openshift-operators openshift-pipelines-operator-rh openshift-pipelines-operator-rh.v1.24.0' \
-  'openshift-operators rhtas-operator rhtas-operator.v1.5.0'; do
+  'openshift-operators openshift-pipelines-operator-rh openshift-pipelines-operator-rh.v1.24.' \
+  'openshift-operators rhtas-operator rhtas-operator.v1.5.'; do
   read -r ns subscription csv <<< "$row"
-  check "$subscription installed revision" \
-    "oc get subscription '$subscription' -n '$ns' -o jsonpath='{.status.installedCSV}'" "$csv"
-  check "$csv succeeded" "oc get csv '$csv' -n '$ns' -o jsonpath='{.status.phase}'" 'Succeeded'
+  if [[ "$ns" == openshift-operators ]]; then
+    # Automatic versioned channels admit patch updates. startingCSV is an
+    # installation floor, not an installed-version lock (1.24.1 observed live).
+    installed=$(oc get subscription "$subscription" -n "$ns" -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)
+    pattern="^${csv//./\\.}[0-9]+$"
+    check "$subscription stays on selected minor" "printf '%s' '$installed' | contains -E '$pattern' && echo SELECTED" 'SELECTED'
+    if [[ -n "$installed" ]]; then
+      check "$installed succeeded" "oc get csv '$installed' -n '$ns' -o jsonpath='{.status.phase}'" 'Succeeded'
+    fi
+  else
+    check "$subscription installed revision" \
+      "oc get subscription '$subscription' -n '$ns' -o jsonpath='{.status.installedCSV}'" "$csv"
+    check "$csv succeeded" "oc get csv '$csv' -n '$ns' -o jsonpath='{.status.phase}'" 'Succeeded'
+  fi
 done
 
 log_step 'GitLab native deployment and scoped NooBaa storage'

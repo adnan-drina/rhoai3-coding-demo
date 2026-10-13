@@ -42,6 +42,19 @@ if not any(c.get("type")=="Ready" and c.get("status")=="True" for c in condition
 '
 oc get crd sandboxes.agents.x-k8s.io >/dev/null
 
+# This release is for a fresh install. Do not allow an old realm namespace
+# to disappear through pruning or put PostgreSQL 16 onto a known PG15 volume.
+LEGACY_REALM=$(oc get namespace rhbk --ignore-not-found -o jsonpath='{.metadata.name}')
+if [[ -n "$LEGACY_REALM" ]]; then
+  log_error "Legacy rhbk namespace exists. Protect/export it and review the realm migration before deploying this fresh-install release."
+  exit 1
+fi
+SONAR_DATABASE_IMAGE=$(oc get deployment postgresql -n sonarqube --ignore-not-found -o jsonpath='{.spec.template.spec.containers[0].image}')
+if [[ "$SONAR_DATABASE_IMAGE" == *postgresql-15* ]]; then
+  log_error "SonarQube uses PostgreSQL 15. Back up and migrate its data before the PostgreSQL 16 release; an image swap is refused."
+  exit 1
+fi
+
 # First cluster mutation: install the single Argo CD owner. Publish/review the
 # configured source revision before invoking this script; local edits are not
 # a deployment source. Credentials and chart migrations are native sync hooks.

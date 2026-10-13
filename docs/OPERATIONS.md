@@ -758,9 +758,9 @@ The stage 070 `identity` component deploys the standalone platform RHBK (Red Hat
 Useful checks:
 
 ```bash
-oc get keycloak platform-rhbk -n rhbk -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
-oc get keycloakrealmimport platform-realm -n rhbk -o jsonpath='{.status.conditions[?(@.type=="Done")].status}'
-oc get route platform-rhbk -n rhbk -o jsonpath='{.spec.host}'
+oc get keycloak keycloak -n keycloak -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+oc get keycloakrealmimport platform-realm -n keycloak -o jsonpath='{.status.conditions[?(@.type=="Done")].status}'
+oc get route keycloak -n keycloak -o jsonpath='{.spec.host}'
 oc get oauthclient platform-keycloak -o jsonpath='{.redirectURIs[0]}'
 ```
 
@@ -843,30 +843,9 @@ After any cluster suspend/resume, also restart the Stage 070 Developer Hub deplo
 
 ## Coolstore Demo Reset
 
-The stage 070 coding exercise pushes real commits to `coolstore-inventory-service` `main` (required — pipeline triggers listen only on `refs/heads/main`). To make demo runs repeatable, a `golden` branch in that repo pins the pristine baseline.
+For the registered GitLab project, set `GITLAB_OPERATOR_TOKEN_FILE` to your uncommitted scoped operator token file and run `./scripts/demo/reset-coolstore-demo.sh --yes`. It restores the immutable registered baseline with a normal commit, stops only matching workspaces and retains their PVCs and local changes. No force push or workspace recreation is performed. The commit triggers the project’s main-branch pipeline and immutable image promotion.
 
-```bash
-./scripts/demo/reset-coolstore-demo.sh
-```
-
-| Flag | Effect |
-|------|--------|
-| `--yes` | Skip the confirmation prompt |
-| `--keep-sonar` | Skip the SonarQube project deletion (deletion is the default: a post-demo rewind re-introduces fixed lines as new violations and the validation run goes red without it) |
-| `--skip-workspace` | Leave the DevWorkspace as-is |
-| `--wait-pipeline` | Poll the reset PipelineRun until Succeeded/Failed (max 15 min) |
-
-The script rewinds `main` to `golden` via the GitHub API, recreates the `agentic-coolstore` DevWorkspace (Argo CD self-heals it to `Stopped`), and optionally clears SonarQube history. The force-push fires one expected `app-push` PipelineRun in `coolstore-dev` that re-validates the chain and re-tags `:latest`.
-
-**Advancing the baseline:** when the demo app legitimately evolves, push the new baseline commit to `main`, verify the pipeline is green, then update the golden branch:
-
-```bash
-gh api -X PATCH "repos/adnan-drina/coolstore-inventory-service/git/refs/heads/golden" \
-  -f sha="$(gh api repos/adnan-drina/coolstore-inventory-service/git/refs/heads/main --jq .object.sha)" \
-  -F force=true
-```
-
-Or: `git push origin main:golden --force`.
+Legacy GitHub projects have no GitLab registration. Do not use the GitLab lifecycle helper for them or fabricate a registration. Their cleanup remains a separately reviewed operation: inventory exact repository, webhook, Argo app, DevWorkspace, PipelineRun, Secret and PVC identities; archive local/evidence data; stop the matching workspace and disable the obsolete writer/webhook; remove only confirmed retired runtime resources. Keep repositories, PVCs and evidence until their owners explicitly authorize deletion. No broad namespace or historical cleanup is part of this release.
 
 ## Qwen 3.8 INT4 alongside Qwen 3.6
 
@@ -1142,7 +1121,7 @@ The owner-only client (`owner-client.py --check` / `--trace`) runs from the sour
 
 ## Stage 070 GitLab release
 
-The feature branch `codex/stage070-gitlab-upgrade` contains the integrated source release. It is not deployed. The models remain stopped. Review the complete diff, [version/acceptance plan](migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status) and data-retention changes before source publication and installation.
+The integrated release and P0 review correction are published on `main` through `7b121dd1`. The first install is paused before enrollment while the security follow-up on `codex/stage070-release` is validated. The models remain stopped. Review the complete diff, [version/acceptance plan](migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status) and data-retention changes before source publication and installation.
 
 ### Installation and acceptance
 
@@ -1189,3 +1168,17 @@ The platform mirror retains reviewed Git history. A missing current revision can
 For lifecycle helpers, set `GITLAB_OPERATOR_TOKEN_FILE` to an uncommitted scoped token file. `reset-coolstore-demo.sh --yes` stops only matching workspaces, restores the registered repository baseline through a normal commit and retains PVC/local changes. `delete-scaffolded-project.sh <project> --yes` checks registration ID/URL/group before archiving the repository and retiring its project resources. Migration resource retirement uses the platform pipeline. Workspace PVCs and delivery history remain. The helper refuses Stage-owned imports such as Coolstore; those are managed through the stage's GitOps source.
 
 Retain GitLab database/Gitaly/object-store data, encryption Secrets and the successful-version receipt during recovery. An existing database without a trustworthy prior version refuses migration. A database downgrade is a supported restore operation, not a reverted image pin. Do not delete earlier live GitHub/Quay resources solely because this source no longer consumes them; retire old writers during the separately reviewed cutover.
+
+### Stage 070 security review follow-up
+
+Keep the full Stage 070 Application paused until the security package and negative tests have been reviewed. An operator-only selective sync or approved InstallPlan is not full stage acceptance. Restoring Automatic approval does not change an already-created Manual InstallPlan: inspect its exact CSV set and approve only the selected Pipelines/TAS versions; do not approve unrelated plans or edit shared operator policies.
+
+`runtime-projects` permits only validated namespaced runtime kinds in project namespaces and private delivery sources; it has no cluster resources. `platform-projects` permits only the pinned platform project setup. Admission checks protect the coordinator’s Application source/renderer and project-local credentials/provisioning. The coordinator has namespace create and constrained Application rights; it cannot write Secrets, ServiceAccounts or RBAC. Promotion never mounts the build workspace: fresh Git, neutral configuration and `git show <sha>:path` provide the source artifacts. Route host/subdomain claims and foreign credentials remain refused. Portal registration is administrator-only; GitLab discovery ingests workload `catalog-info.yaml` files without granting ordinary users location/template registration.
+
+The project lifecycle writes an immutable retirement record in `app-platform-build` before archiving. Migration retirement joins a deterministic PipelineRun, preserves failed runs and leaves the namespace intact on failure. Retries after namespace deletion can recover the original identity from that record; a failed pipeline requires diagnosis and an explicitly reviewed native retry, not new blind runs.
+
+GitLab’s scheduled backup uses NooBaa in this same cluster. It does **not** protect against loss of the cluster. Separately capture the exact GitLab Rails encryption Secret (`gitlab-rails-secret`) into encrypted off-cluster storage, together with database/Gitaly/object-store backups, release identity and restore instructions. Never commit its contents or print them in logs. Demonstrate restore on the same GitLab release before claiming recovery.
+
+For existing Stage 070 installations, back up/export SonarQube and its PostgreSQL data and the old `rhbk` realm before any upgrade or pruning. This release is qualified only as a fresh install; it does not perform PostgreSQL 15→16 migration on an existing PVC. Preserve the old namespace with `Prune=false` until its separately authorized decommission. Server model window `262144` and client input budget `220000` represent different bounds, not necessarily a mismatch. After the operator explicitly resumes models, qualify the selected MTA model alias through MaaS with one bounded request; until then the AI configuration is resource-only evidence.
+
+References: [RHDH Git provider integration](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/integrating_red_hat_developer_hub_with_your_git_provider/index), [Backstage GitLab discovery](https://backstage.io/docs/integrations/gitlab/discovery/), [Pipelines automatic RBAC configuration](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index), [GitLab protected branch API](https://docs.gitlab.com/api/protected_branches/).

@@ -99,11 +99,11 @@ def golden_actions(files, current):
 def realm_personas():
     """Only the two already-brokered OpenShift identities receive membership."""
     host = oc('get', 'route', 'keycloak', '-n', 'keycloak', '-o', 'json')['spec']['host']
-    admin = oc('get', 'secret', 'keycloak-initial-admin', '-n', 'keycloak', '-o', 'json')['data']
-    credentials = {key: base64.b64decode(admin[key]).decode() for key in ('username', 'password')}
+    admin = oc('get', 'secret', 'stage070-scm-provisioner', '-n', 'gitlab-system', '-o', 'json')['data']
+    credentials = {key: base64.b64decode(admin[key]).decode() for key in ('client_id', 'client_secret')}
     base = 'https://' + host
-    request = urllib.request.Request(base + '/realms/master/protocol/openid-connect/token',
-        urlencode({'grant_type': 'password', 'client_id': 'admin-cli', **credentials}).encode(),
+    request = urllib.request.Request(base + '/realms/platform/protocol/openid-connect/token',
+        urlencode({'grant_type': 'client_credentials', **credentials}).encode(),
         {'Content-Type': 'application/x-www-form-urlencoded'}, method='POST')
     with urllib.request.urlopen(request, timeout=30) as response: token = json.load(response)['access_token']
     rows = []
@@ -174,7 +174,10 @@ def main():
     try:
         platform, workloads, delivery = [group(p) for p in ('rhoai-platform', 'rhoai-workloads', 'rhoai-delivery')]
         api('PUT', 'application/settings', {'signup_enabled': False})
-        api('PUT', f"groups/{workloads['id']}", {'project_creation_level': 'developer'})
+        api('PUT', f"groups/{workloads['id']}", {'project_creation_level': 'developer',
+            'default_branch': 'main', 'default_branch_protection_defaults': {
+                'allowed_to_push': [{'access_level': 30}], 'allowed_to_merge': [{'access_level': 40}],
+                'allow_force_push': False, 'developer_can_initial_push': True}})
 
         def user(username):
             rows = find('users', 'username=' + username)
@@ -187,6 +190,7 @@ def main():
                 current = api('GET', f'groups/{group_id}/members/{user_id}')
                 if current['access_level'] != level: api('PUT', f'groups/{group_id}/members/{user_id}', {'access_level': level})
 
+        requesters = {}
         for persona in realm_personas():
             username = persona['username']
             rows = find('users', 'username=' + username)
@@ -199,19 +203,20 @@ def main():
                 if account['email'] != persona['email']:
                     raise RuntimeError('Refuse to link a foreign GitLab account: ' + username)
                 api('PUT', 'users/' + str(account['id']), {'provider': 'openid_connect', 'extern_uid': persona['id']})
+            requesters['user:default/' + username] = account['id']
             membership(workloads['id'], account['id'], 40 if username == 'ai-admin' else 30)
             membership(platform['id'], account['id'], 20)
             membership(delivery['id'], account['id'], 20)
 
         publisher, enroller, reader = [user(u) for u in ('rhdh-publisher', 'platform-enroller', 'platform-catalog-reader')]
-        for identity, groups in ((publisher, [(workloads, 50), (platform, 20)]), (enroller, [(workloads, 50), (delivery, 50), (platform, 20)]), (reader, [(platform, 20)])):
+        for identity, groups in ((publisher, [(workloads, 40), (platform, 20)]), (enroller, [(workloads, 50), (delivery, 50), (platform, 20)]), (reader, [(platform, 20)])):
             for g, level in groups: membership(g['id'], identity['id'], level)
 
         def credential(username, scopes, secret_name, ns):
             try:
                 existing = oc('get', 'secret', secret_name, '-n', ns, '-o', 'json')
                 # Missing expiry or an expired secret is a refusal, never a silent remint.
-                expiry = datetime.date.fromisoformat(existing['metadata']['annotations']['rhoai3.io/expires-at'])
+                expiry = datetime.datetime.strptime(existing['metadata']['annotations']['rhoai3.io/expires-at'], '%Y-%m-%d').date()
                 if expiry <= datetime.date.today() + datetime.timedelta(days=7): raise RuntimeError('GitLab service token needs a reviewed rotation: ' + secret_name)
                 return existing
             except subprocess.CalledProcessError as error:
@@ -336,6 +341,8 @@ def main():
                 'type': 'git', 'url': platform_repo, 'username': read['username'], 'password': read['token']},
                 {'argocd.argoproj.io/secret-type': 'repository'})
         config = {'GITLAB_HOST': host, 'GITLAB_BASE_URL': base, 'GITLAB_WORKLOAD_GROUP': workloads['path'], 'GITLAB_WORKLOAD_GROUP_ID': str(workloads['id']), 'GITLAB_DELIVERY_GROUP': delivery['path'], 'GITLAB_DELIVERY_GROUP_ID': str(delivery['id']), 'GITLAB_PUBLISHER_USER_ID': str(publisher['id']), 'GITLAB_REGISTRATION_PROJECT_ID': str(registration['id']), 'PLATFORM_REPO_URL': platform_repo, 'PLATFORM_REVISION': platform_sha, 'ARGOCD_URL': 'https://' + argo_host}
+        config['GITLAB_REQUESTER_IDS'] = requesters
+        apply('ConfigMap', 'stage070-project-release', 'openshift-gitops', {'repo_url': platform_repo, 'revision': platform_sha, 'delivery_base_url': base + '/' + delivery['path'] + '/'})
         config['PLATFORM_CATALOG_REPO'] = imports['rhoai3-coding-demo']['http_url_to_repo']
         mta_host = oc('get', 'route', 'mta', '-n', 'openshift-mta', '-o', 'json')['spec']['host']
         if not mta_host.endswith('.' + domain): raise RuntimeError('MTA Route is outside the ingress domain')

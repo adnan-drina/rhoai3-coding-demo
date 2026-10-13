@@ -418,8 +418,13 @@ def build_dest(
     findings = {"schema": "rhoai3.mta-findings/v1-provisional", "execution_evidence": {"analyzer_ran": True, "cli": "/opt/mta-cli/mta-cli", "rule_set": ["quarkus", "jakarta-ee9"], "input_digest": "frozen:" + manifest["digest"]}, "violations": violations}
     (root / MTA_FINDINGS).parent.mkdir(parents=True, exist_ok=True)
     (root / MTA_FINDINGS).write_text(json.dumps(findings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    frozen_sha = str(((load_json(root / ".hermes" / "pins.json").get("pins") or {}).get("mta_cli") or {}).get("artifact_sha256") or "") or ("a" * 64)
-    write_canonical(prod / "mta.json", _receipt("mta", "ok", {"name": "mta-cli", "version": "8.2", "version_measured": "8.2.0", "pin_status": "pinned", "product_version_pin": "8.2", "admissible": mta_admissible, "provenance": "mta-cli-8.2-artifact" if mta_admissible else "kantra-fallback", "artifact_sha256": frozen_sha if mta_admissible else ("k" * 64)}, {"analysis_root": "/analysis", "digest": manifest["digest"]}, [{"path": str(MTA_FINDINGS), "sha256": "w" * 64}], targets=["quarkus", "jakarta-ee9"], custom_rules_digest=_sha("rules"), bundled_rules_digest=_sha("bundled"), exit_status=0, output_digest=_sha("out")))
+    # Current-release fixtures use the selected pin. Historical 8.2.1
+    # compatibility-exception fixtures remain explicit in their own tests.
+    mta_pin = (load_json(root / ".hermes" / "pins.json").get("pins") or {}).get("mta_cli") or {}
+    mta_version = str(mta_pin.get("version") or "unknown")
+    mta_measured = str(mta_pin.get("product_version") or mta_version)
+    frozen_sha = str(mta_pin.get("artifact_sha256") or "") or ("a" * 64)
+    write_canonical(prod / "mta.json", _receipt("mta", "ok", {"name": "mta-cli", "version": mta_version, "version_measured": mta_measured, "pin_status": "pinned", "product_version_pin": mta_version, "admissible": mta_admissible, "provenance": "mta-cli-" + mta_version + "-artifact" if mta_admissible else "kantra-fallback", "artifact_sha256": frozen_sha if mta_admissible else ("k" * 64)}, {"analysis_root": "/analysis", "digest": manifest["digest"]}, [{"path": str(MTA_FINDINGS), "sha256": "w" * 64}], targets=["quarkus", "jakarta-ee9"], custom_rules_digest=_sha("rules"), bundled_rules_digest=_sha("bundled"), exit_status=0, output_digest=_sha("out")))
 
     from planner.evidence import derive_entry_points, load_catalogs
 

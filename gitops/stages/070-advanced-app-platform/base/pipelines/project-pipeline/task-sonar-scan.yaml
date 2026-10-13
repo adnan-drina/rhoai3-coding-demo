@@ -24,7 +24,7 @@ spec:
       optional: true
   steps:
     - name: sonar-scan
-      image: registry.access.redhat.com/ubi9/openjdk-21:1.20
+      image: registry.access.redhat.com/ubi9/openjdk-21@sha256:a0692b56b28a61418f122857cf717431317294127e9946ed99272b574fe54bdf
       workingDir: $(workspaces.source.path)
       env:
         - name: MAVEN_OPTS

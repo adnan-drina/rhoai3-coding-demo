@@ -4,6 +4,8 @@ import subprocess
 import time
 
 RULES = ['p, role:rhdh-reader, applications, get, rhoai-demo/*, allow',
+         'p, role:rhdh-reader, applications, get, runtime-projects/*, allow',
+         'p, role:rhdh-reader, applications, get, platform-projects/*, allow',
          'g, rhdh, role:rhdh-reader']
 
 

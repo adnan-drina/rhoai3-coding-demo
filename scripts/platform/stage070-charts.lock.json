@@ -29,5 +29,10 @@
     "registry.gitlab.com/gitlab-org/build/cng/gitlab-webservice-ce:v19.4.2": "sha256:773e2c3cf4062d8d47260b87083ffdf4682746b35ba6b0ee1cecc9b691ad271e",
     "registry.gitlab.com/gitlab-org/build/cng/gitlab-workhorse-ce:v19.4.2": "sha256:5657c86c4959d810c957c405715454c3f2116c1f14b5e1d0e8b6fd1ab13579ff",
     "registry.gitlab.com/gitlab-org/build/cng/kubectl:v19.4.2": "sha256:dc78bf0d3cbc08dfcee4c38f22a59c7ef5e2c73554747f8685bc8dab818baba1"
+  },
+  "project_images": {
+    "cli": "registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9",
+    "java21": "registry.access.redhat.com/ubi9/openjdk-21@sha256:a0692b56b28a61418f122857cf717431317294127e9946ed99272b574fe54bdf",
+    "application_postgresql": "registry.redhat.io/rhel9/postgresql-16@sha256:188e892c58c56037c8ff93051f3e3b76ec56773de5ba89791cd4a686f97b0cef"
   }
 }

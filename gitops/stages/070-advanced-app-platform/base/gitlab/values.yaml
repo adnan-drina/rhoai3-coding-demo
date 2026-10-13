@@ -79,7 +79,7 @@ global:
       enabled: true
       allowSingleSignOn:
       - openid_connect
-      blockAutoCreatedUsers: false
+      blockAutoCreatedUsers: true
       providers:
       - secret: gitlab-oidc
         key: provider

@@ -176,13 +176,13 @@ elif 'imagestream' in sys.argv and os.environ.get('STREAM_MISSING'):
         self.assertNotIn("persistentVolumeClaim", volumes["registry-auth"])
 
     def test_stage_render_has_one_declared_output_and_no_quay_distribution(self):
-        result = subprocess.run(["kustomize", "build", str(BASE / "coolstore")], capture_output=True, text=True, check=True)
+        result = subprocess.run(["kustomize", "build", str(BASE / "pipelines/project-enrollment")], capture_output=True, text=True, check=True)
         objects = list(yaml.safe_load_all(result.stdout))
-        outputs = [o for o in objects if o["kind"] == "ImageStream" and o["metadata"].get("namespace") == "coolstore-dev"]
-        self.assertEqual([o["metadata"]["name"] for o in outputs], ["coolstore-inventory-service"])
+        outputs = [o for o in objects if o["kind"] == "ImageStream" and o["metadata"].get("namespace") == "unassigned-dev"]
+        self.assertEqual([o["metadata"]["name"] for o in outputs], ["unassigned"])
         binding = next(o for o in objects if o["kind"] == "RoleBinding" and o["metadata"]["name"] == "pipeline-image-builder")
-        self.assertEqual(binding["metadata"]["namespace"], "coolstore-dev")
-        self.assertEqual(binding["subjects"], [{"kind": "ServiceAccount", "name": "image-builder", "namespace": "coolstore-dev"}])
+        self.assertEqual(binding["metadata"]["namespace"], "unassigned-dev")
+        self.assertEqual(binding["subjects"], [{"kind": "ServiceAccount", "name": "image-builder", "namespace": "unassigned-dev"}])
         for path in (BASE / "pipelines").rglob("*.yaml"):
             self.assertNotIn("quay-push-secret", path.read_text())
         self.assertNotIn("patch-coolstore-image", result.stdout)

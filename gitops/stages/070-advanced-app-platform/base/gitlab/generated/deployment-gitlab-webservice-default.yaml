@@ -33,7 +33,7 @@ spec:
         app.kubernetes.io/version: v19.4.2
         gitlab.com/webservice-name: default
       annotations:
-        checksum/config: 82afb209f23bbdde397f9bd8a5a9c7bf01efe3729bf3862585894867b82e80c7
+        checksum/config: dea324167ea098bf0a9f642d30612f23762040462f9e3c3b35e5106520b6b2c7
         cluster-autoscaler.kubernetes.io/safe-to-evict: 'true'
         gitlab.com/prometheus_scrape: 'true'
         gitlab.com/prometheus_port: '8083'
@@ -366,7 +366,7 @@ spec:
           medium: Memory
       - name: webservice-config
         configMap:
-          name: gitlab-webservice
+          name: gitlab-webservice-runtime
       - name: workhorse-config
         configMap:
           name: gitlab-workhorse-default

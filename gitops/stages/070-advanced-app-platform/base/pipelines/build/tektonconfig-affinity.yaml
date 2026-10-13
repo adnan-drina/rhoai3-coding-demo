@@ -77,4 +77,8 @@ spec:
               done
               oc patch tektonconfig config --type merge \
                 -p '{"spec":{"pipeline":{"coschedule":"pipelineruns"}}}'
-              echo "coschedule=pipelineruns set"
+              # Keep unrelated operator parameters; remove blanket per-namespace
+              # pipeline SA grants. Only image-builder receives our build SCC.
+              PATCH=$(oc get tektonconfig config -o json | python3 -c 'import json,sys; c=json.load(sys.stdin); p=[v for v in c["spec"].get("params",[]) if v["name"] != "createRbacResource"]; p.append({"name":"createRbacResource","value":"false"}); print(json.dumps({"spec":{"params":p}}))')
+              oc patch tektonconfig config --type merge -p "$PATCH"
+              echo "coschedule=pipelineruns; createRbacResource=false set"

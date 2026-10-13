@@ -1,6 +1,6 @@
 # Stage 070: Advanced Application Platform
 
-> **Release status:** implementation on `codex/stage070-gitlab-upgrade`; Stage 070 has not been deployed. The MTA workspace candidate passed a bounded CLI/Java-provider check on OpenShift. This does not qualify portal login, delivery, signing or AI migration. See the [release plan](../../docs/migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status).
+> **Release status:** the integrated source and reviewed P0 follow-up are published on `main` through `7b121dd1`. The first install is paused before developer-project enrollment while the security follow-up is validated. GitLab and developer workflows are not yet qualified; models remain stopped. This release targets a fresh installation, not an in-place PostgreSQL/SonarQube or legacy Keycloak migration.
 
 ## Why This Matters
 
@@ -37,7 +37,7 @@ TAS: persistent signing services; signed delivery remains to be qualified
 - **Private GitLab workflows.** Existing demo users sign in through the platform realm. Templates create private repositories and request platform enrollment of their immutable first commit. Project-bound webhooks trigger only that project's main-branch builds.
 - **Managed development.** Dev Spaces 3.30.2 uses one persistent volume per workspace, authenticated GitLab access, explicit source allowlists and retained migration worker identities. The MTA image contains verified 8.3 tools and editor extensions.
 - **Developer Hub 1.10.5.** Catalog, templates and TechDocs come from one pinned GitLab platform revision. Kubernetes, Topology, Tekton and Argo integrations make the project's delivery visible in the portal.
-- **GitOps delivery.** Pipelines 1.24.0 checks out an exact commit, builds/tests, enforces the SonarQube gate and pushes to the internal registry. Promotion writes the image digest into a platform-owned delivery repository and waits for Argo and the deployment to agree.
+- **GitOps delivery.** Pipelines 1.24 checks out an exact commit, builds/tests, enforces the SonarQube gate and pushes to the internal registry. Promotion writes the image digest into a platform-owned delivery repository and waits for Argo and the deployment to agree.
 - **Modernization with AI.** MTA 8.3.0 enables the LLM proxy, Solution Server and native Agentic Migration Factory. Its credential uses an owner-bound MaaS subscription. Models remain stopped until the operator authorizes validation.
 - **Persistent shared services.** GitLab CE 19.4.2 and SonarQube Community Build 26.9 use dedicated PostgreSQL services. TAS 1.5.0 retains signing roots and service data. GitLab object storage uses six scoped NooBaa claims.
 
@@ -47,7 +47,7 @@ The `slim` overlay omits MTA. Application migration requires the full overlay; i
 
 ## Trust Boundaries
 
-GitLab publisher, enrollment, catalog, clone and delivery identities have separate credentials. A webhook can request a build, not provision a project. Only the image-build Task receives the build SCC and registry push permission. Runtime workloads receive no API token. Migration workers retain their existing restricted identities and run-control contract; no existing migration run is reset or upgraded by this release.
+GitLab publisher, enrollment, catalog, clone and delivery identities have separate credentials. A webhook can request a build, not provision a project. Project delivery uses a restricted AppProject with no cluster or RBAC kinds. Platform-pinned project setup uses a separate AppProject; the enrollment coordinator can create namespaces and constrained Applications. Only the image-build Task receives the build SCC and registry push permission; the operator’s blanket pipeline-SA RBAC is disabled. Runtime workloads receive no API token. Migration workers retain their existing restricted identities and run-control contract; no existing migration run is reset or upgraded by this release.
 
 The ordinary delivery contract requires a passing quality gate and an exact internal image digest. A configured TAS service is not proof of signed delivery. Signature/attestation production, verification and any blocking signed-promotion policy are explicitly pending live qualification. GitLab CE and SonarQube Community Build are upstream components, separate from Red Hat product support.
 
@@ -65,7 +65,7 @@ The ordinary delivery contract requires a passing quality gate and an exact inte
 
 ## Deploy And Validate
 
-Review the full feature-branch diff and the [release checklist](../../docs/migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status) before publishing and deploying. Keep the models stopped during platform installation.
+Review the complete published and pending release diff and the [release checklist](../../docs/migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status) before publishing and deploying. Keep the models stopped during platform installation.
 
 ```bash
 ./stages/070-advanced-app-platform/validate.sh --static

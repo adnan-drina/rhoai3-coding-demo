@@ -14,6 +14,7 @@ resources:
   - rhdh-operator/subscription.yaml
   # Wave 5: RHDH instance prerequisites (ConfigMaps, Secrets)
   - rhdh-instance/app-config-configmap.yaml
+  - rhdh-instance/rbac-policy.yaml
   - rhdh-instance/rhdh-secrets.yaml
   - rhdh-instance/dynamic-plugins-configmap.yaml
   - rhdh-instance/catalog-runtime-configmap.yaml
