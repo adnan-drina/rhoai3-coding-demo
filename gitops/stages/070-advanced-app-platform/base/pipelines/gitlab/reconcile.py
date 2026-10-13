@@ -221,16 +221,35 @@ def bootstrap_project(api, row, project, commit, config, import_receipt=None):
             if '(NotFound)' not in error.stderr: raise
             token = api.request('POST', f"projects/{project['id']}/access_tokens", {'name': 'run-declaration-reader', 'scopes': ['read_api'], 'access_level': 20})
             ensure_secret('migration-source-' + name, 'app-platform-build', {'token': token['token']})
-        # The existing platform Task owns run identity, databases, model pins and read-only control.
-        provisioning = resource('PipelineRun', 'provision-' + name, 'app-platform-build', {'spec': {
+        # Only the platform coordinator may dispatch the privileged provisioner.
+
+
+def provision_migration(name, row, project, config):
+    """Dispatch an exact request after the project bootstrap succeeded."""
+    provisioning = resource('PipelineRun', 'provision-' + name, 'app-platform-build', {'spec': {
             'pipelineRef': {'name': 'provision-migration-run'}, 'taskRunTemplate': {'serviceAccountName': 'migration-run-provisioner'},
             'params': [{'name': 'run-name', 'value': name}, {'name': 'scaffold-commit', 'value': row['initial_commit']},
                        {'name': 'request-repository-owner', 'value': config['GITLAB_WORKLOAD_GROUP']},
                        {'name': 'request-raw-base', 'value': config['GITLAB_BASE_URL'] + '/api/v4/projects'},
                        {'name': 'request-provider', 'value': 'gitlab'}, {'name': 'request-project-id', 'value': str(project['id'])}]}}, 'tekton.dev/v1')
-        try: oc('create', '-f', '-', document=provisioning)
-        except subprocess.CalledProcessError as error:
-            if '(AlreadyExists)' not in error.stderr: raise
+    try:
+        existing = oc('get', 'pipelinerun', provisioning['metadata']['name'], '-n', 'app-platform-build', '-o', 'json')
+    except subprocess.CalledProcessError as error:
+        if '(NotFound)' not in error.stderr: raise
+        try:
+            oc('create', '-f', '-', document=provisioning)
+            return
+        except subprocess.CalledProcessError as create_error:
+            if '(AlreadyExists)' not in create_error.stderr: raise
+        existing = oc('get', 'pipelinerun', provisioning['metadata']['name'], '-n', 'app-platform-build', '-o', 'json')
+    spec = existing.get('spec', {})
+    expected = provisioning['spec']
+    if (spec.get('pipelineRef') != expected['pipelineRef']
+            or spec.get('params') != expected['params']
+            or spec.get('taskRunTemplate', {}).get('serviceAccountName') != 'migration-run-provisioner'
+            or any(key in spec for key in ('pipelineSpec', 'taskRunSpecs', 'workspaces'))
+            or spec.get('taskRunTemplate', {}).get('podTemplate')):
+        raise ValueError('Existing migration provisioning request has a foreign identity or override')
 
 
 def authorize_requester(api, row, project, config):
@@ -280,6 +299,8 @@ def enroll(api, row, project, commit, config, import_receipt=None):
             or status.get('sync',{}).get('revision') != config['PLATFORM_REVISION']
             or status.get('operationState',{}).get('phase') != 'Succeeded') :
         raise ValueError('Platform-owned project bootstrap is not yet complete')
+    if row['kind'] == 'migration':
+        provision_migration(name, row, project, config)
 
 
 def main():

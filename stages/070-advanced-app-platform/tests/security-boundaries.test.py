@@ -69,6 +69,31 @@ class Coordinator(unittest.TestCase):
         with self.assertRaises(ValueError):self.enroll()
         self.assertEqual(self.writes,[])
 
+    def test_migration_is_dispatched_only_after_native_bootstrap_succeeds(self):
+        self.row['kind']='migration'
+        self.config.update(GITLAB_WORKLOAD_GROUP='rhoai-workloads',GITLAB_BASE_URL='https://gitlab.example.test')
+        with patch.object(scm,'provision_migration') as dispatch:
+            self.enroll()
+            dispatch.assert_called_once_with('example',self.row,self.project,self.config)
+        self.oc=lambda *args,**kwargs: {'metadata':{'labels':{'rhoai3.io/gitlab-project-id':'42'}}}
+        with patch.object(scm,'provision_migration') as dispatch:
+            with self.assertRaises(ValueError): self.enroll()
+            dispatch.assert_not_called()
+
+    def test_existing_provisioning_cannot_hide_an_override_or_foreign_request(self):
+        self.config.update(GITLAB_WORKLOAD_GROUP='rhoai-workloads',GITLAB_BASE_URL='https://gitlab.example.test')
+        missing=subprocess.CalledProcessError(1,['oc'],stderr='(NotFound)')
+        with patch.object(scm,'oc',side_effect=[missing,None]) as call:
+            scm.provision_migration('example',self.row,self.project,self.config)
+        expected=call.call_args_list[1].kwargs['document']
+        with patch.object(scm,'oc',return_value=expected) as call:
+            scm.provision_migration('example',self.row,self.project,self.config)
+            self.assertEqual(call.call_count,1)
+        for field,value in (('pipelineSpec',{}),('workspaces',[]),('taskRunSpecs',[]),('params',[])):
+            altered=json.loads(json.dumps(expected));altered['spec'][field]=value
+            with patch.object(scm,'oc',return_value=altered):
+                with self.assertRaises(ValueError):scm.provision_migration('example',self.row,self.project,self.config)
+
 class NativeProject(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -104,6 +129,9 @@ class NativeProject(unittest.TestCase):
         r=self.objects['Role','app-platform-build','test-example.runs']
         self.assertEqual(r['rules'][0]['resourceNames'],['migration-source-test-example'])
         self.assertEqual(r['rules'][0]['verbs'],['get'])
+        self.assertFalse(any('pipelineruns' in rule['resources'] for rule in r['rules']))
+        policy=yaml.safe_load((BASE/'pipelines/gitlab/provisioning-policy.yaml').read_text())
+        self.assertEqual(policy['spec']['validations'],[{'expression':'false','message':'Only the platform coordinator may dispatch migration provisioning'}])
     def test_runtime_project_has_no_cluster_or_rbac_authority(self):
         p=yaml.safe_load((BASE/'pipelines/gitlab/runtime-projects.yaml').read_text())['spec']
         self.assertEqual(p['clusterResourceWhitelist'],[])

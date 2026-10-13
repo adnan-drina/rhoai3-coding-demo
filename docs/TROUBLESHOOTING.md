@@ -2248,6 +2248,8 @@ Stuck pre-fix Jobs (pull policy Always baked into their pods) must be deleted fo
 
 ## Stage 070 GitLab project enrollment is pending
 
+If admission type-checking reports unknown `PipelineRun` parameters or inline-spec fields, do not loosen the policy or grant project bootstrap identities platform provisioning rights. Tekton preserves these fields without CEL-accessible types. Project bootstrap has no platform `PipelineRun` create grant; admission also denies that principal. The trusted enrollment coordinator dispatches the exact migration request only after the pinned native project Application is Healthy, Synced and Succeeded, and refuses a mismatched existing request. Check policy `status.typeChecking.expressionWarnings` and real server dry-run denials before resuming enrollment.
+
 **Affected stage:** Stage 070 GitLab release; earlier GitHub dispatcher guidance is superseded.
 
 Inspect the publisher-created confidential enrollment issue and the `project-provisioner` CronJob log in `app-platform-build`. Enrollment requires the registered workload group, the exact project ID and the repository's immutable initial commit. An archived project is retired and must not recreate resources. Never substitute a later SHA or manually mark enrollment successful.

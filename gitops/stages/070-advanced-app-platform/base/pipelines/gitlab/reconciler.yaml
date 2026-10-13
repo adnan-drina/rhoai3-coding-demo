@@ -76,6 +76,13 @@ metadata:
   namespace: app-platform-build
 rules:
 - apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns
+  verbs:
+  - get
+  - create
+- apiGroups:
   - ''
   resources:
   - configmaps

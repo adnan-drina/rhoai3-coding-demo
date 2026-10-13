@@ -26,18 +26,8 @@ spec:
   - name: project-bootstrap-in-platform
     expression: request.namespace == 'app-platform-build' && request.userInfo.username.startsWith('system:serviceaccount:')
       && request.userInfo.username.endsWith(':project-enrollment')
-  variables:
-  - name: run
-    expression: request.userInfo.username.split(':')[2].substring(0, request.userInfo.username.split(':')[2].size()-4)
+  # Tekton params and inline specs are preserved unknown fields, unavailable to
+  # CEL. Do not grant project bootstraps access to this privileged dispatcher.
   validations:
-  - expression: object.metadata.name == 'provision-' + variables.run && object.spec.pipelineRef.name
-      == 'provision-migration-run' && !has(object.spec.pipelineSpec) && !has(object.spec.taskRunSpecs)
-      && !has(object.spec.workspaces) && object.spec.taskRunTemplate.serviceAccountName
-      == 'migration-run-provisioner' && !has(object.spec.taskRunTemplate.podTemplate)
-    message: Project bootstrap may start only its own governed migration provisioner
-  - expression: object.spec.params.size() == 6 && object.spec.params.all(p, p.name
-      in ['run-name','scaffold-commit','request-repository-owner','request-raw-base','request-provider','request-project-id'])
-      && object.spec.params.exists(p, p.name == 'run-name' && p.value == variables.run)
-      && object.spec.params.exists(p, p.name == 'request-provider' && p.value == 'gitlab')
-      && object.spec.params.exists(p, p.name == 'scaffold-commit' && p.value.matches('^[0-9a-f]{40}$'))
-    message: Migration request must retain its own identity and immutable source
+  - expression: 'false'
+    message: Only the platform coordinator may dispatch migration provisioning

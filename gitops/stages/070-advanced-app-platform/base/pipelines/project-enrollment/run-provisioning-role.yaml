@@ -26,9 +26,3 @@ rules:
   - secrets
   verbs:
   - create
-- apiGroups:
-  - tekton.dev
-  resources:
-  - pipelineruns
-  verbs:
-  - create
