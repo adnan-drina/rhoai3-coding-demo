@@ -181,11 +181,15 @@ fi
 
 # Native Auth and foundation component ownership.
 check "Native Auth Ready at current generation" "$(native_ready auth.services.platform.opendatahub.io auth true)"
-COMPONENT_CHECK=$(oc get datasciencecluster default-dsc -o json | python3 -c '
-import json,sys
-c=json.load(sys.stdin)["spec"]["components"]
+# Later stages enable components the foundation Application delegates through ignoreDifferences.
+COMPONENT_CHECK=$(python3 -c '
+import json,subprocess
+get=lambda *a: json.loads(subprocess.run(["oc","--request-timeout=15s","get",*a,"-o","json"],capture_output=True,text=True,check=True).stdout)
+c=get("datasciencecluster","default-dsc")["spec"]["components"]
+app=get("application","010-openshift-ai-platform-foundation","-n","openshift-gitops")
+delegated={p.rsplit("/",1)[1] for i in app["spec"].get("ignoreDifferences",[]) if i.get("kind")=="DataScienceCluster" for p in i.get("jsonPointers",[]) if p.startswith("/spec/components/")}
 managed=["dashboard","workbenches"]
-removed=["ogx","aigateway","mcplifecycleoperator","sparkoperator","trainer"]
+removed=[k for k in ["ogx","aigateway","mcplifecycleoperator","sparkoperator","trainer"] if k not in delegated]
 print("pass" if all(c.get(k,{}).get("managementState")=="Managed" for k in managed) and all(c.get(k,{}).get("managementState")=="Removed" for k in removed) else "component ownership mismatch")
 ' 2>/dev/null || echo "component inspection failed")
 check "Foundation component ownership" "$COMPONENT_CHECK"
