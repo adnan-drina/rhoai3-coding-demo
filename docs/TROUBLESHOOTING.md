@@ -2761,7 +2761,10 @@ The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` a
 
 **Symptom:** `040-governed-models-as-a-service` stays `OutOfSync` on `authorino-service-ca` and `gen-ai-aa-mcp-servers` although only ignored `data` keys differ, and a manual sync does not clear it. After such a sync, the Gen AI playground lists no OpenShift-MCP servers and `validate.sh` reports `Studio catalog field is missing or drifted`.
 
-**Likely cause:** The Application lost its `argocd.argoproj.io/compare-options: ServerSideDiff=true` annotation (and the other app-of-apps annotations), typically after `oc apply` of a JSON copy of the Application with bare metadata. Without server-side diff, the delegated `data` fields are compared and a sync writes the ConfigMap with Git's empty `data`.
+**Likely cause:** Two separate causes, both seen on 2026-10-13:
+
+- An explicit sync started by patching `operation.sync` (for example `{"operation":{"sync":{"revision":"<sha>"}}}`) does not carry the Application's `syncPolicy.syncOptions`, so `RespectIgnoreDifferences=true` is not applied: the sync writes Git's empty `data` over the delegated ConfigMap fields and the playground loses its MCP entries. Automatic syncs keep the option.
+- The Application lost its `argocd.argoproj.io/compare-options: ServerSideDiff=true` annotation (and the other app-of-apps annotations) after `oc apply` of a JSON copy with bare metadata, so the delegated `data` fields show as a diff.
 
 **Recover:** Restore the annotations from `gitops/argocd/app-of-apps/<stage>.yaml` (`oc annotate application ... --overwrite`, one key at a time) and hard-refresh. Republish the playground entries with Stage 040's own publisher, as `deploy.sh` does:
 
@@ -2771,7 +2774,7 @@ RHOAI_STAGE040_EXPECTED_REVISION=<Stage 040 revision> RHOAI_STAGE060_EXPECTED_RE
 # repeat with --key OpenShift-MCP-ReadWrite
 ```
 
-Change an Application's revision with `oc patch --type merge` on `spec.source.targetRevision` (and `spec.ignoreDifferences` when needed), not by re-applying the whole object.
+Change an Application's revision with `oc patch` on `spec.source.targetRevision` (and `spec.ignoreDifferences` when needed), not by re-applying the whole object. When an explicit operation is needed, pass the Application's options with it: `{"operation":{"sync":{"revision":"<sha>","syncOptions":["RespectIgnoreDifferences=true","ServerSideDiff=true", ...]}}}`, or use `argocd --core app sync`.
 
 ## A Listener Or List Entry Removed From Git Stays On The Live Resource
 
