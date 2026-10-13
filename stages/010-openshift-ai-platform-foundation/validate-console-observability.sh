@@ -5,8 +5,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
+export REPO_ROOT
 python3 - <<'PY'
-import json,subprocess
+import json,os,subprocess
 
 def get(kind,name=None,ns=None):
  args=['oc','--request-timeout=10s','get',kind]+([name] if name else [])+(['-n',ns] if ns else [])+['-o','json']
@@ -15,10 +16,14 @@ app=get('application','010-console-observability','openshift-gitops');s=app['sta
 assert len(source['targetRevision'])==40 and s['sync']['status']=='Synced' and s['sync']['revision']==source['targetRevision'] and s['health']['status']=='Healthy' and o.get('phase')=='Succeeded' and result.get('revision')==source['targetRevision'] and result.get('source',{}).get('path')==source['path'],'Console revision is not reconciled'
 x=get('uiplugins.observability.openshift.io','monitoring');assert x['spec']['type']=='Monitoring' and x['spec']['monitoring']['perses']['enabled'] is True,'Native Perses UI disabled'
 assert x['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('010-console-observability:'),'UIPlugin tracking differs'
-assert 'monitoring-plugin' in get('console.operator.openshift.io','cluster')['spec'].get('plugins',[]),'Monitoring plugin unregistered'
+# Git declares the whole plugin list; every declared plugin that is installed must be enabled.
+declared=json.loads(subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_file(ARGV[0])["spec"]["plugins"])',os.environ['REPO_ROOT']+'/gitops/stages/010-openshift-ai-platform-foundation/console-observability/base/console-plugins.yaml'],capture_output=True,text=True,timeout=15,check=True).stdout)
+installed={x['metadata']['name'] for x in get('consoleplugins.console.openshift.io')['items']}
 plugins=get('console.operator.openshift.io','cluster')['spec'].get('plugins',[])
-for name in ['gitops-plugin','odf-console']:
- assert name in plugins,name+' console plugin not enabled'
+missing=[n for n in declared if n in installed and n not in plugins]
+assert not missing,'Console plugins not enabled: '+', '.join(missing)
+undeclared=sorted(installed-set(declared))
+assert not undeclared,'Installed console plugins missing from Git: '+', '.join(undeclared)
 ns='openshift-cluster-observability-operator'
 servers=[p for p in get('perses',ns=ns)['items'] if any(o.get('uid')==x['metadata']['uid'] for o in p['metadata'].get('ownerReferences',[]))]
 assert len(servers)==1,'Expected one console-owned Perses'

@@ -1,0 +1,23 @@
+# Declares the complete console plugin list (OCP "Enabling console plugins": spec.plugins of
+# consoles.operator.openshift.io/cluster). spec.plugins is an atomic list: any writer replaces it whole, and
+# operators that register a plugin (Lightspeed, Kuadrant, monitoring, networking) only append their own name.
+# Append-only Sync hooks lost entries twice (2026-10-12, 2026-10-13), so this Application owns the field by
+# server-side apply and self-heal restores the full list after any overwrite. Add a plugin here, never by patch.
+# A listed plugin whose ConsolePlugin is not installed yet (pipelines-console-plugin before Stage 070) is skipped
+# by the console. Prune/Delete=false: removing this file or the Application never touches the cluster singleton.
+apiVersion: operator.openshift.io/v1
+kind: Console
+metadata:
+  name: cluster
+  annotations:
+    argocd.argoproj.io/sync-options: ServerSideApply=true,Prune=false,Delete=false
+spec:
+  plugins:
+    - monitoring-plugin
+    - networking-console-plugin
+    - monitoring-console-plugin
+    - gitops-plugin
+    - odf-console
+    - kuadrant-console-plugin
+    - lightspeed-console-plugin
+    - pipelines-console-plugin

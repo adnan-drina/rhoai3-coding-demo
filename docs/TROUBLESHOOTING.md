@@ -2258,6 +2258,14 @@ For a later push, inspect the project's EventListener and core interceptor logs.
 
 For browser access failures, verify the platform realm's GitLab client, the subject-bound GitLab user membership and Dev Spaces OAuth configuration. Do not print client secrets, PATs or kubeconfigs. Root GitOps source and private child repository access have different credentials.
 
+## Console plugins disappear from the web console
+
+**Symptom:** Console details > Console plugins shows `gitops-plugin`, `odf-console` or `monitoring-console-plugin` as Disabled.
+
+**Cause:** `spec.plugins` on `consoles.operator.openshift.io/cluster` is an atomic list. Any writer replaces it whole, and operators that register a plugin only append their own name, so a rewrite drops the others. Append-only Sync hooks did not prevent this (2026-10-12, 2026-10-13).
+
+**Fix:** Application `010-console-observability` owns the list by server-side apply (`console-observability/base/console-plugins.yaml`), and self-heal restores it. To add a plugin, add it to that file and publish; do not `oc patch` the list. `validate-console-observability.sh` fails when an installed ConsolePlugin is disabled or missing from Git.
+
 ## References
 
 - [OpenShift troubleshooting documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/support/troubleshooting)
