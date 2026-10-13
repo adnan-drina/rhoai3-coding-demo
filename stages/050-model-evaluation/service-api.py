@@ -141,19 +141,24 @@ def main():
         raise RuntimeError("Native benchmark result does not reference the selected MLflow run.")
     experiment_url = job.get("results", {}).get("mlflow_experiment_url", "")
     match = re.search(r"/experiments/([0-9]+)", experiment_url)
-    if not match:
+    # EvalHub 1.0.0 reports the experiments collection URL without an id; then the job's
+    # experiment name must resolve to the run's experiment.
+    experiment_name = (job.get("experiment") or {}).get("name")
+    if not match and not (experiment_url.rstrip("/").endswith("/experiments") and experiment_name):
         raise RuntimeError("Completed evaluation did not report a native MLflow experiment.")
     mlflow = json.loads(oc("get", "mlflows.mlflow.opendatahub.io", "mlflow", "-o", "json"))
     # A job and service can track in different workspaces; native job results are tenant-scoped.
     with api("mlflow", "redhat-ods-applications", mlflow["status"]["address"]["url"], ca, token, "evaluated-models") as request:
         run = request("api/2.0/mlflow/runs/get?run_id=" + args.mlflow_run_id).get("run", {})
+        experiment_id = match.group(1) if match else request(
+            "api/2.0/mlflow/experiments/get-by-name?experiment_name=" + quote(experiment_name, safe="")).get("experiment", {}).get("experiment_id")
     info = run.get("info", {})
-    if (info.get("run_id") != args.mlflow_run_id or info.get("experiment_id") != match.group(1)
+    if (info.get("run_id") != args.mlflow_run_id or not experiment_id or info.get("experiment_id") != experiment_id
             or info.get("status") != "FINISHED" or not run.get("data", {}).get("metrics")):
         raise RuntimeError("Exact native MLflow run lacks finished metrics in the evaluation experiment.")
     print(json.dumps({"scope": "authenticated real evaluation and MLflow correlation", "tenant": "evaluated-models",
                       "job_id": args.job_id, "model": job["model"]["name"], "benchmark": benchmarks[0].get("id"),
-                      "provider": benchmarks[0].get("provider_id"), "experiment_id": match.group(1),
+                      "provider": benchmarks[0].get("provider_id"), "experiment_id": experiment_id,
                       "run_id": args.mlflow_run_id, "state": state}))
     return 0
 

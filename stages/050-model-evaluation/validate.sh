@@ -11,11 +11,25 @@ python3 - <<'CHECK'
 import json,subprocess,sys,re,os
 result = subprocess.run(["oc", "--request-timeout=10s", "get", "application", "050-model-evaluation",
                          "-n", "openshift-gitops", "-o", "json"], capture_output=True, text=True)
+def parked_only(app):
+    # A deliberately stopped candidate (serving.kserve.io/stop) reports Suspended; nothing else may be unhealthy.
+    if app.get("status",{}).get("health",{}).get("status") != "Suspended":
+        return False
+    for r in app["status"].get("resources",[]):
+        h=(r.get("health") or {}).get("status")
+        if h in (None,"Healthy"):
+            continue
+        if h != "Suspended" or r.get("kind") != "InferenceService":
+            return False
+        isvc=subprocess.run(["oc","--request-timeout=10s","get","inferenceservice",r["name"],"-n",r["namespace"],"-o","jsonpath={.metadata.annotations.serving\\.kserve\\.io/stop}"],capture_output=True,text=True)
+        if isvc.returncode or isvc.stdout.strip()!="true":
+            return False
+    return True
 try:
     app=json.loads(result.stdout)
     status=app.get("status", {})
     ready=(result.returncode == 0 and status.get("sync", {}).get("status") == "Synced"
-           and status.get("health", {}).get("status") == "Healthy"
+           and (status.get("health", {}).get("status") == "Healthy" or parked_only(app))
            and app["spec"].get("project")=="rhoai-demo"
            and app["spec"].get("destination")=={"server":"https://kubernetes.default.svc","namespace":"openshift-gitops"}
            and not app["spec"].get("sources") and not app["metadata"].get("ownerReferences") and not app["metadata"].get("deletionTimestamp")
