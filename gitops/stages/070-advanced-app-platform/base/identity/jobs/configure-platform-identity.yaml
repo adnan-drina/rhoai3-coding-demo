@@ -288,10 +288,20 @@ spec:
               "${RHBK_URL}/admin/realms/${REALM}/users?username=${USERNAME}&exact=true" 2>/dev/null \
               | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])" 2>/dev/null)
 
-            # Delete stale link if userId changed, then create with correct UID
-            curl -fsS -X DELETE -H "${AUTH_HEADER}" \
-              "${RHBK_URL}/admin/realms/${REALM}/users/${USER_ID}/federated-identity/${IDP_ALIAS}" \
-              -o /dev/null 2>/dev/null
+            # Preserve an already correct link; delete only a measured stale link.
+            # DELETE of an absent link is HTTP 404 and must not abort first install.
+            LINKS=$(curl -fsS -H "${AUTH_HEADER}" \
+              "${RHBK_URL}/admin/realms/${REALM}/users/${USER_ID}/federated-identity")
+            LINK_UID=$(printf '%s' "$LINKS" | python3 -c 'import json,sys; alias=sys.argv[1]; rows=json.load(sys.stdin); print(next((r["userId"] for r in rows if r.get("identityProvider")==alias), ""))' "$IDP_ALIAS")
+            if [ "$LINK_UID" = "$OCP_USER_UID" ]; then
+              echo "  Existing OpenShift identity link is current"
+              return
+            fi
+            if [ -n "$LINK_UID" ]; then
+              curl -fsS -X DELETE -H "${AUTH_HEADER}" \
+                "${RHBK_URL}/admin/realms/${REALM}/users/${USER_ID}/federated-identity/${IDP_ALIAS}" \
+                -o /dev/null
+            fi
             curl -fsS -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
               "${RHBK_URL}/admin/realms/${REALM}/users/${USER_ID}/federated-identity/${IDP_ALIAS}" \
               -d "{\"identityProvider\":\"${IDP_ALIAS}\",\"userId\":\"${OCP_USER_UID}\",\"userName\":\"${USERNAME}\"}" \

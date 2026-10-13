@@ -243,6 +243,42 @@ class IntegratedContract(unittest.TestCase):
 
 
 
+class IdentityLink(unittest.TestCase):
+    def test_first_install_existing_and_stale_link(self):
+        resources = list(yaml.safe_load_all((BASE / 'identity/jobs/configure-platform-identity.yaml').read_text()))
+        job = next(r for r in resources if r['kind'] == 'Job')
+        script = job['spec']['template']['spec']['containers'][0]['command'][-1]
+        function = script[script.index('create_linked_user() {'):script.index('echo "Configuring demo users..."')]
+        import tempfile
+        for link, expected in (('', ['POST']), ('source-uid', []), ('stale-uid', ['DELETE', 'POST'])):
+            with self.subTest(link=link), tempfile.TemporaryDirectory() as td:
+                import os
+                env = dict(os.environ, TRACE=td+'/trace', LINK=link)
+                setup = r'''set -euo pipefail
+AUTH_HEADER=synthetic
+RHBK_URL=https://sso.example
+REALM=platform
+IDP_ALIAS=openshift
+oc() { printf source-uid; }
+curl() {
+  local method=GET arg url=""
+  for arg in "$@"; do
+    case "$arg" in POST|DELETE) method=$arg;; https://*) url=$arg;; esac
+  done
+  if [ "$method" != GET ]; then printf '%s\n' "$method" >> "$TRACE"; return; fi
+  case "$url" in
+    *federated-identity) if [ -n "$LINK" ]; then printf '[{"identityProvider":"openshift","userId":"%s"}]' "$LINK"; else printf '[]'; fi;;
+    *users?*) printf '[{"id":"kc-user"}]';;
+    *) return 1;;
+  esac
+}
+'''
+                result = subprocess.run(['bash','-c',setup+function+'\ncreate_linked_user ai-admin admin@example AI Admin'], env=env, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                trace = Path(env['TRACE'])
+                self.assertEqual(trace.read_text().splitlines() if trace.exists() else [], expected)
+
+
 class InitialInstall(unittest.TestCase):
     def test_reused_keycloak_served_import_api(self):
         realm = yaml.safe_load((BASE / 'identity/rhbk-instance/realm-platform.yaml').read_text())

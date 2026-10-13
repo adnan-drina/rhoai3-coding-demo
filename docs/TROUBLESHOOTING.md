@@ -2776,3 +2776,7 @@ The pinned `ose-cli` image uses Python 3.6. All Stage 070 Python hooks use `univ
 ## Stage 070 first sync cannot map the realm import or promotion Task
 
 The reused RHBK 26.4 operator serves `KeycloakRealmImport` at `k8s.keycloak.org/v2alpha1`; use the served API rather than the Keycloak resource's API. Native Tasks and Pipelines wait at wave 20, after the Pipelines operator and CRDs. A missing-resource dry-run exception cannot make an early actual apply succeed. Publish the API/order correction and retry Stage 070 through Argo; do not install a second identity operator or apply Tasks outside GitOps.
+
+## Stage 070 identity hook stops after an existing demo user
+
+An absent federated-identity link returns 404 to DELETE. The hook now measures the link first: retain a correct OpenShift UID, delete only a stale link, and create a missing link directly. Unknown/read errors still refuse. Tests execute the actual shell function for missing, current and stale links.
