@@ -96,12 +96,17 @@ def journal(path, identity):
 
 def publish(args, env):
     key = getattr(args, 'key', KEY); field = delegation(key)
-    value = desired(env, args.expected_stage060_revision, key)
+    expected = args.expected_stage060_revision
+    if args.validate and not expected:
+        # Validation checks the deployed revision; publishing still needs a supplied reviewed SHA.
+        backend = get(env, 'applications.argoproj.io', 'agent-tools', 'openshift-gitops', True)
+        expected = backend['spec']['source']['targetRevision'] if backend else None
+    value = desired(env, expected, key)
     if value is None:
         need(args.defer_if_absent, 'Stage060 catalog runtime is absent')
         print('DEFERRED Studio catalog entry: deploy and qualify the separately owned Stage060 runtime first.')
         return None
-    app = get(env, 'applications.argoproj.io', APP, 'openshift-gitops'); app_guard(app, args.expected_stage040_revision)
+    app = get(env, 'applications.argoproj.io', APP, 'openshift-gitops'); app_guard(app, args.expected_stage040_revision or (app['spec']['source'].get('targetRevision') if args.validate else None))
     cm = get(env, 'configmap', CM, NAMESPACE)
     need(not cm['metadata'].get('ownerReferences') and not cm['metadata'].get('deletionTimestamp') and cm['metadata'].get('annotations', {}).get('argocd.argoproj.io/tracking-id') == APP + ':/ConfigMap:' + NAMESPACE + '/' + CM, 'Studio discovery ConfigMap is not the exact Stage040 input')
     old = cm.get('data', {})
@@ -146,7 +151,7 @@ def publish(args, env):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--bootstrap-kubeconfig', default=os.environ.get('KUBECONFIG'))
+    p.add_argument('--bootstrap-kubeconfig', default=os.environ.get('KUBECONFIG') or os.path.expanduser('~/.kube/config'))
     p.add_argument('--state', default=os.environ.get('RHOAI_STUDIO_MCP_STATE'))
     p.add_argument('--expected-stage040-revision', default=os.environ.get('RHOAI_STAGE040_EXPECTED_REVISION'))
     p.add_argument('--expected-stage060-revision', default=os.environ.get('RHOAI_STAGE060_EXPECTED_REVISION'))
