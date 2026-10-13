@@ -147,7 +147,8 @@ def ensure_persona(api, find, persona):
 def configure_imports(api):
     # Self-managed GitLab enables no importers by default. Only Repository
     # by URL is needed for the reviewed public GitHub repository imports.
-    return api('PUT', 'application/settings', {'signup_enabled': False, 'import_sources': ['git']})
+    return api('PUT', 'application/settings', {'signup_enabled': False, 'import_sources': ['git'],
+                                              'auto_devops_enabled': False})
 
 
 def oc(*args, data=None):

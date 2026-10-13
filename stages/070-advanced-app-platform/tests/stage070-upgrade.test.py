@@ -194,7 +194,7 @@ class IntegratedContract(unittest.TestCase):
             api.assert_not_called()
 
     def test_native_git_url_import_enabled_without_local_network_access(self):
-        settings = {'signup_enabled': True, 'import_sources': [],
+        settings = {'signup_enabled': True, 'import_sources': [], 'auto_devops_enabled': True,
                     'allow_local_requests_from_web_hooks_and_services': False}
         def api(method, path, payload):
             if path == 'application/settings':
@@ -210,6 +210,7 @@ class IntegratedContract(unittest.TestCase):
         bootstrap.configure_imports(api)
         self.assertEqual(api('POST', 'projects', payload)['id'], 42)
         self.assertFalse(settings['signup_enabled'])
+        self.assertFalse(settings['auto_devops_enabled'])
         self.assertEqual(settings['import_sources'], ['git'])
         self.assertFalse(settings['allow_local_requests_from_web_hooks_and_services'])
 
