@@ -27,11 +27,3 @@ rules:
   - kueues.kueue.openshift.io
   verbs:
   - get
-- apiGroups:
-  - operators.coreos.com
-  resources:
-  - clusterserviceversions
-  resourceNames:
-  - kueue-operator.v1.4.2
-  verbs:
-  - get

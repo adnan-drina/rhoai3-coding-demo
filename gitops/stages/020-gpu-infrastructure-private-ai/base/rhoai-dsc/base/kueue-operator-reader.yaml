@@ -1,0 +1,50 @@
+# Namespaced read of the Kueue operator's Subscription and CSV: Automatic approval rolls the
+# CSV name, so the hook follows status.installedCSV instead of a pinned resourceName.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-enable-dsc-kueue
+  namespace: openshift-kueue-operator
+  labels:
+    app.kubernetes.io/name: enable-dsc-kueue
+    app.kubernetes.io/component: platform-configuration
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+rules:
+- apiGroups:
+  - operators.coreos.com
+  resources:
+  - subscriptions
+  resourceNames:
+  - kueue-operator
+  verbs:
+  - get
+- apiGroups:
+  - operators.coreos.com
+  resources:
+  - clusterserviceversions
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-enable-dsc-kueue
+  namespace: openshift-kueue-operator
+  labels:
+    app.kubernetes.io/name: enable-dsc-kueue
+    app.kubernetes.io/component: platform-configuration
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-enable-dsc-kueue
+subjects:
+- kind: ServiceAccount
+  name: job-enable-dsc-kueue
+  namespace: redhat-ods-applications

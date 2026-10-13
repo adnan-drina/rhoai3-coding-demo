@@ -28,7 +28,9 @@ spec:
         - |
           set -euo pipefail
           for attempt in $(seq 1 90); do
-            phase=$(oc --request-timeout=10s get csv kueue-operator.v1.4.2 -n openshift-kueue-operator -o jsonpath='{.status.phase}' 2>/dev/null || true)
+            # Automatic approval rolls the CSV; follow the Subscription instead of a pinned name.
+            csv=$(oc --request-timeout=10s get subscription kueue-operator -n openshift-kueue-operator -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)
+            phase=$([[ -n "$csv" ]] && oc --request-timeout=10s get csv "$csv" -n openshift-kueue-operator -o jsonpath='{.status.phase}' 2>/dev/null || true)
             established=$(oc --request-timeout=10s get crd kueues.kueue.openshift.io -o jsonpath='{.status.conditions[?(@.type=="Established")].status}' 2>/dev/null || true)
             [[ "$phase" == Succeeded && "$established" == True ]] && break
             [[ "$attempt" != 90 ]] || { echo "Native Kueue prerequisites not ready" >&2; exit 1; }
