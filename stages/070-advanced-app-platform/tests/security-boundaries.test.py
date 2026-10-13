@@ -26,9 +26,10 @@ class Coordinator(unittest.TestCase):
         self.row={'project_id':42,'initial_commit':'1'*40,'kind':'application','requester':'user:default/ai-developer'}
         self.project={'id':42,'path':'example','namespace':{'id':7},'default_branch':'main'}
         self.config={'GITLAB_WORKLOAD_GROUP_ID':'7','GITLAB_REQUESTER_IDS':{'user:default/ai-developer':3},
+                     'GITLAB_REQUESTER_NAMES':{'user:default/ai-developer':'platform-developer'},
                      'PLATFORM_REPO_URL':'https://gitlab.example.test/rhoai-platform/demo.git','PLATFORM_REVISION':'2'*40}
         self.api=Mock()
-        self.api.request.side_effect=lambda method,path: ({'state':'active','username':'ai-developer'} if path=='users/3'
+        self.api.request.side_effect=lambda method,path: ({'state':'active','username':'platform-developer'} if path=='users/3'
                                                         else {'access_level':30})
         self.writes=[]
         def oc(*args,document=None):
@@ -61,13 +62,18 @@ class Coordinator(unittest.TestCase):
             with self.assertRaises(ValueError):self.enroll()
         self.assertEqual(self.writes,[])
     def test_blocked_or_nonmember_person_is_refused(self):
-        for person,level in (({'state':'blocked','username':'ai-developer'},30),({'state':'active','username':'wrong'},30),({'state':'active','username':'ai-developer'},20)):
+        for person,level in (({'state':'blocked','username':'platform-developer'},30),({'state':'active','username':'wrong'},30),({'state':'active','username':'platform-developer'},20)):
             self.api.request.side_effect=lambda method,path: person if path=='users/3' else {'access_level':level}
             with self.assertRaises(ValueError):self.enroll()
         self.assertEqual(self.writes,[])
     def test_existing_foreign_namespace_is_never_claimed(self):
         self.oc=lambda *args,**kwargs:{'metadata':{'labels':{'rhoai3.io/gitlab-project-id':'43'}}}
         with self.assertRaises(ValueError):self.enroll()
+        self.assertEqual(self.writes,[])
+
+    def test_missing_persona_name_mapping_is_refused(self):
+        self.config.pop('GITLAB_REQUESTER_NAMES')
+        with self.assertRaises(ValueError): self.enroll()
         self.assertEqual(self.writes,[])
 
     def test_migration_is_dispatched_only_after_native_bootstrap_succeeds(self):

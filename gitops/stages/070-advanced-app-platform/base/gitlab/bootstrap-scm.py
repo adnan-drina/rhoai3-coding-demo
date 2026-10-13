@@ -124,6 +124,26 @@ def check_oidc_identity(user, subject):
     return bool(identities)
 
 
+PERSONA_USERNAMES = {'ai-developer': 'platform-developer', 'ai-admin': 'platform-admin'}
+
+
+def ensure_persona(api, find, persona):
+    # GitLab reserves ai-/ai_ for its own AI entities. OIDC still joins on
+    # the verified subject; portal/OpenShift persona names do not change.
+    username = PERSONA_USERNAMES[persona['username']]
+    rows = find('users', 'username=' + username)
+    account = next((r for r in rows if r['username'] == username), None)
+    if account is None:
+        account = api('POST', 'users', {'username': username, 'name': persona['username'],
+            'email': persona['email'], 'force_random_password': True, 'skip_confirmation': True,
+            'provider': 'openid_connect', 'extern_uid': persona['id']})
+    elif not check_oidc_identity(account, persona['id']):
+        if account['email'] != persona['email']:
+            raise RuntimeError('Refuse to link a foreign GitLab account: ' + username)
+        api('PUT', 'users/' + str(account['id']), {'provider': 'openid_connect', 'extern_uid': persona['id']})
+    return account
+
+
 def oc(*args, data=None):
     result = subprocess.run(['oc', *args], input=None if data is None else json.dumps(data), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
     return json.loads(result.stdout) if result.stdout.lstrip().startswith('{') else None
@@ -190,20 +210,12 @@ def main():
                 current = api('GET', f'groups/{group_id}/members/{user_id}')
                 if current['access_level'] != level: api('PUT', f'groups/{group_id}/members/{user_id}', {'access_level': level})
 
-        requesters = {}
+        requesters, requester_names = {}, {}
         for persona in realm_personas():
             username = persona['username']
-            rows = find('users', 'username=' + username)
-            account = next((r for r in rows if r['username'] == username), None)
-            if account is None:
-                account = api('POST', 'users', {'username': username, 'name': username,
-                    'email': persona['email'], 'force_random_password': True, 'skip_confirmation': True,
-                    'provider': 'openid_connect', 'extern_uid': persona['id']})
-            elif not check_oidc_identity(account, persona['id']):
-                if account['email'] != persona['email']:
-                    raise RuntimeError('Refuse to link a foreign GitLab account: ' + username)
-                api('PUT', 'users/' + str(account['id']), {'provider': 'openid_connect', 'extern_uid': persona['id']})
+            account = ensure_persona(api, find, persona)
             requesters['user:default/' + username] = account['id']
+            requester_names['user:default/' + username] = PERSONA_USERNAMES[username]
             membership(workloads['id'], account['id'], 40 if username == 'ai-admin' else 30)
             membership(platform['id'], account['id'], 20)
             membership(delivery['id'], account['id'], 20)
@@ -342,6 +354,7 @@ def main():
                 {'argocd.argoproj.io/secret-type': 'repository'})
         config = {'GITLAB_HOST': host, 'GITLAB_BASE_URL': base, 'GITLAB_WORKLOAD_GROUP': workloads['path'], 'GITLAB_WORKLOAD_GROUP_ID': str(workloads['id']), 'GITLAB_DELIVERY_GROUP': delivery['path'], 'GITLAB_DELIVERY_GROUP_ID': str(delivery['id']), 'GITLAB_PUBLISHER_USER_ID': str(publisher['id']), 'GITLAB_REGISTRATION_PROJECT_ID': str(registration['id']), 'PLATFORM_REPO_URL': platform_repo, 'PLATFORM_REVISION': platform_sha, 'ARGOCD_URL': 'https://' + argo_host}
         config['GITLAB_REQUESTER_IDS'] = requesters
+        config['GITLAB_REQUESTER_NAMES'] = requester_names
         apply('ConfigMap', 'stage070-project-release', 'openshift-gitops', {'ready':'true', 'repo_url': platform_repo, 'revision': platform_sha, 'delivery_base_url': base + '/' + delivery['path'] + '/'})
         config['PLATFORM_CATALOG_REPO'] = imports['rhoai3-coding-demo']['http_url_to_repo']
         mta_host = oc('get', 'route', 'mta', '-n', 'openshift-mta', '-o', 'json')['spec']['host']

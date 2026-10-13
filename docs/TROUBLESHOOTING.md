@@ -2248,6 +2248,8 @@ Stuck pre-fix Jobs (pull policy Always baked into their pods) must be deleted fo
 
 ## Stage 070 GitLab project enrollment is pending
 
+GitLab 19 rejects usernames beginning with `ai-`, `ai_`, `duo-` or `duo_`. Platform personas `ai-developer` and `ai-admin` therefore use GitLab account names `platform-developer` and `platform-admin`. SSO remains bound to each original verified OIDC subject. Enrollment uses the trusted portal-to-account ID/name mapping and refuses a missing mapping, foreign account or insufficient membership. Do not rename the OpenShift users or enable email-only automatic account linking.
+
 SonarQube 26.9 refuses an initial password lacking a special character. The setup Job now generates all required character classes, persists a pending `sonarqube-admin` credential before the API change, and verifies it on every retry. A timeout or interrupted Job preserves that credential. If neither the pending credential nor the default authenticates, reconcile the existing credential explicitly; do not reset the database or generate another password blindly.
 
 If MTA's proxy reports that `qwen3-8-27b` is unavailable, compare its configured ID with authenticated MaaS `/v1/models` metadata. Both the Tackle proxy and native Gateway use `publishers/internal-models/models/qwen3-8-27b`. Metadata discovery and proxy startup can be checked while model replicas remain zero; that does not qualify inference.

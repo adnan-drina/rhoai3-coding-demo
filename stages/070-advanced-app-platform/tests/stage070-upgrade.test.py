@@ -174,6 +174,25 @@ class IntegratedContract(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             bootstrap.check_oidc_identity({'identities': [{'provider': 'openid_connect', 'extern_uid': 'foreign'}]}, 'reviewed-subject')
 
+    def test_personas_create_valid_gitlab_names_with_the_original_subject(self):
+        from unittest.mock import Mock
+        for name, expected in bootstrap.PERSONA_USERNAMES.items():
+            persona = {'username': name, 'id': 'verified-subject', 'email': name+'@example.invalid'}
+            api = Mock(return_value={'id': 3, 'username': expected})
+            account = bootstrap.ensure_persona(api, lambda path, query: [], persona)
+            self.assertEqual(account['username'], expected)
+            data = api.call_args.args[2]
+            self.assertEqual(data['extern_uid'], persona['id'])
+            self.assertEqual(data['provider'], 'openid_connect')
+            self.assertFalse(expected.startswith(('ai-', 'ai_', 'duo-', 'duo_')))
+            api.reset_mock()
+            linked = {**account, 'identities': [{'provider': 'openid_connect', 'extern_uid': persona['id']}]}
+            self.assertEqual(bootstrap.ensure_persona(api, lambda path, query: [linked], persona), linked)
+            api.assert_not_called()
+            linked['identities'][0]['extern_uid'] = 'foreign-subject'
+            with self.assertRaises(RuntimeError): bootstrap.ensure_persona(api, lambda path, query: [linked], persona)
+            api.assert_not_called()
+
     def test_import_retry_uses_the_reviewed_file_commit(self):
         contents = 'reviewed runtime\n'
         row = {'encoding': 'base64', 'content': base64.b64encode(contents.encode()).decode(),

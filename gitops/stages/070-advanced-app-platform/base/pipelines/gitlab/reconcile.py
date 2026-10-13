@@ -255,10 +255,11 @@ def provision_migration(name, row, project, config):
 def authorize_requester(api, row, project, config):
     ref = row.get('requester', '')
     identities = config.get('GITLAB_REQUESTER_IDS', {})
-    if ref not in identities: raise ValueError('Requester is not an approved portal identity')
+    names = config.get('GITLAB_REQUESTER_NAMES', {})
+    if ref not in identities or not names.get(ref): raise ValueError('Requester is not an approved portal identity')
     person = api.request('GET', 'users/' + str(identities[ref]))
     member = api.request('GET', "projects/%s/members/all/%s" % (project['id'], identities[ref]))
-    if person.get('state') != 'active' or 'user:default/' + person.get('username', '') != ref or member.get('access_level', 0) < 30:
+    if person.get('state') != 'active' or person.get('username') != names[ref] or member.get('access_level', 0) < 30:
         raise ValueError('Requester is inactive or lacks this project membership')
 
 
