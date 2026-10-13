@@ -1,5 +1,6 @@
 """Execute the revised enrollment and promotion boundaries without credentials or a cluster."""
 import importlib.util
+import fnmatch
 import json
 import os
 import shutil
@@ -138,6 +139,14 @@ class NativeProject(unittest.TestCase):
         self.assertEqual({r['kind'] for r in p['namespaceResourceWhitelist']},set(promote.KINDS))
         self.assertNotIn('*',p['sourceRepos'])
         self.assertEqual(p['destinations'],[{'server':'https://kubernetes.default.svc','namespace':'*-dev'}])
+    def test_repository_allowlists_match_the_native_route_and_owned_groups_only(self):
+        host='gitlab-gitlab-system.apps.example.test'
+        for name,path in (('platform-projects','rhoai-platform/rhoai3-coding-demo.git'),('runtime-projects','rhoai-delivery/example-deployment.git')):
+            p=yaml.safe_load((BASE/('pipelines/gitlab/'+name+'.yaml')).read_text())
+            patterns=p['spec']['sourceRepos']
+            self.assertTrue(any(fnmatch.fnmatchcase('https://'+host+'/'+path,x) for x in patterns))
+            for url in ('https://foreign.apps.example.test/'+path,'https://'+host+'/rhoai-workloads/example.git'):
+                self.assertFalse(any(fnmatch.fnmatchcase(url,x) for x in patterns))
     def test_coordinator_has_no_secret_or_rbac_write(self):
         rs=list(yaml.safe_load_all((BASE/'pipelines/gitlab/reconciler.yaml').read_text()))
         cluster=next(r for r in rs if r['kind']=='ClusterRole' and r['metadata']['name']=='project-provisioner')

@@ -13,7 +13,7 @@ metadata:
     demo.rhoai.io/stage: '070'
 spec:
   sourceRepos:
-  - https://gitlab.*/rhoai-delivery/*
+  - https://gitlab-gitlab-system.*/rhoai-delivery/*
   destinations:
   - server: https://kubernetes.default.svc
     namespace: '*-dev'
