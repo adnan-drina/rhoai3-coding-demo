@@ -489,7 +489,8 @@ Each script applies its stage's Applications from `gitops/argocd/app-of-apps/`. 
 | 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access`, `040-genai-studio` | MaaS operators, PostgreSQL (data), Gateway with Kuadrant/Authorino, MaaS enablement and monitoring, private models, external models, subscriptions and auth policies, Gen AI studio playground and MCP list |
-| 050 | `070-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA, coolstore dev environment |
+| 050 | `050-mlflow`, `050-model-qualification`, `050-evalhub`, `050-evaluation-content`, `050-oci-export` | MLflow tracking (data), Evaluated Models project and qualification pipeline, EvalHub (data) and curated prompts, evaluation collections and SWE-bench, OCI export |
+| 070 | `070-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA, coolstore dev environment |
 | 060 | *(workflow-only)* | AI-assisted development on stage 070 workspaces |
 | 070 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
 | 080 | *(workflow-only)* | AI-autonomous migration on the stage 070 MTA stack |
@@ -566,7 +567,7 @@ If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for auto
 
 ### Stage component Applications
 
-Stage 040 is deployed as several component Applications instead of one large one, so a model switch, a policy change or a failing hook touches only its own component, and data lives in components that never prune it. Each component renders `gitops/stages/<stage>/apps/<component>/` and keeps the stage prefix; `base/` renders their union for validation. `deploy.sh` applies all components at one reviewed revision and validation requires each of them Synced and Healthy at that revision. The layout rules are in `.agents/rules/gitops.md`.
+Stages 040 and 050 are deployed as several component Applications instead of one large one, so a model switch, a policy change or a failing hook touches only its own component, and data lives in components that never prune it. A component that is expected to report another health state by design names it in its `demo.rhoai.io/accepted-health` annotation (`050-model-qualification` is Suspended while its candidate model is stopped). Each component renders `gitops/stages/<stage>/apps/<component>/` and keeps the stage prefix; `base/` renders their union for validation. `deploy.sh` applies all components at one reviewed revision and validation requires each of them Synced and Healthy at that revision. The layout rules are in `.agents/rules/gitops.md`.
 
 ### Moving objects between Applications
 
@@ -908,6 +909,7 @@ For a full cleanup, prefer an explicit Argo CD cascade delete from the OpenShift
 
 ```bash
 argocd app delete 070-advanced-app-platform --cascade
+for app in $(python3 scripts/shared/stage_apps.py names 050); do argocd app delete "$app" --cascade; done
 for app in $(python3 scripts/shared/stage_apps.py names 040); do argocd app delete "$app" --cascade; done
 argocd app delete 030-private-model-serving --cascade
 argocd app delete 020-gpu-infrastructure-private-ai --cascade

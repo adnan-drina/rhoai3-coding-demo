@@ -1,0 +1,44 @@
+---
+# The candidate model is stopped (serving.kserve.io/stop) between qualification runs, so this
+# component may report Suspended; validate.sh checks that only a stopped InferenceService causes it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: 050-model-qualification
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/instance: openshift-gitops
+    demo.rhoai.io/stage: '050'
+    app.kubernetes.io/name: model-qualification
+    app.kubernetes.io/component: model-qualification
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+    argocd.argoproj.io/sync-wave: '5'
+    argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/050-model-evaluation"
+    demo.rhoai.io/deploy-order: '2'
+    demo.rhoai.io/accepted-health: Suspended
+spec:
+  project: rhoai-demo
+  source:
+    repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
+    targetRevision: main
+    path: gitops/stages/050-model-evaluation/apps/model-qualification
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - SkipDryRunOnMissingResource=true
+    - ServerSideDiff=true
+    - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

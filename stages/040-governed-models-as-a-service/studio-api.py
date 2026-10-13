@@ -58,26 +58,8 @@ def oc(*args):
 def stage_ready(stage, revision):
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise RuntimeError("Supply the reviewed published 40-character stage revision.")
-    if stage_apps.is_regrouped(stage):
-        if stage_apps.stage_problems(stage, revision, "https://github.com/adnan-drina/rhoai3-coding-demo.git"):
-            raise RuntimeError("Exact native stage Application source/readiness guard failed.")
-        return
-    name = {"050": "050-model-evaluation"}[stage]
-    app = json.loads(oc("get", "application", name, "-n", "openshift-gitops", "-o", "json"))
-    spec, status = app["spec"], app.get("status", {})
-    source = spec.get("source", {})
-    sync = status.get("operationState", {}).get("syncResult", {})
-    if (app["metadata"].get("ownerReferences") or app["metadata"].get("deletionTimestamp")
-            or spec.get("sources") or spec.get("project") != "rhoai-demo"
-            or spec.get("destination") != {"server": "https://kubernetes.default.svc", "namespace": "openshift-gitops"}
-            or source.get("repoURL") != "https://github.com/adnan-drina/rhoai3-coding-demo.git"
-            or source.get("path") != "gitops/stages/" + name + "/base"
-            or source.get("targetRevision") != revision
-            or status.get("sync", {}).get("revision") != revision
-            or status.get("sync", {}).get("status") != "Synced"
-            or status.get("health", {}).get("status") != "Healthy"
-            or status.get("operationState", {}).get("phase") != "Succeeded"
-            or sync.get("revision") != revision or sync.get("source", {}).get("path") != source["path"]):
+    # Every component Application of the stage at this revision (Stages 040 and 050 are component-based).
+    if not stage_apps.is_regrouped(stage) or stage_apps.stage_problems(stage, revision, "https://github.com/adnan-drina/rhoai3-coding-demo.git"):
         raise RuntimeError("Exact native stage Application source/readiness guard failed.")
 
 

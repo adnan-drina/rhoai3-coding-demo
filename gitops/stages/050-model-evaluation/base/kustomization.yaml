@@ -1,18 +1,10 @@
+# Stage 050 desired state: the union of its component Applications (gitops/argocd/app-of-apps/050-*/).
+# Argo CD syncs each component from apps/<component>; validators read this aggregate.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - enablement
-  - mlflow
-  - evalhub
-  - tenant
-  - prompts
-  - swebench
-  - oci-export
-  - edd
-  - model-qualification
-labels:
-  - pairs:
-      app.kubernetes.io/part-of: rhoai-platform
-      app.kubernetes.io/managed-by: argocd
-      demo.rhoai.io/stage: "050"
-    includeSelectors: false
+  - ../apps/mlflow
+  - ../apps/model-qualification
+  - ../apps/evalhub
+  - ../apps/evaluation-content
+  - ../apps/oci-export

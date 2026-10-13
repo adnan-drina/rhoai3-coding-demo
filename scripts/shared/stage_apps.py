@@ -28,6 +28,8 @@ ROOT = Path(__file__).resolve().parents[2]
 NAMESPACE = "openshift-gitops"
 DESTINATION = {"server": "https://kubernetes.default.svc", "namespace": NAMESPACE}
 ORDER = "demo.rhoai.io/deploy-order"
+# Health states besides Healthy a component may report by design, e.g. "Suspended" for a deliberately stopped model.
+ACCEPTED_HEALTH = "demo.rhoai.io/accepted-health"
 TRACKING = "argocd.argoproj.io/tracking-id"
 
 
@@ -145,7 +147,12 @@ def runtime_tracking_ok(stage, obj, root=ROOT):
     return value == "" or value.split(":", 1)[0] in names(stage, root)
 
 
-def app_problems(app, revision=None, repo_url=None, path=None):
+def accepted_health(app):
+    value = app.get("metadata", {}).get("annotations", {}).get(ACCEPTED_HEALTH, "")
+    return {"Healthy"} | {h.strip() for h in value.split(",") if h.strip()}
+
+
+def app_problems(app, revision=None, repo_url=None, path=None, accepted=("Healthy",)):
     """Reasons an Application is not exactly reconciled at an immutable revision; empty when ready."""
     problems = []
     meta, spec, status = app["metadata"], app["spec"], app.get("status", {})
@@ -168,7 +175,7 @@ def app_problems(app, revision=None, repo_url=None, path=None):
     result = op.get("syncResult", {})
     if status.get("sync", {}).get("status") != "Synced" or status.get("sync", {}).get("revision") != target:
         problems.append(name + ": not Synced at its revision")
-    if status.get("health", {}).get("status") != "Healthy":
+    if status.get("health", {}).get("status") not in accepted:
         problems.append(name + ": health " + str(status.get("health", {}).get("status")))
     if op.get("phase") != "Succeeded" or result.get("revision") != target or result.get("source", {}).get("path") != source.get("path"):
         problems.append(name + ": last operation is not a successful sync of this source")
@@ -193,7 +200,7 @@ def stage_problems(stage, revision=None, repo_url=None, root=ROOT):
             problems.append(name + ": missing")
             continue
         revisions.add(app["spec"].get("source", {}).get("targetRevision"))
-        problems += app_problems(app, revision, repo_url, desired["spec"]["source"]["path"])
+        problems += app_problems(app, revision, repo_url, desired["spec"]["source"]["path"], accepted_health(desired))
     if len(revisions) > 1:
         problems.append("components are at different revisions")
     return problems
