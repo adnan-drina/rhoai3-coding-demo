@@ -2,13 +2,13 @@
 name: mta-rules
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "mta"
   platform-baseline: "repo"
   ocp-baseline: "repo"
   skill-group: "Application Modernization"
 description: >
-  Use when creating custom rules for MTA 8.2 analysis, including YAML rule
+  Use when creating custom rules for MTA 8.3 analysis, including YAML rule
   syntax, rule metadata (labels, categories, effort), provider conditions
   (java, builtin, go, csharp, python, nodejs), logical conditions, condition
   chaining, custom variables, rule actions, and rulesets. Do NOT use for CLI
@@ -18,10 +18,18 @@ description: >
 
 # MTA Rules Development
 
-Use this skill to ground Migration Toolkit for Applications (MTA) 8.2 custom
+Use this skill to ground Migration Toolkit for Applications (MTA) 8.3 custom
 rule authoring in the official Configuring and Using Rules guide. MTA rules
 instruct the analyzer to detect problematic patterns in application source
 code before migration to target technologies.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **MTA 8.3**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 

@@ -2,7 +2,7 @@
 name: ocp-pipelines-about
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "ocp"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -12,7 +12,7 @@ description: >
   architecture, and Tekton CRDs: Task, TaskRun, Pipeline, PipelineRun,
   Workspace, StepAction, Trigger, TriggerBinding, TriggerTemplate,
   EventListener, when expressions, finally tasks, and pod templates from the
-  official OpenShift Pipelines 1.22 documentation. Do NOT use for installing or
+  official OpenShift Pipelines 1.24 documentation. Do NOT use for installing or
   configuring pipelines (use ocp-pipelines-install-config), creating CI/CD
   pipelines (use ocp-pipelines-cicd), Pipelines as Code (use
   ocp-pipelines-as-code), security (use ocp-pipelines-security), or
@@ -22,8 +22,16 @@ description: >
 # OCP Pipelines About
 
 Use this skill to ground OpenShift Pipelines conceptual guidance in the
-official Red Hat OpenShift Pipelines 1.22 about guide for the active
+official Red Hat OpenShift Pipelines 1.24 about guide for the active
 baseline in `docs/PLATFORM_BASELINE.md`.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **OpenShift Pipelines 1.24**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -84,8 +92,8 @@ workspaces, parameters, and conditions.
 Key fields: `apiVersion: tekton.dev/v1`, `kind: Pipeline`, `spec.tasks`,
 `spec.workspaces`, `spec.params`, `spec.finally`.
 
-Task ordering uses `runAfter` to define sequential dependencies. Tasks without
-`runAfter` constraints run in parallel.
+Task ordering uses `runAfter` to define sequential dependencies. Result references also create dependencies. Tasks run in parallel only when
+the complete DAG and runtime constraints permit.
 
 ### PipelineRun
 

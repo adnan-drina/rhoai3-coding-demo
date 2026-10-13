@@ -519,33 +519,33 @@ products:
     skill_prefix: ocp-devspaces-
     rule: .agents/rules/ocp.md
     documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/
-    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/
+    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/
     categories:
       discover:
         description: Product overview, architecture, DevWorkspace operator, supported IDEs, and workspace lifecycle.
         routes:
-          - book: discover_openshift_dev_spaces
+          - book: discover-assembly_architecture
             status: active
             skill: ocp-devspaces-about
       whats_new:
-        description: Release notes, new features, bug fixes, known issues for 3.28.x sub-releases.
+        description: Release notes, new features, bug fixes, known issues for 3.30.x sub-releases.
         routes:
-          - book: release_notes_and_known_issues
+          - book: whats_new-ref_release_notes
             status: active
             skill: ocp-devspaces-release-notes
       install:
         description: Operator installation, dsc CLI, CheCluster CR, restricted network, Keycloak OIDC.
         routes:
-          - book: installation_guide
+          - book: install-proc_deploying_devspaces_using_gitops
             status: active
             skill: ocp-devspaces-install
       usage_and_administration:
         description: CheCluster CR customization, storage, workspace limits, RBAC, networking, user workflows, devfiles, Git integration.
         routes:
-          - book: administration_guide
+          - book: configure-ref_checluster_custom_resource_fields
             status: active
             skill: ocp-devspaces-admin
-          - book: user_guide
+          - book: develop-con_devfile_introduction
             status: active
             skill: ocp-devspaces-user-guide
 
@@ -597,7 +597,7 @@ products:
     skill_prefix: ocp-pipelines-
     rule: .agents/rules/ocp.md
     documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/
-    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/
+    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/
     categories:
       about:
         description: Release notes, concepts, Tekton CRDs, and key features.
@@ -642,9 +642,11 @@ products:
             status: active
             skill: ocp-pipelines-cicd
       custom_tekton_hub_instance:
-        description: TektonHub CR, custom database, catalog management, and user scopes.
+        description: Legacy TektonHub retirement; current 1.24 migration to Artifact Hub.
         routes:
-          - book: custom_tekton_hub_instance
+          - book: release_notes
+            topics:
+              - tekton-hub-removal
             status: active
             skill: ocp-pipelines-tekton-hub
       reference:
@@ -829,7 +831,7 @@ products:
     baseline_component: Migration Toolkit for Applications
     skill_prefix: mta-
     documentation_root: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/
-    active_baseline_root: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/
+    active_baseline_root: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/
     categories:
       whats_new:
         description: Release notes, new features, bug fixes, known issues, and removed features.

@@ -1,37 +1,29 @@
 # Source Capture
 
-## Official Product Source
-
 | Field | Value |
-|-------|-------|
-| Product baseline | `docs/PLATFORM_BASELINE.md` |
-| Document title | Dynamic plugins reference |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/dynamic_plugins_reference/index |
-| Documentation category | Extend / Dynamic plugins reference |
-| Retrieved date | 2026-07-06 |
-| Sections used | Preface; 1 Preinstalled dynamic plugins; 2 Red Hat Generally Available (GA) plugins; 3 Red Hat Technology Preview plugins; 4 Red Hat community supported plugins; 4.1 Troubleshooting; 4.2 Additional resources; 5 Deprecated plugins; 6 Other installable plugins |
+|---|---|
+| Product | Developer Hub |
+| Documentation version | 1.10 |
+| Baseline authority | `docs/PLATFORM_BASELINE.md` |
+| Reviewed | 2026-10-13 |
+| Source type | Public versioned Red Hat documentation, browser/search-tool rendered content |
+| Retrieval | Browser read succeeded; direct HTTP and some search-tool routes were denied. No inaccessible page was treated as captured. |
+| Scope | Current decisions in `official-doc-extraction.md`; earlier detailed extraction retained with its original provenance |
+| Qualification | Documentation review only; no live installation, workload or model test |
 
-## Related Official Sources
+## Official sources read
 
-| Source | Role |
-|--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_dynamic_plugins/index | Plugin configuration procedures and integration options |
-| https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_and_viewing_plugins_in_red_hat_developer_hub/index | Plugin installation and viewing context |
-| https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/helm_chart_configuration_reference/index | Helm Chart values for dynamic plugin configuration |
+- https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/dynamic_plugins_reference/index
+- https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index
+- https://access.redhat.com/support/policy/updates/developerhub
 
-## Supporting Project Sources
+## Sections and boundaries
 
-| Source | Role |
-|--------|------|
-| `docs/PLATFORM_BASELINE.md` | Active RHDH baseline and source hierarchy |
-| `AGENTS.md` | OpenShift safety guard and GitOps operating constraints |
+Read the matching workflow's prerequisites, configuration/usage and verification
+sections and the current release/support changes recorded in the extraction.
+Keep documented previews, deprecated commands, historical observations and
+project-specific GitOps policy distinct. Exact installed patches, image digests,
+extension packages and operator schemas require deployment qualification.
 
-## Source Boundaries
-
-- Product authority: the official Red Hat Developer Hub 1.10 dynamic plugins
-  reference guide above.
-- This skill defines the catalog of available plugins, their support tiers,
-  versions, and required variables.
-- It does not define how to configure individual plugin settings, app-config
-  fragments, or annotations. Use `rhdh-dynamic-plugins-configure` for that.
-- It does not define Helm Chart values. Use `rhdh-helm-reference` for that.
+The detailed reference is not a claim that every older paragraph was recaptured.
+The current decisions identify the verified updates and take precedence.

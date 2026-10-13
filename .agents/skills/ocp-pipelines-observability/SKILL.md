@@ -2,7 +2,7 @@
 name: ocp-pipelines-observability
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "ocp"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -11,7 +11,7 @@ description: >
   Use when configuring OpenShift Pipelines observability: Tekton Results for
   log and result storage, metrics collection, ServiceMonitor configuration,
   log forwarding, pipeline run result aggregation, database configuration,
-  and observability dashboards for OpenShift Pipelines 1.22. Do NOT use for
+  and observability dashboards for OpenShift Pipelines 1.24. Do NOT use for
   installing pipelines (use ocp-pipelines-install-config), creating CI/CD
   pipelines (use ocp-pipelines-cicd), or security (use
   ocp-pipelines-security).
@@ -20,8 +20,16 @@ description: >
 # OCP Pipelines Observability
 
 Use this skill to ground OpenShift Pipelines observability guidance in the
-official Red Hat OpenShift Pipelines 1.22 observability guide for the active
+official Red Hat OpenShift Pipelines 1.24 observability guide for the active
 baseline in `docs/PLATFORM_BASELINE.md`.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **OpenShift Pipelines 1.24**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -80,7 +88,7 @@ Common labels: `kind`, `namespace`, `pipeline`, `status`, `task`, `taskrun`.
 
 ## Querying Tekton Results
 
-Use the `opc` CLI (installed with the `tkn` package) to query results and
+Use the matching standalone `opc` CLI (Technology Preview) to query results and
 records:
 
 - **By name**: `opc results result list`, `opc results records list`,
@@ -131,14 +139,14 @@ Policies are evaluated in order; first match wins.
 
 ## Related Skills
 
-- Use `ocp-pipelines-release-notes` for OpenShift Pipelines 1.22 release notes,
+- Use `ocp-pipelines-release-notes` for OpenShift Pipelines 1.24 release notes,
   version compatibility, and breaking changes.
 - Use `ocp-observability` for OCP platform observability, monitoring stack, and
   logging architecture.
 - Use `ocp-cicd-builds` for OpenShift build strategies and BuildConfig.
 - Use `ocp-grafana-operator` for Grafana Operator, instances, datasources, and
   dashboards.
-- Use future `ocp-pipelines-install-config` for general OpenShift Pipelines
+- Use `ocp-pipelines-install-config` for general OpenShift Pipelines
   installation and configuration.
 
 ## References

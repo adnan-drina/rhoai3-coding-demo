@@ -1,73 +1,29 @@
 # Source Capture
 
-## Official Sources
-
 | Field | Value |
-|-------|-------|
-| Product family | Red Hat OpenShift Dev Spaces |
-| Baseline source | `docs/PLATFORM_BASELINE.md` |
-| Source URL | https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html-single/installation_guide/index |
-| Multi-page URL | https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/installation_guide/index |
-| Documentation category | Installation guide |
-| Official guide | Installing Red Hat OpenShift Dev Spaces 3.28 |
-| Capture date | 2026-07-06 |
+|---|---|
+| Product | Dev Spaces |
+| Documentation version | 3.30 |
+| Baseline authority | `docs/PLATFORM_BASELINE.md` |
+| Reviewed | 2026-10-13 |
+| Source type | Public versioned Red Hat documentation, browser/search-tool rendered content |
+| Retrieval | Browser read succeeded; direct HTTP and some search-tool routes were denied. No inaccessible page was treated as captured. |
+| Scope | Current decisions in `official-doc-extraction.md`; earlier detailed extraction retained with its original provenance |
+| Qualification | Documentation review only; no live installation, workload or model test |
 
-## Captured Sections
+## Official sources read
 
-From Installation guide:
+- https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/plan-supported_platforms_ref
+- https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/install-proc_deploying_devspaces_using_gitops
+- https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-ref_checluster_custom_resource_fields
 
-- Chapter 1: OpenShift Dev Spaces installation overview
-  - 1.1 Installation methods
-  - 1.2 Deployment scenarios
-- Chapter 2: Requirements
-  - 2.1 Supported platforms
-  - 2.2 Calculate OpenShift Dev Spaces resource requirements
-  - 2.3 OpenShift Dev Spaces scalability
-  - 2.4 Install the dsc management tool
-  - 2.5 Permissions to install OpenShift Dev Spaces on OpenShift using CLI
-  - 2.6 Permissions to install OpenShift Dev Spaces on OpenShift using web console
-- Chapter 3: Install Red Hat OpenShift Dev Spaces
-  - 3.1 Install Dev Spaces on OpenShift using CLI
-  - 3.2 Install Dev Spaces on OpenShift using the web console
-  - 3.3 Install OpenShift Dev Spaces in a restricted environment on OpenShift
-  - 3.4 Set up an Ansible sample
-  - 3.5 Install OpenShift Dev Spaces on OpenShift with Keycloak as external
-    identity provider
-  - 3.6 Use dsc to configure the CheCluster Custom Resource during installation
-  - 3.7 Find the fully qualified domain name (FQDN)
-- Chapter 4: Verify the OpenShift Dev Spaces installation
-- Chapter 5: Next steps after installation
-- Chapter 6: Uninstall OpenShift Dev Spaces
+## Sections and boundaries
 
-## Source Boundaries
+Read the matching workflow's prerequisites, configuration/usage and verification
+sections and the current release/support changes recorded in the extraction.
+Keep documented previews, deprecated commands, historical observations and
+project-specific GitOps policy distinct. Exact installed patches, image digests,
+extension packages and operator schemas require deployment qualification.
 
-This skill captures the installation lifecycle from the official Installation
-guide: requirements, supported platforms, dsc CLI tool, RBAC permissions,
-standard CLI and web console installation, restricted environment installation,
-external identity provider (Keycloak) integration, CheCluster CR patching
-during install, installation verification, and uninstallation.
-
-It does not capture:
-
-- OpenShift Dev Spaces concepts and architecture (separate guide)
-- Administration and CheCluster CR field reference (Administration guide)
-- User workflows, workspaces, devfiles, IDEs (User guide)
-- Release notes and known issues (Release notes)
-- Scalability deep-dives beyond the requirements chapter overview
-
-## API Versions Documented
-
-| Resource | apiVersion |
-|----------|-----------|
-| CheCluster | `org.eclipse.che/v2` |
-| ClusterRole (CLI permissions) | `rbac.authorization.k8s.io/v1` |
-| ClusterRole (web console permissions) | `rbac.authorization.k8s.io/v1` |
-| DevWorkspaceOperatorConfig | `controller.devfile.io/v1alpha1` |
-| OLMConfig | `operators.coreos.com/v1` |
-
-## Related Official Sources To Add Later
-
-- Red Hat OpenShift Dev Spaces 3.28 Understanding documentation
-- Red Hat OpenShift Dev Spaces 3.28 Administration guide
-- Red Hat OpenShift Dev Spaces 3.28 User guide
-- Red Hat OpenShift Dev Spaces 3.28 Release notes
+The detailed reference is not a claim that every older paragraph was recaptured.
+The current decisions identify the verified updates and take precedence.

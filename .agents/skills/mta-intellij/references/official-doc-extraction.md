@@ -1,3 +1,34 @@
+# Current Verified Guidance — MTA 8.3
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/intellij_idea_plugin_guide/index
+
+## Current decisions
+- The 8.3 guide supports IntelliJ Community and Ultimate. Prerequisites include JDK 17+, 8 GB RAM and the documented macOS maxproc requirement.
+- Each run configuration identifies the actual mta-cli executable, input paths and selected targets. Use the installed reviewed 8.3 executable path; do not copy a stale 8.1.2 directory or assume the archive's layout from an example path.
+- Review Report and Results, preview Quick Fixes, inspect the diff and re-run analysis plus the application build/tests. A Quick Fix is not evidence of behavior preservation.
+- Keep plugin, CLI and rules versions recorded independently; downloading the latest CLI is a product workflow, while this project's qualification freezes a reviewed artifact.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+8.3 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep MTA IntelliJ IDEA plugin content grounded in

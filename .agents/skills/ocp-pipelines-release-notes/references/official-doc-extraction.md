@@ -1,3 +1,36 @@
+# Current Verified Guidance — OpenShift Pipelines 1.24
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index
+
+## Current decisions
+- Current documentation includes 1.24.0 and 1.24.1. The compatibility matrix lists Pipelines 1.15.x, Triggers 0.37.x, CLI 0.46.x, Chains 0.29.x, PAC 0.50.x and Results 0.20.x. Tekton Hub has no component entry in 1.24.
+- Supported OpenShift versions listed: 4.14, 4.16, 4.18, 4.19, 4.20, 4.21 and 4.22. Match the current lifecycle matrix rather than assuming all minors are supported.
+- 1.24.1 removes system:authenticated from Manual Approval Gate's controller binding and enforces immutable approval parameters/approver entries. Explicit namespace approver RoleBindings are required.
+- 1.24 adds GitLab event-SHA source lookups, new-branch push support and safer token rotation. PAC removes Tekton Hub integration; Artifact Hub replaces it.
+- Infrastructure metrics move from OpenCensus to OpenTelemetry prefixes. Update dashboards against actual metrics; old tekton_pipelines_controller_* infrastructure names must not be assumed current.
+- Manual Approval Gate and multicluster/Kueue capabilities retain Technology Preview boundaries; do not describe the whole product as preview.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+1.24 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep OpenShift Pipelines release information grounded in

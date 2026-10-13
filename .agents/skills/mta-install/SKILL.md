@@ -2,114 +2,58 @@
 name: mta-install
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "mta"
   platform-baseline: "repo"
   ocp-baseline: "repo"
   skill-group: "Application Modernization"
 description: >
-  Use when installing MTA 8.2 operator, UI, and CLI on OpenShift, including
+  Use when installing MTA 8.3 operator, UI, and CLI on OpenShift, including
   prerequisites, namespace setup, and verification. Do NOT use for using tools
   (use mta-cli/mta-ui) or AI features (use mta-lightspeed).
 ---
 
-# MTA Install
+# MTA Installation — 8.3
 
-Use this skill to ground Migration Toolkit for Applications installation
-procedures in the official Red Hat MTA 8.2 installation guide.
-
-## Source Grounding
-
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
-
-## Installation Overview
-
-MTA 8.2 provides three installation paths:
-
-1. **MTA Operator on OpenShift** — installs the UI, backend, database,
-   Keycloak, and all required components
-2. **CLI via .zip download** — standalone binary for analysis on Linux, macOS,
-   or Windows
-3. **CLI in disconnected environments** — container image pull and transfer for
-   air-gapped installations
-
-The MTA Operator deploys to the `openshift-mta` namespace and manages:
-
-- Hub database and file storage
-- Keycloak (Red Hat build) for authentication
-- Front-end UI
-- Back-end analyzer services
-- Developer Lightspeed database (kai-db)
-
-## Key Topics
-
-- Operator prerequisites: 4 vCPUs, 8 GB RAM, 40 GB persistent storage,
-  OpenShift 4.13–4.15, cluster-admin
-- Persistent volume requirements: 2 RWO PVs minimum; 2 additional RWX PVs
-  when `rwx_supported: true`
-- Tackle CR: `apiVersion: tackle.konveyor.io/v1alpha1`, `kind: Tackle`
-- Keycloak (RHBK): managed instance with tackle-admin, tackle-architect,
-  tackle-migrator roles
-- CLI installation: .zip download per OS/arch, `JAVA_HOME` + JDK 17+,
-  Maven 3.9.9+
-- Disconnected CLI: container mode with `--run-local=false`, image save/load
-- Windows Docker CLI: Docker Desktop with Windows containers for .NET analysis
+Read `references/source-capture.md` and the current-update section of
+`references/official-doc-extraction.md` before selecting an installation path.
+The product baseline and deployment status are in `docs/PLATFORM_BASELINE.md`.
 
 ## Workflow
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify the installation target:
-   - OpenShift Operator + UI instance
-   - CLI on developer workstation
-   - CLI in disconnected / air-gapped environment
-   - CLI with Docker on Windows (.NET migrations)
-4. Verify prerequisites before installation.
-5. For Operator installs, confirm PV availability and storage class.
-6. After installation, verify pods in `openshift-mta` namespace.
-7. For CLI installs, verify `mta-cli` binary is on `$PATH`.
+1. Identify Operator/UI, standalone CLI, or restricted-network installation.
+2. Verify OpenShift compatibility (the 8.3 UI guide specifies 4.21–4.22),
+   available storage and the catalog's reviewed Operator version.
+3. Change the Git-managed Subscription and `tackle.konveyor.io/v1alpha1`
+   Tackle CR. Let the Operator own its generated deployments and databases.
+4. Configure Hub OIDC and any external IdP through supported fields. A fresh
+   installation does not deploy a dedicated Keycloak instance; preserve an
+   existing legacy IdP until its explicit migration is complete.
+5. Size the Hub RWO database; account for optional RWX Maven/file storage
+   when `rwx_supported` is enabled. Size optional AI storage separately.
+6. Keep CLI, RPC and extension artifacts distinct. Verify OS/architecture,
+   archive digest and complete extracted layout. Test actual CLI help and an
+   analysis; an executable file alone is not a working analyzer.
+7. Validate CSV/CRD, Tackle readiness, Route, login and an analysis independently.
 
-## Custom Resource Reference
+For Java containerless CLI analysis, verify JDK 17+, Maven 3.9.9+, JAVA_HOME,
+PATH and JVM_MAX_MEM. Do not renew a frozen migration run's analyzer pin.
 
-```yaml
-kind: Tackle
-apiVersion: tackle.konveyor.io/v1alpha1
-metadata:
-  name: mta
-  namespace: openshift-mta
-spec:
-  hub_bucket_volume_size: "100Gi"
-  maven_data_volume_size: "100Gi"
-  rwx_supported: "false"
-```
+## AI boundary
 
-Key CR settings: `cache_data_volume_size`, `cache_storage_class`,
-`feature_auth_required`, `feature_isolate_namespace`,
-`hub_database_volume_size`, `hub_bucket_volume_size`,
-`keycloak_database_data_volume_size`, `rwx_supported`, `rwo_storage_class`,
-`analyzer_container_limits_cpu`, `analyzer_container_limits_memory`.
+Use `mta-lightspeed` for the proxy and Solution Server (Technology Preview).
+Native MTA Agents are Developer Preview and additionally require Agent Sandbox
+Operator, SCM push access and Gateway configuration. Do not infer agent readiness
+from a healthy MTA UI.
 
-## RBAC and Personas
+## Project delivery
 
-MTA uses Red Hat build of Keycloak with three roles:
-
-| Role | Persona | Capabilities |
-|------|---------|--------------|
-| `tackle-admin` | Administrator | Full access, credential management, Admin view |
-| `tackle-architect` | Architect | Assessments, app management, consume credentials |
-| `tackle-migrator` | Migrator | Application analysis only |
-
-Default login: `admin` / `Passw0rd!` (change immediately after install).
-
-## Related Skills
-
-- Use `mta-release-notes` for MTA 8.2 release notes and known issues.
-- Use `mta-cli` for CLI usage and analysis workflows (planned).
-- Use `mta-ui` for UI usage and assessment workflows (planned).
-- Use `mta-lightspeed` for Developer Lightspeed AI features (planned).
+Manage native resources through Kustomize/Argo CD and keep credentials outside
+Git. Use the repository cluster guard before any live access. This skill refresh
+does not establish that the Stage 070 upgrade is deployed or qualified.
 
 ## References
 
 - `references/source-capture.md`
 - `references/official-doc-extraction.md`
+- `references/validation-checklist.md`

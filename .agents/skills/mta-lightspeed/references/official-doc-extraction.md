@@ -1,3 +1,37 @@
+# Current Verified Guidance — MTA 8.3
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index
+- https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index
+
+## Current decisions
+- Developer Lightspeed, Solution Server and the IDE Agent AI loop are Technology Preview. MTA Agents in the Hub are a distinct Developer Preview feature; do not call either generally available autonomous migration.
+- The IDE workflow uses analysis context and optional solved examples from Solution Server. Code is transmitted to the selected model without automatic sanitization; this project routes model access through private MaaS.
+- For Lightspeed, verify the installed Tackle fields for `kai_llm_proxy_enabled`, `kai_solution_server_enabled`, provider/model and credentials. Keep actual Secret values out of Git and command output.
+- For native MTA Agents, the 8.3 UI guide specifies `agentic_enabled` and optionally `agentic_steer_enabled`, Agent Sandbox Operator, application SCM push credentials, and `konveyor.io/v1alpha1` Gateway resources. These are not the Lightspeed `kai_*` settings.
+- The native agent workflow's operator-managed agents, skill cards and workflows are reconciled by the Operator. Configure supported custom resources rather than editing generated resources. Pin Git refs and OCI digests; an empty skill Git ref uses the mutable default branch.
+- This skill update authorizes no new model calls, live agent runs or changes to Stage 130's frozen Hermes workflows. Validate proxy readiness, MaaS authentication and one explicitly authorized suggestion/run separately from static configuration.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+8.3 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep MTA Developer Lightspeed content grounded in

@@ -2,7 +2,7 @@
 name: ocp-pipelines-cicd
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "ocp"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -12,7 +12,7 @@ description: >
   applications, deploying with pipelines, using resolvers (cluster, hub,
   bundle, git, HTTP), creating pipeline templates, mirroring images for
   restricted environments, and building applications with the web console
-  for OpenShift Pipelines 1.22. Do NOT use for pipeline concepts (use
+  for OpenShift Pipelines 1.24. Do NOT use for pipeline concepts (use
   ocp-pipelines-about), installing pipelines (use
   ocp-pipelines-install-config), Pipelines as Code (use
   ocp-pipelines-as-code), or security (use ocp-pipelines-security).
@@ -21,8 +21,16 @@ description: >
 # OCP Pipelines CI/CD
 
 Use this skill to ground CI/CD pipeline creation guidance in the
-official Red Hat OpenShift Pipelines 1.22 creating CI/CD pipelines guide
+official Red Hat OpenShift Pipelines 1.24 creating CI/CD pipelines guide
 for the active baseline in `docs/PLATFORM_BASELINE.md`.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **OpenShift Pipelines 1.24**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 

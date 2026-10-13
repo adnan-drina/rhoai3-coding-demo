@@ -2,7 +2,7 @@
 name: rhdh-dynamic-plugins-reference
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "rhdh"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -24,6 +24,14 @@ description: >
 Use this skill to look up preinstalled and installable dynamic plugin names,
 versions, OCI paths, support tiers, and required environment variables for
 Red Hat Developer Hub on the active baseline in `docs/PLATFORM_BASELINE.md`.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **Developer Hub 1.10**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -57,6 +65,13 @@ Use other skills for adjacent work:
   app-config fragments, annotations, ClusterRoles, and integration options
 - `rhdh-helm-reference` for Helm Chart configuration values, global/upstream
   namespace parameters, route, test, and orchestrator settings
+
+## Current packaging boundary
+
+On 1.10, Tekton, Quay, scaffolder Quay and the Roadie Argo CD scaffolder wrapper
+must use the officially listed external OCI packages; they are not embedded
+wrappers. Keep Community support explicit and pin a verified digest. GitLab
+catalog/scaffolder modules and Community GitLab UI plugins are distinct.
 
 ## Demo Policy
 

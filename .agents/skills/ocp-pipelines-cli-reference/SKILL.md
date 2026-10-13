@@ -2,16 +2,16 @@
 name: ocp-pipelines-cli-reference
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "ocp"
   platform-baseline: "repo"
   ocp-baseline: "repo"
   skill-group: "OpenShift Platform"
 description: >
   Use when referencing tkn CLI commands for OpenShift Pipelines: tkn pipeline,
-  tkn pipelinerun, tkn task, tkn taskrun, tkn clustertask, tkn hub,
+  tkn pipelinerun, tkn task, tkn taskrun, legacy clustertask diagnosis, Artifact Hub task lookup,
   tkn triggerbinding, tkn triggertemplate, tkn eventlistener, tkn condition,
-  opc results, and CLI installation for OpenShift Pipelines 1.22. Do NOT use
+  opc results, and CLI installation for OpenShift Pipelines 1.24. Do NOT use
   for pipeline concepts (use ocp-pipelines-about), installing the operator
   (use ocp-pipelines-install-config), or creating CI/CD pipelines (use
   ocp-pipelines-cicd).
@@ -20,8 +20,16 @@ description: >
 # OCP Pipelines CLI Reference
 
 Use this skill to ground tkn CLI command reference in the
-official Red Hat OpenShift Pipelines 1.22 CLI reference for the active
+official Red Hat OpenShift Pipelines 1.24 CLI reference for the active
 baseline in `docs/PLATFORM_BASELINE.md`.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **OpenShift Pipelines 1.24**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 

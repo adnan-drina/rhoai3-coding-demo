@@ -1,3 +1,36 @@
+# Current Verified Guidance — OpenShift Pipelines 1.24
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/observability_in_openshift_pipelines/index
+- https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index
+
+## Current decisions
+- Results archives completed manifests; querying retained task logs requires the documented LokiStack/OpenShift Logging forwarding. A successful Results install alone is not log retention.
+- The bundled PostgreSQL database is for non-production use; production needs an independently managed external database and backup/retention policy.
+- Manage Results retention separately from Kubernetes run pruning. Preserve failed-run evidence needed for diagnosis before pruning.
+- 1.24 migrates infrastructure metrics to OpenTelemetry prefixes such as kn_workqueue_*, http_client_* and go_*. Verify actual exposed metrics before updating dashboards.
+- opc remains Technology Preview. Confirm CLI help/API shape rather than assuming the client matches the server solely because it was bundled with tkn.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+1.24 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep OpenShift Pipelines observability content grounded

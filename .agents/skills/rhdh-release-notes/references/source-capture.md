@@ -1,38 +1,28 @@
 # Source Capture
 
-## Official Sources
-
 | Field | Value |
-|-------|-------|
-| Product family | Red Hat Developer Hub |
-| Baseline source | `docs/PLATFORM_BASELINE.md` |
+|---|---|
+| Product | Developer Hub |
 | Documentation version | 1.10 |
-| Documentation category | What's New |
-| Official guide | Red Hat Developer Hub release notes |
-| Source URL | https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index |
-| Multi-page URL | https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/red_hat_developer_hub_release_notes/index |
-| Capture date | 2026-07-06 |
+| Baseline authority | `docs/PLATFORM_BASELINE.md` |
+| Reviewed | 2026-10-13 |
+| Source type | Public versioned Red Hat documentation, browser/search-tool rendered content |
+| Retrieval | Browser read succeeded; direct HTTP and some search-tool routes were denied. No inaccessible page was treated as captured. |
+| Scope | Current decisions in `official-doc-extraction.md`; earlier detailed extraction retained with its original provenance |
+| Qualification | Documentation review only; no live installation, workload or model test |
 
-## Captured Sections
+## Official sources read
 
-From Red Hat Developer Hub release notes:
+- https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index
+- https://access.redhat.com/support/policy/updates/developerhub
 
-- Preface: GA status, upstream Backstage 1.49.4 compatibility
-- Chapter 1: New features and enhancements (27 items)
-- Chapter 2: Technology Preview features (2 items)
-- Chapter 3: Developer Preview features (4 items)
-- Chapter 4: Deprecated features (3 items)
-- Chapter 5: Removed features (3 items)
-- Chapter 6: Known issues (5 items)
-- Chapter 7: Fixed issues (7.1 Fixed in 1.10.1, 7.2 Fixed in 1.10.0 — 30+ items)
-- Chapter 8: Fixed security issues
+## Sections and boundaries
 
-## Source Boundaries
+Read the matching workflow's prerequisites, configuration/usage and verification
+sections and the current release/support changes recorded in the extraction.
+Keep documented previews, deprecated commands, historical observations and
+project-specific GitOps policy distinct. Exact installed patches, image digests,
+extension packages and operator schemas require deployment qualification.
 
-This skill covers the RHDH 1.10 release notes only. It provides information
-about what changed in this release. It does not cover:
-
-- Product concepts and architecture (see rhdh-about)
-- Installation procedures (separate guide)
-- Configuration details (separate guide)
-- Detailed preview feature documentation (see rhdh-preview-features)
+The detailed reference is not a claim that every older paragraph was recaptured.
+The current decisions identify the verified updates and take precedence.

@@ -1,3 +1,35 @@
+# Current Verified Guidance — Dev Spaces 3.30
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-assembly_architecture
+- https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/whats_new-ref_release_notes
+
+## Current decisions
+- Dev Spaces 3.30 includes DevWorkspace Operator 0.43 and Eclipse Che 7.120/7.121. Server components orchestrate the platform; DWO reconciles DevWorkspace resources into workspace pods in user namespaces.
+- CheCluster v2 is the platform configuration; devfiles describe developer environments. Reopening a workspace must reuse its identity and committed devfile, not create a new suffixed workspace.
+- Container filesystems are ephemeral; persistence depends on PVC strategy, volume mounts and `persistUserHome`. Do not claim every workspace or every home is persistent/ephemeral by default.
+- RBAC isolates users; it is not proof of isolation among multiple migration runs in the same namespace. The current worker credential/SA boundary must be evaluated against the selected configuration.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+3.30 validation.
+
+---
+
 # Official Documentation Extraction: Discover OpenShift Dev Spaces 3.28
 
 Source: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html-single/discover_openshift_dev_spaces/index

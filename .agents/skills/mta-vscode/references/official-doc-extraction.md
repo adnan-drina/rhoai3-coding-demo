@@ -1,3 +1,36 @@
+# Current Verified Guidance — MTA 8.3
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_the_visual_studio_code_extension_for_mta/index
+
+## Current decisions
+- The 8.3 guide documents MTA Core plus a language extension, or an extension pack. The extension pack and C#/JavaScript/Go extensions are Developer Preview; Java and Core have their documented support posture.
+- Prerequisites include JDK 17+ and 8 GB RAM. The analyzer RPC binary is distinct from mta-cli and the extension package.
+- For restricted/pinned workspaces, configure `mta-vscode-extension.analyzerPath` or MTA: Override Analyzer Binary to the reviewed RPC binary, then reload the window and validate an analysis. Default behavior downloads the latest RPC; do not use that behavior to qualify a reproducible run.
+- The guide's installation example is 8.3.0; the independently selected extension patch must be verified from its package metadata. Do not assume it equals the CLI patch version.
+- Configure Hub OIDC, trust the certificate chain, synchronize the intended profile and keep source/target/rule settings explicit. Skip SSL verification is an optional insecure mode, not this project's recommendation.
+- Check extension output and analyzer logs as well as diagnostics. AI usage follows mta-lightspeed and the private MaaS path.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+8.3 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep MTA VS Code extension content grounded in official

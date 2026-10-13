@@ -1,3 +1,36 @@
+# Current Verified Guidance — OpenShift Pipelines 1.24
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/pipelines_as_code/index
+- https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index
+
+## Current decisions
+- PAC supports GitLab webhooks with a provider token and webhook secret; configure the Repository resource and self-hosted API endpoint for the actual GitLab host. Keep credentials in a namespace-scoped Secret.
+- PAC resolves definitions from .tekton; 1.24's GitLab source lookups use the immutable event SHA. Check that the run executes the intended revision.
+- Tekton Hub-specific PAC integration is removed. Reference Artifact Hub, a reviewed repository-local task, an immutable bundle or an approved URL.
+- Stage 070 currently selects GitLab Tekton EventListeners, not PAC. This skill documents the available PAC alternative; do not introduce a second webhook engine without an explicit design change.
+- GitHub App guidance is specific to GitHub, not a prerequisite for GitLab. Verify trigger authentication, one run per event and status reporting separately.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+1.24 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep Pipelines as Code content grounded in official Red

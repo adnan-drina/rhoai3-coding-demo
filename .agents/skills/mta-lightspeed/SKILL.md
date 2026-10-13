@@ -2,7 +2,7 @@
 name: mta-lightspeed
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "mta"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -18,8 +18,16 @@ description: >
 # MTA Developer Lightspeed
 
 Use this skill for configuring and using Red Hat Developer Lightspeed for
-Migration Toolkit for Applications (MTA) 8.2 — the AI-assisted code migration
+Migration Toolkit for Applications (MTA) 8.3 — the AI-assisted code migration
 component that integrates LLMs with MTA static analysis.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **MTA 8.3**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -55,6 +63,14 @@ the LLM proxy service and a 5 Gi RWO persistent volume.
 An automated analysis mode that plans context, selects sub-agents, and iterates
 through code fixes. Accepts changes, recompiles, and re-analyzes in a loop
 until all issues are resolved or a maximum of two attempts per issue is reached.
+
+## Native MTA Agents (Developer Preview)
+
+These Hub agents are distinct from IDE Agent AI. The 8.3 UI guide requires
+Agent Sandbox Operator, SCM push access and a konveyor.io Gateway, with Tackle
+`agentic_enabled` and optional `agentic_steer_enabled`. Read the current-update
+section of the extraction before configuring them. Pin skill Git refs and OCI
+digests; preserve private MaaS access and do not replace frozen Hermes runs.
 
 ## Supported LLM Providers
 

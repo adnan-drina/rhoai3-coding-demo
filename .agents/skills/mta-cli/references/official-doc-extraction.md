@@ -1,3 +1,36 @@
+# Current Verified Guidance — MTA 8.3
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index
+
+## Current decisions
+- Java containerless analysis remains the default. Use JDK 17+, Maven 3.9.9+, JAVA_HOME and an explicitly sized JVM_MAX_MEM; non-Java analysis uses containers. Verify the actual binary and its provider assets, not only an executable's presence.
+- Use `mta-cli rules list-targets`, `rules list-sources`, `provider list`, `rules test`, and `openrewrite`. The old analyze listing flags, `test` and `transform` are deprecated compatibility forms.
+- Preserve the full CLI archive layout under the reviewed analyzer installation. The CLI, analyzer RPC, IDE extensions and mta-ops are distinct artifacts with distinct versions.
+- Pin the source commit, rules, selected profile and provider/runtime versions for repeatable analysis. Do not silently update a frozen migration run.
+- `discover` / `generate` may use Helm for asset generation. In this project render during authoring, review the output, and deliver native resources through Kustomize/Argo CD; generated assets do not imply a runtime Helm release.
+- The 8.2.1 JSON-output and unlabeled-rule observations retained below are historical measurements. They do not establish identical 8.3 behavior: qualify those cases on the upgraded binary before relying on a workaround.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+8.3 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep MTA CLI content grounded in official Red Hat

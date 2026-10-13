@@ -1,3 +1,37 @@
+# Current Verified Guidance — Dev Spaces 3.30
+
+Reviewed 2026-10-13 in the public Red Hat documentation browser. Sources:
+
+- https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/plan-supported_platforms_ref
+- https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/install-proc_deploying_devspaces_using_gitops
+- https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-ref_checluster_custom_resource_fields
+
+## Current decisions
+- Product platform support is OpenShift 4.16–4.22 on x86_64, s390x, ppc64le and arm64. The current GitOps procedure specifically requires OpenShift 4.22+; do not equate this procedure's prerequisite with the entire support matrix.
+- The 3.30 guide explicitly supports GitOps: store Subscription, CheCluster v2 and Kustomization in Git, then reconcile through Argo CD. Operator installation precedes the CheCluster CRD and instance.
+- The documented Subscription uses openshift-operators (AllNamespaces); the instance uses openshift-devspaces. Keep the Operator/DWO namespace relationship valid.
+- Project policy selects reviewed manual operator approval and exact image pins instead of the guide's illustrative Automatic/latest defaults. Check Argo Synced/Healthy, CSV Succeeded, CheCluster Active and its dashboard URL.
+- Follow the documented supported upgrade path and check the current DWO/CRD. An uninstall must have an explicit data-retention decision; it is not a routine upgrade step.
+
+## Project workflow
+
+Keep platform configuration in native Kustomize/Argo CD resources. Helm may be
+used to render a pinned chart during authoring; do not install or upgrade a live
+Helm release for this project. Keep credentials outside Git. Before any live
+cluster access, use `load_env` and `check_oc_logged_in` from
+`scripts/shared/lib.sh`; match the selected cluster and product schema.
+
+## Earlier detailed reference — not a fresh product qualification
+
+The material below retains the earlier extraction's provenance and useful
+detail. Where a command, support level, version, default or field conflicts
+with the current decisions above, the current decisions take precedence.
+Verify any remaining version-sensitive detail against the current linked guide
+and installed CLI/CRD before use. Historical runtime observations are not new
+3.30 validation.
+
+---
+
 # Official Doc Extraction
 
 Use this extraction to keep OpenShift Dev Spaces installation content grounded

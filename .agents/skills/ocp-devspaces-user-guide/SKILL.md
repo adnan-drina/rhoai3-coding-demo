@@ -2,13 +2,13 @@
 name: ocp-devspaces-user-guide
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "ocp"
   platform-baseline: "repo"
   ocp-baseline: "repo"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting or explaining OpenShift Dev Spaces 3.28 user workflows,
+  Use when documenting or explaining OpenShift Dev Spaces 3.30 user workflows,
   including starting workspaces, devfile authoring, IDE customization, Git
   integration, VS Code extensions, credential management, and workspace
   configuration. Do NOT use for concepts (use ocp-devspaces-about), installing
@@ -19,7 +19,15 @@ description: >
 # OCP Dev Spaces User Guide
 
 Use this skill to ground OpenShift Dev Spaces user workflow guidance in the
-official Red Hat OpenShift Dev Spaces 3.28 User Guide.
+official Red Hat OpenShift Dev Spaces 3.30 Develop and Integrate topics.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **Dev Spaces 3.30**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -100,7 +108,8 @@ repository:
 Extensions are installed from the Open VSX registry. In restricted environments,
 use a private Open VSX registry or install from `.vsix` files.
 
-GitHub Copilot Chat: install `Dev Spaces Copilot Chat Integration` v0.36.2,
+For Copilot Chat, verify the integration extension version against the current
+editor; do not carry forward an old fixed extension pin.
 authenticate via Device Authentication, then refresh.
 
 ## Git Integration

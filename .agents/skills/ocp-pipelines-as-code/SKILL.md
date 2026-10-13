@@ -2,7 +2,7 @@
 name: ocp-pipelines-as-code
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "ocp"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -13,7 +13,7 @@ description: >
   PipelineRun templates, CEL expressions, on-event and on-target-branch
   annotations, incoming webhooks, Git provider integration (GitHub, GitLab,
   Bitbucket), tkn pac CLI, and Pipelines as Code administration for OpenShift
-  Pipelines 1.22. Do NOT use for core pipeline concepts (use
+  Pipelines 1.24. Do NOT use for core pipeline concepts (use
   ocp-pipelines-about), installing pipelines (use ocp-pipelines-install-config),
   creating CI/CD pipelines without PAC (use ocp-pipelines-cicd), or security
   (use ocp-pipelines-security).
@@ -22,8 +22,16 @@ description: >
 # OCP Pipelines as Code
 
 Use this skill to ground Pipelines as Code (PAC) guidance in the
-official Red Hat OpenShift Pipelines 1.22 PAC guide for the active
+official Red Hat OpenShift Pipelines 1.24 PAC guide for the active
 baseline in `docs/PLATFORM_BASELINE.md`.
+
+## Current Product Guidance (2026-10-13)
+
+Documentation target: **OpenShift Pipelines 1.24**. Read the current-update section
+in `references/official-doc-extraction.md` and its source ledger before using
+configuration details. It supersedes the retained earlier reference material.
+`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
+pins and live qualification. This refresh does not upgrade an existing run.
 
 ## Source Grounding
 
@@ -45,7 +53,12 @@ configuration object. It:
 Key fields: `spec.url`, `spec.git_provider`, `spec.settings`,
 `spec.concurrency_limit`, `spec.incoming`, `spec.params`.
 
-## GitHub App Integration
+## Project trigger choice
+
+Stage 070 selects GitLab EventListeners. PAC is a separate supported alternative;
+do not introduce a second trigger engine while updating documentation.
+
+## GitHub App Integration (GitHub only)
 
 GitHub App is the recommended integration method. Setup options:
 
@@ -112,7 +125,7 @@ For environments where a GitHub App is not feasible:
 
 | Annotation | Purpose |
 |------------|---------|
-| `pipelinesascode.tekton.dev/task` | Reference remote tasks (Hub, URL, local path) |
+| `pipelinesascode.tekton.dev/task` | Reference remote tasks (Artifact Hub, URL, local path) |
 | `pipelinesascode.tekton.dev/task-N` | Additional task references |
 | `pipelinesascode.tekton.dev/pipeline` | Reference remote pipeline definition |
 

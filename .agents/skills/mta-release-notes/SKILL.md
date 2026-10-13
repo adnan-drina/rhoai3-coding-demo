@@ -2,77 +2,51 @@
 name: mta-release-notes
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "mta"
   platform-baseline: "repo"
   ocp-baseline: "repo"
   skill-group: "Application Modernization"
 description: >
-  Use when checking MTA 8.2 release notes, new features, bug fixes, known
+  Use when checking MTA 8.3 release notes, new features, bug fixes, known
   issues, and deprecated features. Do NOT use for installing (use mta-install),
   using tools (use mta-cli/mta-ui), or AI features (use mta-lightspeed).
 ---
 
-# MTA Release Notes
+# MTA Release Notes — 8.3
 
-Use this skill to ground Migration Toolkit for Applications release information
-in the official Red Hat MTA 8.2 release notes.
+Read `references/source-capture.md` and the current-update section of
+`references/official-doc-extraction.md` for exact source and support boundaries.
 
-## Source Grounding
+## Current release
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+The captured release is 8.3.0. New native MTA Agents support single runs and
+predetermined multistage workflows with sandbox execution and shared-Git
+handoffs. These capabilities are **Developer Preview**.
 
-## Release Summary
+mta-ops adds same-cluster PVC StorageClass conversion, indirect transfer through
+S3, persistent structured audit logging and clearer transfer progress. AWS S3
+is the validated indirect-transfer provider. S3 compatibility alone does not
+qualify NooBaa for this particular transfer workflow.
 
-Migration Toolkit for Applications (MTA) 8.2 accelerates large-scale
-application modernization across hybrid cloud environments on Red Hat OpenShift.
-The 8.1 release builds on MTA 8.0 with centralized configuration management,
-LLM proxy service support, new Developer Preview features, and multiple bug
-fixes.
+BuildConfig-to-Shipwright conversion is **Technology Preview**. Developer
+Lightspeed, Solution Server and IDE Agent AI retain their own preview boundaries.
 
-Key releases covered:
+## Changes to check
 
-- **MTA 8.2.0** — centralized configuration, LLM proxy, C# provider, VS Code
-  extension pack
-- **MTA 8.0.1** — pre-generated Maven index, Cloud Foundry fixes, FQN matching
-- **MTA 8.0.0** — Developer Lightspeed, platform awareness, asset generation,
-  new VS Code plugin, Solution Server (TP), Agentic AI (TP)
+- The CLI's deprecated listing, test and transform commands have replacements
+  under rules, provider and openrewrite.
+- MTA-6530 still misses annotation incidents through wildcard imports.
+- MTA-6863 fixes applying unsaved review-editor suggestions.
+- MTA-7870 can leave mta-ops executing without an audit file after a warning;
+  verify the artifact if the workflow requires it.
 
-## Key Topics
-
-- New features: centralized configuration management (profiles and custom
-  rules), LLM proxy service via Keycloak JWT, C# provider (Developer Preview),
-  VS Code extension pack (Developer Preview)
-- Technology Preview / Developer Preview: C# source-only provider, VS Code
-  extension pack with language-specific extensions, Solution Server, Agentic AI
-- Known issues: Gradle dependency violations not triggered in UI
-- Fixed issues: Source Control credential character limit, non-UTF-8 static
-  report display, Cloud Foundry service binding discovery
-- Removed features (8.0): XML rules removed, Eclipse IDE plugin removed
-
-## Workflow
-
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the question concerns:
-   - new features in MTA 8.2.0 or 8.0.x
-   - Developer Preview or Technology Preview features
-   - known issues and workarounds
-   - fixed issues across 8.0.0, 8.0.1, and 8.2.0
-   - removed or deprecated functionality
-4. Use exact feature names and issue IDs from the extraction.
-5. When advising on MTA 8.x features, distinguish between GA features,
-   Technology Preview, and Developer Preview support scopes.
-
-## Related Skills
-
-- Use `mta-install` for installing MTA Operator, UI, and CLI.
-- Use `mta-cli` for CLI usage and analysis workflows (planned).
-- Use `mta-ui` for UI usage and assessment workflows (planned).
-- Use `mta-lightspeed` for Developer Lightspeed AI features (planned).
+The release book contains historical 8.0–8.2 chapters. Attribute a feature or
+fix to its actual release. Do not copy those chapters as new 8.3 functionality.
+Verify installed Operator, CLI, RPC and IDE versions separately.
 
 ## References
 
 - `references/source-capture.md`
 - `references/official-doc-extraction.md`
+- `references/validation-checklist.md`
