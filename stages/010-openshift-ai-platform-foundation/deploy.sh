@@ -157,6 +157,8 @@ echo "  Argo CD will now sync ODF and RHOAI. This takes 10–20 minutes."
 python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation/base" --wait 1800
 
 
+"$SCRIPT_DIR/deploy-sandbox-storage.sh" --revision "$selected_commit"
+
 "$SCRIPT_DIR/deploy-console-observability.sh" --revision "$selected_commit"
 
 # ── Step 5: Report Argo CD console URL ───────────────────────────────────────
