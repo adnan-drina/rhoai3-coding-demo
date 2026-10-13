@@ -198,8 +198,9 @@ def main():
     args.cache.mkdir(parents=True, exist_ok=True)
     for entry in lock['charts']:
         chart = chart_archive(entry, args.cache)
+        capabilities = [arg for api in lock['api_versions'] for arg in ('--api-versions', api)]
         raw = subprocess.check_output(['helm', 'template', entry['name'], str(chart), '--namespace', entry['namespace'],
-            '--kube-version', lock['kubernetes_version'], '--skip-tests', '-f', str(BASE / entry['name'] / 'values.yaml')], text=True)
+            '--kube-version', lock['kubernetes_version'], *capabilities, '--skip-tests', '-f', str(BASE / entry['name'] / 'values.yaml')], text=True)
         documents = [document for document in yaml.safe_load_all(raw) if document]
         documents = (gitlab_documents(documents, lock['gitlab_images']) if entry['name'] == 'gitlab'
                      else sonarqube_documents(documents))

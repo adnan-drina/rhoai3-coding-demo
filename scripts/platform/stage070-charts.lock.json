@@ -1,6 +1,11 @@
 {
   "helm_version": "v3.18.4",
   "kubernetes_version": "1.35.0",
+  "api_versions": [
+    "batch/v1/CronJob",
+    "policy/v1/PodDisruptionBudget",
+    "autoscaling/v2/HorizontalPodAutoscaler"
+  ],
   "charts": [
     {
       "name": "gitlab",

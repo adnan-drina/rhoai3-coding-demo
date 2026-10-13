@@ -39,6 +39,20 @@ class NativeDelivery(unittest.TestCase):
         self.assertNotIn('helm', app['spec']['source'])
         self.assertNotIn('--enable-helm', (ROOT / 'stages/070-advanced-app-platform/deploy.sh').read_text())
 
+    def test_offline_render_uses_served_stable_apis(self):
+        expected={'CronJob':'batch/v1','PodDisruptionBudget':'policy/v1','HorizontalPodAutoscaler':'autoscaling/v2'}
+        seen=set()
+        for path in (BASE/'gitlab/generated').glob('*.yaml'):
+            row=yaml.safe_load(path.read_text())
+            if row.get('kind') in expected:
+                seen.add(row['kind'])
+                self.assertEqual(row['apiVersion'],expected[row['kind']])
+                if row['kind']=='HorizontalPodAutoscaler':
+                    metric=row['spec']['metrics'][0]['resource']
+                    self.assertIn('target',metric)
+                    self.assertNotIn('targetAverageUtilization',metric)
+        self.assertEqual(seen,set(expected))
+
     def test_native_order_preserves_credentials_and_migrations(self):
         rows = {(d['kind'], d['metadata']['name']): d for d in self.resources
                 if d['metadata'].get('namespace') == 'gitlab-system'}

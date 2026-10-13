@@ -2248,6 +2248,8 @@ Stuck pre-fix Jobs (pull policy Always baked into their pods) must be deleted fo
 
 ## Stage 070 GitLab project enrollment is pending
 
+If a first GitLab sync reports retired `batch/v1beta1`, `policy/v1beta1` or `autoscaling/v2beta1` APIs, regenerate with the committed chart capability lock. A Kubernetes version alone does not populate Helm's offline kind-specific API capabilities. The renderer explicitly supplies stable CronJob, PodDisruptionBudget and HPA APIs; do not patch only an HPA's version because its metrics shape must also change. Publish the regenerated resources and restart the native full sync, including hooks.
+
 If admission type-checking reports unknown `PipelineRun` parameters or inline-spec fields, do not loosen the policy or grant project bootstrap identities platform provisioning rights. Tekton preserves these fields without CEL-accessible types. Project bootstrap has no platform `PipelineRun` create grant; admission also denies that principal. The trusted enrollment coordinator dispatches the exact migration request only after the pinned native project Application is Healthy, Synced and Succeeded, and refuses a mismatched existing request. Check policy `status.typeChecking.expressionWarnings` and real server dry-run denials before resuming enrollment.
 
 **Affected stage:** Stage 070 GitLab release; earlier GitHub dispatcher guidance is superseded.
