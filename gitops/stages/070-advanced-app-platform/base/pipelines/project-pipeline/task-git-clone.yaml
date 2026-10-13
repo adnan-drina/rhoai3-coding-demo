@@ -33,6 +33,8 @@ spec:
       value: $(results.COMMIT.path)
     - name: GIT_TERMINAL_PROMPT
       value: '0'
+    - name: HOME
+      value: /tekton/home
     script: |
       #!/usr/bin/env sh
       set -eu
@@ -41,10 +43,13 @@ spec:
       case "$REVISION" in *[!0-9a-f]*) echo 'Source revision is not immutable' >&2; exit 2 ;; esac
       test -s "$AUTH_DIR/.git-credentials"
       test ! -e .git
-      git init -q
-      git remote add origin "$REPO_URL"
-      git -c "credential.helper=store --file=$AUTH_DIR/.git-credentials" fetch --no-tags origin "$REVISION"
-      git checkout -q --detach FETCH_HEAD
-      actual=$(git rev-parse HEAD)
+      # The Tekton workspace may be owned by its volume initializer's UID.
+      # Trust only this newly initialized checkout, never an ownership wildcard.
+      git_checkout() { git -c safe.directory= -c "safe.directory=$PWD" "$@"; }
+      git_checkout init -q
+      git_checkout remote add origin "$REPO_URL"
+      git_checkout -c "credential.helper=store --file=$AUTH_DIR/.git-credentials" fetch --no-tags origin "$REVISION"
+      git_checkout checkout -q --detach FETCH_HEAD
+      actual=$(git_checkout rev-parse HEAD)
       test "$actual" = "$REVISION"
       printf '%s' "$actual" > "$COMMIT_RESULT"

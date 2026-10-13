@@ -63,6 +63,12 @@ class Checkout(unittest.TestCase):
         self.assertEqual((self.root / 'result').read_text(), self.sha)
         self.assertNotIn('synthetic', result.stdout + result.stderr)
 
+    def test_shared_workspace_ownership_does_not_weaken_commit_binding(self):
+        result, work = self.run_task(GIT_TEST_ASSUME_DIFFERENT_OWNER='1')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / 'result').read_text(), self.sha)
+        self.assertEqual((work / 'proof.txt').read_text(), 'first version\n')
+
     def test_mutable_and_foreign_revision_refused_before_git(self):
         for changes in ({'REVISION': 'main'}, {'REVISION': 'g' * 40}, {'REPO_URL': 'https://outside.test/test.git'}):
             result, work = self.run_task(**changes)

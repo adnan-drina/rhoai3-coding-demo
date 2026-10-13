@@ -211,6 +211,8 @@ def _python36_case() -> int:
     except SyntaxError as exc:
         return _fail("render_catalog.py does not parse as Python 3.6: %s" % exc)
     for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", "") in ("removesuffix", "removeprefix"):
+            return _fail("renderer calls Python 3.9 string methods in the Python 3.6 Job")
         if isinstance(node, ast.ImportFrom) and node.module == "__future__" and any(a.name == "annotations" for a in node.names):
             return _fail("render_catalog.py uses `from __future__ import annotations` (Python 3.7+)")
         if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id in ("dict", "list", "tuple", "set", "type"):

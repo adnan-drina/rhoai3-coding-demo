@@ -130,6 +130,9 @@ def render(content: str, *, revision: str, devspaces_url: str, rhdh_url: str, co
     out = out.replace("__RHOAI3_MAAS_HOST__", maas_host)
     out = out.replace("__RHOAI3_MAAS_INTERNAL_IP__", maas_internal_ip)
     if scm is not None:
+        platform_repo = scm['PLATFORM_CATALOG_REPO'].rstrip('/')
+        if platform_repo.endswith('.git'):
+            platform_repo = platform_repo[:-4]
         replacements = {
             'GITLAB_HOST': scm['GITLAB_HOST'], 'GITLAB_BASE_URL': scm['GITLAB_BASE_URL'],
             'GITLAB_WORKLOAD_GROUP': scm['GITLAB_WORKLOAD_GROUP'],
@@ -138,8 +141,8 @@ def render(content: str, *, revision: str, devspaces_url: str, rhdh_url: str, co
             'APPLICATION_GOLDEN_URL': scm['agentic-quarkus-scaffold'],
             'MIGRATION_GOLDEN_URL': scm['quarkus-migration-scaffold-v2'],
             'MTA_HUB_URL': scm['MTA_HUB_URL'],
-            'PLATFORM_TREE_URL': scm['PLATFORM_CATALOG_REPO'].rstrip('/').removesuffix('.git') + '/-/tree/' + revision,
-            'PLATFORM_BLOB_URL': scm['PLATFORM_CATALOG_REPO'].rstrip('/').removesuffix('.git') + '/-/blob/' + revision,
+            'PLATFORM_TREE_URL': platform_repo + '/-/tree/' + revision,
+            'PLATFORM_BLOB_URL': platform_repo + '/-/blob/' + revision,
         }
         for key, value in replacements.items():
             if not value or '\n' in value or '\r' in value:
