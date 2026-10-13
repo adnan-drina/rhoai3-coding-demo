@@ -22,7 +22,7 @@ def sync_platform_revision(source_url, mirror_url, revision, token):
     """Retain reviewed Git history using a normal fast-forward, never force push."""
     if source_url != 'https://github.com/adnan-drina/rhoai3-coding-demo.git':
         raise ValueError('Platform bootstrap source is not the declared upstream repository')
-    if not re.fullmatch(r'https://gitlab\.[a-z0-9.-]+/rhoai-platform/rhoai3-coding-demo\.git', mirror_url):
+    if not re.fullmatch(r'https://gitlab-gitlab-system\.[a-z0-9.-]+/rhoai-platform/rhoai3-coding-demo\.git', mirror_url):
         raise ValueError('Platform mirror is outside its declared GitLab path')
     if not re.fullmatch('[0-9a-f]{40}', revision):
         raise ValueError('Platform source revision must be immutable')
@@ -57,7 +57,7 @@ def golden_files(archive, directory):
     if not {'devfile.yaml', 'AGENTS.md'}.issubset(files):
         raise RuntimeError('Platform revision has no complete golden')
     # Validate the complete path set before any GitLab commit is sent.
-    golden_actions(files, {})
+    validate_golden_paths(files)
     return files
 
 
@@ -73,16 +73,21 @@ def imported_runtime_commit(existing, contents):
     return commit
 
 
-def golden_actions(files, current):
-    """One ordinary commit replaces the golden tree, preserving its history."""
-    actions = []
-    for path, (content, executable) in sorted(files.items()):
+def validate_golden_paths(files):
+    for path in files:
         if path.startswith('/') or '..' in path.split('/') or '.git' in path.split('/'):
             raise ValueError('Unsafe golden file path')
         if '__pycache__' in path.split('/') or path.startswith('.hermes/_park/'):
             raise ValueError('Authoring debris in the golden tree')
         if path.endswith('run-chaos-matrix.py'):
             raise ValueError('Forbidden execution fixture in golden')
+
+
+def golden_actions(files, current):
+    """One ordinary commit replaces the golden tree, preserving its history."""
+    validate_golden_paths(files)
+    actions = []
+    for path, (content, executable) in sorted(files.items()):
         blob = hashlib.sha1(b'blob ' + str(len(content)).encode() + b'\0' + content).hexdigest()
         old = current.get(path)
         if old and old['id'] == blob and (old.get('mode') == '100755') == executable:

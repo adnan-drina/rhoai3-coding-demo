@@ -2252,6 +2252,8 @@ GitLab Self-Managed disables importers by default. HTTP403 while creating a proj
 
 Bootstrap also disables GitLab's inherited Auto DevOps default: this platform uses Tekton for builds, not pending Auto DevOps jobs without a GitLab runner. Project membership and repository permissions are unaffected.
 
+Golden archive validation checks the full file inventory for unsafe paths and debris, then enforces the 10 MB bound on the actual API commit actions. A large mostly unchanged tree must not be treated as a full republish. Oversized actual changes still refuse before publication. Platform mirror fast-forwards use the native GitLab Route prefix `gitlab-gitlab-system.` and retain the declared platform repository path.
+
 GitLab 19 rejects usernames beginning with `ai-`, `ai_`, `duo-` or `duo_`. Platform personas `ai-developer` and `ai-admin` therefore use GitLab account names `platform-developer` and `platform-admin`. SSO remains bound to each original verified OIDC subject. Enrollment uses the trusted portal-to-account ID/name mapping and refuses a missing mapping, foreign account or insufficient membership. Do not rename the OpenShift users or enable email-only automatic account linking.
 
 SonarQube 26.9 refuses an initial password lacking a special character. The setup Job now generates all required character classes, persists a pending `sonarqube-admin` credential before the API change, and verifies it on every retry. A timeout or interrupted Job preserves that credential. If neither the pending credential nor the default authenticates, reconcile the existing credential explicitly; do not reset the database or generate another password blindly.

@@ -2,6 +2,7 @@
 """Focused contract and adversarial tests for the integrated Stage 070 upgrade."""
 import copy
 import base64
+import hashlib
 import importlib.util
 import json
 import io
@@ -159,7 +160,7 @@ class IntegratedContract(unittest.TestCase):
         from unittest.mock import patch
         with patch.object(bootstrap.subprocess, 'run') as run:
             bootstrap.sync_platform_revision('https://github.com/adnan-drina/rhoai3-coding-demo.git',
-                'https://gitlab.example.test/rhoai-platform/rhoai3-coding-demo.git', 'a' * 40, 'synthetic-token')
+                'https://gitlab-gitlab-system.example.test/rhoai-platform/rhoai3-coding-demo.git', 'a' * 40, 'synthetic-token')
             argv = [call.args[0] for call in run.call_args_list]
             self.assertTrue(any('merge-base' in args and '--is-ancestor' in args for args in argv))
             self.assertIn(['push', '--atomic', 'origin', 'a' * 40 + ':refs/heads/main'], [a[-4:] for a in argv])
@@ -167,6 +168,9 @@ class IntegratedContract(unittest.TestCase):
             self.assertFalse(any('--force' in a or '--force-with-lease' in a for a in argv))
         with self.assertRaises(ValueError):
             bootstrap.sync_platform_revision('https://outside.test/repo.git', 'https://gitlab.example.test/rhoai-platform/rhoai3-coding-demo.git', 'a' * 40, 'synthetic')
+        with self.assertRaises(ValueError):
+            bootstrap.sync_platform_revision('https://github.com/adnan-drina/rhoai3-coding-demo.git',
+                'https://gitlab-gitlab-system.example.test/rhoai-workloads/rhoai3-coding-demo.git', 'a' * 40, 'synthetic')
 
     def test_membership_requires_the_same_oidc_subject(self):
         self.assertTrue(bootstrap.check_oidc_identity({'identities': [{'provider': 'openid_connect', 'extern_uid': 'reviewed-subject'}]}, 'reviewed-subject'))
@@ -235,6 +239,22 @@ class IntegratedContract(unittest.TestCase):
         self.assertEqual(bootstrap.golden_actions(files, current), [])
         for path in ('../foreign', '.git/config', '.hermes/_park/old', 'run-chaos-matrix.py'):
             with self.assertRaises(ValueError): bootstrap.golden_actions({path: (b'bad', False)}, {})
+
+    def test_large_inventory_keeps_small_publication_and_the_actual_size_bound(self):
+        contents = {'devfile.yaml': b'schemaVersion: 2.2.2\n', 'AGENTS.md': b'reviewed\n',
+                    'large-existing.txt': b'x' * 8_000_000}
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode='w:gz') as archive:
+            for path, data in contents.items():
+                item = tarfile.TarInfo('platform-ref/stages/golden/' + path)
+                item.size = len(data); archive.addfile(item, io.BytesIO(data))
+        files = bootstrap.golden_files(stream.getvalue(), 'stages/golden')
+        current = {path: {'id': hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest(),
+                          'mode': '100644'} for path, data in contents.items()}
+        self.assertEqual(bootstrap.golden_actions(files, current), [])
+        files['AGENTS.md'] = (b'new reviewed instruction\n', False)
+        self.assertEqual([a['file_path'] for a in bootstrap.golden_actions(files, current)], ['AGENTS.md'])
+        with self.assertRaises(RuntimeError): bootstrap.golden_actions(files, {})
 
     def test_gitlab_sso_and_signing_share_the_verified_platform_issuer(self):
         issuer = 'https://sso.example.test/realms/platform'
