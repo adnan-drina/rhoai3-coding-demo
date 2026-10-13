@@ -2791,3 +2791,13 @@ oc patch gateway maas-default-gateway -n openshift-ingress --type json \
   -p '[{"op":"test","path":"/spec/listeners/1/name","value":"qwen3-6"},{"op":"remove","path":"/spec/listeners/1"}]'
 ```
 
+## OpenShell Runtime Redeploy Refuses: Credential Key Missing Or Delegation Mismatch
+
+**Affected stage:** Stage 060 `openshell-runtime`
+
+**Symptom:** The `openshell-runtime-prerequisites` hook fails (`index of untyped nil` on `key-encryption-key`, or `Runtime prerequisites did not qualify`), or `setup-runtime.py` stops with `Missing key with retained storage; rotation refused` or `Missing narrow runtime field delegation`.
+
+**Likely cause:** `openshell/openshell-credentials` lost its `key-encryption-key` while PVC `openshell-data-openshell-0` still holds data encrypted with it, so the script correctly refuses to generate a new key. Separately, `a769444a` widened the Application's delegation to `/data` before `c26d900c` taught `setup-runtime.py` to accept it.
+
+**Recover:** Do not rotate. The running gateway was started with the key (a required `secretKeyRef`), so its container runtime spec still carries it; restore it into the Secret without printing it (`tmp/stage060-restore-runtime-key.sh` reads `crictl inspect` `info.runtimeSpec.process.env` through `oc debug node/...` and patches only an empty, unchanged Secret). Writing key material is an operator action. Then run the runtime procedure; on a cluster installed before the Automatic-approval change, let the sync update the `agent-sandbox-operator` Subscription before `check-operator-policy.py` runs, and finish `setup-runtime.py` within the hook's 300-second window.
+
