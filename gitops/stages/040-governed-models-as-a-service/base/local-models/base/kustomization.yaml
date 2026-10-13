@@ -11,3 +11,8 @@ resources:
   - qwen27b-maas-modelref.yaml
   - qwen38-27b-llminferenceservice.yaml
   - qwen38-27b-maas-modelref.yaml
+
+# Qwen 3.8 checkpoint format. Default: RedHatAI/Qwen3.8-27B-NVFP4. Both NVFP4 and FP8 are
+# prepared; the final choice follows the next Hermes migration run. To serve FP8, enable:
+# components:
+#   - ../components/qwen38-fp8

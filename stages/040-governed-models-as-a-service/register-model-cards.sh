@@ -37,10 +37,13 @@ try:
    response=api(path+('?' + urllib.parse.urlencode({'nextPageToken':cursor}) if cursor else ''));values+=response.get('items',[]);cursor=response.get('nextPageToken')
    if not cursor:return values
   raise RuntimeError('Registry pagination exceeded bounded limit')
- for file,title in [('qwen27b-llminferenceservice.yaml','Qwen3.6-27B-FP8'),('qwen38-27b-llminferenceservice.yaml','Qwen3.8-27B-NVFP4')]:
-  path=root/'gitops/stages/040-governed-models-as-a-service/base/local-models/base'/file
-  expected=json.loads(subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_file(ARGV[0]))',str(path)],capture_output=True,text=True,check=True).stdout)
-  name=expected['metadata']['name'];uri=expected['spec']['model']['uri'];revision=uri.rsplit(':',1)[1];assert len(revision)==40,'Model source must be immutable'
+ # Read the rendered models so an enabled format component (e.g. qwen38-fp8) registers its own artifact;
+ # the registry title is the checkpoint repository name (Qwen3.8-27B-NVFP4 or Qwen3.8-27B-FP8).
+ rendered=subprocess.run(['oc','kustomize',str(root/'gitops/stages/040-governed-models-as-a-service/base/local-models/base')],capture_output=True,text=True,check=True).stdout
+ models={o['metadata']['name']:o for o in json.loads(subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_stream(STDIN.read).compact)'],input=rendered,capture_output=True,text=True,check=True).stdout) if o.get('kind')=='LLMInferenceService'}
+ for name in ['qwen3-6-27b','qwen3-8-27b']:
+  expected=models[name];uri=expected['spec']['model']['uri'];title=uri.split('/')[-1].split(':')[0]
+  revision=uri.rsplit(':',1)[1];assert len(revision)==40,'Model source must be immutable'
   llmi=get('llminferenceservices.serving.kserve.io',name,ns)
   assert llmi['spec']['model']['uri']==uri and llmi['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('040-governed-models-as-a-service:'),'Model source/ownership differs'
   assert isinstance(llmi['metadata'].get('generation'),int) and llmi.get('status',{}).get('observedGeneration')==llmi['metadata']['generation'],'Model readiness is stale'
