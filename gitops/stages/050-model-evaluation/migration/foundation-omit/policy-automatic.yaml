@@ -1,0 +1,28 @@
+# Converge the retained foundation to the fresh-deployment operator policy
+# (docs/migration/035-operator-automatic-policy.md): Automatic approval, no startingCSV.
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: cluster-observability-operator
+  namespace: openshift-cluster-observability-operator
+spec:
+  installPlanApproval: Automatic
+  startingCSV: null
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: opentelemetry-product
+  namespace: openshift-opentelemetry-operator
+spec:
+  installPlanApproval: Automatic
+  startingCSV: null
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: tempo-product
+  namespace: openshift-tempo-operator
+spec:
+  installPlanApproval: Automatic
+  startingCSV: null
