@@ -118,7 +118,7 @@ def _stage(td: Path, revision: str, *, skew: dict[str, bytes] | None = None) -> 
     return bundle, td / "repo"
 
 
-def _generate(td: Path, bundle: Path, repo: Path, revision: str, host: str, ip: str, domain: str) -> tuple[int, str, Path]:
+def _generate(td: Path, bundle: Path, repo: Path, revision: str, host: str, ip: str, domain: str, *, scm_url: str | None = None) -> tuple[int, str, Path]:
     bindir = td / "bin"
     bindir.mkdir(exist_ok=True)
     oc = bindir / "oc"
@@ -127,12 +127,12 @@ def _generate(td: Path, bundle: Path, repo: Path, revision: str, host: str, ip: 
     log = td / "oc"
     config = td / "platform.json"
     config.write_text(json.dumps({
-        'GITLAB_HOST': 'gitlab.' + domain, 'GITLAB_BASE_URL': 'https://gitlab.' + domain,
+        'GITLAB_HOST': 'gitlab-gitlab-system.' + domain, 'GITLAB_BASE_URL': 'https://gitlab-gitlab-system.' + domain,
         'GITLAB_WORKLOAD_GROUP': 'rhoai-workloads', 'GITLAB_REGISTRATION_PROJECT_ID': 42,
-        'PLATFORM_CATALOG_REPO': 'https://gitlab.' + domain + '/rhoai-platform/demo.git',
+        'PLATFORM_CATALOG_REPO': scm_url or 'https://gitlab-gitlab-system.' + domain + '/rhoai-platform/rhoai3-coding-demo.git',
         'MTA_HUB_URL': 'https://mta.' + domain,
-        'agentic-quarkus-scaffold': 'https://gitlab.' + domain + '/rhoai-platform/application/-/tree/' + revision,
-        'quarkus-migration-scaffold-v2': 'https://gitlab.' + domain + '/rhoai-platform/migration/-/tree/' + revision,
+        'agentic-quarkus-scaffold': 'https://gitlab-gitlab-system.' + domain + '/rhoai-platform/application/-/tree/' + revision,
+        'quarkus-migration-scaffold-v2': 'https://gitlab-gitlab-system.' + domain + '/rhoai-platform/migration/-/tree/' + revision,
     }))
     env = dict(os.environ, SCM_CONFIG_FILE=str(config), PATH="%s:%s" % (bindir, os.environ.get("PATH", "")), FAKE_OC_LOG=str(log),
                FAKE_REVISION=revision, FAKE_MAAS_HOST=host, FAKE_MAAS_IP=ip, FAKE_DOMAIN=domain,
@@ -187,6 +187,16 @@ def _end_to_end_case(revision: str, host: str, ip: str, domain: str) -> int:
         rcode, out, log = _generate(td, bundle, repo, revision, "https://not-a-host/", ip, domain)
         if rcode == 0 or not any(marker in out for marker in ("CATALOG_RENDER", "Expected one maas. listener")) or Path(str(log) + ".published").exists():
             return _fail("a failed render publishes nothing: rc=%s %s" % (rcode, out[-600:]))
+    # (5) the real factory host is accepted; foreign authority/path refuses before publication.
+    for url in ("https://gitlab." + domain + "/rhoai-platform/rhoai3-coding-demo.git",
+                "https://gitlab-gitlab-system." + domain + "/rhoai-workloads/foreign.git",
+                "https://user:secret@gitlab-gitlab-system." + domain + "/rhoai-platform/rhoai3-coding-demo.git"):
+        with tempfile.TemporaryDirectory() as d:
+            td = Path(d)
+            bundle, repo = _stage(td, revision)
+            rcode, out, log = _generate(td, bundle, repo, revision, host, ip, domain, scm_url=url)
+            if rcode == 0 or "Invalid GitLab platform catalog repository" not in out or Path(str(log) + ".published").exists():
+                return _fail("foreign catalog authority must refuse before publication")
     return 0
 
 

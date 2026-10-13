@@ -33,9 +33,14 @@ APP_SYNC_REVISION=$(oc get application 070-advanced-app-platform -n openshift-gi
 # the portal publishes any template links. No stale GitHub reader fallback.
 SCM_CONFIG_FILE="${SCM_CONFIG_FILE:-/gitlab-config/platform.json}"
 REPO_NO_GIT=$(python3 - "${SCM_CONFIG_FILE}" <<'PYSCM'
-import json, sys
+import json, re, sys
+from urllib.parse import urlsplit
 value = json.load(open(sys.argv[1]))['PLATFORM_CATALOG_REPO']
-if not value.startswith('https://gitlab.') or '\n' in value:
+parsed = urlsplit(value)
+if (parsed.scheme != 'https' or not re.fullmatch(r'gitlab-gitlab-system\.[a-z0-9.-]+', parsed.hostname or '')
+        or parsed.username or parsed.password or parsed.port or parsed.query or parsed.fragment
+        or parsed.path not in ('/rhoai-platform/rhoai3-coding-demo', '/rhoai-platform/rhoai3-coding-demo.git')
+        or '\n' in value):
     raise SystemExit('Invalid GitLab platform catalog repository')
 print(value[:-4] if value.endswith('.git') else value)
 PYSCM
