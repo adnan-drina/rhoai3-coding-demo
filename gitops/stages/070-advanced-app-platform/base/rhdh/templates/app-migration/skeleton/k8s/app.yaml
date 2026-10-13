@@ -22,13 +22,10 @@ spec:
         app.kubernetes.io/part-of: ${{ values.name }}
         backstage.io/kubernetes-id: ${{ values.name }}
     spec:
-      imagePullSecrets:
-        - name: quay-pull-secret
       containers:
         - name: ${{ values.name }}
-          # Bootstrap tag only — the deploy-app task pins each PipelineRun's
-          # immutable revision tag and sets IfNotPresent (V6 P4.1).
-          image: quay.io/rhoai3-coding-demo/${{ values.name }}:latest
+          # Bootstrap only; the delivery task installs its pushed manifest digest.
+          image: image-registry.openshift-image-registry.svc:5000/${{ values.name }}-dev/${{ values.name }}:bootstrap
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

@@ -1,41 +1,22 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
-# Pipelines component: trusted-delivery operators plus the webhook
-# DISPATCHER for per-project pipelines. Each project namespace runs its own
-# pipeline instantiated from pipelines/project-pipeline (clone -> maven ->
-# SonarQube gate -> image build -> :latest retag); the GitHub App's single
-# webhook endpoint lands on the shared EventListener here, which routes
-# each repository's pushes to a PipelineRun in that project's namespace.
-#
-# Secrets expected in app-platform-build (provisioned by deploy.sh from
-# .env, never committed): github-webhook-secret. Project namespaces
-# (labeled rhoai3.redhat.com/pipeline-project=true) get github-basic-auth,
-# quay-push-secret, and the registry ConfigMap from deploy.sh, and
-# sonarqube-credentials from the SonarQube PostSync job.
-
 resources:
-  # Operators (Pipelines, TAS) + InstallPlan approval hook
-  - operators/pipelines-subscription.yaml
-  - operators/configure-tekton-pruner.yaml
-  - operators/rhtas-subscription.yaml
-  - operators/approve-installplans.yaml
-  # Console plugin enablement (wave 10): activates pipelines-console-plugin
-  - console-plugin
-  # Dispatcher namespace + persona access
-  - build/namespace.yaml
-  - build/persona-rbac.yaml
-  # TektonConfig hook (wave 11): allow multiple PVC workspaces per TaskRun
-  - build/tektonconfig-affinity.yaml
-  - build/tekton-triggers-core-config.yaml
-  # Governance boundary for scaffolded-project Applications (wave 12)
-  - build/appproject-scaffolded.yaml
-  # Stage 080 per-run migration resources: PLATFORM code, rendered from a
-  # validated run identity (wave 12). Not an Argo CD source over a
-  # self-service repository — the architect refused that seam on 2026-09-22.
-  - build/task-provision-migration-run.yaml
-  - build/pipeline-provision-migration-run.yaml
-  # Webhook dispatcher (wave 13) + Route (wave 14)
-  - build/triggers.yaml
-  # Per-project credential reconciler (wave 13)
-  - build/project-provisioner.yaml
+- operators/pipelines-subscription.yaml
+- operators/image-builder-scc.yaml
+- operators/configure-tekton-pruner.yaml
+- operators/rhtas-subscription.yaml
+- operators/approve-installplans.yaml
+- signing
+- console-plugin
+- build/namespace.yaml
+- build/persona-rbac.yaml
+- build/tektonconfig-affinity.yaml
+- build/tekton-triggers-core-config.yaml
+- build/task-provision-migration-run.yaml
+- build/pipeline-provision-migration-run.yaml
+- gitlab/reconciler.yaml
+configMapGenerator:
+- name: gitlab-project-reconciler
+  namespace: app-platform-build
+  files:
+  - gitlab/reconcile.py

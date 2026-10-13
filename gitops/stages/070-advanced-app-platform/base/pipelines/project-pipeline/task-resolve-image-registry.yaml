@@ -1,9 +1,5 @@
-# Resolves the image registry prefix for pipeline runs.
-# Reads IMAGE_REGISTRY from the app-platform-build-config ConfigMap in the
-# project's own namespace (provisioned by deploy.sh from .env when quay.io
-# is configured) and falls back to the internal OpenShift registry under
-# the project namespace. Keeps registry selection a deploy-time platform
-# decision without templating GitOps manifests.
+# Ordinary builds have one declared destination. An unreadable policy or absent
+# ImageStream refuses the build rather than selecting a different registry.
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
@@ -11,22 +7,29 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "20"
 spec:
+  params:
+    - name: IMAGE_NAME
+      type: string
   results:
     - name: registry
       description: Registry/namespace prefix for the built image
   steps:
     - name: resolve
       image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+      env:
+        - name: IMAGE_NAME
+          value: $(params.IMAGE_NAME)
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
         NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
-        REGISTRY=$(oc get configmap app-platform-build-config \
-          -o jsonpath='{.data.IMAGE_REGISTRY}' 2>/dev/null || true)
-        if [ -z "${REGISTRY}" ]; then
-          REGISTRY="image-registry.openshift-image-registry.svc:5000/${NS}"
-          echo "IMAGE_REGISTRY not configured — using internal registry"
-        else
-          echo "Using external registry: ${REGISTRY}"
+        MODE=$(oc get configmap app-platform-build-config \
+          -n "${NS}" -o jsonpath='{.data.REGISTRY_MODE}')
+        if [[ "${MODE}" != internal ]]; then
+          echo "Project registry policy must declare REGISTRY_MODE=internal" >&2
+          exit 2
         fi
+        [[ "${IMAGE_NAME}" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]] || exit 2
+        oc get imagestream "${IMAGE_NAME}" -n "${NS}" >/dev/null
+        REGISTRY="image-registry.openshift-image-registry.svc:5000/${NS}"
         printf '%s' "${REGISTRY}" > "$(results.registry.path)"

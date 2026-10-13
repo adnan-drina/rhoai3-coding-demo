@@ -16,6 +16,36 @@ Use version-matched 3.5/OCP 4.22 documentation for migration design and retain t
 
 The isolated candidate source selects GitOps `gitops-1.21`, RHOAI `stable-3.5` and ODF `stable-4.22`, with native Automatic COO/OpenTelemetry/Tempo subscriptions and qualified version baselines 1.5.3/0.158.0-2/0.22.0-2. Bundle CPE metadata maps the latter two to product 3.11; exact public support-table coverage remains a documented limit. Native registry, metrics, Perses backend and exact trace retrieval checks passed; MLflow synthetic artifact/database persistence passed, and genuine persona login/sandbox role separation passed; actual dashboard browser acceptance remains separate. [The migration plan](migration/010-foundation-plan.md) records acceptance gates and remaining decisions; retain the historical table below for stage-by-stage reference.
 
+## Stage 070 documentation targets (2026-10-13)
+
+The user authorized refreshing product skills to current versions alongside
+the Stage 070 upgrade. These are verified documentation targets, not a claim
+that the upgraded components have been deployed or accepted on this cluster.
+
+| Product | Current documentation reviewed | Branch deployment selection |
+|---|---|---|
+| MTA | 8.3 / 8.3.0 | 8.3.0; CLI/RPC/editor artifacts qualified separately |
+| OpenShift Dev Spaces | 3.30 / 3.30.2 | 3.30.2 |
+| OpenShift Pipelines | 1.24, including 1.24.1 | 1.24.0; qualify the newer security patch before repinning |
+| Red Hat Developer Hub | 1.10, including 1.10.5 | 1.10.5 |
+
+Current MTA/Dev Spaces/Pipelines workflow skills use these versioned sources.
+Five Developer Hub skills have a refreshed 1.10 source review. Detailed earlier
+extractions retain their provenance and are superseded by the verified-update
+sections; unrecaptured fields still require current guide/CLI/CRD verification.
+
+Dev Spaces 3.30 now uses topic URLs rather than the old administration/user
+book routes. Pipelines 1.24 removes PAC's Tekton Hub integration. MTA's native
+Agents are Developer Preview, distinct from Technology Preview Lightspeed.
+RHDH 1.10 removes several embedded plugin wrappers and requires external OCI
+packages. The current RHDH lifecycle matrix includes OCP 4.22 for 1.10, resolving
+the narrower list in its upgrade guide; actual live acceptance remains separate.
+
+Other skill families have not been relabeled wholesale: their older captured
+documentation remains explicit. In particular OCP 4.20, ODF 4.20 and RHOAI 3.4
+captures require review against the active 4.22/4.22/3.5 platform before use.
+Documentation freshness must not silently change a frozen migration run.
+
 ## Documented legacy reference baseline
 
 | Component | Version | Documentation |
@@ -156,18 +186,19 @@ Use the official OCP 4.20 landing page as the entry point: https://docs.redhat.c
 - **Storage**: [Storage](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/storage/index)
 - **Images, registry, and mirroring**: [Images](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/images/index), [Registry](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/registry/index), [Disconnected environments](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/disconnected_environments/index)
 
-## Red Hat OpenShift Pipelines 1.22 Documentation Index
+## Red Hat OpenShift Pipelines 1.24 Documentation Index
 
-Use the official OpenShift Pipelines 1.22 landing page as the entry point: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/
+Use the official OpenShift Pipelines 1.24 landing page as the entry point: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/
 
-- **About**: [Release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/release_notes/index), [About OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/about_openshift_pipelines/index)
-- **Installing and configuring**: [Installing and configuring](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/installing_and_configuring/index), [Managing performance and resource use](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/managing_performance_and_resource_use/index)
-- **Security**: [Securing OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/securing_openshift_pipelines/index)
-- **Observability**: [Observability in OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/observability_in_openshift_pipelines/index)
-- **Pipelines as Code**: [Pipelines as Code](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/pipelines_as_code/index)
-- **Creating CI/CD pipelines**: [Creating CI/CD pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/creating_cicd_pipelines/index)
-- **Custom Tekton Hub instance**: [Custom Tekton Hub instance](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/custom_tekton_hub_instance/index)
-- **Reference**: [Pipelines CLI (tkn) reference](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/pipelines_cli_tkn_reference/index)
+- **About**: [Release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index), [About OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index)
+- **Installing and configuring**: [Installing and configuring](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index), [Managing performance and resource use](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/managing_performance_and_resource_use/index)
+- **Security**: [Securing OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index)
+- **Observability**: [Observability in OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/observability_in_openshift_pipelines/index)
+- **Pipelines as Code**: [Pipelines as Code](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/pipelines_as_code/index)
+- **Creating CI/CD pipelines**: [Creating CI/CD pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/creating_cicd_pipelines/index)
+- **Reference**: [Pipelines CLI (tkn) reference](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/pipelines_cli_tkn_reference/index)
+
+Pipelines 1.24 removes PAC Tekton Hub integration; use the current resolver guidance and Artifact Hub.
 
 ## Red Hat OpenShift Lightspeed 1.0 Documentation Index
 
@@ -202,15 +233,15 @@ Use the official RHADS-SSC 1.9 landing page as the entry point: https://docs.red
 - **CI/CD**: [Azure Pipelines](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_azure_pipelines/index), [GitHub Actions](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_github_actions/index), [GitLab CI](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_gitlab_ci/index), [Jenkins](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_jenkins/index), [Tekton](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/defining_pipelines_with_tekton/index)
 - **Secure Your Software Supply Chain**: [Customizing](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/customizing_red_hat_advanced_developer_suite_-_software_supply_chain/index), [Inspecting SBOMs](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/inspecting_sboms/index), [Managing compliance](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/managing_compliance/index)
 
-## Migration Toolkit for Applications 8.2 Documentation Index
+## Migration Toolkit for Applications 8.3 Documentation Index
 
-Use the official MTA 8.2 landing page as the entry point: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2
+Use the official MTA 8.3 landing page as the entry point: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3
 
-- **What's New**: [Release Notes](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/release_notes/index)
-- **Install**: [Installing MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/installing_the_migration_toolkit_for_applications/index)
-- **AI**: [Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
-- **Using the Tools**: [CLI](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/using_the_migration_toolkit_for_applications_command-line_interface/index), [UI](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index), [VS Code Extension](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_using_the_visual_studio_code_extension_for_mta/index), [IntelliJ IDEA plugin](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/intellij_idea_plugin_guide/index)
-- **Rules Development**: [Custom rules](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_using_rules_for_an_mta_analysis/index)
+- **What's New**: [Release Notes](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index)
+- **Install**: [Installing MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/installing_the_migration_toolkit_for_applications/index)
+- **AI**: [Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
+- **Using the Tools**: [CLI](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index), [UI](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index), [VS Code Extension](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_the_visual_studio_code_extension_for_mta/index), [IntelliJ IDEA plugin](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/intellij_idea_plugin_guide/index)
+- **Rules Development**: [Custom rules](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index)
 
 ## Red Hat Trusted Profile Analyzer 2.2 Documentation Index
 
@@ -237,14 +268,20 @@ Use the official Red Hat Developer Hub 1.10 landing page as the entry point: htt
 - **Extend**: [Orchestrator](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/orchestrator_in_red_hat_developer_hub/index), [Develop and deploy dynamic plugins](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/develop_and_deploy_dynamic_plugins_in_red_hat_developer_hub/index), [Installing and viewing plugins](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/installing_and_viewing_plugins_in_red_hat_developer_hub/index), [Using dynamic plugins](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/using_dynamic_plugins_in_red_hat_developer_hub/index), [Dynamic plugins reference](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/dynamic_plugins_reference/index), [Configuring dynamic plugins](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/configuring_dynamic_plugins/index)
 - **Reference**: [Helm Chart configuration reference](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/helm_chart_configuration_reference/index)
 
-## Red Hat OpenShift Dev Spaces 3.28 Documentation Index
+## Red Hat OpenShift Dev Spaces 3.30 Documentation Index
 
-Use the official OpenShift Dev Spaces 3.28 landing page as the entry point: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28
+Use the current topic navigation: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/
 
-- **Discover**: [Understanding Red Hat OpenShift Dev Spaces](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/understanding_red_hat_openshift_dev_spaces/index)
-- **What's New**: [3.28.0 Release notes and known issues](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/release_notes_and_known_issues/index)
-- **Install**: [Installing Red Hat OpenShift Dev Spaces](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/installing_red_hat_openshift_dev_spaces/index)
-- **Usage and Administration**: [Administration guide](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/administration_guide/index), [User guide](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/user_guide/index)
+- [Architecture](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-assembly_architecture)
+- [Supported platforms](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/plan-supported_platforms_ref)
+- [GitOps installation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/install-proc_deploying_devspaces_using_gitops)
+- [CheCluster fields](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-ref_checluster_custom_resource_fields)
+- [Devfiles](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_devfile_introduction)
+- [Workspace storage](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_requesting_persistent_storage_for_workspaces)
+- [GitLab OAuth application](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_setting_up_the_gitlab_authorized_application)
+- [GitLab OAuth Secret](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_applying_the_gitlab_authorized_application_secret)
+- [Release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/whats_new-ref_release_notes)
+- [3.30.2 patch](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/whats_new-dev_spaces_3_30_patch_release_september_30__2026)
 
 ## OpenShift Data Foundation 4.20 Documentation Index
 

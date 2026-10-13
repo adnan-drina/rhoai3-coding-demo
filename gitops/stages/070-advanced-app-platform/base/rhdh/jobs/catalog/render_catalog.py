@@ -24,6 +24,9 @@ A bundle key is the file's path under gitops/.../base/rhdh with "/" spelled
 import argparse
 import hashlib
 import re
+import json
+import os
+from urllib.parse import quote, urlsplit
 import sys
 import urllib.request
 from pathlib import Path
@@ -65,7 +68,17 @@ def digest(files: Dict[str, bytes]) -> str:
 def fetch_raw(raw_base: str) -> Callable[[str, str], Optional[bytes]]:
     def fetch(revision: str, path: str) -> Optional[bytes]:
         try:
-            with urllib.request.urlopen("%s/%s/%s" % (raw_base.rstrip("/"), revision, path), timeout=20) as resp:
+            if raw_base.startswith('gitlab+'):
+                repository = raw_base[len('gitlab+'):].rstrip('/')
+                if repository.endswith('.git'): repository = repository[:-4]
+                parsed = urlsplit(repository)
+                project = quote(parsed.path.lstrip('/'), safe='')
+                url = '%s://%s/api/v4/projects/%s/repository/files/%s/raw?ref=%s' % (parsed.scheme, parsed.netloc, project, quote(path, safe=''), revision)
+                token = Path(os.environ.get('GITLAB_READER_TOKEN_FILE', '/gitlab-reader/token')).read_text().strip()
+                request = urllib.request.Request(url, headers={'PRIVATE-TOKEN': token})
+            else:
+                request = '%s/%s/%s' % (raw_base.rstrip('/'), revision, path)
+            with urllib.request.urlopen(request, timeout=20) as resp:
                 return resp.read()
         except Exception:
             return None
@@ -95,7 +108,7 @@ def verify(files: Dict[str, bytes], revision: str, fetch: Callable[[str, str], O
 
 
 def render(content: str, *, revision: str, devspaces_url: str, rhdh_url: str, coolstore_url: str,
-           sonarqube_url: str, maas_host: str, maas_internal_ip: str) -> str:
+           sonarqube_url: str, maas_host: str, maas_internal_ip: str, scm: Optional[dict] = None) -> str:
     # A hostAlias hostname must be a bare RFC 1123 host: a URL fragment here
     # made the v7 workspace deployment invalid. Refuse rather than publish one.
     if not HOST_RE.fullmatch(maas_host or ""):
@@ -116,6 +129,22 @@ def render(content: str, *, revision: str, devspaces_url: str, rhdh_url: str, co
     out = out.replace("__RHOAI3_DEMO_REVISION__", revision)
     out = out.replace("__RHOAI3_MAAS_HOST__", maas_host)
     out = out.replace("__RHOAI3_MAAS_INTERNAL_IP__", maas_internal_ip)
+    if scm is not None:
+        replacements = {
+            'GITLAB_HOST': scm['GITLAB_HOST'], 'GITLAB_BASE_URL': scm['GITLAB_BASE_URL'],
+            'GITLAB_WORKLOAD_GROUP': scm['GITLAB_WORKLOAD_GROUP'],
+            'GITLAB_REGISTRATION_PROJECT_ID': str(scm['GITLAB_REGISTRATION_PROJECT_ID']),
+            'DEVSPACES_BASE_URL': devspaces_url.rstrip('/'),
+            'APPLICATION_GOLDEN_URL': scm['agentic-quarkus-scaffold'],
+            'MIGRATION_GOLDEN_URL': scm['quarkus-migration-scaffold-v2'],
+            'MTA_HUB_URL': scm['MTA_HUB_URL'],
+            'PLATFORM_TREE_URL': scm['PLATFORM_CATALOG_REPO'].rstrip('/').removesuffix('.git') + '/-/tree/' + revision,
+            'PLATFORM_BLOB_URL': scm['PLATFORM_CATALOG_REPO'].rstrip('/').removesuffix('.git') + '/-/blob/' + revision,
+        }
+        for key, value in replacements.items():
+            if not value or '\n' in value or '\r' in value:
+                raise Refusal('Invalid SCM catalog value: ' + key)
+            out = out.replace('__RHOAI3_' + key + '__', value)
     if "placeholder.example.com" in out:
         raise Refusal("a placeholder link was not replaced: %s" % sorted(set(re.findall(r"https://[\w.-]*placeholder\.example\.com", out))))
     leftover = sorted(set(re.findall(r"__RHOAI3_[A-Z0-9_]+__", out)))
@@ -137,6 +166,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     r = sub.add_parser("render")
     r.add_argument("--bundle", required=True)
     r.add_argument("--out", required=True)
+    r.add_argument("--scm-config", default="")
     for name in ("revision", "devspaces-url", "rhdh-url", "coolstore-url", "sonarqube-url", "maas-host", "maas-internal-ip"):
         r.add_argument("--" + name, default="")
     a = ap.parse_args(argv)
@@ -156,7 +186,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         out = render(content, revision=a.revision, devspaces_url=a.devspaces_url, rhdh_url=a.rhdh_url,
                      coolstore_url=a.coolstore_url, sonarqube_url=a.sonarqube_url, maas_host=a.maas_host,
-                     maas_internal_ip=a.maas_internal_ip)
+                     maas_internal_ip=a.maas_internal_ip, scm=json.loads(Path(a.scm_config).read_text()) if a.scm_config else None)
     except Refusal as exc:
         print("REFUSE CATALOG_RENDER: %s; runtime catalog unchanged" % exc.code, file=sys.stderr)
         return 1

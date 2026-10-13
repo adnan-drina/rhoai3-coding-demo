@@ -1,0 +1,101 @@
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: gitlab-lfs
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '5'
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  generateBucketName: gitlab-lfs
+  storageClassName: openshift-storage.noobaa.io
+  additionalConfig:
+    bucketclass: noobaa-default-bucket-class
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: gitlab-artifacts
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '5'
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  generateBucketName: gitlab-artifacts
+  storageClassName: openshift-storage.noobaa.io
+  additionalConfig:
+    bucketclass: noobaa-default-bucket-class
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: gitlab-uploads
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '5'
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  generateBucketName: gitlab-uploads
+  storageClassName: openshift-storage.noobaa.io
+  additionalConfig:
+    bucketclass: noobaa-default-bucket-class
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: gitlab-packages
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '5'
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  generateBucketName: gitlab-packages
+  storageClassName: openshift-storage.noobaa.io
+  additionalConfig:
+    bucketclass: noobaa-default-bucket-class
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: gitlab-backups
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '5'
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  generateBucketName: gitlab-backups
+  storageClassName: openshift-storage.noobaa.io
+  additionalConfig:
+    bucketclass: noobaa-default-bucket-class
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: gitlab-backup-tmp
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '5'
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  generateBucketName: gitlab-backup-tmp
+  storageClassName: openshift-storage.noobaa.io
+  additionalConfig:
+    bucketclass: noobaa-default-bucket-class

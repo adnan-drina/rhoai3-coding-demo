@@ -1,0 +1,100 @@
+# Environment-local builds authenticate using the TaskRun's rotating projected
+# identity. No robot credential is copied into source or retained on a PVC.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: build-internal-image
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "070"
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    # Pipelines 1.24 documented non-root Buildah user-namespace mode.
+    io.kubernetes.cri-o.userns-mode: 'auto:size=65536;map-to-root=true'
+    io.openshift.builder: 'true'
+spec:
+  params:
+    - name: IMAGE
+      type: string
+      description: Internal registry image tagged with a full source commit
+  results:
+    - name: IMAGE_DIGEST
+      description: Digest returned by the successful registry push
+    - name: IMAGE_URL
+      description: Immutable reference to the pushed image
+  workspaces:
+    - name: source
+  volumes:
+    - name: registry-auth
+      emptyDir:
+        medium: Memory
+        sizeLimit: 1Mi
+    - name: registry-ca
+      configMap:
+        name: pipeline-registry-ca
+        items:
+          - key: service-ca.crt
+            path: ca.crt
+    - name: containers
+      emptyDir: {}
+  steps:
+    - name: build-and-push
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          add: [SETFCAP]
+      # Catalog 9.8-1787017371, linux/amd64 manifest verified 2026-10-13.
+      # Runtime SCC/build/push qualification remains a separate check.
+      image: registry.redhat.io/rhel9/buildah@sha256:71a374fc8791cafd147e6a3f1f933b69fc59850afb2cb45369f66adce83a8c34
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: HOME
+          value: /tekton/home
+        - name: TARGET_IMAGE
+          value: $(params.IMAGE)
+        - name: DIGEST_RESULT
+          value: $(results.IMAGE_DIGEST.path)
+        - name: IMAGE_RESULT
+          value: $(results.IMAGE_URL.path)
+      volumeMounts:
+        - name: registry-auth
+          mountPath: /run/registry-auth
+        - name: registry-ca
+          mountPath: /etc/containers/certs.d/image-registry.openshift-image-registry.svc:5000
+          readOnly: true
+        - name: containers
+          mountPath: /var/lib/containers
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        REGISTRY=image-registry.openshift-image-registry.svc:5000
+        SA_DIR=/var/run/secrets/kubernetes.io/serviceaccount
+        NS=$(cat "${SA_DIR}/namespace")
+        PREFIX="${REGISTRY}/${NS}/"
+        IMAGE_AND_TAG="${TARGET_IMAGE#"${PREFIX}"}"
+        if [[ "${TARGET_IMAGE}" != "${PREFIX}"* || ! "${IMAGE_AND_TAG}" =~ ^[a-z0-9]+([._-][a-z0-9]+)*:[0-9a-f]{40}$ ]]; then
+          echo "Refusing image outside this project's internal registry or without a full source SHA" >&2
+          exit 2
+        fi
+        AUTHFILE=/run/registry-auth/auth.json
+        umask 077
+        trap 'rm -f "${AUTHFILE}"' EXIT
+        login() {
+          # Re-read just before pushing: the kubelet may have rotated the token
+          # while the container build was running. Never pass it on argv.
+          buildah login --tls-verify=true --authfile "${AUTHFILE}" \
+            --username serviceaccount --password-stdin "${REGISTRY}" < "${SA_DIR}/token" >/dev/null
+        }
+        login
+        buildah --storage-driver=vfs bud --isolation=chroot --tls-verify=true \
+          --authfile "${AUTHFILE}" -f Containerfile -t "${TARGET_IMAGE}" .
+        login
+        buildah --storage-driver=vfs push --tls-verify=true --authfile "${AUTHFILE}" \
+          --digestfile "${DIGEST_RESULT}" "${TARGET_IMAGE}" "docker://${TARGET_IMAGE}"
+        DIGEST=$(cat "${DIGEST_RESULT}")
+        if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          echo "Registry push did not return a valid manifest digest" >&2
+          exit 2
+        fi
+        printf '%s' "${TARGET_IMAGE%:*}@${DIGEST}" > "${IMAGE_RESULT}"

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-platform-build-config
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "070"
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+data:
+  REGISTRY_MODE: internal

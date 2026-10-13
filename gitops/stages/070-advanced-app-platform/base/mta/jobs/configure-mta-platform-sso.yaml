@@ -1,30 +1,12 @@
-# PostSync Job: federates the MTA Hub's built-in OIDC provider (MTA 8.2)
-# to the platform realm, per the Installing guide Ch 8.2/9.
-#
-# In the platform realm (identity component's RHBK) it ensures:
-#   - realm roles role.admin / role.architect / role.migrator /
-#     role.project-manager — the Hub dynamically expands these into MTA
-#     permissions (Ch 8.2);
-#   - role assignments: ai-admin -> role.admin, ai-developer -> role.architect
-#     (architect can create/modify applications, which the stage 080
-#     exercise needs);
-#   - a confidential `mta-hub` client whose access token carries the user's
-#     realm roles as `+role.<name>` entries in the `scope` claim (realm-role
-#     protocol mapper, prefix `+`) — the shape the Hub's scope expansion
-#     consumes.
-# In openshift-mta it maintains the IdP client Secret (key `clientSecret`,
-# Ch 9.1) and the `platform-sso` IdentityProvider CR (Ch 9.2), restarting
-# the hub when the wiring changes (required to load the CR).
-# It also points the `mta` ConsoleLink (launcher menu) at the live MTA route;
-# the committed href is a placeholder that Argo CD ignores.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: job-configure-mta-sso
   namespace: openshift-mta
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '10'
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -32,47 +14,77 @@ metadata:
   name: job-configure-mta-sso
   namespace: openshift-mta
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '10'
 rules:
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get", "create", "patch"]
-- apiGroups: ["tackle.konveyor.io"]
-  resources: ["identityproviders"]
-  verbs: ["get", "create", "patch"]
-- apiGroups: ["apps"]
-  resources: ["deployments"]
-  verbs: ["get", "list", "patch"]
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
+  - create
+  - patch
+- apiGroups:
+  - tackle.konveyor.io
+  resources:
+  - identityproviders
+  verbs:
+  - get
+  - create
+  - patch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: job-configure-mta-sso-rhbk-reader
-  namespace: rhbk
+  namespace: keycloak
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '10'
 rules:
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get"]
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: job-configure-mta-sso
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '10'
 rules:
-- apiGroups: ["route.openshift.io"]
-  resources: ["routes"]
-  verbs: ["get", "list"]
-- apiGroups: ["console.openshift.io"]
-  resources: ["consolelinks"]
-  resourceNames: ["mta"]
-  verbs: ["get", "patch"]
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - console.openshift.io
+  resources:
+  - consolelinks
+  resourceNames:
+  - mta
+  verbs:
+  - get
+  - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -80,8 +92,9 @@ metadata:
   name: job-configure-mta-sso
   namespace: openshift-mta
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '10'
 subjects:
 - kind: ServiceAccount
   name: job-configure-mta-sso
@@ -95,10 +108,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: job-configure-mta-sso-rhbk-reader
-  namespace: rhbk
+  namespace: keycloak
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '10'
 subjects:
 - kind: ServiceAccount
   name: job-configure-mta-sso
@@ -113,8 +127,9 @@ kind: ClusterRoleBinding
 metadata:
   name: job-configure-mta-sso
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '10'
 subjects:
 - kind: ServiceAccount
   name: job-configure-mta-sso
@@ -130,8 +145,9 @@ metadata:
   name: job-configure-mta-platform-sso
   namespace: openshift-mta
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '10'
 spec:
   backoffLimit: 6
   activeDeadlineSeconds: 1800
@@ -145,217 +161,89 @@ spec:
         command:
         - /bin/bash
         - -c
-        - |
-          set -euo pipefail
-
-          RHBK_URL="http://platform-rhbk-service.rhbk.svc:8080"
-          REALM="platform"
-          CLIENT_ID="mta-hub"
-          IDP_SECRET_NAME="mta-idp-client-secret"
-          CHANGED=false
-
-          # --- 1. Discover routes ---
-          RHBK_HOST=""
-          for i in {1..30}; do
-            RHBK_HOST=$(oc get route platform-rhbk -n rhbk -o jsonpath='{.spec.host}' 2>/dev/null || true)
-            [ -n "$RHBK_HOST" ] && break
-            echo "Waiting for platform RHBK route... ($i/30)"; sleep 10
-          done
-          [ -n "$RHBK_HOST" ] || { echo "ERROR: platform RHBK route not found"; exit 1; }
-          MTA_HOST=""
-          for i in {1..30}; do
-            MTA_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || true)
-            [ -n "$MTA_HOST" ] && break
-            echo "Waiting for MTA route... ($i/30)"; sleep 10
-          done
-          [ -n "$MTA_HOST" ] || { echo "ERROR: MTA route not found"; exit 1; }
-          ISSUER="https://${RHBK_HOST}/realms/${REALM}"
-          echo "Issuer: ${ISSUER}"
-          echo "MTA host: ${MTA_HOST}"
-
-          # --- 2. RHBK admin token ---
-          ADMIN_USER=$(oc get secret platform-rhbk-initial-admin -n rhbk -o jsonpath='{.data.username}' | base64 -d)
-          ADMIN_PASS=$(oc get secret platform-rhbk-initial-admin -n rhbk -o jsonpath='{.data.password}' | base64 -d)
-          TOKEN=""
-          for i in {1..60}; do
-            TOKEN=$(curl -s -X POST "${RHBK_URL}/realms/master/protocol/openid-connect/token" \
-              -d "grant_type=password&client_id=admin-cli&username=${ADMIN_USER}&password=${ADMIN_PASS}" \
-              2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || echo "")
-            [ -n "$TOKEN" ] && break
-            echo "Waiting for RHBK... ($i/60)"; sleep 10
-          done
-          [ -n "$TOKEN" ] || { echo "ERROR: cannot get RHBK admin token"; exit 1; }
-          AUTH="Authorization: Bearer ${TOKEN}"
-
-          # --- 3. Ensure MTA realm roles (Hub expands role.<name>, Ch 8.2) ---
-          for ROLE in role.admin role.architect role.migrator role.project-manager; do
-            CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "${AUTH}" \
-              "${RHBK_URL}/admin/realms/${REALM}/roles/${ROLE}")
-            if [ "$CODE" != "200" ]; then
-              curl -s -X POST -H "${AUTH}" -H "Content-Type: application/json" \
-                "${RHBK_URL}/admin/realms/${REALM}/roles" \
-                -d "{\"name\":\"${ROLE}\",\"description\":\"MTA Hub role (dynamic scope expansion)\"}" -o /dev/null
-              echo "Created realm role ${ROLE}"
-            else
-              echo "Realm role exists: ${ROLE}"
-            fi
-          done
-
-          # --- 4. Assign roles to demo users ---
-          assign_role() {
-            local USERNAME="$1" ROLE_NAME="$2"
-            USER_ID=$(curl -s -H "${AUTH}" \
-              "${RHBK_URL}/admin/realms/${REALM}/users?username=${USERNAME}&exact=true" \
-              | python3 -c "import sys,json; u=json.load(sys.stdin); print(u[0]['id'] if u else '')" 2>/dev/null)
-            if [ -z "$USER_ID" ]; then
-              echo "WARNING: user ${USERNAME} not found in realm; skipping role assignment"
-              return
-            fi
-            ROLE_JSON=$(curl -s -H "${AUTH}" "${RHBK_URL}/admin/realms/${REALM}/roles/${ROLE_NAME}")
-            curl -s -X POST -H "${AUTH}" -H "Content-Type: application/json" \
-              "${RHBK_URL}/admin/realms/${REALM}/users/${USER_ID}/role-mappings/realm" \
-              -d "[${ROLE_JSON}]" -o /dev/null
-            echo "Assigned ${ROLE_NAME} to ${USERNAME}"
-          }
-          assign_role "ai-admin" "role.admin"
-          assign_role "ai-developer" "role.architect"
-
-          # --- 5. Ensure mta-hub client (reuse secret when valid) ---
-          CURRENT_SECRET=$(oc get secret ${IDP_SECRET_NAME} -n openshift-mta \
-            -o jsonpath='{.data.clientSecret}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-          if [ -n "$CURRENT_SECRET" ]; then
-            CLIENT_SECRET="$CURRENT_SECRET"
-          else
-            CLIENT_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
-            CHANGED=true
-          fi
-          REDIRECT_URI="https://${MTA_HOST}/oidc/idp/callback"
-          CLIENT_UUID=$(curl -s -H "${AUTH}" \
-            "${RHBK_URL}/admin/realms/${REALM}/clients?clientId=${CLIENT_ID}" \
-            | python3 -c "import sys,json; c=json.load(sys.stdin); print(c[0]['id'] if c else '')" 2>/dev/null)
-          CLIENT_BODY="{
-            \"clientId\": \"${CLIENT_ID}\",
-            \"enabled\": true,
-            \"publicClient\": false,
-            \"secret\": \"${CLIENT_SECRET}\",
-            \"redirectUris\": [\"${REDIRECT_URI}\"],
-            \"webOrigins\": [\"https://${MTA_HOST}\"],
-            \"standardFlowEnabled\": true,
-            \"directAccessGrantsEnabled\": false,
-            \"protocol\": \"openid-connect\"
-          }"
-          if [ -n "$CLIENT_UUID" ]; then
-            curl -s -X PUT -H "${AUTH}" -H "Content-Type: application/json" \
-              "${RHBK_URL}/admin/realms/${REALM}/clients/${CLIENT_UUID}" -d "${CLIENT_BODY}" -o /dev/null
-            echo "mta-hub client updated"
-          else
-            curl -s -X POST -H "${AUTH}" -H "Content-Type: application/json" \
-              "${RHBK_URL}/admin/realms/${REALM}/clients" -d "${CLIENT_BODY}" -o /dev/null
-            CLIENT_UUID=$(curl -s -H "${AUTH}" \
-              "${RHBK_URL}/admin/realms/${REALM}/clients?clientId=${CLIENT_ID}" \
-              | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])")
-            CHANGED=true
-            echo "mta-hub client created"
-          fi
-
-          # --- 6. +role.<name> client scopes with role scope-mappings ---
-          # The Hub expands +role.<name> entries found in the access token's
-          # `scope` claim STRING (roleScopeRegex in tackle2-hub internal/auth;
-          # Keycloak's userinfo endpoint rejects array-typed scope claims, so
-          # protocol mappers are NOT usable here — verified live 2026-07-24).
-          # Client scopes named "+role.<name>", each carrying a realm-role
-          # scope-mapping and attached as OPTIONAL, are granted per user:
-          # Keycloak includes a requested optional client scope in the scope
-          # string only when the user holds a role in its scope-mappings.
-          for R in admin architect migrator project-manager; do
-            CSNAME="+role.${R}"
-            CS_ID=$(curl -s -H "${AUTH}" "${RHBK_URL}/admin/realms/${REALM}/client-scopes" \
-              | python3 -c "
-          import sys,json
-          for s in json.load(sys.stdin):
-            if s['name'] == '${CSNAME}':
-              print(s['id']); break
-          " 2>/dev/null)
-            if [ -z "$CS_ID" ]; then
-              curl -s -X POST -H "${AUTH}" -H "Content-Type: application/json" \
-                "${RHBK_URL}/admin/realms/${REALM}/client-scopes" \
-                -d "{\"name\":\"${CSNAME}\",\"protocol\":\"openid-connect\",\"attributes\":{\"include.in.token.scope\":\"true\",\"display.on.consent.screen\":\"false\"}}" -o /dev/null
-              CS_ID=$(curl -s -H "${AUTH}" "${RHBK_URL}/admin/realms/${REALM}/client-scopes" \
-                | python3 -c "
-          import sys,json
-          for s in json.load(sys.stdin):
-            if s['name'] == '${CSNAME}':
-              print(s['id']); break
-          ")
-              CHANGED=true
-              echo "Created client scope ${CSNAME}"
-            fi
-            ROLE_JSON=$(curl -s -H "${AUTH}" "${RHBK_URL}/admin/realms/${REALM}/roles/role.${R}")
-            curl -s -X POST -H "${AUTH}" -H "Content-Type: application/json" \
-              -d "[${ROLE_JSON}]" \
-              "${RHBK_URL}/admin/realms/${REALM}/client-scopes/${CS_ID}/scope-mappings/realm" -o /dev/null
-            curl -s -X PUT -H "${AUTH}" \
-              "${RHBK_URL}/admin/realms/${REALM}/clients/${CLIENT_UUID}/optional-client-scopes/${CS_ID}" -o /dev/null
-            echo "Client scope ${CSNAME} mapped and attached (optional)"
-          done
-
-          # --- 7. IdP client Secret in openshift-mta (key clientSecret, Ch 9.1) ---
-          if [ "$CURRENT_SECRET" != "$CLIENT_SECRET" ]; then
-            oc create secret generic ${IDP_SECRET_NAME} -n openshift-mta \
-              --from-literal=clientSecret="${CLIENT_SECRET}" \
-              --dry-run=client -o yaml | oc apply -f -
-            CHANGED=true
-            echo "IdP client Secret written"
-          else
-            echo "IdP client Secret unchanged"
-          fi
-
-          # --- 8. IdentityProvider CR (Ch 9.2; redirectURI uses Ch 12 templates) ---
-          IDP_APPLY=$(cat <<IDPEOF | oc apply -f - 2>&1
-          apiVersion: tackle.konveyor.io/v1alpha1
-          kind: IdentityProvider
-          metadata:
-            name: platform-sso
-            namespace: openshift-mta
-          spec:
-            name: "Platform SSO"
-            issuer: "${ISSUER}"
-            clientId: "${CLIENT_ID}"
-            clientSecret:
-              name: ${IDP_SECRET_NAME}
-              namespace: openshift-mta
-            redirectURI: "\${issuer.proto}://\${issuer.host}/oidc/idp/callback"
-            primary: true
-            scopes:
-              - openid
-              - profile
-              - email
-              - "+role.admin"
-              - "+role.architect"
-              - "+role.migrator"
-              - "+role.project-manager"
-          IDPEOF
-          )
-          echo "${IDP_APPLY}"
-          echo "${IDP_APPLY}" | grep -q "unchanged" || CHANGED=true
-
-          # --- 9. Restart the hub to load the IdP config (Ch 9.2) ---
-          if [ "$CHANGED" = "true" ]; then
-            HUB_DEPLOY=$(oc get deployment -n openshift-mta -o name | grep -E "hub" | head -1)
-            echo "Restarting ${HUB_DEPLOY} to load IdP configuration..."
-            oc rollout restart "${HUB_DEPLOY}" -n openshift-mta
-            oc rollout status "${HUB_DEPLOY}" -n openshift-mta --timeout=600s
-          else
-            echo "No changes; hub restart not needed"
-          fi
-
-          # --- 10. Launcher menu entry at the live MTA route ---
-          MTA_URL="https://${MTA_HOST}"
-          oc patch consolelink mta --type=merge \
-            -p "{\"spec\":{\"href\":\"${MTA_URL}\",\"applicationMenu\":{\"imageURL\":\"${MTA_URL}/favicon.ico\"}}}"
-          echo "ConsoleLink patched: ${MTA_URL}"
-
-          echo ""
-          echo "=== MTA platform SSO configured ==="
-          echo "IdP issuer: ${ISSUER}"
-          echo "Users: ai-admin=role.admin, ai-developer=role.architect"
+        - "set -euo pipefail\n\nRHBK_URL=\"\"\nREALM=\"platform\"\nCLIENT_ID=\"mta-hub\"\nIDP_SECRET_NAME=\"mta-idp-client-secret\"\
+          \nCHANGED=false\n\n# --- 1. Discover routes ---\nRHBK_HOST=\"\"\nfor i in {1..30}; do\n  RHBK_HOST=$(oc\
+          \ get route keycloak -n keycloak -o jsonpath='{.spec.host}' 2>/dev/null || true)\n  [ -n \"$RHBK_HOST\"\
+          \ ] && break\n  echo \"Waiting for platform RHBK route... ($i/30)\"; sleep 10\ndone\n[ -n \"$RHBK_HOST\"\
+          \ ] || { echo \"ERROR: platform RHBK route not found\"; exit 1; }\nMTA_HOST=\"\"\nfor i in {1..30}; do\n\
+          \  MTA_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || true)\n  [ -n\
+          \ \"$MTA_HOST\" ] && break\n  echo \"Waiting for MTA route... ($i/30)\"; sleep 10\ndone\n[ -n \"$MTA_HOST\"\
+          \ ] || { echo \"ERROR: MTA route not found\"; exit 1; }\nRHBK_URL=\"https://${RHBK_HOST}\"\nISSUER=\"\
+          https://${RHBK_HOST}/realms/${REALM}\"\necho \"Issuer: ${ISSUER}\"\necho \"MTA host: ${MTA_HOST}\"\n\n\
+          # --- 2. RHBK admin token ---\nADMIN_USER=$(oc get secret keycloak-initial-admin -n keycloak -o jsonpath='{.data.username}'\
+          \ | base64 -d)\nADMIN_PASS=$(oc get secret keycloak-initial-admin -n keycloak -o jsonpath='{.data.password}'\
+          \ | base64 -d)\nTOKEN=\"\"\nfor i in {1..60}; do\n  TOKEN=$(curl -fsS -X POST \"${RHBK_URL}/realms/master/protocol/openid-connect/token\"\
+          \ \\\n    -d \"grant_type=password&client_id=admin-cli&username=${ADMIN_USER}&password=${ADMIN_PASS}\"\
+          \ \\\n    2>/dev/null | python3 -c \"import sys,json; print(json.load(sys.stdin).get('access_token',''))\"\
+          \ 2>/dev/null || echo \"\")\n  [ -n \"$TOKEN\" ] && break\n  echo \"Waiting for RHBK... ($i/60)\"; sleep\
+          \ 10\ndone\n[ -n \"$TOKEN\" ] || { echo \"ERROR: cannot get RHBK admin token\"; exit 1; }\nAUTH=\"Authorization:\
+          \ Bearer ${TOKEN}\"\n\n# --- 3. Ensure MTA realm roles (Hub expands role.<name>, Ch 8.2) ---\nfor ROLE\
+          \ in role.admin role.architect role.migrator role.project-manager; do\n  CODE=$(curl -s -o /dev/null -w\
+          \ '%{http_code}' -H \"${AUTH}\" \\\n    \"${RHBK_URL}/admin/realms/${REALM}/roles/${ROLE}\")\n  if [ \"\
+          $CODE\" != \"200\" ]; then\n    curl -fsS -X POST -H \"${AUTH}\" -H \"Content-Type: application/json\"\
+          \ \\\n      \"${RHBK_URL}/admin/realms/${REALM}/roles\" \\\n      -d \"{\\\"name\\\":\\\"${ROLE}\\\",\\\
+          \"description\\\":\\\"MTA Hub role (dynamic scope expansion)\\\"}\" -o /dev/null\n    echo \"Created realm\
+          \ role ${ROLE}\"\n  else\n    echo \"Realm role exists: ${ROLE}\"\n  fi\ndone\n\n# --- 4. Assign roles\
+          \ to demo users ---\nassign_role() {\n  local USERNAME=\"$1\" ROLE_NAME=\"$2\"\n  USER_ID=$(curl -s -H\
+          \ \"${AUTH}\" \\\n    \"${RHBK_URL}/admin/realms/${REALM}/users?username=${USERNAME}&exact=true\" \\\n\
+          \    | python3 -c \"import sys,json; u=json.load(sys.stdin); print(u[0]['id'] if u else '')\" 2>/dev/null)\n\
+          \  if [ -z \"$USER_ID\" ]; then\n    echo \"WARNING: user ${USERNAME} not found in realm; skipping role\
+          \ assignment\"\n    return\n  fi\n  ROLE_JSON=$(curl -s -H \"${AUTH}\" \"${RHBK_URL}/admin/realms/${REALM}/roles/${ROLE_NAME}\"\
+          )\n  curl -fsS -X POST -H \"${AUTH}\" -H \"Content-Type: application/json\" \\\n    \"${RHBK_URL}/admin/realms/${REALM}/users/${USER_ID}/role-mappings/realm\"\
+          \ \\\n    -d \"[${ROLE_JSON}]\" -o /dev/null\n  echo \"Assigned ${ROLE_NAME} to ${USERNAME}\"\n}\nassign_role\
+          \ \"ai-admin\" \"role.admin\"\nassign_role \"ai-developer\" \"role.architect\"\n\n# --- 5. Ensure mta-hub\
+          \ client (reuse secret when valid) ---\nCURRENT_SECRET=$(oc get secret ${IDP_SECRET_NAME} -n openshift-mta\
+          \ \\\n  -o jsonpath='{.data.clientSecret}' 2>/dev/null | base64 -d 2>/dev/null || echo \"\")\nif [ -n\
+          \ \"$CURRENT_SECRET\" ]; then\n  CLIENT_SECRET=\"$CURRENT_SECRET\"\nelse\n  CLIENT_SECRET=$(head -c 32\
+          \ /dev/urandom | base64 | tr -d '/+=' | head -c 40)\n  CHANGED=true\nfi\nREDIRECT_URI=\"https://${MTA_HOST}/oidc/idp/callback\"\
+          \nCLIENT_UUID=$(curl -s -H \"${AUTH}\" \\\n  \"${RHBK_URL}/admin/realms/${REALM}/clients?clientId=${CLIENT_ID}\"\
+          \ \\\n  | python3 -c \"import sys,json; c=json.load(sys.stdin); print(c[0]['id'] if c else '')\" 2>/dev/null)\n\
+          CLIENT_BODY=\"{\n  \\\"clientId\\\": \\\"${CLIENT_ID}\\\",\n  \\\"enabled\\\": true,\n  \\\"publicClient\\\
+          \": false,\n  \\\"secret\\\": \\\"${CLIENT_SECRET}\\\",\n  \\\"redirectUris\\\": [\\\"${REDIRECT_URI}\\\
+          \"],\n  \\\"webOrigins\\\": [\\\"https://${MTA_HOST}\\\"],\n  \\\"standardFlowEnabled\\\": true,\n  \\\
+          \"directAccessGrantsEnabled\\\": false,\n  \\\"protocol\\\": \\\"openid-connect\\\"\n}\"\nif [ -n \"$CLIENT_UUID\"\
+          \ ]; then\n  curl -fsS -X PUT -H \"${AUTH}\" -H \"Content-Type: application/json\" \\\n    \"${RHBK_URL}/admin/realms/${REALM}/clients/${CLIENT_UUID}\"\
+          \ -d \"${CLIENT_BODY}\" -o /dev/null\n  echo \"mta-hub client updated\"\nelse\n  curl -fsS -X POST -H\
+          \ \"${AUTH}\" -H \"Content-Type: application/json\" \\\n    \"${RHBK_URL}/admin/realms/${REALM}/clients\"\
+          \ -d \"${CLIENT_BODY}\" -o /dev/null\n  CLIENT_UUID=$(curl -s -H \"${AUTH}\" \\\n    \"${RHBK_URL}/admin/realms/${REALM}/clients?clientId=${CLIENT_ID}\"\
+          \ \\\n    | python3 -c \"import sys,json; print(json.load(sys.stdin)[0]['id'])\")\n  CHANGED=true\n  echo\
+          \ \"mta-hub client created\"\nfi\n\n# --- 6. +role.<name> client scopes with role scope-mappings ---\n\
+          # The Hub expands +role.<name> entries found in the access token's\n# `scope` claim STRING (roleScopeRegex\
+          \ in tackle2-hub internal/auth;\n# Keycloak's userinfo endpoint rejects array-typed scope claims, so\n\
+          # protocol mappers are NOT usable here \u2014 verified live 2026-07-24).\n# Client scopes named \"+role.<name>\"\
+          , each carrying a realm-role\n# scope-mapping and attached as OPTIONAL, are granted per user:\n# Keycloak\
+          \ includes a requested optional client scope in the scope\n# string only when the user holds a role in\
+          \ its scope-mappings.\nfor R in admin architect migrator project-manager; do\n  CSNAME=\"+role.${R}\"\n\
+          \  CS_ID=$(curl -s -H \"${AUTH}\" \"${RHBK_URL}/admin/realms/${REALM}/client-scopes\" \\\n    | python3\
+          \ -c \"\nimport sys,json\nfor s in json.load(sys.stdin):\n  if s['name'] == '${CSNAME}':\n    print(s['id']);\
+          \ break\n\" 2>/dev/null)\n  if [ -z \"$CS_ID\" ]; then\n    curl -fsS -X POST -H \"${AUTH}\" -H \"Content-Type:\
+          \ application/json\" \\\n      \"${RHBK_URL}/admin/realms/${REALM}/client-scopes\" \\\n      -d \"{\\\"\
+          name\\\":\\\"${CSNAME}\\\",\\\"protocol\\\":\\\"openid-connect\\\",\\\"attributes\\\":{\\\"include.in.token.scope\\\
+          \":\\\"true\\\",\\\"display.on.consent.screen\\\":\\\"false\\\"}}\" -o /dev/null\n    CS_ID=$(curl -s\
+          \ -H \"${AUTH}\" \"${RHBK_URL}/admin/realms/${REALM}/client-scopes\" \\\n      | python3 -c \"\nimport\
+          \ sys,json\nfor s in json.load(sys.stdin):\n  if s['name'] == '${CSNAME}':\n    print(s['id']); break\n\
+          \")\n    CHANGED=true\n    echo \"Created client scope ${CSNAME}\"\n  fi\n  ROLE_JSON=$(curl -s -H \"\
+          ${AUTH}\" \"${RHBK_URL}/admin/realms/${REALM}/roles/role.${R}\")\n  curl -fsS -X POST -H \"${AUTH}\" -H\
+          \ \"Content-Type: application/json\" \\\n    -d \"[${ROLE_JSON}]\" \\\n    \"${RHBK_URL}/admin/realms/${REALM}/client-scopes/${CS_ID}/scope-mappings/realm\"\
+          \ -o /dev/null\n  curl -fsS -X PUT -H \"${AUTH}\" \\\n    \"${RHBK_URL}/admin/realms/${REALM}/clients/${CLIENT_UUID}/optional-client-scopes/${CS_ID}\"\
+          \ -o /dev/null\n  echo \"Client scope ${CSNAME} mapped and attached (optional)\"\ndone\n\n# --- 7. IdP\
+          \ client Secret in openshift-mta (key clientSecret, Ch 9.1) ---\nif [ \"$CURRENT_SECRET\" != \"$CLIENT_SECRET\"\
+          \ ]; then\n  oc create secret generic ${IDP_SECRET_NAME} -n openshift-mta \\\n    --from-literal=clientSecret=\"\
+          ${CLIENT_SECRET}\" \\\n    --dry-run=client -o yaml | oc apply -f -\n  CHANGED=true\n  echo \"IdP client\
+          \ Secret written\"\nelse\n  echo \"IdP client Secret unchanged\"\nfi\n\n# --- 8. IdentityProvider CR (Ch\
+          \ 9.2; redirectURI uses Ch 12 templates) ---\nIDP_APPLY=$(cat <<IDPEOF | oc apply -f - 2>&1\napiVersion:\
+          \ tackle.konveyor.io/v1alpha1\nkind: IdentityProvider\nmetadata:\n  name: platform-sso\n  namespace: openshift-mta\n\
+          spec:\n  name: \"Platform SSO\"\n  issuer: \"${ISSUER}\"\n  clientId: \"${CLIENT_ID}\"\n  clientSecret:\n\
+          \    name: ${IDP_SECRET_NAME}\n    namespace: openshift-mta\n  redirectURI: \"\\${issuer.proto}://\\${issuer.host}/oidc/idp/callback\"\
+          \n  primary: true\n  scopes:\n    - openid\n    - profile\n    - email\n    - \"+role.admin\"\n    - \"\
+          +role.architect\"\n    - \"+role.migrator\"\n    - \"+role.project-manager\"\nIDPEOF\n)\necho \"${IDP_APPLY}\"\
+          \necho \"${IDP_APPLY}\" | grep -q \"unchanged\" || CHANGED=true\n\n# --- 9. Restart the hub to load the\
+          \ IdP config (Ch 9.2) ---\nif [ \"$CHANGED\" = \"true\" ]; then\n  HUB_DEPLOY=$(oc get deployment -n openshift-mta\
+          \ -o name | grep -E \"hub\" | head -1)\n  echo \"Restarting ${HUB_DEPLOY} to load IdP configuration...\"\
+          \n  oc rollout restart \"${HUB_DEPLOY}\" -n openshift-mta\n  oc rollout status \"${HUB_DEPLOY}\" -n openshift-mta\
+          \ --timeout=600s\nelse\n  echo \"No changes; hub restart not needed\"\nfi\n\n# --- 10. Launcher menu entry\
+          \ at the live MTA route ---\nMTA_URL=\"https://${MTA_HOST}\"\noc patch consolelink mta --type=merge \\\
+          \n  -p \"{\\\"spec\\\":{\\\"href\\\":\\\"${MTA_URL}\\\",\\\"applicationMenu\\\":{\\\"imageURL\\\":\\\"\
+          ${MTA_URL}/favicon.ico\\\"}}}\"\necho \"ConsoleLink patched: ${MTA_URL}\"\n\necho \"\"\necho \"=== MTA\
+          \ platform SSO configured ===\"\necho \"IdP issuer: ${ISSUER}\"\necho \"Users: ai-admin=role.admin, ai-developer=role.architect\"\
+          \n"

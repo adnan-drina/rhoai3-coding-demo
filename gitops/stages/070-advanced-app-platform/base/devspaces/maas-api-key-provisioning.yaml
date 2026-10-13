@@ -537,39 +537,10 @@ data:
     if [ "${AI_TOOL}" = "kilo" ]; then write_kilo_config; fi
 
     ensure_opencode_latest() {
-      # The image-bundled opencode binary is root-owned and ages with the
-      # image; the official installer puts a user-writable copy in HOME
-      # (persistent volume), and autoupdate keeps it current afterwards.
-      if [ ! -x "${HOME}/.opencode/bin/opencode" ] && [ ! -x "${HOME}/.local/bin/opencode" ]; then
-        curl -fsSL --retry 3 --max-time 300 https://opencode.ai/install | bash \
-          || echo "opencode installer failed; falling back to the image-bundled binary"
-      fi
-      for d in "${HOME}/.opencode/bin" "${HOME}/.local/bin"; do
-        if [ -x "${d}/opencode" ] && ! grep -q "rhoai3-coding-demo: opencode path" "${HOME}/.bashrc" 2>/dev/null; then
-          {
-            printf '\n# rhoai3-coding-demo: opencode path\n'
-            printf 'export PATH="%s:${PATH}"\n' "${d}"
-          } >> "${HOME}/.bashrc"
-          echo "opencode on PATH from ${d}."
-          break
-        fi
-      done
-      # opencode embeds Bun, and Bun 1.3+ no longer trusts the system CA store
-      # by default (oven-sh/bun#23735), so it rejects the MaaS gateway's
-      # ingress certificate ("unknown certificate verification error") for
-      # every model while Kilo Code / VS Code keep working via the OS trust
-      # store. NODE_USE_SYSTEM_CA=1 restores Bun's system-CA trust. Guarded by
-      # its OWN marker (not the opencode-path one) so it also lands on existing
-      # persistent volumes that already carry the path block above. NOTE:
-      # NODE_EXTRA_CA_CERTS does not work on Bun 1.3.x (oven-sh/bun#24581).
-      if { [ -x "${HOME}/.opencode/bin/opencode" ] || [ -x "${HOME}/.local/bin/opencode" ]; } \
-         && ! grep -q "rhoai3-coding-demo: opencode system-ca" "${HOME}/.bashrc" 2>/dev/null; then
-        {
-          printf '\n# rhoai3-coding-demo: opencode system-ca\n'
-          printf 'export NODE_USE_SYSTEM_CA=1\n'
-        } >> "${HOME}/.bashrc"
-        echo "NODE_USE_SYSTEM_CA=1 set for opencode (Bun system-CA trust)."
-      fi
+      # Runtime tools are image releases, never user-home auto-updates.
+      command -v opencode >/dev/null 2>&1 || { echo 'Pinned runtime image lacks OpenCode' >&2; return 1; }
+      export OPENCODE_DISABLE_AUTOUPDATE=true
+      export NODE_USE_SYSTEM_CA=1
     }
 
     ensure_quarkus_agent_mcp() {
@@ -2555,23 +2526,36 @@ spec:
               }
 
               validate_subscription() {
-                local key="$1"
-                local payload
-                payload="$(mktemp)"
-                python3 -c 'import json,sys; print(json.dumps({"key": sys.argv[1]}))' "${key}" > "${payload}"
-                curl -sk -X POST \
-                  -H "Content-Type: application/json" \
-                  --data-binary "@${payload}" \
-                  "https://maas-api.redhat-ods-applications.svc.cluster.local:8443/internal/v1/api-keys/validate" \
-                  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("subscription",""))' 2>/dev/null || true
-                rm -f "${payload}"
+                local id="$1" response status
+                [ -n "$id" ] || { echo 'Existing MaaS key has no owner-visible ID; preserve it for review' >&2; return 1; }
+                response=$(mktemp)
+                status=$(curl -fsS --max-time 30 -o "$response" -w '%{http_code}' \
+                  -H "Authorization: Bearer ${SA_TOKEN}" \
+                  "${MAAS_BASE_URL}/maas-api/v1/api-keys/${id}") || {
+                    rm -f "$response"
+                    echo 'Owner key lookup failed; no key will be revoked or minted' >&2
+                    return 1
+                  }
+                python3 - "$response" "$SUBSCRIPTION" "$SA_PRINCIPAL" <<'PYKEY'
+              import json, sys
+              with open(sys.argv[1]) as stream:
+                  row = json.load(stream)
+              if row.get('subscription') != sys.argv[2] or row.get('username') != sys.argv[3]:
+                  raise SystemExit('MaaS key ownership or subscription binding differs; preserve for review')
+              if row.get('status') not in ('active', 'expired', 'revoked'):
+                  raise SystemExit('Unknown MaaS key status; preserve for review')
+              print(sys.argv[2] if row['status'] == 'active' else 'ROTATE')
+              PYKEY
+                status=$?
+                rm -f "$response"
+                return "$status"
               }
 
               create_key() {
                 local name="$1"
                 local response key id expires_at
                 response="$(mktemp)"
-                curl -sk -X POST \
+                curl -fsS --max-time 30 -X POST \
                   -H "Authorization: Bearer ${SA_TOKEN}" \
                   -H "Content-Type: application/json" \
                   -d "{\"name\":\"${name}\",\"subscription\":\"${SUBSCRIPTION}\"}" \
@@ -2599,7 +2583,7 @@ spec:
                 current_id="$(secret_value "MAAS_API_KEY_${suffix}_ID")"
                 current_subscription=""
                 if [ -n "${current_key}" ]; then
-                  current_subscription="$(validate_subscription "${current_key}")"
+                  current_subscription="$(validate_subscription "${current_id}")"
                 fi
 
                 if [ "${current_subscription}" = "${SUBSCRIPTION}" ]; then
@@ -2608,16 +2592,6 @@ spec:
                   expires_at="$(secret_value "MAAS_API_KEY_${suffix}_EXPIRES_AT")"
                   echo "Keeping existing MaaS API key for ${model}"
                 else
-                  if [ -n "${current_id}" ]; then
-                    delete_status=$(curl -sk --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE \
-                      -H "Authorization: Bearer ${SA_TOKEN}" \
-                      "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
-                    if [ "${delete_status}" -ge 200 ] && [ "${delete_status}" -lt 300 ]; then
-                      echo "Revoked old key ${current_id} for ${name}"
-                    else
-                      echo "WARNING: failed to revoke old key ${current_id} (${name}), HTTP ${delete_status}; it will linger until TTL"
-                    fi
-                  fi
                   mapfile -t created < <(create_key "${name}")
                   key="${created[0]}"
                   id="${created[1]}"
@@ -2625,32 +2599,8 @@ spec:
                   echo "Provisioned MaaS API key for ${model}"
                 fi
 
-                # Search-by-name cleanup: revoke every key with this name except
-                # the one we are keeping/just minted. Runs on EVERY invocation so
-                # orphans from failed revocations are reaped on the next run, not
-                # only when a re-mint happens.
-                search_response="$(curl -sk --retry 3 --retry-delay 3 -X POST \
-                  -H "Authorization: Bearer ${SA_TOKEN}" \
-                  -H "Content-Type: application/json" \
-                  -d "{\"name\":\"${name}\"}" \
-                  "${MAAS_BASE_URL}/maas-api/v1/api-keys/search" 2>/dev/null || echo "[]")"
-              orphan_ids="$(echo "${search_response}" | python3 -c 'import json,sys;data=json.load(sys.stdin).get("data",[]);[print(e["id"]) for e in data if e.get("name")==sys.argv[1] and e.get("username")==sys.argv[3] and e.get("status")=="active" and e.get("id","")!=sys.argv[2]]' "${name}" "${id}" "${SA_PRINCIPAL}" 2>/dev/null || true)"
-              echo "Searched $(echo "${search_response}" | python3 -c 'import json,sys;d=json.load(sys.stdin).get("data",[]);print(len(d))' 2>/dev/null || echo '?') keys, $(echo -n "${orphan_ids}" | grep -c . || echo 0) matched ${name}"
-              if [ -n "${orphan_ids}" ]; then
-                  while IFS= read -r orphan_id; do
-                    [ -z "${orphan_id}" ] && continue
-                    ds=$(curl -sk --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE \
-                      -H "Authorization: Bearer ${SA_TOKEN}" \
-                      "${MAAS_BASE_URL}/maas-api/v1/api-keys/${orphan_id}")
-                    if [ "${ds}" -ge 200 ] && [ "${ds}" -lt 300 ]; then
-                      echo "Revoked orphaned key ${orphan_id} (${name})"
-                    else
-                      echo "WARNING: failed to revoke orphaned key ${orphan_id} (${name}), HTTP ${ds}"
-                    fi
-                  done <<< "${orphan_ids}"
-                else
-                  echo "No orphaned keys found for ${name}."
-                fi
+                # Never revoke a predecessor before the replacement Secret is persisted.
+                # Expired/revoked keys are left to their server-side lifecycle.
 
                 {
                   printf 'MAAS_API_KEY_%s=%s\n' "${suffix}" "${key}"

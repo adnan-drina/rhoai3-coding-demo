@@ -34,8 +34,8 @@ components:
     container:
       # Digest-pinned overlay (ws-080). Repos are private: cluster pull
       # needs the Quay pull secret on the workspace ServiceAccount before
-      # any dest cut. Fat postStart (VSIX curls) is expected this round.
-      image: quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:5aab5558481fcbb69483122543b7bcb96b9c34daf44466eea6d375fd37c92029
+      # any dest cut. MTA tools and required extensions are baked in.
+      image: quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:e4ac365b3818773ea1d8f67202200011a95089d05ee53ca2652efa353de968e0
       mountSources: true
       memoryRequest: 2Gi
       memoryLimit: 12Gi
@@ -53,25 +53,19 @@ components:
         # gateway's ingress certificate.
         - name: NODE_USE_SYSTEM_CA
           value: "1"
-        # MTA extension pack, downloaded by init-migration-tools below.
+        # MTA extensions are checksum-verified in the workspace image.
         - name: DEFAULT_EXTENSIONS
-          value: "/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/redhat-java.vsix;/tmp/mta-java.vsix"
-        # MTA hub connection — stable internal cluster service URL.
-        - name: HUB_URL
-          value: "http://mta-ui.openshift-mta.svc.cluster.local:8080"
-        # Force the hub active on first workspace start regardless of prior state.
+          value: "/opt/rhoai3/extensions/mta-vscode-extension.vsix;/opt/rhoai3/extensions/mta-core.vsix;/opt/rhoai3/extensions/java.vsix;/opt/rhoai3/extensions/mta-java.vsix"
+        # This generic golden carries no environment-specific Hub URL.
+        # RHDH replaces the devfile and supplies the authenticated Hub Route.
         - name: FORCE_HUB_ENABLED
-          value: "true"
-        # Skip TLS verification — OpenShift uses a custom CA not trusted by the extension.
+          value: "false"
         - name: HUB_INSECURE
-          value: "true"
-        # Lightspeed/Kai is disabled platform-side (BACKLOG "Developer
-        # Lightspeed re-enable") — turn the extension's hub AI features off
-        # so the analysis panel starts clean.
+          value: "false"
         - name: HUB_SOLUTION_SERVER_ENABLED
-          value: "false"
+          value: "true"
         - name: HUB_PROFILE_SYNC_ENABLED
-          value: "false"
+          value: "true"
         # AD-003: containerless mta-cli requires JVM_MAX_MEM or analysis can
         # hang. Derived from memoryLimit (12Gi) with headroom for the IDE /
         # Hermes — not equal to the container ceiling. Official MTA
@@ -157,15 +151,10 @@ commands:
           done
           echo "Configured Java 21 as the default shell runtime."
         fi
-        # MTA VS Code extension pack (analysis of /projects/legacy against
-        # the platform MTA hub). The pack does not reliably resolve its
-        # dependencies from a local VSIX — pin and download MTA + redhat.java
-        # (vendor-required for mta-java; Operator E-20260817T104424Z).
-        curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.2.0/file/redhat.mta-vscode-extension-8.2.0.vsix"
-        curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.2.0/file/redhat.mta-core-8.2.0.vsix"
-        curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/redhat-java.vsix "https://open-vsx.org/api/redhat/java/1.47.0/file/redhat.java-1.47.0.vsix"
-        curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.2.0/file/redhat.mta-java-8.2.0.vsix"
-        test -s /tmp/mta.vsix && test -s /tmp/mta-core.vsix && test -s /tmp/redhat-java.vsix && test -s /tmp/mta-java.vsix
+        test -s /opt/rhoai3/extensions/mta-vscode-extension.vsix
+        test -s /opt/rhoai3/extensions/mta-core.vsix
+        test -s /opt/rhoai3/extensions/java.vsix
+        test -s /opt/rhoai3/extensions/mta-java.vsix
         # kubeconfig from the workspace SA so the MTA extension can reach
         # the cluster; hub sign-in itself is interactive (OIDC device auth
         # through the platform realm).
@@ -182,7 +171,7 @@ commands:
         # JDT.LS Standard mode so mta-java registers its analysis provider
         # without requiring a .java file to be opened first (PVC-backed).
         if [ -f /projects/.code-workspace ]; then
-          python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); s['java.server.launchMode']='Standard'; s['mta-core.genai.enabled']=False; open(f,'w').write(json.dumps(ws,indent=2)); print('Workspace settings: JDT Standard mode, MTA GenAI disabled')" 2>&1 || true
+          python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); s['java.server.launchMode']='Standard'; s['mta-core.genai.enabled']=True; s['mta-core.hub.auth.method']='oidc'; open(f,'w').write(json.dumps(ws,indent=2)); print('Workspace settings: JDT Standard mode, MTA GenAI enabled')" 2>&1 || true
         fi
         for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
         INIT_VOL="/etc/config/devspace-ai-tools-init/init-ai-tools.sh"

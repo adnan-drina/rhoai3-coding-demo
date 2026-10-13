@@ -7,8 +7,8 @@ metadata:
     Brand-new Quarkus application built with spec-driven agentic development,
     provisioned by the agentic-quarkus-scaffold golden-path template.
   annotations:
-    github.com/project-slug: adnan-drina/${{ values.name }}
-    backstage.io/source-location: url:https://github.com/adnan-drina/${{ values.name }}
+    gitlab.com/project-slug: ${{ values.gitlabGroup }}/${{ values.name }}
+    backstage.io/source-location: url:${{ values.gitlabBaseUrl }}/${{ values.gitlabGroup }}/${{ values.name }}
     # RHDH OpenShift tabs: PipelineRuns in <name>-dev carry this label
     # (set by the dispatcher TriggerTemplate); the project stack is the
     # Argo CD app created by the scaffolded-project bootstrap trigger.
@@ -21,9 +21,9 @@ metadata:
     - quarkus
     - spec-driven
   links:
-    - url: https://github.com/adnan-drina/${{ values.name }}
+    - url: ${{ values.gitlabBaseUrl }}/${{ values.gitlabGroup }}/${{ values.name }}
       title: Source Repo
-      icon: github
+      icon: gitlab
     - url: ${{ values.devspacesUrl }}
       title: Dev Spaces
       icon: catalog

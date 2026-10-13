@@ -36,7 +36,8 @@ def render(name: str, protocol: str, model: str = "qwen3-8-27b") -> str:
     values = {"name": "orders-migration", "legacyRepoUrl": "https://example.test/orders.git", "autoStartMigration": True,
               "scaffolderTaskId": "task-1", "maasHost": "maas.example.test", "maasInternalIp": "172.30.1.1",
               "sonarqubeUrl": "https://sonar.example.test", "devspacesUrl": "https://devspaces.example.test",
-              "boardProtocol": protocol, "model": model}
+              "boardProtocol": protocol, "model": model, "gitlabBaseUrl": "https://gitlab.example.test",
+              "gitlabGroup": "rhoai-workloads", "mtaHubUrl": "https://mta.example.test"}
     return env.from_string((SKELETON / name).read_text()).render(values=values)
 
 
@@ -78,6 +79,12 @@ def main() -> int:
             fails.append("%s: run-budget.json stamps %r" % (protocol, budget.get("board_protocol")))
         text = render("devfile.yaml", protocol)
         dev = yaml.safe_load(text)
+        env = {e['name']: e['value'] for c in dev['components'] if c['name'] == 'development-tooling'
+               for e in c['container']['env']}
+        if env.get('HUB_URL') != 'https://mta.example.test' or env.get('HUB_INSECURE') != 'false':
+            fails.append('the workspace does not use the authenticated TLS Hub')
+        if env.get('HUB_SOLUTION_SERVER_ENABLED') != 'true' or env.get('HUB_PROFILE_SYNC_ENABLED') != 'true':
+            fails.append('the workspace disabled its MTA 8.3 AI integration')
         if "outcome-authority" in text or "/run/outcome-authority" in text:
             fails.append("%s renders authority parts" % protocol)
         containers = sorted(c["name"] for c in dev["components"] if "container" in c)

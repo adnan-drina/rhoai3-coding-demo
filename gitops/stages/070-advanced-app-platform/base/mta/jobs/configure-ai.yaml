@@ -1,0 +1,204 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mta-maas-provisioner
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mta-maas-provisioner
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - kai-api-keys
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - create
+- apiGroups:
+  - tackle.konveyor.io
+  resources:
+  - tackles
+  resourceNames:
+  - mta
+  verbs:
+  - patch
+- apiGroups:
+  - konveyor.io
+  resources:
+  - gateways
+  resourceNames:
+  - maas-qwen
+  verbs:
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mta-maas-provisioner
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+subjects:
+- kind: ServiceAccount
+  name: mta-maas-provisioner
+  namespace: openshift-mta
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mta-maas-provisioner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mta-maas-provisioner
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+rules:
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways
+  resourceNames:
+  - maas-default-gateway
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mta-maas-provisioner
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+subjects:
+- kind: ServiceAccount
+  name: mta-maas-provisioner
+  namespace: openshift-mta
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mta-maas-provisioner
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: mta-migration-ai
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: mta-migration-ai
+    app.kubernetes.io/component: maas-subscription
+    demo.rhoai.io/provider: governed-models
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  owner:
+    users:
+    - system:serviceaccount:openshift-mta:mta-maas-provisioner
+  modelRefs:
+  - name: qwen3-8-27b
+    namespace: internal-models
+    tokenRateLimits:
+    - limit: 5000000
+      window: 1h
+  priority: 100
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: devspaces-coding
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: mta-migration-ai
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: mta-migration-ai
+    app.kubernetes.io/component: maas-auth-policy
+    demo.rhoai.io/provider: governed-models
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  subjects:
+    users:
+    - system:serviceaccount:openshift-mta:mta-maas-provisioner
+  modelRefs:
+  - name: qwen3-8-27b
+    namespace: internal-models
+  meteringMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: devspaces-coding
+---
+apiVersion: konveyor.io/v1alpha1
+kind: Gateway
+metadata:
+  name: maas-qwen
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  provider: openai
+  endpoint: https://maas.pending.invalid/v1
+  credentialRef:
+    secretName: kai-api-keys
+    key: OPENAI_API_KEY
+  model:
+    name: qwen3-8-27b
+    contextWindow: 262144
+    tier: efficient
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: configure-mta-ai
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '10'
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: mta-maas-provisioner
+      restartPolicy: Never
+      containers:
+      - name: configure
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        command:
+        - python3
+        - /scripts/configure-ai.py
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: scripts
+        configMap:
+          name: mta-ai-bootstrap

@@ -41,7 +41,7 @@ spec:
               key: token
       script: |
         #!/usr/bin/env bash
-        set -ex
+        set -euo pipefail
         # Image-provided mvn (repo wrappers need gzip the image lacks)
         mvn -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
           -Dsonar.host.url="${SONAR_HOST_URL}" \

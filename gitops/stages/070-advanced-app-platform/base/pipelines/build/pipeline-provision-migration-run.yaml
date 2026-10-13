@@ -1,33 +1,3 @@
-# The platform lifecycle of one Stage 080 migration run's resources.
-#
-# One Pipeline, two modes, one identity. The dispatcher starts it in
-# `provision` mode from the scaffolding push; the Operator starts it in
-# `retire` mode when the run closes. Retirement is the SAME code path that
-# created the resources, which is why it can account for all of them: every
-# generated object carries rhoai3.io/migration-run=<run>, and retirement
-# deletes by that label and then proves nothing is left.
-#
-# Retire a run with (archive the evidence first; see docs/OPERATIONS.md,
-# Stage 080 run isolation):
-#
-#   oc create -n app-platform-build -f - <<'EOF'
-#   apiVersion: tekton.dev/v1
-#   kind: PipelineRun
-#   metadata:
-#     generateName: retire-<run>-
-#   spec:
-#     pipelineRef:
-#       name: provision-migration-run
-#     taskRunTemplate:
-#       serviceAccountName: migration-run-provisioner
-#     params:
-#       - name: run-name
-#         value: <run>
-#       - name: scaffold-commit
-#         value: retire
-#       - name: mode
-#         value: retire
-#   EOF
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
@@ -37,35 +7,55 @@ metadata:
     app.kubernetes.io/part-of: developer-hub
     app.kubernetes.io/component: migration-run-provisioner
   annotations:
-    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/sync-wave: '12'
 spec:
   description: Provision or retire one Stage 080 migration run's own resources.
   params:
-    - name: run-name
-      type: string
-    - name: scaffold-commit
-      type: string
-    - name: mode
-      type: string
-      default: provision
-    - name: workspace-namespace
-      type: string
-      default: wksp-ai-developer
+  - name: run-name
+    type: string
+  - name: scaffold-commit
+    type: string
+  - name: mode
+    type: string
+    default: provision
+  - name: workspace-namespace
+    type: string
+    default: wksp-ai-developer
+  - name: request-provider
+    type: string
+    default: gitlab
+  - name: request-project-id
+    type: string
+    default: ''
+  - name: request-repository-owner
+    type: string
+    default: rhoai-workloads
+  - name: request-raw-base
+    type: string
+    default: ''
   results:
-    - name: receipt
-      value: $(tasks.provision.results.receipt)
-    - name: outcome
-      value: $(tasks.provision.results.outcome)
+  - name: receipt
+    value: $(tasks.provision.results.receipt)
+  - name: outcome
+    value: $(tasks.provision.results.outcome)
   tasks:
-    - name: provision
-      taskRef:
-        name: provision-migration-run
-      params:
-        - name: run-name
-          value: $(params.run-name)
-        - name: scaffold-commit
-          value: $(params.scaffold-commit)
-        - name: mode
-          value: $(params.mode)
-        - name: workspace-namespace
-          value: $(params.workspace-namespace)
+  - name: provision
+    taskRef:
+      name: provision-migration-run
+    params:
+    - name: run-name
+      value: $(params.run-name)
+    - name: scaffold-commit
+      value: $(params.scaffold-commit)
+    - name: mode
+      value: $(params.mode)
+    - name: workspace-namespace
+      value: $(params.workspace-namespace)
+    - name: request-provider
+      value: $(params.request-provider)
+    - name: request-project-id
+      value: $(params.request-project-id)
+    - name: request-repository-owner
+      value: $(params.request-repository-owner)
+    - name: request-raw-base
+      value: $(params.request-raw-base)

@@ -39,7 +39,7 @@ metadata:
   description: Coolstore modernization system for the governed AI developer workflow.
   annotations:
     backstage.io/source-location: url:https://github.com/rhpds/mca-coolstore
-    backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
+    backstage.io/techdocs-ref: url:__RHOAI3_PLATFORM_TREE_URL__
   links:
     - url: https://github.com/rhpds/mca-coolstore
       title: Source Repo
@@ -66,9 +66,9 @@ metadata:
     Quarkus inventory service used for AI-assisted engineering and golden-path
     delivery work connected to the Coolstore domain.
   annotations:
-    backstage.io/source-location: url:https://github.com/adnan-drina/coolstore-inventory-service
-    backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
-    github.com/project-slug: adnan-drina/coolstore-inventory-service
+    backstage.io/source-location: url:__RHOAI3_GITLAB_BASE_URL__/__RHOAI3_GITLAB_WORKLOAD_GROUP__/coolstore-inventory-service
+    backstage.io/techdocs-ref: url:__RHOAI3_PLATFORM_TREE_URL__
+    gitlab.com/project-slug: __RHOAI3_GITLAB_WORKLOAD_GROUP__/coolstore-inventory-service
     backstage.io/kubernetes-id: coolstore-inventory-service
     janus-idp.io/tekton: coolstore-inventory-service
     argocd/app-name: 070-advanced-app-platform
@@ -80,8 +80,16 @@ metadata:
     # template turns them into the workspace's in-cluster hostAlias.
     rhoai3.redhat.com/maas-host: __RHOAI3_MAAS_HOST__
     rhoai3.redhat.com/maas-internal-ip: __RHOAI3_MAAS_INTERNAL_IP__
+    rhoai3.redhat.com/gitlab-host: __RHOAI3_GITLAB_HOST__
+    rhoai3.redhat.com/gitlab-base-url: __RHOAI3_GITLAB_BASE_URL__
+    rhoai3.redhat.com/gitlab-workload-group: __RHOAI3_GITLAB_WORKLOAD_GROUP__
+    rhoai3.redhat.com/gitlab-registration-project-id: __RHOAI3_GITLAB_REGISTRATION_PROJECT_ID__
+    rhoai3.redhat.com/devspaces-base-url: __RHOAI3_DEVSPACES_BASE_URL__
+    rhoai3.redhat.com/application-golden-url: __RHOAI3_APPLICATION_GOLDEN_URL__
+    rhoai3.redhat.com/mta-hub-url: __RHOAI3_MTA_HUB_URL__
+    rhoai3.redhat.com/migration-golden-url: __RHOAI3_MIGRATION_GOLDEN_URL__
   links:
-    - url: https://github.com/adnan-drina/coolstore-inventory-service
+    - url: __RHOAI3_GITLAB_BASE_URL__/__RHOAI3_GITLAB_WORKLOAD_GROUP__/coolstore-inventory-service
       title: Source Repo
       icon: github
     - url: "https://coolstore-inventory-route.placeholder.example.com/api/inventory"
@@ -191,7 +199,7 @@ metadata:
   description: Golden-path template for stage 070 AI-agentic development
 spec:
   type: url
-  target: https://github.com/adnan-drina/rhoai3-coding-demo/blob/__RHOAI3_DEMO_LOCATION_REF__/gitops/stages/070-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/template.yaml
+  target: __RHOAI3_PLATFORM_BLOB_URL__/gitops/stages/070-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/template.yaml
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Location
@@ -200,4 +208,4 @@ metadata:
   description: Golden-path template for stage 080 AI-autonomous migration
 spec:
   type: url
-  target: https://github.com/adnan-drina/rhoai3-coding-demo/blob/__RHOAI3_DEMO_LOCATION_REF__/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml
+  target: __RHOAI3_PLATFORM_BLOB_URL__/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml

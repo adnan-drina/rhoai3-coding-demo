@@ -1,127 +1,98 @@
-# Per-project delivery pipeline (instantiated from the project-pipeline
-# template into each project namespace). Stages: clone -> maven build ->
-# SonarQube quality gate -> image build and push -> :latest retag ->
-# deploy pinned to the revision tag (V6 P4.1 — not floating :latest).
-# PipelineRuns are created by the shared webhook dispatcher (single GitHub
-# App endpoint) in this pipeline's own namespace.
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: app-push
   annotations:
-    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-wave: '20'
 spec:
   params:
-    - name: repo-url
-      type: string
-      description: Clone URL of the repository that triggered the run
-    - name: repo-name
-      type: string
-      description: Repository name (used as SonarQube project key and image name)
-    - name: revision
-      type: string
-      description: Git revision to build (webhook head SHA)
+  - name: repo-url
+    type: string
+    description: Clone URL of the repository that triggered the run
+  - name: repo-name
+    type: string
+    description: Repository name (used as SonarQube project key and image name)
+  - name: revision
+    type: string
+    description: Git revision to build (webhook head SHA)
+  results:
+  - name: SOURCE_COMMIT
+    value: $(tasks.clone-source.results.COMMIT)
+  - name: IMAGE_DIGEST
+    value: $(tasks.build-and-push.results.IMAGE_DIGEST)
+  - name: IMAGE_URL
+    value: $(tasks.build-and-push.results.IMAGE_URL)
+  - name: DEPLOYMENT_COMMIT
+    value: $(tasks.deploy.results.DEPLOYMENT_COMMIT)
   workspaces:
-    - name: source
-    - name: basic-auth
-    - name: dockerconfig
-    - name: maven-cache
+  - name: source
+  - name: basic-auth
+  - name: maven-cache
   tasks:
-    - name: resolve-image-registry
-      taskRef:
-        name: resolve-image-registry
-    - name: clone-source
-      taskRef:
-        resolver: cluster
-        params:
-          - name: kind
-            value: task
-          - name: name
-            value: git-clone
-          - name: namespace
-            value: openshift-pipelines
-      params:
-        - name: URL
-          value: $(params.repo-url)
-        - name: REVISION
-          value: $(params.revision)
-      workspaces:
-        - name: output
-          workspace: source
-        - name: basic-auth
-          workspace: basic-auth
-    - name: maven-build
-      runAfter:
-        - clone-source
-      taskRef:
-        name: maven-build
-      workspaces:
-        - name: source
-          workspace: source
-        - name: maven-cache
-          workspace: maven-cache
-    - name: sonar-scan
-      runAfter:
-        - maven-build
-      taskRef:
-        name: sonar-scan
-      params:
-        - name: SONAR_PROJECT_KEY
-          value: $(params.repo-name)
-      workspaces:
-        - name: source
-          workspace: source
-        - name: maven-cache
-          workspace: maven-cache
-    - name: build-and-push
-      runAfter:
-        - sonar-scan
-        - resolve-image-registry
-      taskRef:
-        resolver: cluster
-        params:
-          - name: kind
-            value: task
-          - name: name
-            value: buildah
-          - name: namespace
-            value: openshift-pipelines
-      params:
-        - name: IMAGE
-          value: "$(tasks.resolve-image-registry.results.registry)/$(params.repo-name):$(params.revision)"
-        - name: DOCKERFILE
-          value: Containerfile
-        - name: STORAGE_DRIVER
-          value: vfs
-      workspaces:
-        - name: source
-          workspace: source
-        - name: dockerconfig
-          workspace: dockerconfig
-    - name: tag-latest
-      runAfter:
-        - build-and-push
-      taskRef:
-        name: tag-latest
-      params:
-        - name: IMAGE
-          value: "$(tasks.resolve-image-registry.results.registry)/$(params.repo-name):$(params.revision)"
-      workspaces:
-        - name: dockerconfig
-          workspace: dockerconfig
-    - name: deploy
-      runAfter:
-        - tag-latest
-      taskRef:
-        name: deploy-app
-      params:
-        - name: REPO_NAME
-          value: "$(params.repo-name)"
-        # V6 P4.1: pin Deployment to the immutable revision tag built by this
-        # run. :latest retag remains for humans/tools; deploy must not race
-        # on a floating tag + force-restart.
-        - name: IMAGE
-          value: "$(tasks.resolve-image-registry.results.registry)/$(params.repo-name):$(params.revision)"
-      workspaces:
-        - name: source
-          workspace: source
+  - name: resolve-image-registry
+    taskRef:
+      name: resolve-image-registry
+    params:
+    - name: IMAGE_NAME
+      value: $(params.repo-name)
+  - name: clone-source
+    taskRef:
+      name: gitlab-clone
+    params:
+    - name: URL
+      value: $(params.repo-url)
+    - name: REVISION
+      value: $(params.revision)
+    workspaces:
+    - name: output
+      workspace: source
+    - name: basic-auth
+      workspace: basic-auth
+  - name: maven-build
+    runAfter:
+    - clone-source
+    taskRef:
+      name: maven-build
+    workspaces:
+    - name: source
+      workspace: source
+    - name: maven-cache
+      workspace: maven-cache
+  - name: sonar-scan
+    runAfter:
+    - maven-build
+    taskRef:
+      name: sonar-scan
+    params:
+    - name: SONAR_PROJECT_KEY
+      value: $(params.repo-name)
+    workspaces:
+    - name: source
+      workspace: source
+    - name: maven-cache
+      workspace: maven-cache
+  - name: build-and-push
+    runAfter:
+    - sonar-scan
+    - resolve-image-registry
+    taskRef:
+      name: build-internal-image
+    params:
+    - name: IMAGE
+      value: $(tasks.resolve-image-registry.results.registry)/$(params.repo-name):$(tasks.clone-source.results.COMMIT)
+    workspaces:
+    - name: source
+      workspace: source
+  - name: deploy
+    runAfter:
+    - build-and-push
+    taskRef:
+      name: promote-gitlab-runtime
+    params:
+    - name: IMAGE
+      value: $(tasks.build-and-push.results.IMAGE_URL)
+    - name: SOURCE_COMMIT
+      value: $(tasks.clone-source.results.COMMIT)
+    workspaces:
+    - name: source
+      workspace: source

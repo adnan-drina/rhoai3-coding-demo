@@ -1,0 +1,129 @@
+global:
+  edition: ce
+  hosts:
+    domain: apps.example.invalid
+    https: true
+    gitlab:
+      name: gitlab.example.invalid
+  ingress:
+    class: none
+    configureCertmanager: false
+    annotations:
+      route.openshift.io/termination: edge
+      route.openshift.io/insecureEdgeTerminationPolicy: Redirect
+    enabled: false
+    tls:
+      enabled: false
+  initialRootPassword:
+    secret: gitlab-initial-root
+    key: password
+  psql:
+    host: gitlab-postgresql
+    port: 5432
+    username: gitlab
+    database: gitlabhq_production
+    password:
+      secret: gitlab-database
+      key: password
+  redis:
+    host: gitlab-valkey
+    port: 6379
+    auth:
+      enabled: true
+      secret: gitlab-cache
+      key: password
+  minio:
+    enabled: false
+  registry:
+    enabled: false
+  serviceAccount:
+    enabled: true
+    create: false
+    name: gitlab-app-nonroot
+    automountServiceAccountToken: false
+  appConfig:
+    object_store:
+      enabled: false
+    lfs:
+      enabled: true
+      proxy_download: true
+      bucket: pending-lfs
+      connection:
+        secret: gitlab-storage-lfs
+        key: connection
+    artifacts:
+      enabled: true
+      proxy_download: true
+      bucket: pending-artifacts
+      connection:
+        secret: gitlab-storage-artifacts
+        key: connection
+    uploads:
+      enabled: true
+      proxy_download: true
+      bucket: pending-uploads
+      connection:
+        secret: gitlab-storage-uploads
+        key: connection
+    packages:
+      enabled: true
+      proxy_download: true
+      bucket: pending-packages
+      connection:
+        secret: gitlab-storage-packages
+        key: connection
+    backups:
+      bucket: pending-backups
+      tmpBucket: pending-backup-tmp
+    omniauth:
+      enabled: true
+      allowSingleSignOn:
+      - openid_connect
+      blockAutoCreatedUsers: false
+      providers:
+      - secret: gitlab-oidc
+        key: provider
+  gatewayApi:
+    enabled: false
+    installEnvoy: false
+    configureCertmanager: false
+  kas:
+    enabled: false
+nginx-ingress:
+  enabled: false
+prometheus:
+  install: false
+postgresql:
+  install: false
+redis:
+  install: false
+registry:
+  enabled: false
+gitlab-runner:
+  install: false
+gitlab:
+  gitlab-shell:
+    enabled: false
+  toolbox:
+    backups:
+      objectStorage:
+        backend: s3
+        config:
+          secret: gitlab-storage-backups
+          key: config
+      cron:
+        enabled: true
+        schedule: 0 2 * * *
+  gitaly:
+    persistence:
+      storageClass: gp3-csi
+      size: 20Gi
+  webservice:
+    minReplicas: 1
+    maxReplicas: 1
+  sidekiq:
+    minReplicas: 1
+    maxReplicas: 1
+installCertmanager: false
+certmanager-issuer:
+  email: noreply@example.invalid

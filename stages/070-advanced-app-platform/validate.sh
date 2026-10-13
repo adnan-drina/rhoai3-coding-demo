@@ -1,305 +1,104 @@
 #!/usr/bin/env bash
-# Stage 070: Advanced Application Platform — Validation Script
+# Stage 070: static authoring checks or read-only deployed-state validation.
 set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PYTHON="${PYTHON:-python3}"
+if [[ "${1:-}" == --static ]]; then
+  for test in internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py; do
+    "$PYTHON" "$SCRIPT_DIR/tests/$test"
+  done
+  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/jobs/catalog/render_catalog.test.py"
+  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/app-migration-template.test.py"
+  kustomize build "$REPO_ROOT/gitops/stages/070-advanced-app-platform/base" >/dev/null
+  kustomize build "$REPO_ROOT/gitops/stages/070-advanced-app-platform/overlays/slim" >/dev/null
+  bash -n "$SCRIPT_DIR/deploy.sh" "$SCRIPT_DIR/validate.sh"
+  echo 'PASS: Stage 070 authoring checks. Live deployment and model-dependent checks are separate.'
+  exit 0
+fi
+[[ $# -eq 0 ]] || { echo 'Usage: validate.sh [--static]' >&2; exit 1; }
 source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 
-echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║  Stage 070: Advanced Application Platform                         ║"
-echo "╚══════════════════════════════════════════════════════════════════╝"
-echo ""
+log_step 'Stage 070 GitOps and selected operators'
+check_argocd_app '070-advanced-app-platform'
+for row in \
+  'openshift-devspaces devspaces devspacesoperator.v3.30.2' \
+  'rhdh-operator rhdh rhdh-operator.v1.10.5' \
+  'openshift-mta mta-operator mta-operator.v8.3.0' \
+  'openshift-operators openshift-pipelines-operator-rh openshift-pipelines-operator-rh.v1.24.0' \
+  'openshift-operators rhtas-operator rhtas-operator.v1.5.0'; do
+  read -r ns subscription csv <<< "$row"
+  check "$subscription installed revision" \
+    "oc get subscription '$subscription' -n '$ns' -o jsonpath='{.status.installedCSV}'" "$csv"
+  check "$csv succeeded" "oc get csv '$csv' -n '$ns' -o jsonpath='{.status.phase}'" 'Succeeded'
+done
 
-log_step "Argo CD Application"
-check_argocd_app "070-advanced-app-platform"
-
-log_step "Trusted-delivery operators"
-check_csv_succeeded "openshift-operators" "Red Hat OpenShift Pipelines"
-check_csv_succeeded "openshift-operators" "Red Hat Trusted Artifact Signer"
-
-log_step "Pipelines runtime"
-check "TektonConfig ready" \
-  "oc get tektonconfig config -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
-  "True"
-check_warn "Securesign instance exists (arrives with stage implementation)" \
-  "oc get securesign -A --no-headers 2>/dev/null | wc -l | tr -d ' '" \
-  "1"
-
-log_step "Pipeline dispatcher + per-project pipelines"
-check "Webhook dispatcher EventListener exists" \
-  "oc get eventlistener app-platform-listener -n app-platform-build -o jsonpath='{.metadata.name}'" \
-  "app-platform-listener"
-check "Webhook dispatcher deployment has a ready replica" \
-  "oc get deployment el-app-platform-listener -n app-platform-build -o jsonpath='{.status.readyReplicas}'" \
-  "1"
-check "project-provisioner CronJob exists" \
-  "oc get cronjob project-provisioner -n app-platform-build -o jsonpath='{.metadata.name}'" \
-  "project-provisioner"
-check "coolstore-dev owns its app-push pipeline" \
-  "oc get pipeline.tekton.dev app-push -n coolstore-dev -o jsonpath='{.metadata.name}'" \
-  "app-push"
-check "Scaffolded-project bootstrap trigger wired (stage 070 entry)" \
-  "oc get eventlistener app-platform-listener -n app-platform-build -o jsonpath='{.spec.triggers[?(@.name==\"scaffolded-project-bootstrap\")].name}'" \
-  "scaffolded-project-bootstrap"
-check "Scaffolded-project push trigger wired" \
-  "oc get eventlistener app-platform-listener -n app-platform-build -o jsonpath='{.spec.triggers[?(@.name==\"scaffolded-project-push\")].name}'" \
-  "scaffolded-project-push"
-check "Dispatcher may create per-project Argo Applications" \
-  "oc auth can-i create applications.argoproj.io -n openshift-gitops --as=system:serviceaccount:app-platform-build:pipeline" \
-  "yes"
-check "scaffolded-projects AppProject scopes self-service stacks" \
-  "oc get appproject scaffolded-projects -n openshift-gitops -o jsonpath='{.spec.destinations[0].namespace}'" \
-  "*-dev"
-check_warn "GitHub webhook secret provisioned (set GITHUB_WEBHOOK_SECRET in .env)" \
-  "oc get secret github-webhook-secret -n app-platform-build -o jsonpath='{.metadata.name}' 2>/dev/null || echo missing" \
-  "github-webhook-secret"
-
-log_step "SonarQube"
-check "SonarQube deployment ready" \
-  "oc get deployment sonarqube -n sonarqube -o jsonpath='{.status.readyReplicas}'" \
-  "1"
-check "Quality-gate scanner credentials provisioned (source)" \
-  "oc get secret sonarqube-credentials -n app-platform-build -o jsonpath='{.metadata.name}' 2>/dev/null || echo missing" \
-  "sonarqube-credentials"
-check "Scanner credentials distributed to coolstore-dev" \
-  "oc get secret sonarqube-credentials -n coolstore-dev -o jsonpath='{.metadata.name}' 2>/dev/null || echo missing" \
-  "sonarqube-credentials"
-
-log_step "Dev Spaces (devspaces component)"
-check "CheCluster phase Active" \
-  "oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.status.chePhase}'" \
-  "Active"
-check "migration workspace MaaS egress NetworkPolicy" \
-  "oc get networkpolicy migration-workspace-maas-egress -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
-  "migration-workspace-maas-egress"
-check "factory reuse links and migration duplicate admission (server dry runs)" \
-  "python3 '${REPO_ROOT}/scripts/demo/check-workspace-creation.py' --live && echo WORKSPACE_CREATION_OK" \
-  "WORKSPACE_CREATION_OK"
-
-log_step "Identity (identity component)"
-check_csv_succeeded "rhbk" "rhbk-operator"
-check "Keycloak platform-rhbk Ready" \
-  "oc get keycloak platform-rhbk -n rhbk -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
-  "True"
-check "platform realm import Done" \
-  "oc get keycloakrealmimport platform-realm -n rhbk -o jsonpath='{.status.conditions[?(@.type==\"Done\")].status}'" \
-  "True"
-check "platform-rhbk route exists" \
-  "oc get route platform-rhbk -n rhbk -o jsonpath='{.metadata.name}'" \
-  "platform-rhbk"
-RHBK_HOST=$(oc get route platform-rhbk -n rhbk -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
-if [[ -n "$RHBK_HOST" ]]; then
-    check_http_code "platform realm OIDC discovery" \
-      "https://${RHBK_HOST}/realms/platform/.well-known/openid-configuration" "200"
-fi
-PLATFORM_OAUTH_REDIRECT=$(oc get oauthclient platform-keycloak -o jsonpath='{.redirectURIs[0]}' 2>/dev/null || echo "")
-if [[ -n "$PLATFORM_OAUTH_REDIRECT" ]] && [[ "$PLATFORM_OAUTH_REDIRECT" != *"placeholder"* ]]; then
-    echo -e "${GREEN}[PASS]${NC} OAuthClient platform-keycloak redirect URI: ${PLATFORM_OAUTH_REDIRECT}"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+log_step 'GitLab native deployment and scoped NooBaa storage'
+check 'GitLab release recorded after migrations/readiness' \
+  "oc get configmap gitlab-gitlab-chart-info -n gitlab-system -o jsonpath='{.data.gitlabVersion}'" 'v19.4.2'
+check 'GitLab webservice ready' "oc get deployment gitlab-webservice-default -n gitlab-system -o jsonpath='{.status.readyReplicas}'" '1'
+check 'GitLab Gitaly ready' "oc get statefulset gitlab-gitaly -n gitlab-system -o jsonpath='{.status.readyReplicas}'" '1'
+check 'GitLab sidekiq ready' "oc get deployment gitlab-sidekiq-all-in-1-v2 -n gitlab-system -o jsonpath='{.status.readyReplicas}'" '1'
+for bucket in lfs artifacts uploads packages backups backup-tmp; do
+  check "GitLab $bucket bucket bound" "oc get obc 'gitlab-$bucket' -n gitlab-system -o jsonpath='{.status.phase}'" 'Bound'
+done
+GITLAB_HOST=$(oc get route gitlab -n gitlab-system -o jsonpath='{.spec.host}' 2>/dev/null || true)
+if [[ -n "$GITLAB_HOST" ]]; then
+  check_http_code 'GitLab readiness endpoint' "https://${GITLAB_HOST}/-/readiness" '200'
 else
-    echo -e "${RED}[FAIL]${NC} OAuthClient platform-keycloak redirect URI is placeholder or missing"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+  check 'GitLab Route exists' 'echo missing' 'present'
 fi
+for pair in 'rhdh gitlab-publisher' 'rhdh gitlab-catalog-reader' 'app-platform-build gitlab-enroller' 'openshift-devspaces gitlab-oauth-config' 'gitlab-system gitlab-oidc'; do
+  read -r ns name <<< "$pair"
+  check "Scoped integration Secret $ns/$name exists" "oc get secret '$name' -n '$ns' -o jsonpath='{.metadata.name}'" "$name"
+done
+check 'GitLab enrollment reconciler installed' "oc get cronjob project-provisioner -n app-platform-build -o jsonpath='{.metadata.name}'" 'project-provisioner'
 
-log_step "MTA (mta component)"
-check "Tackle CR exists" \
-  "oc get tackle mta -n openshift-mta -o jsonpath='{.metadata.name}'" \
-  "mta"
+log_step 'Existing identity and Dev Spaces'
+check 'Reused Keycloak Ready' "oc get keycloak keycloak -n keycloak -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" 'True'
+check 'Platform realm imported' "oc get keycloakrealmimport platform-realm -n keycloak -o jsonpath='{.status.conditions[?(@.type==\"Done\")].status}'" 'True'
+check 'Dev Spaces Active' "oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.status.chePhase}'" 'Active'
+check 'Dev Spaces per-workspace storage' "oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.spec.devEnvironments.storage.pvcStrategy}'" 'per-workspace'
+check 'Dev Spaces GitLab OAuth configured' "oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.spec.gitServices.gitlab[0].secretName}'" 'gitlab-oauth-config'
+for ns in wksp-ai-developer wksp-ai-admin; do
+  check "$ns standing workspace uses GitLab" "oc get devworkspace agentic-coolstore -n '$ns' -o jsonpath='{.spec.template.projects[0].git.remotes.origin}'" "https://${GITLAB_HOST}/rhoai-workloads/coolstore-inventory-service.git"
+done
 
-log_step "Coolstore dev environment (coolstore component)"
-check "coolstore-inventory-service deployment ready" \
-  "oc get deployment coolstore-inventory-service -n coolstore-dev -o jsonpath='{.status.availableReplicas}'" \
-  "1"
-COOLSTORE_ROUTE=$(oc get route coolstore-inventory-service -n coolstore-dev -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
-if [[ -n "$COOLSTORE_ROUTE" ]]; then
-    check_http_code "Coolstore inventory health: https://${COOLSTORE_ROUTE}/q/health/ready" \
-      "https://${COOLSTORE_ROUTE}/q/health/ready" "200"
-else
-    echo -e "${YELLOW}[WARN]${NC} coolstore-inventory-service route not found"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
-fi
-COOLSTORE_GREEN_RUNS=$(oc get pipelinerun -n coolstore-dev \
-  -l backstage.io/kubernetes-id=coolstore-inventory-service \
-  -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Succeeded")].status}{"\n"}{end}' 2>/dev/null \
-  | grep -c "True" || true)
-if [[ "$COOLSTORE_GREEN_RUNS" -ge 1 ]]; then
-    echo -e "${GREEN}[PASS]${NC} Successful coolstore pipeline run exists (${COOLSTORE_GREEN_RUNS} green)"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${RED}[FAIL]${NC} No successful coolstore pipeline run — run stages/070-advanced-app-platform/deploy.sh to seed it"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-fi
+log_step 'SonarQube and internal-registry delivery'
+check 'SonarQube ready' "oc get statefulset sonarqube -n sonarqube -o jsonpath='{.status.readyReplicas}'" '1'
+SONAR_HOST=$(oc get route sonarqube -n sonarqube -o jsonpath='{.spec.host}' 2>/dev/null || true)
+if [[ -n "$SONAR_HOST" ]]; then check_http_code 'SonarQube reachable' "https://${SONAR_HOST}/api/system/status" '200'; fi
+check 'TektonConfig ready' "oc get tektonconfig config -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" 'True'
+check 'Internal registry available' "oc get clusteroperator image-registry -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" 'True'
+check 'Coolstore pipeline installed' "oc get pipeline app-push -n coolstore-dev -o jsonpath='{.metadata.name}'" 'app-push'
+check 'Coolstore initial-build receipt bound' "oc get configmap initial-build-receipt -n coolstore-dev -o jsonpath='{.data.source_commit}' | contains -E '^[0-9a-f]{40}$' && echo BOUND" 'BOUND'
+check 'Coolstore uses digest from internal registry' "oc get deployment coolstore-inventory-service -n coolstore-dev -o jsonpath='{.spec.template.spec.containers[0].image}' | contains -E '^image-registry.openshift-image-registry.svc:5000/coolstore-dev/coolstore-inventory-service@sha256:[0-9a-f]{64}$' && echo PINNED" 'PINNED'
+check 'Coolstore deployment ready' "oc get deployment coolstore-inventory-service -n coolstore-dev -o jsonpath='{.status.readyReplicas}'" '1'
+check 'Runtime is reconciled from delivery Git' "oc get application runtime-coolstore-inventory-service -n openshift-gitops -o jsonpath='{.spec.source.repoURL}'" "https://${GITLAB_HOST}/rhoai-delivery/"
+check 'Webhook listener ready' "oc get deployment el-gitlab -n coolstore-dev -o jsonpath='{.status.readyReplicas}'" '1'
+check 'Pipeline may push its own images' "oc auth can-i update imagestreams/layers -n coolstore-dev --as=system:serviceaccount:coolstore-dev:image-builder" 'yes'
+check 'Pipeline cannot push another project image' "oc auth can-i update imagestreams/layers -n app-platform-build --as=system:serviceaccount:coolstore-dev:image-builder" 'no'
 
-log_step "RHDH Operator"
-check_csv_succeeded "rhdh-operator" "rhdh"
+log_step 'MTA 8.3 AI components configured (no inference request)'
+check 'MTA AI proxy enabled' "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_proxy_enabled}'" 'true'
+check 'MTA Solution Server enabled' "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_solution_server_enabled}'" 'true'
+check 'MTA agentic component enabled' "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.agentic_enabled}'" 'true'
+check 'MTA native Gateway credential binding' "oc get gateways.konveyor.io maas-qwen -n openshift-mta -o jsonpath='{.spec.credentialRef.secretName}'" 'kai-api-keys'
+check 'MTA credential provisioned' "oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.metadata.name}'" 'kai-api-keys'
+check 'MTA uses governed MaaS endpoint' "oc get gateways.konveyor.io maas-qwen -n openshift-mta -o jsonpath='{.spec.endpoint}' | contains -E '^https://maas\\..*/v1$' && echo GOVERNED" 'GOVERNED'
 
-log_step "RHDH Instance"
-check "Backstage CR exists" \
-  "oc get backstage developer-hub -n rhdh -o jsonpath='{.metadata.name}'" \
-  "developer-hub"
-check "RHDH app config mounted by Backstage CR" \
-  "oc get backstage developer-hub -n rhdh -o jsonpath='{.spec.application.appConfig.configMaps[0].name}'" \
-  "app-config-rhdh"
-check "RHDH dynamic plugins config mounted by Backstage CR" \
-  "oc get backstage developer-hub -n rhdh -o jsonpath='{.spec.application.dynamicPluginsConfigMapName}'" \
-  "dynamic-plugins-rhdh"
+log_step 'Signing service and portal'
+check 'TAS service Ready' "oc get securesign platform -n trusted-artifact-signer -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" 'True'
+check 'TAS uses existing platform realm' "oc get securesign platform -n trusted-artifact-signer -o jsonpath='{.spec.fulcio.config.oidcIssuers[0].issuer}' | contains -E '^https://keycloak.*\/realms/platform$' && echo CONFIGURED" 'CONFIGURED'
+check 'Portal instance exists' "oc get backstage developer-hub -n rhdh -o jsonpath='{.metadata.name}'" 'developer-hub'
+check 'Portal catalog bundle stamped' "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\\.redhat\\.com/catalog-bundle}' | contains -E '^[0-9a-f]{64}$' && echo STAMPED" 'STAMPED'
+check 'Portal catalog has no unresolved placeholders' "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | '$PYTHON' -c 'import sys; s=sys.stdin.read(); assert s and \"__RHOAI3_\" not in s and \"placeholder.example.com\" not in s; print(\"RESOLVED\")'" 'RESOLVED'
+check 'Portal templates use private GitLab mirror' "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | contains -E 'target: https://gitlab\\..*/-/blob/[0-9a-f]{40}/.*template.yaml' && echo GITLAB" 'GITLAB'
+RHDH_HOST=$(oc get route -n rhdh -l app.kubernetes.io/name=backstage --no-headers 2>/dev/null | awk 'NR==1 {print $2}' || true)
+if [[ -n "$RHDH_HOST" ]]; then check_http_code 'Developer Hub reachable' "https://${RHDH_HOST}" '200,302'; fi
 
-log_step "RHDH Deployment"
-RHDH_DEPLOY=$(oc get deployment -n rhdh --no-headers 2>/dev/null | grep backstage | awk '{print $1}' | head -1 || echo "")
-if [[ -n "$RHDH_DEPLOY" ]]; then
-    check "RHDH deployment ready" \
-      "oc get deployment ${RHDH_DEPLOY} -n rhdh -o jsonpath='{.status.readyReplicas}'" \
-      "1"
-else
-    echo -e "${RED}[FAIL]${NC} RHDH deployment not found"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-fi
-
-log_step "RHDH Route"
-RHDH_ROUTE=$(oc get route -n rhdh --no-headers 2>/dev/null | grep backstage | awk '{print $2}' | head -1 || echo "")
-if [[ -n "$RHDH_ROUTE" ]]; then
-    check_http_code "RHDH UI: https://${RHDH_ROUTE}" "https://${RHDH_ROUTE}" "200,302"
-else
-    echo -e "${YELLOW}[WARN]${NC} RHDH route not found"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
-fi
-
-log_step "RHDH Secrets (non-placeholder)"
-check_secret_value "RHDH_BASE_URL" "rhdh" "rhdh-secrets" "RHDH_BASE_URL"
-check_secret_value "RHDH_OIDC_CLIENT_SECRET" "rhdh" "rhdh-secrets" "RHDH_OIDC_CLIENT_SECRET"
-check_secret_value "SESSION_SECRET" "rhdh" "rhdh-secrets" "SESSION_SECRET"
-
-CATALOG_URL=$(oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.RHDH_CATALOG_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-APP_REPO_URL=$(oc get application 070-advanced-app-platform -n openshift-gitops -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || echo "")
-APP_TARGET_REVISION=$(oc get application 070-advanced-app-platform -n openshift-gitops -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || echo "")
-REPO_NO_GIT="${APP_REPO_URL%.git}"
-EXPECTED_CATALOG_URL=""
-if [[ "$REPO_NO_GIT" =~ ^https://github.com/([^/]+)/([^/]+)$ ]] && [[ -n "$APP_TARGET_REVISION" ]]; then
-    EXPECTED_CATALOG_URL="https://raw.githubusercontent.com/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}/${APP_TARGET_REVISION}/gitops/stages/070-advanced-app-platform/base/rhdh/catalog/all.yaml"
-fi
-if [[ "$CATALOG_URL" == "/opt/app-root/src/catalog/all.yaml" ]]; then
-    echo -e "${GREEN}[PASS]${NC} RHDH_CATALOG_URL uses generated runtime catalog: ${CATALOG_URL}"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-elif [[ -n "$EXPECTED_CATALOG_URL" ]] && [[ "$CATALOG_URL" == "$EXPECTED_CATALOG_URL" ]]; then
-    echo -e "${GREEN}[PASS]${NC} RHDH_CATALOG_URL matches Argo CD source: ${CATALOG_URL}"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-elif [[ -n "$CATALOG_URL" ]] && [[ "$CATALOG_URL" != *"placeholder"* ]]; then
-    echo -e "${YELLOW}[WARN]${NC} RHDH_CATALOG_URL is set but does not match Argo CD source: ${CATALOG_URL}"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
-else
-    echo -e "${RED}[FAIL]${NC} RHDH_CATALOG_URL is placeholder or missing"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-fi
-
-RUNTIME_CATALOG=$(oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\.yaml}' 2>/dev/null || echo "")
-if [[ "$RUNTIME_CATALOG" == *"devspaces"* && "$RUNTIME_CATALOG" == *"placeholder.example.com"* ]]; then
-    echo -e "${RED}[FAIL]${NC} Runtime catalog still contains Dev Spaces placeholder"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-elif [[ "$RUNTIME_CATALOG" == *"feature/coolstore-inventory-service-plan"* ]] || \
-     [[ "$RUNTIME_CATALOG" == *"coolstore-inventory-service/tree/feature"* ]]; then
-    echo -e "${RED}[FAIL]${NC} Runtime catalog still points coolstore-inventory-service at the retired feature branch"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-elif [[ "$RUNTIME_CATALOG" == *"/dashboard/#/ide/wksp-ai-developer/agentic-coolstore"* ]]; then
-    # coolstore-inventory-service is the only Component (2026-07-13 catalog
-    # scope decision) — its Dev Spaces link opens the pre-provisioned
-    # agentic-coolstore workspace directly (factory URL retired 2026-07-14;
-    # the direct link only resolves for the ai-developer persona).
-    echo -e "${GREEN}[PASS]${NC} Runtime catalog links the pre-provisioned agentic-coolstore workspace"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing the agentic-coolstore Dev Spaces link"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
-fi
-if [[ "$RUNTIME_CATALOG" == *"https://rhdh.placeholder.example.com"* || "$RUNTIME_CATALOG" == *"__RHOAI3_DEMO_REVISION__"* || "$RUNTIME_CATALOG" == *"__RHOAI3_DEMO_LOCATION_REF__"* ]]; then
-    echo -e "${RED}[FAIL]${NC} Runtime catalog still contains unresolved placeholders"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-# Entity links must be absolute: the catalog entity policy rejects relative
-# URLs and silently drops the whole entity (observed live 2026-07-13 — all
-# Components vanished from the catalog over /docs/... TechDocs links).
-elif echo "$RUNTIME_CATALOG" | grep -qE '^\s+- url: "?/'; then
-    echo -e "${RED}[FAIL]${NC} Runtime catalog contains relative link URLs — entities will be rejected at ingestion"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-elif [[ "$RUNTIME_CATALOG" == *"backstage.io/techdocs-ref"* ]]; then
-    echo -e "${GREEN}[PASS]${NC} Runtime catalog has TechDocs refs and no relative link URLs"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing TechDocs refs"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
-fi
-
-# Workspace devfile aliases the public MaaS hostname to the in-cluster gateway
-# Service (stage 040, fixed ClusterIP): the public ELB path drops silent
-# response streams (measured 2026-09-10, pilot v6).
-# The MaaS hostAlias is stamped by the factory at creation (2026-09-24; it was a
-# manual Operator step before, and v12 started without it). It comes from two
-# VALUES the catalog generator reads from the Gateway and its internal Service
-# and validates (RFC 1123 host, IPv4), never from URL surgery: deriving it from a
-# scaffolder URL rendered "maas.<domain>/#https://github.com/<owner>/<repo>" and
-# made the v7 workspace deployment invalid (2026-09-10).
-check "060 app-migration skeleton devfile does not template the MaaS hostAlias from a URL" \
-  "grep -c 'values.devspacesUrl | replace' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
-  "0"
-check "060 the factory stamps the in-cluster MaaS hostAlias from validated platform values" \
-  "T='${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh'; grep -qF 'hostAliases:' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF '\${{ values.maasInternalIp }}' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF '\${{ values.maasHost }}' \"\$T/templates/app-migration/skeleton/devfile.yaml\" && grep -qF \"annotations['rhoai3.redhat.com/maas-host']\" \"\$T/templates/app-migration/template.yaml\" && grep -qF 'rhoai3.redhat.com/maas-internal-ip: __RHOAI3_MAAS_INTERNAL_IP__' \"\$T/catalog/all.yaml\" && grep -qF 'is not an RFC 1123 host' \"\$T/jobs/catalog/render_catalog.py\" && echo FACTORY_STAMPS_MAAS_ROUTE || echo MAAS_ROUTE_NOT_STAMPED" \
-  "FACTORY_STAMPS_MAAS_ROUTE"
-# B1 (2026-09-24): a migration workspace without the in-cluster MaaS route is
-# never rendered (the template refuses with FACTORY_MAAS_ROUTE_MISSING), and
-# the platform's route values reach the workspace env the startup gate reads.
-check "060 app-migration template refuses to render without the MaaS route, and stamps the route env" \
-  "T='${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration'; grep -qF 'id: require-maas-route' \"\$T/template.yaml\" && grep -qF 'FACTORY_MAAS_ROUTE_MISSING' \"\$T/template.yaml\" && grep -qF 'name: RHOAI3_MAAS_HOST' \"\$T/skeleton/devfile.yaml\" && grep -qF 'name: RHOAI3_MAAS_INTERNAL_IP' \"\$T/skeleton/devfile.yaml\" && echo ROUTE_REQUIRED || echo ROUTE_OPTIONAL" \
-  "ROUTE_REQUIRED"
-# B2 (2026-09-24): the catalog generator, its renderer, the catalog and every
-# template and skeleton file are ONE content-addressed bundle; the generator
-# publishes only what the synced revision holds, pins every link to it, and
-# keeps the last good catalog on any refusal. The suite runs the real
-# generate.sh against a fake oc and a file:// repository.
-check "060 RHDH catalog bundle: one revision, skew refused, last good catalog kept" \
-  "python3 '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/base/rhdh/jobs/catalog/render_catalog.test.py' >/dev/null 2>&1 && echo BUNDLE_OK || echo BUNDLE_BROKEN" \
-  "BUNDLE_OK"
-check "060 live runtime catalog carries its bundle id and a pinned revision" \
-  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\\.redhat\\.com/catalog-bundle}' 2>/dev/null | contains -E '^[0-9a-f]{64}$' && echo LIVE_BUNDLE_STAMPED || echo LIVE_BUNDLE_UNSTAMPED" \
-  "LIVE_BUNDLE_STAMPED"
-check "060 live catalog publishes the validated in-cluster MaaS route on the platform entity" \
-  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' 2>/dev/null | contains -E 'rhoai3.redhat.com/maas-internal-ip: [0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' && echo LIVE_CATALOG_HAS_MAAS_ROUTE || echo LIVE_CATALOG_MISSING_MAAS_ROUTE" \
-  "LIVE_CATALOG_HAS_MAAS_ROUTE"
-
-# B2: template Locations are pinned to the ONE revision the bundle was
-# published at (superseded revisions are pruned by the generator), so every
-# pinned template target names the catalog's recorded revision.
-CATALOG_REVISION="$(oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\.redhat\.com/catalog-revision}' 2>/dev/null || true)"
-PINNED_REVISIONS="$(echo "$RUNTIME_CATALOG" | grep -E 'templates/[^/]+/template\.yaml' | grep -oE '/blob/[0-9a-f]{40}/' | sort -u)"
-if [[ -n "$CATALOG_REVISION" && "$PINNED_REVISIONS" == "/blob/${CATALOG_REVISION}/" ]]; then
-    echo -e "${GREEN}[PASS]${NC} Runtime catalog template Locations are pinned to the catalog revision ${CATALOG_REVISION:0:12}"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${RED}[FAIL]${NC} Runtime catalog template Locations are not pinned to one catalog revision (catalog-revision '${CATALOG_REVISION:-none}', pinned: $(echo $PINNED_REVISIONS))"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-fi
-
-log_step "RHDH Configuration"
-check "RHDH config uses OIDC sign-in" \
-  "oc get configmap app-config-rhdh -n rhdh -o jsonpath='{.data.app-config-rhdh\\.yaml}'" \
-  "signInPage: oidc"
-check "RHDH config references demo catalog" \
-  "oc get configmap app-config-rhdh -n rhdh -o jsonpath='{.data.app-config-rhdh\\.yaml}'" \
-  'target: ${RHDH_CATALOG_URL}'
-check "RHDH config enables local TechDocs builder for demo use" \
-  "oc get configmap app-config-rhdh -n rhdh -o jsonpath='{.data.app-config-rhdh\\.yaml}'" \
-  "techdocs:"
-check "RHDH dynamic plugins config exists" \
-  "oc get configmap dynamic-plugins-rhdh -n rhdh -o jsonpath='{.data.dynamic-plugins\\.yaml}'" \
-  "dynamic-plugins.default.yaml"
-
-log_step "ConsoleLink"
-CL_HREF=$(oc get consolelink rhdh -o jsonpath='{.spec.href}' 2>/dev/null || echo "")
-if [[ -n "$CL_HREF" ]] && [[ "$CL_HREF" != *"placeholder"* ]]; then
-    echo -e "${GREEN}[PASS]${NC} ConsoleLink: ${CL_HREF}"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${YELLOW}[WARN]${NC} ConsoleLink href is placeholder or missing"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
-fi
-
-echo ""
+# Models are deliberately stopped by the operator. A resource check is not
+# proof of inference, browser login, signed delivery or a migration run.
+echo "[WARN] Platform resource checks do not qualify browser login, inference, AI migration, signed delivery or restore."
+VALIDATE_WARN=$((VALIDATE_WARN + 1))
 validation_summary

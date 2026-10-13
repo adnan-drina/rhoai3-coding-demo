@@ -1,19 +1,10 @@
-# RHDH runtime-catalog generation: two consumers of the shared script in
-# the rhdh-catalog-bundle ConfigMap (kustomization.yaml configMapGenerator):
-#   - the Sync-hook Job below (immediate regeneration on FULL syncs), and
-#   - the refresh CronJob (convergence within 5 minutes after the
-#     selective syncs that skip hooks — the "catalog revision stamp goes
-#     stale" fix; it exits fast when the stamped revision is current and
-#     no placeholder links remain).
-# SA/RBAC are persistent regular resources (they used to be hook-scoped
-# and were deleted after every sync, which the CronJob cannot survive).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: job-generate-rhdh-catalog
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/sync-wave: "7"
+    argocd.argoproj.io/sync-wave: '7'
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -21,39 +12,57 @@ metadata:
   name: job-generate-rhdh-catalog
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/sync-wave: "7"
+    argocd.argoproj.io/sync-wave: '7'
 rules:
-- apiGroups: [""]
-  resources: ["configmaps"]
-  verbs: ["get", "create", "patch", "update"]
-# Prune SHA-pinned template Locations in Backstage postgres (no catalog
-# API token). Namespace-scoped; not cluster-admin. Same path as
-# scripts/demo/delete-scaffolded-project.sh.
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "list"]
-- apiGroups: [""]
-  resources: ["pods/exec"]
-  verbs: ["create"]
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - create
+  - patch
+  - update
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - ''
+  resources:
+  - pods/exec
+  verbs:
+  - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: job-generate-rhdh-catalog
   annotations:
-    argocd.argoproj.io/sync-wave: "7"
+    argocd.argoproj.io/sync-wave: '7'
 rules:
-- apiGroups: ["route.openshift.io"]
-  resources: ["routes"]
-  verbs: ["get", "list"]
-- apiGroups: ["argoproj.io"]
-  resources: ["applications"]
-  verbs: ["get"]
-# Read the cluster ingress domain to derive the Dev Spaces route host on a
-# first-ever sync, before the CheCluster (wave 10) has created that route.
-- apiGroups: ["config.openshift.io"]
-  resources: ["ingresses"]
-  verbs: ["get"]
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  verbs:
+  - get
+- apiGroups:
+  - config.openshift.io
+  resources:
+  - ingresses
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -61,7 +70,7 @@ metadata:
   name: job-generate-rhdh-catalog
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/sync-wave: "7"
+    argocd.argoproj.io/sync-wave: '7'
 subjects:
 - kind: ServiceAccount
   name: job-generate-rhdh-catalog
@@ -77,18 +86,24 @@ metadata:
   name: job-generate-rhdh-catalog-maas-route
   namespace: openshift-ingress
   annotations:
-    argocd.argoproj.io/sync-wave: "7"
-# Read-only, and only the two named objects the generator publishes the
-# in-cluster MaaS route from (see jobs/catalog/generate.sh).
+    argocd.argoproj.io/sync-wave: '7'
 rules:
-- apiGroups: ["gateway.networking.k8s.io"]
-  resources: ["gateways"]
-  resourceNames: ["maas-default-gateway"]
-  verbs: ["get"]
-- apiGroups: [""]
-  resources: ["services"]
-  resourceNames: ["maas-gateway-internal"]
-  verbs: ["get"]
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways
+  resourceNames:
+  - maas-default-gateway
+  verbs:
+  - get
+- apiGroups:
+  - ''
+  resources:
+  - services
+  resourceNames:
+  - maas-gateway-internal
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -96,7 +111,7 @@ metadata:
   name: job-generate-rhdh-catalog-maas-route
   namespace: openshift-ingress
   annotations:
-    argocd.argoproj.io/sync-wave: "7"
+    argocd.argoproj.io/sync-wave: '7'
 subjects:
 - kind: ServiceAccount
   name: job-generate-rhdh-catalog
@@ -111,7 +126,7 @@ kind: ClusterRoleBinding
 metadata:
   name: job-generate-rhdh-catalog
   annotations:
-    argocd.argoproj.io/sync-wave: "7"
+    argocd.argoproj.io/sync-wave: '7'
 subjects:
 - kind: ServiceAccount
   name: job-generate-rhdh-catalog
@@ -128,7 +143,7 @@ metadata:
   namespace: rhdh
   annotations:
     argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/sync-wave: "8"
+    argocd.argoproj.io/sync-wave: '17'
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 3
@@ -138,16 +153,30 @@ spec:
       restartPolicy: OnFailure
       serviceAccountName: job-generate-rhdh-catalog
       volumes:
-        - name: bundle
-          configMap:
-            name: rhdh-catalog-bundle
+      - name: bundle
+        configMap:
+          name: rhdh-catalog-bundle
+      - name: gitlab-reader
+        secret:
+          secretName: gitlab-catalog-reader
+      - name: gitlab-config
+        configMap:
+          name: gitlab-platform-config
       containers:
       - name: generate
         image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
-        command: ["/bin/bash", "/bundle/jobs__catalog__generate.sh"]
+        command:
+        - /bin/bash
+        - /bundle/jobs__catalog__generate.sh
         volumeMounts:
-          - name: bundle
-            mountPath: /bundle
+        - name: bundle
+          mountPath: /bundle
+        - name: gitlab-reader
+          mountPath: /gitlab-reader
+          readOnly: true
+        - name: gitlab-config
+          mountPath: /gitlab-config
+          readOnly: true
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -155,9 +184,9 @@ metadata:
   name: refresh-rhdh-catalog
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/sync-wave: "8"
+    argocd.argoproj.io/sync-wave: '8'
 spec:
-  schedule: "*/5 * * * *"
+  schedule: '*/5 * * * *'
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 2
@@ -170,16 +199,30 @@ spec:
           restartPolicy: OnFailure
           serviceAccountName: job-generate-rhdh-catalog
           volumes:
-            - name: bundle
-              configMap:
-                name: rhdh-catalog-bundle
+          - name: bundle
+            configMap:
+              name: rhdh-catalog-bundle
+          - name: gitlab-reader
+            secret:
+              secretName: gitlab-catalog-reader
+          - name: gitlab-config
+            configMap:
+              name: gitlab-platform-config
           containers:
           - name: refresh
             image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
-            command: ["/bin/bash", "/bundle/jobs__catalog__generate.sh"]
+            command:
+            - /bin/bash
+            - /bundle/jobs__catalog__generate.sh
             env:
-              - name: SKIP_IF_CURRENT
-                value: "true"
+            - name: SKIP_IF_CURRENT
+              value: 'true'
             volumeMounts:
-              - name: bundle
-                mountPath: /bundle
+            - name: bundle
+              mountPath: /bundle
+            - name: gitlab-reader
+              mountPath: /gitlab-reader
+              readOnly: true
+            - name: gitlab-config
+              mountPath: /gitlab-config
+              readOnly: true

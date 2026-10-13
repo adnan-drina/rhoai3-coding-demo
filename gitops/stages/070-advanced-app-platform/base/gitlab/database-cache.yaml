@@ -1,0 +1,214 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitlab-postgresql-data
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '6'
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: gp3-csi
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitlab-postgresql
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '7'
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gitlab-postgresql
+  template:
+    metadata:
+      labels:
+        app: gitlab-postgresql
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: gitlab-postgresql
+        image: docker.io/library/postgres@sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: gitlab-database
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: gitlab-database
+              key: password
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: gitlab-database
+              key: database
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 2Gi
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: gitlab-postgresql-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitlab-postgresql
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '7'
+spec:
+  selector:
+    app: gitlab-postgresql
+  ports:
+  - name: tcp
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitlab-valkey-data
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '6'
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: gp3-csi
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitlab-valkey
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '7'
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gitlab-valkey
+  template:
+    metadata:
+      labels:
+        app: gitlab-valkey
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: gitlab-valkey
+        image: docker.io/valkey/valkey@sha256:ef0f9fb533b1f06fb7aba6478d758ca1c077d49e2bcb2b4365a4ea7f50b6d42e
+        ports:
+        - containerPort: 6379
+        env: []
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 2Gi
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: auth
+          mountPath: /auth
+          readOnly: true
+        readinessProbe:
+          tcpSocket:
+            port: 6379
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        command:
+        - /bin/sh
+        - -ec
+        - exec valkey-server --appendonly yes --dir /data --requirepass "$(cat /auth/password)"
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: gitlab-valkey-data
+      - name: auth
+        secret:
+          secretName: gitlab-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitlab-valkey
+  namespace: gitlab-system
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '7'
+spec:
+  selector:
+    app: gitlab-valkey
+  ports:
+  - name: tcp
+    port: 6379
+    targetPort: 6379

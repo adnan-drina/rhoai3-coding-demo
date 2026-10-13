@@ -20,6 +20,8 @@ spec:
         cpu: "2"
         memory: 4Gi
   extraConfig:
+    # Shared portal/delivery read-back; account cannot sync or change apps.
+    accounts.rhdh: apiKey
     # gp3-csi (default) uses WaitForFirstConsumer: PVCs stay Pending until a
     # pod mounts them, but consumers are scheduled in later sync waves. Treat
     # Pending as healthy so waves do not deadlock on unbound PVCs.
@@ -87,6 +89,8 @@ spec:
       g, system:cluster-admins, role:admin
       g, cluster-admins, role:admin
       g, rhoai-gitops-admins, role:admin
+      p, role:rhdh-reader, applications, get, rhoai-demo/*, allow
+      g, rhdh, role:rhdh-reader
     scopes: '[groups]'
   server:
     route:

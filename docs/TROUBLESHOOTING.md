@@ -2246,76 +2246,17 @@ oc delete pipelinerun <name>-seed-<hash> -n <name>-dev
 
 Stuck pre-fix Jobs (pull policy Always baked into their pods) must be deleted for the CronJob to mint fresh ones.
 
-## Scaffolded Project Does Not Self-Provision (No Argo CD App / Pipeline)
+## Stage 070 GitLab project enrollment is pending
 
-**Affected stage:** Stage 070 (RHDH scaffolder → dispatcher bootstrap)
+**Affected stage:** Stage 070 GitLab release; earlier GitHub dispatcher guidance is superseded.
 
-**Symptom:** a developer creates a project from the "New Quarkus App" template; the GitHub repo is created (with topics `rhoai3-golden-path` + `rhoai3-scaffolded`) and pushed, but no `project-<repo>` Argo CD Application appears, no `<repo>-dev` namespace or `app-push` pipeline is created, and no build runs. Nothing is happening in the background.
+Inspect the publisher-created confidential enrollment issue and the `project-provisioner` CronJob log in `app-platform-build`. Enrollment requires the registered workload group, the exact project ID and the repository's immutable initial commit. An archived project is retired and must not recreate resources. Never substitute a later SHA or manually mark enrollment successful.
 
-**Root cause:** the self-provisioning flow has NO per-repo webhook — it relies on the **GitHub App** delivering push events to the shared `app-platform-listener` dispatcher. The tell for every variant below is an **EventListener with zero recent activity** (`oc logs` the `el-app-platform-listener-*` pod shows nothing for the repo) even though the repo and its push exist on GitHub.
+If the issue is still pending, inspect the project Application, pipeline, `sonarqube-credentials` presence, project webhook Route and immutable registration. The initial build is deliberately not seeded until tooling and scanner credentials exist. Missing or foreign registration is a refusal, not a reason to create broader credentials.
 
-1. **Stale webhook URL (the #1 fresh-env cause).** A GitHub App has a SINGLE, App-level webhook URL. It is cluster-specific — it embeds the cluster's ingress domain (`…apps.<cluster>.<base-domain>`). When you redeploy the demo to a NEW cluster, GitHub keeps delivering to the OLD cluster's route until you update the App's webhook URL. Symptom: NOTHING provisions (not even the platform coolstore repo builds on push), because every delivery lands on a dead/previous cluster. Confirm in GitHub → the App → **App settings → Advanced → Recent Deliveries**: the target URL won't match this cluster, and/or deliveries fail. Fresh-env redeploys almost always hit this.
-2. **Selected-repositories scope.** If the App is installed on *Only select repositories*, a newly scaffolded repo is outside its scope, so ITS pushes don't deliver (but the pre-seeded golden repos still do). Check GitHub → the App → **Configure → Repository access = All repositories**.
+For a later push, inspect the project's EventListener and core interceptor logs. The GitLab token, project ID, clone URL, `refs/heads/main` and nonzero checkout SHA must all match. Duplicate events select the same PipelineRun identity. A webhook does not have namespace, Secret or project-provisioning permission.
 
-**Diagnose:**
-
-```bash
-# 1. Repo created with the scaffolded topic? (should be present)
-gh api repos/<owner>/<repo> --jq '.topics'
-# 2. Did the dispatcher receive ANYTHING? (empty output = webhook never arrived)
-EL=$(oc get pods -n app-platform-build -l eventlistener=app-platform-listener -o name | head -1)
-oc logs -n app-platform-build $EL --since=30m | grep -i "<repo>"
-# 3. No per-repo webhook exists (delivery is App-only by design):
-gh api repos/<owner>/<repo>/hooks --jq 'length'   # 0
-```
-
-**Fix — re-point the App webhook URL to THIS cluster (do this on every fresh deploy):** GitHub → the App → **App settings → General → Webhook → URL**, set it to the current route:
-
-```bash
-echo "https://$(oc get route app-platform-listener -n app-platform-build -o jsonpath='{.spec.host}')"
-```
-
-Keep the secret equal to `.env` `GITHUB_WEBHOOK_SECRET` (verify: `oc get secret github-webhook-secret -n app-platform-build -o jsonpath='{.data.token}' | base64 -d`). Then **Advanced → Recent Deliveries → Redeliver** a recent push, or push a commit. Also confirm **Repository access = All repositories** so scaffolder-created repos are in scope. This webhook-URL step is the piece most easily missed on a fresh env — the `.env` swap re-points the *cluster*, but the App's single endpoint still points at the previous cluster until you change it in GitHub.
-
-Validate one live scaffold end-to-end afterwards: the dispatcher CEL filter matches on `body.repository.topics`; if topics turn out to be absent from the push payload on your GitHub, switch the trigger to a per-repo webhook created by the scaffolder template instead.
-
-**Coolstore push arrives but no `app-push` run (CEL file-path filter).** GitHub App `push` payloads often omit `commits[].added` / `modified` / `removed` even when the commit changed `src/`. HMAC succeeds (`Continue: true`); the Coolstore CEL then returns `Continue: false` (`expression ... did not return true`) and no PipelineRun is created. Stage 070's Coolstore trigger now matches every `main` push; do not re-add a file-path filter unless it also treats missing file lists as "run". Diagnose: `oc logs -n openshift-pipelines -l app.kubernetes.io/name=tekton-triggers-core-interceptors --since=10m | grep Continue`. Recover a missed SHA: create an `app-push` PipelineRun in `coolstore-dev` with `revision` set to the commit (same shape as `stages/070-advanced-app-platform/deploy.sh` seed).
-
-**Recover an already-created project without waiting for the App fix** (what to run for a repo that was scaffolded while the App was still on Selected repos):
-
-```bash
-# Create the bootstrap Argo CD Application the dispatcher would have created:
-oc apply -f - <<'APP'
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: project-<repo>
-  namespace: openshift-gitops
-  labels: { rhoai3.redhat.com/scaffolded-project: "true" }
-  finalizers: [ resources-finalizer.argocd.argoproj.io ]
-spec:
-  project: scaffolded-projects
-  source:
-    repoURL: https://github.com/<owner>/rhoai3-coding-demo
-    targetRevision: main
-    path: gitops/stages/070-advanced-app-platform/base/pipelines/project-pipeline
-    kustomize: { namespace: <repo>-dev }
-  destination: { server: https://kubernetes.default.svc, namespace: <repo>-dev }
-  syncPolicy:
-    automated: { prune: true, selfHeal: true }
-    syncOptions: [ CreateNamespace=true ]
-    managedNamespaceMetadata:
-      labels:
-        rhoai3.redhat.com/pipeline-project: "true"
-        app.kubernetes.io/part-of: <repo>
-APP
-# Distribute build credentials immediately (else wait for the 2-min CronJob):
-oc create job -n app-platform-build provisioner-now --from=cronjob/project-provisioner
-# Verify: namespace Active, app-push pipeline present, github-basic-auth +
-# quay-push-secret secrets present in <repo>-dev.
-```
-
-The pipeline still needs a push to build — fix the App scope (or seed a run) for that.
+For browser access failures, verify the platform realm's GitLab client, the subject-bound GitLab user membership and Dev Spaces OAuth configuration. Do not print client secrets, PATs or kubeconfigs. Root GitOps source and private child repository access have different credentials.
 
 ## References
 
@@ -2772,3 +2713,28 @@ RHOAI_STAGE040_EXPECTED_REVISION=<Stage 040 revision> RHOAI_STAGE060_EXPECTED_RE
 ```
 
 Change an Application's revision with `oc patch --type merge` on `spec.source.targetRevision` (and `spec.ignoreDifferences` when needed), not by re-applying the whole object.
+
+## Stage 070 internal-registry build refuses
+
+On the upgrade branch, a missing/unreadable `app-platform-build-config`, a mode other than `internal`, or a missing registered ImageStream is a failure. There is no external-registry fallback. Reconcile the project stack and inspect the service CA ConfigMap and project image-builder binding. Do not add Quay credentials or disable TLS to bypass these checks.
+
+A build/push failure produces no accepted image reference. A malformed registry digest also fails. Read the TaskRun step result and confirm the ImageStream is in the TaskRun's own namespace; deployment requires its internal `@sha256:` reference. The source bootstrap image does not count as delivery. Authentication or SCC errors require actual installed-version qualification, still outstanding before release; the local fake-provider tests do not settle them.
+
+
+## Stage 070 GitLab refuses its migration precondition
+
+**Symptom:** the `gitlab-gitlab-upgrade-check` Argo hook fails before application migrations.
+
+**Cause:** an installed database has no trustworthy version receipt, an incomplete installation belongs to another release, or the upstream supported-upgrade check refuses the previous version. Applying a new target must not replace the previous successful version.
+
+Inspect the hook log, `gitlab-initial-release`, `gitlab-gitlab-chart-info` and the retained database PVC metadata. Do not delete the PVC, invent a successful version receipt or bypass the hook. Recover the same incomplete release, or establish the database's actual version and use GitLab's supported upgrade/backup procedure. Generated credentials and chart-derived source must stay separate.
+
+If source reproduction fails, verify the locked Helm version and archive checksum, edit values/renderer rather than generated files, and regenerate the Kustomize resources. Deployment itself needs no Helm runtime.
+
+## Stage 070 workspace tools or MTA AI are unavailable
+
+The workspace image must match the reviewed digest and its MTA binary/VSIX lock. Use the image verifier and a bounded Java-provider canary; an executable file or version string alone is not analyzer qualification. Java 21 is selected by workspace initialization even when the parent image's default Java is 17. Do not change the migration `ensure_cli` resolution rule to add probes.
+
+A missing Hub endpoint refuses the migration template. Check the named MTA Route, catalog annotation and workspace `HUB_URL`; TLS verification remains enabled. The MTA LLM proxy and native Gateway must use the owner-bound MaaS key and model. Models are intentionally stopped during this upgrade, so an inference failure is not settled until the operator restarts them and runs the agreed functional checks. Unknown key lookup/status must preserve the current Secret and refuse rotation.
+
+A non-root Buildah failure requires the actual TaskRun Pod, applied SCC, user-namespace annotations, volume permissions and registry service CA. Only `image-builder` receives `pipelines-scc` use and namespace image push. Do not add privileged mode, host mounts, TLS bypass or workspace-wide build permissions as a workaround.

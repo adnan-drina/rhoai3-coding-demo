@@ -1,0 +1,18 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: gitlab
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+    haproxy.router.openshift.io/timeout: 600s
+spec:
+  to:
+    kind: Service
+    name: gitlab-webservice-default
+  port:
+    targetPort: http-workhorse
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

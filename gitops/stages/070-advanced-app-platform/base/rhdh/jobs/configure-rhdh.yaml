@@ -1,19 +1,12 @@
-# PostSync Job: configures RHDH authentication and cluster-specific values.
-#
-# 1. Discovers RHDH route and the platform RHBK route (identity component)
-# 2. Creates/updates an 'rhdh' OIDC client in the RHBK 'platform' realm
-# 3. Generates session secret
-# 4. Patches rhdh-secrets with real URLs and credentials
-# 5. Patches ConsoleLink with RHDH route
-# 6. Restarts RHDH deployment to pick up new secrets
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: job-configure-rhdh
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '18'
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -21,28 +14,43 @@ metadata:
   name: job-configure-rhdh
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '18'
 rules:
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get", "patch"]
-- apiGroups: ["apps"]
-  resources: ["deployments"]
-  verbs: ["get", "list", "watch", "patch"]
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
+  - patch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+  - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: job-configure-rhdh-rhbk-reader
-  namespace: rhbk
+  namespace: keycloak
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '18'
 rules:
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get"]
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -50,13 +58,18 @@ metadata:
   name: job-configure-rhdh-gitops-reader
   namespace: openshift-gitops
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '18'
 rules:
-- apiGroups: [""]
-  resources: ["secrets"]
-  resourceNames: ["openshift-gitops-cluster"]
-  verbs: ["get"]
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - rhdh-argocd-reader
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -64,8 +77,9 @@ metadata:
   name: job-configure-rhdh-gitops-reader
   namespace: openshift-gitops
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '18'
 subjects:
 - kind: ServiceAccount
   name: job-configure-rhdh
@@ -80,18 +94,30 @@ kind: ClusterRole
 metadata:
   name: job-configure-rhdh
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '18'
 rules:
-- apiGroups: ["route.openshift.io"]
-  resources: ["routes"]
-  verbs: ["get", "list"]
-- apiGroups: ["console.openshift.io"]
-  resources: ["consolelinks"]
-  verbs: ["get", "patch"]
-- apiGroups: ["argoproj.io"]
-  resources: ["applications"]
-  verbs: ["get"]
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - console.openshift.io
+  resources:
+  - consolelinks
+  verbs:
+  - get
+  - patch
+- apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -99,8 +125,9 @@ metadata:
   name: job-configure-rhdh
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '18'
 subjects:
 - kind: ServiceAccount
   name: job-configure-rhdh
@@ -114,10 +141,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: job-configure-rhdh-rhbk-reader
-  namespace: rhbk
+  namespace: keycloak
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '18'
 subjects:
 - kind: ServiceAccount
   name: job-configure-rhdh
@@ -132,8 +160,9 @@ kind: ClusterRoleBinding
 metadata:
   name: job-configure-rhdh
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '18'
 subjects:
 - kind: ServiceAccount
   name: job-configure-rhdh
@@ -149,8 +178,9 @@ metadata:
   name: job-configure-rhdh
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '18'
 spec:
   backoffLimit: 6
   activeDeadlineSeconds: 1200
@@ -170,7 +200,7 @@ spec:
           # Platform RHBK (identity component). RHBK 26 serves at the root
           # path (no /auth prefix); in-cluster calls use the HTTP service,
           # browsers use the edge-terminated platform-rhbk Route.
-          RHBK_URL="http://platform-rhbk-service.rhbk.svc:8080"
+          RHBK_URL=""
           REALM="platform"
           RHDH_CLIENT_ID="rhdh"
 
@@ -195,7 +225,7 @@ spec:
           echo "Discovering platform RHBK route..."
           RHBK_HOST=""
           for i in {1..30}; do
-            RHBK_HOST=$(oc get route platform-rhbk -n rhbk -o jsonpath='{.spec.host}' 2>/dev/null || true)
+            RHBK_HOST=$(oc get route keycloak -n keycloak -o jsonpath='{.spec.host}' 2>/dev/null || true)
             if [ -n "$RHBK_HOST" ]; then break; fi
             echo "Waiting for platform RHBK route... ($i/30)"
             sleep 10
@@ -204,6 +234,7 @@ spec:
             echo "ERROR: platform RHBK route not found"
             exit 1
           fi
+          RHBK_URL="https://${RHBK_HOST}"
           RHBK_METADATA_URL="https://${RHBK_HOST}/realms/${REALM}"
           echo "RHBK metadata URL: ${RHBK_METADATA_URL}"
 
@@ -213,14 +244,14 @@ spec:
 
           # --- 4. Get RHBK admin token ---
           echo "Getting RHBK admin token..."
-          RHBK_ADMIN_USER=$(oc get secret platform-rhbk-initial-admin -n rhbk \
+          RHBK_ADMIN_USER=$(oc get secret keycloak-initial-admin -n keycloak \
             -o jsonpath='{.data.username}' | base64 -d)
-          RHBK_ADMIN_PASS=$(oc get secret platform-rhbk-initial-admin -n rhbk \
+          RHBK_ADMIN_PASS=$(oc get secret keycloak-initial-admin -n keycloak \
             -o jsonpath='{.data.password}' | base64 -d)
 
           ADMIN_TOKEN=""
           for i in {1..60}; do
-            ADMIN_TOKEN=$(curl -sk -X POST \
+            ADMIN_TOKEN=$(curl -fsS -X POST \
               "${RHBK_URL}/realms/master/protocol/openid-connect/token" \
               -d "grant_type=password&client_id=admin-cli&username=${RHBK_ADMIN_USER}&password=${RHBK_ADMIN_PASS}" \
               2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || echo "")
@@ -239,7 +270,7 @@ spec:
           echo "Checking RHDH OIDC client in RHBK..."
           REDIRECT_URI="${RHDH_URL}/api/auth/oidc/handler/frame"
 
-          EXISTING_CLIENT=$(curl -sk -H "${AUTH_HEADER}" \
+          EXISTING_CLIENT=$(curl -fsS -H "${AUTH_HEADER}" \
             "${RHBK_URL}/admin/realms/${REALM}/clients?clientId=${RHDH_CLIENT_ID}" 2>/dev/null \
             | python3 -c "import sys,json; clients=json.load(sys.stdin); print(clients[0]['id'] if clients else '')" 2>/dev/null || echo "")
 
@@ -253,7 +284,7 @@ spec:
 
           if [ -n "$EXISTING_CLIENT" ]; then
             echo "Updating existing RHDH client..."
-            curl -sk -X PUT -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+            curl -fsS -X PUT -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
               "${RHBK_URL}/admin/realms/${REALM}/clients/${EXISTING_CLIENT}" \
               -d "{
                 \"clientId\": \"${RHDH_CLIENT_ID}\",
@@ -268,7 +299,7 @@ spec:
             echo "RHDH client updated"
           else
             echo "Creating new RHDH client..."
-            curl -sk -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+            curl -fsS -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
               "${RHBK_URL}/admin/realms/${REALM}/clients" \
               -d "{
                 \"clientId\": \"${RHDH_CLIENT_ID}\",
@@ -305,10 +336,10 @@ spec:
           ARGOCD_HOST=$(oc get route openshift-gitops-server -n openshift-gitops \
             -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
           ARGOCD_URL="https://${ARGOCD_HOST}"
-          ARGOCD_PASSWORD=$(oc get secret openshift-gitops-cluster -n openshift-gitops \
-            -o jsonpath='{.data.admin\.password}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-          if [ -z "$ARGOCD_HOST" ] || [ -z "$ARGOCD_PASSWORD" ]; then
-            echo "WARNING: Argo CD route or admin password not found"
+          ARGOCD_TOKEN=$(oc get secret rhdh-argocd-reader -n openshift-gitops \
+            -o jsonpath='{.data.token}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          if [ -z "$ARGOCD_HOST" ] || [ -z "$ARGOCD_TOKEN" ]; then
+            echo "WARNING: Argo CD route or reader token not found"
           fi
 
           # --- 6. Reuse or generate session secret ---
@@ -332,8 +363,8 @@ spec:
             -o jsonpath='{.data.RHDH_KUBERNETES_SA_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
           CURRENT_ARGOCD_URL=$(oc get secret rhdh-secrets -n rhdh \
             -o jsonpath='{.data.RHDH_ARGOCD_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-          CURRENT_ARGOCD_PASSWORD=$(oc get secret rhdh-secrets -n rhdh \
-            -o jsonpath='{.data.RHDH_ARGOCD_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          CURRENT_ARGOCD_TOKEN=$(oc get secret rhdh-secrets -n rhdh \
+            -o jsonpath='{.data.RHDH_ARGOCD_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
           CURRENT_SONARQUBE_URL=$(oc get secret rhdh-secrets -n rhdh \
             -o jsonpath='{.data.SONARQUBE_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
           CURRENT_DEVSPACES_URL=$(oc get secret rhdh-secrets -n rhdh \
@@ -346,7 +377,7 @@ spec:
              [ "$CURRENT_SESSION_SECRET" != "$SESSION_SECRET" ] || \
              [ "$CURRENT_KUBE_SA_TOKEN" != "$KUBE_SA_TOKEN" ] || \
              [ "$CURRENT_ARGOCD_URL" != "$ARGOCD_URL" ] || \
-             [ "$CURRENT_ARGOCD_PASSWORD" != "$ARGOCD_PASSWORD" ] || \
+             [ "$CURRENT_ARGOCD_TOKEN" != "$ARGOCD_TOKEN" ] || \
              [ "$CURRENT_SONARQUBE_URL" != "$SONARQUBE_URL" ] || \
              [ "$CURRENT_DEVSPACES_URL" != "$DEVSPACES_URL" ]; then
             SECRETS_CHANGED=true
@@ -359,7 +390,7 @@ spec:
           ENCODED_CATALOG_URL=$(echo -n "${RHDH_CATALOG_URL}" | base64 -w0 2>/dev/null || echo -n "${RHDH_CATALOG_URL}" | base64)
           ENCODED_KUBE_SA_TOKEN=$(echo -n "${KUBE_SA_TOKEN}" | base64 -w0 2>/dev/null || echo -n "${KUBE_SA_TOKEN}" | base64)
           ENCODED_ARGOCD_URL=$(echo -n "${ARGOCD_URL}" | base64 -w0 2>/dev/null || echo -n "${ARGOCD_URL}" | base64)
-          ENCODED_ARGOCD_PASSWORD=$(echo -n "${ARGOCD_PASSWORD}" | base64 -w0 2>/dev/null || echo -n "${ARGOCD_PASSWORD}" | base64)
+          ENCODED_ARGOCD_TOKEN=$(echo -n "${ARGOCD_TOKEN}" | base64 -w0 2>/dev/null || echo -n "${ARGOCD_TOKEN}" | base64)
           ENCODED_SONARQUBE_URL=$(echo -n "${SONARQUBE_URL}" | base64 -w0 2>/dev/null || echo -n "${SONARQUBE_URL}" | base64)
           ENCODED_DEVSPACES_URL=$(echo -n "${DEVSPACES_URL}" | base64 -w0 2>/dev/null || echo -n "${DEVSPACES_URL}" | base64)
 
@@ -374,7 +405,7 @@ spec:
                 \"RHDH_CATALOG_URL\":\"${ENCODED_CATALOG_URL}\",
                 \"RHDH_KUBERNETES_SA_TOKEN\":\"${ENCODED_KUBE_SA_TOKEN}\",
                 \"RHDH_ARGOCD_URL\":\"${ENCODED_ARGOCD_URL}\",
-                \"RHDH_ARGOCD_PASSWORD\":\"${ENCODED_ARGOCD_PASSWORD}\",
+                \"RHDH_ARGOCD_TOKEN\":\"${ENCODED_ARGOCD_TOKEN}\",
                 \"SONARQUBE_URL\":\"${ENCODED_SONARQUBE_URL}\",
                 \"DEVSPACES_URL\":\"${ENCODED_DEVSPACES_URL}\"
               }}"

@@ -20,6 +20,7 @@ data:
         allow:
           - host: raw.githubusercontent.com
           - host: github.com
+          - host: ${GITLAB_HOST}
     auth:
       environment: production
       session:
@@ -34,12 +35,13 @@ data:
             signIn:
               resolvers:
                 - resolver: preferredUsernameMatchingUserEntityName
-                  dangerouslyAllowSignInWithoutUserInCatalog: true
     signInPage: oidc
     integrations:
-      github:
-        - host: github.com
-          token: ${GITHUB_TOKEN}
+      gitlab:
+        - host: ${GITLAB_HOST}
+          baseUrl: ${GITLAB_BASE_URL}
+          apiBaseUrl: ${GITLAB_BASE_URL}/api/v4
+          token: ${GITLAB_PUBLISHER_TOKEN}
     kubernetes:
       serviceLocatorMethod:
         type: multiTenant
@@ -73,8 +75,7 @@ data:
           instances:
             - name: main
               url: ${RHDH_ARGOCD_URL}
-              username: admin
-              password: ${RHDH_ARGOCD_PASSWORD}
+              token: ${RHDH_ARGOCD_TOKEN}
     catalog:
       # Entities dropped from the runtime catalog file (e.g. retired
       # golden-path templates) are removed instead of lingering as orphans.

@@ -110,7 +110,7 @@ git clone https://github.com/adnan-drina/rhoai3-coding-demo.git
 cd rhoai3-coding-demo
 ```
 
-**Environment configuration (required).** Before deploying any stage, copy the environment template and fill in the values for your target cluster. The `.env` file drives Git source references for Argo CD, cluster safety guards, demo persona credentials, external model API keys, and Stage 070 delivery-chain integrations (GitHub App, PAT, Quay robot account). Deploy scripts source this file automatically — deployment will fail or produce incomplete results without it.
+**Environment configuration (required).** Before deploying any stage, copy the environment template and fill in the values for your target cluster. The `.env` file drives Git source references for Argo CD, cluster safety guards, demo persona credentials, external model API keys, and Stage 070 prerequisites. Its upgrade branch provisions scoped GitLab integrations through GitOps; Quay credentials are reserved for shared image releases. Deploy scripts source this file automatically — deployment will fail or produce incomplete results without it.
 
 ```bash
 cp env.example .env
@@ -191,8 +191,8 @@ Stage 120 teaches agentic development with `AGENTS.md` and reusable skills. This
 - [Red Hat OpenShift AI 3.5 documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/)
 - [Red Hat OpenShift AI 3.4 MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/use-models-as-a-service_maas)
 - [MaaS code assistant quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
-- [Migration Toolkit for Applications 8.1 documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/)
-- [Red Hat Developer Hub 1.9 documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
+- [Migration Toolkit for Applications 8.3 documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/)
+- [Red Hat Developer Hub 1.10 documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10)
 - [Red Hat OpenShift Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
 - [A guide to AI code assistants with Red Hat OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/01/28/guide-ai-code-assistants-red-hat-openshift-dev-spaces)
 - [Vibes, specs, skills, and agents: The four pillars of AI coding](https://developers.redhat.com/articles/2026/03/30/vibes-specs-skills-agents-ai-coding)

@@ -1,0 +1,50 @@
+# Native Task; no mutable cluster Task or Tekton Hub lookup at execution.
+# Git binary image is the Pipelines 1.24.0 catalog's immutable git-init image.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gitlab-clone
+  annotations:
+    argocd.argoproj.io/sync-wave: '20'
+spec:
+  params:
+  - name: URL
+    type: string
+  - name: REVISION
+    type: string
+  results:
+  - name: COMMIT
+    type: string
+  workspaces:
+  - name: output
+  - name: basic-auth
+  steps:
+  - name: clone
+    image: registry.redhat.io/openshift-pipelines/pipelines-git-init-rhel9@sha256:0ee41f12d8cf1f6f14f5518a4a02ca54a3e32d5c773f674f0f528f5303da7810
+    workingDir: $(workspaces.output.path)
+    env:
+    - name: REPO_URL
+      value: $(params.URL)
+    - name: REVISION
+      value: $(params.REVISION)
+    - name: AUTH_DIR
+      value: $(workspaces.basic-auth.path)
+    - name: COMMIT_RESULT
+      value: $(results.COMMIT.path)
+    - name: GIT_TERMINAL_PROMPT
+      value: '0'
+    script: |
+      #!/usr/bin/env sh
+      set -eu
+      case "$REPO_URL" in https://gitlab.*/*.git) ;; *) echo 'Unregistered GitLab source URL' >&2; exit 2 ;; esac
+      test "${#REVISION}" -eq 40
+      case "$REVISION" in *[!0-9a-f]*) echo 'Source revision is not immutable' >&2; exit 2 ;; esac
+      test -s "$AUTH_DIR/.git-credentials"
+      test ! -e .git
+      git init -q
+      git remote add origin "$REPO_URL"
+      git -c "credential.helper=store --file=$AUTH_DIR/.git-credentials" fetch --no-tags origin "$REVISION"
+      git checkout -q --detach FETCH_HEAD
+      actual=$(git rev-parse HEAD)
+      test "$actual" = "$REVISION"
+      printf '%s' "$actual" > "$COMMIT_RESULT"

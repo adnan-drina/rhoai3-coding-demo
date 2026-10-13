@@ -1,10 +1,3 @@
-# openshift-operators carries Manual-approval subscriptions (Stage 040 RHCL),
-# and OLM applies the most restrictive approval to shared InstallPlans — so
-# the Automatic intent of the trusted-delivery subscriptions never fires on
-# its own. This hook approves pending plans that carry the pipelines/rhtas
-# CSVs (channel-resolved, unpinned by design; see the stage README image
-# policy).
----
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -15,7 +8,7 @@ metadata:
     app.kubernetes.io/component: trusted-delivery
     app.kubernetes.io/part-of: rhoai3-coding-demo
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: '1'
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -26,33 +19,88 @@ metadata:
     app.kubernetes.io/component: trusted-delivery
     app.kubernetes.io/part-of: rhoai3-coding-demo
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: '1'
 rules:
-  - apiGroups: ["operators.coreos.com"]
-    resources: ["installplans"]
-    verbs: ["get", "list", "patch"]
-  - apiGroups: ["operators.coreos.com"]
-    resources: ["subscriptions", "clusterserviceversions"]
-    verbs: ["get", "list"]
+- apiGroups:
+  - operators.coreos.com
+  resources:
+  - installplans
+  verbs:
+  - get
+  - list
+  - patch
+- apiGroups:
+  - operators.coreos.com
+  resources:
+  - subscriptions
+  - clusterserviceversions
+  verbs:
+  - get
+  - list
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: rhoai-demo-approve-trusted-delivery-installplans
-  labels:
-    app.kubernetes.io/name: approve-trusted-delivery-installplans
-    app.kubernetes.io/component: trusted-delivery
-    app.kubernetes.io/part-of: rhoai3-coding-demo
+  name: stage070-approve-reviewed-installplans
+  namespace: openshift-operators
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: '1'
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: rhoai-demo-approve-trusted-delivery-installplans
 subjects:
-  - kind: ServiceAccount
-    name: approve-trusted-delivery-installplans
-    namespace: openshift-operators
+- kind: ServiceAccount
+  name: approve-trusted-delivery-installplans
+  namespace: openshift-operators
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-approve-reviewed-installplans
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhoai-demo-approve-trusted-delivery-installplans
+subjects:
+- kind: ServiceAccount
+  name: approve-trusted-delivery-installplans
+  namespace: openshift-operators
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-approve-reviewed-installplans
+  namespace: rhdh-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhoai-demo-approve-trusted-delivery-installplans
+subjects:
+- kind: ServiceAccount
+  name: approve-trusted-delivery-installplans
+  namespace: openshift-operators
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-approve-reviewed-installplans
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhoai-demo-approve-trusted-delivery-installplans
+subjects:
+- kind: ServiceAccount
+  name: approve-trusted-delivery-installplans
+  namespace: openshift-operators
 ---
 apiVersion: batch/v1
 kind: Job
@@ -64,7 +112,7 @@ metadata:
     app.kubernetes.io/component: trusted-delivery
     app.kubernetes.io/part-of: rhoai3-coding-demo
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: '2'
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
@@ -75,47 +123,10 @@ spec:
       serviceAccountName: approve-trusted-delivery-installplans
       restartPolicy: Never
       containers:
-        - name: approve
-          image: registry.redhat.io/openshift4/ose-cli
-          command:
-            - /bin/bash
-            - -c
-            - |
-              set -euo pipefail
-              # Bounded wait: approve pending plans carrying our CSVs until
-              # both subscriptions report an installed CSV.
-              for attempt in $(seq 1 60); do
-                for plan in $(oc get installplans -n openshift-operators \
-                    -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{" "}{end}'); do
-                  csvs="$(oc get installplan "$plan" -n openshift-operators \
-                    -o jsonpath='{.spec.clusterServiceVersionNames[*]}')"
-                  case " ${csvs} " in
-                    *" openshift-pipelines-operator-rh."*|*" rhtas-operator."*)
-                      # NEVER carry the kuadrant family along: approving a
-                      # shared plan bundling rhcl/authorino/limitador/dns is
-                      # how RHCL 1.4.1 got deployed and broke the MaaS
-                      # gateway on 2026-07-10. Kuadrant upgrades go through
-                      # the Stage 040 pinned guard only.
-                      case " ${csvs} " in
-                        *" rhcl-operator."*|*" authorino-operator."*|*" limitador-operator."*|*" dns-operator."*)
-                          echo "REFUSING ${plan}: bundles kuadrant-family CSVs (${csvs})."
-                          echo "Resolve kuadrant pending state via Stage 040 first, then re-sync."
-                          continue
-                          ;;
-                      esac
-                      oc patch installplan "$plan" -n openshift-operators \
-                        --type=merge -p '{"spec":{"approved":true}}'
-                      echo "Approved ${plan} (${csvs})"
-                      ;;
-                  esac
-                done
-                p="$(oc get subscription openshift-pipelines-operator-rh -n openshift-operators -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)"
-                t="$(oc get subscription rhtas-operator -n openshift-operators -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)"
-                if [[ -n "$p" && -n "$t" ]]; then
-                  echo "Installed: ${p}, ${t}"
-                  exit 0
-                fi
-                sleep 10
-              done
-              echo "ERROR: trusted-delivery operators did not install in time" >&2
-              exit 1
+      - name: approve
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        command:
+        - /bin/bash
+        - -ec
+        - "set -euo pipefail\nallowed=' devspacesoperator.v3.30.2 rhdh-operator.v1.10.5 mta-operator.v8.3.0 openshift-pipelines-operator-rh.v1.24.0 rhtas-operator.v1.5.0 '\nfor attempt in $(seq 1 90); do\n  ready=0\n  for pair in openshift-devspaces:devspaces:devspacesoperator.v3.30.2 rhdh-operator:rhdh:rhdh-operator.v1.10.5 openshift-mta:mta-operator:mta-operator.v8.3.0 openshift-operators:openshift-pipelines-operator-rh:openshift-pipelines-operator-rh.v1.24.0 openshift-operators:rhtas-operator:rhtas-operator.v1.5.0; do\n    ns=${pair%%:*}; rest=${pair#*:}; sub=${rest%%:*}; expected=${rest#*:}\n    installed=$(oc get subscription \"$sub\" -n \"$ns\" -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)\n    if [ \"$installed\" = \"$expected\" ]; then ready=$((ready+1)); continue; fi\n    plan=$(oc get subscription \"$sub\" -n \"$ns\" -o jsonpath='{.status.installPlanRef.name}' 2>/dev/null || true)\n    [ -n \"$plan\" ] || continue\n    csvs=$(oc get installplan \"$plan\" -n \"$ns\"\
+          \ -o jsonpath='{.spec.clusterServiceVersionNames[*]}')\n    [ -n \"$csvs\" ] || continue\n    safe=true\n    for csv in $csvs; do\n      case \"$allowed\" in *\" $csv \"*) ;; *) safe=false ;; esac\n    done\n    if [ \"$safe\" != true ]; then echo \"REFUSE: InstallPlan $ns/$plan includes unreviewed CSVs\" >&2; exit 1; fi\n    case \" $csvs \" in *\" $expected \"*) ;; *) continue ;; esac\n    oc patch installplan \"$plan\" -n \"$ns\" --type=merge -p '{\"spec\":{\"approved\":true}}'\n  done\n  [ \"$ready\" -eq 5 ] && exit 0\n  sleep 10\ndone\necho 'Reviewed Stage 070 operators did not install before deadline' >&2\nexit 1\n"

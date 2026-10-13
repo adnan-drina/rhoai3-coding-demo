@@ -1,0 +1,38 @@
+{
+  "schema": "rhoai3.stage070-workspace/v1",
+  "parent": "quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:5aab5558481fcbb69483122543b7bcb96b9c34daf44466eea6d375fd37c92029",
+  "hermes_patched_tree": "9e5b79b9583d7aef515e8866eba993eb96679f4b",
+  "mta_cli": {
+    "version": "8.3.0",
+    "archive_sha256": "e23044015ec2c34e94c5b93f0fb154273c73d02e931bcb39e98b68d320fca5cd",
+    "binary_sha256": "f2b01cdb4b6f73a8c19272eccd25893a47b1c02abb98438918afc06a219163bd",
+    "binary_path": "mta-cli"
+  },
+  "extensions": [
+    {
+      "name": "mta-core",
+      "version": "8.3.1",
+      "url": "https://open-vsx.org/api/redhat/mta-core/8.3.1/file/redhat.mta-core-8.3.1.vsix",
+      "sha256": "7cd60047f5e19a2f953ad73ad4300eb8a4ee66c50736fe3799037547f780a237"
+    },
+    {
+      "name": "mta-java",
+      "version": "8.3.1",
+      "url": "https://open-vsx.org/api/redhat/mta-java/8.3.1/file/redhat.mta-java-8.3.1.vsix",
+      "sha256": "5b0c18ab51a99607f9f64450b6d0af3afdfc1d165e2990169af23cab8c42a9b8"
+    },
+    {
+      "name": "mta-vscode-extension",
+      "version": "8.3.1",
+      "url": "https://open-vsx.org/api/redhat/mta-vscode-extension/8.3.1/file/redhat.mta-vscode-extension-8.3.1.vsix",
+      "sha256": "8c3decece9c0d7ebe7b928bbb9187fd3a06e9d9e903b0ff337b653fe0f1b8e4b"
+    },
+    {
+      "name": "java",
+      "version": "1.47.0",
+      "url": "https://open-vsx.org/api/redhat/java/1.47.0/file/redhat.java-1.47.0.vsix",
+      "sha256": "cf184d6495a2e268c43731ec3bbe058ceaf3b65e6e65b554dda30f3b90f0191a"
+    }
+  ],
+  "published_image": "quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:e4ac365b3818773ea1d8f67202200011a95089d05ee53ca2652efa353de968e0"
+}

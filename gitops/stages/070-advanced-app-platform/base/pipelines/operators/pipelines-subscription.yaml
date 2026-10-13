@@ -1,15 +1,14 @@
-# OpenShift Pipelines: Tekton pipelines + Pipelines-as-Code for the
-# trusted-delivery path of the Stage 080 migrated application.
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
   name: openshift-pipelines-operator-rh
   namespace: openshift-operators
   annotations:
-    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-wave: '2'
 spec:
   name: openshift-pipelines-operator-rh
-  channel: pipelines-1.22
-  installPlanApproval: Automatic
+  channel: pipelines-1.24
+  installPlanApproval: Manual
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  startingCSV: openshift-pipelines-operator-rh.v1.24.0

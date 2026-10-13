@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gitlab-use-nonroot
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gitlab-use-nonroot
+subjects:
+- kind: ServiceAccount
+  name: gitlab-app-nonroot
+  namespace: gitlab-system
+- kind: ServiceAccount
+  name: gitlab-shared-secrets
+  namespace: gitlab-system
+- kind: ServiceAccount
+  name: gitlab-bootstrap
+  namespace: gitlab-system
