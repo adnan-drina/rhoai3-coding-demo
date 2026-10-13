@@ -6,7 +6,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     argocd.argoproj.io/sync-wave: '5'
-    opendatahub.io/display-name: GPU Reserved - Demo Team
+    opendatahub.io/display-name: NVIDIA L40S (48 GB) - Demo Team
     opendatahub.io/description: Reserved/team-owned GPU quota without a booking app.
   labels:
     app.kubernetes.io/name: gpu-reserved-demo

@@ -11,8 +11,10 @@ metadata:
     app.kubernetes.io/component: workload-admission
     app.kubernetes.io/managed-by: argocd
 spec:
+  # Stamped by the L40S MachineSet (cluster-api/accelerator); nvidia.com/gpu.present matched
+  # every NVIDIA node, so L40S workloads could land on other GPU types.
   nodeLabels:
-    nvidia.com/gpu.present: 'true'
+    cluster-api/accelerator: nvidia-gpu
   tolerations:
   - key: nvidia-gpu-only
     operator: Exists

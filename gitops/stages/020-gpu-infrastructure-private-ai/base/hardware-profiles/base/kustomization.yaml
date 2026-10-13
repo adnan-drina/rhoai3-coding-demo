@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - cpu-default.yaml
   - gpu-reserved-demo.yaml
+  - gpu-rtxpro6000.yaml

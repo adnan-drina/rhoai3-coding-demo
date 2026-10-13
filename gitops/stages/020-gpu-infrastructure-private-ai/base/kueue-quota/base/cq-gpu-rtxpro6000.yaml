@@ -1,0 +1,35 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: cq-gpu-rtxpro6000
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: '4'
+  labels:
+    app.kubernetes.io/name: cq-gpu-rtxpro6000
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/component: workload-admission
+    app.kubernetes.io/managed-by: argocd
+spec:
+  # One ClusterQueue per GPU type: a hardware profile names one LocalQueue, and inside a
+  # ClusterQueue Kueue picks the first fitting flavor, so users could not choose the GPU.
+  # Two g7e.2xlarge workers (7.5 CPU / ~58 GiB allocatable each).
+  namespaceSelector: {}
+  resourceGroups:
+  - coveredResources:
+    - cpu
+    - memory
+    flavors:
+    - name: default-flavor
+      resources:
+      - name: cpu
+        nominalQuota: '14'
+      - name: memory
+        nominalQuota: 112Gi
+  - coveredResources:
+    - nvidia.com/gpu
+    flavors:
+    - name: gpu-rtxpro6000
+      resources:
+      - name: nvidia.com/gpu
+        nominalQuota: '2'

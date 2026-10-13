@@ -7,3 +7,6 @@ resources:
   - gpu-l40s.yaml
   - lq-cpu-default.yaml
   - lq-gpu-reserved-demo.yaml
+  - cq-gpu-rtxpro6000.yaml
+  - gpu-rtxpro6000.yaml
+  - lq-gpu-rtxpro6000.yaml

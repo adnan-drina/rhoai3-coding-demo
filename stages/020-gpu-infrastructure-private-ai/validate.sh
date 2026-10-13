@@ -49,11 +49,12 @@ def console_dashboard():
  assert json.loads(body)['title']=='NVIDIA DCGM Exporter Dashboard'
  return True
 check('Pinned native NVIDIA console dashboard configuration',console_dashboard)
-for ns,name,csv in [('openshift-nfd','nfd','nfd.4.22.0-202609212027'),('nvidia-gpu-operator','gpu-operator-certified','gpu-operator-certified.v26.7.1'),('openshift-kueue-operator','kueue-operator','kueue-operator.v1.4.2')]:
- def operator(ns=ns,name=name,csv=csv):
+# Automatic approval rolls within the reviewed channel; check-operator-policy.py above guards the release family.
+for ns,name in [('openshift-nfd','nfd'),('nvidia-gpu-operator','gpu-operator-certified'),('openshift-kueue-operator','kueue-operator')]:
+ def operator(ns=ns,name=name):
   s=get('subscription',name,ns);installed=s.get('status',{}).get('installedCSV');c=get('csv',installed,ns)
   return s['spec']['installPlanApproval']=='Automatic' and installed==s['status'].get('currentCSV') and c['status']['phase']=='Succeeded'
- check(name+' exact reviewed CSV Succeeded',operator)
+ check(name+' current CSV Succeeded',operator)
 nfd=get('nodefeaturediscovery','nfd-instance','openshift-nfd')
 def native_workload(kind,name,ns,owner):
  x=get(kind,name,ns);assert any(o.get('uid')==owner for o in x['metadata'].get('ownerReferences',[]));assert current(x)
@@ -62,15 +63,29 @@ def native_workload(kind,name,ns,owner):
  return True
 check('NFD Available with fresh native worker/master',lambda:cond(nfd,'Available') and native_workload('daemonset','nfd-worker','openshift-nfd',nfd['metadata']['uid']) and native_workload('deployment','nfd-master','openshift-nfd',nfd['metadata']['uid']))
 cp=get('clusterpolicy','gpu-cluster-policy')
+# Reviewed GPU pools: MachineSet label cluster-api/accelerator -> (instance type, GFD product, Kueue flavor).
+POOLS={'nvidia-gpu':('g6e.2xlarge','NVIDIA-L40S','gpu-l40s'),'nvidia-rtxpro6000':('g7e.2xlarge','NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition','gpu-rtxpro6000')}
+nodes=get('nodes')['items'];gn=[x for x in nodes if x['metadata'].get('labels',{}).get('nvidia.com/gpu.present')=='true' and not x['spec'].get('unschedulable')]
 check('ClusterPolicy native ready',lambda:cp['status'].get('state')=='ready')
 def owned_ds(name):
- x=get('daemonset',name,'nvidia-gpu-operator');assert any(o.get('uid')==cp['metadata']['uid'] and o.get('controller') for o in x['metadata'].get('ownerReferences',[]));assert current(x) and x['status'].get('desiredNumberScheduled')==2 and x['status'].get('numberReady')==2 and x['status'].get('updatedNumberScheduled')==2;return x
+ x=get('daemonset',name,'nvidia-gpu-operator');assert any(o.get('uid')==cp['metadata']['uid'] and o.get('controller') for o in x['metadata'].get('ownerReferences',[]));assert current(x) and x['status'].get('desiredNumberScheduled')==len(gn)>0 and x['status'].get('numberReady')==len(gn) and x['status'].get('updatedNumberScheduled')==len(gn);return x
 for name in ['nvidia-operator-validator','nvidia-dcgm-exporter']:
  check(name+' native owner/current readiness',lambda n=name:bool(owned_ds(n)))
-ms=get('machinesets','','openshift-machine-api')['items'];gpu=[x for x in ms if x['metadata'].get('labels',{}).get('cluster-api/accelerator')=='nvidia-gpu']
-check('One reviewed MachineSet with two Ready exclusive L40S workers',lambda:len(gpu)==1 and gpu[0]['spec']['replicas']==2 and gpu[0]['status'].get('readyReplicas')==2 and gpu[0]['spec']['template']['spec']['providerSpec']['value']['instanceType']=='g6e.2xlarge' and current(gpu[0]))
-nodes=get('nodes')['items'];gn=[x for x in nodes if x['metadata'].get('labels',{}).get('nvidia.com/gpu.present')=='true']
-check('Two Ready nodes each advertise one full L40S GPU and intended taint',lambda:len(gn)==2 and all(cond(x,'Ready') and x['status']['allocatable'].get('nvidia.com/gpu')=='1' and 'L40S' in x['metadata']['labels'].get('nvidia.com/gpu.product','') and any(t['key']=='nvidia-gpu-only' and t['effect']=='NoSchedule' for t in x['spec'].get('taints',[])) for x in gn))
+ms=get('machinesets','','openshift-machine-api')['items'];gpu=[x for x in ms if x['metadata'].get('labels',{}).get('cluster-api/accelerator') in POOLS]
+def pools_reviewed():
+ assert gpu and all(x['spec']['template']['spec']['providerSpec']['value']['instanceType']==POOLS[x['metadata']['labels']['cluster-api/accelerator']][0] and current(x) and x['status'].get('readyReplicas',0)==x['spec']['replicas'] for x in gpu)
+ for label in POOLS:
+  print('  pool '+label+': '+', '.join(x['metadata']['name']+'='+str(x['spec']['replicas']) for x in gpu if x['metadata']['labels']['cluster-api/accelerator']==label))
+ return True
+check('Reviewed GPU MachineSets (L40S g6e.2xlarge, RTX PRO 6000 g7e.2xlarge) at their desired replicas',pools_reviewed)
+def gpu_nodes():
+ assert gn
+ for x in gn:
+  pool=POOLS[x['metadata']['labels'].get('cluster-api/accelerator')]
+  assert cond(x,'Ready') and x['status']['allocatable'].get('nvidia.com/gpu')=='1' and x['metadata']['labels'].get('nvidia.com/gpu.product')==pool[1] and any(t['key']=='nvidia-gpu-only' and t['effect']=='NoSchedule' for t in x['spec'].get('taints',[]))
+ print('  GPU workers: '+', '.join(x['metadata']['labels']['nvidia.com/gpu.product'] for x in gn))
+ return True
+check('Ready GPU workers each advertise one full GPU matching their pool, with the intended taint',gpu_nodes)
 def driver_ready(node):
  version=node['metadata']['labels'].get('feature.node.kubernetes.io/system-os_release.OSTREE_VERSION')
  assert version
@@ -86,11 +101,20 @@ def kueue_ready():
  assert cond(k,'Available') and cond(k,'CertManagerAvailable') and not cond(k,'Degraded') and not cond(k,'Progressing')
  return native_workload('deployment','kueue-controller-manager','openshift-kueue-operator',k['metadata']['uid'])
 check('Native Kueue Available with fresh owned controller',kueue_ready)
-for suffix in ['cpu-default','gpu-reserved-demo']:
+def flavors():
+ for label,(itype,product,flavor) in POOLS.items():
+  f=get('resourceflavor',flavor)
+  assert f['spec'].get('nodeLabels')=={'cluster-api/accelerator':label} and any(t.get('key')=='nvidia-gpu-only' for t in f['spec'].get('tolerations',[]))
+ return True
+check('Each GPU ResourceFlavor selects exactly its own pool',flavors)
+for suffix in ['cpu-default','gpu-reserved-demo','gpu-rtxpro6000']:
  check('ClusterQueue '+suffix+' Active',lambda s=suffix:freshcond(get('clusterqueue','cq-'+s),'Active'))
  check('Sandbox LocalQueue '+suffix+' Active',lambda s=suffix:freshcond(get('localqueue','lq-'+s,'demo-sandbox'),'Active'))
  check('HardwareProfile '+suffix+' queue identity',lambda s=suffix:get('hardwareprofile',s,'redhat-ods-applications')['spec']['scheduling']['kueue']['localQueueName']=='lq-'+s)
-print('CPU and reserved GPU profiles are the supported topology; two exclusive GPUs remain reserved.')
+for ns in ['internal-models','evaluated-models']:
+ for q in ['lq-gpu-reserved-demo','lq-gpu-rtxpro6000']:
+  check('LocalQueue '+q+' Active in '+ns,lambda n=ns,q=q:freshcond(get('localqueue',q,n),'Active'))
+print('One hardware profile per GPU type: gpu-reserved-demo (L40S) and gpu-rtxpro6000, each with its own ClusterQueue.')
 print('Global profiles require matching LocalQueues in every consuming project.')
 if sys.argv[1]=='--functional':
  pods=get('pods','','nvidia-gpu-operator')['items']
@@ -121,7 +145,7 @@ if sys.argv[1]=='--functional':
    for attempt in range(30):
     try:
      with urllib.request.urlopen('http://127.0.0.1:'+str(port)+'/metrics',timeout=3) as response:body=response.read(4*1024*1024).decode()
-     assert 'DCGM_FI_DEV_GPU_UTIL{' in body and 'L40S' in body
+     assert 'DCGM_FI_DEV_GPU_UTIL{' in body and 'modelName="NVIDIA ' in body
      return True
     except OSError:time.sleep(1)
    return False

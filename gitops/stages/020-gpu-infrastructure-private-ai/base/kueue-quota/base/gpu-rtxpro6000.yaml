@@ -1,0 +1,20 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: gpu-rtxpro6000
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: '4'
+  labels:
+    app.kubernetes.io/name: gpu-rtxpro6000
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/component: workload-admission
+    app.kubernetes.io/managed-by: argocd
+spec:
+  # Stamped by the RTX PRO 6000 (g7e.2xlarge) MachineSets, present from node join.
+  nodeLabels:
+    cluster-api/accelerator: nvidia-rtxpro6000
+  tolerations:
+  - key: nvidia-gpu-only
+    operator: Exists
+    effect: NoSchedule

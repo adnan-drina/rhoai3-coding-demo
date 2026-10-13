@@ -4,3 +4,4 @@ resources:
   - ../../base
   - machineset-gpu.yaml
   - machineset-h100.yaml
+  - machineset-rtxpro6000.yaml
