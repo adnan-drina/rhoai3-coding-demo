@@ -31,6 +31,8 @@ spec:
     expression: (request.userInfo.username == 'system:serviceaccount:app-platform-build:project-provisioner')
       || (request.userInfo.username.startsWith('system:serviceaccount:') && request.userInfo.username.endsWith(':project-enrollment'))
   validations:
+  - expression: "'ready' in params.data && params.data['ready'] == 'true'"
+    message: Project enrollment release parameters are not initialized
   - expression: object.spec.destination.server == 'https://kubernetes.default.svc'
       && object.spec.destination.namespace.endsWith('-dev')
     message: Project Application exceeds its platform-owned source or scope

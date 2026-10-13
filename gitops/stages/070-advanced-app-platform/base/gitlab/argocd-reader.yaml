@@ -22,6 +22,11 @@ rules:
     resources: [configmaps]
     resourceNames: [argocd-cm, argocd-rbac-cm]
     verbs: [get]
+  # Native create cannot use resourceNames; this trusted one-shot hook initializes
+  # the denying policy parameters and has no update rights over ConfigMaps.
+  - apiGroups: ['']
+    resources: [configmaps]
+    verbs: [create]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

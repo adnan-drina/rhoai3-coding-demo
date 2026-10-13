@@ -342,7 +342,7 @@ def main():
                 {'argocd.argoproj.io/secret-type': 'repository'})
         config = {'GITLAB_HOST': host, 'GITLAB_BASE_URL': base, 'GITLAB_WORKLOAD_GROUP': workloads['path'], 'GITLAB_WORKLOAD_GROUP_ID': str(workloads['id']), 'GITLAB_DELIVERY_GROUP': delivery['path'], 'GITLAB_DELIVERY_GROUP_ID': str(delivery['id']), 'GITLAB_PUBLISHER_USER_ID': str(publisher['id']), 'GITLAB_REGISTRATION_PROJECT_ID': str(registration['id']), 'PLATFORM_REPO_URL': platform_repo, 'PLATFORM_REVISION': platform_sha, 'ARGOCD_URL': 'https://' + argo_host}
         config['GITLAB_REQUESTER_IDS'] = requesters
-        apply('ConfigMap', 'stage070-project-release', 'openshift-gitops', {'repo_url': platform_repo, 'revision': platform_sha, 'delivery_base_url': base + '/' + delivery['path'] + '/'})
+        apply('ConfigMap', 'stage070-project-release', 'openshift-gitops', {'ready':'true', 'repo_url': platform_repo, 'revision': platform_sha, 'delivery_base_url': base + '/' + delivery['path'] + '/'})
         config['PLATFORM_CATALOG_REPO'] = imports['rhoai3-coding-demo']['http_url_to_repo']
         mta_host = oc('get', 'route', 'mta', '-n', 'openshift-mta', '-o', 'json')['spec']['host']
         if not mta_host.endswith('.' + domain): raise RuntimeError('MTA Route is outside the ingress domain')

@@ -149,6 +149,17 @@ class NativeProject(unittest.TestCase):
                         self.assertEqual(rule['verbs'],['get']);self.assertTrue(rule['resourceNames'])
 
 class PortalContract(unittest.TestCase):
+    def test_application_parameters_start_denying_before_the_binding_exists(self):
+        setup=(BASE/'gitlab/configure-argocd-reader.py').read_text()
+        self.assertIn("'ready':'false'",setup)
+        self.assertIn("'(AlreadyExists)'",setup)
+        reader=list(yaml.safe_load_all((BASE/'gitlab/argocd-reader.yaml').read_text()))
+        hook=next(r for r in reader if r['kind']=='Job')
+        self.assertEqual(hook['metadata']['annotations']['argocd.argoproj.io/sync-wave'],'0')
+        policy=yaml.safe_load((BASE/'pipelines/gitlab/application-policy.yaml').read_text())
+        self.assertIn("params.data['ready'] == 'true'",policy['spec']['validations'][0]['expression'])
+        self.assertIn("'ready':'true'",(BASE/'gitlab/bootstrap-scm.py').read_text())
+
     def test_only_admins_register_and_discovery_does_not_ingest_templates(self):
         cfg=yaml.safe_load(yaml.safe_load((BASE/'rhdh/rhdh-instance/app-config-configmap.yaml').read_text())['data']['app-config-rhdh.yaml'])
         self.assertTrue(cfg['permission']['enabled'])

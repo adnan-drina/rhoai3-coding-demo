@@ -17,6 +17,15 @@ def policy(existing):
 
 
 def main():
+    # A missing Deny parameter blocks even unrelated Application updates before
+    # match conditions run. Initialize a denying record before wave-12 policies.
+    initial = {'apiVersion':'v1','kind':'ConfigMap',
+               'metadata':{'name':'stage070-project-release','namespace':'openshift-gitops'},
+               'data':{'ready':'false','repo_url':'__not_ready__','revision':'__not_ready__','delivery_base_url':'__not_ready__'}}
+    result = subprocess.run(['oc','create','-f','-'],input=json.dumps(initial),
+                            universal_newlines=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    if result.returncode and '(AlreadyExists)' not in result.stderr:
+        raise RuntimeError('Could not initialize fail-closed enrollment parameters: ' + result.stderr)
     resource = json.loads(subprocess.check_output(['oc', 'get', 'argocd', 'openshift-gitops',
         '-n', 'openshift-gitops', '-o', 'json'], universal_newlines=True))
     spec = resource['spec']
