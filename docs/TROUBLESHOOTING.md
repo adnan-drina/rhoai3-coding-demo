@@ -2248,6 +2248,8 @@ Stuck pre-fix Jobs (pull policy Always baked into their pods) must be deleted fo
 
 ## Stage 070 GitLab project enrollment is pending
 
+GitLab Self-Managed disables importers by default. HTTP403 while creating a project with `import_url` and an empty `import_sources` means Repository by URL is unavailable. Trusted bootstrap enables only the `git` importer. Other import methods and public signup stay disabled; local-network request restrictions are unchanged. The normal sync retries the preserved imports rather than deleting projects.
+
 GitLab 19 rejects usernames beginning with `ai-`, `ai_`, `duo-` or `duo_`. Platform personas `ai-developer` and `ai-admin` therefore use GitLab account names `platform-developer` and `platform-admin`. SSO remains bound to each original verified OIDC subject. Enrollment uses the trusted portal-to-account ID/name mapping and refuses a missing mapping, foreign account or insufficient membership. Do not rename the OpenShift users or enable email-only automatic account linking.
 
 SonarQube 26.9 refuses an initial password lacking a special character. The setup Job now generates all required character classes, persists a pending `sonarqube-admin` credential before the API change, and verifies it on every retry. A timeout or interrupted Job preserves that credential. If neither the pending credential nor the default authenticates, reconcile the existing credential explicitly; do not reset the database or generate another password blindly.

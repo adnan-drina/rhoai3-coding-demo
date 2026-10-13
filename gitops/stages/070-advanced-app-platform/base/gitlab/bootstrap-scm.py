@@ -144,6 +144,12 @@ def ensure_persona(api, find, persona):
     return account
 
 
+def configure_imports(api):
+    # Self-managed GitLab enables no importers by default. Only Repository
+    # by URL is needed for the reviewed public GitHub repository imports.
+    return api('PUT', 'application/settings', {'signup_enabled': False, 'import_sources': ['git']})
+
+
 def oc(*args, data=None):
     result = subprocess.run(['oc', *args], input=None if data is None else json.dumps(data), stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
     return json.loads(result.stdout) if result.stdout.lstrip().startswith('{') else None
@@ -193,7 +199,7 @@ def main():
 
     try:
         platform, workloads, delivery = [group(p) for p in ('rhoai-platform', 'rhoai-workloads', 'rhoai-delivery')]
-        api('PUT', 'application/settings', {'signup_enabled': False})
+        configure_imports(api)
         api('PUT', f"groups/{workloads['id']}", {'project_creation_level': 'developer',
             'default_branch': 'main', 'default_branch_protection_defaults': {
                 'allowed_to_push': [{'access_level': 30}], 'allowed_to_merge': [{'access_level': 40}],

@@ -193,6 +193,26 @@ class IntegratedContract(unittest.TestCase):
             with self.assertRaises(RuntimeError): bootstrap.ensure_persona(api, lambda path, query: [linked], persona)
             api.assert_not_called()
 
+    def test_native_git_url_import_enabled_without_local_network_access(self):
+        settings = {'signup_enabled': True, 'import_sources': [],
+                    'allow_local_requests_from_web_hooks_and_services': False}
+        def api(method, path, payload):
+            if path == 'application/settings':
+                self.assertEqual(method, 'PUT')
+                settings.update(payload)
+                return settings
+            if path == 'projects' and payload.get('import_url'):
+                if 'git' not in settings['import_sources']: raise PermissionError('Importer disabled')
+                return {'id': 42}
+            raise AssertionError('unexpected API call')
+        payload = {'import_url': 'https://github.com/adnan-drina/coolstore-inventory-service.git'}
+        with self.assertRaises(PermissionError): api('POST', 'projects', payload)
+        bootstrap.configure_imports(api)
+        self.assertEqual(api('POST', 'projects', payload)['id'], 42)
+        self.assertFalse(settings['signup_enabled'])
+        self.assertEqual(settings['import_sources'], ['git'])
+        self.assertFalse(settings['allow_local_requests_from_web_hooks_and_services'])
+
     def test_import_retry_uses_the_reviewed_file_commit(self):
         contents = 'reviewed runtime\n'
         row = {'encoding': 'base64', 'content': base64.b64encode(contents.encode()).decode(),
