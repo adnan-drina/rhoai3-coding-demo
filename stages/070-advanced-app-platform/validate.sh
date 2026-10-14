@@ -98,6 +98,9 @@ check 'MTA native Gateway credential binding' "oc get gateways.konveyor.io maas-
 check 'MTA proxy uses MaaS canonical model ID' "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_model}'" 'publishers/internal-models/models/qwen3-8-27b'
 check 'MTA Gateway uses the same canonical model ID' "oc get gateways.konveyor.io maas-qwen -n openshift-mta -o jsonpath='{.spec.model.name}'" 'publishers/internal-models/models/qwen3-8-27b'
 check 'MTA credential provisioned' "oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.metadata.name}'" 'kai-api-keys'
+check 'MTA LLM proxy ready without inference' "oc get deployment llm-proxy -n openshift-mta -o jsonpath='{.status.readyReplicas}'" '1'
+check 'MTA Solution Server ready' "oc get deployment kai-api -n openshift-mta -o jsonpath='{.status.readyReplicas}'" '1'
+check 'MTA native agentic controller ready' "oc get deployment agentic-controller -n openshift-mta -o jsonpath='{.status.readyReplicas}'" '1'
 check 'MTA uses governed MaaS endpoint' "oc get gateways.konveyor.io maas-qwen -n openshift-mta -o jsonpath='{.spec.endpoint}' | contains -E '^https://maas\\..*/v1$' && echo GOVERNED" 'GOVERNED'
 
 log_step 'Signing service and portal'

@@ -1,0 +1,10 @@
+# Tekton Tasks are CRDs; Kustomize's built-in Pod references do not cover
+# their volumes. Bind generated ConfigMaps without dropping content hashes.
+nameReference:
+- kind: ConfigMap
+  version: v1
+  fieldSpecs:
+  - group: tekton.dev
+    version: v1
+    kind: Task
+    path: spec/volumes/configMap/name

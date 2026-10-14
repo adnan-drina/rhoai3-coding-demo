@@ -2847,3 +2847,13 @@ If build admission reports an absent `pipelines-scc`, forbidden UID1000 or SETFC
 ### Buildah inside native OpenShift user namespaces
 
 A Pod can pass SCC admission and still fail `unshare(CLONE_NEWUSER)` under RuntimeDefault. Use the supported `nested-container` SCC only for the builder, requiring `hostUsers:false`, the container-engine SELinux type, its SETUID/SETGID helpers and the documented nested-container execution settings. Do not add SYS_ADMIN or privileged/host access. The builder's read-only subordinate-ID mapping must fit inside the outer pod range: the bundled image's100000-based defaults fail and fall back to one ID, which cannot reproduce a multi-user base. Inspect actual mapping, build a multi-user base, then verify the full pipeline and digest push. [Operations](OPERATIONS.md#stage-070-gitlab-release) records the execution boundary.
+
+### Promotion Pod cannot mount its generated script ConfigMap
+
+Kustomize rewrites native Pod references automatically, but Tekton Task CRDs need
+an explicit name-reference configuration for `spec/volumes/configMap/name`.
+Without it, a successful image build can leave promotion Pending on the unhashed
+`project-promotion-scripts` name. Keep the content hash and fix the Task reference;
+do not create a manual alias. Preserve and cancel the blocked validation run,
+sync the corrected project revision, then run the complete pipeline again.
+See [Kustomize transformer configuration](https://github.com/kubernetes-sigs/kustomize/tree/master/examples/transformerconfigs).

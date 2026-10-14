@@ -126,6 +126,13 @@ class NativeProject(unittest.TestCase):
         self.assertEqual(job['spec']['template']['metadata']['annotations']['rhoai3.io/enrollment'],'{}')
         self.assertEqual(job['spec']['template']['spec']['serviceAccountName'],'project-enrollment')
 
+    def test_promotion_mounts_the_actual_generated_script_configmap(self):
+        maps=[r for r in self.rows if r['kind']=='ConfigMap' and r['metadata']['name'].startswith('project-promotion-scripts-')]
+        self.assertEqual(len(maps),1)
+        task=self.objects['Task','test-example-dev','promote-gitlab-runtime']
+        mounted=next(v['configMap']['name'] for v in task['spec']['volumes'] if v['name']=='scripts')
+        self.assertEqual(mounted,maps[0]['metadata']['name'])
+
     def test_builder_scc_is_not_granted_to_runner_or_runtime(self):
         bindings=[r for r in self.rows if r['kind']=='RoleBinding' and r['roleRef']['name']=='pipeline-userns-builder']
         self.assertEqual(len(bindings),1)
