@@ -293,7 +293,7 @@ def bootstrap_project(api, row, project, commit, config, import_receipt=None):
         if obj['kind'] in ('TriggerTemplate', 'EventListener', 'Route'): apply(obj)
     ensure_delivery(api, name, ns, project['id'], config, repo)
     # No build is seeded until the trusted stack and its credentials are present.
-    oc('get', 'pipeline', 'app-push', '-n', ns, '-o', 'json')
+    oc('get', 'pipelines.tekton.dev', 'app-push', '-n', ns, '-o', 'json')
     ensure_project_scanner(name, ns, project['id'])
     route_host = oc('get', 'route', 'gitlab-webhook', '-n', ns, '-o', 'json')['spec']['host']
     hook_url = 'https://' + route_host
@@ -331,7 +331,7 @@ def provision_migration(name, row, project, config):
                        {'name': 'request-raw-base', 'value': config['GITLAB_BASE_URL'] + '/api/v4/projects'},
                        {'name': 'request-provider', 'value': 'gitlab'}, {'name': 'request-project-id', 'value': str(project['id'])}]}}, 'tekton.dev/v1')
     try:
-        existing = oc('get', 'pipelinerun', provisioning['metadata']['name'], '-n', 'app-platform-build', '-o', 'json')
+        existing = oc('get', 'pipelineruns.tekton.dev', provisioning['metadata']['name'], '-n', 'app-platform-build', '-o', 'json')
     except subprocess.CalledProcessError as error:
         if '(NotFound)' not in error.stderr: raise
         try:
@@ -339,7 +339,7 @@ def provision_migration(name, row, project, config):
             return
         except subprocess.CalledProcessError as create_error:
             if '(AlreadyExists)' not in create_error.stderr: raise
-        existing = oc('get', 'pipelinerun', provisioning['metadata']['name'], '-n', 'app-platform-build', '-o', 'json')
+        existing = oc('get', 'pipelineruns.tekton.dev', provisioning['metadata']['name'], '-n', 'app-platform-build', '-o', 'json')
     spec = existing.get('spec', {})
     expected = provisioning['spec']
     if (spec.get('pipelineRef') != expected['pipelineRef']

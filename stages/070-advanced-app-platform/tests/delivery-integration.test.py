@@ -105,7 +105,8 @@ class Enrollment(unittest.TestCase):
             return document
         kind, name = args[1:3]
         if name == 'sonarqube-credentials': return {'data': self.scanner, 'metadata': {'annotations': {scm.SONAR_KEY: 'example', scm.SONAR_TYPE: 'PROJECT_ANALYSIS_TOKEN', scm.SONAR_NAME: 'gitlab-project-42'}}}
-        if kind == 'pipeline': return {'metadata': {'name': name}}
+        if kind == 'pipeline': raise AssertionError('ambiguous resource can select an unrelated API')
+        if kind == 'pipelines.tekton.dev': return {'metadata': {'name': name}}
         if kind == 'route': return {'spec': {'host': 'listener.example.test'}}
         if name == 'gitlab-read-source': return {'data': {}}
         if name == 'gitlab-webhook': return {'data': {'token': base64.b64encode(b'synthetic').decode()}}

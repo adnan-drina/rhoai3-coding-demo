@@ -2863,3 +2863,8 @@ value per manifest. Promotion decodes the complete stream (or a single native
 List), then applies the same runtime allowlist to every object before publishing.
 `JSONDecodeError: Extra data` is a parser defect, not permission to publish only
 the first object. Malformed trailing output and later disallowed objects refuse.
+
+With Tekton, AI Pipelines and MTA installed, short names such as `pipeline` and `task` can resolve
+to another API group. Enrollment and validation use `pipelines.tekton.dev`,
+`pipelineruns.tekton.dev` and `tasks.tekton.dev` explicitly. Do not expand the
+project's permissions to the unrelated API to make an ambiguous query succeed.
