@@ -125,10 +125,12 @@ Every Application MUST use `destination: {server: https://kubernetes.default.svc
 | `retry.limit` | `10` | Operators need time to install CRDs |
 | `retry.backoff` | `5s / factor 2 / max 3m` | Exponential backoff |
 | `SkipDryRunOnMissingResource` | `true` | CRDs may not exist at first sync |
-| `ServerSideDiff` | `true` | Accurate diff for custom CRDs |
-| `RespectIgnoreDifferences` | `true` | Enables ignoreDifferences with ServerSideDiff |
+| `RespectIgnoreDifferences` | `true` | Sync also skips the ignored fields, not only the diff |
 
 **Do NOT use:** `ServerSideApply=true` or `Replace=true`.
+
+### Server-Side Diff
+Enable it with the Application annotation `argocd.argoproj.io/compare-options: ServerSideDiff=true` (accurate diff for CRDs, defaulted fields and admission mutations). A `ServerSideDiff=true` entry in `syncPolicy.syncOptions` does **not** enable it: Argo CD reads diff strategy only from this annotation or the global `controller.diff.server.side` setting, which this repository does not set. An Application that needs client-side comparison sets `ServerSideDiff=false` in the annotation with the reason in its commit (for example `060-openshell-runtime`, 30466007).
 
 ### Resource Tracking
 `resourceTrackingMethod: annotation` only. Never `annotation+label` or `label`.

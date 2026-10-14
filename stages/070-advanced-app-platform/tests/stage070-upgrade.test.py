@@ -438,7 +438,7 @@ class GatewayAndPolicy(unittest.TestCase):
         self.assertFalse(any(call[0] == 'apply' for call in calls), 'Existing key must be reused')
 
     def test_maas_host_from_current_gateway_not_listener_name(self):
-        gateway = yaml.safe_load((ROOT / 'gitops/stages/040-governed-models-as-a-service/base/gateway/base/gateway.yaml').read_text())
+        gateway = yaml.safe_load((ROOT / 'gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/gateway.yaml').read_text())
         self.assertEqual(ai.gateway_host(gateway), 'maas.placeholder.example.com')
         for listeners in ([], [{'name':'https','hostname':'qwen3-8-maas.example'}], [{'hostname':'maas.one.example'},{'hostname':'maas.two.example'}]):
             with self.assertRaises(ValueError): ai.gateway_host({'spec':{'listeners':listeners}})
