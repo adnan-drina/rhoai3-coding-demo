@@ -208,6 +208,20 @@ class ScopedAuthority(unittest.TestCase):
   self.assertEqual(result.returncode,0,result.stderr)
 
 class RotationSafety(unittest.TestCase):
+ def test_operator_sonar_uses_route_and_preserves_pipeline_host(self):
+  r=rotation.Rotation.__new__(rotation.Rotation);calls=[];revoked=[False]
+  def oc(*args):
+   if args[1]=='route':return {'spec':{'host':'sonar.example'}}
+   return {'metadata':{'annotations':{}}}
+  def api(base,method,path,payload=None,headers=None,**kw):
+   self.assertEqual(base,'https://sonar.example');calls.append((method,path))
+   if path=='/api/user_tokens/generate':return {'token':'new'}
+   if path=='/api/user_tokens/revoke':revoked[0]=True;return
+   token=base64.b64decode(headers['Authorization'].split()[1]).decode().split(':')[0]
+   return {'valid':token=='new' or not revoked[0]}
+  with patch.object(rotation,'data',side_effect=[({}, {'password':'admin'}),({}, {'host':'http://sonarqube.sonarqube.svc:9000','token':'old'})]),patch.object(rotation,'oc',side_effect=oc),patch.object(rotation,'request',side_effect=api),patch.object(rotation,'update') as writer,patch.object(rotation.subprocess,'run'):
+   self.assertTrue(all(r.sonar().values()));writer.assert_called_once_with('app-platform-build','sonarqube-credentials',{'token':'new'})
+  self.assertIn(('POST','/api/user_tokens/revoke'),calls)
  def test_gitlab_renewal_uses_documented_response_and_preserves_authority(self):
   self.oauth_case()
  def test_gitlab_renewal_rejects_changed_scope_before_persistence(self):

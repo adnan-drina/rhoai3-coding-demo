@@ -207,7 +207,9 @@ class Rotation:
     def sonar(self):
         _, admin = data('sonarqube', 'sonarqube-admin')
         _, old = data('app-platform-build', 'sonarqube-credentials')
-        host = old['host']; password = admin.get('password') or admin.get('admin-password')
+        # Pipeline host stays cluster-local; this operator tool runs externally.
+        host = 'https://' + oc('get', 'route', 'sonarqube', '-n', 'sonarqube')['spec']['host']
+        password = admin.get('password') or admin.get('admin-password')
         if not password:
             raise ValueError('Sonar administrator secret schema mismatch')
         auth = {'Authorization': 'Basic ' + base64.b64encode(('admin:' + password).encode()).decode()}
