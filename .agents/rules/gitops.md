@@ -78,6 +78,7 @@ rhoai3-coding-demo/
 Follows the Kustomize and Red Hat `odh-gitops` conventions: plain manifests in one folder per deployable unit, no wrapper layers.
 
 - One folder per Application. Its main manifests sit flat in the folder (an operator's `namespace.yaml`, `operator-group.yaml`, `subscription.yaml` and its instance CR together).
+- Every component folder has a `README.md` with the headings `## Why`, `## What`, `## How`, `## Validation`, `## Alignment with official guidance` and `## References`, in that order: purpose, object inventory, configuration choices with reasons, checks, a status table against the installed version's Red Hat documentation, and verified sources. Update it in the same change as the manifests. `validate-stage-flow.sh` enforces presence and headings.
 - A further unit inside a component (a Job with its RBAC, a dashboard generator, each operator of a multi-operator component) gets its own subfolder with its own `kustomization.yaml`.
 - No `base/`-in-`base/` wrappers, no `aggregate/` layers, no placeholder values patched by an overlay: write the reviewed value (for example the Subscription channel) in the manifest.
 - Add `overlays/<variant>/` only for a real variant, and `components/<feature>/` (Kustomize `kind: Component`) for an optional feature.
@@ -130,7 +131,7 @@ Every Application MUST use `destination: {server: https://kubernetes.default.svc
 **Do NOT use:** `ServerSideApply=true` or `Replace=true`.
 
 ### Server-Side Diff
-Enable it with the Application annotation `argocd.argoproj.io/compare-options: ServerSideDiff=true` (accurate diff for CRDs, defaulted fields and admission mutations). A `ServerSideDiff=true` entry in `syncPolicy.syncOptions` does **not** enable it: Argo CD reads diff strategy only from this annotation or the global `controller.diff.server.side` setting, which this repository does not set. An Application that needs client-side comparison sets `ServerSideDiff=false` in the annotation with the reason in its commit (for example `060-openshell-runtime`, 30466007).
+Enable it with the Application annotation `argocd.argoproj.io/compare-options: ServerSideDiff=true` (accurate diff for CRDs, defaulted fields and admission mutations). A `ServerSideDiff=true` entry in `syncPolicy.syncOptions` does **not** enable it: Argo CD reads diff strategy only from this annotation or the global `controller.diff.server.side` setting, which this repository does not set. An Application that needs client-side comparison sets `ServerSideDiff=false` in the annotation and records the reason in its component README. `060-openshell-runtime` does this today (30466007) without a recorded failure; re-test it with server-side diff.
 
 ### Resource Tracking
 `resourceTrackingMethod: annotation` only. Never `annotation+label` or `label`.

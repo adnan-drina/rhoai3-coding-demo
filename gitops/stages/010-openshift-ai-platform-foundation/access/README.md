@@ -1,0 +1,103 @@
+# Demo sandbox access (`010-access`)
+
+This Application creates the shared data science project `demo-sandbox` ("AI Coding Sandbox"), the
+`rhoai-developers` group and the project RoleBindings for administrators and developers. It also creates one
+ObjectBucketClaim, from which `setup-access.sh` builds the `demo-sandbox-s3` connection. Platform engineers and the
+two demo personas (`ai-admin` in `rhods-admins`, `ai-developer` in `rhoai-developers`) use the project. Later stages
+deploy workloads into it.
+
+| | |
+|---|---|
+| Argo CD Application | `010-access` ([manifest](../../../argocd/app-of-apps/010-openshift-ai-platform-foundation/access.yaml)) |
+| Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 3). Group membership and the connection Secret come from [`setup-access.sh`](../../../../stages/010-openshift-ai-platform-foundation/setup-access.sh), a separate manual step |
+| Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (project label, OBC `Bound`, `demo-sandbox-s3` present, `rhods-admins-admin` binding, persona group membership, optional persona `can-i` checks) |
+| Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation; `ignoreDifferences` on the Group's `/users` and one Namespace label |
+| Depends on | `010-rhoai-platform` (the `Auth` CR names `rhoai-developers` and creates `rhods-admins`); `010-odf` (StorageClass `openshift-storage.noobaa.io`) |
+| Used by | `010-sandbox-storage` (namespace), Stage 020 Kueue (`kueue.openshift.io/managed` label), Stages 030-130 workloads and personas in `demo-sandbox` |
+
+## Why
+
+OpenShift AI projects are namespaces that the dashboard lists. Access is granted per project with roles: Admin can edit
+the project and manage access, and Contributor can edit workbenches, connections and storage [1]. Contributor matches
+the OpenShift `edit` cluster role, which can change most objects but not roles or bindings. Admin matches `admin` [2].
+The `Auth` CR in `010-rhoai-platform` lists `rhoai-developers` as a user group, and the documentation requires such
+groups to exist [3]. Declaring the group, project and bindings in Git makes the persona permissions reviewable.
+Credentials and membership stay out of Git.
+
+## What
+
+| Kind | Name | Namespace | Wave | Purpose |
+|---|---|---|---|---|
+| Namespace | `demo-sandbox` | (cluster) | 0 | Label `opendatahub.io/dashboard: "true"` (shown as a project), `kueue.openshift.io/managed: "true"` (Stage 020 queue enforcement); display name "AI Coding Sandbox" |
+| Group | `rhoai-developers` | (cluster) | 0 | Developer group; `users` comes from `setup-access.sh` (ignored by Argo CD) |
+| RoleBinding | `rhoai-developers-edit` | `demo-sandbox` | 0 | `rhoai-developers` gets ClusterRole `edit` (project Contributor) |
+| RoleBinding | `rhods-admins-admin` | `demo-sandbox` | 0 | `rhods-admins` gets ClusterRole `admin` (project Admin) |
+| ObjectBucketClaim | `demo-sandbox-bucket` | `demo-sandbox` | 5 | `generateBucketName: demo-sandbox` on `openshift-storage.noobaa.io` |
+
+There are no hooks.
+
+Not in Git:
+
+| Object | Owner |
+|---|---|
+| Group `rhods-admins` | RHOAI operator (from the `Auth` CR); membership from `setup-access.sh` |
+| Group `rhoai-developers` `users` | `setup-access.sh` (`oc adm groups add-users`) |
+| Secret and ConfigMap `demo-sandbox-bucket` | NooBaa OBC provisioner (owned by the OBC) [4] |
+| Secret `demo-sandbox-s3` | `setup-access.sh` (server-side apply, field manager `sandbox-connection-bootstrap`) |
+| Identity provider and users | The cluster's existing OAuth provider; `setup-access.sh` changes neither |
+
+## How
+
+- **Ordering.** The OBC is in wave 5. It is applied after the namespace, the group and the bindings, and after ODF has
+  had time to create the NooBaa StorageClass. Argo CD retries cover the rest.
+- **`ignoreDifferences`.** The `rhoai-developers` Group has `/users` ignored because membership is runtime data from
+  the identity provider. The `demo-sandbox` Namespace has the label `evalhub.trustyai.opendatahub.io/tenant` ignored.
+  The comment says Stage 050 sets it, but Stage 050 now removes that label (see findings).
+  `RespectIgnoreDifferences=true` keeps a sync from clearing either field [5].
+- **Project RBAC.** Developers get `edit`, not `admin`, so they cannot change bindings in the project. Administrators
+  get `admin` on this project only. The dashboard admin role does not give access to individual project namespaces,
+  as the RoleBinding comment explains.
+- **Credentials.** `setup-access.sh` reads the OBC-generated Secret and ConfigMap and builds the dashboard connection
+  `demo-sandbox-s3`. It sends the values on stdin, then removes the `last-applied-configuration` annotation. Nothing
+  credential-bearing is committed. The connection carries `opendatahub.io/connection-type-protocol: s3` and the
+  deprecated `opendatahub.io/connection-type-ref: s3` [6].
+- **Cluster-specific values.** Persona user names come from the local `.env` (`RHOAI_ADMIN_USER`,
+  `RHOAI_DEVELOPER_USER`), never from Git.
+
+## Validation
+
+`validate.sh` checks the following:
+
+- the dashboard label on `demo-sandbox`;
+- `demo-sandbox-bucket` is `Bound`;
+- `demo-sandbox-s3` exists with the dashboard label;
+- `rhods-admins-admin` binds `admin`;
+- each configured persona is a member of its group.
+
+With `RHOAI_ADMIN_KUBECONFIG` and `RHOAI_DEVELOPER_KUBECONFIG`, it also checks real persona sessions with
+`oc auth can-i update deployments.apps -n demo-sandbox`.
+
+```bash
+oc get ns demo-sandbox --show-labels; oc get rolebinding -n demo-sandbox rhoai-developers-edit rhods-admins-admin
+oc get group rhods-admins rhoai-developers; oc get obc demo-sandbox-bucket -n demo-sandbox
+```
+
+## Alignment with official guidance
+
+| Topic | Official guidance (link) | This repository | Status |
+|---|---|---|---|
+| Project roles | Admin manages project and access; Contributor edits workbenches, connections and storage [1] | `admin` for `rhods-admins`, `edit` for `rhoai-developers` | Aligned |
+| OpenShift default roles | `admin`: modify any resource except quota; `edit`: most objects, not roles or bindings [2] | Used as documented | Aligned |
+| User groups | Groups must exist before they are selected; group membership managed in the OpenShift console [3] | Group in Git; membership by `oc adm groups add-users` from `setup-access.sh` | Aligned (CLI equivalent) |
+| OBC | `storageClassName: openshift-storage.noobaa.io`; ConfigMap and Secret named after the claim [4] | Same | Aligned |
+| Connection annotation | Use `opendatahub.io/connection-type-protocol`; `connection-type-ref` is deprecated [6] | `demo-sandbox-s3` sets both | Deviation (harmless: protocol takes precedence; remove the deprecated annotation) |
+| Connection lifecycle | Connections are Kubernetes Secrets with standard annotations [6] | Imperative Secret from a script, while `010-sandbox-storage` does the same job declaratively | Gap (two mechanisms for sandbox S3 connections, see findings) |
+
+## References
+
+1. Working on projects, Manage access to projects (Default project roles). Red Hat OpenShift AI Self-Managed 3.5. https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects/managing-access-to-projects_projects
+2. Authentication and authorization, Using RBAC to define and apply permissions (Default cluster roles). OpenShift Container Platform 4.22. https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/authentication_and_authorization/using-rbac
+3. Manage users and groups (Add users to OpenShift AI user groups; Select admin and user groups). Red Hat OpenShift AI Self-Managed 3.5. https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-users-and-groups
+4. Managing hybrid and multicloud resources, Chapter 12: Object Bucket Claim. Red Hat OpenShift Data Foundation 4.22. https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html/managing_hybrid_and_multicloud_resources/object-bucket-claim
+5. Sync Options, Respect Ignore Difference Configs (upstream). Argo CD. https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/
+6. Working on projects, Use connections (Using the connections API). Red Hat OpenShift AI Self-Managed 3.5. https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects/using-connections_projects
