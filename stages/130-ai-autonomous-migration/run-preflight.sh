@@ -145,7 +145,8 @@ _stop_gaps = run_stop_gaps(_profile_doc(), os.environ['EXPECTED_MODEL'], default
 need(not _stop_gaps, '; '.join(_stop_gaps))
 # The operator retired repeated isolation campaigns. Validate this workspace
 # against the released defaults and live platform; do not promote old receipts.
-apps = json.loads(oc('get','applications.argoproj.io','-n','openshift-gitops','-l','demo.rhoai.io/stage=070','-o','json'))['items']
+apps = [a for a in json.loads(oc('get','applications.argoproj.io','-n','openshift-gitops','-l','demo.rhoai.io/stage=070','-o','json'))['items']
+        if a['spec'].get('project') == 'rhoai-demo']  # not the generated project-*/runtime-* Applications
 need(bool(apps) and all(app.get('status',{}).get('sync',{}).get('revision') == platform
      and app['status']['sync'].get('status') == 'Synced'
      and app['status'].get('health',{}).get('status') == 'Healthy' for app in apps), 'Stage 070 is not healthy at the selected revision')

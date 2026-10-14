@@ -59,7 +59,9 @@ def main():
         values = oc('get', 'secrets', '-n', ns)['items']
         checks['no_retained_secret_annotation:' + ns] = all(LAST_APPLIED not in x['metadata'].get('annotations', {}) for x in values)
     apps = oc('get', 'applications', '-n', 'openshift-gitops')['items']
-    components = [a for a in apps if a['metadata'].get('labels', {}).get('demo.rhoai.io/stage') == '070']
+    # Generated project-*/runtime-* Applications carry the stage label too; components are the rhoai-demo ones.
+    components = [a for a in apps if a['metadata'].get('labels', {}).get('demo.rhoai.io/stage') == '070'
+                  and a['spec'].get('project') == 'rhoai-demo']
     selected = components + [a for a in apps if a['spec'].get('project') in ('platform-projects', 'runtime-projects')]
     checks['diff_strategy_on_stage_and_generated_apps'] = bool(selected) and all(
         'ServerSideDiff=true' in a['metadata'].get('annotations', {}).get('argocd.argoproj.io/compare-options', '').split(',') for a in selected)
