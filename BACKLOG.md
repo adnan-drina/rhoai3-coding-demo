@@ -26,6 +26,24 @@ TAS 1.5.0 was exercised with its digest-pinned vendor cosign 3.0.4 client and th
 
 The scheduled archive's PostgreSQL 17.6 dump restored in an isolated, network-disabled temporary database; all eight repository bundles restored with refs preserved and passed integrity checks. The test container was removed and live GitLab was untouched. Full service recovery remains open: the archive predates the new validation project, object-store data is skipped, and encryption-secret escrow/whole-service and Sonar/TAS restoration are not demonstrated. Evidence: `tmp/stage070-live-20261013/nonmodel-validation-20261014/`.
 
+## Stage 010-060 component review: decisions and remaining work (2026-10-14)
+
+Recorded during the autonomous follow-up of the component review (findings: `tmp/component-review-20261014/`). Each deviation below is **accepted for now** and kept as is; reverse it with the action named.
+
+- [ ] Decide: MaaS PostgreSQL uses `sslmode=disable` (namespace-scoped NetworkPolicy; 3.5 docs show `sslmode=require`). Reverse: serving certificate on `maas-postgres`, `sslmode=require` in `setup-database.sh`.
+- [ ] Decide: `qwen3-8-27b` replaces vLLM `command`/`args`; the 3.5 docs use `VLLM_ADDITIONAL_ARGS`, which keeps platform defaults on upgrade. Reverse: move the tuning flags into `VLLM_ADDITIONAL_ARGS` and re-qualify the model.
+- [ ] Decide: the Stage 050 pipeline server sets the MLflow plugin `insecureSkipVerify: true` (operator decision 2026-10-12, not in the 3.5 docs). Re-test on each RHOAI update; remove when the plugin accepts a CA bundle.
+- [ ] Decide: MaaS telemetry `captureUser: true` puts user identities in metrics (3.5 default `false`). Kept for the demo's per-user usage views.
+- [ ] Decide: Service Mesh 3 and Leader Worker Set operators are installed but unused (single-node models; Gateway API uses the Ingress Operator's Istio); the H100 MachineSet pool has no queue or profile. Remove them, or document them as readiness for multi-node / H100.
+- [ ] Decide: `DISABLE_DSC_CONFIG=true` on the RHOAI Subscription is documented only upstream. Confirm support with Red Hat or remove it.
+- [ ] Decide: `060-openshell-runtime` uses client-side diff (`ServerSideDiff=false`) with no recorded reason. Re-test with server-side diff now that its ignores cover whole maps.
+- [ ] Decide: the token-less read-only MCP server (`060-agent-tools`) is reachable by every pod and its fallback ServiceAccount has `view` in four namespaces plus cluster-wide listings (design confirmed 2026-10-09). Narrow the grants if the Ops Assistant does not need them.
+- [ ] Decide: delete the OpenShell `*-pre-pr4150` recovery set (PVC, VolumeSnapshot, four Secret copies including key material) once the PR 4150 upgrade is accepted. Kept: deletion is irreversible.
+- [x] Credential copies in `kubectl.kubernetes.io/last-applied-configuration` on nine Stage 010-060 Secrets removed (data unchanged); writers now use server-side apply. Credentials were not rotated: exposure was to principals who can already read those Secrets, no copy exists in saved evidence, and rotating the OpenShell key-encryption key would orphan its data.
+- [ ] Decide: the Keycloak instance `keycloak/keycloak` that Stages 060 and 070 rely on has no GitOps owner. Bring it under an Application or document its provisioning.
+- [ ] Planned: declare Job-driven DataScienceCluster and dashboard settings in Git (Stage 010 Kustomize components switched on per stage) instead of hook Jobs in 030, 040, 050 and 060; move the DSPA and the image-registry `defaultRoute` decision into Git as well.
+- [ ] Planned: move the DCGM ServiceMonitor to Stage 020, the MCP and tool-calling dashboard flags out of the Stage 030 discovery hook, retire the imperative sandbox S3 connection in `setup-access.sh`, and remove the superseded v1 evaluation collections.
+
 ## Fresh-environment migration gates (2026-10-05)
 
 The [baseline inventory](docs/OPERATIONS.md#fresh-environment-baseline-2026-10-05) is read-only evidence on OCP 4.22.14, not a deployed stage verdict.
