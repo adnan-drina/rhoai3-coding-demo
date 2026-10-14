@@ -59,7 +59,10 @@ def broker_client(host):
         'publicClient': False, 'standardFlowEnabled': True, 'directAccessGrantsEnabled': False,
         'serviceAccountsEnabled': False, 'fullScopeAllowed': False,
         'redirectUris': [origin + '/realms/platform/broker/base-sso/endpoint'],
-        'webOrigins': [origin], 'attributes': {'rhoai3.owner': 'stage070-base-sso'}}
+        'webOrigins': [origin], 'attributes': {
+            'rhoai3.owner': 'stage070-base-sso',
+            # The broker's logout response differs from its login callback.
+            'post.logout.redirect.uris': origin + '/realms/platform/broker/base-sso/endpoint/logout_response'}}
 
 
 def sonar_client(host):

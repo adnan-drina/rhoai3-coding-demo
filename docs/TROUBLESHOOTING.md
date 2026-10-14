@@ -2949,3 +2949,15 @@ A missing credential annotation does not prove that its earlier copy is harmless
 If the temporary GitLab bootstrap account can still write Secrets or exec while the stage is idle, inspect `stage070-bootstrap-cleanup` and the terminal native hook status. A control-plane interruption can prevent SyncFail/PostSync cleanup. Finish the reviewed exact-binding cleanup; do not remove all RBAC in a namespace or treat a selective sync as full acceptance.
 
 If a service becomes unreachable after ingress policy installation, distinguish the external Route from its direct service address. Inspect the source namespace's documented ingress/monitoring labels and the Sonar TCP/9000 allow list. Egress was not changed by this package. Test both a required allowed path and an unrelated denied path before acceptance; do not disable all policies as a diagnostic shortcut. Keep models stopped throughout these checks.
+
+## Stage 070 broker logout reports Invalid redirect uri
+
+The current base-SSO broker returns logout to `/realms/platform/broker/base-sso/endpoint/logout_response`, a different URL from its login callback. The initial configuration omitted the client’s valid post-logout URI. The correction declares only that exact HTTPS endpoint in `post.logout.redirect.uris`; login redirects, scopes and user links remain unchanged. Do not allow arbitrary callbacks or disable redirect checks. [Red Hat Keycloak broker guidance](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html-single/securing_applications_and_services_guide/index) describes the separate post-logout setting.
+
+The correction is prepared for human review, not deployed. Until it is qualified, use supported session controls for the exact retained user if normal logout is blocked, then verify a fresh login and unchanged identity/roles. A successful login alone does not qualify logout. Keep token-bearing logout URLs out of logs and screenshots.
+
+## Stage 070 running workspace retains an expired GitLab credential
+
+GitLab OAuth tokens expire after two hours in the current supported configuration. Native reauthorization can renew the user token while the running workspace’s separate Git credential carrier still holds the expired value. On 2026-10-14, the renewed token authenticated as `platform-developer` (200), while the Git carrier returned401; temporary clone still refused and the product tree stayed unchanged. This is not a proven rotation-induced revocation.
+
+Inspect carrier metadata and provider status without printing values. Keep the same user, application, scopes and expiry when renewing. Do not inject a shared PAT, extend token lifetime or recreate a workspace to hide the failure. The supported native carrier-refresh/restart path still requires qualification; the current running workspace was left intact.

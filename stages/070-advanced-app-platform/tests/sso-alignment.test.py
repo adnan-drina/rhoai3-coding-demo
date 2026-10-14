@@ -105,6 +105,15 @@ class IdentityPreservation(unittest.TestCase):
         self.assertFalse(client['directAccessGrantsEnabled'])
         self.assertEqual(client['redirectUris'], ['https://sso.example/realms/platform/broker/base-sso/endpoint'])
 
+    def test_broker_logout_allows_only_its_exact_response_endpoint(self):
+        client = identity.broker_client('sso.example')
+        self.assertEqual(client['attributes'].get('post.logout.redirect.uris'),
+                         'https://sso.example/realms/platform/broker/base-sso/endpoint/logout_response')
+        self.assertEqual(client['redirectUris'],
+                         ['https://sso.example/realms/platform/broker/base-sso/endpoint'])
+        self.assertNotIn('*', str(client))
+        self.assertNotEqual(client['attributes']['post.logout.redirect.uris'], '+')
+
     def test_cluster_identity_configuration_is_read_only(self):
         resources = list(yaml.safe_load_all((BASE / 'identity/jobs/configure-platform-identity.yaml').read_text()))
         role = next(r for r in resources if r['kind'] == 'ClusterRole')
