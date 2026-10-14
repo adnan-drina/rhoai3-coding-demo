@@ -55,11 +55,9 @@ The `ai-curated-prompts` namespace is the global MLflow prompt workspace the das
 | Role | `evalhub-catalog-insights` | `rhoai-model-registries` | Wave 12. `get` on virtual resource `evaluations.trustyai.opendatahub.io` only. |
 | RoleBinding | `demo-evalhub-catalog-insights` | `rhoai-model-registries` | Wave 12. That Role for `rhods-admins` and `rhoai-developers`, so the catalog's safety-insights tab passes the Eval Hub BFF's tenant check. The namespace is not a tenant. |
 
-### `prompts/`
+### `prompts/` (moved)
 
-| Kind | Name | Namespace | Purpose |
-|---|---|---|---|
-| Namespace | `ai-curated-prompts` | cluster | Wave 25, `Prune=false,Delete=false`. Dashboard project labelled `opendatahub.io/global-mlflow-workspace: mlflow`. |
+Moved on 2026-10-14 to `050-mlflow` (`prompts/`): `ai-curated-prompts` is an MLflow global workspace, enabled by the MLflow hook.
 
 ### Objects not in Git
 

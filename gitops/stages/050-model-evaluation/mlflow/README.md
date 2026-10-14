@@ -49,6 +49,12 @@ Application with `Prune=false,Delete=false` on every data object.
 | Role / RoleBinding | `enable-model-evaluation-dashboard` | `redhat-ods-applications` | `get`/`patch` on `odh-dashboard-config` only. Wave 1. |
 | Job | `enable-model-evaluation` | `redhat-ods-applications` | `Sync` hook, wave 2, `BeforeHookCreation,HookSucceeded`, 900 s deadline. Patches the DSC and dashboard (below) with a resourceVersion test, removes a former EvalHub tenant label from `demo-sandbox`, waits for the EvalHub, MLflow, DSPA and PipelineVersion CRDs, and waits for the TrustyAI component to be `Ready`. |
 
+### `prompts/`
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| Namespace | `ai-curated-prompts` | cluster | Wave 25, `Prune=false,Delete=false`. Dashboard project labelled `opendatahub.io/global-mlflow-workspace: mlflow`. |
+
 ### Objects not in Git
 
 | Object | Created by |

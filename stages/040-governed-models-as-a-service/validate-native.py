@@ -357,7 +357,7 @@ def main():
         if parked:
             print("[PASS] Explicitly delegated model compute is parked; configuration/route preserved, inference not qualified")
     need(len([r for r in routes if any(p.get("name") == "maas-default-gateway" for p in r["spec"].get("parentRefs", []))]) == len(models), "Extra route would invalidate dedicated inference listeners")
-    print("[PASS] Three-listener isolation, exact native model configuration/routes and active workloads; parked compute is separate from inference acceptance")
+    print("[PASS] Per-model listener isolation, exact native model configuration/routes and active workloads; parked compute is separate from inference acceptance")
     for d in [o for o in desired if o["kind"] == "LLMInferenceServiceConfig"]:
         m = d["metadata"]
         obj = get("llminferenceserviceconfigs.serving.kserve.io", m["name"], m["namespace"])
@@ -380,9 +380,7 @@ def main():
         ns, name = d["metadata"]["namespace"], d["metadata"]["name"]
         group = "maas.opendatahub.io" if kind == "MaaSModelRef" else "inference.opendatahub.io"
         obj = get(kind.lower() + "s." + group, name, ns)
-        parked_ref = kind == "MaaSModelRef" and ns == "internal-models" and name == "qwen3-6-27b" and get("llminferenceservices.serving.kserve.io", name, ns)["spec"].get("replicas") == 0
-        if not parked_ref:
-            need(obj.get("status", {}).get("phase") == "Ready", "Native model registration phase is not Ready")
+        need(obj.get("status", {}).get("phase") == "Ready", "Native model registration phase is not Ready")
         if kind != "MaaSModelRef":
             condition(obj, "Ready", True)
             need(contains_spec(obj["spec"], d["spec"]), "External native configuration differs from reviewed spec")
@@ -397,15 +395,10 @@ def main():
             need(owner(r, obj["metadata"]["uid"]), "External route is not owned by native model")
             route_ready(r, "api", gateway_controller)
         if kind == "MaaSModelRef":
-            for t in (("GovernanceAttached",) if parked_ref else ("Ready", "GovernanceAttached", "RuntimeReady")):
+            for t in ("Ready", "GovernanceAttached", "RuntimeReady"):
                 condition(obj, t, True)
-            if parked_ref:
-                runtime = conditions(obj).get("RuntimeReady", {})
-                need(runtime.get("observedGeneration") == obj["metadata"]["generation"] and runtime.get("status") in ("True", "False"), "Parked model runtime observation is stale or absent")
-                print("[PASS] Parked model reference governance/current native observation; runtime status is not inference qualification")
             need(obj["spec"].get("modelRef") == d["spec"]["modelRef"] and obj["spec"].get("tenantRef") == d["spec"].get("tenantRef"), "Native model reference differs")
-            if not parked_ref:
-                need(obj.get("status", {}).get("endpoint"), "Native model endpoint discovery is absent")
+            need(obj.get("status", {}).get("endpoint"), "Native model endpoint discovery is absent")
             if ns == "external-models":
                 endpoint = "https://" + listeners["api"]["hostname"]
                 if d["spec"].get("endpointOverride"):

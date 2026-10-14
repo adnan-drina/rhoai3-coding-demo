@@ -21,9 +21,6 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: redhat-ai-gateway-infra
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: redhat-ods-applications
       ports:
         - protocol: TCP
           port: 5432

@@ -64,6 +64,13 @@ checkpoint `Qwen/Qwen3.8-27B-FP8` (pinned revision), label `demo.rhoai.io/quanti
 description, and the container environment variable `VLLM_USE_DEEP_GEMM=0`. The model id `qwen3-8-27b`, GPU and serving
 arguments stay the same, so clients and subscriptions do not change.
 
+### `monitoring/`: serving health
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| PrometheusRule | `vllm-serving-health` | `internal-models` | Recording rules for p95 time to first token, p95 inter-token latency, KV cache use. Alerts `VLLMHighTimeToFirstToken` (p95 > 2 s for 10 min), `VLLMRequestQueueBacklog` (> 8 waiting for 10 min), `VLLMKVCachePressure` (> 90% for 10 min), `VLLMModelServingDown` (no metrics for 15 min, severity `info`) (wave 20) |
+| RoleBinding | `rhoai-demo-monitoring-rules-view` | `internal-models` | ClusterRole `monitoring-rules-view` for Groups `rhoai-developers` and `rhods-admins` (wave 20) |
+
 ### Objects not in Git
 
 | Object | Owner |

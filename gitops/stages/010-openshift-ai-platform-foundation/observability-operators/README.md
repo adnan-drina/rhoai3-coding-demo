@@ -61,6 +61,13 @@ from the DSCI are also not here: `MonitoringStack`, `ThanosQuerier`, `TempoMonol
 `PersesDatasource` objects in `redhat-ods-monitoring`. The collector ServiceAccount is created by the OpenTelemetry
 Operator for the RHOAI-generated collector.
 
+### `cluster-monitoring/`: platform and user-workload monitoring configuration
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| ConfigMap | `cluster-monitoring-config` | `openshift-monitoring` | `enableUserWorkload: true`; platform Prometheus 7 d / 8 GB retention on a 40 Gi `gp3-csi` PVC. |
+| ConfigMap | `user-workload-monitoring-config` | `openshift-user-workload-monitoring` | User-workload Prometheus 7 d / 5 GB retention on a 20 Gi `gp3-csi` PVC. |
+
 ## How
 
 - **Channels and approval.** All three use the rolling `stable` channel with `Automatic` approval, which is what the

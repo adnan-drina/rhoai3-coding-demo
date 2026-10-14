@@ -57,12 +57,9 @@ caused worker disk-pressure evictions, so both Prometheus stacks get PVCs and re
 | RoleBinding | `demo-registry-rhods-admins` | `rhoai-model-registries` | Wave 7, `Prune=false,Delete=false`. Group `rhods-admins` to the operator-created Role `registry-user-demo-registry`. |
 | RoleBinding | `demo-registry-rhoai-developers` | `rhoai-model-registries` | Wave 7, `Prune=false,Delete=false`. Group `rhoai-developers` to the same Role. |
 
-### `monitoring/`
+### `monitoring/` (moved)
 
-| Kind | Name | Namespace | Purpose |
-|---|---|---|---|
-| ConfigMap | `cluster-monitoring-config` | `openshift-monitoring` | `enableUserWorkload: true`; platform Prometheus 7 d / 8 GB retention on a 40 Gi `gp3-csi` PVC. |
-| ConfigMap | `user-workload-monitoring-config` | `openshift-user-workload-monitoring` | User-workload Prometheus 7 d / 5 GB retention on a 20 Gi `gp3-csi` PVC. |
+Moved on 2026-10-14 to `010-observability-operators` (`cluster-monitoring/`), with `Prune=false,Delete=false`: it is cluster-wide platform configuration that Stages 040 and 050 also rely on.
 
 ### Objects not in Git
 
