@@ -51,7 +51,7 @@ python3 scripts/platform/move-applications.py --stage NNN --revision <sha> [--ap
 - Objects that no new Application renders are reported; `--delete-leftovers` deletes those still tracked by a `--from` Application, after you reviewed the list.
 - The tool is safe to re-run after a failure: it keeps the UIDs recorded on the first run in `~/.local/state/rhoai3-coding-demo/move-applications/`.
 
-The tool stops automated sync on the old Applications, applies the new ones, starts one sync for Applications without automated sync, waits until each is Synced, Healthy and successfully synced at the revision, checks every recorded object's tracking id and UID, and only then deletes the old Applications (no cascade).
+The tool stops automated sync on the old Applications, applies the new ones, starts one sync for each Application that has not yet synced the new source (automated sync does not run one when the render is unchanged), waits until each is Synced, Healthy and successfully synced at the revision, checks every recorded object's tracking id and UID, and only then deletes the old Applications (no cascade).
 
 ## Rules the tool encodes (and why)
 

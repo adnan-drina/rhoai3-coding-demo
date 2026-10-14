@@ -15,7 +15,7 @@ annotation; the old Applications (no finalizer) are deleted without cascade at t
   scripts/platform/move-applications.py --stage NNN --revision SHA [--app NAME ...] [--from OLD ...] [--delete-leftovers]
 
 Steps: guard and preflight (read only) -> stop automated sync on --from Applications -> apply the new Applications ->
-start one sync for those without automated sync (carrying their own syncOptions, running any sync gate below) ->
+start one sync for each that has not synced this source (carrying their own syncOptions, running any sync gate below) ->
 wait until each is Synced, Healthy and successfully synced at the revision -> verify every recorded object now carries
 its new owner's tracking id and the same UID -> delete the --from Applications -> optionally delete leftovers.
 
@@ -249,8 +249,8 @@ class Plan:
         for name in self.ordered():
             app = application(name)
             status, op = app.get("status", {}), app.get("status", {}).get("operationState", {})
-            if app["spec"].get("syncPolicy", {}).get("automated"):
-                continue
+            # Automated sync alone is not enough: when the render is unchanged (a re-point) Argo reports Synced at the
+            # new revision without running an operation, and no hook or sync gate runs for this source.
             if app.get("operation") or op.get("phase") in ("Running", "Terminating"):
                 log("  " + name + ": an operation is already running")
             elif status.get("sync", {}).get("status") == "Synced" and op.get("phase") == "Succeeded" and op.get("syncResult", {}).get("revision") == self.revision \
@@ -384,7 +384,7 @@ def main():
         plan.stop_old()
         log("== Apply the new Applications")
         plan.apply_new()
-        log("== Start one sync for Applications without automated sync")
+        log("== Start one sync for Applications that have not synced this source")
         plan.start_syncs()
         log("== Wait for reconciliation")
         plan.wait()
