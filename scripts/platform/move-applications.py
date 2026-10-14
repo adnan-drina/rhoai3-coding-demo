@@ -162,7 +162,10 @@ class Plan:
             # Only entries that still match an object this Application renders: an entry for an object that moved
             # elsewhere (or left Git) is stale and would bring back a rule its manifest dropped.
             rendered = [key for key, (owner, _) in self.owner.items() if owner == name]
-            extra = [i for i in live.get("ignoreDifferences", []) if norm(i) not in have
+            # An entry whose selector the manifest also has was edited in Git: the manifest wins.
+            selector = lambda i: (i.get("group", ""), i.get("kind"), i.get("name"), i.get("namespace"))
+            declared = {selector(i) for i in app["spec"].get("ignoreDifferences", [])}
+            extra = [i for i in live.get("ignoreDifferences", []) if norm(i) not in have and selector(i) not in declared
                      and any(self.ignore_matches(i, key) for key in rendered)]
             if extra:
                 app["spec"].setdefault("ignoreDifferences", []).extend(extra)
