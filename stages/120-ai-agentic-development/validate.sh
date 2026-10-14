@@ -10,7 +10,7 @@ echo "Stage 120: Agentic Development — Validation"
 echo ""
 
 log_step "Argo CD Application (platform stage owns the resources)"
-while IFS= read -r app; do check_argocd_app "$app"; done < <(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" names 070)
+check_stage_applications 070
 
 log_step "Agentic workspace"
 check "agentic-coolstore DevWorkspace exists" \

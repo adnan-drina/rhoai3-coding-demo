@@ -25,14 +25,7 @@ fi
 source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 
 log_step 'Stage 070 GitOps and selected operators'
-while IFS= read -r app; do check_argocd_app "$app"; done < <(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" names 070)
-revision_args=()
-[[ -z "$EXPECTED_REVISION" ]] || revision_args=(--revision "$EXPECTED_REVISION")
-if "$PYTHON" "$REPO_ROOT/scripts/shared/stage_apps.py" status 070 --repo-url "$GIT_REPO_URL" ${revision_args[@]+"${revision_args[@]}"}; then
-  check 'Stage 070 immutable source and completed native operation' 'echo PASS' 'PASS'
-else
-  check 'Stage 070 immutable source and completed native operation' 'echo FAIL' 'PASS'
-fi
+check_stage_applications 070 "$EXPECTED_REVISION"
 for row in \
   'openshift-devspaces devspaces devspacesoperator.v3.30.2' \
   'rhdh-operator rhdh rhdh-operator.v1.10.5' \
