@@ -303,7 +303,7 @@ class IntegratedContract(unittest.TestCase):
             with self.assertRaises(ValueError): oidc.provider(issuer, host, 'synthetic')
 
     def test_credentials_are_ready_during_sync_not_after_it(self):
-        for name, wave in [('mta/jobs/configure-ai.yaml', '10'),
+        for name, wave in [('mta/jobs/configure-ai.yaml', '11'),
                            ('mta/jobs/configure-mta-platform-sso.yaml', '10'),
                            ('rhdh/jobs/configure-rhdh.yaml', '18')]:
             docs = list(yaml.safe_load_all((BASE / name).read_text()))
@@ -383,6 +383,43 @@ curl() {
 
 
 class GatewayAndPolicy(unittest.TestCase):
+    def test_native_gateway_apply_precedes_endpoint_bootstrap(self):
+        resources = list(yaml.safe_load_all((BASE / 'mta/jobs/configure-ai.yaml').read_text()))
+        gateway = next(row for row in resources if row['kind'] == 'Gateway')
+        hook = next(row for row in resources if row['kind'] == 'Job')
+        wave = lambda row: int(row['metadata']['annotations']['argocd.argoproj.io/sync-wave'])
+        self.assertGreater(wave(hook), wave(gateway))
+
+    def test_live_endpoint_checks_refuse_extra_path_segments(self):
+        import re, shlex
+        library = (ROOT / 'scripts/shared/validate-lib.sh').read_text()
+        check_function = re.search(r'(?ms)^check\(\) \{.*?^\}', library).group()
+        contains_function = next(x for x in library.splitlines() if x.startswith('contains()'))
+        validator = (ROOT / 'stages/070-advanced-app-platform/validate.sh').read_text()
+        section = validator[validator.index('MTA_MAAS_ORIGIN='):validator.index("log_step 'Signing service")]
+        fake = """oc() {
+  if [[ "$2" == gateway.gateway.networking.k8s.io ]]; then
+    printf '%s' '{"spec":{"listeners":[{"hostname":"maas.example.test"}]}}'
+  elif [[ "$2" == gateways.konveyor.io ]]; then
+    printf '%s' "$TEST_NATIVE_ENDPOINT"
+  else
+    printf '%s' "$TEST_PROXY_BASE"
+  fi
+}
+"""
+        origin = 'https://maas.example.test'
+        for native, proxy, failures in [(origin, origin+'/v1', 0),
+                                         (origin+'/v1', origin+'/v1', 1),
+                                         (origin+'/v1/v1', origin+'/v1', 1),
+                                         (origin, origin+'/v1/extra', 1)]:
+            script = 'set -euo pipefail\nGREEN= RED= NC=\nVALIDATE_PASS=0\nVALIDATE_FAIL=0\nPYTHON='+shlex.quote(sys.executable)+'\n'
+            script += check_function+'\n'+contains_function+'\n'+fake+section
+            script += '\nprintf "FAILURES=%s\\n" "$VALIDATE_FAIL"\n'
+            result = subprocess.run(['bash'], input=script, env=dict(os.environ, TEST_NATIVE_ENDPOINT=native, TEST_PROXY_BASE=proxy),
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('FAILURES='+str(failures), result.stdout, result.stdout)
+
     def test_native_gateway_origin_is_distinct_from_lightspeed_api_base(self):
         from unittest.mock import patch
         calls = []

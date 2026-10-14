@@ -183,7 +183,8 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
-    argocd.argoproj.io/sync-wave: '10'
+    # Write the runtime endpoint after its Gateway resource has been applied.
+    argocd.argoproj.io/sync-wave: '11'
 spec:
   activeDeadlineSeconds: 300
   backoffLimit: 3
