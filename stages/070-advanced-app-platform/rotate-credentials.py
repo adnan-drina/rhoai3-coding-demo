@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parents[2]
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
 sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
 from secret_writer import write_secret
-import application
+sys.path.insert(0, str(ROOT / 'scripts/shared'))
+import stage_apps
 
 
 def command(*args):
@@ -299,9 +300,9 @@ def main():
         raise ValueError('Load the project environment and verify its API server before rotation')
     # Refuse a locally modified maintenance implementation or a different
     # publication, just as deployment refuses unpublished/dirty stage content.
-    if application.select_revision(args.revision, args.repo_url) != args.revision:
+    if stage_apps.select_revision('070', args.revision, args.repo_url) != args.revision:
         raise ValueError('Use the reviewed published correction revision')
-    if not application.reconciled(application.read(), args.revision, args.repo_url):
+    if stage_apps.stage_problems('070', args.revision, args.repo_url):
         raise ValueError('Deploy and qualify the corrected pinned stage before rotation')
     if not args.execute:
         raise ValueError('Rotation requires the explicit --execute flag')
