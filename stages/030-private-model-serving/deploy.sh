@@ -14,6 +14,7 @@ remote_sha=$(git ls-remote "${GIT_REPO_URL:?Set GIT_REPO_URL}" "$revision" "refs
 paths=(gitops/stages/030-private-model-serving gitops/argocd/app-of-apps/030-private-model-serving stages/030-private-model-serving scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/validate-serving-update.py)
 [[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish reviewed Stage 030 source first.' >&2; exit 1; }
 # Read-only prerequisites precede even sizing and the first Application write.
+export GIT_REPO_URL
 python3 - "$ROOT_DIR" <<'PY_PREREQUISITE'
 import json,os,subprocess,sys
 from pathlib import Path
@@ -56,7 +57,7 @@ else:
 existing=get('application',appname,'openshift-gitops',True)
 if existing:
  e=existing['spec'];assert not existing['metadata'].get('ownerReferences') and not e.get('sources'),'Foreign Application ownership'
- assert e['project']=='rhoai-demo' and e['source']['repoURL']==spec['source']['repoURL'] and e['source']['path']=='gitops/stages/030-private-model-serving/private-model-serving','Unexpected Stage 030 source'
+ assert e['project']=='rhoai-demo' and e['source']['repoURL']==os.environ['GIT_REPO_URL'] and e['source']['path']=='gitops/stages/030-private-model-serving/private-model-serving','Unexpected Stage 030 source'
  assert e['destination']=={'namespace':'openshift-gitops','server':'https://kubernetes.default.svc'},'Unexpected Stage 030 destination'
 for ns,name in [('openshift-monitoring','cluster-monitoring-config'),('openshift-user-workload-monitoring','user-workload-monitoring-config')]:
  cm=get('configmap',name,ns,True)
