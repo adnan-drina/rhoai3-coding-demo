@@ -55,12 +55,13 @@ spec:
     action: publish:gitlab
     input:
       repoUrl: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-host'] }}?owner=${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-workload-group'] }}&repo=${{ parameters.name }}
-      description: 'Quarkus application scaffold (golden path: agentic, spec-driven development)'
-      repoVisibility: private
       defaultBranch: main
-      topics:
-      - rhoai3-golden-path
-      - rhoai3-scaffolded
+      settings:
+        description: 'Quarkus application scaffold (golden path: agentic, spec-driven development)'
+        visibility: private
+        topics:
+        - rhoai3-golden-path
+        - rhoai3-scaffolded
   - id: enroll
     name: Request platform enrollment of the immutable first commit
     action: gitlab:issues:create

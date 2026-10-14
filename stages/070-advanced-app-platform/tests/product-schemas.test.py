@@ -15,6 +15,30 @@ FIXTURES = Path(__file__).with_name('fixtures')
 
 
 class ProductSchemas(unittest.TestCase):
+    def test_template_gitlab_inputs_match_installed_action_schemas(self):
+        # Captured from official factory.schema objects in the installed RHDH
+        # 1.10.5 gitlab-dynamic 0.11.4 module, 2026-10-14; no handlers invoked.
+        captured = json.loads((FIXTURES / 'rhdh-1.10.5-gitlab-actions.json').read_text())
+        schemas = {a['id']: a['schema'] for a in captured['actions']}
+        for name in ('agentic-quarkus-scaffold', 'app-migration'):
+            template = yaml.safe_load((BASE / ('rhdh/templates/' + name + '/template.yaml')).read_text())
+            for step in template['spec']['steps']:
+                if step['action'] not in schemas:
+                    continue
+                with self.subTest(template=name, action=step['action']):
+                    inputs = copy.deepcopy(step['input'])
+                    if 'projectId' in inputs:
+                        inputs['projectId'] = 42  # the template's explicit int filter
+                    errors = list(jsonschema.Draft7Validator(schemas[step['action']]['input']).iter_errors(inputs))
+                    self.assertFalse(errors, [e.message for e in errors])
+                    if step['action'] == 'publish:gitlab':
+                        self.assertEqual(inputs['settings']['visibility'], 'private')
+                        self.assertEqual(inputs['defaultBranch'], 'main')
+                        self.assertIn('rhoai3-scaffolded', inputs['settings']['topics'])
+                        # Enrollment consumes only native, declared outputs.
+                        for field in ('projectId', 'commitHash', 'remoteUrl'):
+                            self.assertIn(field, schemas[step['action']]['output']['properties'])
+
     def test_tackle_parameters_are_implemented_by_the_downstream_operator(self):
         spec = yaml.safe_load((BASE / 'mta/mta-instance/tackle.yaml').read_text())['spec']
         defaults = json.loads((FIXTURES / 'mta-tackle-8.3-defaults.json').read_text())

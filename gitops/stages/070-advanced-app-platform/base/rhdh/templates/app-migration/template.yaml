@@ -177,13 +177,14 @@ spec:
     action: publish:gitlab
     input:
       repoUrl: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-host'] }}?owner=${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-workload-group'] }}&repo=${{ parameters.name }}
-      description: 'Quarkus migration destination (golden path: AI-autonomous migration)'
-      repoVisibility: private
       defaultBranch: main
-      topics:
-      - rhoai3-golden-path
-      - rhoai3-scaffolded
-      - rhoai3-migration-run
+      settings:
+        description: 'Quarkus migration destination (golden path: AI-autonomous migration)'
+        visibility: private
+        topics:
+        - rhoai3-golden-path
+        - rhoai3-scaffolded
+        - rhoai3-migration-run
   - id: enroll
     name: Request platform enrollment of the immutable first commit
     action: gitlab:issues:create
