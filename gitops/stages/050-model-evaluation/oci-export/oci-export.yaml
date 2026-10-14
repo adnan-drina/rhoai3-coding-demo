@@ -2,7 +2,7 @@
 # 2.19 Export evaluation results to an OCI registry), repository evaluated-models/evaluation-results.
 # The evaluation sidecar verifies registry TLS against system roots only (no CA field in the 3.5.1 CR), so
 # exports go through the registry's default route, which serves the cluster's publicly trusted ingress
-# certificate (OCP "Exposing the registry": configs.imageregistry spec.defaultRoute: true). The pusher is a
+# certificate (OCP "Exposing the registry"; Stage 010 sets configs.imageregistry spec.defaultRoute). The pusher is a
 # ServiceAccount with system:image-builder in evaluated-models; a Sync hook composes the documented
 # kubernetes.io/dockerconfigjson Secret from its token, so no credential is stored in Git.
 ---
@@ -48,18 +48,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: evalhub-oci-export-provisioner
-  annotations:
-    argocd.argoproj.io/sync-wave: "12"
-rules:
-  - apiGroups: [imageregistry.operator.openshift.io]
-    resources: [configs]
-    resourceNames: [cluster]
-    verbs: [get, patch]
----
 # Read only the registry's default route, not every Route in the cluster.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -85,21 +73,6 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: evalhub-oci-export-registry-route
-subjects:
-  - kind: ServiceAccount
-    name: evalhub-oci-export-provisioner
-    namespace: evaluated-models
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: evalhub-oci-export-provisioner
-  annotations:
-    argocd.argoproj.io/sync-wave: "12"
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: evalhub-oci-export-provisioner
 subjects:
   - kind: ServiceAccount
     name: evalhub-oci-export-provisioner
@@ -160,7 +133,7 @@ spec:
           command: [/bin/bash, -ceu]
           args:
             - |
-              oc patch configs.imageregistry.operator.openshift.io cluster --type=merge -p '{"spec":{"defaultRoute":true}}'
+              # 010-rhoai-platform declares the registry's default route (configs.imageregistry spec.defaultRoute).
               host=""
               for i in $(seq 1 30); do
                 host="$(oc get route default-route -n openshift-image-registry -o jsonpath='{.spec.host}' 2>/dev/null || true)"

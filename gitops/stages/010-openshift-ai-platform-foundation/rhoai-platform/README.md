@@ -36,6 +36,7 @@ These singletons change together and have one owner, so they form one Applicatio
 | DataScienceCluster | `default-dsc` | (cluster) | 3 | `dashboard` and `workbenches` Managed; every other component `Removed` in Git (see delegation) |
 | Auth | `auth` | (cluster) | 4 | `adminGroups: [rhods-admins]`, `allowedGroups: [rhods-admins, rhoai-developers]` |
 | OdhDashboardConfig | `odh-dashboard-config` | `redhat-ods-applications` | 4 | Foundation dashboard flags (see How) |
+| Config (`imageregistry.operator.openshift.io`) | `cluster` | (cluster) | 0 | Partial manifest: `spec.defaultRoute: true` only, `Prune=false,Delete=false`; exposes the internal registry route that Stage 050 OCI export uses |
 
 The kustomization adds `SkipDryRunOnMissingResource=true` to every object. There are no hooks.
 

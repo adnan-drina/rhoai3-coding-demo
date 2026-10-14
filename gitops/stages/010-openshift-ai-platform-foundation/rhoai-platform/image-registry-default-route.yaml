@@ -1,0 +1,17 @@
+# Expose the internal image registry through its default route (OCP "Exposing the registry": spec.defaultRoute).
+# Stage 050 exports evaluation results to the registry through this route, because the evaluation sidecar trusts only
+# public roots and the route serves the cluster's publicly trusted ingress certificate. Partial manifest: only this
+# field is declared; the registry operator owns the rest of the object. Never pruned or deleted with the Application.
+apiVersion: imageregistry.operator.openshift.io/v1
+kind: Config
+metadata:
+  name: cluster
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    app.kubernetes.io/name: image-registry-default-route
+    app.kubernetes.io/component: platform-configuration
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+spec:
+  defaultRoute: true

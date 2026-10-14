@@ -12,3 +12,4 @@ resources:
   - datasciencecluster.yaml
   - auth.yaml
   - odhdashboardconfig.yaml
+  - image-registry-default-route.yaml
