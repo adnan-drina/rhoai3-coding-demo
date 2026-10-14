@@ -1,0 +1,11 @@
+# Red Hat build of Kueue operator; dsc-enablement/ enables Kueue in the DataScienceCluster.
+# cert-manager is a Kueue prerequisite that OLM installs as a dependency; Stage 020 verifies it
+# rather than declaring a duplicate OperatorGroup.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - operatorgroup.yaml
+  - subscription.yaml
+  - dsc-enablement

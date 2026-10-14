@@ -1,6 +1,0 @@
-# GPU worker pools for this cluster (generated); replicas are delegated to resume/park scripts.
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - ../../overlays/environment/machinesets

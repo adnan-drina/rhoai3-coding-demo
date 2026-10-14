@@ -1,0 +1,14 @@
+# Stage 040 desired state: the union of its component Applications (gitops/argocd/app-of-apps/040-*/).
+# Argo CD syncs each component from its folder; validators read this aggregate.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - maas-operators
+  - maas-database
+  - gateway-governance
+  - maas-platform
+  - local-models
+  - external-models
+  - model-access
+  - genai-studio

@@ -1,0 +1,11 @@
+# NVIDIA GPU Operator with its ClusterPolicy and GPU metrics access; console-dashboard/ publishes the DCGM dashboard.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - operatorgroup.yaml
+  - subscription.yaml
+  - cluster-policy.yaml
+  - rolebinding-gpu-metrics-admins.yaml
+  - console-dashboard

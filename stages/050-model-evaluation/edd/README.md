@@ -1,7 +1,7 @@
 # Agentic coding evaluation (evaluation-driven development)
 
 Criteria are defined before models are compared and live as six versioned EvalHub collections
-(`gitops/stages/050-model-evaluation/base/edd/`, RHOAI 3.5 "Evaluating AI systems" 2.1, 2.23):
+(`gitops/stages/050-model-evaluation/evaluation-content/edd/`, RHOAI 3.5 "Evaluating AI systems" 2.1, 2.23):
 
 | Collection | Question | Slices (weight, gate) | Overall gate |
 |---|---|---|---|

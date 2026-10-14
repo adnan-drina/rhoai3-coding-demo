@@ -38,7 +38,7 @@ try:
   raise RuntimeError('Registry pagination exceeded bounded limit')
  # Read the rendered models so an enabled format component (e.g. qwen38-fp8) registers its own artifact;
  # the registry title is the checkpoint repository name (Qwen3.8-27B-NVFP4 or Qwen3.8-27B-FP8).
- rendered=subprocess.run(['oc','kustomize',str(root/'gitops/stages/040-governed-models-as-a-service/base/local-models/base')],capture_output=True,text=True,check=True).stdout
+ rendered=subprocess.run(['oc','kustomize',str(root/'gitops/stages/040-governed-models-as-a-service/local-models')],capture_output=True,text=True,check=True).stdout
  models={o['metadata']['name']:o for o in json.loads(subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_stream(STDIN.read).compact)'],input=rendered,capture_output=True,text=True,check=True).stdout) if o.get('kind')=='LLMInferenceService'}
  QUANT={'NVFP4':'NVFP4 (FP4 weights, FP8 attention)','FP8':'FP8 block-128','INT4':'INT4 W4A16'}
  def register(uri):
@@ -75,12 +75,12 @@ try:
  # Prepared alternates: every format component under local-models/components registers its artifact
  # (no deployment linkage), so the registry lists each build that can be switched on.
  import shutil,tempfile
- lm=root/'gitops/stages/040-governed-models-as-a-service/base/local-models'
+ lm=root/'gitops/stages/040-governed-models-as-a-service/local-models'
  for comp in sorted(x.name for x in (lm/'components').iterdir() if x.is_dir()):
   with tempfile.TemporaryDirectory() as tmp:
-   shutil.copytree(lm,Path(tmp)/'local-models');k=Path(tmp)/'local-models/base/kustomization.yaml'
-   k.write_text(k.read_text()+'\ncomponents:\n  - ../components/'+comp+'\n')
-   alt=subprocess.run(['oc','kustomize',str(Path(tmp)/'local-models/base')],capture_output=True,text=True,check=True).stdout
+   shutil.copytree(lm,Path(tmp)/'local-models');k=Path(tmp)/'local-models/kustomization.yaml'
+   k.write_text(k.read_text()+'\ncomponents:\n  - components/'+comp+'\n')
+   alt=subprocess.run(['oc','kustomize',str(Path(tmp)/'local-models')],capture_output=True,text=True,check=True).stdout
   for o in json.loads(subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_stream(STDIN.read).compact)'],input=alt,capture_output=True,text=True,check=True).stdout):
    if o.get('kind')=='LLMInferenceService' and o['spec']['model']['uri']!=active.get(o['metadata']['name']):
     title,_,_=register(o['spec']['model']['uri']);print('PASS Registered prepared alternate (component '+comp+', not deployed): '+title)

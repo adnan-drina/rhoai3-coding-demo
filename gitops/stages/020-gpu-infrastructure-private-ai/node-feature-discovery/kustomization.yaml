@@ -1,0 +1,9 @@
+# Node Feature Discovery operator and instance: labels nodes with their hardware.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - operatorgroup.yaml
+  - subscription.yaml
+  - nodefeaturediscovery.yaml

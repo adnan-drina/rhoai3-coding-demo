@@ -9,14 +9,14 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 NS = "mcp-servers"
-APP_DESTINATION = NS
+APP_DESTINATION = "openshift-gitops"
 # Customer MCPServers in the hosting project and their reviewed policy.
 SERVERS = {
     "openshift-mcp-server": {"read_only": True, "require_oauth": False, "route": False, "sa": "openshift-mcp-server-ro"},
     "openshift-mcp-server-rw": {"read_only": False, "require_oauth": True, "route": True, "sa": "openshift-mcp-server"},
 }
 APP = "060-agent-tools"
-PATH = "gitops/stages/060-agent-runtime-and-agentops/native-mcp"
+PATH = "gitops/stages/060-agent-runtime-and-agentops/agent-tools"
 IMAGE = "registry.redhat.io/openshift-mcp-tech-preview/openshift-mcp-server-rhel9@sha256:855466299c3178f7d9f96a1511005ca6161b8cc6b294df9907c234ce8ecfd0f2"
 
 

@@ -32,7 +32,7 @@ def main():
     path = str(Path(__file__).relative_to(ROOT))
     need(subprocess.check_output(['git', '-C', str(ROOT), 'show', args.revision + ':' + path]) == Path(__file__).read_bytes(), 'Helper differs from selected published source')
     cli = Path(os.environ.get('RHOAI_STAGE060_OPENSHELL_CLI', ''))
-    pins = json.loads((ROOT / 'gitops/stages/060-agent-runtime-and-agentops/runtime-candidate/source-pins.json').read_text())
+    pins = json.loads((ROOT / 'gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/source-pins.json').read_text())
     need(cli.is_file() and hashlib.sha256(cli.read_bytes()).hexdigest() == pins['cliBinarySha256'], 'Set RHOAI_STAGE060_OPENSHELL_CLI to the pinned native CLI')
     def get(kind, name, ns=None):
         return json.loads(oc(env, 'get', kind, name, *(['-n', ns] if ns else []), '-o', 'json'))

@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
-python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/runtime-candidate/controller"
+python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/controller"
 # Use the caller-selected Python interpreter for native readiness checks.
 PYTHON="${RHOAI_STAGE060_PYTHON:-python3}"
 # Core-mode Argo CD reads its settings from the kube-context namespace; refuse before any write.
@@ -15,7 +15,7 @@ argocd app sync --help 2>&1 | grep -q -- '--core' || { echo 'An argocd client wi
 REVISION="${RHOAI_STAGE060_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
 [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || exit 1
 [[ "$(git -C "$REPO_ROOT" ls-remote origin "refs/heads/${GIT_REPO_BRANCH:-main}" | awk '{print $1}')" == "$REVISION" ]] || { echo 'Published revision mismatch' >&2; exit 1; }
-git -C "$REPO_ROOT" diff --exit-code "$REVISION" -- gitops/stages/060-agent-runtime-and-agentops gitops/argocd/app-of-apps/060-agent-runtime-and-agentops-runtime.yaml "$SCRIPT_DIR" scripts/platform/check-operator-policy.py >/dev/null
+git -C "$REPO_ROOT" diff --exit-code "$REVISION" -- gitops/stages/060-agent-runtime-and-agentops gitops/argocd/app-of-apps/060-agent-runtime-and-agentops/openshell-runtime.yaml "$SCRIPT_DIR" scripts/platform/check-operator-policy.py >/dev/null
 if [[ "${1:-}" == '--finish' ]]; then
   python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"
   ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait 060-openshell-runtime --app-namespace openshift-gitops --sync --operation --timeout 360
@@ -36,19 +36,19 @@ def get(kind,name,ns):
 a=get('application',app,'openshift-gitops')
 if a:
  m=a['metadata'];s=a['spec'];assert not m.get('ownerReferences') and not m.get('deletionTimestamp') and not a.get('operation') and 'sources' not in s
- assert s['project']=='rhoai-demo' and s['source']['repoURL']=='https://github.com/adnan-drina/rhoai3-coding-demo.git' and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/runtime'
- assert s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshell'}
+ assert s['project']=='rhoai-demo' and s['source']['repoURL']=='https://github.com/adnan-drina/rhoai3-coding-demo.git' and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/openshell-runtime'
+ assert s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'}
  assert a.get('status',{}).get('operationState',{}).get('phase') not in ('Running','Terminating')
 for kind,name,ns in [('Namespace',n,'openshell') for n in ('openshell','openshell-admin','openshell-developer','ai-agents','agent-sandbox-system')]+[('Subscription','agent-sandbox-operator','agent-sandbox-system'),('ConfigMap','openshell-identity','openshell'),('ConfigMap','openshell-runtime-ready','openshell'),('Secret','openshell-credentials','openshell')]:
  o=get(kind,name,ns)
  if o:
   m=o['metadata'];group=o['apiVersion'].split('/')[0] if '/' in o['apiVersion'] else ''
   assert not m.get('ownerReferences') and not m.get('deletionTimestamp')
-  assert m.get('annotations',{}).get('argocd.argoproj.io/tracking-id')==app+':'+group+'/'+o['kind']+':'+m.get('namespace','openshell')+'/'+name,'Foreign prerequisite'
+  assert m.get('annotations',{}).get('argocd.argoproj.io/tracking-id')==app+':'+group+'/'+o['kind']+':'+m.get('namespace','openshift-gitops')+'/'+name,'Foreign prerequisite'
 PY
 python3 - "$REPO_ROOT" "$REVISION" <<'PY' | oc --request-timeout=15s apply -f -
 import json,pathlib,sys
-p=pathlib.Path(sys.argv[1])/'gitops/argocd/app-of-apps/060-agent-runtime-and-agentops-runtime.yaml'
+p=pathlib.Path(sys.argv[1])/'gitops/argocd/app-of-apps/060-agent-runtime-and-agentops/openshell-runtime.yaml'
 a=json.loads(p.read_text());a['spec']['source']['targetRevision']=sys.argv[2];print(json.dumps(a))
 PY
 ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 060-openshell-runtime --app-namespace openshift-gitops --strategy hook --revision "$REVISION" --async --timeout 300
@@ -70,7 +70,7 @@ while time.monotonic()<end:
 else:raise RuntimeError('Exact async operation did not start within60seconds')
 PYWAIT
 python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION" --prepare-only
-"$PYTHON" "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/runtime-candidate/controller" --wait 900
+"$PYTHON" "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/controller" --wait 900
 "$PYTHON" "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"
 ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait 060-openshell-runtime --app-namespace openshift-gitops --sync --health --operation --timeout 600
 

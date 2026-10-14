@@ -29,12 +29,12 @@ Usage:
   ./020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh [--source <worker-machineset>] [--write]
 
 By default, prints a generated GPU MachineSet to stdout. With --write, replaces
-gitops/stages/020-gpu-infrastructure-private-ai/overlays/environment/machinesets/machineset-gpu.yaml.
+gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/machineset-gpu.yaml.
 
 Environment overrides:
   RHOAI_GPU_INSTANCE_TYPE      default: g6e.2xlarge
   RHOAI_GPU_MACHINESET_REPLICAS default: 2
-  RHOAI_GPU_MACHINESET_OUTPUT default: gitops/stages/020-gpu-infrastructure-private-ai/overlays/environment/machinesets/machineset-gpu.yaml
+  RHOAI_GPU_MACHINESET_OUTPUT default: gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/machineset-gpu.yaml
   RHOAI_SOURCE_WORKER_MACHINESET required explicit source MachineSet name
 EOF
       exit 0
@@ -66,7 +66,7 @@ GPU_REPLICAS="${RHOAI_GPU_MACHINESET_REPLICAS:-2}"
 # GC thrashes the pull. 200GB matches the two-model coding demo.
 GPU_VOLUME_SIZE="${RHOAI_GPU_VOLUME_SIZE:-200}"
 GPU_VOLUME_TYPE="${RHOAI_GPU_VOLUME_TYPE:-gp3}"
-OUTPUT_PATH="${RHOAI_GPU_MACHINESET_OUTPUT:-gitops/stages/020-gpu-infrastructure-private-ai/overlays/environment/machinesets/machineset-gpu.yaml}"
+OUTPUT_PATH="${RHOAI_GPU_MACHINESET_OUTPUT:-gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/machineset-gpu.yaml}"
 
 if ! [[ "$GPU_REPLICAS" =~ ^[0-9]+$ ]]; then
   echo "ERROR: RHOAI_GPU_MACHINESET_REPLICAS must be an integer." >&2
@@ -187,7 +187,7 @@ if [[ "$WRITE" == "true" ]]; then
   python3 - "$ROOT_DIR" "$GPU_NAME" <<'PY_PATCH'
 import json,pathlib,sys,subprocess
 root=pathlib.Path(sys.argv[1]); name=sys.argv[2]
-p=root/'gitops/stages/020-gpu-infrastructure-private-ai/overlays/environment/machinesets/application-patch.yaml'
+p=root/'gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/application-patch.yaml'
 data=json.dumps({'apiVersion':'argoproj.io/v1alpha1','kind':'Application','metadata':{'name':'020-gpu-machinesets','namespace':'openshift-gitops'},'spec':{'ignoreDifferences':[{'group':'machine.openshift.io','kind':'MachineSet','name':name,'namespace':'openshift-machine-api','jsonPointers':['/spec/replicas']}] }},indent=2)
 p.write_text(subprocess.check_output(['ruby','-rjson','-ryaml','-e','puts YAML.dump(JSON.parse(STDIN.read))'],input=data,text=True))
 app=root/'gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai/gpu-machinesets.yaml'

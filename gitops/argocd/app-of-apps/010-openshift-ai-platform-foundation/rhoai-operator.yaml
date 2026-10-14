@@ -22,7 +22,7 @@ spec:
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/010-openshift-ai-platform-foundation/apps/rhoai-operator
+    path: gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops

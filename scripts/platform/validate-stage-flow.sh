@@ -134,9 +134,13 @@ def check_stage_app(stage_id, name, app_path, component):
     annotations = metadata.get("annotations") or {}
     expected_path = f"gitops/stages/{name}/" + ("overlays/environment" if stage_id == "020" else "base")
     if component:
-        expected_path = f"gitops/stages/{name}/apps/{app_path.stem}"
+        expected_path = f"gitops/stages/{name}/{app_path.stem}"
         if metadata.get("name") != f"{stage_id}-{app_path.stem}":
             fail(f"{app_path.relative_to(repo)} must be named {stage_id}-{app_path.stem}")
+        # Destination namespace is only Argo's default for objects without one and the namespace in cluster-scoped
+        # objects' tracking ids; one fixed value keeps those ids predictable (.agents/rules/gitops.md).
+        if spec.get("destination") != {"server": "https://kubernetes.default.svc", "namespace": "openshift-gitops"}:
+            fail(f"{app_path.relative_to(repo)} destination must be in-cluster namespace openshift-gitops")
 
     app_name = metadata.get("name")
     if not isinstance(app_name, str) or not app_name or app_name in application_names:
@@ -190,9 +194,10 @@ for stage_dir in stage_dirs:
 
     component_dir = app_root / name
     if component_dir.is_dir():
-        # Regrouped stage: one Application per component, each rendering gitops/stages/<stage>/apps/<component>;
-        # base/ is their union (checked by scripts/shared/stage_apps.py check-static below).
+        # Regrouped stage: one Application per component, each rendering gitops/stages/<stage>/<component>;
+        # the stage directory's kustomization is their union (scripts/shared/stage_apps.py check-static below).
         regrouped_stages.append(stage_id)
+        gitops_path = gitops_stages_root / name
         app_paths = sorted(component_dir.glob("*.yaml"))
         if not app_paths:
             fail(f"stage {stage_id} component directory has no Applications: {component_dir.relative_to(repo)}")

@@ -1,6 +1,0 @@
-# OpenShift Data Foundation operator and StorageCluster (MCG object storage).
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - ../../base/odf/aggregate/overlays/demo

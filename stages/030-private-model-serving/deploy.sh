@@ -11,7 +11,7 @@ revision="${1:-${GIT_REPO_BRANCH:-}}"
 [[ -n "$revision" ]] || { echo 'ERROR: select the reviewed published branch.' >&2; exit 1; }
 remote_sha=$(git ls-remote "${GIT_REPO_URL:?Set GIT_REPO_URL}" "$revision" "refs/heads/$revision" | awk '{print $1}' | sort -u)
 [[ "$remote_sha" =~ ^[0-9a-f]{40}$ && "$remote_sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published branch differs from the reviewed checkout.' >&2; exit 1; }
-paths=(gitops/stages/030-private-model-serving gitops/argocd/app-of-apps/030-private-model-serving.yaml stages/030-private-model-serving scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/validate-serving-update.py)
+paths=(gitops/stages/030-private-model-serving gitops/argocd/app-of-apps/030-private-model-serving stages/030-private-model-serving scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/validate-serving-update.py)
 [[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish reviewed Stage 030 source first.' >&2; exit 1; }
 # Read-only prerequisites precede even sizing and the first Application write.
 python3 - "$ROOT_DIR" <<'PY_PREREQUISITE'
@@ -46,7 +46,7 @@ claim=get('pvc','demo-registry-postgres-storage','rhoai-model-registries',True)
 credential=subprocess.run(['oc','--request-timeout=10s','get','secret','demo-registry-postgres-credentials','-n','rhoai-model-registries','--ignore-not-found','-o','jsonpath={.metadata.uid} {.metadata.ownerReferences}'],capture_output=True,text=True,timeout=15)
 assert credential.returncode==0,'Registry credential metadata read failed'
 if mr:
- expected=subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_file(ARGV[0])["spec"])',str(Path(sys.argv[1])/'gitops/stages/030-private-model-serving/base/model-discovery/registry/modelregistry-demo.yaml')],capture_output=True,text=True,check=True)
+ expected=subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_file(ARGV[0])["spec"])',str(Path(sys.argv[1])/'gitops/stages/030-private-model-serving/private-model-serving/model-discovery/registry/modelregistry-demo.yaml')],capture_output=True,text=True,check=True)
  assert mr['spec']==json.loads(expected.stdout),'Existing registry native spec differs from reviewed source'
  assert claim and not claim['metadata'].get('deletionTimestamp') and claim['status']['phase']=='Bound' and any(o.get('uid')==mr['metadata']['uid'] and o.get('controller') for o in claim['metadata'].get('ownerReferences',[])),'Existing registry database missing or foreign'
  uid,owners=credential.stdout.strip().split(' ',1)
@@ -56,7 +56,7 @@ else:
 existing=get('application',appname,'openshift-gitops',True)
 if existing:
  e=existing['spec'];assert not existing['metadata'].get('ownerReferences') and not e.get('sources'),'Foreign Application ownership'
- assert e['project']=='rhoai-demo' and e['source']['repoURL']==spec['source']['repoURL'] and e['source']['path']=='gitops/stages/030-private-model-serving/base','Unexpected Stage 030 source'
+ assert e['project']=='rhoai-demo' and e['source']['repoURL']==spec['source']['repoURL'] and e['source']['path']=='gitops/stages/030-private-model-serving/private-model-serving','Unexpected Stage 030 source'
  assert e['destination']=={'namespace':'openshift-gitops','server':'https://kubernetes.default.svc'},'Unexpected Stage 030 destination'
 for ns,name in [('openshift-monitoring','cluster-monitoring-config'),('openshift-user-workload-monitoring','user-workload-monitoring-config')]:
  cm=get('configmap',name,ns,True)
@@ -75,7 +75,7 @@ fi
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
 work=$(mktemp -d);trap 'rm -rf "$work"' EXIT
 export GIT_REPO_URL
-ruby -ryaml -e 'a=YAML.load_file(ARGV[0]);a["spec"]["source"]["repoURL"]=ENV.fetch("GIT_REPO_URL");a["spec"]["source"]["targetRevision"]=ARGV[1];puts YAML.dump(a)' "$ROOT_DIR/gitops/argocd/app-of-apps/030-private-model-serving.yaml" "$remote_sha" > "$work/application.yaml"
+ruby -ryaml -e 'a=YAML.load_file(ARGV[0]);a["spec"]["source"]["repoURL"]=ENV.fetch("GIT_REPO_URL");a["spec"]["source"]["targetRevision"]=ARGV[1];puts YAML.dump(a)' "$ROOT_DIR/gitops/argocd/app-of-apps/030-private-model-serving/private-model-serving.yaml" "$remote_sha" > "$work/application.yaml"
 # Recheck configuration ownership immediately before submitting the Application.
 for pair in 'openshift-monitoring cluster-monitoring-config' 'openshift-user-workload-monitoring user-workload-monitoring-config'; do
  read -r namespace name <<< "$pair"

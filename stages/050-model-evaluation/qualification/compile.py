@@ -17,7 +17,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from pipeline import qualification  # noqa: E402
 
 version = sys.argv[1]
-out = (pathlib.Path(__file__).resolve().parents[3] / "gitops/stages/050-model-evaluation/base/model-qualification"
+out = (pathlib.Path(__file__).resolve().parents[3] / "gitops/stages/050-model-evaluation/model-qualification"
        / "pipeline/agentic-coding-model-qualification.yaml")
 out.parent.mkdir(parents=True, exist_ok=True)
 compiler.Compiler().compile(

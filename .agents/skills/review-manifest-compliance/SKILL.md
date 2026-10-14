@@ -69,8 +69,8 @@ Per `.agents/rules/project.md`:
 
 ## How to review a stage
 
-1. Read all YAML files in `gitops/stages/NNN-name/base/`
-2. Read the `kustomization.yaml` to understand which resources are included
+1. Read all YAML files in `gitops/stages/NNN-name/` (one folder per Application, see `.agents/rules/gitops.md`)
+2. Read each component's `kustomization.yaml` to understand which resources and transformers it includes
 3. Apply the checklist above to each resource
 4. Cross-reference between resources (selectors, names, ports)
 

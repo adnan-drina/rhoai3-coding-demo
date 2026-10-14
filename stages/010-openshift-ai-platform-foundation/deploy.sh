@@ -12,7 +12,7 @@ REPO_ROOT="$ROOT_DIR"
 source "$ROOT_DIR/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
-python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation/base"
+python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation"
 python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/bootstrap/overlays/operator"
 # Use a reviewed published revision; never silently deploy old main content.
 if [[ "${1:-}" == --revision && $# -eq 2 ]]; then
@@ -123,7 +123,7 @@ python3 "$ROOT_DIR/scripts/shared/stage_apps.py" applications 010 --revision "$G
 echo "✓ Applications $(python3 "$ROOT_DIR/scripts/shared/stage_apps.py" names 010 | tr '\n' ' ')created"
 echo "  Argo CD will now sync ODF and RHOAI. This takes 10–20 minutes."
 
-python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation/base" --wait 1800
+python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation" --wait 1800
 echo "   Waiting for every Stage 010 component Synced and Healthy at ${GIT_REPO_BRANCH:0:8} …"
 wait_for 1800 "Stage 010 components" python3 "$ROOT_DIR/scripts/shared/stage_apps.py" status 010 --revision "$GIT_REPO_BRANCH" --repo-url "$GIT_REPO_URL" || exit 1
 

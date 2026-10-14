@@ -2,10 +2,11 @@
 """Component Applications of a regrouped stage.
 
 A regrouped stage keeps one Argo CD Application per component in
-gitops/argocd/app-of-apps/<NNN-stage>/<component>.yaml. The components of a stage are always
-deployed together at one reviewed revision, in the order of their demo.rhoai.io/deploy-order
-annotation; the stage's base/ (or overlays/environment for Stage 020) kustomization renders exactly their union, so validators keep
-reading one desired state.
+gitops/argocd/app-of-apps/<NNN-stage>/<component>.yaml, rendering gitops/stages/<NNN-stage>/<component>/.
+Components with a demo.rhoai.io/deploy-order annotation are deployed together by the stage deploy.sh at
+one reviewed revision, in that order. Components with a demo.rhoai.io/deploy-script annotation instead are
+deployed by that script (their own revision and procedure). The kustomization at gitops/stages/<NNN-stage>/
+renders exactly the union of all components, so validators read one desired state.
 
 Import it from Python (sys.path.insert(0, "<repo>/scripts/shared"); import stage_apps) or use the CLI:
 
@@ -29,6 +30,8 @@ ROOT = Path(__file__).resolve().parents[2]
 NAMESPACE = "openshift-gitops"
 DESTINATION = {"server": "https://kubernetes.default.svc", "namespace": NAMESPACE}
 ORDER = "demo.rhoai.io/deploy-order"
+# Components deployed by their own script rather than the stage deploy.sh.
+SCRIPT = "demo.rhoai.io/deploy-script"
 # Health states besides Healthy a component may report by design, e.g. "Suspended" for a deliberately stopped model.
 ACCEPTED_HEALTH = "demo.rhoai.io/accepted-health"
 TRACKING = "argocd.argoproj.io/tracking-id"
@@ -65,20 +68,27 @@ def _components(stage, root):
         meta = app["metadata"]
         if not meta["name"].startswith(stage + "-") or meta.get("labels", {}).get("demo.rhoai.io/stage") != stage:
             raise RuntimeError(meta["name"] + " must carry the stage prefix and label")
-        if not re.fullmatch(r"\d+", str(meta.get("annotations", {}).get(ORDER, ""))):
-            raise RuntimeError(meta["name"] + " needs a numeric " + ORDER + " annotation")
+        annotations = meta.get("annotations", {})
+        ordered = re.fullmatch(r"\d+", str(annotations.get(ORDER, ""))) is not None
+        if ordered == bool(annotations.get(SCRIPT)):
+            raise RuntimeError(meta["name"] + " needs either a numeric " + ORDER + " or a " + SCRIPT + " annotation")
     if len({a["metadata"]["name"] for a in apps}) != len(apps) or not apps:
         raise RuntimeError("Stage " + stage + " component names must be unique")
-    return tuple(sorted(apps, key=lambda a: (int(a["metadata"]["annotations"][ORDER]), a["metadata"]["name"])))
+    key = lambda a: (int(a["metadata"]["annotations"].get(ORDER, 10**6)), a["metadata"]["name"])
+    return tuple(sorted(apps, key=key))
 
 
-def components(stage, root=ROOT):
-    """Component Application manifests in deploy order (deep copies)."""
-    return [copy.deepcopy(a) for a in _components(stage, str(root))]
+def _deployed(stage, root, separate):
+    return tuple(a for a in _components(stage, root) if separate or ORDER in a["metadata"].get("annotations", {}))
 
 
-def names(stage, root=ROOT):
-    return [a["metadata"]["name"] for a in _components(stage, str(root))]
+def components(stage, root=ROOT, separate=False):
+    """Component Application manifests in deploy order (deep copies); separate=True adds script-deployed ones."""
+    return [copy.deepcopy(a) for a in _deployed(stage, str(root), separate)]
+
+
+def names(stage, root=ROOT, separate=False):
+    return [a["metadata"]["name"] for a in _deployed(stage, str(root), separate)]
 
 
 def render(path, root=ROOT):
@@ -100,7 +110,7 @@ def suffix(obj, group=None):
 @functools.lru_cache(maxsize=None)
 def _owners(stage, root):
     owners = {}
-    for app in _components(stage, root):
+    for app in _components(stage, root):  # every component, including script-deployed ones
         for obj in render(app["spec"]["source"]["path"], root):
             key = suffix(obj)
             if key in owners:
@@ -145,7 +155,7 @@ def tracked(stage, obj, root=ROOT):
 def runtime_tracking_ok(stage, obj, root=ROOT):
     """For runtime-created objects (not rendered): untracked, or tracked by one of the stage's components."""
     value = tracking_id(obj)
-    return value == "" or value.split(":", 1)[0] in names(stage, root)
+    return value == "" or value.split(":", 1)[0] in names(stage, root, separate=True)
 
 
 def accepted_health(app):
@@ -194,7 +204,7 @@ def get_application(name):
 def stage_problems(stage, revision=None, repo_url=None, root=ROOT):
     """Problems across every component of the stage (missing, drifted, or mixed revisions)."""
     problems, revisions = [], set()
-    for desired in _components(stage, str(root)):
+    for desired in _deployed(stage, str(root), False):
         name = desired["metadata"]["name"]
         app = get_application(name)
         if not app:
@@ -242,23 +252,44 @@ def stamped(stage, revision, repo_url, root=ROOT):
 
 
 def aggregate_path(stage, root=ROOT):
-    """The stage's union kustomization: overlays/environment for a cluster-specific stage (020), else base."""
-    stage_root = Path(_components(stage, str(root))[0]["spec"]["source"]["path"]).parent.parent
-    environment = stage_root / "overlays/environment"
-    return environment if (Path(root) / environment / "kustomization.yaml").exists() else stage_root / "base"
+    """The stage's union kustomization: gitops/stages/<NNN-stage>/ (each component path is a child folder)."""
+    roots = {Path(a["spec"]["source"]["path"]).parent for a in _components(stage, str(root))}
+    if len(roots) != 1:
+        raise RuntimeError("Stage " + stage + " components must be folders of one stage directory")
+    return roots.pop()
+
+
+# Cluster-scoped kinds the stages render. Any other kind must set metadata.namespace itself: the Application
+# destination namespace is never relied on to place an object.
+CLUSTER_SCOPED = {
+    ("", "Namespace"), ("rbac.authorization.k8s.io", "ClusterRole"), ("rbac.authorization.k8s.io", "ClusterRoleBinding"),
+    ("user.openshift.io", "Group"), ("operator.openshift.io", "Console"), ("operator.openshift.io", "LeaderWorkerSetOperator"),
+    ("observability.openshift.io", "UIPlugin"), ("nvidia.com", "ClusterPolicy"), ("kueue.x-k8s.io", "ClusterQueue"),
+    ("kueue.x-k8s.io", "ResourceFlavor"), ("datasciencecluster.opendatahub.io", "DataScienceCluster"),
+    ("dscinitialization.opendatahub.io", "DSCInitialization"), ("services.platform.opendatahub.io", "Auth"),
+    ("mlflow.opendatahub.io", "MLflow"),
+}
 
 
 def check_static(stage, root=ROOT):
-    """Components render disjoint object sets whose union is exactly the stage base render."""
+    """Components render disjoint object sets whose union is exactly the stage base render; namespaced objects set
+    their own namespace."""
     owners(stage, root)  # raises on overlap
     base = {}
     apps = _components(stage, str(root))
     for obj in render(aggregate_path(stage, root), root):
         base[suffix(obj)] = obj
     union = {}
+    unplaced = []
     for app in apps:
         for obj in render(app["spec"]["source"]["path"], root):
             union[suffix(obj)] = obj
+            api = obj["apiVersion"]
+            if not obj["metadata"].get("namespace") and (api.split("/")[0] if "/" in api else "", obj["kind"]) not in CLUSTER_SCOPED:
+                unplaced.append(app["metadata"]["name"] + ": " + obj["kind"] + "/" + obj["metadata"]["name"])
+    if unplaced:
+        raise RuntimeError("namespaced objects must set metadata.namespace (add the kind to CLUSTER_SCOPED only if it is "
+                           "cluster-scoped): " + ", ".join(unplaced))
     missing, extra = sorted(set(base) - set(union)), sorted(set(union) - set(base))
     changed = sorted(k for k in set(base) & set(union) if base[k] != union[k])
     if missing or extra or changed:
@@ -296,7 +327,7 @@ def main():
     elif args.command == "delegated":
         print("\n".join(sorted(delegated(args.stage, args.kind, args.name, args.namespace, args.group))))
     elif args.command == "check-static":
-        print("PASS Stage " + args.stage + ": " + str(len(names(args.stage))) + " components render " + str(check_static(args.stage)) + " objects, disjoint and equal to " + str(aggregate_path(args.stage)))
+        print("PASS Stage " + args.stage + ": " + str(len(names(args.stage, separate=True))) + " components render " + str(check_static(args.stage)) + " objects, disjoint and equal to " + str(aggregate_path(args.stage)))
     return 0
 
 

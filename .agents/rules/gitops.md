@@ -15,39 +15,41 @@ applies-to:
 Use the GitOps-related skills for work that changes manifests, Kustomize structure, Argo CD applications, or Kubernetes labels:
 
 - `.agents/skills/review-gitops-change/SKILL.md`
+- `.agents/skills/gitops-move-applications/SKILL.md` (split, rename or re-point live Applications)
 - `.agents/skills/validate-demo-step/SKILL.md`
 
 ## Golden Rule
 
 Every GitOps stage must be reproducible from `gitops/` and operated through `deploy.sh` / `validate.sh`. Workflow-only stages are operated through `validate.sh` only. The README explains the demo value; `docs/OPERATIONS.md` explains operational usage.
 
-## Mandatory: ArgoCD Application in Every deploy.sh
+## Mandatory: Argo CD Applications in Every deploy.sh
 
-Every stage's `deploy.sh` MUST apply its ArgoCD Application as its first cluster-modifying action:
+Every stage's `deploy.sh` applies its Argo CD Applications as its first cluster-modifying action, pinned to one reviewed published commit:
 ```bash
-oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/$STAGE_NAME.yaml"
+python3 "$REPO_ROOT/scripts/shared/stage_apps.py" applications NNN --revision "$SHA" --repo-url "$GIT_REPO_URL" | oc apply -f -
 ```
 
 Every GitOps stage (`stages/NNN-name/deploy.sh` present) MUST have:
-1. `gitops/stages/NNN-name/base/` - Kustomize manifests
-2. `gitops/argocd/app-of-apps/NNN-name.yaml` - ArgoCD Application with a unique purpose-based `metadata.name`; its stage label and source path identify the workshop stage
-3. `stages/NNN-name/deploy.sh` - applies the ArgoCD Application
-4. `stages/NNN-name/validate.sh` - verifies deployment
-5. `stages/NNN-name/README.md` - educational narrative
+1. `gitops/stages/NNN-name/<component>/` - one folder per Argo CD Application (its `source.path`)
+2. `gitops/stages/NNN-name/kustomization.yaml` - the union of the component folders (validators and `check-static` read it)
+3. `gitops/argocd/app-of-apps/NNN-name/<component>.yaml` - one Application per component, named `NNN-<component>`
+4. `stages/NNN-name/deploy.sh` - applies the Applications
+5. `stages/NNN-name/validate.sh` - verifies deployment
+6. `stages/NNN-name/README.md` - educational narrative
 
-### Component Applications (regrouped stages)
+Stage 070 still uses the earlier single-Application layout (`gitops/argocd/app-of-apps/070-advanced-app-platform.yaml` rendering `gitops/stages/070-advanced-app-platform/base/`); `validate-stage-flow.sh` accepts both.
 
-A stage may instead deploy one Application per logical component, keeping the stage prefix (for example `040-local-models`, `040-maas-database`). Then:
+### Component Applications
 
-- `gitops/argocd/app-of-apps/NNN-name/<component>.yaml` holds one Application named `NNN-<component>`, labelled `demo.rhoai.io/stage: 'NNN'`, with a numeric `demo.rhoai.io/deploy-order` annotation.
-- Its source is `gitops/stages/NNN-name/apps/<component>/`, a kustomization that references the stage's existing `base/<part>` directories and carries the stage labels.
-- `base/kustomization.yaml` lists only `../apps/*`, so it renders exactly the union; validators keep reading `base/`. Stage 020 uses `overlays/environment/` as the union instead, because its MachineSets are generated per cluster.
-- Components are disjoint (one owner per object, including singletons). `scripts/shared/stage_apps.py check-static NNN` enforces this; `validate-stage-flow.sh` runs it.
-- `deploy.sh` applies all components at one reviewed revision (`stage_apps.py applications`), and validation requires every component Synced, Healthy and at that revision (`stage_apps.py status`).
+- Each Application carries the stage prefix and label (`demo.rhoai.io/stage: 'NNN'`) and exactly one of:
+  - `demo.rhoai.io/deploy-order: '<n>'`: deployed by the stage `deploy.sh` with the other ordered components, all at one revision; validation requires each Synced and Healthy at that revision (`stage_apps.py status`).
+  - `demo.rhoai.io/deploy-script: stages/NNN-name/<script>.sh`: deployed by that script with its own procedure and revision (for example the Stage 060 Applications and `010-sandbox-storage`).
+- A component that reports another health state by design names it in `demo.rhoai.io/accepted-health`.
+- Components are disjoint (one owner per object, including singletons). `scripts/shared/stage_apps.py check-static NNN` enforces this and that their union equals the stage kustomization; `validate-stage-flow.sh` runs it.
 - Group by lifecycle: operators, data (Prune=false,Delete=false), fast-changing content (models, access policies) and shared configuration each get their own component.
-- Moving objects between Applications never deletes them: follow "Moving objects between Applications" in `docs/OPERATIONS.md`.
+- Moving objects between Applications, renaming one or changing its `source.path` never deletes them: use `scripts/platform/move-applications.py` (skill `gitops-move-applications`).
 
-Workflow-only stages omit `deploy.sh` and have no Argo CD Application. `./scripts/platform/validate-stage-flow.sh` walks `stages/*/`, requires `validate.sh`, and locates numbered Application files and validates their stage labels/source paths; deployed names are independent of directory names.
+Workflow-only stages omit `deploy.sh` and have no Argo CD Application. `./scripts/platform/validate-stage-flow.sh` walks `stages/*/`, requires `validate.sh`, and checks every Application's name, stage label and source path.
 
 **Never** apply manifests directly with `oc apply -k` for ArgoCD-managed resources.
 
@@ -56,16 +58,16 @@ Workflow-only stages omit `deploy.sh` and have no Argo CD Application. `./script
 ```text
 rhoai3-coding-demo/
 |-- gitops/
-|   |-- argocd/
-|   |   `-- app-of-apps/
-|   `-- stages/
-|       `-- NNN-descriptive-name/
-|           `-- base/
-|-- stages/
-|   `-- NNN-descriptive-name/
-|       |-- deploy.sh          # GitOps stages only; omit for workflow-only
-|       |-- validate.sh
-|       `-- README.md
+|   |-- argocd/app-of-apps/NNN-name/<component>.yaml
+|   |-- bootstrap/
+|   `-- stages/NNN-name/
+|       |-- kustomization.yaml          # union of the component folders
+|       `-- <component>/                # one folder per Application
+|           |-- kustomization.yaml
+|           |-- *.yaml                  # the component's main manifests, flat
+|           |-- <unit>/                 # optional: a further unit (a Job with its RBAC, a second operator, a generator)
+|           `-- components/<feature>/   # optional: Kustomize Components switched on in kustomization.yaml
+|-- stages/NNN-name/{deploy.sh,validate.sh,README.md}
 |-- scripts/
 |-- docs/
 `-- README.md
@@ -73,10 +75,14 @@ rhoai3-coding-demo/
 
 ## Kustomize Structure
 
-- Prefer `base/` + `overlays/<env-or-purpose>/` within each stage.
-- Keep `base/` environment-agnostic; put deltas in overlays.
-- Avoid duplicating full resources across overlays; use patches.
-- Use `components:` for optional/selectable operators (not `resources:`).
+Follows the Kustomize and Red Hat `odh-gitops` conventions: plain manifests in one folder per deployable unit, no wrapper layers.
+
+- One folder per Application. Its main manifests sit flat in the folder (an operator's `namespace.yaml`, `operator-group.yaml`, `subscription.yaml` and its instance CR together).
+- A further unit inside a component (a Job with its RBAC, a dashboard generator, each operator of a multi-operator component) gets its own subfolder with its own `kustomization.yaml`.
+- No `base/`-in-`base/` wrappers, no `aggregate/` layers, no placeholder values patched by an overlay: write the reviewed value (for example the Subscription channel) in the manifest.
+- Add `overlays/<variant>/` only for a real variant, and `components/<feature>/` (Kustomize `kind: Component`) for an optional feature.
+- Transformers (`labels`, `replacements`) belong in the component's `kustomization.yaml`, where they apply to the whole Application.
+- Cluster-specific generated files live in their component folder (Stage 020 `gpu-machinesets/`, written by `generate-gpu-machineset.sh`).
 
 ### Operator Deployment and CRD Timing
 
@@ -99,6 +105,13 @@ metadata:
     argocd.argoproj.io/sync-wave: "<stage-order>"
     argocd.argoproj.io/manifest-generate-paths: gitops/stages/NNN-name
 ```
+
+### Destination
+Every Application MUST use `destination: {server: https://kubernetes.default.svc, namespace: openshift-gitops}`, and every namespaced object MUST set its own `metadata.namespace`.
+
+- Argo CD uses the destination namespace only as the default for objects that omit one, and as the namespace in a cluster-scoped object's tracking id (`<app>:<group>/<Kind>:<destination>/<name>`). One fixed value keeps tracking ids predictable for scripts and the move tool; it is not where the workload runs.
+- Changing an existing Application's destination re-keys the tracking ids of its cluster-scoped objects: do it with `scripts/platform/move-applications.py`, never by editing the live Application.
+- `validate-stage-flow.sh` enforces both rules for component Applications (`stage_apps.CLUSTER_SCOPED` lists the cluster-scoped kinds that may omit a namespace). Stage 070's legacy Application is not yet covered.
 
 ### No Destructive Finalizers
 **NEVER** add `resources-finalizer.argocd.argoproj.io` to Application metadata.

@@ -11,7 +11,7 @@ argocd app sync --help 2>&1 | grep -q -- '--core' || { echo 'ERROR: argocd --cor
 revision="${1:?Pass a published branch pointing to the reviewed checkout}"
 sha=$(git ls-remote "${GIT_REPO_URL:?}" "$revision" "refs/heads/$revision" | awk '{print $1}' | sort -u)
 [[ "$sha" =~ ^[0-9a-f]{40}$ && "$sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published revision differs'; exit 1; }
-paths=(gitops/stages/060-agent-runtime-and-agentops/agent-console gitops/stages/060-agent-runtime-and-agentops/runtime/console-discovery gitops/argocd/app-of-apps/060-agent-runtime-and-agentops-console.yaml stages/060-agent-runtime-and-agentops/deploy-console.sh)
+paths=(gitops/stages/060-agent-runtime-and-agentops/agent-console gitops/stages/060-agent-runtime-and-agentops/agent-console/console-discovery gitops/argocd/app-of-apps/060-agent-runtime-and-agentops/agent-console.yaml stages/060-agent-runtime-and-agentops/deploy-console.sh)
 [[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish reviewed console source first'; exit 1; }
 export CONSOLE_SHA="$sha" CONSOLE_ROOT="$ROOT_DIR"
 python3 - <<'PY'
@@ -24,14 +24,14 @@ def get(kind,name,ns=None):
  return json.loads(r.stdout) if r.stdout.strip() else None
 runtime=get('application','060-openshell-runtime','openshift-gitops')
 assert runtime and not runtime['metadata'].get('deletionTimestamp') and runtime['status']['health']['status']=='Healthy' and runtime['status']['sync']['status']=='Synced','Existing OpenShell runtime must be healthy'
-assert runtime['spec']['source']['repoURL']==os.environ['GIT_REPO_URL'] and runtime['spec']['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/runtime','Unexpected runtime source'
+assert runtime['spec']['source']['repoURL']==os.environ['GIT_REPO_URL'] and runtime['spec']['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/openshell-runtime','Unexpected runtime source'
 crd=get('crd','sandboxes.agents.x-k8s.io')
 assert crd and any(c['type']=='Established' and c['status']=='True' for c in crd['status']['conditions']),'Native Sandbox CRD is not established'
 import sys;sys.path.insert(0,os.environ['CONSOLE_ROOT']+'/scripts/shared');import stage_apps
 assert '/spec/dashboardConfig/agentOps' in stage_apps.delegated('010','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications','opendatahub.io'),'Foundation has not delegated agentOps'
 app=get('application','060-agent-console','openshift-gitops')
 if app:
- s=app['spec'];assert not app['metadata'].get('ownerReferences') and not app['metadata'].get('deletionTimestamp') and not s.get('sources') and s['source']['repoURL']==os.environ['GIT_REPO_URL'] and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/agent-console' and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'redhat-ods-applications'},'Foreign console Application'
+ s=app['spec'];assert not app['metadata'].get('ownerReferences') and not app['metadata'].get('deletionTimestamp') and not s.get('sources') and s['source']['repoURL']==os.environ['GIT_REPO_URL'] and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/agent-console' and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Foreign console Application'
 objects=[('serviceaccount','enable-agent-console','redhat-ods-applications','/ServiceAccount'),('role','enable-agent-console','redhat-ods-applications','rbac.authorization.k8s.io/Role'),('rolebinding','enable-agent-console','redhat-ods-applications','rbac.authorization.k8s.io/RoleBinding'),('job','enable-agent-console','redhat-ods-applications','batch/Job')]
 for ns in ['openshell-admin','openshell-developer']:
  assert get('namespace',ns),'Existing workspace namespace is missing'
@@ -40,7 +40,7 @@ for kind,name,ns,tracking in objects:
  x=get(kind,name,ns)
  if x:
   m=x['metadata'];assert app and not m.get('ownerReferences') and not m.get('deletionTimestamp') and m.get('annotations',{}).get('argocd.argoproj.io/tracking-id')=='060-agent-console:'+tracking+':'+ns+'/'+name,'Foreign console resource'
-payload=json.loads(subprocess.check_output(['oc','create','--dry-run=client','-f',os.environ['CONSOLE_ROOT']+'/gitops/argocd/app-of-apps/060-agent-runtime-and-agentops-console.yaml','-o','json']))
+payload=json.loads(subprocess.check_output(['oc','create','--dry-run=client','-f',os.environ['CONSOLE_ROOT']+'/gitops/argocd/app-of-apps/060-agent-runtime-and-agentops/agent-console.yaml','-o','json']))
 payload['spec']['source']['targetRevision']=os.environ['CONSOLE_SHA']
 r=subprocess.run(['oc','apply','-f','-'],input=json.dumps(payload),text=True,capture_output=True,timeout=20)
 assert r.returncode==0,'Console Application apply failed'

@@ -1,0 +1,6 @@
+# Stage 030 desired state: the union of its Applications (gitops/argocd/app-of-apps/030-*/), one folder each.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - private-model-serving

@@ -20,9 +20,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/shared"))
 import stage_apps  # noqa: E402
 
-# base/ renders the union of the stage's component Applications (it references ../apps/*).
+# The stage-root kustomization renders the union of the stage's component Applications (one folder each).
 STAGE_DIR = "gitops/stages/040-governed-models-as-a-service"
-SOURCE = STAGE_DIR + "/base"
+SOURCE = STAGE_DIR
 TIMEOUT = os.environ.get("RHOAI_OC_REQUEST_TIMEOUT", "10s")
 
 

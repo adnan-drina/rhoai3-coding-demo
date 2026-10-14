@@ -82,15 +82,13 @@ Decide where resources live before creating manifests.
 Use a stage-owned GitOps path when the stage owns independent resources:
 
 ```text
-gitops/stages/NNN-descriptive-slug/base/kustomization.yaml
-gitops/argocd/app-of-apps/NNN-descriptive-slug.yaml
+gitops/stages/NNN-descriptive-slug/kustomization.yaml               # union of the component folders
+gitops/stages/NNN-descriptive-slug/<component>/kustomization.yaml   # one folder per Argo CD Application
+gitops/argocd/app-of-apps/NNN-descriptive-slug/<component>.yaml     # Application NNN-<component>
 ```
 
-Use a shared-owner path when the stage changes global platform state:
-
-```text
-gitops/<shared-platform-owner>/base/
-```
+When the stage changes a field of a shared singleton another stage owns (DSC components, dashboard
+configuration), the owning component delegates that field with `ignoreDifferences` and this stage sets it.
 
 Never render competing full copies of a shared resource from multiple Argo CD Applications.
 

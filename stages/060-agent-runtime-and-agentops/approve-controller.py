@@ -18,7 +18,7 @@ CSV = 'agent-sandbox-operator.v0.9.0'
 NS = 'agent-sandbox-system'
 APP = '060-openshell-runtime'
 REPO = 'https://github.com/adnan-drina/rhoai3-coding-demo.git'
-SOURCE = 'gitops/stages/060-agent-runtime-and-agentops/runtime'
+SOURCE = 'gitops/stages/060-agent-runtime-and-agentops/openshell-runtime'
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -122,7 +122,7 @@ def run(args):
     source = {'repoURL': REPO, 'path': SOURCE, 'targetRevision': args.revision}
     require(not app['metadata'].get('deletionTimestamp') and not app['metadata'].get('ownerReferences') and not spec.get('sources'), 'Unexpected runtime Application lifecycle/source')
     require(spec.get('project') == 'rhoai-demo' and all(spec.get('source', {}).get(k) == v for k, v in source.items()), 'Runtime Application source mismatch')
-    require(spec.get('destination') == {'server': 'https://kubernetes.default.svc', 'namespace': 'openshell'}, 'Runtime Application destination mismatch')
+    require(spec.get('destination') == {'server': 'https://kubernetes.default.svc', 'namespace': 'openshift-gitops'}, 'Runtime Application destination mismatch')
     operation = app.get('status', {}).get('operationState', {})
     sync = operation.get('syncResult', {})
     require(operation.get('phase') in ('Running', 'Succeeded') and sync.get('revision') == args.revision, 'Runtime operation is not at selected revision')
