@@ -211,6 +211,22 @@ class PortalContract(unittest.TestCase):
             self.assertNotIn('catalog:register',[r['action'] for r in steps])
             issue=next(r for r in steps if r['action']=='gitlab:issues:create')
             self.assertIn('"requester": "${{ user.ref }}"',issue['input']['description'])
+
+    def test_developer_can_view_delivery_without_proxy_or_catalog_writes(self):
+        cm = yaml.safe_load((BASE / 'rhdh/rhdh-instance/rbac-policy.yaml').read_text())
+        rows = {tuple(part.strip() for part in line.split(','))
+                for line in cm['data']['rbac-policies.csv'].splitlines() if line.strip()}
+        role = 'role:default/developer'
+        for permission in ('kubernetes.clusters.read', 'kubernetes.resources.read'):
+            self.assertIn(('p', role, permission, 'read', 'allow'), rows)
+        self.assertNotIn(('p', role, 'kubernetes.proxy', 'use', 'allow'), rows)
+        for permission, action in (('catalog.entity.create', 'create'),
+                                   ('catalog.entity.delete', 'delete'),
+                                   ('catalog.location.create', 'create')):
+            self.assertIn(('p', role, permission, action, 'deny'), rows)
+        cfg = yaml.safe_load(yaml.safe_load((BASE /
+            'rhdh/rhdh-instance/app-config-configmap.yaml').read_text())['data']['app-config-rhdh.yaml'])
+        self.assertIn('kubernetes', cfg['permission']['rbac']['pluginsWithPermission'])
     def test_auto_created_accounts_are_blocked(self):
         values=yaml.safe_load((BASE/'gitlab/values.yaml').read_text())
         self.assertTrue(values['global']['appConfig']['omniauth']['blockAutoCreatedUsers'])

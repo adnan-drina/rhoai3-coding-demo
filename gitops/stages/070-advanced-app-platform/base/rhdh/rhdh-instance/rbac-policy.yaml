@@ -16,6 +16,8 @@ data:
     g, user:default/ai-developer, role:default/developer
     p, role:default/developer, catalog-entity, read, allow
     p, role:default/developer, catalog.location.read, read, allow
+    p, role:default/developer, kubernetes.clusters.read, read, allow
+    p, role:default/developer, kubernetes.resources.read, read, allow
     p, role:default/developer, scaffolder-template, read, allow
     p, role:default/developer, scaffolder-action, use, allow
     p, role:default/developer, scaffolder.task.create, create, allow
