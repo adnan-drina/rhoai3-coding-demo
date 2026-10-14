@@ -8,26 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or configuring the Red Hat OpenShift AI
-  model-serving platform from the official configuration guide: KServe-based
-  model serving, NVIDIA NIM platform enablement, ServingRuntime and
-  InferenceService concepts, supported and tested model-serving runtime
-  posture, accelerator-specific runtimes, dashboard enablement of the model
-  serving platform and runtimes, custom and tested runtime addition,
-  speculative decoding, multi-modal vLLM configuration, runtime argument and
-  environment-variable customization, vLLM KV cache configuration, and default
-  deployment strategy. Do NOT use for deployed-model monitoring, KServe timeout
-  tuning, multi-node vLLM operations, Kueue routing, Grafana dashboards, or NIM
-  metrics operations (use rhoai-model-management-monitoring), installing RHOAI
-  or KServe components (use rhoai-self-managed-installation), GPU enablement (use
-  rhoai-nvidia-gpu-accelerators), project connection API annotations (use
-  rhoai-project-workflows), project-scoped runtime templates (use
-  rhoai-project-scoped-resources), model deployment user workflows (use
-  rhoai-model-deployment), MaaS governance (use rhoai-maas-governance), llm-d
-  distributed inference (use rhoai-distributed-inference-llmd), NeMo/FMS
-  Guardrails services or detector serving workflows (use
-  rhoai-guardrails-safety), or live cluster changes without the OpenShift
-  safety guard.
+  Use for RHOAI serving-platform configuration: KServe/NIM enablement,
+  ServingRuntime/InferenceService concepts, supported/tested and accelerator runtimes,
+  dashboard runtime options, custom runtimes, speculative decoding, multimodal vLLM,
+  arguments/environment, KV cache and deployment defaults. Do NOT use for initial model
+  deployment, day-2 metrics/timeouts/multi-node operations, installation, GPU setup,
+  project connections/templates, MaaS, llm-d, TrustyAI or guardrails services; use the
+  matching rhoai skills. Live changes require the OpenShift safety guard.
 ---
 
 # RHOAI Model-Serving Platform

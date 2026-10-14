@@ -8,21 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or operating Red Hat OpenShift AI basic
-  workbench administration: opening the Start basic workbench administration
-  interface, starting another user's basic workbench, accessing a user's
-  running basic workbench for troubleshooting, stopping one or all basic
-  workbenches, configuring idle workbench timeout, adding workbench pod
-  tolerations, verifying notebook-controller-culler-config, and troubleshooting
-  Jupyter 404 access errors, workbench startup failures, and database or disk
-  full errors. Do NOT use for project workbench creation or lifecycle (use
-  rhoai-project-workflows), user-facing JupyterLab or code-server IDE
-  workflows (use rhoai-data-science-ide-workflows), user-facing Start basic
-  workbench access from the Enabled applications page (use
-  rhoai-connected-applications), custom workbench
-  image authoring, workbench image import, Gateway API migration, project
-  connections, cluster default PVC size, storage class administration, or live
-  cluster changes without the OpenShift safety guard.
+  Use for RHOAI basic-workbench administration: administration UI, starting/accessing
+  another user's workbench, stopping workbenches, idle timeout, pod tolerations, notebook-
+  controller-culler-config and Jupyter 404/startup/disk errors. Do NOT use for project-
+  workbench creation (rhoai-project-workflows), user IDE workflows (rhoai-data-science-
+  ide-workflows), Enabled application access (rhoai-connected-applications), custom
+  images, Gateway API migration, connections, default PVC sizes or storage classes. Live
+  changes require the OpenShift safety guard.
 ---
 
 # RHOAI Basic Workbenches

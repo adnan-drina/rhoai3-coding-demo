@@ -8,21 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or operating Red Hat OpenShift AI AutoML
-  workflows from the official Working with AutoML guide: Technology Preview
-  posture, CSV training data in S3-compatible storage, AutoML optimization
-  runs, binary classification, multiclass classification, regression, time
-  series forecasting, externally imported AutoML pipeline naming, leaderboard
-  evaluation, feature importance, confusion matrices, model registry handoff,
-  saved prediction notebooks, AutoGluon ServingRuntime deployment, task metrics,
-  and AutoML configuration parameters. Do NOT use for generic AI Pipelines
-  server administration (use rhoai-ai-pipelines), S3 object operations outside
-  AutoML (use rhoai-s3-object-storage-data), project/workbench lifecycle (use
-  rhoai-project-workflows), IDE workflows outside saved AutoML notebooks (use
-  rhoai-data-science-ide-workflows), model registry administration (use
-  rhoai-model-registry), general model-serving platform configuration (use
-  rhoai-model-serving-platform), or live cluster changes without the OpenShift
-  safety guard.
+  Use for official RHOAI AutoML workflows: Technology Preview posture, S3 CSV data,
+  classification/regression/forecasting, optimization runs, imported pipeline naming,
+  leaderboard metrics, feature importance, confusion matrices, saved notebooks and
+  AutoGluon ServingRuntime handoff. Do NOT use for AI Pipelines administration, generic S3
+  operations, project/workbench lifecycle, general IDE usage, registry administration or
+  serving-platform setup; use the matching rhoai skills. Live changes require the
+  OpenShift safety guard.
 ---
 
 # RHOAI AutoML

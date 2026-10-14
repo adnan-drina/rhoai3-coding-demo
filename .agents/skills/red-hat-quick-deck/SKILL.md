@@ -8,17 +8,11 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "Assets & Miscellaneous"
 description: >
- Create beautiful, shareable HTML-based slide presentations styled to Red Hat brand standards.
- Generates single-file, self-contained HTML decks with click/keyboard navigation, story-arc-driven
- narrative structure, and cinematic dark-mode aesthetics. Supports embedded videos (YouTube, Vimeo,
- direct URLs) and linked media (memes, GIFs, images) with brand-consistent styling. Use this skill
- whenever the user wants to create a slide deck, presentation, quick deck, quick slides, pitch deck,
- talk, or briefing that should follow Red Hat branding. Also trigger when the user mentions "quick deck",
- "quick slides", "HTML slides", "shareable deck", "presentation for [audience]", "talk about [topic]",
- or asks to present technical content in Red Hat style. This skill is specifically for HTML output; if
- the user explicitly asks for .pptx, use the pptx skill instead, but suggest this skill as an alternative
- for easy sharing. Do NOT use for live cluster operations, GitOps changes, resource management, or
- troubleshooting; use the project operations and troubleshooting skills instead.
+  Create Red Hat branded, self-contained HTML slide decks with click/keyboard navigation,
+  a narrative story arc, dark styling and embedded or linked media. Use for presentations,
+  quick decks, pitches, talks and briefings that need Red Hat branding. For explicitly
+  requested PowerPoint files use the presentation skill instead. Do NOT use for live
+  cluster operations, GitOps, resource management or troubleshooting.
 ---
 
 # Red Hat Quick Deck

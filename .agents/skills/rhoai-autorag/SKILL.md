@@ -8,21 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or operating Red Hat OpenShift AI AutoRAG
-  workflows from the official Working with AutoRAG guide: Technology Preview
-  posture, RAG pattern optimization, JSON ground-truth evaluation data,
-  English document and file-format limits, Llama Stack and remote Milvus
-  prerequisites, Gen AI studio AutoRAG dashboard runs, externally imported
-  AutoRAG pipeline naming, leaderboard evaluation, faithfulness/correctness/
-  context-correctness metrics, generated indexing and inference notebooks,
-  search-space defaults, and recommended embedding model guidance. Do NOT use
-  for Llama Stack server/provider/vector-store configuration (use
-  rhoai-llama-stack), generic Gen AI playground workflows (use
-  rhoai-gen-ai-playground), AI Pipelines server administration (use
-  rhoai-ai-pipelines), S3 object operations outside AutoRAG (use
-  rhoai-s3-object-storage-data), workbench/IDE workflows outside generated
-  AutoRAG notebooks (use rhoai-data-science-ide-workflows), or live cluster
-  changes without the OpenShift safety guard.
+  Use for official RHOAI AutoRAG workflows: Technology Preview posture, RAG optimization,
+  ground-truth JSON, English/file-format limits, Llama Stack/Milvus prerequisites,
+  dashboard runs, imported pipeline naming, leaderboard metrics, generated notebooks,
+  search spaces and embedding guidance. Do NOT use for Llama Stack configuration, general
+  playground workflows, AI Pipelines administration, generic S3 operations or unrelated
+  IDE workflows; use the matching rhoai skills. Live changes require the OpenShift safety
+  guard.
 ---
 
 # RHOAI AutoRAG

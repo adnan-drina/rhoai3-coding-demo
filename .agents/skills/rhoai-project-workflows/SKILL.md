@@ -8,22 +8,12 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or operating Red Hat OpenShift AI project
-  workflows from the Working on projects guide: creating, updating, and
-  deleting data science projects; creating, starting, updating, and deleting
-  project workbenches; adding, updating, and deleting project connections;
-  using connection annotations with InferenceService and LLMInferenceService;
-  adding, updating, migrating, and deleting project cluster storage; granting,
-  updating, and removing project access; and handing off to project-scoped
-  resources for workbench images, hardware profiles, and KServe serving
-  runtimes. Do NOT use for global user/group access (use
-  rhoai-users-groups-access), connection type template administration (use
-  rhoai-connection-types), S3 data access from notebooks (use
-  rhoai-s3-object-storage-data), data science IDE workflows inside a running
-  workbench (use rhoai-data-science-ide-workflows), storage class administration (use
-  rhoai-storage-classes), project-scoped resource schema details (use
-  rhoai-project-scoped-resources), or live cluster changes without the
-  OpenShift safety guard.
+  Use for official RHOAI project workflows: projects, project-workbench lifecycle,
+  connections and InferenceService/LLMInferenceService annotations, cluster storage,
+  project access and handoff to project-scoped images/hardware/runtimes. Do NOT use for
+  global user access, connection-type administration, notebook S3 access, IDE usage,
+  storage-class administration or project-scoped resource schemas; use the matching rhoai
+  skills. Live changes require the OpenShift safety guard.
 ---
 
 # RHOAI Project Workflows

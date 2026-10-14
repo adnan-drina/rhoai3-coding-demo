@@ -8,23 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift AI
-  Distributed Inference with llm-d from the official deployment guide:
-  LLMInferenceService resources, Gateway API discovery and selection,
-  OpenShift Gateway Controller requirements, LeaderWorkerSet Operator
-  prerequisites, Red Hat Connectivity Link and Kuadrant authentication,
-  Authorino TLS setup, security.opendatahub.io/enable-auth, ServiceAccount JWT
-  inference access, vLLM argument configuration for llm-d deployments,
-  Endpoint Picker scheduler settings, ConfigMap-based scheduler references,
-  Workload Variant Autoscaler enablement, VariantAutoscaling resources,
-  saturation scaling ConfigMaps, mixed-workload flow control,
-  InferenceObjective priority queuing, and llm-d observability. Do NOT use for
-  standard single-model KServe deployment without llm-d (use
-  rhoai-model-deployment), model-serving platform/runtime setup (use
-  rhoai-model-serving-platform), MaaS governance over llm-d endpoints (use
-  rhoai-maas-governance), Kueue/Ray/Training distributed workloads (use
-  rhoai-distributed-workload-* skills), or live cluster changes without the
-  OpenShift safety guard.
+  Use for RHOAI llm-d deployment: LLMInferenceService, Gateway API/controller selection,
+  LeaderWorkerSet prerequisites, Connectivity Link/Kuadrant/Authorino authentication, JWT
+  access, vLLM arguments, Endpoint Picker scheduling, scheduler ConfigMaps, Workload
+  Variant Autoscaler, VariantAutoscaling, saturation scaling, flow control,
+  InferenceObjective queues and observability. Do NOT use for ordinary KServe deployment,
+  serving-platform setup, MaaS governance or Kueue/Ray/training workloads; use the
+  matching rhoai skills. Live changes require the OpenShift safety guard.
 ---
 
 # RHOAI Distributed Inference With llm-d

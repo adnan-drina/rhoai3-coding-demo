@@ -8,23 +8,12 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or operating Red Hat OpenShift AI deployed
-  model management and monitoring: custom model-serving runtime administration,
-  KServe progress-deadline timeouts, multi-node vLLM deployments, Kueue labels
-  for InferenceService workloads, Spyre scheduler/toleration post-deploy
-  changes, inference performance sizing, latency/throughput/cost metrics,
-  metrics-based autoscaling with KEDA/CMA, User Workload Monitoring for model
-  serving, Service Mesh monitoring, Grafana dashboards for KServe, OVMS, vLLM
-  and GPU metrics, NVIDIA NIM model selection lists, and NIM metrics
-  annotations. Do NOT use for model-serving platform enablement and runtime
-  platform design (use rhoai-model-serving-platform), general RHOAI
-  observability stack setup (use rhoai-observability), NVIDIA GPU enablement
-  (use rhoai-nvidia-gpu-accelerators), TrustyAI fairness/drift monitoring
-  (use rhoai-monitoring-trustyai), initial Deploy a model wizard and endpoint
-  smoke-test workflows (use rhoai-model-deployment), model evaluation workflows
-  (use rhoai-model-evaluation), GitOps-managed Grafana Operator deployment,
-  Grafana instance lifecycle, datasource authentication, OAuth routes, or
-  Grafana RBAC (use ocp-grafana-operator), or live cluster changes without the
+  Use for deployed RHOAI models: custom-runtime administration, KServe timeouts, multi-
+  node vLLM, Kueue routing, Spyre scheduling, inference sizing/cost/latency/throughput,
+  KEDA/CMA, User Workload/Service Mesh monitoring, Grafana runtime/GPU dashboards and
+  NVIDIA NIM metrics. Do NOT use for initial deployment, platform enablement, general
+  observability, GPU installation, TrustyAI bias/drift, model evaluation or GitOps Grafana
+  Operator lifecycle/RBAC; use the matching rhoai/ocp skills. Live changes require the
   OpenShift safety guard.
 ---
 

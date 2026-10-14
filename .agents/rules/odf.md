@@ -18,7 +18,8 @@ Use this rule for OpenShift Data Foundation storage guidance. Keep detailed proc
 
 ## Source Rules
 
-- Use ODF documentation from the pinned baseline, currently ODF 4.20.
+- Use ODF documentation from the active baseline in docs/PLATFORM_BASELINE.md;
+  the retained 4.20 skill captures are historical and require 4.22 verification.
 - Do not use a newer ODF documentation version for product configuration unless
   `docs/PLATFORM_BASELINE.md` is updated first.
 - Use Red Hat articles and rh-brain only for narrative context and examples;

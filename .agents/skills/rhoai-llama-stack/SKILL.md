@@ -8,22 +8,12 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift AI Llama
-  Stack platform capabilities: Technology Preview support posture, native
-  Llama Stack APIs, OpenAI-compatible APIs, file citation annotations, provider
-  enablement environment variables, Llama Stack Operator activation through
-  DataScienceCluster, LlamaStackDistribution custom resources, RAG stack
-  deployment, vector stores with Milvus, FAISS, pgvector, and Qdrant, document
-  ingestion, Responses API file_search workflows, keyword/vector/hybrid search,
-  RAG evaluation provider posture, PostgreSQL metadata storage, OAuth and ABAC,
-  self-signed CA handling, and high availability/autoscaling. Do NOT use for
-  chatbot UI prompt changes (use rhoai-chatbot-customization), model serving
-  runtime configuration (use rhoai-model-serving-platform), GPU enablement (use
-  rhoai-nvidia-gpu-accelerators), AI pipeline authoring (use
-  rhoai-kfp-pipeline-authoring), NeMo/FMS Guardrails product configuration or
-  Llama Stack PII detector integration (use rhoai-guardrails-safety),
-  evaluation implementation details (use rhoai-model-evaluation), or live
-  cluster changes without the OpenShift safety guard.
+  Use for RHOAI Llama Stack: server/component deployment, LlamaStackDistribution, provider
+  configuration, inference/vector IO/safety/telemetry APIs, external models, Milvus,
+  authentication, storage and troubleshooting. Do NOT use for playground-only usage,
+  AutoRAG optimization, enterprise RAG application design, general serving-platform
+  configuration or MaaS governance; use the matching rhoai skills. Live changes require
+  the OpenShift safety guard.
 ---
 
 # RHOAI Llama Stack

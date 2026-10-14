@@ -92,8 +92,8 @@ Read only the files needed for the current task:
    marked as demo-specific examples requiring schema verification.
 10. Validate the generated skill with `references/validation-checklist.md`.
     For repository-level consistency, also run
-    `scripts/validate-agent-guidance.rb` after updating the doc map, rules, or
-    shared skill inventory.
+    `python3 .agents/skills/agentskills-authoring/scripts/validate-skills.py --all`
+    and validate the doc-map YAML after updating routes, rules, or inventory.
 11. Update shared inventory when adding or renaming a skill:
    - `.agents/references/red-hat-doc-map.yaml`
    - `AGENTS.md`

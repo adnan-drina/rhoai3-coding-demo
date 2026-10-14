@@ -8,22 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, installing, configuring, or operating
-  MLflow in Red Hat OpenShift AI from the official Working with MLflow guide:
-  shared cluster MLflow instance, project-to-workspace mapping, Kubernetes
-  RBAC authorization, DataScienceCluster mlflowoperator enablement, MLflow and
-  MLflowConfig custom resources, SQLite/PVC development deployments,
-  PostgreSQL and S3-compatible production-oriented deployments, aggregate
-  ClusterRoles, MLflow pseudo-resources, SDK installation and authentication,
-  kubernetes-namespaced auth, local workstation and pod environment variables,
-  version compatibility, experiment tracking, and project-specific artifact
-  storage. Do NOT use for project/workbench lifecycle (use
-  rhoai-project-workflows), generic S3 object operations (use
-  rhoai-s3-object-storage-data), OpenShift AI model registry workflows (use
-  rhoai-model-registry or rhoai-model-registry-workflows), formal custom
-  evaluation workflows (use rhoai-model-evaluation), Gen AI playground prompt
-  workflows outside MLflow availability checks (use rhoai-gen-ai-playground),
-  or live cluster changes without the OpenShift safety guard.
+  Use for official RHOAI MLflow tracking: deployment/configuration, authentication and
+  RBAC, SDK clients, experiments/runs, metrics/parameters/tags, artifact storage,
+  persistence, model evaluation integration and validation. Do NOT use for EvalHub or
+  benchmark configuration (rhoai-evaluation), repo-specific evaluation glue (rhoai-model-
+  evaluation), model registry/catalog management, AutoRAG/AutoML optimization, pipeline-
+  server administration or general model deployment. Live changes require the OpenShift
+  safety guard.
 ---
 
 # RHOAI MLflow
