@@ -37,8 +37,9 @@ spec:
   steps:
     - name: build-and-push
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
+        # UID0 is confined to the mandatory pod user namespace.
+        runAsNonRoot: false
+        runAsUser: 0
         allowPrivilegeEscalation: false
         capabilities:
           add: [SETFCAP]

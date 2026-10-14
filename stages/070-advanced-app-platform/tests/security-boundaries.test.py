@@ -134,6 +134,7 @@ class NativeProject(unittest.TestCase):
         scc = yaml.safe_load((BASE / 'pipelines/operators/pipeline-userns-builder-scc.yaml').read_text())
         self.assertEqual(scc['userNamespaceLevel'], 'RequirePodLevel')
         self.assertEqual(scc['allowedCapabilities'], ['SETFCAP'])
+        self.assertEqual(scc['runAsUser'], {'type':'MustRunAs', 'uid':0})
         self.assertEqual(scc['requiredDropCapabilities'], [])
         for field in ('allowPrivilegedContainer', 'allowPrivilegeEscalation', 'allowHostDirVolumePlugin', 'allowHostIPC', 'allowHostNetwork', 'allowHostPID', 'allowHostPorts'):
             self.assertFalse(scc[field])

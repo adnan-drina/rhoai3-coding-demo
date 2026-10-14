@@ -1,4 +1,4 @@
-# OCP 4.22 user namespaces plus the documented UID1000 Buildah pattern.
+# Buildah runs as UID0 inside an OCP4.22 pod user namespace, never host UID0.
 # Only image-builder receives use; the constraint refuses host-level users.
 # Ref: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/security_apis/securitycontextconstraints-security-openshift-io-v1
 apiVersion: security.openshift.io/v1
@@ -25,19 +25,19 @@ allowedCapabilities: [SETFCAP]
 requiredDropCapabilities: []
 runAsUser:
   type: MustRunAs
-  uid: 1000
+  uid: 0
 seLinuxContext:
   type: MustRunAs
 fsGroup:
   type: MustRunAs
   ranges:
-    - min: 1000
-      max: 1000
+    - min: 0
+      max: 0
 supplementalGroups:
   type: MustRunAs
   ranges:
-    - min: 1000
-      max: 1000
+    - min: 0
+      max: 0
 seccompProfiles: [runtime/default]
 volumes: [configMap, downwardAPI, emptyDir, persistentVolumeClaim, projected, secret]
 readOnlyRootFilesystem: false
