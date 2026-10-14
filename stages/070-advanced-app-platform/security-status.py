@@ -15,7 +15,7 @@ SECRETS = [('rhdh', 'rhdh-gitlab'), ('openshift-gitops', 'rhdh-argocd-reader'),
            ('app-platform-build', 'sonarqube-credentials'),
            ('openshift-devspaces', 'gitlab-oauth-config'), ('gitlab-system', 'stage070-scm-provisioner')]
 CLIENTS = [('rhdh', 'stage070-rhdh-provisioner', 'rhdh'),
-           ('openshift-mta', 'stage070-mta-provisioner', 'mta'),
+           ('openshift-mta', 'stage070-mta-provisioner', 'mta-hub'),
            ('trusted-artifact-signer', 'stage070-signing-provisioner', 'trusted-artifact-signer')]
 LAST_APPLIED = 'kubectl.kubernetes.io/last-applied-configuration'
 

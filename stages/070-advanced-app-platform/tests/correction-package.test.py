@@ -269,6 +269,16 @@ class RotationSafety(unittest.TestCase):
    self.assertEqual(req.call_count,1);writer.assert_not_called()
 
 class NativeSyncAndIngress(unittest.TestCase):
+ def test_pvc_storage_classes_are_explicit_and_match_the_deploy_contract(self):
+  docs=list(yaml.safe_load_all(subprocess.check_output(['kustomize','build',str(BASE)],text=True)))
+  claims=[d for d in docs if d and d['kind']=='PersistentVolumeClaim'];self.assertTrue(claims)
+  for claim in claims:self.assertEqual(claim['spec'].get('storageClassName'),'gp3-csi',claim['metadata']['name'])
+ def test_identity_check_targets_the_client_configured_by_the_mta_job(self):
+  jobs=[d for d in yaml.safe_load_all((BASE/'mta/jobs/configure-mta-platform-sso.yaml').read_text()) if d and d['kind']=='Job']
+  script=jobs[0]['spec']['template']['spec']['containers'][0]['command'][-1]
+  expected=next(line.split('=',1)[1].strip('"') for line in script.splitlines() if line.startswith('CLIENT_ID='))
+  actual=next(target for ns,secret,target in security.CLIENTS if secret=='stage070-mta-provisioner')
+  self.assertEqual(actual,expected)
  def test_declarative_secrets_have_explicit_ssa_without_stringdata(self):
   docs=list(yaml.safe_load_all(subprocess.check_output(['kustomize','build',str(BASE)],text=True)))
   secrets=[d for d in docs if d and d['kind']=='Secret'];self.assertTrue(secrets)
