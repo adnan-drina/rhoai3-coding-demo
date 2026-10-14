@@ -75,7 +75,7 @@ check "ArgoCD instance Available" "$R"
 STAGE_APPS="$ROOT_DIR/scripts/shared/stage_apps.py"
 revision_args=()
 [[ -n "${RHOAI_STAGE010_EXPECTED_REVISION:-}" ]] && revision_args=(--revision "$RHOAI_STAGE010_EXPECTED_REVISION")
-if APP_STATUS=$(python3 "$STAGE_APPS" status 010 "${revision_args[@]}" 2>&1); then R="pass"
+if APP_STATUS=$(python3 "$STAGE_APPS" status 010 ${revision_args[@]+"${revision_args[@]}"} 2>&1); then R="pass"
 else R="$(printf '%s\n' "$APP_STATUS" | grep -E '^(  - |ERROR)' | head -3 | tr '\n' ' ')"; fi
 check "Stage 010 component Applications Synced/Healthy at one revision" "$R"
 RETIRED=$(oc get applications.argoproj.io 010-openshift-ai-platform-foundation -n openshift-gitops --ignore-not-found -o name 2>/dev/null || echo "read failed")

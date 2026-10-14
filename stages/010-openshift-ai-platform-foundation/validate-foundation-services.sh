@@ -45,10 +45,16 @@ try:
     # Native namespace proxy requires the namespace query parameter for its SAR and label filter.
     port = forward('data-science-prometheus-namespace-proxy', namespace, 8443)
     query = urllib.parse.urlencode({'query': 'up == 1 and (time() - timestamp(up) >= 0) and (time() - timestamp(up) <= 120)', 'namespace': namespace})
-    result = http(f'https://127.0.0.1:{port}/api/v1/query?{query}')
-    samples = result.get('data', {}).get('result', [])
-    now = time.time()
-    need(result.get('status') == 'success' and any(s.get('metric', {}).get('namespace') == namespace and math.isfinite(float(s['value'][1])) and float(s['value'][1]) == 1 and 0 <= now - float(s['value'][0]) <= 120 for s in samples), 'native namespace metrics query has no recent healthy target')
+    # Recency is enforced in PromQL on the server clock; comparing sample times with this machine's clock failed
+    # whenever it ran behind the cluster by more than the round trip. One empty answer (Thanos during an
+    # observability resync) is retried before failing, and the failure says what was returned.
+    for attempt in range(6):
+        result = http(f'https://127.0.0.1:{port}/api/v1/query?{query}')
+        samples = result.get('data', {}).get('result', [])
+        healthy = [s for s in samples if s.get('metric', {}).get('namespace') == namespace and math.isfinite(float(s['value'][1])) and float(s['value'][1]) == 1]
+        if result.get('status') == 'success' and healthy: break
+        time.sleep(5)
+    need(result.get('status') == 'success' and healthy, f"native namespace metrics query has no recent healthy target after {attempt + 1} attempts (status {result.get('status')}, {len(samples)} samples, warnings {result.get('warnings', [])})")
     print('[PASS] Authenticated native metrics query returned samples')
     collector = get('opentelemetrycollector', 'data-science-collector', namespace)
     config = collector['spec']['config']
