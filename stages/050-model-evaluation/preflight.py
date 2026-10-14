@@ -9,8 +9,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/shared"))
 import stage_apps  # noqa: E402
 
-APP = "050-model-evaluation"
+RETIRED_APP = "050-model-evaluation"  # the single Application replaced by component Applications
 NAMESPACE = "redhat-ods-applications"
+
+
+def owned(suffix):
+    """Exact tracking id of the Stage 050 component Application that renders the object."""
+    owner = stage_apps.owners("050").get(suffix)
+    return owner + ":" + suffix if owner else None
 
 
 def get(kind, name, namespace=None):
@@ -36,7 +42,7 @@ def require_owned_or_absent(kind, name, namespace=None):
     native_kind = {"namespace": "Namespace", "role": "Role", "rolebinding": "RoleBinding"}[kind]
     group = "" if kind == "namespace" else "rbac.authorization.k8s.io"
     # Installed Argo tracks cluster-scoped objects with the App destination namespace.
-    expected = f"{APP}:{group}/{native_kind}:{namespace or 'openshift-gitops'}/{name}"
+    expected = owned(f"{group}/{native_kind}:{namespace or 'openshift-gitops'}/{name}")
     require(not metadata.get("ownerReferences") and not metadata.get("deletionTimestamp")
             and metadata.get("annotations", {}).get("argocd.argoproj.io/tracking-id") == expected,
             "Existing curated namespace or dashboard authorization has foreign ownership; no adoption permitted.")
@@ -112,12 +118,15 @@ def main():
             and foundation["spec"].get("project") == "rhoai-demo"
             and foundation["spec"].get("destination") == {"server":"https://kubernetes.default.svc","namespace":"openshift-gitops"}
             and not foundation["spec"].get("sources") and not foundation["metadata"].get("deletionTimestamp"), "Foundation identity differs.")
-    own = get("application", APP, "openshift-gitops")
-    if own:
-        require(own["spec"].get("project") == "rhoai-demo" and own["spec"].get("source", {}).get("repoURL") == os.environ["GIT_REPO_URL"]
-                and own["spec"].get("source", {}).get("path") == "gitops/stages/050-model-evaluation/base"
-                and own["spec"].get("destination") == {"server":"https://kubernetes.default.svc","namespace":"openshift-gitops"}
-                and not own["spec"].get("sources") and not own["metadata"].get("ownerReferences") and not own["metadata"].get("deletionTimestamp"), "Existing Stage050 Application identity differs.")
+    require(not get("application", RETIRED_APP, "openshift-gitops"),
+            "Retired single Stage050 Application still exists; finish the component move (docs/OPERATIONS.md).")
+    for desired in stage_apps.components("050"):
+        own = get("application", desired["metadata"]["name"], "openshift-gitops")
+        if own:
+            require(own["spec"].get("project") == "rhoai-demo" and own["spec"].get("source", {}).get("repoURL") == os.environ["GIT_REPO_URL"]
+                    and own["spec"].get("source", {}).get("path") == desired["spec"]["source"]["path"]
+                    and own["spec"].get("destination") == {"server":"https://kubernetes.default.svc","namespace":"openshift-gitops"}
+                    and not own["spec"].get("sources") and not own["metadata"].get("ownerReferences") and not own["metadata"].get("deletionTimestamp"), "Existing Stage050 Application identity differs.")
     resources = [("mlflows.mlflow.opendatahub.io", "MLflow", "mlflow", None),
                  ("statefulset", "StatefulSet", "mlflow-postgresql", NAMESPACE),
                  ("pvc", "PersistentVolumeClaim", "mlflow-postgresql", NAMESPACE),
@@ -146,7 +155,7 @@ def main():
         group=obj["apiVersion"].split("/")[0] if "/" in obj["apiVersion"] else ""
         suffix=group+"/"+typename+":"+(namespace or "openshift-gitops")+"/"+name
         require(not meta.get("ownerReferences") and not meta.get("deletionTimestamp"), "Retained authored resource has a foreign owner or is terminating.")
-        require(tracking == APP+":"+suffix or (bridge and tracking == "010-openshift-ai-platform-foundation:"+suffix), "Existing retained resource has another GitOps owner.")
+        require(tracking == owned(suffix) or (bridge and tracking == "010-openshift-ai-platform-foundation:"+suffix), "Existing retained resource has another GitOps owner.")
         if bridge:
             saved=baseline["resources"][kind+"/"+name]
             require(meta["uid"]==saved["uid"] and obj.get("spec")==saved["spec"], "Retained resource identity/spec changed after protection.")
@@ -161,12 +170,12 @@ def main():
         obj=get(kind,name,namespace)
         if obj:
             meta=obj["metadata"];group=obj["apiVersion"].split("/")[0] if "/" in obj["apiVersion"] else ""
-            require(not meta.get("ownerReferences") and not meta.get("deletionTimestamp") and meta.get("annotations",{}).get("argocd.argoproj.io/tracking-id")==APP+":"+group+"/"+typename+":"+(namespace or "openshift-gitops")+"/"+name, "EvalHub resource has foreign ownership.")
+            require(not meta.get("ownerReferences") and not meta.get("deletionTimestamp") and meta.get("annotations",{}).get("argocd.argoproj.io/tracking-id")==owned(group+"/"+typename+":"+(namespace or "openshift-gitops")+"/"+name), "EvalHub resource has foreign ownership.")
     if get("crd","evalhubs.trustyai.opendatahub.io"):
         obj=get("evalhubs.trustyai.opendatahub.io","evalhub","evalhub")
         if obj:
             meta=obj["metadata"]
-            require(not meta.get("ownerReferences") and not meta.get("deletionTimestamp") and meta.get("annotations",{}).get("argocd.argoproj.io/tracking-id")==APP+":trustyai.opendatahub.io/EvalHub:evalhub/evalhub", "Existing EvalHub has foreign ownership.")
+            require(not meta.get("ownerReferences") and not meta.get("deletionTimestamp") and meta.get("annotations",{}).get("argocd.argoproj.io/tracking-id")==owned("trustyai.opendatahub.io/EvalHub:evalhub/evalhub"), "Existing EvalHub has foreign ownership.")
     cm=get("configmap","evalhub-mlflow-connection","evalhub")
     if cm:
         meta=cm["metadata"]

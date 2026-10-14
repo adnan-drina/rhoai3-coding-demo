@@ -1,0 +1,14 @@
+# Evaluation collections and the SWE-bench provider.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: rhoai-platform
+      app.kubernetes.io/managed-by: argocd
+      demo.rhoai.io/stage: "050"
+    includeSelectors: false
+
+resources:
+  - ../../base/edd
+  - ../../base/swebench

@@ -1,7 +1,10 @@
+# Stage 020 desired state for this cluster: the union of its component Applications
+# (gitops/argocd/app-of-apps/020-*/). Argo CD syncs each component from apps/<component>.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../base
-  - machineset-gpu.yaml
-  - machineset-h100.yaml
-  - machineset-rtxpro6000.yaml
+  - ../../apps/node-feature-discovery
+  - ../../apps/nvidia-gpu-operator
+  - ../../apps/kueue
+  - ../../apps/gpu-machinesets
+  - ../../apps/gpu-quotas

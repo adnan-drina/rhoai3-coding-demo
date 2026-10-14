@@ -7,14 +7,14 @@ source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
 command -v python3 >/dev/null || { echo '[FAIL] python3 is required'; exit 1; }
+export REPO_ROOT
 python3 - <<'CHECK'
-import json,subprocess,sys,re,os
-result = subprocess.run(["oc", "--request-timeout=10s", "get", "application", "050-model-evaluation",
-                         "-n", "openshift-gitops", "-o", "json"], capture_output=True, text=True)
+import json,os,subprocess,sys
+sys.path.insert(0,os.environ["REPO_ROOT"]+"/scripts/shared");import stage_apps
 def parked_only(app):
     # A deliberately stopped candidate (serving.kserve.io/stop) reports Suspended; nothing else may be unhealthy.
     if app.get("status",{}).get("health",{}).get("status") != "Suspended":
-        return False
+        return True
     for r in app["status"].get("resources",[]):
         h=(r.get("health") or {}).get("status")
         if h in (None,"Healthy"):
@@ -25,26 +25,16 @@ def parked_only(app):
         if isvc.returncode or isvc.stdout.strip()!="true":
             return False
     return True
-try:
-    app=json.loads(result.stdout)
-    status=app.get("status", {})
-    ready=(result.returncode == 0 and status.get("sync", {}).get("status") == "Synced"
-           and (status.get("health", {}).get("status") == "Healthy" or parked_only(app))
-           and app["spec"].get("project")=="rhoai-demo"
-           and app["spec"].get("destination")=={"server":"https://kubernetes.default.svc","namespace":"openshift-gitops"}
-           and not app["spec"].get("sources") and not app["metadata"].get("ownerReferences") and not app["metadata"].get("deletionTimestamp")
-           and (not os.environ.get("RHOAI_STAGE050_EXPECTED_REVISION") or os.environ["RHOAI_STAGE050_EXPECTED_REVISION"]==app["spec"]["source"]["targetRevision"])
-           and re.fullmatch(r"[0-9a-f]{40}",app["spec"]["source"]["targetRevision"])
-           and app["spec"]["source"].get("repoURL")==os.environ["GIT_REPO_URL"]
-           and app["spec"]["source"].get("path")=="gitops/stages/050-model-evaluation/base"
-           and status.get("operationState",{}).get("phase")=="Succeeded"
-           and status["operationState"].get("syncResult",{}).get("revision")==app["spec"]["source"]["targetRevision"]
-           and status["operationState"].get("syncResult",{}).get("source",{}).get("path")==app["spec"]["source"]["path"]
-           and status.get("sync",{}).get("revision")==app["spec"]["source"]["targetRevision"])
-except ValueError:
-    ready=False
-print("[PASS] Stage 050 Application Synced/Healthy" if ready else "[FAIL] Stage 050 Application not Synced/Healthy")
-sys.exit(0 if ready else 1)
+problems=stage_apps.stage_problems("050",os.environ.get("RHOAI_STAGE050_EXPECTED_REVISION"),os.environ["GIT_REPO_URL"])
+qualification=stage_apps.get_application("050-model-qualification")
+if qualification and not parked_only(qualification):
+    problems.append("050-model-qualification: Suspended by something other than a stopped candidate InferenceService")
+if stage_apps.get_application("050-model-evaluation"):
+    problems.append("retired single Application 050-model-evaluation still exists")
+for problem in problems:
+    print("  - "+problem)
+print("[PASS] Stage 050 Applications Synced/Healthy" if not problems else "[FAIL] Stage 050 Applications not Synced/Healthy")
+sys.exit(0 if not problems else 1)
 CHECK
 "$SCRIPT_DIR/validate-ai-services.sh"
 # Read-only authenticated discovery, plus optional previously submitted real job/run evidence.

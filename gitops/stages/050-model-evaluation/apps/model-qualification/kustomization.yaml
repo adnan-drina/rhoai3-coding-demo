@@ -1,0 +1,13 @@
+# Evaluated Models project: candidate model serving, S3 connections, pipeline server and the qualification pipeline.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: rhoai-platform
+      app.kubernetes.io/managed-by: argocd
+      demo.rhoai.io/stage: "050"
+    includeSelectors: false
+
+resources:
+  - ../../base/model-qualification

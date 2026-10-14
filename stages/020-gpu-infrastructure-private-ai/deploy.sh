@@ -16,10 +16,11 @@ command -v git >/dev/null
 remote_sha=$(git ls-remote "${GIT_REPO_URL:?Set GIT_REPO_URL}" "$revision" "refs/heads/$revision" | awk '{print $1}' | sort -u)
 [[ "$remote_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'ERROR: revision must resolve to one published branch.' >&2; exit 1; }
 [[ "$remote_sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published revision differs from reviewed checkout.' >&2; exit 1; }
-paths=(gitops/stages/020-gpu-infrastructure-private-ai gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai.yaml stages/020-gpu-infrastructure-private-ai scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/check-operator-policy.py)
+paths=(gitops/stages/020-gpu-infrastructure-private-ai gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai stages/020-gpu-infrastructure-private-ai scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/check-operator-policy.py)
 [[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish all reviewed Stage 020 source before deploying.' >&2; exit 1; }
 overlay="$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai/overlays/environment"
-[[ -f "$overlay/machineset-gpu.yaml" && -f "$overlay/application-patch.yaml" ]] || { echo 'ERROR: generate, review and publish the environment MachineSet and Application patch first.' >&2; exit 1; }
+[[ -f "$overlay/machinesets/machineset-gpu.yaml" && -f "$overlay/machinesets/application-patch.yaml" ]] || { echo 'ERROR: generate, review and publish the environment MachineSet and Application patch first.' >&2; exit 1; }
+export REPO_ROOT
 # All prerequisites are read-only and run before the first Application write.
 foundation=$(oc --request-timeout=10s get applications.argoproj.io 010-openshift-ai-platform-foundation -n openshift-gitops -o json)
 python3 - "$foundation" <<'PY'
@@ -31,26 +32,28 @@ assert any(i.get('kind')=='DataScienceCluster' and i.get('name')=='default-dsc' 
 PY
 oc --request-timeout=10s get csv -A -o json | python3 -c 'import json,sys; x=json.load(sys.stdin); assert any(i["metadata"]["name"].startswith("cert-manager-operator.v1.20.") and i.get("status",{}).get("phase")=="Succeeded" for i in x["items"]), "Provider cert-manager prerequisite unavailable"'
 python3 - <<'PY_OWNERSHIP'
-import json,subprocess,os
-app='020-gpu-infrastructure-private-ai'
-for kind,name,ns in [('application',app,'openshift-gitops'),('namespace','openshift-nfd',''),('namespace','nvidia-gpu-operator',''),('namespace','openshift-kueue-operator','')]:
+import json,subprocess,os,sys
+sys.path.insert(0,os.environ['REPO_ROOT']+'/scripts/shared');import stage_apps
+def read(kind,name,ns=''):
  cmd=['oc','--request-timeout=10s','get',kind,name,'--ignore-not-found','-o','json']
  if ns:cmd+=['-n',ns]
  p=subprocess.run(cmd,capture_output=True,text=True,timeout=15)
  assert p.returncode==0,'Ownership API read failed'
- if not p.stdout.strip():continue
- x=json.loads(p.stdout);a=x['metadata'].get('annotations',{});tracking=a.get('argocd.argoproj.io/tracking-id','')
- assert not tracking or tracking.startswith(app+':'),'Foreign resource tracking'
- if kind=='application':
-  assert not x['metadata'].get('ownerReferences') and 'sources' not in x['spec'],'Unexpected Application ownership'
-  assert x['spec']['source']['repoURL']==os.environ['GIT_REPO_URL'] and x['spec']['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Unexpected Application repository or destination'
-  assert x['spec']['project']=='rhoai-demo' and x['spec']['source']['path']=='gitops/stages/020-gpu-infrastructure-private-ai/overlays/environment','Unexpected existing Stage 020 Application'
-p=subprocess.run(['oc','--request-timeout=10s','get','configmap','nvidia-dcgm-exporter-dashboard','-n','openshift-config-managed','--ignore-not-found','-o','json'],capture_output=True,text=True,timeout=15)
-assert p.returncode==0,'Dashboard ownership read failed'
-if p.stdout.strip():
- x=json.loads(p.stdout);assert not x['metadata'].get('ownerReferences') and x['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith(app+':'),'Existing NVIDIA dashboard requires a reviewed adoption'
+ return json.loads(p.stdout) if p.stdout.strip() else None
+assert not read('application','020-gpu-infrastructure-private-ai','openshift-gitops'),'Retired single Stage 020 Application still exists; finish the component move (docs/OPERATIONS.md)'
+for desired in stage_apps.components('020'):
+ x=read('application',desired['metadata']['name'],'openshift-gitops')
+ if not x:continue
+ assert not x['metadata'].get('ownerReferences') and 'sources' not in x['spec'],'Unexpected Application ownership'
+ assert x['spec']['source']['repoURL']==os.environ['GIT_REPO_URL'] and x['spec']['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Unexpected Application repository or destination'
+ assert x['spec']['project']=='rhoai-demo' and x['spec']['source']['path']==desired['spec']['source']['path'],'Unexpected existing Stage 020 Application'
+for name in ['openshift-nfd','nvidia-gpu-operator','openshift-kueue-operator']:
+ x=read('namespace',name)
+ assert not x or not stage_apps.tracking_id(x) or stage_apps.tracked('020',x),'Foreign resource tracking'
+x=read('configmap','nvidia-dcgm-exporter-dashboard','openshift-config-managed')
+if x:assert not x['metadata'].get('ownerReferences') and stage_apps.tracked('020',x),'Existing NVIDIA dashboard requires a reviewed adoption'
 PY_OWNERSHIP
-ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV[0]))' "$overlay/machineset-gpu.yaml" | python3 -c '
+ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV[0]))' "$overlay/machinesets/machineset-gpu.yaml" | python3 -c '
 import json,subprocess,sys,copy
 expected=json.load(sys.stdin);name=expected["metadata"]["name"]
 def read(kind,name,ns=""):
@@ -75,14 +78,15 @@ p=subprocess.run(["oc","--request-timeout=10s","get","machineset",name,"-n","ope
 assert p.returncode==0,"MachineSet ownership API read failed"
 if p.stdout.strip():
  x=json.loads(p.stdout);assert not x["metadata"].get("ownerReferences"),"Foreign MachineSet owner"
- assert x["metadata"].get("annotations",{}).get("argocd.argoproj.io/tracking-id","").startswith("020-gpu-infrastructure-private-ai:"),"Existing MachineSet has not been adopted by reviewed Stage 020"
+ assert x["metadata"].get("annotations",{}).get("argocd.argoproj.io/tracking-id","").startswith("020-gpu-machinesets:"),"Existing MachineSet has not been adopted by reviewed Stage 020"
  for key in ["selector","template"]:assert x["spec"][key]==expected["spec"][key],"Existing GPU provider/template differs from reviewed source"
 '
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 oc kustomize "$overlay" > "$work/render.yaml"
 ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(File.read(ARGV[0])))' "$work/render.yaml" | python3 -c '
-import json,subprocess,sys
+import json,os,subprocess,sys
+sys.path.insert(0,os.environ["REPO_ROOT"]+"/scripts/shared");import stage_apps
 for expected in json.load(sys.stdin):
  if expected["kind"]=="MachineSet":continue
  m=expected["metadata"];cmd=["oc","--request-timeout=10s","get",expected["kind"],m["name"],"--ignore-not-found","-o","json"]
@@ -93,10 +97,13 @@ for expected in json.load(sys.stdin):
  if not p.stdout.strip():continue
  x=json.loads(p.stdout);assert not x["metadata"].get("ownerReferences"),"Foreign customer resource owner"
  tracking=x["metadata"].get("annotations",{}).get("argocd.argoproj.io/tracking-id","")
- assert tracking.startswith("020-gpu-infrastructure-private-ai:") or (expected["kind"]=="Namespace" and not tracking),"Unreviewed existing customer resource"
+ assert stage_apps.tracked("020",x) or (expected["kind"]=="Namespace" and not tracking),"Unreviewed existing customer resource"
 '
-# Compose the exact-name MachineSet replica exception into the Application.
-ruby -ryaml -rjson -e 'a=YAML.load_file(ARGV[0]);p=YAML.load_file(ARGV[1]); a["spec"]["ignoreDifferences"]=p["spec"]["ignoreDifferences"];a["spec"]["source"]["repoURL"]=ENV.fetch("GIT_REPO_URL");a["spec"]["source"]["targetRevision"]=ARGV[2];puts YAML.dump(a)' "$ROOT_DIR/gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai.yaml" "$overlay/application-patch.yaml" "$remote_sha" > "$work/application.yaml"
-oc --request-timeout=10s apply -f "$work/application.yaml"
-echo 'Stage 020 Application submitted; native Automatic operator reconciliation is bounded below.'
+# The component Applications at one revision; the exact-name MachineSet replica exceptions go on 020-gpu-machinesets.
+python3 "$ROOT_DIR/scripts/shared/stage_apps.py" applications 020 --revision "$remote_sha" --repo-url "$GIT_REPO_URL" > "$work/components.json"
+ruby -ryaml -rjson -e 'apps=JSON.parse(File.read(ARGV[0]));p=YAML.load_file(ARGV[1])
+pools=apps["items"].find{|a| a["metadata"]["name"]=="020-gpu-machinesets"} or abort "ERROR: MachineSet component is missing."
+pools["spec"]["ignoreDifferences"]=p["spec"]["ignoreDifferences"];puts JSON.generate(apps)' "$work/components.json" "$overlay/machinesets/application-patch.yaml" > "$work/applications.json"
+oc --request-timeout=10s apply -f "$work/applications.json"
+echo 'Stage 020 component Applications submitted; native Automatic operator reconciliation is bounded below.'
 python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai/base" --wait 900

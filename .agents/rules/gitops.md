@@ -41,7 +41,7 @@ A stage may instead deploy one Application per logical component, keeping the st
 
 - `gitops/argocd/app-of-apps/NNN-name/<component>.yaml` holds one Application named `NNN-<component>`, labelled `demo.rhoai.io/stage: 'NNN'`, with a numeric `demo.rhoai.io/deploy-order` annotation.
 - Its source is `gitops/stages/NNN-name/apps/<component>/`, a kustomization that references the stage's existing `base/<part>` directories and carries the stage labels.
-- `base/kustomization.yaml` lists only `../apps/*`, so it renders exactly the union; validators keep reading `base/`.
+- `base/kustomization.yaml` lists only `../apps/*`, so it renders exactly the union; validators keep reading `base/`. Stage 020 uses `overlays/environment/` as the union instead, because its MachineSets are generated per cluster.
 - Components are disjoint (one owner per object, including singletons). `scripts/shared/stage_apps.py check-static NNN` enforces this; `validate-stage-flow.sh` runs it.
 - `deploy.sh` applies all components at one reviewed revision (`stage_apps.py applications`), and validation requires every component Synced, Healthy and at that revision (`stage_apps.py status`).
 - Group by lifecycle: operators, data (Prune=false,Delete=false), fast-changing content (models, access policies) and shared configuration each get their own component.

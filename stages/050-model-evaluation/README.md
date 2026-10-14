@@ -104,6 +104,8 @@ EvalHub coordinates evaluations; MLflow organizes experiment evidence; PostgreSQ
 
 The evaluation foundation uses the platform, serving and governed-access stages; it does not deploy another model or allocate another GPU. An actual evaluation requires its selected endpoint to be available.
 
+The stage is deployed as five Argo CD Applications at one reviewed revision: `050-mlflow` (tracking service and its data), `050-model-qualification` (the Evaluated Models project, candidate serving and the qualification pipeline), `050-evalhub` (EvalHub, its database and the curated prompts project), `050-evaluation-content` (collections and SWE-bench) and `050-oci-export`. A stopped candidate model shows `050-model-qualification` as Suspended; the other components stay Healthy.
+
 Use the [operations guide](../../docs/OPERATIONS.md) for deployment and validation. The [Stage 050 design and acceptance record](../../docs/migration/050-model-evaluation-plan.md) carries the benchmark, coding-pilot and trace-verification prerequisites. Validation separates service readiness from completed results and retained MLflow evidence.
 
 ## References

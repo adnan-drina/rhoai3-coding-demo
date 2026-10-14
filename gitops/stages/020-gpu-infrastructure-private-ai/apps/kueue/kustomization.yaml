@@ -1,0 +1,7 @@
+# Red Hat build of Kueue operator and its enablement in the DataScienceCluster.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base/kueue/operator
+  - ../../base/rhoai-dsc/base

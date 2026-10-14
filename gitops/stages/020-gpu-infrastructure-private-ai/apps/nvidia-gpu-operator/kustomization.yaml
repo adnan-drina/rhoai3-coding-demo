@@ -1,0 +1,9 @@
+# NVIDIA GPU Operator with its ClusterPolicy, GPU metrics access and the console dashboard.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base/gpu-operator/operator
+  - ../../base/gpu-operator/instance/base
+  - ../../base/gpu-metrics-access
+  - ../../base/console-dashboard

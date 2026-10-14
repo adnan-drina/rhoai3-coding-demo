@@ -4,7 +4,7 @@
 A regrouped stage keeps one Argo CD Application per component in
 gitops/argocd/app-of-apps/<NNN-stage>/<component>.yaml. The components of a stage are always
 deployed together at one reviewed revision, in the order of their demo.rhoai.io/deploy-order
-annotation; the stage's base/ kustomization renders exactly their union, so validators keep
+annotation; the stage's base/ (or overlays/environment for Stage 020) kustomization renders exactly their union, so validators keep
 reading one desired state.
 
 Import it from Python (sys.path.insert(0, "<repo>/scripts/shared"); import stage_apps) or use the CLI:
@@ -28,6 +28,8 @@ ROOT = Path(__file__).resolve().parents[2]
 NAMESPACE = "openshift-gitops"
 DESTINATION = {"server": "https://kubernetes.default.svc", "namespace": NAMESPACE}
 ORDER = "demo.rhoai.io/deploy-order"
+# Health states besides Healthy a component may report by design, e.g. "Suspended" for a deliberately stopped model.
+ACCEPTED_HEALTH = "demo.rhoai.io/accepted-health"
 TRACKING = "argocd.argoproj.io/tracking-id"
 
 
@@ -145,7 +147,12 @@ def runtime_tracking_ok(stage, obj, root=ROOT):
     return value == "" or value.split(":", 1)[0] in names(stage, root)
 
 
-def app_problems(app, revision=None, repo_url=None, path=None):
+def accepted_health(app):
+    value = app.get("metadata", {}).get("annotations", {}).get(ACCEPTED_HEALTH, "")
+    return {"Healthy"} | {h.strip() for h in value.split(",") if h.strip()}
+
+
+def app_problems(app, revision=None, repo_url=None, path=None, accepted=("Healthy",)):
     """Reasons an Application is not exactly reconciled at an immutable revision; empty when ready."""
     problems = []
     meta, spec, status = app["metadata"], app["spec"], app.get("status", {})
@@ -168,7 +175,7 @@ def app_problems(app, revision=None, repo_url=None, path=None):
     result = op.get("syncResult", {})
     if status.get("sync", {}).get("status") != "Synced" or status.get("sync", {}).get("revision") != target:
         problems.append(name + ": not Synced at its revision")
-    if status.get("health", {}).get("status") != "Healthy":
+    if status.get("health", {}).get("status") not in accepted:
         problems.append(name + ": health " + str(status.get("health", {}).get("status")))
     if op.get("phase") != "Succeeded" or result.get("revision") != target or result.get("source", {}).get("path") != source.get("path"):
         problems.append(name + ": last operation is not a successful sync of this source")
@@ -193,7 +200,7 @@ def stage_problems(stage, revision=None, repo_url=None, root=ROOT):
             problems.append(name + ": missing")
             continue
         revisions.add(app["spec"].get("source", {}).get("targetRevision"))
-        problems += app_problems(app, revision, repo_url, desired["spec"]["source"]["path"])
+        problems += app_problems(app, revision, repo_url, desired["spec"]["source"]["path"], accepted_health(desired))
     if len(revisions) > 1:
         problems.append("components are at different revisions")
     return problems
@@ -223,13 +230,19 @@ def stamped(stage, revision, repo_url, root=ROOT):
     return apps
 
 
+def aggregate_path(stage, root=ROOT):
+    """The stage's union kustomization: overlays/environment for a cluster-specific stage (020), else base."""
+    stage_root = Path(_components(stage, str(root))[0]["spec"]["source"]["path"]).parent.parent
+    environment = stage_root / "overlays/environment"
+    return environment if (Path(root) / environment / "kustomization.yaml").exists() else stage_root / "base"
+
+
 def check_static(stage, root=ROOT):
     """Components render disjoint object sets whose union is exactly the stage base render."""
     owners(stage, root)  # raises on overlap
     base = {}
     apps = _components(stage, str(root))
-    base_path = Path(apps[0]["spec"]["source"]["path"]).parent.parent / "base"
-    for obj in render(base_path, root):
+    for obj in render(aggregate_path(stage, root), root):
         base[suffix(obj)] = obj
     union = {}
     for app in apps:
@@ -268,7 +281,7 @@ def main():
     elif args.command == "owner":
         print(owner(args.stage, args.kind, args.name, args.namespace, args.group))
     elif args.command == "check-static":
-        print("PASS Stage " + args.stage + ": " + str(len(names(args.stage))) + " components render " + str(check_static(args.stage)) + " objects, disjoint and equal to base")
+        print("PASS Stage " + args.stage + ": " + str(len(names(args.stage))) + " components render " + str(check_static(args.stage)) + " objects, disjoint and equal to " + str(aggregate_path(args.stage)))
     return 0
 
 

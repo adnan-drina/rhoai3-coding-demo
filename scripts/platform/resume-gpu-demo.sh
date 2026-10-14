@@ -61,7 +61,7 @@ discover_gpu_machineset() {
     matches="$(oc --request-timeout=10s get machineset -n openshift-machine-api -o json | jq -r '.items[] | select(.metadata.labels["cluster-api/accelerator"] == $label and .spec.template.spec.providerSpec.value.instanceType == $itype and ($zone == "" or .spec.template.spec.providerSpec.value.placement.availabilityZone == $zone)) | .metadata.name' --arg label "$GPU_POOL_LABEL" --arg itype "$GPU_POOL_INSTANCE" --arg zone "$([[ $GPU_POOL == rtxpro6000 ]] && echo "$GPU_ZONE")")"
     [[ $(printf '%s\n' "$matches" | sed '/^$/d' | wc -l | tr -d ' ') == 1 ]] || { log_error "Select one unambiguous reviewed GPU MachineSet"; return 1; }
     [[ -z "${GPU_MACHINESET_NAME:-}" || "$GPU_MACHINESET_NAME" == "$matches" ]] || { log_error "Explicit MachineSet differs from reviewed GPU pool"; return 1; }
-    oc --request-timeout=10s get machineset "$matches" -n openshift-machine-api -o json | jq -e '.metadata.ownerReferences == null and (.metadata.annotations["argocd.argoproj.io/tracking-id"] | startswith("020-gpu-infrastructure-private-ai:"))' >/dev/null || { log_error "GPU pool ownership is not Stage 020"; return 1; }
+    oc --request-timeout=10s get machineset "$matches" -n openshift-machine-api -o json | jq -e '.metadata.ownerReferences == null and (.metadata.annotations["argocd.argoproj.io/tracking-id"] | startswith("020-gpu-machinesets:"))' >/dev/null || { log_error "GPU pool ownership is not Stage 020"; return 1; }
     printf '%s\n' "$matches"
 }
 
@@ -83,8 +83,13 @@ sync_app() {
     fi
 
     log_info "Requesting Argo CD sync for $app"
-    oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" patch application "$app" -n "$ARGOCD_NAMESPACE" \
-        --type=merge -p '{"operation":{"sync":{}}}' >/dev/null 2>&1 || \
+    # An explicit operation does not inherit the Application's syncOptions; pass them so
+    # RespectIgnoreDifferences keeps delegated fields (MachineSet replicas) out of the sync.
+    local options
+    options="$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get application "$app" -n "$ARGOCD_NAMESPACE" -o json \
+        | jq -c '{operation:{sync:{syncOptions:(.spec.syncPolicy.syncOptions // [])}}}')" || options=''
+    [[ -n "$options" ]] && oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" patch application "$app" -n "$ARGOCD_NAMESPACE" \
+        --type=merge -p "$options" >/dev/null 2>&1 || \
         log_warn "Could not request sync for $app; an operation may already be running"
 }
 
@@ -244,8 +249,11 @@ print_status() {
 resume_from_zero() {
     local replicas="${1:-$GPU_MACHINESET_REPLICAS}"
 
-    sync_app "020-gpu-infrastructure-private-ai"
-    wait_for_app "020-gpu-infrastructure-private-ai" 600
+    local app
+    for app in $(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" names 020); do
+        sync_app "$app"
+        wait_for_app "$app" 600
+    done
     scale_gpu_up "$replicas"
     run_validation "Stage 020 readiness only" "$REPO_ROOT/stages/020-gpu-infrastructure-private-ai/validate.sh"
 
