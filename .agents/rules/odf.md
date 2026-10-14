@@ -14,14 +14,16 @@ applies-to:
 
 # ODF Guidance
 
-Use this rule for OpenShift Data Foundation storage guidance. Keep detailed procedures in `odf-*` skills and use official ODF documentation for the active version in `docs/PLATFORM_BASELINE.md`.
+Use this rule for OpenShift Data Foundation storage guidance. Keep procedures in
+`odf-*` skills; the doc map `.agents/references/red-hat-doc-map.yaml` routes ODF
+books to those skills and holds the one ODF documentation version
+(`products.odf.docs_version`), which must equal the Subscription channel in
+`gitops/stages/010-openshift-ai-platform-foundation/odf/subscription.yaml`.
 
 ## Source Rules
 
-- Use ODF documentation from the active baseline in docs/PLATFORM_BASELINE.md;
-  the retained 4.20 skill captures are historical and require 4.22 verification.
-- Do not use a newer ODF documentation version for product configuration unless
-  `docs/PLATFORM_BASELINE.md` is updated first.
+- Link ODF documentation of the map's `docs_version` only; run
+  `python3 scripts/shared/check-doc-links.py` after changing links or versions.
 - Use Red Hat articles and rh-brain only for narrative context and examples;
   official ODF docs remain the product configuration authority.
 - Do not invent StorageCluster, NooBaa, BackingStore, BucketClass, OBC,
@@ -42,15 +44,7 @@ Use this rule for OpenShift Data Foundation storage guidance. Keep detailed proc
 
 ## Skills
 
-- Use `.agents/skills/odf-storagecluster/SKILL.md` for ODF deployment posture,
-  StorageCluster, StorageSystem, AWS install, monitoring, update, and troubleshooting guidance.
-- Use `.agents/skills/odf-multicloud-gateway/SKILL.md` for MCG, NooBaa,
-  S3 endpoint, backing store, bucket class, and standalone object-storage guidance.
-- Use `.agents/skills/odf-object-bucket-claims/SKILL.md` for project-scoped
-  ObjectBucketClaim creation, generated ConfigMaps/Secrets, and application consumption patterns.
-- Use `.agents/skills/odf-storage-classes/SKILL.md` for ODF-provided block,
-  file, object storage classes, reclaim behavior, binding behavior, and storage-class review.
-- Use `.agents/skills/ocp-storage/SKILL.md` for generic OpenShift storage
-  concepts and API behavior.
-- Use `.agents/skills/rhoai-s3-object-storage-data/SKILL.md` when the task is
-  about RHOAI users consuming an S3-compatible object store from a workbench.
+The doc map routes ODF books to the four `odf-*` skills. Cross-family handoffs:
+`.agents/skills/ocp-storage/SKILL.md` for generic OpenShift storage, and
+`.agents/skills/rhoai-s3-object-storage-data/SKILL.md` for RHOAI users
+consuming S3 from a workbench.
