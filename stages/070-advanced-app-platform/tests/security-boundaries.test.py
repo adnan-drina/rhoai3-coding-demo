@@ -130,6 +130,17 @@ class NativeProject(unittest.TestCase):
         bindings=[r for r in self.rows if r['kind']=='RoleBinding' and r['roleRef']['name']=='pipeline-userns-builder']
         self.assertEqual(len(bindings),1)
         self.assertEqual(bindings[0]['subjects'],[{'kind':'ServiceAccount','name':'image-builder','namespace':'test-example-dev'}])
+    def test_builder_constraint_requires_pod_isolation_and_no_host_authority(self):
+        scc = yaml.safe_load((BASE / 'pipelines/operators/pipeline-userns-builder-scc.yaml').read_text())
+        self.assertEqual(scc['userNamespaceLevel'], 'RequirePodLevel')
+        self.assertEqual(scc['allowedCapabilities'], ['SETFCAP'])
+        self.assertEqual(scc['requiredDropCapabilities'], [])
+        for field in ('allowPrivilegedContainer', 'allowPrivilegeEscalation', 'allowHostDirVolumePlugin', 'allowHostIPC', 'allowHostNetwork', 'allowHostPID', 'allowHostPorts'):
+            self.assertFalse(scc[field])
+        self.assertNotIn('hostPath', scc['volumes'])
+        role = yaml.safe_load((BASE / 'pipelines/operators/image-builder-scc.yaml').read_text())
+        self.assertEqual(role['rules'][0]['resourceNames'], [scc['metadata']['name']])
+
     def test_cross_namespace_reads_name_only_this_project(self):
         r=self.objects['Role','openshift-gitops','test-example.readback']
         self.assertEqual(r['rules'],[{'apiGroups':['argoproj.io'],'resources':['applications'],'verbs':['get'],'resourceNames':['runtime-test-example']}])

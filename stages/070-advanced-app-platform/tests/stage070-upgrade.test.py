@@ -119,6 +119,12 @@ class IntegratedContract(unittest.TestCase):
         self.assertEqual([r for r in updated.splitlines() if 'rhdh' in r], reader.RULES)
         self.assertTrue(all(', get,' in r or r.startswith('g, ') for r in reader.RULES))
 
+    def test_argo_plugins_follow_110_oci_packaging(self):
+        plugins = yaml.safe_load(yaml.safe_load((BASE / 'rhdh/rhdh-instance/dynamic-plugins-configmap.yaml').read_text())['data']['dynamic-plugins.yaml'])['plugins']
+        packages = [p['package'] for p in plugins if 'argocd' in p['package'] or 'argo-cd' in p['package']]
+        self.assertEqual(len(packages), 2)
+        self.assertTrue(all(p.startswith('oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/') and '@sha256:' in p for p in packages))
+
     def test_tekton_frontend_is_wired_and_migration_requires_hub(self):
         plugins = yaml.safe_load(yaml.safe_load((BASE / 'rhdh/rhdh-instance/dynamic-plugins-configmap.yaml').read_text())['data']['dynamic-plugins.yaml'])['plugins']
         tekton = next(p for p in plugins if 'plugin-tekton@sha256:' in p['package'])

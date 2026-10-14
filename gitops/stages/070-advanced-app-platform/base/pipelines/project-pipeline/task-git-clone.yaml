@@ -43,12 +43,18 @@ spec:
       case "$REVISION" in *[!0-9a-f]*) echo 'Source revision is not immutable' >&2; exit 2 ;; esac
       test -s "$AUTH_DIR/.git-credentials"
       test ! -e .git
+      # Git credential approval needs a writable store; keep it in this Task's
+      # ephemeral home, not the read-only Secret mount or source workspace.
+      mkdir -p "$HOME"
+      umask 077
+      cp "$AUTH_DIR/.git-credentials" "$HOME/.git-credentials"
+      chmod 600 "$HOME/.git-credentials"
       # The Tekton workspace may be owned by its volume initializer's UID.
       # Trust only this newly initialized checkout, never an ownership wildcard.
       git_checkout() { git -c safe.directory= -c "safe.directory=$PWD" "$@"; }
       git_checkout init -q
       git_checkout remote add origin "$REPO_URL"
-      git_checkout -c "credential.helper=store --file=$AUTH_DIR/.git-credentials" fetch --no-tags origin "$REVISION"
+      git_checkout -c "credential.helper=store --file=$HOME/.git-credentials" fetch --no-tags origin "$REVISION"
       git_checkout checkout -q --detach FETCH_HEAD
       actual=$(git_checkout rev-parse HEAD)
       test "$actual" = "$REVISION"

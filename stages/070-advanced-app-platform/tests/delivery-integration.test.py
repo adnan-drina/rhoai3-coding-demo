@@ -43,7 +43,7 @@ class Checkout(unittest.TestCase):
         auth = self.root / 'auth'
         auth.mkdir()
         (auth / '.git-credentials').write_text('https://test:synthetic@gitlab-gitlab-system.example.test\n')
-        self.env = dict(os.environ, REPO_URL=self.url, REVISION=self.sha, AUTH_DIR=str(auth),
+        self.env = dict(os.environ, HOME=str(self.root / 'git-home'), REPO_URL=self.url, REVISION=self.sha, AUTH_DIR=str(auth),
                         COMMIT_RESULT=str(self.root / 'result'), GIT_TERMINAL_PROMPT='0',
                         GIT_CONFIG_COUNT='1', GIT_CONFIG_KEY_0='url.file://' + str(repo) + '.insteadOf',
                         GIT_CONFIG_VALUE_0=self.url)
@@ -62,6 +62,7 @@ class Checkout(unittest.TestCase):
         self.assertEqual((work / 'proof.txt').read_text(), 'first version\n')
         self.assertEqual((self.root / 'result').read_text(), self.sha)
         self.assertNotIn('synthetic', result.stdout + result.stderr)
+        self.assertEqual((self.root / 'git-home/.git-credentials').stat().st_mode & 0o777, 0o600)
 
     def test_shared_workspace_ownership_does_not_weaken_commit_binding(self):
         result, work = self.run_task(GIT_TEST_ASSUME_DIFFERENT_OWNER='1')
@@ -122,7 +123,12 @@ class Enrollment(unittest.TestCase):
         runs = [d for (kind, _), d in self.created.items() if kind == 'pipelinerun']
         self.assertEqual(len(runs), 1)
         self.assertEqual(runs[0]['metadata']['name'], 'gitlab-42-' + self.sha)
-        self.assertEqual(runs[0]['spec']['taskRunSpecs'], [{'pipelineTaskName': 'build-and-push', 'serviceAccountName': 'image-builder'}])
+        override = runs[0]['spec']['taskRunSpecs']
+        self.assertEqual(len(override), 1)
+        self.assertEqual(override[0]['pipelineTaskName'], 'build-and-push')
+        self.assertEqual(override[0]['serviceAccountName'], 'image-builder')
+        self.assertFalse(override[0]['podTemplate']['hostUsers'])
+        self.assertEqual(override[0]['metadata']['annotations']['io.openshift.builder'], 'true')
         receipt = self.created['configmap', 'initial-build-receipt']
         self.assertTrue(receipt['immutable'])
         self.assertEqual(receipt['data']['source_commit'], self.sha)

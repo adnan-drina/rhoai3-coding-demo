@@ -9,9 +9,6 @@ metadata:
     demo.rhoai.io/stage: "070"
   annotations:
     argocd.argoproj.io/sync-wave: "20"
-    # Pipelines 1.24 documented non-root Buildah user-namespace mode.
-    io.kubernetes.cri-o.userns-mode: 'auto:size=65536;map-to-root=true'
-    io.openshift.builder: 'true'
 spec:
   params:
     - name: IMAGE
@@ -42,6 +39,7 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
+        allowPrivilegeEscalation: false
         capabilities:
           add: [SETFCAP]
       # Catalog 9.8-1787017371, linux/amd64 manifest verified 2026-10-13.
@@ -86,6 +84,8 @@ spec:
           buildah login --tls-verify=true --authfile "${AUTHFILE}" \
             --username serviceaccount --password-stdin "${REGISTRY}" < "${SA_DIR}/token" >/dev/null
         }
+        id
+        if [[ -r /proc/self/uid_map ]]; then cat /proc/self/uid_map; fi
         login
         buildah --storage-driver=vfs bud --isolation=chroot --tls-verify=true \
           --authfile "${AUTHFILE}" -f Containerfile -t "${TARGET_IMAGE}" .

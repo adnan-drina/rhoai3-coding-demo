@@ -1,4 +1,4 @@
-# Only the build Task may use the operator's build SCC; no workspace grants.
+# Only the build Task may use the declared pod-user-namespace SCC.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -8,5 +8,5 @@ metadata:
 rules:
   - apiGroups: [security.openshift.io]
     resources: [securitycontextconstraints]
-    resourceNames: [pipelines-scc]
+    resourceNames: [pipeline-userns-builder]
     verbs: [use]

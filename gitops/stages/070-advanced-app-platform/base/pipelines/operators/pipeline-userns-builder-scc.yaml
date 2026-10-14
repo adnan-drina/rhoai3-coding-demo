@@ -1,0 +1,43 @@
+# OCP 4.22 user namespaces plus the documented UID1000 Buildah pattern.
+# Only image-builder receives use; the constraint refuses host-level users.
+# Ref: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/security_apis/securitycontextconstraints-security-openshift-io-v1
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: pipeline-userns-builder
+  annotations:
+    argocd.argoproj.io/sync-wave: '3'
+  labels:
+    app.kubernetes.io/part-of: developer-platform
+    app.kubernetes.io/name: pipeline-userns-builder
+    app.kubernetes.io/component: authorization
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+allowPrivilegedContainer: false
+allowPrivilegeEscalation: false
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+userNamespaceLevel: RequirePodLevel
+allowedCapabilities: [SETFCAP]
+requiredDropCapabilities: []
+runAsUser:
+  type: MustRunAs
+  uid: 1000
+seLinuxContext:
+  type: MustRunAs
+fsGroup:
+  type: MustRunAs
+  ranges:
+    - min: 1000
+      max: 1000
+supplementalGroups:
+  type: MustRunAs
+  ranges:
+    - min: 1000
+      max: 1000
+seccompProfiles: [runtime/default]
+volumes: [configMap, downwardAPI, emptyDir, persistentVolumeClaim, projected, secret]
+readOnlyRootFilesystem: false

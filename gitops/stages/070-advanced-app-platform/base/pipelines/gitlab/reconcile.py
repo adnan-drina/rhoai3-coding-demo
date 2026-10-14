@@ -181,7 +181,11 @@ def pipeline_run(name, ns, project_id, repo, revision):
     # Deterministic name makes duplicate delivery a harmless AlreadyExists, even before the hook returns.
     return resource('PipelineRun', f'gitlab-{project_id}-{revision}', ns, {'spec': {
         'pipelineRef': {'name': 'app-push'}, 'taskRunTemplate': {'serviceAccountName': 'app-builder'},
-        'taskRunSpecs': [{'pipelineTaskName': 'build-and-push', 'serviceAccountName': 'image-builder'}],
+        'taskRunSpecs': [{'pipelineTaskName': 'build-and-push', 'serviceAccountName': 'image-builder',
+            'metadata': {'annotations': {'io.kubernetes.cri-o.userns-mode': 'auto:size=65536;map-to-root=true',
+                                         'io.openshift.builder': 'true'}},
+            'podTemplate': {'hostUsers': False, 'securityContext': {'runAsUser': 1000, 'runAsNonRoot': True,
+                'fsGroup': 1000, 'supplementalGroups': [1000], 'seccompProfile': {'type': 'RuntimeDefault'}}}}],
         'params': [{'name': 'repo-url', 'value': repo}, {'name': 'repo-name', 'value': name}, {'name': 'revision', 'value': revision}],
         'workspaces': [{'name': 'source', 'volumeClaimTemplate': {'spec': {'accessModes': ['ReadWriteOnce'], 'storageClassName': 'gp3-csi', 'resources': {'requests': {'storage': '2Gi'}}}}},
                        {'name': 'basic-auth', 'secret': {'secretName': 'gitlab-read-source'}},
