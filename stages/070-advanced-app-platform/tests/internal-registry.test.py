@@ -26,6 +26,7 @@ class RegistryTests(unittest.TestCase):
             (self.work / name).mkdir()
         (self.work / "sa/namespace").write_text("example-dev")
         (self.work / "sa/token").write_text("initial-test-token")
+        (self.work / "uid_map").write_text("0 123456 65536\n")
         self.log = self.work / "calls.jsonl"
         self.env = dict(os.environ, PATH=str(self.work / "bin") + ":" + os.environ["PATH"],
                         TEST_WORK=str(self.work), CALL_LOG=str(self.log),
@@ -72,6 +73,7 @@ elif 'imagestream' in sys.argv and os.environ.get('STREAM_MISSING'):
         # the shipped script, including the authentication and digest checks.
         script = script.replace("/var/run/secrets/kubernetes.io/serviceaccount", str(self.work / "sa"))
         script = script.replace("/run/registry-auth", str(self.work / "auth"))
+        script = script.replace("/proc/self/uid_map", str(self.work / "uid_map"))
         script = script.replace("$(results.registry.path)", str(self.work / "registry"))
         return subprocess.run(["bash", "-c", script], cwd=self.work / "source",
                               env=dict(self.env, **env), text=True, capture_output=True)
@@ -99,6 +101,17 @@ elif 'imagestream' in sys.argv and os.environ.get('STREAM_MISSING'):
         self.assertEqual([c["command"] for c in self.calls()], ["login", "bud"])
         self.assertFalse((self.work / "image").exists())
         self.assertFalse((self.work / "auth/auth.json").exists())
+
+    def test_host_or_insufficient_user_mapping_refuses_before_login(self):
+        for mapping in ("0 0 4294967295\n", "0 123456 1\n", "", "1000 123456 65536\n"):
+            with self.subTest(mapping=mapping):
+                (self.work / "uid_map").write_text(mapping)
+                result = self.run_task("task-build-image.yaml")
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(self.calls(), [])
+        (self.work / "uid_map").unlink()
+        self.assertNotEqual(self.run_task("task-build-image.yaml").returncode,0)
+        self.assertEqual(self.calls(),[])
 
     def test_push_failure_does_not_emit_image(self):
         result = self.run_task("task-build-image.yaml", FAIL_PUSH="yes")

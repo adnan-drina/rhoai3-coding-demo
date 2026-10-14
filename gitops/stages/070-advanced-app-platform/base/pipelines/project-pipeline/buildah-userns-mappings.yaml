@@ -1,0 +1,16 @@
+# The outer native pod namespace maps IDs 0..65535. Buildah's image defaults
+# start at 100000, which cannot be mapped in a nested namespace. Reserve the
+# build user's own 1000 and use only the remaining in-pod range.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: buildah-userns-mappings
+  annotations:
+    argocd.argoproj.io/sync-wave: '19'
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: image-build
+    demo.rhoai.io/stage: '070'
+data:
+  subuid: "build:1001:64535\n"
+  subgid: "build:1001:64535\n"

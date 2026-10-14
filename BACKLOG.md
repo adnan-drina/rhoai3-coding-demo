@@ -491,3 +491,5 @@ Native Studio PVC restoration preserved its exact saved response and profile UUI
 
 - Complete the GitLab → Developer Hub → Dev Spaces → exact-SHA Tekton build → project-scoped Sonar gate → internal registry digest → delivery Git → Argo/HTTP workflow, with models stopped. Source compilation and service readiness do not replace this proof.
 - MTA 8.3.0 Solution Server currently fails on missing `greenlet`; the native agentic controller is OOMKilled at the operator's fixed128Mi limit. Preserve these as vendor startup failures until an official compatible release or documented configuration resolves them. No live package install or operator-owned Deployment override is part of this release. AI inference remains unqualified while models are stopped.
+
+- Stage070 builder qualification: the custom RuntimeDefault constraint is being replaced with OCP's built-in nested-container SCC, granted only to image-builder. A credential-free rootless probe with in-pod subordinate IDs built the Red Hat Java base successfully. Full Tekton push/promotion and effective SA admission remain required; no privileged/host grant or model resume.

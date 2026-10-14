@@ -3,7 +3,6 @@ kind: Kustomization
 resources:
 - operators/pipelines-subscription.yaml
 - operators/image-builder-scc.yaml
-- operators/pipeline-userns-builder-scc.yaml
 - operators/configure-tekton-pruner.yaml
 - operators/rhtas-subscription.yaml
 - operators/approve-installplans.yaml

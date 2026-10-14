@@ -131,16 +131,20 @@ class NativeProject(unittest.TestCase):
         self.assertEqual(len(bindings),1)
         self.assertEqual(bindings[0]['subjects'],[{'kind':'ServiceAccount','name':'image-builder','namespace':'test-example-dev'}])
     def test_builder_constraint_requires_pod_isolation_and_no_host_authority(self):
-        scc = yaml.safe_load((BASE / 'pipelines/operators/pipeline-userns-builder-scc.yaml').read_text())
-        self.assertEqual(scc['userNamespaceLevel'], 'RequirePodLevel')
-        self.assertEqual(scc['allowedCapabilities'], ['SETFCAP'])
-        self.assertEqual(scc['runAsUser'], {'type':'MustRunAs', 'uid':0})
-        self.assertEqual(scc['requiredDropCapabilities'], [])
-        for field in ('allowPrivilegedContainer', 'allowPrivilegeEscalation', 'allowHostDirVolumePlugin', 'allowHostIPC', 'allowHostNetwork', 'allowHostPID', 'allowHostPorts'):
-            self.assertFalse(scc[field])
-        self.assertNotIn('hostPath', scc['volumes'])
         role = yaml.safe_load((BASE / 'pipelines/operators/image-builder-scc.yaml').read_text())
-        self.assertEqual(role['rules'][0]['resourceNames'], [scc['metadata']['name']])
+        self.assertEqual(role['rules'], [{'apiGroups':['security.openshift.io'], 'resources':['securitycontextconstraints'], 'resourceNames':['nested-container'], 'verbs':['use']}])
+        self.assertFalse((BASE / 'pipelines/operators/pipeline-userns-builder-scc.yaml').exists())
+        task = yaml.safe_load((BASE / 'pipelines/project-pipeline/task-build-image.yaml').read_text())['spec']
+        step = task['steps'][0]
+        self.assertEqual(step['securityContext'], {'runAsNonRoot':True, 'runAsUser':1000, 'allowPrivilegeEscalation':True, 'procMount':'Unmasked', 'capabilities':{'add':['SETUID','SETGID']}})
+        self.assertFalse(step['securityContext'].get('privileged',False))
+        self.assertFalse(any('hostPath' in v for v in task['volumes']))
+        self.assertIn('Refusing build outside the required mapped pod user namespace', step['script'])
+        maps = self.objects['ConfigMap','test-example-dev','buildah-userns-mappings']['data']
+        self.assertEqual(maps, {'subuid':'build:1001:64535\n','subgid':'build:1001:64535\n'})
+        _,start,count=maps['subuid'].strip().split(':')
+        self.assertEqual(int(start)+int(count),65536)
+        self.assertEqual(len([m for m in step['volumeMounts'] if m['name']=='idmaps' and m.get('readOnly')]),2)
 
     def test_cross_namespace_reads_name_only_this_project(self):
         r=self.objects['Role','openshift-gitops','test-example.readback']

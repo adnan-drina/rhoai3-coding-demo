@@ -1,4 +1,4 @@
-# Only the build Task may use the declared pod-user-namespace SCC.
+# Only the build Task may use OCP's documented nested-container SCC.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -8,5 +8,5 @@ metadata:
 rules:
   - apiGroups: [security.openshift.io]
     resources: [securitycontextconstraints]
-    resourceNames: [pipeline-userns-builder]
+    resourceNames: [nested-container]
     verbs: [use]

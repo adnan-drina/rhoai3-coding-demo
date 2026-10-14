@@ -128,7 +128,9 @@ class Enrollment(unittest.TestCase):
         self.assertEqual(override[0]['pipelineTaskName'], 'build-and-push')
         self.assertEqual(override[0]['serviceAccountName'], 'image-builder')
         self.assertFalse(override[0]['podTemplate']['hostUsers'])
-        self.assertEqual(override[0]['metadata']['annotations']['io.openshift.builder'], 'true')
+        self.assertEqual(override[0]['metadata']['annotations'], {'openshift.io/required-scc':'nested-container'})
+        self.assertEqual(override[0]['podTemplate']['securityContext']['runAsUser'], 1000)
+        self.assertTrue(override[0]['podTemplate']['securityContext']['runAsNonRoot'])
         receipt = self.created['configmap', 'initial-build-receipt']
         self.assertTrue(receipt['immutable'])
         self.assertEqual(receipt['data']['source_commit'], self.sha)

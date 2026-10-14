@@ -34,22 +34,27 @@ spec:
             path: ca.crt
     - name: containers
       emptyDir: {}
+    - name: idmaps
+      configMap:
+        name: buildah-userns-mappings
   steps:
     - name: build-and-push
       securityContext:
-        # UID0 is confined to the mandatory pod user namespace.
-        runAsNonRoot: false
-        runAsUser: 0
-        allowPrivilegeEscalation: false
+        # OCP nested-container requires a pod user namespace. newuidmap and
+        # newgidmap can change only IDs within that namespace, never host IDs.
+        runAsNonRoot: true
+        runAsUser: 1000
+        allowPrivilegeEscalation: true
+        procMount: Unmasked
         capabilities:
-          add: [SETFCAP]
+          add: [SETUID, SETGID]
       # Catalog 9.8-1787017371, linux/amd64 manifest verified 2026-10-13.
       # Runtime SCC/build/push qualification remains a separate check.
       image: registry.redhat.io/rhel9/buildah@sha256:71a374fc8791cafd147e6a3f1f933b69fc59850afb2cb45369f66adce83a8c34
       workingDir: $(workspaces.source.path)
       env:
         - name: HOME
-          value: /tekton/home
+          value: /home/build
         - name: TARGET_IMAGE
           value: $(params.IMAGE)
         - name: DIGEST_RESULT
@@ -63,7 +68,15 @@ spec:
           mountPath: /etc/containers/certs.d/image-registry.openshift-image-registry.svc:5000
           readOnly: true
         - name: containers
-          mountPath: /var/lib/containers
+          mountPath: /home/build/.local/share/containers
+        - name: idmaps
+          mountPath: /etc/subuid
+          subPath: subuid
+          readOnly: true
+        - name: idmaps
+          mountPath: /etc/subgid
+          subPath: subgid
+          readOnly: true
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
@@ -86,7 +99,11 @@ spec:
             --username serviceaccount --password-stdin "${REGISTRY}" < "${SA_DIR}/token" >/dev/null
         }
         id
-        if [[ -r /proc/self/uid_map ]]; then cat /proc/self/uid_map; fi
+        cat /proc/self/uid_map
+        if ! awk '$1 == 0 && $2 != 0 && $3 >= 65536 {valid=1} END {exit !valid}' /proc/self/uid_map; then
+          echo 'Refusing build outside the required mapped pod user namespace' >&2
+          exit 2
+        fi
         login
         buildah --storage-driver=vfs bud --isolation=chroot --tls-verify=true \
           --authfile "${AUTHFILE}" -f Containerfile -t "${TARGET_IMAGE}" .
