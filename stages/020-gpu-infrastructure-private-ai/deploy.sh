@@ -52,9 +52,10 @@ for name in ['openshift-nfd','nvidia-gpu-operator','openshift-kueue-operator']:
 x=read('configmap','nvidia-dcgm-exporter-dashboard','openshift-config-managed')
 if x:assert not x['metadata'].get('ownerReferences') and stage_apps.tracked('020',x),'Existing NVIDIA dashboard requires a reviewed adoption'
 PY_OWNERSHIP
-ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV[0]))' "$stage_gitops/gpu-machinesets/machineset-gpu.yaml" | python3 -c '
+# Every generated GPU MachineSet must still match the active CPU worker it was derived from.
+oc kustomize "$stage_gitops/gpu-machinesets" | ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' | python3 -c '
 import json,subprocess,sys,copy
-expected=json.load(sys.stdin);name=expected["metadata"]["name"]
+pools=[d for d in json.load(sys.stdin) if d["kind"]=="MachineSet"];assert pools,"No generated GPU MachineSets"
 def read(kind,name,ns=""):
  cmd=["oc","--request-timeout=10s","get",kind]
  if name:cmd.append(name)
@@ -63,23 +64,28 @@ def read(kind,name,ns=""):
  p=subprocess.run(cmd,capture_output=True,text=True,timeout=15);assert p.returncode==0,"Provider prerequisite API read failed";return json.loads(p.stdout)
 infra=read("infrastructure","cluster");cluster=infra["status"]["infrastructureName"]
 assert infra["status"]["platformStatus"]["type"]=="AWS","AWS environment required"
-for labels in [expected["metadata"]["labels"],expected["spec"]["selector"]["matchLabels"],expected["spec"]["template"]["metadata"]["labels"]]:assert labels["machine.openshift.io/cluster-api-cluster"]==cluster,"Generated intent belongs to another cluster"
-source_name=expected["metadata"]["annotations"]["demo.rhoai.io/source-machineset"]
-source=read("machineset",source_name,"openshift-machine-api");assert source["spec"]["replicas"]>0 and source["status"].get("readyReplicas",0)>0,"CPU source pool is no longer active"
-provider=copy.deepcopy(source["spec"]["template"]["spec"]["providerSpec"]["value"])
-assert provider["placement"]["region"]==infra["status"]["platformStatus"]["aws"]["region"],"Provider region differs from native Infrastructure"
-assert provider.get("capacityReservationId","")=="","CPU capacity reservation is incompatible"
-provider["instanceType"]="g6e.2xlarge";provider["blockDevices"][0]["ebs"].update(volumeSize=200,volumeType="gp3",encrypted=True)
-assert expected["spec"]["template"]["spec"]["providerSpec"]["value"]==provider,"Generated AMI/provider references differ from active source"
 nodes=read("nodes","")["items"];assert nodes and all(n["status"]["nodeInfo"]["architecture"]=="amd64" for n in nodes),"Reviewed native source requires amd64"
-
-p=subprocess.run(["oc","--request-timeout=10s","get","machineset",name,"-n","openshift-machine-api","--ignore-not-found","-o","json"],capture_output=True,text=True,timeout=15)
-assert p.returncode==0,"MachineSet ownership API read failed"
-if p.stdout.strip():
- x=json.loads(p.stdout);assert not x["metadata"].get("ownerReferences"),"Foreign MachineSet owner"
- assert x["metadata"].get("annotations",{}).get("argocd.argoproj.io/tracking-id","").startswith("020-gpu-machinesets:"),"Existing MachineSet has not been adopted by reviewed Stage 020"
- for key in ["selector","template"]:assert x["spec"][key]==expected["spec"][key],"Existing GPU provider/template differs from reviewed source"
-'
+for expected in pools:
+ name=expected["metadata"]["name"]
+ for labels in [expected["metadata"]["labels"],expected["spec"]["selector"]["matchLabels"],expected["spec"]["template"]["metadata"]["labels"]]:assert labels["machine.openshift.io/cluster-api-cluster"]==cluster,name+": generated intent belongs to another cluster"
+ assert expected["spec"]["replicas"]==0,name+": declare replicas 0; resume-gpu-demo.sh scales the pool"
+ source_name=expected["metadata"]["annotations"]["demo.rhoai.io/source-machineset"]
+ source=read("machineset",source_name,"openshift-machine-api");assert source["spec"]["replicas"]>0 and source["status"].get("readyReplicas",0)>0,name+": CPU source pool "+source_name+" is no longer active"
+ provider=copy.deepcopy(source["spec"]["template"]["spec"]["providerSpec"]["value"])
+ assert provider["placement"]["region"]==infra["status"]["platformStatus"]["aws"]["region"],"Provider region differs from native Infrastructure"
+ assert provider.get("capacityReservationId","")=="","CPU capacity reservation is incompatible"
+ provider["instanceType"]=expected["spec"]["template"]["spec"]["providerSpec"]["value"]["instanceType"];provider["blockDevices"][0]["ebs"].update(volumeSize=200,volumeType="gp3",encrypted=True)
+ assert expected["spec"]["template"]["spec"]["providerSpec"]["value"]==provider,name+": generated AMI/provider references differ from active source; re-run generate-gpu-machineset.sh"
+ p=subprocess.run(["oc","--request-timeout=10s","get","machineset",name,"-n","openshift-machine-api","--ignore-not-found","-o","json"],capture_output=True,text=True,timeout=15)
+ assert p.returncode==0,"MachineSet ownership API read failed"
+ if p.stdout.strip():
+  x=json.loads(p.stdout);assert not x["metadata"].get("ownerReferences"),name+": foreign MachineSet owner"
+  assert x["metadata"].get("annotations",{}).get("argocd.argoproj.io/tracking-id","").startswith("020-gpu-machinesets:"),name+": existing MachineSet has not been adopted by reviewed Stage 020"
+  for key in ["selector","template"]:assert x["spec"][key]==expected["spec"][key],name+": existing GPU provider/template differs from reviewed source"
+patch=json.loads(subprocess.run(["ruby","-ryaml","-rjson","-e","puts JSON.generate(YAML.load_file(ARGV[0]))",sys.argv[1]],capture_output=True,text=True,check=True).stdout)
+assert sorted(i["name"] for i in patch["spec"]["ignoreDifferences"])==sorted(d["metadata"]["name"] for d in pools),"application-patch.yaml must hold a replica exception for every GPU MachineSet"
+print("PASS "+str(len(pools))+" GPU MachineSets match their active CPU sources and carry replica exceptions")
+' "$stage_gitops/gpu-machinesets/application-patch.yaml"
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 oc kustomize "$stage_gitops" > "$work/render.yaml"

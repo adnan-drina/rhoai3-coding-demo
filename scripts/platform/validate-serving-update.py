@@ -24,7 +24,7 @@ def get(kind, name, namespace=None):
         args += ["-n", namespace]
     result = subprocess.run(args, env=ENV, capture_output=True, text=True, timeout=15)
     if result.returncode:
-        raise RuntimeError("Native update prerequisite API unavailable")
+        raise RuntimeError("Native update prerequisite API unavailable: " + kind + " " + (namespace + "/" if namespace else "") + name)
     return json.loads(result.stdout)
 
 
@@ -50,7 +50,11 @@ def validate_platform():
     assert dsc["spec"]["components"]["kserve"]["managementState"] == "Managed" and any(c.get("type") == "KserveReady" and c.get("status") == "True" for c in dsc["status"].get("conditions", [])), "Native KServe is not ready"
     policy = get("clusterpolicy", "gpu-cluster-policy")
     assert policy["status"].get("state") == "ready", "Native GPU ClusterPolicy is not ready"
-    csv = get("clusterserviceversion", "gpu-operator-certified.v26.7.1", "nvidia-gpu-operator")
+    # The Subscription updates automatically within the reviewed v26.7 channel, so read the installed CSV from it.
+    subscription = get("subscription", "gpu-operator-certified", "nvidia-gpu-operator")
+    installed = subscription.get("status", {}).get("installedCSV", "")
+    assert subscription["spec"].get("channel") == "v26.7" and installed.startswith("gpu-operator-certified.v26.7."), "Reviewed GPU operator channel/version differs"
+    csv = get("clusterserviceversion", installed, "nvidia-gpu-operator")
     assert csv["status"].get("phase") == "Succeeded", "Reviewed GPU operator is not installed"
     for workload in ["nvidia-operator-validator", "nvidia-dcgm-exporter"]:
         ds = get("daemonset", workload, "nvidia-gpu-operator")

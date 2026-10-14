@@ -7,17 +7,17 @@
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Administer OpenShift AI platform access, apps, and operations |
 | Chapter title | Managing applications that show in the dashboard |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-applications-that-show-in-the-dashboard |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-applications-that-show-in-the-dashboard |
 | Documentation category | Administer |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 3.1 through 3.5: adding applications, preventing application additions, disabling connected applications, showing/hiding application information, hiding default basic workbench |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-users-and-groups | OpenShift AI administrator access context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/creating-custom-workbench-images | Related dashboard configuration pattern for Workbench images visibility |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-users-and-groups | OpenShift AI administrator access context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/creating-custom-workbench-images | Related dashboard configuration pattern for Workbench images visibility |
 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/operators/index | Operator lifecycle and uninstall background |
 
 ## Supporting Project Sources

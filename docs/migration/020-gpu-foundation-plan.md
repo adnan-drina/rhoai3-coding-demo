@@ -2,6 +2,8 @@
 
 Status: **deployed at `85dbcee03d97969bd0a17afbdb01229229d4b342`; native readiness and per-node CUDA/DCGM passed; bounded queue acceptance recorded; native metrics access repaired at `797a270b760c921fc835b285d26aaa1854d0234d`; genuine administrator queries pass and developer queries remain denied; actual dashboard browser reload pending**, 2026-10-05. The historical artifact audit below remains separate from current live qualification.
 
+Layout note: the `base/` and `overlays/` paths below are from the earlier layout (moved to the component folders under `gitops/stages/020-gpu-infrastructure-private-ai/` in the 2026-10-14 layout change).
+
 ## Prerequisites and selected design
 
 The deployed Stage 010 core remains pinned to `f38d84c0`, Synced/Healthy. Genuine `ai-admin` and `ai-developer` logins and independent sandbox role separation passed; dashboard/browser acceptance remains separate. Models/Workbench storage still awaits final naming, deployment and S3 checks. Lightspeed service activation is deferred and nonblocking. The user authorized completing Stage 020, including two GPU workers and a bounded queue admission test. Unrelated storage naming and deferred Lightspeed do not block the healthy foundation prerequisites.

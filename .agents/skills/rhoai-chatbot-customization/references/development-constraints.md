@@ -68,6 +68,6 @@ safety guard in `AGENTS.md`.
 
 - Llama Stack platform skill: `.agents/skills/rhoai-llama-stack/SKILL.md`
 - Guardrails skill: `.agents/skills/rhoai-guardrails-safety/SKILL.md`
-- Current baseline Llama Stack docs: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_llama_stack/index
-- Current baseline Guardrails docs: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/enabling_ai_safety_with_guardrails/index
+- Current baseline Llama Stack docs: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index
+- Current baseline Guardrails docs: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index
 - Current OCP image guidance: https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/images/creating-images

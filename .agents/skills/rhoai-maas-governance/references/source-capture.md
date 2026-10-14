@@ -6,9 +6,9 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Chapter title | Govern LLM access with Models-as-a-Service |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/govern_llm_access_with_models-as-a-service/index |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index |
 | Documentation category | Deploy |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | Deploy and manage Models-as-a-Service; overview; custom resources; prerequisites; database secret; TLS; deployment verification; publish models; subscriptions; authorization policies; API keys; CLI and API; observability; external OIDC; external models; administration troubleshooting; use models-as-a-service; user troubleshooting |
 
 ## Related Official Sources
@@ -35,8 +35,8 @@
 | https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant | Red Hat AI quickstart narrative for private code assistant, Nemotron 3 Nano, MaaS, vLLM/llm-d, Grafana, and AWS `g6e.2xlarge`/L40S requirements |
 | https://github.com/rh-ai-quickstart/maas-code-assistant/tree/feat/upgrade-to-rhoai-3.4 | Source repository branch for RHOAI 3.4 MaaS implementation evidence, including `LLMInferenceService`, Gateway references, model resource sizing, Grafana examples, and the known-good `rhcl-operator.v1.3.4` pin |
 | https://developers.redhat.com/articles/2026/05/25/route-external-and-local-llms-models-as-a-service | Red Hat Developer example for centralized routing across external and self-hosted LLMs, including `gpt-4o-mini`; use for narrative and model-choice context, not as CRD authority |
-| `rhoai3-coding-demo/gitops/stages/030-private-model-serving/base/models/nemotron-3-nano-30b.yaml` | Working local reference for publishing Nemotron through `LLMInferenceService` with Gateway, scheduler pool, tool-calling args, reasoning parser args, prefix caching, resources, and `/dev/shm` |
-| `rhoai3-coding-demo/gitops/stages/040-governed-models-as-a-service/base/models-maas-crds/local-modelrefs.yaml` | Working local reference for MaaSModelRef resources that publish local `LLMInferenceService` backends |
+| Historical: `rhoai3-coding-demo/gitops/stages/030-private-model-serving/base/models/nemotron-3-nano-30b.yaml` was removed; the current local reference is `rhoai3-coding-demo/gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-llminferenceservice.yaml` | Working local reference for publishing Nemotron through `LLMInferenceService` with Gateway, scheduler pool, tool-calling args, reasoning parser args, prefix caching, resources, and `/dev/shm` |
+| `rhoai3-coding-demo/gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-maas-modelref.yaml` (formerly `base/models-maas-crds/local-modelrefs.yaml`) | Working local reference for MaaSModelRef resources that publish local `LLMInferenceService` backends |
 
 ## Source Boundaries
 

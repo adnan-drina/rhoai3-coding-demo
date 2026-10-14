@@ -6,9 +6,9 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Chapter title | Chapter 12. Managing observability |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-observability_managing-rhoai |
 | Documentation category | Administer |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 12.1 Enabling the observability stack; 12.2 Enable the observability dashboard in the UI; 12.3 Collecting metrics from user workloads; 12.4 Exporting metrics to external observability tools; 12.5 Viewing traces in external tracing platforms; 12.6 Accessing built-in alerts |
 
 ## Supporting Red Hat Sources

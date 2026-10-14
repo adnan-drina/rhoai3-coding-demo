@@ -6,19 +6,19 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Creating distributed data processing applications with the Kubeflow Spark Operator |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index |
 | Documentation category | Develop / Creating distributed data processing applications with the Kubeflow Spark Operator |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 1 Overview of the Kubeflow Spark Operator (KSO); 1.1 Kubeflow Spark Operator (KSO) architecture; 2 Activating the Kubeflow Spark Operator; 3 Using the Kubeflow Spark Operator; 3.1 Using the Kubeflow Spark Operator in a custom namespace |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install | DataScienceCluster and platform install context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_distributed_workloads/index | Distributed workload user workflow boundary |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_ai_pipelines/index | AI Pipelines/KFP boundary |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/managing-storage-classes | PVC and storage class context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install | DataScienceCluster and platform install context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index | Distributed workload user workflow boundary |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index | AI Pipelines/KFP boundary |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/managing-storage-classes | PVC and storage class context |
 
 ## Supporting Project Sources
 

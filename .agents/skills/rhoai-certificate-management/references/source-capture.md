@@ -6,9 +6,9 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Chapter title | Working with certificates |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs |
 | Documentation category | Install |
-| Retrieved date | 2026-06-09 |
+| Retrieved date | 2026-06-09 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 8.1 through 8.7.2: certificate model, cluster-wide CA, custom CA, component-specific self-signed certificate handling, Llama Stack CA bundle reference, unmanaged mode, and CA bundle removal |
 
 ## Supporting Project Sources

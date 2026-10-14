@@ -7,9 +7,9 @@
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Administer OpenShift AI platform access, apps, and operations |
 | Chapter title | Managing workloads with Kueue |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-workloads-with-kueue |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-workloads-with-kueue |
 | Documentation category | Administer |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 8.1 through 8.4: overview, management states, queue enforcement, restrictions, workflow, configuration, dashboard enablement, troubleshooting, migration |
 
 ## Related Official Sources
@@ -17,9 +17,9 @@
 | Source | Role |
 |--------|------|
 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/ai_workloads/red-hat-build-of-kueue | Red Hat build of Kueue Operator, quotas, queues, and workload objects |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/installing-the-distributed-workloads-components_install | Distributed workload component installation prerequisites |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_accelerators/working-with-hardware-profiles_accelerators | Hardware profile and local queue integration |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/managing_openshift_ai/index | Same Red Hat guide, Chapter 9 distributed workload quota examples and troubleshooting context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/installing-the-distributed-workloads-components_install | Distributed workload component installation prerequisites |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_accelerators/working-with-hardware-profiles_accelerators | Hardware profile and local queue integration |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index | Same Red Hat guide, Chapter 9 distributed workload quota examples and troubleshooting context |
 
 ## Supporting Project Sources
 

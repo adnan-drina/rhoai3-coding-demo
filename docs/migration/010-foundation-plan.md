@@ -34,6 +34,8 @@ Full tracing is retained in Stage 010. Metrics-only is an alternative requiring 
 
 ## Resource and ownership decisions
 
+Paths in this table use the earlier `base/` layout (moved to the component folders under `gitops/stages/010-openshift-ai-platform-foundation/` in the 2026-10-14 layout change).
+
 | Resource | Current source or owner | Proposed treatment |
 |---|---|---|
 | GitOps bootstrap | `gitops/bootstrap/`; GitOps 1.20 | Native GitOps 1.21 Operator installation |

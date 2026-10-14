@@ -7,9 +7,9 @@
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Administer OpenShift AI platform access, apps, and operations |
 | Chapter title | Customizing component deployment resources |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/customizing-component-deployment-resources_resource-mgmt |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/customizing-component-deployment-resources_resource-mgmt |
 | Documentation category | Administer |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 6.1 through 6.4: overview, customizing component resources, disabling customization, re-enabling customization |
 
 ## Related Official Sources
@@ -18,7 +18,7 @@
 |--------|------|
 | https://access.redhat.com/support/offerings/techpreview | Technology Preview support scope |
 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/workloads_apis/deployment-apps-v1 | OpenShift Deployment API background |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-applications-that-show-in-the-dashboard | Related dashboard Deployment context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-applications-that-show-in-the-dashboard | Related dashboard Deployment context |
 
 ## Supporting Project Sources
 

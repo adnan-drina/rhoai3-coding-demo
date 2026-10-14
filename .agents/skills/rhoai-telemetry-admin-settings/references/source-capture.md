@@ -6,18 +6,18 @@
 - Product version: repository baseline in `docs/PLATFORM_BASELINE.md`
 - Active RHOAI baseline while authored: 3.4
 - Active OCP baseline while authored: 4.20
-- Retrieved: 2026-06-10
+- Retrieved: 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured)
 
 ## Official Sources
 
 - Managing resources:
-  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/managing_resources/index
+  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index
 - Managing observability:
-  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai
+  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-observability_managing-rhoai
 - Govern LLM access with Models-as-a-Service:
-  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/govern_llm_access_with_models-as-a-service/index
+  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index
 - Technology Preview features in release notes:
-  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/release_notes/technology-preview-features_relnotes
+  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/release_notes/technology-preview-features_relnotes
 
 ## Sections Used
 

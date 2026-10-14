@@ -7,18 +7,18 @@
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Configure user access, storage, and telemetry in OpenShift AI |
 | Chapter title | Chapter 4. Introducing the Kubernetes Gateway API for custom image migration |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/introducing-kubernetes-gateway-api_resource-mgmt |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/introducing-kubernetes-gateway-api_resource-mgmt |
 | Documentation category | Administer / Managing resources |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 4.1 Understanding path-based routing; 4.2 Migrating your custom workbench images to the Kubernetes Gateway API; 4.3 Migrating your custom workbench images to the Kubernetes Gateway API using NGINX |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/importing-a-custom-workbench-image_resource-mgmt | Dashboard import of custom workbench images |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/creating-custom-workbench-images | Custom workbench image build and compatibility guidance |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/creating_a_workbench/index | Workbench creation with ImageStream and Notebook resources |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/importing-a-custom-workbench-image_resource-mgmt | Dashboard import of custom workbench images |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/creating-custom-workbench-images | Custom workbench image build and compatibility guidance |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_a_workbench/index | Workbench creation with ImageStream and Notebook resources |
 
 ## Supporting Project Sources
 

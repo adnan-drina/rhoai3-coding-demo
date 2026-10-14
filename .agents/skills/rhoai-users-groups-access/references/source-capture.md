@@ -7,18 +7,18 @@
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Administer OpenShift AI platform access, apps, and operations |
 | Chapter title | Managing users and groups |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-users-and-groups |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-users-and-groups |
 | Documentation category | Administer |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 1.1 through 1.5.5: user types, viewing users, adding users to groups, selecting user/admin groups, deleting users, stopping workbenches, revoking access, backing up PVC data, cleanup |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/selecting-admin-and-user-groups_resource-mgmt | Narrow dashboard workflow for selecting existing administrator and user groups |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/selecting-admin-and-user-groups_resource-mgmt | Narrow dashboard workflow for selecting existing administrator and user groups |
 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/authentication_and_authorization/index | OpenShift authentication and authorization |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_on_projects/using-project-workbenches_projects | Workbench usage and project context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects/using-project-workbenches_projects | Workbench usage and project context |
 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/backup_and_restore/index | PVC and cluster backup context |
 
 ## Supporting Project Sources

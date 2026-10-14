@@ -1,7 +1,8 @@
-# Stage 060 native runtime candidate
+# Stage 060 native runtime chart
 
 Customer configuration consumed by the 060-openshell-runtime Application through
-../runtime/kustomization.yaml.
+../kustomization.yaml. The component README (`../README.md`) describes the deployed
+runtime; this file covers the chart render.
 
 Source NVIDIA/OpenShell 12cec59bf4c36c305032143eb90870bd16d8820b, the merge commit
 of upstream PR 4150 (development build 0.1.3-dev.99+g12cec59bf). This is not a
@@ -20,7 +21,7 @@ OPENSHELL_CHART_PATH=/path/to/verified/chart ./render.sh > /private/tmp/openshel
 
 The native chart creates a single StatefulSet/private ClusterIP gateway, SQLite
 on its native 1Gi RWO claim, and native TLS/JWT generation Job. PVC retention is
-explicit. Namespace openshell is owned by the candidate at Sync wave -30; no manual namespace bootstrap is needed. The deployment owner
+explicit. Namespace openshell is owned by this component at Sync wave -30; no manual namespace bootstrap is needed. The deployment owner
 must verify the default storage class provides local/block storage (not NFS),
 PVC permissions, and backup compatibility. Customer resources own only configuration;
 native chart/controller continue to own operands.
@@ -28,7 +29,8 @@ native chart/controller continue to own operands.
 Native cluster workload CRUD is removed from the gateway ClusterRole. Namespace
 watch/read, node discovery, RuntimeClass/PriorityClass read and TokenReview remain.
 All sandbox/supervisor Pod, bootstrap Secret, Service and NetworkPolicy operations
-are scoped by Roles to openshell-admin and openshell-developer. No namespace create
+are scoped by Roles to the three workspace namespaces openshell-admin,
+openshell-developer and ai-agents. No namespace create
 or delete, additional SCC, capabilities, anonymous access or SPIFFE grants.
 Namespace-assigned UID/GID admission is used (fixed 1000 settings removed). Gateway
 JWT Secret is group-readable 0440; verify admitted fsGroup, projected peer token and
@@ -36,10 +38,10 @@ key readability. Certgen also needs restricted-v2 admission qualification.
 
 ## Dynamic gates before apply
 
-- Install the exact reviewed native OLM candidate: agent-sandbox-operator,
-  preview-0.9, agent-sandbox-operator.v0.9.0, redhat-operators. Manual InstallPlan
-  approval; verify bundle/controller digest, served Sandbox schema and controller
-  ownership before approval. This file is a candidate, not permission to install.
+- The native OLM Subscription is agent-sandbox-operator, channel preview-0.9,
+  redhat-operators, with Automatic approval and no startingCSV (installed:
+  agent-sandbox-operator.v0.9.0). Verify the served Sandbox schema and controller
+  ownership after an operator update.
 - Existing identity reconciliation must supply ConfigMap
   openshell-identity key issuer in namespace openshell. Issuer is injected
   through the documented OPENSHELL_OIDC_ISSUER override, with audience
@@ -47,7 +49,7 @@ key readability. Certgen also needs restricted-v2 admission qualification.
   ConfigMap fails Pod startup. No private issuer URL is committed.
 - Prove the gateway Rust TLS client trusts the actual issuer. If a custom CA is
   needed, use the native documented CA mount with the verified CA; do not invent
-  a bundle or enable insecure TLS. Current candidate deliberately has no guessed CA.
+  a bundle or enable insecure TLS. The current configuration deliberately has no guessed CA.
 - Create and retain Secret openshell-credentials key key-encryption-key,
   containing the native encoded 32-byte KEK. Never rotate it independently of the
   persisted credential database; do not generate random KEK during offline render.
@@ -68,7 +70,7 @@ key readability. Certgen also needs restricted-v2 admission qualification.
 Workspace/Member are native persisted gateway API objects, NOT Kubernetes CRDs.
 Operator mode maps Workspace name exactly to pre-created namespace. Both names
 fit the 19-character native limit. Namespace labels form the discovery allowlist;
-Kubernetes RBAC is independently restricted to the two namespaces.
+Kubernetes RBAC is independently restricted to the workspace namespaces.
 
 Using platform-bootstrap authentication only, perform GetWorkspace before
 CreateWorkspace, and ListWorkspaceMembers before AddWorkspaceMember. Reconcile
@@ -112,8 +114,8 @@ hook manifests from stdin, so render.sh pipes full helm template output through
 Kustomize. Plain Argo Helm rendering does not run this script automatically. The
 deployment owner must integrate the reviewed full-stream rendering mechanism or
 publish its deterministic rendered output under the single Argo owner; do not
-install a separate Helm release or manually apply resources. Controller candidate
-is a separate Kustomize directory; manual OLM approval and readiness remain gates.
+install a separate Helm release or manually apply resources. The controller
+is a separate Kustomize directory (controller/); its readiness remains a gate.
 Do not add an Argo hook elsewhere while leaving unconverted native Helm hooks.
 
 At source v0.1.2 and at the pinned commit (certgen.rs is byte-identical in both)
@@ -141,12 +143,12 @@ https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/ .
 
 ## Checked-in integration contract
 
-The candidate root kustomization includes rendered/ (26 native/customer resources,
-exactly one per file) and controller/ (three reviewed OLM resources). It is ready
-for the existing stage Application to consume after the outstanding gates; no new
-Argo plugin or independent Helm owner. Native controller-owned operands are never
+The chart kustomization includes rendered/ (32 native/customer resources,
+exactly one per file) and controller/ (three reviewed OLM resources). The
+060-openshell-runtime Application consumes it; there is no Argo plugin or
+independent Helm owner. Native controller-owned operands are never
 rendered by this customer configuration. Native release namespace is assigned by
-Kustomize; the two workspace namespaces keep their separate resource identities.
+Kustomize; the workspace namespaces keep their separate resource identities.
 
 Run regenerate.py with Python/PyYAML (already used by repository validation), Helm
 and Kustomize. It validates the exact reviewed chart archive hash, runs the full

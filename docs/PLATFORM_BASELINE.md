@@ -55,7 +55,7 @@ Documentation freshness must not silently change a frozen migration run.
 | Red Hat OpenShift Container Platform | 4.20 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/ |
 | Red Hat OpenShift Data Foundation | 4.20 | https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.20/ |
 | Red Hat Connectivity Link | 1.3.4 (1.4.0 deprecated) | https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3 |
-| Red Hat OpenShift Cluster Observability Operator | 1.4.0 compatibility hold | https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/ |
+| Red Hat OpenShift Cluster Observability Operator | `stable`, Automatic (installed 1.5.3; the 1.4.0 hold for RHOAI 3.4 is retired) | https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/ |
 | Red Hat build of OpenTelemetry | 3.9 | https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/3.9 |
 | Red Hat OpenShift distributed tracing platform | 3.9 | https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.9 |
 | Red Hat OpenShift Pipelines | 1.22 | https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/ |
@@ -144,11 +144,11 @@ https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_soft
 
 Do not use `latest` or another product version for product configuration unless the Red Hat documentation landing page intentionally links to an unversioned Customer Portal article or no version-specific document exists. Record that as an explicit exception in the relevant document under `docs/`, review note, or skill reference.
 
-In the Stage 010 legacy manifests, OpenShift Data Foundation is pinned to `4.20` because the demo OpenShift baseline is OCP `4.20`. Red Hat ODF update guidance says the ODF version should match the OCP minor version, and on OCP `4.20`, ODF `4.20` is the latest compatible ODF version that can be installed.
+Stage 010 selects OpenShift Data Foundation `stable-4.22` to match OCP `4.22` (installed 4.22.5). Red Hat ODF update guidance says the ODF version should match the OCP minor version. The earlier manifests pinned ODF `4.20` for the former OCP `4.20` baseline.
 
-The Cluster Observability Operator is held at `cluster-observability-operator.v1.4.0` for the RHOAI 3.4 observability dashboard. This is an OLM lifecycle compatibility hold, not an operand image pin: the operator still manages Perses, Prometheus, and related operand images. Remove the hold only after validating that the active RHOAI 3.4 build generates Perses resources compatible with the newer Cluster Observability Operator CRD schema and operand behavior.
+The Cluster Observability Operator follows the `stable` channel with Automatic approval (installed 1.5.3 on RHOAI 3.5.1). The earlier `cluster-observability-operator.v1.4.0` hold for the RHOAI 3.4 dashboard is retired; native metrics, Perses and trace checks passed on 1.5.3.
 
-Red Hat Connectivity Link is held at `rhcl-operator.v1.3.4` for the RHOAI 3.4 MaaS Gateway path. RHCL 1.4.0 is deprecated in the official RHCL 1.4 release notes, which direct upgrade customers to pin Connectivity Link and dependent operators to the latest 1.3.z version. Stage 040 therefore also GitOps-manages the RHCL dependency Subscriptions for Authorino, DNS, and Limitador with manual approval and 1.3.x `startingCSV` values. Do not approve RHCL 1.4.x InstallPlans until Red Hat publishes a supported replacement path and the Stage 220 MaaS Gateway, dashboard, API-key, local-model, external-model, and Playground regression gates pass.
+Red Hat Connectivity Link and its dependency Subscriptions (Authorino, DNS, Limitador) use Automatic approval on the `stable` channel without `startingCSV` (installed 2026-10-14: RHCL 1.4.3, Authorino 1.4.3, DNS 1.4.2, Limitador 1.4.2). The earlier `rhcl-operator.v1.3.4` hold for RHOAI 3.4 is retired. RHCL 1.4.0 stays deprecated; 1.4.3 has one known gateway issue (wasm-shim 0.14.2 holds responses without `usage.total_tokens`, see TROUBLESHOOTING).
 
 This baseline pins product documentation versions and selected operator lifecycle policy where required. It does not pin generated operand image fields, copied CSV content, or operator-created Deployments. If a generated operand is incompatible with the installed operator or CRD, update the Subscription lifecycle policy, product baseline, or a documented product CR field; do not treat generated image fields as project-owned desired state.
 

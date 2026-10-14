@@ -7,12 +7,12 @@
 - Source title: Red Hat OpenShift AI: API Tiers
 - Captured from: user-provided Red Hat API Tiers excerpt in this repo work
   session
-- Retrieved: 2026-06-10
+- Retrieved: 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured)
 
 ## Related Official Sources
 
 - Red Hat OpenShift AI Self-Managed documentation landing page:
-  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/
+  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/
 - Red Hat OpenShift AI Self-Managed Life Cycle:
   https://access.redhat.com/support/policy/updates/rhoai-sm/lifecycle
 - Red Hat OpenShift AI: Supported Configurations for 3.x:

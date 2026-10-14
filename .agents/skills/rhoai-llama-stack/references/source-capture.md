@@ -6,20 +6,20 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Build AI/Agentic Applications with Llama Stack |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_llama_stack/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index |
 | Documentation category | Administer / Working with Llama Stack |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 1 Overview of Llama Stack; 1.1 Llama Stack APIs; 1.2 OpenAI-compatible APIs; 1.3 file citation annotations; 1.4 API provider support; 2 Activating the Llama Stack Operator; 3 Deploying a Llama Stack server; 4 Llama Stack application examples; 4.1 RAG stack; 4.1.2 vector databases; 4.1.6 LlamaStackDistribution examples; 4.1.7 ingestion; 4.1.8 querying; 4.1.9 Docling; 4.1.10 search modes; 4.2 RAG evaluation; 4.3 PostgreSQL; 4.4 Qdrant; 4.5 OAuth; 4.6 ABAC; 4.7 self-signed certificates; 4.8 HA and autoscaling |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/configuring_your_model-serving_platform | vLLM and model-serving platform context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_accelerators/enabling-nvidia-gpus_accelerators | NVIDIA GPU prerequisite path |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs | CA bundle handling for Llama Stack |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_ai_pipelines | Pipeline context for Docling ingestion |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/evaluating_ai_systems | Evaluation context outside the Llama Stack guide |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/configuring_your_model-serving_platform | vLLM and model-serving platform context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_accelerators/enabling-nvidia-gpus_accelerators | NVIDIA GPU prerequisite path |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs | CA bundle handling for Llama Stack |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_ai_pipelines | Pipeline context for Docling ingestion |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/evaluating_ai_systems | Evaluation context outside the Llama Stack guide |
 | https://access.redhat.com/articles/rhoai-supported-configs-3.x | Active Llama Stack Operator version and support information |
 | https://access.redhat.com/support/offerings/techpreview | Technology Preview support scope |
 

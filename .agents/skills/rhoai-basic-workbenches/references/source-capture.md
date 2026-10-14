@@ -7,20 +7,20 @@
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Configure user access, storage, and telemetry in OpenShift AI |
 | Chapter title | Chapter 8. Managing basic workbenches |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/managing-basic-workbenches_notebook-mgmt |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/managing-basic-workbenches_notebook-mgmt |
 | Documentation category | Administer / Managing resources |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 8.1 Accessing the administration interface for basic workbenches; 8.2 Starting basic workbenches owned by other users; 8.3 Accessing basic workbenches owned by other users; 8.4 Stopping basic workbenches owned by other users; 8.5 Stopping idle workbenches; 8.6 Adding workbench pod tolerations; 8.7 Troubleshooting common problems in workbenches for administrators; 8.7.1 Jupyter 404; 8.7.2 Workbench does not start; 8.7.3 Database or disk full |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_connected_applications/using-basic-workbenches_connected-apps | User-facing basic workbench start, notebook, Git, package, and restart workflows |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/creating_a_workbench/index | Preferred project workbench workflow for project-centered data science work |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/selecting-admin-and-user-groups_resource-mgmt | Administrator and user group selection context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/managing-cluster-pvc-size | Adjacent default PVC size workflow |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/managing-storage-classes | Adjacent storage class and access mode workflow |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_connected_applications/using-basic-workbenches_connected-apps | User-facing basic workbench start, notebook, Git, package, and restart workflows |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_a_workbench/index | Preferred project workbench workflow for project-centered data science work |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/selecting-admin-and-user-groups_resource-mgmt | Administrator and user group selection context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/managing-cluster-pvc-size | Adjacent default PVC size workflow |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/managing-storage-classes | Adjacent storage class and access mode workflow |
 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/nodes/controlling-pod-placement-onto-nodes-scheduling | OpenShift taints and tolerations background |
 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/storage/expanding-persistent-volumes | Persistent volume expansion referenced by disk-full troubleshooting |
 

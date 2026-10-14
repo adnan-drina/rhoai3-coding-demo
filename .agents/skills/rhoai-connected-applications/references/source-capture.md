@@ -7,20 +7,20 @@
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Working with connected applications |
 | Guide title | Enable and manage connected applications from the OpenShift AI dashboard |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_connected_applications/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_connected_applications/index |
 | Documentation category | Develop / Working with connected applications |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | Preface; 1 Viewing applications that are connected to OpenShift AI; 2 Enabling applications that are connected to OpenShift AI; 3 Removing disabled applications from the dashboard; 4 Using basic workbenches; 4.1 Starting a basic workbench; 4.2 Creating and importing Jupyter notebooks; 4.3 Collaborating on Jupyter notebooks by using Git; 4.4 Managing Python packages; 4.5 Updating workbench settings by restarting your workbench |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-applications-that-show-in-the-dashboard | Administrator dashboard application tile management and disablement |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_on_projects/index | Preferred project workbench lifecycle and project-scoped work |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_in_your_data_science_ide/index | JupyterLab, code-server, Git, and Python package workflows |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_accelerators | Accelerator enablement and support boundaries |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-users-and-groups | OpenShift AI user/admin access group management |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-applications-that-show-in-the-dashboard | Administrator dashboard application tile management and disablement |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index | Preferred project workbench lifecycle and project-scoped work |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index | JupyterLab, code-server, Git, and Python package workflows |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_accelerators | Accelerator enablement and support boundaries |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-users-and-groups | OpenShift AI user/admin access group management |
 
 ## Supporting Project Sources
 

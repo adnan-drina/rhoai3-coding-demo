@@ -7,8 +7,8 @@
 - Documentation category: Administer
 - Guide: Manage and govern model catalog sources
 - URL:
-  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/manage_and_govern_model_catalog_sources/index
-- Retrieved: 2026-06-10
+  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/manage_and_govern_model_catalog_sources/index
+- Retrieved: 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured)
 
 ## Sections Used
 

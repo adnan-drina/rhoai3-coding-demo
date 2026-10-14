@@ -7,17 +7,17 @@
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Configure user access, storage, and telemetry in OpenShift AI |
 | Chapter title | Chapter 5. Managing cluster PVC size |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/managing-cluster-pvc-size |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/managing-cluster-pvc-size |
 | Documentation category | Administer / Managing resources |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 5.1 Configuring the default PVC size for your cluster; 5.2 Restoring the default PVC size for your cluster |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/managing-storage-classes | Broader storage class and persistent storage behavior |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/creating_a_workbench/index | Workbench PVC use from workbench creation |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/managing-storage-classes | Broader storage class and persistent storage behavior |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_a_workbench/index | Workbench PVC use from workbench creation |
 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/storage/index | OpenShift persistent storage background |
 
 ## Supporting Project Sources

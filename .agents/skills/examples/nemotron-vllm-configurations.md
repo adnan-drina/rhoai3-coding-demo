@@ -10,8 +10,10 @@ Sources:
   https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 - Source repository:
   https://github.com/rh-ai-quickstart/maas-code-assistant
-- Local reference implementation:
+- Local reference implementation (historical; the Nemotron local model and this file were removed):
   `rhoai3-coding-demo/gitops/stages/030-private-model-serving/base/models/nemotron-3-nano-30b.yaml`
+  The current local model reference is
+  `rhoai3-coding-demo/gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-llminferenceservice.yaml`.
 
 Official RHOAI 3.4 documentation and live CRD schemas remain product authority.
 Use these examples as implementation evidence and verify API versions before

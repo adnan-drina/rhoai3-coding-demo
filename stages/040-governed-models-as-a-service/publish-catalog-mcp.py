@@ -99,10 +99,16 @@ def journal(path, identity):
 def publish(args, env):
     key = getattr(args, 'key', KEY); field = delegation(key)
     expected = args.expected_stage060_revision
-    if args.validate and not expected:
-        # Validation checks the deployed revision; publishing still needs a supplied reviewed SHA.
+    if not expected:
+        # Stage 060 is deployed separately at its own pinned commit. Without a supplied SHA, use that commit, but
+        # publishing only accepts it when it is part of origin/main (published and reviewed); desired() then requires
+        # the exact native reconciliation at that commit. Validation accepts the deployed revision as before.
         backend = get(env, 'applications.argoproj.io', '060-agent-tools', 'openshift-gitops', True)
         expected = backend['spec']['source']['targetRevision'] if backend else None
+        if expected and not args.validate:
+            subprocess.run(['git', '-C', str(ROOT), 'fetch', '-q', 'origin', 'main'], capture_output=True, timeout=60)
+            reviewed = subprocess.run(['git', '-C', str(ROOT), 'merge-base', '--is-ancestor', expected, 'origin/main'], capture_output=True, timeout=30)
+            need(re.fullmatch('[0-9a-f]{40}', expected) and reviewed.returncode == 0, 'Stage060 pinned revision is not part of origin/main; supply --expected-stage060-revision')
     value = desired(env, expected, key)
     if value is None:
         need(args.defer_if_absent, 'Stage060 catalog runtime is absent')

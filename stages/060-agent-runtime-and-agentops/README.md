@@ -10,7 +10,7 @@ AgentOps provides that operating boundary: controlled execution, identity, polic
 
 ```mermaid
 flowchart LR
-    subgraph Runtime["Stage 060: planned AgentOps platform"]
+    subgraph Runtime["Stage 060: AgentOps platform"]
         Control[Authenticated OpenShell control plane] --> OpenCode[Isolated OpenCode instance]
         Control --> Hermes[Isolated Hermes instance]
         OpenCode --> OpenCodeState[OpenCode state and scoped checkout]
@@ -23,13 +23,13 @@ flowchart LR
     Catalog[Existing Agent Catalog discovery] -. Verified runtime metadata .-> Runtime
 ```
 
-- **New in this stage:** planned standalone agent hosting, policy-controlled execution and persistent lifecycle outside the IDE.
+- **New in this stage:** standalone agent hosting, policy-controlled execution and persistent lifecycle outside the IDE.
 - **Already available:** model/agent discovery, governed model access, existing MCP services, evaluation and tracking.
 - **Value of the integration:** a repeatable execution boundary for both OpenCode and Hermes, with project-scoped evidence and consumption.
 
 ## What This Stage Adds
 
-The planned platform will provide:
+The platform provides:
 
 - **Bring-your-own agents:** reproducible images and toolchains for standalone OpenCode and Hermes.
 - **Controlled access:** runtime filesystem, process and network policies, with authenticated changes and approvals.
@@ -37,7 +37,17 @@ The planned platform will provide:
 - **Project isolation:** separate credentials, state and Git checkouts, with reviewed changes exchanged through Git.
 - **Operational evidence:** security audit events and explicit selected-call MLflow tracing alongside existing MaaS usage.
 
-OpenCode is the first proof slice; Hermes is also required before this stage is complete.
+OpenCode and Hermes both run in the AI Agents project.
+
+The stage is five Argo CD Applications. Each component folder has a README with its object inventory, configuration choices and checks:
+
+| Application | Purpose | Component README |
+|---|---|---|
+| `060-openshell-identity` | `openshell` realm in Red Hat build of Keycloak; the OIDC issuer the OpenShell gateway trusts | [openshell-identity](../../gitops/stages/060-agent-runtime-and-agentops/openshell-identity/README.md) |
+| `060-openshell-runtime` | Agent Sandbox operator, authenticated OpenShell gateway, workspace projects and agent images | [openshell-runtime](../../gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/README.md) |
+| `060-mcp-platform` | Turns on the OpenShift AI MCP Lifecycle Operator | [mcp-platform](../../gitops/stages/060-agent-runtime-and-agentops/mcp-platform/README.md) |
+| `060-agent-tools` | OpenShift MCP Server 0.4 as read-only and read-write native MCPServers | [agent-tools](../../gitops/stages/060-agent-runtime-and-agentops/agent-tools/README.md) |
+| `060-agent-console` | AgentOps view in the OpenShift AI dashboard, read-only per persona | [agent-console](../../gitops/stages/060-agent-runtime-and-agentops/agent-console/README.md) |
 
 ## What To Notice And Why It Matters
 
@@ -61,7 +71,7 @@ The runtime must restrict each agent to its approved checkout, tools and service
 
 - **Red Hat OpenShift Container Platform** provides the execution, identity and network foundations.
 - **Red Hat OpenShift AI** supplies existing catalog discovery, governed inference, evaluation and tracking.
-- **Red Hat OpenShift GitOps** will reconcile the reviewed runtime configuration.
+- **Red Hat OpenShift GitOps** reconciles the reviewed runtime configuration from Git.
 
 ## Open Source Projects To Know
 
@@ -69,9 +79,11 @@ OpenShell controls sandbox execution and access. OpenCode and Hermes run the dev
 
 ## Deploy And Validate
 
+`deploy.sh` deploys `060-openshell-identity` and then calls `deploy-runtime.sh` for `060-openshell-runtime`. The other three components have their own scripts: `deploy-mcp-platform.sh`, `deploy-native-mcp.sh` (`060-agent-tools`) and `deploy-console.sh`; each takes the published branch as its argument. Every script pins its Application to the published commit. `validate.sh` reports full-stage acceptance as pending by design; each component has its own validator.
+
 Enable the native MCP Lifecycle Operator prerequisites with `bash ./stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh "$GIT_REPO_BRANCH"`; validate with `bash ./stages/060-agent-runtime-and-agentops/validate-mcp-platform.sh`. The MCP Catalog is Developer Preview; this separate Technology Preview lifecycle component exposes the native MCPServer API through the RHOAI operator.
 
-The catalog's **OpenShift MCP Server 0.4** uses a pinned Red Hat image and a project-scoped native MCPServer. Its deployment policy retains the catalog's read-only core/config tools and denies Secret resources; it is token-less and in-cluster only (a request without a bearer acts as the bounded ServiceAccount `openshift-mcp-server-ro`, a caller's OpenShift token is forwarded and acts as the caller), while the read-write companion on its HTTPS Route requires each caller's token. The approved boundary is HTTPS at the public entrypoint and HTTP inside the cluster, including forwarded tokens; the operator's generated ingress policy permits cluster peers. Registry metadata is registered through the installed, version-coupled native MLflow API because this RHOAI 3.5.1 catalog does not include the adjacent Register action. A callable HTTPS endpoint is advertised only after runtime and caller-authorization checks pass. The existing MCP service remains available until its replacement and consumers are verified.
+The catalog's **OpenShift MCP Server 0.4** uses a pinned Red Hat image and a project-scoped native MCPServer. Its deployment policy retains the catalog's read-only core/config tools and denies Secret resources; it is token-less and in-cluster only (a request without a bearer acts as the bounded ServiceAccount `openshift-mcp-server-ro`, a caller's OpenShift token is forwarded and acts as the caller), while the read-write companion on its HTTPS Route requires each caller's token. The approved boundary is HTTPS at the public entrypoint and HTTP inside the cluster, including forwarded tokens; the operator's generated ingress policy permits cluster peers. Registry metadata is registered through the installed, version-coupled native MLflow API because this RHOAI 3.5.1 catalog does not include the adjacent Register action. A callable HTTPS endpoint is advertised only after runtime and caller-authorization checks pass. The earlier MCP service was retired on 2026-10-09.
 
 For a protected Gen AI Studio connection, the native workflow is **Playground → MCP**, enter your own session access token, choose **Authorize**, then **View tools**. No shared token is stored in the Registry or server configuration. Use the **OpenShift-MCP** entry (no token needed) or **OpenShift-MCP-ReadWrite** (your token) in project **AI Coding Sandbox** (`demo-sandbox`); the legacy **OpenShift-MCP** entry was retired on 2026-10-09. Enter your own OpenShift token, not a model MaaS key.
 
@@ -81,7 +93,7 @@ The catalog server is registered with native version **0.4.0** (catalog version 
 
 For console discovery only, deploy the separate `060-agent-console` component with `bash ./stages/060-agent-runtime-and-agentops/deploy-console.sh "$GIT_REPO_BRANCH"`, then run `bash ./stages/060-agent-runtime-and-agentops/validate-console.sh`. It enables the Developer Preview AgentOps view and permits each persona to read Services and Sandboxes in its own workspace. Launch and lifecycle remain in the authenticated OpenShell CLI. The generic console creation wizard is not qualified and receives no Sandbox creation permission from this component.
 
-The authenticated control plane and native sandbox controller are available. A workspace owner can start an OpenCode sandbox with no model provider, reach its HTTP and event-stream endpoints through the authenticated gateway, and stop, restart and delete it; file, interface-binding and network-egress attempts outside the policy are denied, and another owner's workspace is refused. The persistent OpenCode slice uses a dedicated Qwen3.8-only MaaS subscription, protected provider credentials and an independently authenticated loopback service. OpenCode passed a bounded coding-tool task with governed model streaming, application cancellation, stop/start persistence and negative access checks. Hermes also passed a real coding-tool task, governed streaming, protected API authentication, active-run cancellation and retained session history after restart. Its native approvals apply to commands flagged by Hermes; they do not require approval for every shell command. Separate no-model checks also passed for denied filesystem access, metadata/internet connections and disallowed request methods/paths. The owner confirmed both OpenCode and Hermes Ready/Sandboxed under **AI hub → Agents → Deployments → AI Agents** as `ai-admin`. Reviewed client access and required selected-call MLflow tracing remain unfinished Stage060 milestones. The [implementation plan](../../docs/migration/060-agent-runtime-and-agentops-plan.md) defines the version, isolation, lifecycle, discovery and evidence gates.
+The authenticated control plane and native sandbox controller are available. A workspace owner can start an OpenCode sandbox with no model provider, reach its HTTP and event-stream endpoints through the authenticated gateway, and stop, restart and delete it; file, interface-binding and network-egress attempts outside the policy are denied, and another owner's workspace is refused. The persistent OpenCode slice uses a dedicated Qwen3.8-only MaaS subscription, protected provider credentials and an independently authenticated loopback service. OpenCode passed a bounded coding-tool task with governed model streaming, application cancellation, stop/start persistence and negative access checks. Hermes also passed a real coding-tool task, governed streaming, protected API authentication, active-run cancellation and retained session history after restart. Its native approvals apply to commands flagged by Hermes; they do not require approval for every shell command. Separate no-model checks also passed for denied filesystem access, metadata/internet connections and disallowed request methods/paths. The owner confirmed both OpenCode and Hermes Ready/Sandboxed under **AI hub → Agents → Deployments → AI Agents** as `ai-admin`. Reviewed owner-client access and selected-call MLflow tracing passed on 2026-10-09 (above). The [implementation plan](../../docs/migration/060-agent-runtime-and-agentops-plan.md) defines the version, isolation, lifecycle, discovery and evidence gates.
 
 ## References
 
@@ -93,7 +105,7 @@ The authenticated control plane and native sandbox controller are available. A w
 
 ## Next Stage
 
-[Stage 070: Advanced Application Platform](../070-advanced-app-platform/README.md) will provide developer workspaces, portal and delivery services, including planned Gitea integration. The AgentOps runtime can be qualified independently, then integrated with these developer clients.
+[Stage 070: Advanced Application Platform](../070-advanced-app-platform/README.md) provides developer workspaces, portal and delivery services, including the GitLab integration. The AgentOps runtime can be qualified independently, then integrated with these developer clients.
 
 After the catalog runtime is ready, publish its Studio entry without redeploying Stage040:
 

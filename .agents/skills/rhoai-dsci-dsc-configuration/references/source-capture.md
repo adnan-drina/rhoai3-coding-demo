@@ -6,16 +6,16 @@
 - Product version: repository baseline in `docs/PLATFORM_BASELINE.md`
 - Active RHOAI baseline while authored: 3.4
 - Active OCP baseline while authored: 4.20
-- Retrieved: 2026-06-10
+- Retrieved: 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured)
 
 ## Official Sources
 
 - Installing and deploying OpenShift AI:
-  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install
+  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install
 - Managing observability:
-  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai
+  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-observability_managing-rhoai
 - Viewing logs and audit records:
-  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/viewing-logs-and-audit-records_install
+  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/viewing-logs-and-audit-records_install
 
 ## Sections Used
 

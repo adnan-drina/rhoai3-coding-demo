@@ -8,9 +8,9 @@
 | Product version | 3.4 |
 | Documentation category | Administer |
 | Documentation book | Working with accelerators |
-| Official URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_accelerators/index |
+| Official URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_accelerators/index |
 | Source type | Versioned docs.redhat.com documentation |
-| Retrieved | 2026-06-12 |
+| Retrieved | 2026-06-12 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Skill route | `rhoai-hardware-profiles` |
 
 ## Sections Used
@@ -28,7 +28,7 @@
 ## Related Official Sources
 
 - Active RHOAI baseline:
-  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/
+  https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/
 - OCP NFD and GPU node prerequisites are routed through `ocp-*` skills.
 - HardwareProfile API tier posture is routed through `rhoai-api-tiers`.
 - Kueue-enabled hardware profile behavior is routed through

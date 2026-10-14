@@ -7,18 +7,18 @@
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Configure user access, storage, and telemetry in OpenShift AI |
 | Chapter title | Chapter 3. Importing a custom workbench image |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/importing-a-custom-workbench-image_resource-mgmt |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/importing-a-custom-workbench-image_resource-mgmt |
 | Documentation category | Administer / Managing resources |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | Chapter introduction, support boundary, prerequisites, import procedure, software metadata, package metadata, verification, additional resources |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/creating-custom-workbench-images | Building and enabling custom workbench images |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/customizing-the-dashboard | Dashboard configuration, including Workbench images menu visibility |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_accelerators/enabling-nvidia-gpus_accelerators | NVIDIA GPU support when associating accelerator metadata |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/creating-custom-workbench-images | Building and enabling custom workbench images |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/customizing-the-dashboard | Dashboard configuration, including Workbench images menu visibility |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_accelerators/enabling-nvidia-gpus_accelerators | NVIDIA GPU support when associating accelerator metadata |
 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/images/index | ImageStreams and BuildConfig background from OpenShift |
 
 ## Supporting Project Sources

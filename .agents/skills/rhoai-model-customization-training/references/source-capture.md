@@ -6,23 +6,23 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Customize Models for Gen AI and Agentic AI Applications |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index |
 | Documentation category | Train / Customize Models for Gen AI and Agentic AI Applications |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | Preface; 1 Overview of the model customization workflow; 2 Set up your working environment; 2.1 About the Red Hat Python index; 2.2 Mirror the Python index for your disconnected environment; 2.3 Install packages and JupyterLab; 2.4 Import example notebooks; 3 Prepare your data for AI consumption; 3.1 Process data by using Docling; 3.2 Explore data processing examples; 3.3 Automate data processing steps by building AI pipelines; 3.4 Explore Kubeflow Pipeline examples; 4 Generate synthetic data; 4.1 SDG Hub examples; 4.2 Performance benchmarks for knowledge tuning; 4.3 KFP pipeline for SDG; 5 Train the model by using prepared data; 5.1 Training Hub examples; 5.2 Training Hub algorithm and model support matrix; 5.3 Estimate memory usage; 5.4 OSFT/SFT/LoRA comparison; 5.5 Training Hub in OpenShift AI; 5.6 MLflow tracking; 5.7 Kubeflow Trainer distributed fine-tuning; 6 Inference-time scaling; 7 End-to-end model customization workflow; 8 Support philosophy |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_in_your_data_science_ide/index | JupyterLab and workbench IDE workflow context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_on_projects | Project, workbench, connection, and storage lifecycle context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_ai_pipelines/index | AI Pipelines product lifecycle, imports, runs, schedules, and logs |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/customize_models_for_gen_ai_and_agentic_ai_applications/prepare-your-data-for-ai-consumption_custom-models | Focused chapter for Docling data preparation and KFP automation |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_distributed_workloads/index | Distributed workload and Kubeflow Trainer user workflow context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_mlflow/index | MLflow platform and SDK tracking context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/configuring_your_model-serving_platform | Model serving and OpenAI-compatible endpoint context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_model_registries/index | Registering customized models and deployment handoff context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index | JupyterLab and workbench IDE workflow context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects | Project, workbench, connection, and storage lifecycle context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index | AI Pipelines product lifecycle, imports, runs, schedules, and logs |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/customize_models_for_gen_ai_and_agentic_ai_applications/prepare-your-data-for-ai-consumption_custom-models | Focused chapter for Docling data preparation and KFP automation |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index | Distributed workload and Kubeflow Trainer user workflow context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index | MLflow platform and SDK tracking context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/configuring_your_model-serving_platform | Model serving and OpenAI-compatible endpoint context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_model_registries/index | Registering customized models and deployment handoff context |
 
 ## Supporting Project Sources
 

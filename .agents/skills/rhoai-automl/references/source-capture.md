@@ -6,21 +6,21 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Working with AutoML |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_automl/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_automl/index |
 | Documentation category | Develop / Working with AutoML |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | Preface; 1 AutoML overview; 1.1 AutoML workflow; 1.2 Supported task types; 1.3 Technology Preview limitations; 1.4 Viewing externally created runs; 2 Create an AutoML optimization run; 3 Evaluate AutoML results; 4 Run predictions with an AutoML model; 5 Deploy an AutoML model for inference; 6 AutoML evaluation metrics; 6.1 Optimized metrics by task type; 6.2 Model detail views; 7 AutoML configuration parameters; 7.1 Common parameters; 7.2 Tabular task parameters; 7.3 Time series task parameters; 7.4 Auto-selected parameters |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_ai_pipelines/index | AI Pipelines server, pipeline import, pipeline run lifecycle, and DSPA troubleshooting context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_data_in_an_s3-compatible_object_store/index | S3-compatible object storage and workbench data access context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_on_projects | Project, workbench, and connection lifecycle context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_in_your_data_science_ide/index | Saved notebook execution in a workbench |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_model_registries/index | Registering and deploying model versions from the registry |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/configuring_your_model-serving_platform | Serving runtime and model-serving platform context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index | AI Pipelines server, pipeline import, pipeline run lifecycle, and DSPA troubleshooting context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index | S3-compatible object storage and workbench data access context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects | Project, workbench, and connection lifecycle context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index | Saved notebook execution in a workbench |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_model_registries/index | Registering and deploying model versions from the registry |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/configuring_your_model-serving_platform | Serving runtime and model-serving platform context |
 | https://access.redhat.com/support/offerings/techpreview | Technology Preview support scope |
 
 ## Supporting Project Sources

@@ -11,7 +11,7 @@ This stage turns the GPU into a platform service. Data scientists select a hardw
 ## Architecture
 
 ```
-AWS GPU MachineSet (g6e.2xlarge, 1x L40S each, replicas=2)
+AWS GPU MachineSets (default g7e.2xlarge, 1x RTX PRO 6000 each; L40S and H100 pools; all at 0 replicas in Git)
    │
    ▼
 NFD Operator → NodeFeatureDiscovery → node hardware feature labels
@@ -26,7 +26,7 @@ device plugin: 1 physical GPU → 1 schedulable nvidia.com/gpu unit (no time-sli
 Red Hat build of Kueue → ResourceFlavor → ClusterQueue → LocalQueue
    │
    ▼
-RHOAI Hardware Profiles → CPU Default / GPU Reserved
+RHOAI Hardware Profiles → CPU Default / NVIDIA L40S / NVIDIA RTX PRO 6000
    │
    ▼
 Data scientist selects governed capacity from the RHOAI dashboard
@@ -58,14 +58,14 @@ The GPU-as-a-Service layer on top of the Stage 010 base platform.
 
 - **GPU pools** — the default pool is AWS `g7e.2xlarge` (one NVIDIA RTX PRO 6000 Blackwell Server Edition, 96 GB, FP8 and NVFP4 tensor cores), one MachineSet per `us-east-2` zone, chosen by the 2026-10-13 serving study; the former `g6e.2xlarge` (one NVIDIA L40S, 48 GB) pool stays declared at zero, and dormant per-zone `p5.4xlarge` (H100) MachineSets record the capacity probe. All use 200 GB gp3 encrypted EBS root volumes and the `nvidia-gpu-only:NoSchedule` taint; the Argo CD Application ignores `MachineSet.spec.replicas` drift so operators scale to zero between sessions for cost control
 - **Node Feature Discovery** — NFD Operator (`stable` channel, Automatic approval) publishes hardware feature labels; GPU Feature Discovery within the GPU Operator adds NVIDIA-specific labels used for Kueue placement
-- **NVIDIA GPU Operator** — certified operator (`v26.7` channel, CSV `gpu-operator-certified.v26.7.1`, driver 595.91.07 supports Blackwell) installs driver stack, container toolkit, GFD, DCGM exporter, and device plugin; each GPU is one schedulable `nvidia.com/gpu` unit with no time-slicing
+- **NVIDIA GPU Operator** — certified operator (`v26.7` channel, Automatic updates within the channel (installed `gpu-operator-certified.v26.7.2` on 2026-10-14), driver 595.91.07 supports Blackwell) installs driver stack, container toolkit, GFD, DCGM exporter, and device plugin; each GPU is one schedulable `nvidia.com/gpu` unit with no time-slicing
 - **Red Hat build of Kueue** — standalone operator (`stable-v1.4` channel, Automatic approval); integration enabled by patching the shared DSC to `kueue.managementState: Unmanaged` via an Argo CD Sync hook Job; the existing Red Hat cert-manager installation is reused as a prerequisite
 - **Queue topology** — one CPU ResourceFlavor and one ResourceFlavor per GPU type, each selecting only its own pool by the MachineSet label `cluster-api/accelerator` (`gpu-l40s`, `gpu-rtxpro6000`) and tolerating the GPU taint; one ClusterQueue per GPU type (`cq-gpu-reserved-demo` for L40S, `cq-gpu-rtxpro6000`) because a hardware profile names one LocalQueue and Kueue picks the first fitting flavor inside a ClusterQueue
 - **RHOAI Hardware Profiles** — CPU Default, NVIDIA L40S and NVIDIA RTX PRO 6000 Queue-type profiles turn queue and resource choices into dashboard-friendly dropdown selections; the flavor, not the profile, places the workload (RHOAI 3.5, Manage workloads with Kueue)
 
 ## What To Notice And Why It Matters
 
-- **Two cards, one model per card** — this project uses exclusive cards to leave memory available for its selected model weights and inference runtime; it does not demonstrate GPU time-slicing
+- **One model per card** — this project uses exclusive cards to leave memory available for its selected model weights and inference runtime; it does not demonstrate GPU time-slicing
 - **CPU queue sizing** — `cq-cpu-default` provides cpu: 40, memory: 128Gi, sized for the CPU model plane (reranker, embedding InferenceServices, workbenches)
 - **MachineSet is cluster-specific** — carries AMI, subnet, and cluster labels; must be regenerated from the cluster's own worker pool on each new environment via `generate-gpu-machineset.sh`
 - **DSC patch mechanism** — Stage 020 does not own a second DataScienceCluster; it patches the Stage 010 shared owner through a dedicated ServiceAccount and ClusterRole
@@ -90,9 +90,9 @@ OpenShift Machine API creates GPU worker capacity from a declarative MachineSet.
 |---------|-----------------|
 | Red Hat OpenShift Container Platform | 4.22 (Machine API) |
 | Red Hat OpenShift AI Self-Managed | stable-3.5 (hardware profiles, Kueue integration) |
-| Node Feature Discovery Operator | stable (CSV nfd.4.22.0-202609212027) |
-| NVIDIA GPU Operator (certified) | v26.7 (CSV gpu-operator-certified.v26.7.1) |
-| Red Hat build of Kueue | stable-v1.4 (CSV kueue-operator.v1.4.2) |
+| Node Feature Discovery Operator | stable, Automatic (installed nfd.4.22.0-202609291750 on 2026-10-14) |
+| NVIDIA GPU Operator (certified) | v26.7, Automatic (installed v26.7.2 on 2026-10-14) |
+| Red Hat build of Kueue | stable-v1.4, Automatic (installed kueue-operator.v1.4.3 on 2026-10-14) |
 
 ## Open Source Projects To Know
 
@@ -108,14 +108,13 @@ OpenShift Machine API creates GPU worker capacity from a declarative MachineSet.
 The stage is deployed as five Argo CD Applications at one reviewed revision: `020-node-feature-discovery`, `020-nvidia-gpu-operator`, `020-kueue`, `020-gpu-machinesets` (the generated pools in `gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/`, with replicas left to the resume and park scripts) and `020-gpu-quotas` (Kueue queues and hardware profiles). Changing a pool or a quota syncs only that component.
 
 ```bash
-# Generate cluster-specific GPU MachineSet (required on each new environment)
-RHOAI_GPU_MACHINESET_REPLICAS=2 \
-  ./stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh --source "$RHOAI_SOURCE_WORKER_MACHINESET" --write
+# Generate the cluster-specific GPU pools (required on each new environment; all start at 0 replicas)
+./stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh --source "$RHOAI_SOURCE_WORKER_MACHINESET" --write
 
-# Review and publish the generated environment overlay, then deploy its exact revision
+# Review and publish the generated pool files, then deploy their exact revision
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 
-# Native readiness (requires two Ready exclusive GPU workers)
+# Native readiness (requires every scaled GPU pool Ready, one exclusive GPU per worker)
 ./stages/020-gpu-infrastructure-private-ai/validate.sh --readiness
 
 # Read-only native CUDA validator and per-node DCGM checks

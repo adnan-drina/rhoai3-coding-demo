@@ -96,9 +96,9 @@ Cleanup remains scoped to replacement evidence. The former 3.4/4.20 channels and
 | GitOps operator and demo Argo CD configuration | Project [bootstrap overlays](../gitops/bootstrap/overlays/); GitOps operator generates operands | Stage 010 uses `gitops-1.21` Automatic, annotation tracking, `rhoai-demo` AppProject and demo controller RBAC; reconcile preinstalled ownership before applying |
 | ODF / NooBaa standalone MCG | Project [Stage 010 `odf` component](../gitops/stages/010-openshift-ai-platform-foundation/odf/kustomization.yaml); operators generate operands | Selected `stable-4.22` channel and verified `gp3-csi`; native local MCG supplies object storage, not Ceph block/file |
 | RHOAI / DSCI / DSC / model registry | Project Stage 010 [`rhoai-operator`](../gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/kustomization.yaml) and [`rhoai-platform`](../gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/kustomization.yaml) components; RHOAI owns generated components | Selected `stable-3.5`; Dashboard and Workbenches are foundation-owned; MLflow is deferred in fresh source and preserved on live f38; revised source delegates the modelregistry component and both catalogs to Stage 030, while the live f38 registry remains preserved; KServe remains Stage 030-owned, while TrustyAI/evaluation belongs to a later stage |
-| COO / OpenTelemetry / Tempo | Project [Stage 010 `observability-operators` component](../gitops/stages/010-openshift-ai-platform-foundation/observability-operators/kustomization.yaml) | Reviewed Manual InstallPlans select exact catalog CSVs; native operators own operands, with narrow project tenant access grants |
+| COO / OpenTelemetry / Tempo | Project [Stage 010 `observability-operators` component](../gitops/stages/010-openshift-ai-platform-foundation/observability-operators/kustomization.yaml) | Automatic approval within the selected channels; native operators own operands, with narrow project tenant access grants |
 | Demo identity and S3 connection | Project [setup-access.sh](../stages/010-openshift-ai-platform-foundation/setup-access.sh) plus GitOps groups/RBAC/OBC | Separate mutating step after deployment; `deploy.sh` does not call it. Private authenticated persona kubeconfigs remain outside Git |
-| GPUs / NFD / Kueue | Stage 020 desired state unless provisioner installation is observed | Reviewed Stage 020 source selects NFD 4.22, NVIDIA 26.7.1 and Kueue 1.4.2; live qualification remains pending; no GPU capacity is implied by CPU worker settings |
+| GPUs / NFD / Kueue | Stage 020 desired state unless provisioner installation is observed | Stage 020 source selects NFD `stable`, NVIDIA `v26.7` and Kueue `stable-v1.4` with Automatic approval (installed 2026-10-14: NVIDIA v26.7.2, Kueue 1.4.3); no GPU capacity is implied by CPU worker settings |
 | Model serving / MaaS / developer services | Stages 030 / 040 / 050 | Inventory any existing installations without promoting catalog entries into installed/compatible evidence |
 
 MLflow, EvalHub and TrustyAI belong together in Stage 050 source; MLflow is now Stage 050-owned after its protected seven-resource handoff; registry and both catalogs remain Stage 030-owned after their completed protected handoff; OpenShell with standalone Hermes per project remains later-stage design. AutoRAG and AutoML are excluded from the intended scope. Their API availability, ownership, release posture and runtime acceptance remain stage-specific work. No feature is considered installed merely because it appears in a catalog, screenshot or planned target.
@@ -136,8 +136,8 @@ The obsolete manual workspace MaaS route repair helper `patch-workspace-maas-rou
 The repository follows a GitOps-first pattern:
 
 1. Stage 010 `deploy.sh` installs OpenShift GitOps and the demo Argo CD project.
-2. Each stage `deploy.sh` applies one Argo CD `Application`.
-3. Argo CD reconciles manifests from `gitops/stages/NNN-*/base`.
+2. Each stage `deploy.sh` applies its Argo CD `Application`s: one per component for Stages 010–060 (`NNN-<component>`), one for Stage 070.
+3. Argo CD reconciles manifests from `gitops/stages/NNN-*/<component>/` (Stage 070: `gitops/stages/070-advanced-app-platform/base/`).
 4. Sync waves and in-cluster Jobs perform cluster-specific setup.
 5. Each `validate.sh` confirms that the stage reached the expected operational state.
 
@@ -410,11 +410,11 @@ part of this repository. Demo users do not build those images.
 Before deploying the workshop, confirm:
 
 - You are logged into the target OpenShift cluster with sufficient privileges.
-- Stage 020 requires AWS capacity for two `g6e.2xlarge` L40S workers in the explicitly selected active CPU worker pool’s availability zone. Generate and review the native environment MachineSet before publishing it. The stage never scales CPU pools; the observed four CPU workers are distributed 2/1/1 across three pools. Confirm AMI architecture, region/AZ, instance quota and scoped Machine API credentials separately from API dry-run admission.
+- Stage 020 requires AWS capacity for at least one `g7e.2xlarge` RTX PRO 6000 worker (the default pool, one MachineSet per zone); the L40S (`g6e.2xlarge`) pool is optional. Generate and review the pool MachineSets before publishing them; all start at 0 replicas. The stage never scales CPU pools; the observed four CPU workers are distributed 2/1/1 across three pools. Confirm AMI architecture, region/AZ, instance quota and scoped Machine API credentials separately from API dry-run admission.
 - `oc`, `git`, `bash`, `curl`, and `jq` are available locally.
 - You are using the intended branch and remote for the GitOps source.
 - `env.example` has been copied to `.env` and configured with required credentials.
-- `OPENAI_API_KEY` is set in `.env` if external model inference (gpt-4o, gpt-4o-mini) will be exercised.
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` and `NVIDIA_API_KEY` are set in `.env` for the external models that will be exercised (GPT-6 Luna, Claude Sonnet 5.5, Nemotron 3 Ultra).
 
 Recommended checks:
 
@@ -476,10 +476,14 @@ Deploy stages in order:
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
+./stages/050-model-evaluation/deploy.sh
+./stages/060-agent-runtime-and-agentops/deploy.sh
 ./stages/070-advanced-app-platform/deploy.sh
 ```
 
-Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 070 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 070's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
+Stage 060 `deploy.sh` covers `060-openshell-identity` and `060-openshell-runtime`; its other three components use `deploy-mcp-platform.sh`, `deploy-native-mcp.sh` and `deploy-console.sh` (see the Stage 060 README).
+
+Stages 110–130 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 070 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 070's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
 
 Each script applies its stage's Applications from `gitops/argocd/app-of-apps/`. GitOps stages are the `stages/*/` directories that have `deploy.sh`; each of its Applications is one file in `gitops/argocd/app-of-apps/<directory-name>/<component>.yaml` and renders `gitops/stages/<directory-name>/<component>/` (Stage 070 still uses the single file `gitops/argocd/app-of-apps/070-advanced-app-platform.yaml`). Workflow-only stages omit `deploy.sh` and have no Application.
 
@@ -490,8 +494,8 @@ Each script applies its stage's Applications from `gitops/argocd/app-of-apps/`. 
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access`, `040-genai-studio` | MaaS operators, PostgreSQL (data), Gateway with Kuadrant/Authorino, MaaS enablement and monitoring, private models, external models, subscriptions and auth policies, Gen AI studio playground and MCP list |
 | 050 | `050-mlflow`, `050-model-qualification`, `050-evalhub`, `050-evaluation-content`, `050-oci-export` | MLflow tracking (data), Evaluated Models project and qualification pipeline, EvalHub (data) and curated prompts, evaluation collections and SWE-bench, OCI export |
-| 070 | `070-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA, coolstore dev environment |
 | 060 | `060-openshell-identity`, `060-openshell-runtime`, `060-mcp-platform`, `060-agent-tools`, `060-agent-console` | OpenShell identity realm, OpenShell runtime and agent workspaces, native MCP lifecycle enablement, agent MCP tool servers, AgentOps console discovery (each deployed by its own script) |
+| 070 | `070-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA, coolstore dev environment |
 | 110 | *(workflow-only)* | AI-assisted development on stage 070 workspaces |
 | 120 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
 | 130 | *(workflow-only)* | AI-autonomous migration on the stage 070 MTA stack |
@@ -609,7 +613,7 @@ Do not merge a feature branch to `main` only to validate developer workflow cata
 
 Stage 010 installs OpenShift AI and platform dependencies. Operator reconciliation can take several minutes.
 
-The new source uses GitOps `gitops-1.21`, RHOAI `stable-3.5`, ODF `stable-4.22` and reviewed Manual observability subscriptions. Deployment requires an explicit published revision matching local Stage 010 manifests and scripts; `deploy.sh --revision <reviewed-published-sha>` pins the Application to that immutable commit. Do not point Argo at older `main` content. Exact InstallPlan owner and sole-CSV checks precede approval.
+The new source uses GitOps `gitops-1.21`, RHOAI `stable-3.5`, ODF `stable-4.22` and observability operator subscriptions, all with Automatic approval within their channels. Deployment requires an explicit published revision matching local Stage 010 manifests and scripts; `deploy.sh --revision <reviewed-published-sha>` pins the component Applications to that immutable commit. Do not point Argo at older `main` content. Exact InstallPlan owner and sole-CSV checks precede approval.
 
 Use the existing OpenID accounts `ai-admin` and `ai-developer`; authenticate each through the provider for final acceptance. Group membership can be configured before first login; missing User objects remain unverified identities. Set `RHOAI_ADMIN_USER` and `RHOAI_DEVELOPER_USER`, then run `setup-access.sh` after platform/OBC readiness. It assigns groups and the S3 connection without changing OAuth, passwords or provider Keycloak. Group membership remains external to GitOps self-heal. Supply separate private `RHOAI_ADMIN_KUBECONFIG` and `RHOAI_DEVELOPER_KUBECONFIG` files for actual persona checks; impersonated groups are not acceptance evidence.
 
@@ -632,17 +636,17 @@ Point-in-time validation logs from 2026-05 and 2026-07 remain in Git history. Th
 
 ### Stage 010 console observability component
 
-The permanent `010-console-observability` Application manages only `UIPlugin/monitoring`; COO manages the generated monitoring plugin and console Perses server. Stage 010 `deploy.sh` deploys it after the foundation components; redeploy it alone with `./stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh --revision <published ref>` and validate with `validate-console-observability.sh`. These commands do not touch the foundation components or deploy held Lightspeed/storage drafts.
+The permanent `010-console-observability` Application manages `UIPlugin/monitoring` and the console plugin list (`Console/cluster` `spec.plugins`, from `console-plugins.yaml`); COO manages the generated monitoring plugin and console Perses server. Stage 010 `deploy.sh` deploys it after the foundation components; redeploy it alone with `./stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh --revision <published ref>` and validate with `validate-console-observability.sh`. These commands do not touch the foundation components or deploy held Lightspeed/storage drafts.
 
 The native Perses operator synchronizes the existing RHOAI dashboards/datasources into the console instance. No privileged global datasource or new metrics permission is configured. Native readiness passed. The console Perses accelerator datasource is restricted to platform administrators: installation-administrator proxy queries returned nonempty HTTP 200; genuine `ai-admin` and `ai-developer` returned HTTP 403. The RHOAI `ai-admin` Infrastructure metrics access remains enabled. No additional RBAC is granted; browser checks are user-owned. In the console, reload, open **Observe → Dashboards (Perses)** and select `redhat-ods-monitoring`; then open **Observe → Dashboards → NVIDIA DCGM Exporter Dashboard** for GPU metrics. Model-serving dashboards require later models/traffic. The existing trace dashboard backend error remains a separate issue.
 
 ### Stage 020
 
-Stage 020 source installs native NFD, NVIDIA GPU Operator and Red Hat build of Kueue, plus CPU and reserved GPU queue/profile identities. Reviewed Manual lifecycle selections are `nfd.4.22.0-202609212027` (`stable`), `gpu-operator-certified.v26.7.1` (`v26.7`) and `kueue-operator.v1.4.2` (`stable-v1.4`). `startingCSV` selects the initial version; subsequent InstallPlans need explicit review. No fixed Red Hat-tested RHOAI/operator tuple is claimed.
+Stage 020 source installs native NFD, NVIDIA GPU Operator and Red Hat build of Kueue, plus the CPU queue and one GPU queue and hardware profile per GPU type. The three Subscriptions use Automatic approval within their channels, `stable` (NFD), `v26.7` (NVIDIA) and `stable-v1.4` (Kueue), with no `startingCSV`. Installed on 2026-10-14: `nfd.4.22.0-202609291750`, `gpu-operator-certified.v26.7.2` and `kueue-operator.v1.4.3`. No fixed Red Hat-tested RHOAI/operator tuple is claimed. The RHOAI 3.5 "Enabling NVIDIA GPUs" step that deletes the `migration-gpu-status` ConfigMap and restarts the dashboard is not automated. On this cluster the ConfigMap does not exist (checked 2026-10-14), so there is nothing to delete; check for it after an upgrade from an earlier release.
 
-Generate the environment overlay from one explicitly selected active AWS CPU worker MachineSet. Review its native provider references and two exclusive L40S workers with 200Gi encrypted gp3 disks, then publish it. The deploy preflight checks published source, existing ownership, provider cert-manager and the healthy Stage 010 Kueue delegation before applying only the Stage 020 component Applications. It never repoints Stage 010 or changes CPU capacity. NFD, driver, validator and DCGM operands remain operator-owned.
+Generate the GPU pool files from one explicitly selected active AWS CPU worker MachineSet with `generate-gpu-machineset.sh --source <machineset> --write`. It writes all three pools (RTX PRO 6000 `g7e.2xlarge` per zone as the default, L40S `g6e.2xlarge`, dormant H100 `p5.4xlarge` per zone) at 0 replicas with 200 GB encrypted gp3 disks. Review the provider references, then publish the files. The deploy preflight checks published source, existing ownership, provider cert-manager and the healthy Stage 010 Kueue delegation before applying only the Stage 020 component Applications. It never repoints Stage 010 or changes CPU capacity. NFD, driver, validator and DCGM operands remain operator-owned.
 
-Stage 020 patches only `default-dsc.spec.components.kueue` to `Unmanaged` with `autoCreateQueues: false`. The native integration creates the Kueue singleton; GitOps owns ClusterQueues, LocalQueues and profiles. The CPU queue and two-unit reserved GPU queue are the supported topology; unused zero-quota shared/priority resources and the unconsumed priority class are removed. Global profiles require matching LocalQueues in every consuming project; this stage provisions them only in `demo-sandbox`.
+Stage 020 patches only `default-dsc.spec.components.kueue` to `Unmanaged` with `autoCreateQueues: false`. The native integration creates the Kueue singleton; GitOps owns ClusterQueues, LocalQueues and profiles. The CPU queue and the two GPU queues (`cq-gpu-rtxpro6000` and the L40S `cq-gpu-reserved-demo`, two units each) are the supported topology; unused zero-quota shared/priority resources and the unconsumed priority class are removed. Global profiles require matching LocalQueues in every consuming project; this stage provisions them only in `demo-sandbox`.
 
 `validate.sh --readiness` checks native readiness and labels that scope explicitly. `--functional` additionally inspects native per-node CUDA validator results and DCGM metrics through bounded local port-forwards. Neither command implicitly creates workloads or proves dashboard access. Full acceptance also requires a bounded queue-admission test and the intended administrator’s GPU Infrastructure dashboard showing current Kueue/DCGM data.
 
@@ -717,9 +721,9 @@ Canonical validation passed exact Application reconciliation, current native DSC
 
 Stage 040 source targets native OpenShift AI 3.5 AIGateway/MaaS and GenAI Studio. It builds on the Stage 010 foundation and the Stage 030 registry/serving foundation. It is deployed as eight component Applications (see [Stage component Applications](#stage-component-applications)); the cluster's Gateway hostnames are a source patch on `040-gateway-governance`, model replica delegation lives on `040-local-models` and the playground MCP field delegation on `040-genai-studio`. The ordinary deployment's first write is its own immutable component Applications. The DSC component and dashboard fields Stage 040 enables are delegated in Git on `010-rhoai-platform`; the preflight refuses to deploy until they are.
 
-Persistent Manual OLM subscriptions select RHCL 1.4.3, Authorino 1.4.3, DNS 0.6.0, Limitador 1.4.2, Service Mesh 3.4.3 and LWS 1.0.1. The native OpenShift Gateway controller supplies the existing accepted GatewayClass; installing the Mesh operator is not proof of an initialized Istio instance. Native operators own generated workloads. Do not patch their CSVs, Deployments or monitoring operands.
+The OLM Subscriptions use Automatic approval within their channels. Installed on 2026-10-14: RHCL 1.4.3, Authorino 1.4.3, DNS operator 1.4.2, Limitador 1.4.2, Service Mesh 3.4.3 and LWS 1.0.1. The native OpenShift Gateway controller supplies the existing accepted GatewayClass; installing the Mesh operator is not proof of an initialized Istio instance. Native operators own generated workloads. Do not patch their CSVs, Deployments or monitoring operands.
 
-The one Gateway uses distinct API/external, Qwen 3.6 and Qwen 3.8 HTTPS hosts. Namespace restrictions and LLMI listener references separate routing. The layout is a project qualification candidate for scheduler issue INFERENG-6962; actual EPP provenance remains a required independent proof. The gateway resources ConfigMap retains a 1Gi proxy memory reservation and 2Gi limit; change that native source rather than the generated proxy.
+The one Gateway has two HTTPS listeners: `api` (shared API hostname, also used by external models) and `qwen3-8` (Qwen 3.8 compatibility hostname). Namespace restrictions and LLMI listener references separate routing. The AdminNetworkPolicy `maas-gateway-boundary` limits the gateway pods' ingress and egress; a new upstream needs an allow rule there first ([gateway-governance README](../gitops/stages/040-governed-models-as-a-service/gateway-governance/README.md)). The layout is a project qualification candidate for scheduler issue INFERENG-6962; actual EPP provenance remains a required independent proof. The gateway resources ConfigMap retains a 1Gi proxy memory reservation and 2Gi limit; change that native source rather than the generated proxy.
 
 The durable PostgreSQL database remains in `models-as-a-service-db`. Runtime credentials are reused, never rotated by deployment. A metadata-only wave-7 credential barrier blocks database/storage wave 8 until the private setup helper supplies them. Native AIGateway creates `redhat-ai-gateway-infra`, where the runtime helper creates or reuses `maas-db-config`. Missing credentials with retained storage/configuration stop deployment. PostgreSQL plaintext transport is constrained by a namespace-scoped NetworkPolicy.
 
@@ -735,7 +739,7 @@ RHOAI_STAGE040_PERSONA_KUBECONFIG=/private/path/persona-kubeconfig \
 
 Functional validation creates and revokes only its own expiring synthetic key, with bounded chat/stream/tool-call/authorization/traffic checks. Quota enforcement, per-request EPP proof and user Studio interaction are recorded separately; an API response does not establish all stage acceptance. No GuideLLM benchmark runs implicitly.
 
-GenAI Studio enablement is native OGX. The user creates a project playground through the dashboard and selects an available governed endpoint. Stage 040 `studio/base` pre-provisions one playground asset in `demo-sandbox`: the custom endpoint "GPT-6 Luna (Playground)", whose MaaS key is minted by the `provision-playground-endpoint` Sync-hook Job for the `playground-sandbox` subscription (90-day maximum; a Stage 040 sync renews a key the MaaS API no longer reports active). Its generated pgvector resources remain native service-owned; do not pre-author them or patch generated workloads. Basic remote inference needs no new GPU or bucket; RAG, AutoRAG and AutoML are excluded.
+GenAI Studio enablement is native OGX. The user creates a project playground through the dashboard and selects an available governed endpoint. The Stage 040 `genai-studio` component pre-provisions one playground asset in `demo-sandbox`: the custom endpoint "GPT-6 Luna (Playground)", whose MaaS key is minted by the `provision-playground-endpoint` Sync-hook Job for the `playground-sandbox` subscription (90-day maximum; a Stage 040 sync renews a key the MaaS API no longer reports active). Its generated pgvector resources remain native service-owned; do not pre-author them or patch generated workloads. Basic remote inference needs no new GPU or bucket; RAG, AutoRAG and AutoML are excluded.
 
 The upstream-image OpenShift MCP server in `rhoai-mcp` and the inactive Slack/BrightData components were retired on 2026-10-09; the read-only consumer endpoint is the native catalog server at `openshift-mcp-server.mcp-servers.svc.cluster.local:8080/mcp` (token-less, bounded ServiceAccount) and the read-write server on its HTTPS Route (caller token). See the [Stage 040 technical plan](migration/040-governed-serving-plan.md) for dispositions, sources and live qualification boundaries.
 
@@ -956,7 +960,7 @@ All three RTX PRO 6000 formats recalled the hidden fact at 248K prompt tokens (f
 
 ```yaml
 components:
-  - ../components/qwen38-fp8
+  - components/qwen38-fp8
 ```
 
 It swaps the checkpoint and sets `VLLM_USE_DEEP_GEMM=0` (required on this GPU, see TROUBLESHOOTING). Publish, re-pin Stage 040, then run `register-model-cards.sh`; the registry entry takes the checkpoint name (`Qwen3.8-27B-FP8`). Clients keep the same `qwen3-8-27b` id.
@@ -967,9 +971,10 @@ It swaps the checkpoint and sets `VLLM_USE_DEEP_GEMM=0` (required on this GPU, s
 
 ## Model selection record (current estate and history)
 
-The demo's default posture serves ONE local model on 1× g6e.2xlarge (1×
-NVIDIA L40S, 48GB), governed through the MaaS gateway — a measured cost
-decision (2026-07-25): single-stream decode parity between the dense 27B
+The demo's default posture serves ONE local model, `qwen3-8-27b`, on 1×
+`g7e.2xlarge` (1× NVIDIA RTX PRO 6000, 96 GB) since 2026-10-13 (see the
+serving study above), governed through the MaaS gateway. The one-model
+posture was first a measured cost decision on L40S (2026-07-25): single-stream decode parity between the dense 27B
 and the 35B MoE (18.8 vs 17.7 tok/s) plus better quality at both harness
 roles made a dedicated coding GPU unnecessary for presenter-driven use.
 The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
@@ -983,8 +988,8 @@ The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
 
 **How to add another Hermes model:** named `providers.<name>` entry + managed `.env` secret + explicit `models:` map (`discover_models: false`). Change `model.default` only if it is the new main.
 
-**Workshop capacity overlay:** `qwen3-6-35b-a3b`
-(gitops `040/.../local-models/optional/qwen35b-workshop/`) — the MoE
+**Workshop capacity overlay (historical; its folder
+`040/.../local-models/optional/qwen35b-workshop/` no longer exists):** `qwen3-6-35b-a3b` — the MoE
 coding worker for multi-user sessions. Enable: scale the GPU machineset
 to 2, add the overlay + policy refs, re-mint the key (steps in the
 overlay README). Its registry card stays active, marked
@@ -1058,18 +1063,18 @@ Candidate models are InferenceServices in the project; their evaluation jobs aut
 - **Reset the pipeline server:** this discards all run history. Stop any running run, `oc delete workflows.argoproj.io --all -n evaluated-models`, `oc delete dspa dspa -n evaluated-models`, then sync Stage 050; the hook recreates the server with an empty database. Run metadata (Executions, Artifacts) has no delete API, so a reset is the only way to remove it.
 - **Clean up evaluations:** hard-delete EvalHub jobs per tenant (`DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true` with `X-Tenant`); the leaderboard reads only the remaining jobs. Delete MLflow runs per workspace. Delete a whole experiment only if nothing writes to it again: MLflow keeps a deleted experiment's name reserved, so `evaluated-models/AIP-default` keeps its experiment and loses only its runs. Manual evaluations (`submit-evaluation.sh`, `swebench-run.sh`, the CI template) log to `model-evaluations`, pipeline evaluation jobs to `agentic-coding-evaluations`, pipeline runs to `agentic-coding-qualification`.
 - **Moving the tenant (2026-10-12):** Stage 050's enable hook removes the EvalHub tenant label from `demo-sandbox`; Argo CD prunes the retired sandbox Roles, RoleBindings and ServiceAccounts, and the operator removes its tenant objects. The Secrets created by the old hooks (`evalhub-model-auth-maas`, `evalhub-oci-registry`, `evalhub-s3-test-data`) and the MLflow experiment `agentic-coding-qualification` were deleted once by hand; Stage 040 no longer carries `evaluation-sandbox`, and its MaaS key was revoked.
-- **Collections and step times (pipeline v11, tuned serving, 2026-10-13):** latency-v1 (3 min), throughput-v2 (64 requests, 4 min), livecodebench-v2 (alone; about 20 min with MTP, 42 min without), python-tasks-v1 (MBPP + HumanEval on the bounded `inspect-coding` provider, 7 min), security-quick-v2 (`garak-coding`, about 13 min); security-full-v2 is skipped (`skip_security_full`) until the models are fully tuned. End to end without the full scan: Qwen 3.6 43 min, Qwen 3.8 32 min, about 100 and 75 min before tuning. The two models run in parallel on their own GPUs.
-- **Serving tuning (2026-10-13):** both models use the model cards' MTP speculative decoding, `--max-num-batched-tokens=16384` and `--async-scheduling` (Stage 040 README). Restart Qwen 3.6 after a serving change through `replicas` 0 then 1 (TROUBLESHOOTING). The tuning log with every probe is in the overnight report (`tmp/overnight-eval-2026-10-12.md`, local).
-- **Shutdown state (2026-10-13):** Qwen 3.6 is at `replicas: 0`, the candidate has `serving.kserve.io/stop: "true"` in Git (sync wave 40 so a stopped candidate does not block later waves), and the GPU MachineSet is at 0. Resume with `scripts/platform/resume-gpu-demo.sh up 2`, `replicas: 1` on `qwen3-6-27b` and stop `"false"` for the candidate.
-- **Results (2026-10-12):** every production baseline attempt (`qwen3-6-27b`) missed both serving gates through MaaS: TTFT 2,068 to 2,131 ms against 2,000 ms, and 52.5 to 55.2 output tokens/s against 60. Read these with the MaaS path in mind; the criteria are unchanged.
+- **Collections and step times (pipeline v11, tuned serving, 2026-10-13):** latency-v1 (3 min), throughput-v2 (64 requests, 4 min), livecodebench-v2 (alone; about 20 min with MTP, 42 min without), python-tasks-v1 (MBPP + HumanEval on the bounded `inspect-coding` provider, 7 min), security-quick-v2 (`garak-coding`, about 13 min); security-full-v2 is skipped (`skip_security_full`) until the models are fully tuned. End to end without the full scan: Qwen 3.6 43 min, Qwen 3.8 32 min, about 100 and 75 min before tuning. Qwen 3.6 was retired on 2026-10-13.
+- **Serving tuning (2026-10-13):** the production `qwen3-8-27b` uses the model card's MTP speculative decoding, `--max-num-batched-tokens=16384` and `--async-scheduling` (Stage 040 README). With one GPU worker running, restart it after a serving change through `replicas` 0 then 1 (TROUBLESHOOTING). The tuning log with every probe is in the overnight report (`tmp/overnight-eval-2026-10-12.md`, local).
+- **Shutdown state:** the candidate `qwen3-8-27b-int4` has `serving.kserve.io/stop: "true"` in Git (sync wave 40 so a stopped candidate does not block later waves), and every GPU MachineSet is at 0. The production model runs on the RTX PRO 6000 pool (`scripts/platform/resume-gpu-demo.sh up`); the candidate uses the L40S queue `lq-gpu-reserved-demo`, so a candidate run also needs `GPU_POOL=l40s scripts/platform/resume-gpu-demo.sh up` and stop `"false"` for the candidate.
+- **Results (2026-10-12, Qwen 3.6, since retired):** every production baseline attempt (`qwen3-6-27b`) missed both serving gates through MaaS: TTFT 2,068 to 2,131 ms against 2,000 ms, and 52.5 to 55.2 output tokens/s against 60. Read these with the MaaS path in mind; the criteria are unchanged.
 
 ### Stage 060 — Agent Runtime and AgentOps workspace foundation
 
 The shared OpenShell control plane is in `openshell`; `ai-agents` (AI Agents) is its separate administrator-managed agent-hosting workspace/project. Native operator mode maps the workspace name to the same allowlisted Namespace. GitOps provisions the namespace-scoped gateway Role/RoleBinding, sandbox ServiceAccount with token automount disabled, SSH NetworkPolicy, and the existing `rhods-admins` project-admin binding. Existing owner workspaces and core resources remain in place.
 
-`deploy-runtime.sh` invokes the guarded, idempotent `setup-ai-agents.py` after the selected runtime revision is Synced/Healthy. Set `RHOAI_STAGE060_OPENSHELL_CLI` to the pinned CLI identified by `runtime-candidate/source-pins.json`. The helper uses the existing native bootstrap administrator, verifies the managed `ai-admin` broker identity and immutable OpenShift UID, creates the native workspace if absent, and adds only that subject as workspace admin if absent. It never rewrites existing memberships, changes identity credentials, or launches sandboxes. Run the same helper with `--revision <deployed-SHA> --check` for read-only configuration validation. Private CLI credentials and the owned local forward are removed on exit. Native workspace membership is separate from OpenShift project RBAC; adding developer membership to this shared workspace would also grant workspace-wide agent lifecycle access and is not configured.
+`deploy-runtime.sh` invokes the guarded, idempotent `setup-ai-agents.py` after the selected runtime revision is Synced/Healthy. Set `RHOAI_STAGE060_OPENSHELL_CLI` to the pinned CLI identified by `gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/source-pins.json`. The helper uses the existing native bootstrap administrator, verifies the managed `ai-admin` broker identity and immutable OpenShift UID, creates the native workspace if absent, and adds only that subject as workspace admin if absent. It never rewrites existing memberships, changes identity credentials, or launches sandboxes. Run the same helper with `--revision <deployed-SHA> --check` for read-only configuration validation. Private CLI credentials and the owned local forward are removed on exit. Native workspace membership is separate from OpenShift project RBAC; adding developer membership to this shared workspace would also grant workspace-wide agent lifecycle access and is not configured.
 
-Full Stage 060 acceptance remains pending: agent runtimes, catalog integration, selected-call tracing and interactive persona acceptance have separate gates in the [implementation plan](migration/060-agent-runtime-and-agentops-plan.md).
+All five Stage 060 Applications are deployed. Owner-client access and selected-call MLflow tracing passed on 2026-10-09 (Stage 060 README). Full-stage acceptance remains pending (`validate.sh` reports it by design); the remaining gates are in the [implementation plan](migration/060-agent-runtime-and-agentops-plan.md).
 
 ## Fresh operator deployment
 
@@ -1086,7 +1091,7 @@ Supply `ANTHROPIC_API_KEY` privately in the local environment. Stage040 uses its
 
 ## Current local model routing and Studio storage, 2026-10-08
 
-Local hosting is internal-models (Internal Models); external-models is External Models. Both projects are dashboard-visible. Governance remains models-as-a-service. Qwen 3.8 is active; Qwen 3.6 is parked at zero replicas with no inference claim. Current clients use common `/v1` and canonical `publishers/internal-models/models/<name>` IDs. The native MaaS catalog endpoints also select the API hostname. Three bounded common-host model requests passed; the identical namespace-qualified legacy local path returned HTTP 503 on the API host but passed on its dedicated Qwen 3.8 host. Compatibility listeners remain, and old models-as-a-service local paths are not aliases.
+Local hosting is internal-models (Internal Models); external-models is External Models. Both projects are dashboard-visible. Governance remains models-as-a-service. Qwen 3.8 is active; Qwen 3.6, then parked, was removed with its listener on 2026-10-13. Current clients use common `/v1` and canonical `publishers/internal-models/models/<name>` IDs. The native MaaS catalog endpoints also select the API hostname. Three bounded common-host model requests passed; the identical namespace-qualified legacy local path returned HTTP 503 on the API host but passed on its dedicated Qwen 3.8 host. The `qwen3-8` compatibility listener remains, and old models-as-a-service local paths are not aliases.
 
 Studio uses the retained genai-playground-state PVC at `/opt/app-root/src/.llama/distributions/rh` via supported OGX customer fields. Existing-state moves require quiesce, consistent private SQLite backup, integrity/record checks and restore before restart; never overwrite a live SQLite DB. The current saved response and two profile UUIDs/settings were preserved. Old unreferenced cached model registrations remain because the installed native API has no unregister. The fresh install helper attaches the same mount using exact returned CR and PVC ownership; fresh end-to-end deployment remains untested.
 

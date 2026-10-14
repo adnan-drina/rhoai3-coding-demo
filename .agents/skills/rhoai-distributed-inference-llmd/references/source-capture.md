@@ -6,9 +6,9 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Chapter title | Deploy models using Distributed Inference with llm-d |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/deploy_models_using_distributed_inference_with_llm-d/index |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index |
 | Documentation category | Deploy |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | Preface; Deploying models by using Distributed Inference with llm-d; Gateway discovery; Configuring authentication with Red Hat Connectivity Link; Enabling authentication and authorization; vLLM arguments reference; Configuring scheduler settings; Automatically scale Distributed Inference with llm-d; Managing mixed workloads with priority queuing; Distributed Inference with llm-d Observability |
 
 ## Related Official Sources

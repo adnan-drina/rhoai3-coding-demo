@@ -28,9 +28,18 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 rules:
+  # Only the tenant key Secret and the endpoint ConfigMap; create cannot be limited by name.
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [evalhub-model-auth-maas]
+    verbs: [get, patch, update]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [qualification-endpoints]
+    verbs: [get, patch, update]
   - apiGroups: [""]
     resources: [secrets, configmaps]
-    verbs: [create, get, patch, update]
+    verbs: [create]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -117,6 +126,7 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 2
+  activeDeadlineSeconds: 600
   template:
     spec:
       restartPolicy: OnFailure
@@ -143,7 +153,7 @@ spec:
               # The stored key is re-used while the MaaS API still reports it active for this subscription
               # (public GET /maas-api/v1/api-keys/{id} as the owning ServiceAccount).
               key_state() {
-                curl -sk -m 20 -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/$1" \
+                curl -s -m 20 -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/$1" \
                   | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""), d.get("subscription",""))' 2>/dev/null || true
               }
 
@@ -154,13 +164,13 @@ spec:
                 key="${current_key}"; id="${current_id}"; expires_at="$(secret_value expires_at)"
               else
                 if [ -n "${current_id}" ]; then
-                  status=$(curl -sk --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
+                  status=$(curl -s --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
                   echo "Revoked previous key ${current_id} (HTTP ${status})"
                 fi
                 response="${WORK}/response.json"; key=""
                 # The subscription and its models may still be reconciling in the same sync; retry briefly.
                 for attempt in $(seq 1 18); do
-                  status=$(curl -sk -o "${response}" -w '%{http_code}' -X POST -H "Authorization: Bearer ${SA_TOKEN}" -H "Content-Type: application/json" \
+                  status=$(curl -s -o "${response}" -w '%{http_code}' -X POST -H "Authorization: Bearer ${SA_TOKEN}" -H "Content-Type: application/json" \
                     -d "{\"name\":\"${SUBSCRIPTION}-evalhub\",\"subscription\":\"${SUBSCRIPTION}\"}" "${MAAS_BASE_URL}/maas-api/v1/api-keys")
                   key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("key",""))' "${response}" 2>/dev/null || true)"
                   if [ "${status}" -ge 200 ] && [ "${status}" -lt 300 ] && echo "${key}" | grep -q '^sk-oai-'; then break; fi
@@ -174,7 +184,9 @@ spec:
               printf '%s' "${key}" > "${WORK}/api-key"; printf '%s' "${id}" > "${WORK}/key_id"
               printf '%s' "${expires_at}" > "${WORK}/expires_at"; printf '%s' "${SUBSCRIPTION}" > "${WORK}/subscription"
               oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-file=api-key="${WORK}/api-key" --from-file=key_id="${WORK}/key_id" \
-                --from-file=expires_at="${WORK}/expires_at" --from-file=subscription="${WORK}/subscription" --dry-run=client -o yaml | oc apply -f -
+                --from-file=expires_at="${WORK}/expires_at" --from-file=subscription="${WORK}/subscription" --dry-run=client -o yaml \
+                | oc apply --server-side --force-conflicts --field-manager=evalhub-maas-key-provisioner -f -
+              oc annotate secret "${SECRET_NAME}" -n "${NS}" kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
               echo "Secret ${NS}/${SECRET_NAME} holds the ${SUBSCRIPTION} key for EvalHub model.auth.secret_ref"
               # The qualification pipeline reads the MaaS endpoint for production models from this ConfigMap.
               oc create configmap qualification-endpoints -n "${NS}" --from-literal=maas_base_url="${MAAS_BASE_URL}/v1" \

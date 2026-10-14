@@ -7,21 +7,21 @@
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Working with AI pipelines |
 | Guide title | Build, schedule, and track machine learning pipelines |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_ai_pipelines/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index |
 | Documentation category | Develop / Working with AI pipelines |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | Preface; 1 Managing AI pipelines; 1.1 Configuring a pipeline server; 1.1.1 Configuring a pipeline server with an external Amazon RDS database; 1.2 Defining a pipeline; 1.2.1 Compiling the pipeline YAML with the Kubeflow Pipelines SDK; 1.2.2 Compiling Kubernetes-native manifests with the Kubeflow Pipelines SDK; 1.2.3 Authenticating the Kubeflow Pipelines SDK with a pipeline server; 1.2.4 Defining a pipeline by using the Kubernetes API; 1.2.5 Migrating pipelines from database to Kubernetes API storage; 1.3 Importing a pipeline; 1.4 Deleting a pipeline; 1.5 Deleting a pipeline server; 1.6 Viewing the details of a pipeline server; 1.7 Viewing existing pipelines; 1.8 Overview of pipeline versions; 1.9 Uploading a pipeline version; 1.10 Deleting a pipeline version; 1.11 Viewing the details of a pipeline version; 1.12 Downloading a pipeline version; 1.13 Overview of pipelines caching; 2 Managing pipeline experiments; 3 Managing pipeline runs; 4 Working with pipeline logs; 5 Working with pipelines in JupyterLab; 6 Troubleshooting DSPA component errors |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_on_projects/index | Project, workbench, connection, and cluster storage context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_in_your_data_science_ide/index | JupyterLab and IDE workflow context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_data_in_an_s3-compatible_object_store/index | S3-compatible object storage workflow context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs | DSCI trusted CA bundle behavior |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/managing-storage-classes | Storage class behavior for pipeline workspaces |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_machine_learning_features/index | ML feature workflows that can consume pipeline outputs |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index | Project, workbench, connection, and cluster storage context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index | JupyterLab and IDE workflow context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index | S3-compatible object storage workflow context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs | DSCI trusted CA bundle behavior |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/managing-storage-classes | Storage class behavior for pipeline workspaces |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index | ML feature workflows that can consume pipeline outputs |
 
 ## Red Hat Narrative And Implementation Sources
 

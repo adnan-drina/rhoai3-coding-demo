@@ -6,20 +6,20 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Monitoring your AI Systems |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/monitoring_your_ai_systems/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index |
 | Documentation category | Monitor / Monitoring your AI systems |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 1 Overview of monitoring your AI systems; 2 Configuring TrustyAI; 2.1 model serving platform monitoring handoff; 2.2 enabling the TrustyAI component; 2.3 database configuration; 2.4 project service installation; 2.5 KServe RawDeployment integration; 3 project setup; 3.1 authentication; 3.2 training data upload; 3.3 sending training data; 3.4 field labeling; 4 monitoring model bias; 4.1 create bias metrics; 4.2 delete bias metrics; 4.3 view bias metrics; 4.4 bias metric interpretation; 5 monitoring data drift; 5.1 create drift metrics; 5.2 delete drift metrics; 5.3 view drift metrics; 5.4 drift metric interpretation; 5.5 credit-card scenario |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai | OpenShift AI observability stack context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_and_monitoring_models | Deployed model operational monitoring context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/configuring_your_model-serving_platform | Model-serving platform, runtime, and KServe context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/evaluating_ai_systems/index | LLM evaluation and automated risk-assessment context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/enabling_ai_safety_with_guardrails/index | Runtime guardrails and safety-control context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-observability_managing-rhoai | OpenShift AI observability stack context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_and_monitoring_models | Deployed model operational monitoring context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/configuring_your_model-serving_platform | Model-serving platform, runtime, and KServe context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index | LLM evaluation and automated risk-assessment context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index | Runtime guardrails and safety-control context |
 
 ## Supporting Project Sources
 

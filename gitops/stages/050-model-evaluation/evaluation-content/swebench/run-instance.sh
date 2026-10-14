@@ -10,7 +10,11 @@ export HOME=/root MSWEA_COST_TRACKING=ignore_errors UV_PYTHON_INSTALL_DIR=/opt/u
 OUT=/out; mkdir -p "$OUT"
 echo "instance=${INSTANCE_ID} subset=${SUBSET} model=${MODEL_NAME} run=${RUN_ID}"
 # The instance images ship a conda base below Python 3.10; uv installs a managed interpreter for the agent.
-curl -sSfL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh >/dev/null
+# uv is pinned by version and published SHA-256 (no remote install script runs as root next to the run's keys).
+UV_VERSION=0.12.21; UV_SHA256=d69d543a55ec9cdf9d3d9f2648b0a161847e3dbddc477e3be6b5813a6d46f639
+curl -sSfL -o /tmp/uv.tgz "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-musl.tar.gz"
+echo "${UV_SHA256}  /tmp/uv.tgz" | sha256sum -c - >/dev/null
+tar -xzf /tmp/uv.tgz -C /tmp && install -m 0755 /tmp/uv-x86_64-unknown-linux-musl/uv /tmp/uv-x86_64-unknown-linux-musl/uvx /usr/local/bin/
 uv tool install --python 3.12 "mini-swe-agent==${MINI_SWE_AGENT_VERSION}" --with boto3 >/dev/null
 export PATH=/usr/local/bin:$PATH
 # Filter is an exact match on the instance id; the runner loads the dataset split from Hugging Face.

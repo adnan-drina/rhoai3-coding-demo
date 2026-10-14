@@ -6,13 +6,13 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Primary chapter title | Enabling accelerators |
-| Primary chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/enabling-accelerators_install |
+| Primary chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/enabling-accelerators_install |
 | NVIDIA chapter title | Enabling NVIDIA GPUs |
-| NVIDIA chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_accelerators/enabling-nvidia-gpus_accelerators |
+| NVIDIA chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_accelerators/enabling-nvidia-gpus_accelerators |
 | Hardware profile chapter title | Working with hardware profiles |
-| Hardware profile chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_accelerators/working-with-hardware-profiles_accelerators |
+| Hardware profile chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_accelerators/working-with-hardware-profiles_accelerators |
 | Documentation categories | Install; Administer: Working with accelerators |
-| Retrieved date | 2026-06-09 |
+| Retrieved date | 2026-06-09 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | Accelerator prerequisites and verification; NVIDIA GPU enablement; hardware profile overview, creation, update, delete, and recommended accelerator sections |
 
 ## Supporting Project Sources
