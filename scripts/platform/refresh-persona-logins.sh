@@ -31,6 +31,18 @@ for persona in $personas; do
   kubeconfig="${kubeconfig/#\~/$HOME}"
   [[ -n "$kubeconfig" && -n "$user" ]] || { echo "ERROR: set RHOAI_${var}_KUBECONFIG and RHOAI_${var}_USER in .env" >&2; rc=1; continue; }
   mkdir -p "$(dirname "$kubeconfig")"
+  if [[ ! -s "$kubeconfig" ]]; then
+    # Start a new persona kubeconfig with the guarded context's cluster trust (server plus CA data or its TLS setting),
+    # never its user credentials, so the browser login can reach the same API server.
+    oc config view --minify --raw -o json | python3 -c '
+import json, sys
+src = json.load(sys.stdin)
+cluster = {"name": "persona-cluster", "cluster": src["clusters"][0]["cluster"]}
+print(json.dumps({"apiVersion": "v1", "kind": "Config", "clusters": [cluster], "users": [],
+                  "contexts": [{"name": "persona", "context": {"cluster": "persona-cluster"}}], "current-context": "persona"}))
+' > "$kubeconfig"
+    chmod 600 "$kubeconfig"
+  fi
   echo "── Sign in as ${user} in the browser window that opens (session saved to ${kubeconfig})"
   oc login --web --kubeconfig "$kubeconfig" "$server" >/dev/null
   chmod 600 "$kubeconfig"
