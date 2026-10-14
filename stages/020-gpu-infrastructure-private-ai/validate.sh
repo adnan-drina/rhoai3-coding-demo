@@ -10,8 +10,9 @@ check_oc_logged_in
 python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai/base" --verify
 mode="${1:---readiness}"
 [[ "$mode" == --readiness || "$mode" == --functional ]] || { echo "Use --readiness or --functional (both read-only)." >&2; exit 1; }
+export REPO_ROOT
 python3 - "$mode" <<'PY'
-import json,pathlib,subprocess,sys,time,urllib.request,socket,datetime
+import json,os,pathlib,subprocess,sys,time,urllib.request,socket,datetime
 failed=0
 def get(kind,name='',ns=''):
  cmd=['oc','--request-timeout=10s','get',kind]
@@ -30,8 +31,10 @@ def cond(x,t):
 def freshcond(x,t):
  return any(c.get('type')==t and c.get('status')=='True' and c.get('observedGeneration')==x['metadata'].get('generation') for c in x.get('status',{}).get('conditions',[]))
 def current(x):return isinstance(x['metadata'].get('generation'),int) and x.get('status',{}).get('observedGeneration')==x['metadata']['generation']
-app=get('applications.argoproj.io','020-gpu-infrastructure-private-ai','openshift-gitops')
-check('Application exact desired revision Synced/Healthy',lambda:app['status']['sync']['status']=='Synced' and app['status']['health']['status']=='Healthy' and app['status']['sync']['revision']==app['spec']['source']['targetRevision'] and len(app['spec']['source']['targetRevision'])==40)
+sys.path.insert(0,os.environ['REPO_ROOT']+'/scripts/shared');import stage_apps
+problems=stage_apps.stage_problems('020')
+for problem in problems:print('  - '+problem)
+check('Component Applications at one exact revision, Synced/Healthy',lambda:not problems and not stage_apps.get_application('020-gpu-infrastructure-private-ai'))
 def metrics_access():
  binding=get('rolebinding','rhoai-gpu-metrics-admins','openshift-monitoring')
  assert binding['roleRef']=={'apiGroup':'rbac.authorization.k8s.io','kind':'Role','name':'cluster-monitoring-metrics-api'}
@@ -44,7 +47,7 @@ def console_dashboard():
  import hashlib
  cm=get('configmap','nvidia-dcgm-exporter-dashboard','openshift-config-managed')
  assert cm['metadata'].get('labels',{}).get('console.openshift.io/dashboard')=='true'
- assert cm['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('020-gpu-infrastructure-private-ai:')
+ assert stage_apps.tracked('020',cm)
  body=cm['data']['dcgm-exporter-dashboard.json'];assert hashlib.sha256(body.encode()).hexdigest()=='7c2172e582524efb70d9f585502366f7fec22b2464c3b89f75418ca648353e71'
  assert json.loads(body)['title']=='NVIDIA DCGM Exporter Dashboard'
  return True

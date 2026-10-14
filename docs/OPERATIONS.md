@@ -486,7 +486,7 @@ Each script applies its stage's Applications from `gitops/argocd/app-of-apps/`. 
 | Stage | Argo CD app | Purpose |
 |------|-------------|---------|
 | 010 | `010-openshift-ai-platform-foundation` | OpenShift AI platform foundation |
-| 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
+| 020 | `020-node-feature-discovery`, `020-nvidia-gpu-operator`, `020-kueue`, `020-gpu-machinesets`, `020-gpu-quotas` | NFD, GPU Operator with metrics access and console dashboard, Red Hat build of Kueue, GPU MachineSets, queue quota and hardware profiles |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access`, `040-genai-studio` | MaaS operators, PostgreSQL (data), Gateway with Kuadrant/Authorino, MaaS enablement and monitoring, private models, external models, subscriptions and auth policies, Gen AI studio playground and MCP list |
 | 050 | `050-mlflow`, `050-model-qualification`, `050-evalhub`, `050-evaluation-content`, `050-oci-export` | MLflow tracking (data), Evaluated Models project and qualification pipeline, EvalHub (data) and curated prompts, evaluation collections and SWE-bench, OCI export |
@@ -567,7 +567,7 @@ If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for auto
 
 ### Stage component Applications
 
-Stages 040 and 050 are deployed as several component Applications instead of one large one, so a model switch, a policy change or a failing hook touches only its own component, and data lives in components that never prune it. A component that is expected to report another health state by design names it in its `demo.rhoai.io/accepted-health` annotation (`050-model-qualification` is Suspended while its candidate model is stopped). Each component renders `gitops/stages/<stage>/apps/<component>/` and keeps the stage prefix; `base/` renders their union for validation. `deploy.sh` applies all components at one reviewed revision and validation requires each of them Synced and Healthy at that revision. The layout rules are in `.agents/rules/gitops.md`.
+Stages 020, 040 and 050 are deployed as several component Applications instead of one large one, so a model switch, a policy change or a failing hook touches only its own component, and data lives in components that never prune it. A component that is expected to report another health state by design names it in its `demo.rhoai.io/accepted-health` annotation (`050-model-qualification` is Suspended while its candidate model is stopped). Each component renders `gitops/stages/<stage>/apps/<component>/` and keeps the stage prefix; `base/` renders their union for validation. `deploy.sh` applies all components at one reviewed revision and validation requires each of them Synced and Healthy at that revision. The layout rules are in `.agents/rules/gitops.md`.
 
 ### Moving objects between Applications
 
@@ -638,7 +638,7 @@ The native Perses operator synchronizes the existing RHOAI dashboards/datasource
 
 Stage 020 source installs native NFD, NVIDIA GPU Operator and Red Hat build of Kueue, plus CPU and reserved GPU queue/profile identities. Reviewed Manual lifecycle selections are `nfd.4.22.0-202609212027` (`stable`), `gpu-operator-certified.v26.7.1` (`v26.7`) and `kueue-operator.v1.4.2` (`stable-v1.4`). `startingCSV` selects the initial version; subsequent InstallPlans need explicit review. No fixed Red Hat-tested RHOAI/operator tuple is claimed.
 
-Generate the environment overlay from one explicitly selected active AWS CPU worker MachineSet. Review its native provider references and two exclusive L40S workers with 200Gi encrypted gp3 disks, then publish it. The deploy preflight checks published source, existing ownership, provider cert-manager and the healthy Stage 010 Kueue delegation before applying only the Stage 020 Application. It never repoints Stage 010 or changes CPU capacity. NFD, driver, validator and DCGM operands remain operator-owned.
+Generate the environment overlay from one explicitly selected active AWS CPU worker MachineSet. Review its native provider references and two exclusive L40S workers with 200Gi encrypted gp3 disks, then publish it. The deploy preflight checks published source, existing ownership, provider cert-manager and the healthy Stage 010 Kueue delegation before applying only the Stage 020 component Applications. It never repoints Stage 010 or changes CPU capacity. NFD, driver, validator and DCGM operands remain operator-owned.
 
 Stage 020 patches only `default-dsc.spec.components.kueue` to `Unmanaged` with `autoCreateQueues: false`. The native integration creates the Kueue singleton; GitOps owns ClusterQueues, LocalQueues and profiles. The CPU queue and two-unit reserved GPU queue are the supported topology; unused zero-quota shared/priority resources and the unconsumed priority class are removed. Global profiles require matching LocalQueues in every consuming project; this stage provisions them only in `demo-sandbox`.
 
@@ -912,7 +912,7 @@ argocd app delete 070-advanced-app-platform --cascade
 for app in $(python3 scripts/shared/stage_apps.py names 050); do argocd app delete "$app" --cascade; done
 for app in $(python3 scripts/shared/stage_apps.py names 040); do argocd app delete "$app" --cascade; done
 argocd app delete 030-private-model-serving --cascade
-argocd app delete 020-gpu-infrastructure-private-ai --cascade
+for app in $(python3 scripts/shared/stage_apps.py names 020); do argocd app delete "$app" --cascade; done
 argocd app delete 010-openshift-ai-platform-foundation --cascade
 ```
 

@@ -4,7 +4,7 @@
 A regrouped stage keeps one Argo CD Application per component in
 gitops/argocd/app-of-apps/<NNN-stage>/<component>.yaml. The components of a stage are always
 deployed together at one reviewed revision, in the order of their demo.rhoai.io/deploy-order
-annotation; the stage's base/ kustomization renders exactly their union, so validators keep
+annotation; the stage's base/ (or overlays/environment for Stage 020) kustomization renders exactly their union, so validators keep
 reading one desired state.
 
 Import it from Python (sys.path.insert(0, "<repo>/scripts/shared"); import stage_apps) or use the CLI:
@@ -230,13 +230,19 @@ def stamped(stage, revision, repo_url, root=ROOT):
     return apps
 
 
+def aggregate_path(stage, root=ROOT):
+    """The stage's union kustomization: overlays/environment for a cluster-specific stage (020), else base."""
+    stage_root = Path(_components(stage, str(root))[0]["spec"]["source"]["path"]).parent.parent
+    environment = stage_root / "overlays/environment"
+    return environment if (Path(root) / environment / "kustomization.yaml").exists() else stage_root / "base"
+
+
 def check_static(stage, root=ROOT):
     """Components render disjoint object sets whose union is exactly the stage base render."""
     owners(stage, root)  # raises on overlap
     base = {}
     apps = _components(stage, str(root))
-    base_path = Path(apps[0]["spec"]["source"]["path"]).parent.parent / "base"
-    for obj in render(base_path, root):
+    for obj in render(aggregate_path(stage, root), root):
         base[suffix(obj)] = obj
     union = {}
     for app in apps:
@@ -275,7 +281,7 @@ def main():
     elif args.command == "owner":
         print(owner(args.stage, args.kind, args.name, args.namespace, args.group))
     elif args.command == "check-static":
-        print("PASS Stage " + args.stage + ": " + str(len(names(args.stage))) + " components render " + str(check_static(args.stage)) + " objects, disjoint and equal to base")
+        print("PASS Stage " + args.stage + ": " + str(len(names(args.stage))) + " components render " + str(check_static(args.stage)) + " objects, disjoint and equal to " + str(aggregate_path(args.stage)))
     return 0
 
 

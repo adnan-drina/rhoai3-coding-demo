@@ -1,22 +1,26 @@
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: 020-gpu-infrastructure-private-ai
+  name: 020-node-feature-discovery
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/instance: openshift-gitops
     demo.rhoai.io/stage: '020'
+    app.kubernetes.io/name: node-feature-discovery
+    app.kubernetes.io/component: node-feature-discovery
   annotations:
     argocd.argoproj.io/sync-wave: '2'
-    argocd.argoproj.io/manifest-generate-paths: /gitops/stages/020-gpu-infrastructure-private-ai
+    argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/020-gpu-infrastructure-private-ai"
     argocd.argoproj.io/compare-options: ServerSideDiff=true
+    demo.rhoai.io/deploy-order: '1'
 spec:
   project: rhoai-demo
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/020-gpu-infrastructure-private-ai/overlays/environment
+    path: gitops/stages/020-gpu-infrastructure-private-ai/apps/node-feature-discovery
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops
@@ -35,10 +39,3 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 3m
-  ignoreDifferences:
-  - group: machine.openshift.io
-    kind: MachineSet
-    name: ocp-wzxl7-gpu-us-east-2a
-    namespace: openshift-machine-api
-    jsonPointers:
-    - /spec/replicas
