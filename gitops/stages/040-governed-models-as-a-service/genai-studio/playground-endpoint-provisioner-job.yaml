@@ -37,8 +37,8 @@ spec:
             runAsNonRoot: true
             seccompProfile: {type: RuntimeDefault}
           resources:
-            requests: {cpu: 50m, memory: 64Mi}
-            limits: {cpu: 500m, memory: 256Mi}
+            requests: {cpu: 50m, memory: 256Mi}
+            limits: {cpu: 500m, memory: 1Gi}  # the oc client in ose-cli was OOMKilled at 256Mi
           command:
             - /bin/bash
             - -ceu
