@@ -145,7 +145,12 @@ Tag version-sensitive information explicitly. When official documentation confli
 ## Official Docs Remain The Source Of Truth
 
 - Local documentation supplements, but does not replace, official Red Hat documentation.
-- Prefer official Red Hat documentation links for product behavior.
+- Prefer official Red Hat documentation links for product behavior. Link the
+  section (with its anchor) at the product's `docs_version` in
+  `.agents/references/red-hat-doc-map.yaml`; do not paste documentation text
+  into READMEs or skills.
+- `scripts/shared/check-doc-links.py` checks docs.redhat.com link versions in
+  component READMEs (`gitops/stages/*/*/README.md`) and skills.
 - Prefer upstream project documentation only for open source internals not covered by Red Hat docs.
 
 ## Architecture Diagrams
