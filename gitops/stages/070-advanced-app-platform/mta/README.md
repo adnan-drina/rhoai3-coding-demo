@@ -5,7 +5,7 @@ This Application installs Migration Toolkit for Applications (MTA) 8.3.1 in `ope
 | | |
 |---|---|
 | Argo CD Application | `070-mta` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/mta.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `application.py deploy` (deploy-order 6) |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 6) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh`: operator rows plus the steps "MTA 8.3 native Agents", "MTA Developer Lightspeed proxy" and "Optional MTA Solution Server"; `security-status.py`; static `product-schemas.test.py`, `stage070-upgrade.test.py`, `correction-package.test.py` |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`. `ignoreDifferences`: OperatorGroup annotation `olm.providedAPIs` (OLM-owned); Subscription `startingCSV`; ConsoleLink `mta` `href`/`imageURL`; Tackle `mta` `/spec/kai_llm_baseurl`; Gateway `maas-qwen` `/spec/endpoint` |
 | Depends on | `070-namespaces` (`openshift-mta`, `openshift-vertical-pod-autoscaler` and the workspace namespaces `wksp-*`); `070-identity` (Secret `openshift-mta/stage070-mta-provisioner`, a platform-realm client with realm/user/client administration); Stage 040 (`maas-default-gateway`, the MaaS API and the CRDs `MaaSSubscription`/`MaaSAuthPolicy`); Stage 040/030 model `qwen3-8-27b` in `internal-models`; Stage 060 (Agent Sandbox controller) |

@@ -28,7 +28,7 @@ log_step 'Stage 070 GitOps and selected operators'
 while IFS= read -r app; do check_argocd_app "$app"; done < <(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" names 070)
 revision_args=()
 [[ -z "$EXPECTED_REVISION" ]] || revision_args=(--revision "$EXPECTED_REVISION")
-if "$PYTHON" "$SCRIPT_DIR/application.py" status --repo-url "$GIT_REPO_URL" ${revision_args[@]+"${revision_args[@]}"}; then
+if "$PYTHON" "$REPO_ROOT/scripts/shared/stage_apps.py" status 070 --repo-url "$GIT_REPO_URL" ${revision_args[@]+"${revision_args[@]}"}; then
   check 'Stage 070 immutable source and completed native operation' 'echo PASS' 'PASS'
 else
   check 'Stage 070 immutable source and completed native operation' 'echo FAIL' 'PASS'

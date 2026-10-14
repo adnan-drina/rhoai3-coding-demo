@@ -603,7 +603,7 @@ oc annotate application 070-devspaces -n openshift-gitops argocd.argoproj.io/ref
 Rollback to the stable platform branch:
 
 ```bash
-# Re-pin every Stage 070 component to the reviewed commit (application.py pins and orders them).
+# Re-pin every Stage 070 component to the reviewed commit (stage_apps.py deploy 070 pins and orders them).
 ./stages/070-advanced-app-platform/deploy.sh
 ```
 

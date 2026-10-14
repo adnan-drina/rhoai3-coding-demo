@@ -5,7 +5,7 @@ This Application runs the private source-control service of the developer platfo
 | | |
 |---|---|
 | Argo CD Application | `070-gitlab` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/gitlab.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `application.py deploy` (deploy-order 7) |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 7) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (GitLab release, readiness, bucket, Route, integration-Secret checks; `security-status.py`); `validate.sh --static` (`chart-gitops.test.py`, `stage070-upgrade.test.py`, `security-boundaries.test.py`) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on `/spec/volumeName` of PVCs `gitlab-postgresql-data` and `gitlab-valkey-data` |
 | Depends on | `070-namespaces` (`gitlab-system`, `app-platform-build`, `rhdh` and the other target namespaces); `070-identity` (Secret `stage070-scm-provisioner` in `gitlab-system`, platform realm and persona links); `070-devspaces` (CheCluster `devspaces`, standing DevWorkspaces `agentic-coolstore`); `070-mta` (Route `mta`); existing Keycloak, NooBaa (`openshift-storage.noobaa.io`, Route `s3`), `gp3-csi` and OpenShift GitOps |
@@ -17,7 +17,7 @@ The workshop keeps application source inside the cluster boundary. GitLab CE pro
 
 GitLab's Helm chart needs external PostgreSQL, Redis or Valkey, and object storage [1]. The chart is rendered offline during authoring by `scripts/platform/render-stage070-charts.py`, from the archive and image digests pinned in `scripts/platform/stage070-charts.lock.json`. Argo CD then applies plain Kustomize resources: there is no Helm release, chart inflation at sync time or GitLab Operator. Every object and image digest is reviewable in Git, and Argo CD remains the single owner. The renderer assigns sync waves so that the chart's own order still holds: secrets, then database, then migrations, then application pods.
 
-The integration hub lives in this Application because it is the only step that can see all its inputs at once: GitLab ready, Dev Spaces and MTA Routes present, the platform realm configured. Argo CD orders hooks only inside one Application [9], so `application.py` deploys GitLab after Dev Spaces, Pipelines, SonarQube and MTA, and before Developer Hub, whose catalog hook reads the GitLab mirror.
+The integration hub lives in this Application because it is the only step that can see all its inputs at once: GitLab ready, Dev Spaces and MTA Routes present, the platform realm configured. Argo CD orders hooks only inside one Application [9], so `stage_apps.py deploy 070` deploys GitLab after Dev Spaces, Pipelines, SonarQube and MTA, and before Developer Hub, whose catalog hook reads the GitLab mirror.
 
 ## What
 

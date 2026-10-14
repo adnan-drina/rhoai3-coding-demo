@@ -224,7 +224,7 @@ When creating or modifying manifests, verify:
 
 Stages 110, 120, and 130 are workflow-only: they have no Argo CD Application and no `deploy.sh`. Their `validate.sh` scripts validate against resources owned by the Stage 070 component Applications (`python3 scripts/shared/stage_apps.py names 070`).
 
-Stage 070 deploys its components one at a time in deploy order (namespaces, identity, devspaces, pipelines, sonarqube, mta, gitlab, rhdh): its GitLab integration hook and Developer Hub catalog hook depend on the earlier components, and sync waves order hooks only inside one Application. `stages/070-advanced-app-platform/application.py deploy` and `move-applications.py --sequential` keep that order.
+Stage 070 deploys its components one at a time in deploy order (namespaces, identity, devspaces, pipelines, sonarqube, mta, gitlab, rhdh): its GitLab integration hook and Developer Hub catalog hook depend on the earlier components, and sync waves order hooks only inside one Application. `stage_apps.py deploy 070` and `move-applications.py --sequential` keep that order.
 
 ## MaaS and Model Access
 

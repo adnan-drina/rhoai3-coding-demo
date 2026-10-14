@@ -21,7 +21,8 @@ import secret_writer
 
 def load(name,path):
  spec=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
-app=load('pinned_application',ROOT/'stages/070-advanced-app-platform/application.py')
+sys.path.insert(0,str(ROOT/'scripts/shared'))
+import stage_apps
 scm=load('correction_enrollment',BASE/'pipelines/gitlab/reconcile.py')
 bootstrap=load('correction_bootstrap',BASE/'gitlab/bootstrap-scm.py')
 identity=load('scoped_identity',BASE/'identity/jobs/configure-scm-identity.py')
@@ -99,59 +100,18 @@ class SecretLifecycle(unittest.TestCase):
   self.assertNotIn(secret_writer.LAST_APPLIED,api.value['metadata'].get('annotations',{}))
 
 class Deployment(unittest.TestCase):
- sha='1'*40;repo='https://source.example/demo.git';name='070-gitlab'
- def ready(self):return {'spec':{'project':'rhoai-demo','source':app.source(self.sha,self.repo,self.name),'destination':app.DESTINATION},'status':{'sync':{'revision':self.sha,'status':'Synced'},'health':{'status':'Healthy'},'operationState':{'phase':'Succeeded','syncResult':{'revision':self.sha}}}}
- def test_exact_operation_is_required(self):
-  for key in ('operation_revision','observed_revision','moving_source','repo','active'):
-   value=self.ready()
-   if key=='operation_revision':value['status']['operationState']['syncResult']['revision']='2'*40
-   elif key=='observed_revision':value['status']['sync']['revision']='2'*40
-   elif key=='moving_source':value['spec']['source']['targetRevision']='main'
-   elif key=='repo':value['spec']['source']['repoURL']='https://foreign.example/demo.git'
-   else:value['operation']={'sync':{}}
-   if key in ('moving_source','repo'):
-    with self.assertRaises(ValueError):app.reconciled(value,self.sha,self.repo,self.name)
-   else:self.assertFalse(app.reconciled(value,self.sha,self.repo,self.name))
-  self.assertTrue(app.reconciled(self.ready(),self.sha,self.repo,self.name))
- def test_failed_hook_is_terminal(self):
-  value=self.ready();value['status']['operationState']['phase']='Failed'
-  with self.assertRaises(ValueError):app.reconciled(value,self.sha,self.repo,self.name)
- def test_previous_revision_failure_does_not_fail_new_operation(self):
-  value=self.ready();value['status']['operationState']['phase']='Failed';value['status']['operationState']['syncResult']['revision']='2'*40
-  self.assertFalse(app.reconciled(value,self.sha,self.repo,self.name))
- def test_bounded_wait_observes_delayed_completion(self):
-  now=[0];sleep=lambda seconds:now.__setitem__(0,now[0]+seconds)
-  pending=self.ready();pending['status']['health']['status']='Progressing';states=iter([pending,pending,self.ready()])
-  app.wait(self.sha,self.repo,30,self.name,reader=lambda:next(states),clock=lambda:now[0],sleep=sleep);self.assertEqual(now[0],20)
-  with self.assertRaises(TimeoutError):app.wait(self.sha,self.repo,15,self.name,reader=lambda:pending,clock=lambda:now[0],sleep=sleep)
-  self.assertEqual(now[0],35)
- def test_source_rejects_credentials_and_moving_revision(self):
-  for revision,repo in [('main',self.repo),(self.sha,'https://token@example.test/repo.git'),(self.sha,self.repo+'?token=secret')]:
-   with self.assertRaises(ValueError):app.source(revision,repo,self.name)
- def test_render_keeps_existing_destination_and_has_effective_diff(self):
-  self.assertEqual(app.names()[-2:],['070-gitlab','070-rhdh'])
-  value=app.application(self.sha,self.repo,self.name)
-  self.assertEqual(value['spec']['destination'],{'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'})
-  self.assertEqual(value['metadata']['annotations']['argocd.argoproj.io/compare-options'],'ServerSideDiff=true')
-  self.assertNotIn('ServerSideDiff=true',value['spec']['syncPolicy']['syncOptions'])
-  claims=[x for x in value['spec']['ignoreDifferences'] if x.get('kind')=='PersistentVolumeClaim']
+ # Deploy behaviour (revision selection, sync, wait) is tested in scripts/shared/stage_apps.test.py.
+ sha='1'*40;repo='https://source.example/demo.git'
+ def test_components_deploy_in_order_sequentially_with_server_side_diff(self):
+  apps=stage_apps.stamped('070',self.sha,self.repo)
+  self.assertEqual([a['metadata']['name'] for a in apps][0],'070-namespaces');self.assertEqual([a['metadata']['name'] for a in apps][-2:],['070-gitlab','070-rhdh'])
+  self.assertEqual(len(stage_apps.deploy_groups(apps)),len(apps))
+  for value in apps:
+   self.assertEqual(value['spec']['destination'],{'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'})
+   self.assertEqual(value['metadata']['annotations']['argocd.argoproj.io/compare-options'],'ServerSideDiff=true')
+   self.assertNotIn('ServerSideDiff=true',value['spec']['syncPolicy']['syncOptions'])
+  claims=[x for a in apps for x in a['spec'].get('ignoreDifferences',[]) if x.get('kind')=='PersistentVolumeClaim']
   self.assertTrue(claims);self.assertTrue(all(x.get('name') and x.get('namespace') and x['jsonPointers']==['/spec/volumeName'] for x in claims))
- def test_git_source_selection_rejects_dirty_untracked_and_unpublished(self):
-  with tempfile.TemporaryDirectory() as temp:
-   root=Path(temp)/'repo';remote=Path(temp)/'remote.git';root.mkdir()
-   def git(*a):return subprocess.check_output(['git','-C',str(root),*a],stderr=subprocess.DEVNULL,text=True).strip()
-   git('init');git('config','user.name','Fixture');git('config','user.email','fixture@example.invalid')
-   file=root/'stages/070-advanced-app-platform/deploy.sh';file.parent.mkdir(parents=True);file.write_text('initial')
-   git('add','.');git('commit','-m','fixture');sha=git('rev-parse','HEAD');subprocess.run(['git','init','--bare',str(remote)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True);git('push',str(remote),'HEAD:main')
-   env={'GIT_CONFIG_COUNT':'1','GIT_CONFIG_KEY_0':'url.'+remote.as_uri()+'.insteadOf','GIT_CONFIG_VALUE_0':self.repo}
-   with patch.dict(os.environ,env):
-    self.assertEqual(app.select_revision('HEAD',self.repo,root),sha)
-    file.write_text('dirty')
-    with self.assertRaises(subprocess.CalledProcessError):app.select_revision('HEAD',self.repo,root)
-    file.write_text('initial');extra=file.parent/'extra';extra.write_text('untracked')
-    with self.assertRaises(ValueError):app.select_revision('HEAD',self.repo,root)
-    git('add','.');git('commit','-m','unpublished')
-    with self.assertRaisesRegex(ValueError,'not advertised'):app.select_revision('HEAD',self.repo,root)
 
 class EnrollmentErrors(unittest.TestCase):
  def test_permanent_failures_are_never_pending(self):
@@ -375,19 +335,6 @@ class NativeSyncAndIngress(unittest.TestCase):
   subprocess.run(['/bin/bash','-n'],input=script,text=True,check=True)
   for changed in ('changed upstream',old+'\n'+old):
    with self.assertRaises(ValueError):renderer.rails_secret_writer(changed)
- def test_auto_started_exact_sync_is_reused(self):
-  value={'spec':{'project':'rhoai-demo','destination':app.DESTINATION,'source':app.source('1'*40,'https://example.com/demo.git','070-gitlab')},'operation':{'sync':{'revision':'1'*40}}}
-  with patch.object(app,'read',return_value=value),patch.object(app,'run') as command:
-   app.sync('1'*40,'https://example.com/demo.git','070-gitlab');command.assert_not_called()
-  value['operation']['sync']['revision']='2'*40
-  with patch.object(app,'read',return_value=value),patch.object(app,'run') as command:
-   with self.assertRaisesRegex(ValueError,'different'):app.sync('1'*40,'https://example.com/demo.git','070-gitlab')
-   command.assert_not_called()
- def test_new_native_sync_is_full_and_prunes_obsolete_owners(self):
-  value={'spec':{'project':'rhoai-demo','destination':app.DESTINATION,'source':app.source('1'*40,'https://example.com/demo.git','070-gitlab')}}
-  with patch.object(app,'read',return_value=value),patch.object(app,'run') as command:app.sync('1'*40,'https://example.com/demo.git','070-gitlab')
-  operation=json.loads(command.call_args.kwargs['input'])['operation']['sync']
-  self.assertTrue(operation['prune']);self.assertIn('ApplyOutOfSyncOnly=false',operation['syncOptions']);self.assertNotIn('resources',operation)
  def test_ingress_contract_preserves_only_declared_cross_namespace_path(self):
   policies=[p for path in sorted(BASE.glob('*/network-policy.yaml')) for p in yaml.safe_load_all(path.read_text())]
   self.assertEqual({p['metadata']['namespace'] for p in policies},{'gitlab-system','sonarqube','rhdh','app-platform-build','trusted-artifact-signer'})

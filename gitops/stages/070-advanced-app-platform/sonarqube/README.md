@@ -5,7 +5,7 @@ This Application runs SonarQube Community Build with its own PostgreSQL database
 | | |
 |---|---|
 | Argo CD Application | `070-sonarqube` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/sonarqube.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `application.py deploy` (deploy-order 5) |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 5) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (live checks "SonarQube ready" and "SonarQube reachable", plus `security-status.py`); `validate.sh --static` (`sonarqube-bootstrap.test.py`, `sso-alignment.test.py`, `chart-gitops.test.py`, `correction-package.test.py`) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on `/spec/volumeName` of PVCs `sonardb-data` and `sonarqube` |
 | Depends on | `070-namespaces` (the `sonarqube` and `app-platform-build` namespaces); `070-identity` (SAML client `sonarqube` in the base `sso` realm); Stage 010 (the existing Keycloak `rhbk` OpenID provider in the cluster OAuth config) |
@@ -62,7 +62,7 @@ Not in Git: Secrets `sonardb`, `sonarqube-monitoring` and `sonarqube-admin` (cre
 
 ## How
 
-- **Order.** The database Secret Job (wave 4) runs before PostgreSQL (waves 5–6). The SonarQube StatefulSet (wave 10) must be ready before the configuration Job (wave 11) runs. Inside one Application the waves give this order. Across Applications, `application.py` deploys `070-sonarqube` fifth, after `070-namespaces` has created `sonarqube` and `app-platform-build`.
+- **Order.** The database Secret Job (wave 4) runs before PostgreSQL (waves 5–6). The SonarQube StatefulSet (wave 10) must be ready before the configuration Job (wave 11) runs. Inside one Application the waves give this order. Across Applications, `stage_apps.py deploy 070` deploys `070-sonarqube` fifth, after `070-namespaces` has created `sonarqube` and `app-platform-build`.
 - **Admin credential.** `bootstrap-admin.py` stores a random password in `sonarqube-admin` with the annotation `rhoai3.redhat.com/password-bootstrap: pending` before it changes the default `admin` password. It marks the Secret `ready` only after it verifies the new password. A rerun therefore resumes an interrupted rotation and never resets an unknown credential.
 - **Control token.** The Job reuses the existing token in `app-platform-build/sonarqube-credentials` while it still authenticates. Otherwise it mints a new `platform-pipeline` token. `secret_writer.py` writes the Secret with keys `host` and `token`, and writes no `last-applied-configuration` annotation. The host is the in-cluster Service address that scanners use. `rotate-credentials.py` rotates this token through the HTTPS Route.
 - **Quality gate.** The Job creates `AI Platform Gate` with the condition `new_violations > 0` and makes it the default gate.

@@ -14,7 +14,10 @@ elif [[ $# -ne 0 ]]; then
 fi
 require_env GIT_REPO_URL "reviewed Stage 070 source repository"
 assert_required_env
-REVISION=$(python3 "$SCRIPT_DIR/application.py" select --revision "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL")
+STAGE_APPS="$REPO_ROOT/scripts/shared/stage_apps.py"
+REVISION=$(python3 "$STAGE_APPS" select 070 --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" \
+  --extra scripts/platform/require-node-sizing.sh --extra scripts/platform/render-stage070-charts.py \
+  --extra scripts/platform/stage070-charts.lock.json --extra scripts/platform/build-stage070-platform-tools.sh)
 "$REPO_ROOT/scripts/platform/require-node-sizing.sh"
 
 log_step "Stage 070: GitLab and advanced application platform"
@@ -66,9 +69,11 @@ fi
 # First cluster mutation: install the component Argo CD owners. Publish/review the
 # configured source revision before invoking this script; local edits are not
 # a deployment source. Credentials and chart migrations are native sync hooks.
-# Components deploy one at a time in their deploy order (application.py): sync waves
-# order hooks only inside one Application.
-python3 "$SCRIPT_DIR/application.py" deploy --revision "$REVISION" --repo-url "$GIT_REPO_URL" --timeout "${STAGE070_SYNC_TIMEOUT:-3600}"
+# The components declare deploy-mode sequential: each is applied, synced and waited for before the next, because
+# sync waves order hooks only inside one Application. A component already synced at this commit is not re-synced;
+# pass STAGE070_RESYNC=true to re-run every component's hooks.
+python3 "$STAGE_APPS" deploy 070 --revision "$REVISION" --repo-url "$GIT_REPO_URL" \
+  --timeout "${STAGE070_SYNC_TIMEOUT:-3600}" ${STAGE070_RESYNC:+--resync}
 
 log_info "Argo CD installs identity clients, GitLab/NooBaa storage, Dev Spaces,"
 log_info "Pipelines/TAS, SonarQube, Developer Hub and MTA 8.3 with AI components."

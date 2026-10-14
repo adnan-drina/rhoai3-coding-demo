@@ -5,7 +5,7 @@ This Application installs Red Hat OpenShift Dev Spaces 3.30 and the workspace si
 | | |
 |---|---|
 | Argo CD Application | `070-devspaces` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/devspaces.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `application.py deploy` (deploy-order 3) |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 3) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (operator, "Existing identity and Dev Spaces" and credential checks); `validate.sh --static` (authoring tests) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; retry 10 times with backoff |
 | Depends on | `070-namespaces` (deploy-order 1), `070-identity` (deploy-order 2); Stage 040 (`maas-default-gateway` and the `devspaces-coding-models` subscription); `gp3-csi` storage class |

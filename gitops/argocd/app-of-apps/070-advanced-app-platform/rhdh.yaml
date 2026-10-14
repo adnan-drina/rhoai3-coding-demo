@@ -17,6 +17,7 @@ metadata:
     argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/070-advanced-app-platform"
     argocd.argoproj.io/compare-options: ServerSideDiff=true
     demo.rhoai.io/deploy-order: '8'
+    demo.rhoai.io/deploy-mode: sequential
 spec:
   project: rhoai-demo
   source:

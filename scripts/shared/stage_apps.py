@@ -10,6 +10,8 @@ renders exactly the union of all components, so validators read one desired stat
 
 Import it from Python (sys.path.insert(0, "<repo>/scripts/shared"); import stage_apps) or use the CLI:
 
+  stage_apps.py select STAGE --ref REF --repo-url URL               # reviewed, published commit of the stage source
+  stage_apps.py deploy STAGE --revision SHA --repo-url URL [--resync] # apply, sync and wait for every component
   stage_apps.py names STAGE
   stage_apps.py applications STAGE --revision SHA --repo-url URL   # JSON List to `oc apply -f -`
   stage_apps.py status STAGE [--revision SHA]                      # exit 1 unless all reconciled
@@ -24,6 +26,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,6 +38,9 @@ SCRIPT = "demo.rhoai.io/deploy-script"
 # Health states besides Healthy a component may report by design, e.g. "Suspended" for a deliberately stopped model.
 ACCEPTED_HEALTH = "demo.rhoai.io/accepted-health"
 TRACKING = "argocd.argoproj.io/tracking-id"
+# "sequential": deploy() applies, syncs and waits for each deploy-order group before the next (sync waves order hooks
+# only inside one Application; Stage 070's later components' hooks need the earlier ones).
+DEPLOY_MODE = "demo.rhoai.io/deploy-mode"
 
 
 def load_yaml_stream(text):
@@ -224,12 +230,31 @@ def stage_problems(stage, revision=None, repo_url=None, root=ROOT, separate=Fals
     return problems
 
 
-def start_syncs(stage, root=ROOT, only=None):
-    """Start one sync for each deployed component whose last operation is not a successful sync of its current source.
+def sync_operation(app, initiator):
+    """One hook-strategy sync of the Application's current target, carrying its own syncOptions (a bare operation.sync
+    drops them, so RespectIgnoreDifferences would not apply) and its automated prune setting."""
+    sync = {"revision": app["spec"]["source"]["targetRevision"], "syncStrategy": {"hook": {}}}
+    policy = app["spec"].get("syncPolicy", {})
+    if policy.get("syncOptions"):
+        sync["syncOptions"] = policy["syncOptions"]
+    if (policy.get("automated") or {}).get("prune"):
+        sync["prune"] = True
+    return {"operation": {"initiatedBy": {"username": initiator}, "sync": sync}}
+
+
+def synced_this_source(app):
+    op = app.get("status", {}).get("operationState", {})
+    result, source = op.get("syncResult", {}), app["spec"]["source"]
+    return (op.get("phase") == "Succeeded" and result.get("revision") == source.get("targetRevision")
+            and result.get("source", {}).get("path") == source.get("path"))
+
+
+def start_syncs(stage, root=ROOT, only=None, force=False, initiator="stage-deploy"):
+    """Start one sync for each deployed component whose last operation is not a successful sync of its current source
+    (every one with force=True, which re-runs its hooks).
 
     Argo CD reports Synced at a new revision without running an operation when the render is unchanged, so automated
-    sync alone never runs hooks or produces the operation stage_problems() requires. The sync carries the
-    Application's own syncOptions (a bare operation.sync drops RespectIgnoreDifferences)."""
+    sync alone never runs hooks or produces the operation stage_problems() requires."""
     started = []
     for desired in _deployed(stage, str(root), bool(only)):
         name = desired["metadata"]["name"]
@@ -238,20 +263,14 @@ def start_syncs(stage, root=ROOT, only=None):
         app = get_application(name)
         if not app:
             continue
-        source, status = app["spec"]["source"], app.get("status", {})
-        operation = status.get("operationState", {})
-        result = operation.get("syncResult", {})
+        operation = app.get("status", {}).get("operationState", {})
         if app.get("operation") or operation.get("phase") in ("Running", "Terminating"):
             continue
-        if operation.get("phase") == "Succeeded" and result.get("revision") == source.get("targetRevision") \
-                and result.get("source", {}).get("path") == source.get("path"):
+        if synced_this_source(app) and not force:
             continue
-        sync = {"revision": source["targetRevision"], "syncStrategy": {"hook": {}}}
-        if app["spec"].get("syncPolicy", {}).get("syncOptions"):
-            sync["syncOptions"] = app["spec"]["syncPolicy"]["syncOptions"]
-        patch = {"operation": {"initiatedBy": {"username": "stage-deploy"}, "sync": sync}}
         result = subprocess.run(["oc", "--request-timeout=10s", "patch", "applications.argoproj.io", name, "-n", NAMESPACE,
-                                 "--type", "merge", "-p", json.dumps(patch)], capture_output=True, text=True, timeout=20)
+                                 "--type", "merge", "-p", json.dumps(sync_operation(app, initiator))],
+                                capture_output=True, text=True, timeout=20)
         if result.returncode:
             raise RuntimeError("Could not start a sync of " + name)
         started.append(name)
@@ -279,6 +298,92 @@ def stage_revision(stage, root=ROOT):
     if len(revisions) != 1:
         raise RuntimeError("Stage " + stage + " components are at different revisions")
     return revisions.pop()
+
+
+def scope(stage, root=ROOT):
+    """Repository paths that make up a stage's deployed source."""
+    name = stage_dir(stage, root).name
+    return ["gitops/stages/" + name, "gitops/argocd/app-of-apps/" + name, "stages/" + name, "scripts/shared"]
+
+
+def git(root, *args):
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=True, timeout=60).stdout
+
+
+def select_revision(stage, ref, repo_url, root=ROOT, extra=()):
+    """The full commit of ref, provided the stage source in the checkout is exactly that commit (no edits, nothing
+    untracked) and the configured repository advertises it: only reviewed, published source is deployed."""
+    commit = git(root, "rev-parse", "--verify", ref + "^{commit}").strip()
+    paths = scope(stage, root) + list(extra)
+    if subprocess.run(["git", "-C", str(root), "diff", "--quiet", commit, "--", *paths], timeout=60).returncode:
+        raise RuntimeError("Stage " + stage + " source differs from " + commit[:12] + "; commit and publish it first")
+    if git(root, "ls-files", "--others", "--exclude-standard", "--", *paths).strip():
+        raise RuntimeError("Untracked Stage " + stage + " source is not in " + commit[:12])
+    advertised = {line.split()[0] for line in git(root, "ls-remote", repo_url).splitlines() if line.strip()}
+    if commit not in advertised:
+        raise RuntimeError(commit[:12] + " is not advertised by " + repo_url + " (push it first)")
+    return commit
+
+
+def failed_at(app, revision):
+    """True when the last operation for this revision ended Failed or Error and nothing is running: waiting longer
+    cannot help (inspect the hook that failed)."""
+    op = app.get("status", {}).get("operationState", {})
+    op_revision = op.get("syncResult", {}).get("revision") or op.get("operation", {}).get("sync", {}).get("revision")
+    return not app.get("operation") and op_revision == revision and op.get("phase") in ("Failed", "Error")
+
+
+def wait_for(stage, names, revision, repo_url, timeout, root=ROOT, reader=None, clock=time.monotonic, sleep=time.sleep):
+    """Wait until every named component is reconciled at revision; raise on a failed operation or the deadline."""
+    reader = reader or get_application
+    desired = {a["metadata"]["name"]: a for a in _deployed(stage, str(root), True)}
+    deadline = clock() + timeout
+    while True:
+        problems = []
+        for name in names:
+            app = reader(name)
+            if not app:
+                problems.append(name + ": missing")
+                continue
+            if failed_at(app, revision):
+                raise RuntimeError(name + ": sync at " + revision[:12] + " failed; inspect its hooks")
+            want = desired[name]
+            problems += app_problems(app, revision, repo_url, want["spec"]["source"]["path"], accepted_health(want),
+                                     want["spec"]["destination"])
+        if not problems:
+            return
+        if clock() >= deadline:
+            raise RuntimeError("not reconciled in time: " + "; ".join(problems))
+        sleep(min(10, max(0, deadline - clock())))
+
+
+def deploy_groups(apps):
+    """Deploy-order groups: one group per order value when any component asks for sequential deploys, else one."""
+    if not any(a["metadata"].get("annotations", {}).get(DEPLOY_MODE) == "sequential" for a in apps):
+        return [apps]
+    groups = {}
+    for app in apps:
+        groups.setdefault(int(app["metadata"]["annotations"][ORDER]), []).append(app)
+    return [groups[k] for k in sorted(groups)]
+
+
+def deploy(stage, revision, repo_url, timeout=1800, resync=False, root=ROOT, log=print):
+    """Apply every deploy-order component pinned to revision, start a sync where its current source has not been
+    synced (all of them with resync), and wait until each is reconciled; sequential groups wait in between."""
+    summary = []
+    for group in deploy_groups(stamped(stage, revision, repo_url, root)):
+        names = [a["metadata"]["name"] for a in group]
+        for app in group:
+            out = subprocess.run(["oc", "--request-timeout=15s", "apply", "-f", "-"], input=json.dumps(app),
+                                 capture_output=True, text=True, timeout=60)
+            if out.returncode:
+                raise RuntimeError("Could not apply " + app["metadata"]["name"] + ": " + out.stderr.strip()[:300])
+            summary.append(out.stdout.strip())
+        started = start_syncs(stage, root, only=names, force=resync)
+        log("applied " + ", ".join(names) + " at " + revision[:12] + ("; started sync of " + ", ".join(started) if started else "; no sync needed"))
+        wait_for(stage, names, revision, repo_url, timeout, root)
+        log("PASS " + ", ".join(names) + " Synced and Healthy at " + revision[:12])
+    return summary
 
 
 def stamped(stage, revision, repo_url, root=ROOT):
@@ -384,6 +489,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("names").add_argument("stage")
+    p = sub.add_parser("select")
+    p.add_argument("stage"); p.add_argument("--ref", default="HEAD"); p.add_argument("--repo-url", required=True)
+    p.add_argument("--extra", action="append", default=[], help="another path the stage deploys from (repeatable)")
+    p = sub.add_parser("deploy")
+    p.add_argument("stage"); p.add_argument("--revision", required=True); p.add_argument("--repo-url", required=True)
+    p.add_argument("--timeout", type=int, default=1800, help="seconds per deploy group")
+    p.add_argument("--resync", action="store_true", help="sync every component even if this source is already synced (re-runs hooks)")
     p = sub.add_parser("applications")
     p.add_argument("stage"); p.add_argument("--revision", required=True); p.add_argument("--repo-url", required=True)
     p = sub.add_parser("status")
@@ -399,6 +511,11 @@ def main():
     args = parser.parse_args()
     if args.command == "names":
         print("\n".join(names(args.stage)))
+    elif args.command == "select":
+        print(select_revision(args.stage, args.ref, args.repo_url, extra=args.extra))
+    elif args.command == "deploy":
+        for line in deploy(args.stage, args.revision, args.repo_url, args.timeout, args.resync, log=lambda m: print(m, flush=True)):
+            print("  " + line)
     elif args.command == "applications":
         print(json.dumps({"apiVersion": "v1", "kind": "List", "items": stamped(args.stage, args.revision, args.repo_url)}))
     elif args.command == "status":

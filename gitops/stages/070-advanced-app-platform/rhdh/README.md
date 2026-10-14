@@ -5,7 +5,7 @@ This Application installs Red Hat Developer Hub 1.10 as the developer portal of 
 | | |
 |---|---|
 | Argo CD Application | `070-rhdh` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/rhdh.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `application.py` (deploy-order 8, last) |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 8, last) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (operator, portal, catalog and security checks); `validate.sh --static` (catalog renderer and template tests) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on OperatorGroup annotation `olm.providedAPIs` (OLM-owned), Subscription `startingCSV`, Secret `rhdh-secrets` `/data`, ConsoleLink `rhdh` `href`/`imageURL` |
 | Depends on | `070-namespaces` (`rhdh-operator`, `rhdh`); `070-identity` (Secret `stage070-rhdh-provisioner`, a `platform`-realm client that may manage clients); `070-gitlab` (GitLab mirror of the platform repository at the synced commit, Secrets `rhdh-gitlab` and `gitlab-catalog-reader`, ConfigMap `gitlab-platform-config`, Argo CD reader token `rhdh-argocd-reader`); `070-devspaces`, `070-sonarqube` and the Coolstore enrollment in `coolstore-dev` (Routes used for links); Stage 040 (`maas-default-gateway` and `maas-gateway-internal` for migration workspaces); Stage 010 (Keycloak) |
@@ -17,7 +17,7 @@ The platform needs one self-service entry point where a developer finds approved
 
 The portal is installed by its Operator and configured only through the `Backstage` custom resource, ConfigMaps and Secrets. This is the documented Operator path [1][5]. The catalog is generated at sync time from a bundle that Kustomize builds from the same checkout. The bundle name carries a content hash, so a catalog or template change is a manifest change Argo CD applies. The generator publishes only when every bundled file is byte-identical to the file in the GitLab mirror at the synced commit. Template links, skeletons and TechDocs therefore always point to one immutable revision.
 
-Developer Hub is the last component in the deploy order. Its catalog hook needs the GitLab mirror and the scoped GitLab credentials that `070-gitlab` creates at wave 14 of its own sync. Sync waves only order resources inside one Application [8], so `application.py` provides the cross-component order.
+Developer Hub is the last component in the deploy order. Its catalog hook needs the GitLab mirror and the scoped GitLab credentials that `070-gitlab` creates at wave 14 of its own sync. Sync waves only order resources inside one Application [8], so `stage_apps.py deploy 070` provides the cross-component order.
 
 ## What
 
