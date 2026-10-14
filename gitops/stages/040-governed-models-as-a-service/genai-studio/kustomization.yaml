@@ -1,0 +1,19 @@
+# Gen AI studio playground: endpoints, agent profile, MCP server list and state PVC (data).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: rhoai3-coding-demo
+      demo.rhoai.io/stage: "040"
+
+resources:
+  - playground-endpoint-provisioner-rbac.yaml
+  - playground-endpoint-provisioner-job.yaml
+  - openshift-ops-assistant-prompt.yaml
+  - agent-prompt-provisioner-rbac.yaml
+  - agent-prompt-provisioner-job.yaml
+  - agent-profile-openshift-ops-assistant.yaml
+  - genai-playground-state-pvc.yaml
+  - mcp

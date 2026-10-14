@@ -1,0 +1,15 @@
+# MaaS subscriptions and auth policies: who can use which model.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: rhoai3-coding-demo
+      demo.rhoai.io/stage: "040"
+
+resources:
+  - devspaces-coding-models-access.yaml
+  - personal-users-access.yaml
+  - playground-sandbox-access.yaml
+  - model-qualification-access.yaml

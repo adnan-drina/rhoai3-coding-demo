@@ -51,8 +51,9 @@ stages/NNN-descriptive-slug/
   deploy.sh
   validate.sh
 gitops/
-  argocd/app-of-apps/NNN-descriptive-slug.yaml
-  stages/NNN-descriptive-slug/base/kustomization.yaml
+  argocd/app-of-apps/NNN-descriptive-slug/<component>.yaml   # one Application per component, named NNN-<component>
+  stages/NNN-descriptive-slug/kustomization.yaml              # union of the component folders
+  stages/NNN-descriptive-slug/<component>/kustomization.yaml  # one folder per Application (layout: .agents/rules/gitops.md)
 ```
 
 Stages that patch shared platform resources (e.g., RHOAI DataScienceCluster, OpenShift GitOps bootstrap) record the shared owner path and avoid duplicate full-resource ownership.

@@ -43,11 +43,11 @@ bash -n stages/NNN-name/deploy.sh
 bash -n stages/NNN-name/validate.sh
 ./scripts/platform/validate-stage-flow.sh
 
-# Kustomize render check
-kustomize build gitops/stages/NNN-name/base/
+# Kustomize render check (components disjoint, union == stage kustomization)
+python3 scripts/shared/stage_apps.py check-static NNN
 
 # Dry-run against cluster (requires oc login)
-kustomize build gitops/stages/NNN-name/base/ | oc apply --dry-run=server -f -
+kustomize build gitops/stages/NNN-name/ | oc apply --dry-run=server -f -
 ```
 
 ### Phase 2: Stage-specific validation (requires live cluster)

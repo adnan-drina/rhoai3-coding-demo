@@ -99,7 +99,7 @@ RHOAI_CSV=$(csv_phase_from_subscription redhat-ods-operator rhods-operator)
 check "RHOAI operator CSV Succeeded" "$R"
 
 # ── 7. RHOAI observability prerequisite operators ────────────────────────────
-python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation/base" --verify
+python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation" --verify
 
 COO_CSV=$(csv_phase_from_subscription openshift-cluster-observability-operator cluster-observability-operator)
 [[ "$COO_CSV" == "Succeeded" ]] && R="pass" || R="phase=${COO_CSV:-not found}"

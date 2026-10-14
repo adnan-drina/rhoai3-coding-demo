@@ -1,0 +1,13 @@
+# Stage 010 desired state: the union of its Applications (gitops/argocd/app-of-apps/010-*/), one folder each.
+# Validators and scripts/shared/stage_apps.py check-static read this aggregate.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - rhoai-operator
+  - odf
+  - observability-operators
+  - rhoai-platform
+  - access
+  - console-observability
+  - sandbox-storage

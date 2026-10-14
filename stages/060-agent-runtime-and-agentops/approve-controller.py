@@ -18,7 +18,7 @@ CSV = 'agent-sandbox-operator.v0.9.0'
 NS = 'agent-sandbox-system'
 APP = '060-openshell-runtime'
 REPO = 'https://github.com/adnan-drina/rhoai3-coding-demo.git'
-SOURCE = 'gitops/stages/060-agent-runtime-and-agentops/runtime'
+SOURCE = 'gitops/stages/060-agent-runtime-and-agentops/openshell-runtime'
 ROOT = Path(__file__).resolve().parents[2]
 
 

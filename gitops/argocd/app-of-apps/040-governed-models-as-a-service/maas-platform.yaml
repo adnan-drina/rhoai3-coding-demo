@@ -21,7 +21,7 @@ spec:
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/040-governed-models-as-a-service/apps/maas-platform
+    path: gitops/stages/040-governed-models-as-a-service/maas-platform
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops

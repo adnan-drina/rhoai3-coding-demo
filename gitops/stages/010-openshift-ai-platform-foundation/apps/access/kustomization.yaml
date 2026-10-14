@@ -1,6 +1,0 @@
-# Demo sandbox project, the rhoai-developers group and their bindings, and the sandbox bucket.
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - ../../base/access/base

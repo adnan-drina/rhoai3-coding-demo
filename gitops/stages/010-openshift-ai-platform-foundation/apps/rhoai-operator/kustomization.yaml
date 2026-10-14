@@ -1,9 +1,0 @@
-# Red Hat OpenShift AI operator: namespace, OperatorGroup and Subscription.
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-commonAnnotations:
-  argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-
-resources:
-  - ../../base/rhoai/operator/overlays/stable-3.5

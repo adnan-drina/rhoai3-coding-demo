@@ -20,7 +20,7 @@ spec:
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/050-model-evaluation/apps/evalhub
+    path: gitops/stages/050-model-evaluation/evalhub
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops

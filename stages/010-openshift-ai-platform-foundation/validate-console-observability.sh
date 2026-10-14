@@ -17,7 +17,7 @@ assert len(source['targetRevision'])==40 and s['sync']['status']=='Synced' and s
 x=get('uiplugins.observability.openshift.io','monitoring');assert x['spec']['type']=='Monitoring' and x['spec']['monitoring']['perses']['enabled'] is True,'Native Perses UI disabled'
 assert x['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('010-console-observability:'),'UIPlugin tracking differs'
 # Git declares the whole plugin list; every declared plugin that is installed must be enabled.
-declared=json.loads(subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_file(ARGV[0])["spec"]["plugins"])',os.environ['REPO_ROOT']+'/gitops/stages/010-openshift-ai-platform-foundation/console-observability/base/console-plugins.yaml'],capture_output=True,text=True,timeout=15,check=True).stdout)
+declared=json.loads(subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_file(ARGV[0])["spec"]["plugins"])',os.environ['REPO_ROOT']+'/gitops/stages/010-openshift-ai-platform-foundation/console-observability/console-plugins.yaml'],capture_output=True,text=True,timeout=15,check=True).stdout)
 installed={x['metadata']['name'] for x in get('consoleplugins.console.openshift.io')['items']}
 plugins=get('console.operator.openshift.io','cluster')['spec'].get('plugins',[])
 missing=[n for n in declared if n in installed and n not in plugins]

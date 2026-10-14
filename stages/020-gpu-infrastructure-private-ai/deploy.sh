@@ -7,7 +7,7 @@ REPO_ROOT="$ROOT_DIR"
 source "$ROOT_DIR/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
-python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai/base"
+python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai"
 revision="${1:-${GIT_REPO_BRANCH:-}}"
 [[ -n "$revision" ]] || { echo 'ERROR: select a reviewed published revision.' >&2; exit 1; }
 command -v python3 >/dev/null
@@ -18,8 +18,8 @@ remote_sha=$(git ls-remote "${GIT_REPO_URL:?Set GIT_REPO_URL}" "$revision" "refs
 [[ "$remote_sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published revision differs from reviewed checkout.' >&2; exit 1; }
 paths=(gitops/stages/020-gpu-infrastructure-private-ai gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai stages/020-gpu-infrastructure-private-ai scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/check-operator-policy.py)
 [[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish all reviewed Stage 020 source before deploying.' >&2; exit 1; }
-overlay="$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai/overlays/environment"
-[[ -f "$overlay/machinesets/machineset-gpu.yaml" && -f "$overlay/machinesets/application-patch.yaml" ]] || { echo 'ERROR: generate, review and publish the environment MachineSet and Application patch first.' >&2; exit 1; }
+stage_gitops="$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai"
+[[ -f "$stage_gitops/gpu-machinesets/machineset-gpu.yaml" && -f "$stage_gitops/gpu-machinesets/application-patch.yaml" ]] || { echo 'ERROR: generate, review and publish the environment MachineSet and Application patch first.' >&2; exit 1; }
 export REPO_ROOT
 # All prerequisites are read-only and run before the first Application write.
 python3 - <<'PY'
@@ -52,7 +52,7 @@ for name in ['openshift-nfd','nvidia-gpu-operator','openshift-kueue-operator']:
 x=read('configmap','nvidia-dcgm-exporter-dashboard','openshift-config-managed')
 if x:assert not x['metadata'].get('ownerReferences') and stage_apps.tracked('020',x),'Existing NVIDIA dashboard requires a reviewed adoption'
 PY_OWNERSHIP
-ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV[0]))' "$overlay/machinesets/machineset-gpu.yaml" | python3 -c '
+ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV[0]))' "$stage_gitops/gpu-machinesets/machineset-gpu.yaml" | python3 -c '
 import json,subprocess,sys,copy
 expected=json.load(sys.stdin);name=expected["metadata"]["name"]
 def read(kind,name,ns=""):
@@ -82,7 +82,7 @@ if p.stdout.strip():
 '
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
-oc kustomize "$overlay" > "$work/render.yaml"
+oc kustomize "$stage_gitops" > "$work/render.yaml"
 ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(File.read(ARGV[0])))' "$work/render.yaml" | python3 -c '
 import json,os,subprocess,sys
 sys.path.insert(0,os.environ["REPO_ROOT"]+"/scripts/shared");import stage_apps
@@ -102,7 +102,7 @@ for expected in json.load(sys.stdin):
 python3 "$ROOT_DIR/scripts/shared/stage_apps.py" applications 020 --revision "$remote_sha" --repo-url "$GIT_REPO_URL" > "$work/components.json"
 ruby -ryaml -rjson -e 'apps=JSON.parse(File.read(ARGV[0]));p=YAML.load_file(ARGV[1])
 pools=apps["items"].find{|a| a["metadata"]["name"]=="020-gpu-machinesets"} or abort "ERROR: MachineSet component is missing."
-pools["spec"]["ignoreDifferences"]=p["spec"]["ignoreDifferences"];puts JSON.generate(apps)' "$work/components.json" "$overlay/machinesets/application-patch.yaml" > "$work/applications.json"
+pools["spec"]["ignoreDifferences"]=p["spec"]["ignoreDifferences"];puts JSON.generate(apps)' "$work/components.json" "$stage_gitops/gpu-machinesets/application-patch.yaml" > "$work/applications.json"
 oc --request-timeout=10s apply -f "$work/applications.json"
 echo 'Stage 020 component Applications submitted; native Automatic operator reconciliation is bounded below.'
-python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai/base" --wait 900
+python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai" --wait 900

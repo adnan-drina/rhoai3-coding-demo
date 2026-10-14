@@ -1,7 +1,0 @@
-# Node Feature Discovery operator and instance: labels nodes with their hardware.
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - ../../base/nfd/operator
-  - ../../base/nfd/instance/base

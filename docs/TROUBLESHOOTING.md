@@ -365,7 +365,7 @@ The recovery script syncs the existing Stage 020 revision, restores its verified
 
 (b) **The grower — Prometheus emptyDir TSDBs:** four Prometheus replicas (2 platform + 2 UWM) with emptyDir TSDBs on the three workers grow in lockstep. After a cluster resume, eviction → churn → new-series creates a feedback loop that amplifies disk pressure.
 
-**FIXED** by `gitops/stages/030-.../monitoring/base/` volumeClaimTemplates (gp3-csi; platform 2×40Gi 7d/8GB, UWM 2×20Gi 7d/5GB), which moves the TSDB growth off ephemeral storage. The modelcar cost remains fixed.
+**FIXED** by `gitops/stages/030-private-model-serving/private-model-serving/monitoring/` volumeClaimTemplates (gp3-csi; platform 2×40Gi 7d/8GB, UWM 2×20Gi 7d/5GB), which moves the TSDB growth off ephemeral storage. The modelcar cost remains fixed.
 
 **Diagnostic gold:** `oc get --raw /api/v1/nodes/<node>/proxy/stats/summary` returns per-pod ephemeral storage usage — use this to identify which pods dominate `/var` on a suspect worker.
 
@@ -533,9 +533,8 @@ oc auth can-i create prometheuses/k8s --subresource=api \
 **Recover:**
 
 ```bash
-oc apply -f gitops/stages/010-openshift-ai-platform-foundation/base/rhoai/instance/base/observability/perses-dashboard-rbac.yaml
-oc apply -f gitops/stages/040-governed-models-as-a-service/base/models-maas-crds/tenant.yaml
-oc apply -f gitops/stages/040-governed-models-as-a-service/base/jobs/label-observability-dashboard-tabs.yaml
+# Re-sync the component that owns the MaaS PersesDashboards and their enablement Jobs.
+argocd app sync 040-maas-platform
 
 ts="$(date -u +%Y%m%d%H%M%S)"
 oc get persesdashboard -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' \
@@ -919,7 +918,7 @@ failed requests even when the model and authentication service are ready.
 
 Check the gateway proxy's current memory, last termination reason and restart
 count before assigning the failure to the model. The resource configuration is
-`gitops/stages/040-governed-models-as-a-service/base/gateway/base/configmap-maas-gateway-resources.yaml`.
+`gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/configmap-maas-gateway-resources.yaml`.
 Stage 040 validation reads back the generated Deployment's 1 GiB reservation and
 2 GiB limit. A successful sync is resource headroom, not proof of a memory-leak fix.
 If memory continues to grow, retain the resource time series and gateway/control-plane
@@ -1711,7 +1710,7 @@ oc get pods -n openshift-ingress \
 
 **Recover:** Additive GitOps NetworkPolicy `payload-processing-maas-gateway` (ingress-only, Istio-managed from-selector). Operator syncs stage 040 and confirms `operationState.syncResult.revision`, then checks the common `GET /v1/models` discovery endpoint; parked Qwen3.6 need not be listed. Do not dest-read dest `.env` values.
 
-**Related docs:** `gitops/stages/040-governed-models-as-a-service/base/gateway/base/networkpolicy-payload-processing-maas-gateway.yaml`; Architect `073314ZA`
+**Related docs:** `gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/networkpolicy-payload-processing-maas-gateway.yaml`; Architect `073314ZA`
 
 ## Dest gateway persist WARN / dest `.hermes/home/scripts` (`harness-v2`)
 
@@ -2068,7 +2067,7 @@ oc get maassubscription -n models-as-a-service -o yaml | grep -A5 tokenRateLimit
 **Recover:**
 
 - Wait for the hourly window to roll over, or
-- adjust the limit in `gitops/stages/040-.../base/policies/` files and re-sync Stage 040. The coding tier uses 1M tokens/hour per model.
+- adjust the limit in `gitops/stages/040-governed-models-as-a-service/model-access/` files and re-sync `040-model-access`. The coding tier uses 1M tokens/hour per model.
 
 ## ose-cli curl Version Does Not Support --retry-all-errors
 

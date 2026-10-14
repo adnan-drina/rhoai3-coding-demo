@@ -1,0 +1,22 @@
+# External providers and models published to MaaS.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: rhoai3-coding-demo
+      demo.rhoai.io/stage: "040"
+
+resources:
+  - namespace.yaml
+  - hosting-admin-rolebinding.yaml
+  - openai-provider.yaml
+  - gpt-6-luna.yaml
+  - gpt-6-luna-modelref.yaml
+  - anthropic-provider.yaml
+  - claude-sonnet-5-5.yaml
+  - claude-sonnet-5-5-modelref.yaml
+  - nvidia-provider.yaml
+  - nemotron-3-ultra-550b-a55b.yaml
+  - nemotron-3-ultra-550b-a55b-modelref.yaml

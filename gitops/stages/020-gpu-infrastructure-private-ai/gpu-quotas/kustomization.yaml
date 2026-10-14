@@ -1,0 +1,7 @@
+# Kueue ResourceFlavors, ClusterQueues and LocalQueues, and the OpenShift AI hardware profiles.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - queues
+  - hardware-profiles
