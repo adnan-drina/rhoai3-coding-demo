@@ -19,13 +19,6 @@ metadata:
     argocd.argoproj.io/sync-wave: '18'
 rules:
 - apiGroups:
-  - ''
-  resources:
-  - secrets
-  verbs:
-  - get
-  - patch
-- apiGroups:
   - apps
   resources:
   - deployments
@@ -34,23 +27,24 @@ rules:
   - list
   - watch
   - patch
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: job-configure-rhdh-rhbk-reader
-  namespace: keycloak
-  annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
-    argocd.argoproj.io/sync-wave: '18'
-rules:
 - apiGroups:
   - ''
   resources:
   - secrets
+  resourceNames:
+  - rhdh-secrets
+  - rhdh-kubernetes-reader-token
+  - stage070-rhdh-provisioner
   verbs:
   - get
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - rhdh-secrets
+  verbs:
+  - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -135,24 +129,6 @@ subjects:
 roleRef:
   kind: Role
   name: job-configure-rhdh
-  apiGroup: rbac.authorization.k8s.io
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: job-configure-rhdh-rhbk-reader
-  namespace: keycloak
-  annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
-    argocd.argoproj.io/sync-wave: '18'
-subjects:
-- kind: ServiceAccount
-  name: job-configure-rhdh
-  namespace: rhdh
-roleRef:
-  kind: Role
-  name: job-configure-rhdh-rhbk-reader
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -244,26 +220,15 @@ spec:
 
           # --- 4. Get RHBK admin token ---
           echo "Getting RHBK admin token..."
-          RHBK_ADMIN_USER=$(oc get secret keycloak-initial-admin -n keycloak \
-            -o jsonpath='{.data.username}' | base64 -d)
-          RHBK_ADMIN_PASS=$(oc get secret keycloak-initial-admin -n keycloak \
-            -o jsonpath='{.data.password}' | base64 -d)
+          ADMIN_TOKEN=$(RHBK_IDENTITY_BASE="${RHBK_URL}" python3 - <<'CLIENT_TOKEN'
+          import base64, json, os, subprocess, urllib.parse, urllib.request
+          value=json.loads(subprocess.check_output(['oc','get','secret','stage070-rhdh-provisioner','-n','rhdh','-o','json']))['data']
+          credentials={k:base64.b64decode(value[k]).decode() for k in ('client_id','client_secret')}
+          request=urllib.request.Request(os.environ['RHBK_IDENTITY_BASE']+'/realms/platform/protocol/openid-connect/token',urllib.parse.urlencode(dict(grant_type='client_credentials',**credentials)).encode())
+          with urllib.request.urlopen(request,timeout=30) as response: print(json.load(response)['access_token'])
+          CLIENT_TOKEN
+          )
 
-          ADMIN_TOKEN=""
-          for i in {1..60}; do
-            ADMIN_TOKEN=$(curl -fsS -X POST \
-              "${RHBK_URL}/realms/master/protocol/openid-connect/token" \
-              -d "grant_type=password&client_id=admin-cli&username=${RHBK_ADMIN_USER}&password=${RHBK_ADMIN_PASS}" \
-              2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || echo "")
-            if [ -n "$ADMIN_TOKEN" ]; then break; fi
-            echo "Waiting for RHBK... ($i/60)"
-            sleep 10
-          done
-          if [ -z "$ADMIN_TOKEN" ]; then
-            echo "ERROR: Cannot get RHBK admin token"
-            exit 1
-          fi
-          echo "Got RHBK admin token"
           AUTH_HEADER="Authorization: Bearer ${ADMIN_TOKEN}"
 
           # --- 5. Generate OIDC client secret ---

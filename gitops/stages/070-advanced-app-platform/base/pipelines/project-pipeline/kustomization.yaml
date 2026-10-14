@@ -20,6 +20,7 @@ resources:
 - task-promote.yaml
 - pipeline.yaml
 - serviceaccounts.yaml
+- network-policy.yaml
 configMapGenerator:
 - name: project-promotion-scripts
   files:

@@ -5,3 +5,4 @@ configMapGenerator:
   namespace: app-platform-build
   files:
   - reconcile.py
+  - secret_writer.py

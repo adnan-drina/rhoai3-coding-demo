@@ -6,6 +6,7 @@ resources:
 - jobs/configure-platform-identity.yaml
 - jobs/scm-identity-role.yaml
 - jobs/scm-identity-binding.yaml
+- jobs/platform-clients.yaml
 configMapGenerator:
 - name: stage070-scm-identity
   namespace: keycloak

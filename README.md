@@ -67,7 +67,7 @@ The demo follows a ten-stage flow organized in two parts.
 
 **Part 1: Building the platform (GitOps-driven)**
 
-Stages 010–070 construct the three platform layers declaratively — implemented platform resources reconciled from Git by Argo CD; Stage 060 AgentOps is currently planned.
+Stages 010–070 construct the three platform layers declaratively — platform resources reconciled from Git by Argo CD. Stage 060 has a deployed runtime foundation; full AgentOps acceptance remains pending.
 
 | Stage | Intent |
 |-------|--------|
@@ -76,7 +76,7 @@ Stages 010–070 construct the three platform layers declaratively — implement
 | [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Prepare native KServe, Model Registry, Model Catalog and Agent Catalog discovery for governed model deployments |
 | [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | Expose private and external models through a governed MaaS gateway with API keys, rate limits, and telemetry |
 | [050 - Model Evaluation](stages/050-model-evaluation/README.md) | Evaluate model behavior through EvalHub and retain experiments and artifacts in MLflow |
-| [060 - Agent Runtime and AgentOps](stages/060-agent-runtime-and-agentops/README.md) | Plan isolated agent hosting, lifecycle and evidence integration (not yet deployed) |
+| [060 - Agent Runtime and AgentOps](stages/060-agent-runtime-and-agentops/README.md) | Provide isolated agent hosting and its deployed foundation; complete AgentOps qualification separately |
 | [070 - Advanced Application Platform](stages/070-advanced-app-platform/README.md) | Add the developer-facing layer: Developer Hub, Dev Spaces, Pipelines, quality gates, and provenance |
 
 **Part 2: Climbing the AI development maturity ladder (use-case-driven)**
@@ -126,10 +126,13 @@ oc login --token=<token> --server=<api>
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
-./stages/070-advanced-app-platform/deploy.sh
+./stages/050-model-evaluation/deploy.sh
+# Complete Stage 060's identity/runtime procedure and its explicit gates first.
+# See stages/060-agent-runtime-and-agentops/README.md.
+./stages/070-advanced-app-platform/deploy.sh --revision <reviewed-published-commit>
 ```
 
-**Validate the developer workflow stages.** Stages 110–130 are workflow-only: their developer tooling and infrastructure (workspaces, pipelines, quality gates, the MTA stack) are supplied by Stage 070; planned standalone agent hosting belongs to Stage 060. Each keeps a read-only `validate.sh` for its demo prerequisites:
+**Validate the developer workflow stages.** Stages 110–130 are workflow-only: their developer tooling and infrastructure (workspaces, pipelines, quality gates, the MTA stack) are supplied by Stage 070; standalone agent hosting belongs to Stage 060. Each keeps a read-only `validate.sh` for its demo prerequisites:
 
 ```bash
 ./stages/110-ai-assisted-development/validate.sh
@@ -157,7 +160,7 @@ rhoai3-coding-demo/
 |-- .agents/                         # Tool-neutral shared agent guidance: rules, skills, hooks, references
 |-- gitops/
 |   |-- bootstrap/                   # Declarative OpenShift GitOps bootstrap (stage 010)
-|   |-- argocd/app-of-apps/          # Argo CD Applications for implemented stages 010–050 and 070
+|   |-- argocd/app-of-apps/          # Argo CD Applications for stages 010–070
 |   `-- stages/                      # GitOps source for stage manifests
 |-- stages/                          # Stage READMEs and per-stage deploy/validate scripts
 `-- docs/                            # Operations, troubleshooting, TechDocs, and governance docs

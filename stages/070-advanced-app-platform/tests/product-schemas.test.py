@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+import sys
 import unittest
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform/base'
+sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
 FIXTURES = Path(__file__).with_name('fixtures')
 
 

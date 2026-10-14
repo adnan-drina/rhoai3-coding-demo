@@ -2,6 +2,8 @@
 
 > **Release status, 2026-10-14:** The fresh private-project → pipeline → deployment → reopened workspace journey passed, along with both-persona SSO, TechDocs, native MTA controller startup, TAS validation-artifact signing and isolated GitLab database/repository restoration. Full qualification remains partial: models are stopped; AI workflows, signed-image promotion, full service recovery and the portal CD view are unqualified. Optional Solution Server remains disabled for its vendor dependency defect. See [current qualification](../../BACKLOG.md#stage-070-live-qualification).
 
+**Correction package:** deployment now selects a reviewed, published commit and waits for its complete native operation. Credential writers avoid storing payloads in apply annotations; downstream identity jobs use platform-realm service accounts, with temporary GitLab bootstrap authority removed at the end of the operation. Namespace ingress policies preserve router, monitoring and required Sonar traffic. These corrections are authored and tested locally, with targeted live API/runtime probes; full deployment, rotation and workflow read-back are pending human diff review.
+
 ## Why This Matters
 
 Private models help protect source code, but developers also need a reliable route from an approved project to a tested application. This stage connects self-service, private source control, managed workspaces, modernization and delivery. Platform teams own the shared services and credentials; developers work in their own repositories and project namespaces.
@@ -45,9 +47,13 @@ TAS: persistent signing services; signed delivery remains to be qualified
 
 The reference [OpenShift Developer Days project](https://github.com/rhpds/ocp-dev-days-rdshw-gitops) informs the integration patterns. Product versions, credential boundaries and deployment checks are reviewed independently. Chart-based services are rendered during authoring into ordinary checked-in resources; deployment uses Kustomize, with no Helm runtime.
 
-The `slim` overlay omits MTA. Application migration requires the full overlay; its template refuses a missing MTA Hub endpoint.
+Use the full Stage 070 base for this GitLab release. The retained `slim` overlay is a legacy render, not a qualified deployment: it lacks the full GitLab and root script-bundle composition. Its repair or retirement is separate work. Application migration also requires the full MTA stack.
 
 ## Trust Boundaries
+
+Only the trusted base-identity bootstrap holds the existing master administration credential. Application configuration jobs use separate service identities restricted to the retained `platform` realm; MTA still needs realm-wide role/user administration there for its existing setup. This is narrower than master administration, not per-client or per-user isolation. Temporary GitLab integration bindings exist during a native full sync and are deleted by its success/failure cleanup hook. A control-plane interruption can still require operator cleanup.
+
+Ingress policies cover the five shared service namespaces and newly provisioned project namespaces. Same-namespace, OpenShift router and monitoring traffic is allowed; Sonar additionally accepts scanner traffic from approved workspace/build/project namespaces on port 9000. Egress is unchanged. These rules do not establish complete tenant isolation.
 
 GitLab publisher, enrollment, catalog, clone and delivery identities have separate credentials. A webhook can request a build, not provision a project. Project delivery uses a restricted AppProject with no cluster or RBAC kinds. Platform-pinned project setup uses a separate AppProject; the enrollment coordinator can create namespaces and constrained Applications. Only the image-build Task receives the build SCC and registry push permission; the operator’s blanket pipeline-SA RBAC is disabled. Runtime workloads receive no API token. Migration workers retain their existing restricted identities and run-control contract; no existing migration run is reset or upgraded by this release.
 

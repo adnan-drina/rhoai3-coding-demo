@@ -5,6 +5,7 @@ import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
+from secret_writer import write_secret
 
 
 def oc(*args, data=None):
@@ -60,7 +61,8 @@ def main():
         key, key_id = row['key'], row['id']
         if not key.startswith('sk-oai-') or not key_id:
             raise ValueError('MaaS did not return a usable key and identity')
-        oc('apply', '-f', '-', data={'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'kai-api-keys', 'namespace': 'openshift-mta'}, 'stringData': {'OPENAI_API_KEY': key, 'MAAS_KEY_ID': key_id}})
+    write_secret({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'kai-api-keys', 'namespace': 'openshift-mta'}, 'stringData': {'OPENAI_API_KEY': key, 'MAAS_KEY_ID': key_id}},
+                 lambda *args, document=None: oc(*args, data=document))
     oc('patch', 'tackle', 'mta', '-n', 'openshift-mta', '--type=merge', '-p', json.dumps({'spec': {'kai_llm_baseurl': base + '/v1'}}))
     # Native Gateway verification appends /v1/models; Lightspeed takes an API base.
     oc('patch', 'gateways.konveyor.io', 'maas-qwen', '-n', 'openshift-mta', '--type=merge', '-p', json.dumps({'spec': {'endpoint': base}}))

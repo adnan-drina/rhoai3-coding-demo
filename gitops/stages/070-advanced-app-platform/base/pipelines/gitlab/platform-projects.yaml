@@ -45,3 +45,5 @@ spec:
     kind: Pipeline
   - group: image.openshift.io
     kind: ImageStream
+  - group: networking.k8s.io
+    kind: NetworkPolicy

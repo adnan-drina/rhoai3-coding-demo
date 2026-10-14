@@ -5,7 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 if [[ "${1:-}" == --static ]]; then
-  for test in internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py security-boundaries.test.py sonarqube-bootstrap.test.py sonarqube-scope.test.py sso-alignment.test.py; do
+  export PYTHONPATH="$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/pipelines/gitlab${PYTHONPATH:+:$PYTHONPATH}"
+  for test in correction-package.test.py internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py security-boundaries.test.py sonarqube-bootstrap.test.py sonarqube-scope.test.py sso-alignment.test.py; do
     "$PYTHON" "$SCRIPT_DIR/tests/$test"
   done
   "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/jobs/catalog/render_catalog.test.py"
@@ -16,11 +17,23 @@ if [[ "${1:-}" == --static ]]; then
   echo 'PASS: Stage 070 authoring checks. Live deployment and model-dependent checks are separate.'
   exit 0
 fi
-[[ $# -eq 0 ]] || { echo 'Usage: validate.sh [--static]' >&2; exit 1; }
+EXPECTED_REVISION="${RHOAI_STAGE070_EXPECTED_REVISION:-}"
+if [[ "${1:-}" == --revision && $# -eq 2 ]]; then
+  EXPECTED_REVISION="$2"
+elif [[ $# -ne 0 ]]; then
+  echo 'Usage: validate.sh [--static | --revision <commit>]' >&2; exit 1
+fi
 source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 
 log_step 'Stage 070 GitOps and selected operators'
 check_argocd_app '070-advanced-app-platform'
+revision_args=()
+[[ -z "$EXPECTED_REVISION" ]] || revision_args=(--revision "$EXPECTED_REVISION")
+if "$PYTHON" "$SCRIPT_DIR/application.py" status --repo-url "$GIT_REPO_URL" ${revision_args[@]+"${revision_args[@]}"}; then
+  check 'Stage 070 immutable source and completed native operation' 'echo PASS' 'PASS'
+else
+  check 'Stage 070 immutable source and completed native operation' 'echo FAIL' 'PASS'
+fi
 for row in \
   'openshift-devspaces devspaces devspacesoperator.v3.30.2' \
   'rhdh-operator rhdh rhdh-operator.v1.10.5' \
@@ -127,6 +140,13 @@ check 'Portal catalog has no unresolved placeholders' "oc get configmap catalog-
 check 'Portal templates use private GitLab mirror' "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | contains -E 'target: https://gitlab-gitlab-system\\..*/-/blob/[0-9a-f]{40}/.*template.yaml' && echo GITLAB" 'GITLAB'
 RHDH_HOST=$(oc get route -n rhdh -l app.kubernetes.io/name=backstage --no-headers 2>/dev/null | awk 'NR==1 {print $2}' || true)
 if [[ -n "$RHDH_HOST" ]]; then check_http_code 'Developer Hub reachable' "https://${RHDH_HOST}" '200,302'; fi
+
+log_step 'Credential, identity and ingress correction checks (no inference)'
+if "$PYTHON" "$SCRIPT_DIR/security-status.py"; then
+  check 'Stage 070 corrected security boundaries' 'echo PASS' 'PASS'
+else
+  check 'Stage 070 corrected security boundaries' 'echo FAIL' 'PASS'
+fi
 
 # Models are deliberately stopped by the operator. A resource check is not
 # proof of inference, browser login, signed delivery or a migration run.

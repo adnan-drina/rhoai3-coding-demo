@@ -69,6 +69,8 @@ metadata:
   namespace: gitlab-system
   annotations:
     argocd.argoproj.io/sync-wave: '12'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -85,6 +87,8 @@ metadata:
   namespace: rhdh
   annotations:
     argocd.argoproj.io/sync-wave: '12'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -101,6 +105,8 @@ metadata:
   namespace: app-platform-build
   annotations:
     argocd.argoproj.io/sync-wave: '12'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -117,6 +123,8 @@ metadata:
   namespace: openshift-devspaces
   annotations:
     argocd.argoproj.io/sync-wave: '12'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -133,6 +141,8 @@ metadata:
   namespace: openshift-gitops
   annotations:
     argocd.argoproj.io/sync-wave: '12'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -229,6 +239,8 @@ metadata:
   namespace: gitlab-system
   annotations:
     argocd.argoproj.io/sync-wave: '12'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -262,6 +274,8 @@ metadata:
   namespace: openshift-mta
   annotations:
     argocd.argoproj.io/sync-wave: '12'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -278,6 +292,8 @@ metadata:
   namespace: wksp-ai-developer
   annotations:
     argocd.argoproj.io/sync-wave: '12'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -294,6 +310,8 @@ metadata:
   namespace: wksp-ai-admin
   annotations:
     argocd.argoproj.io/sync-wave: '12'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -310,6 +328,8 @@ metadata:
   namespace: keycloak
   annotations:
     argocd.argoproj.io/sync-wave: '12'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role

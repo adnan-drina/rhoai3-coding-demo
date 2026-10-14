@@ -17,6 +17,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform/base'
+sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
 
 
 def module(name, path):
@@ -427,7 +428,7 @@ class GatewayAndPolicy(unittest.TestCase):
              patch.object(ai.urllib.request, 'urlopen') as urlopen:
             urlopen.return_value.__enter__.return_value = io.BytesIO(json.dumps(owner).encode())
             ai.main()
-        patches = {call[1]: json.loads(call[-1])['spec'] for call in calls if call[0] == 'patch'}
+        patches = {call[1]: json.loads(call[-1])['spec'] for call in calls if call[0] == 'patch' and call[1] in ('tackle', 'gateways.konveyor.io')}
         self.assertEqual(patches['tackle']['kai_llm_baseurl'], 'https://maas.example.test/v1')
         endpoint = patches['gateways.konveyor.io']['endpoint']
         # Pinned vendor gateway_controller.go adds /v1/models to the origin.

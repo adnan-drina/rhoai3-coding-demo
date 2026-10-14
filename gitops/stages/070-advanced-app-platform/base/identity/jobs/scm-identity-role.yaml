@@ -16,15 +16,8 @@ rules:
   - ''
   resources:
   - secrets
-  verbs:
-  - create
-- apiGroups:
-  - ''
-  resources:
-  - secrets
   resourceNames:
   - stage070-scm-provisioner
   verbs:
   - get
   - patch
-  - update

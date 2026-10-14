@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +13,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform/base'
+sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
 
 
 def load(name, path):

@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -13,6 +14,7 @@ import yaml
 
 ROOT=Path(__file__).resolve().parents[3]
 BASE=ROOT/'gitops/stages/070-advanced-app-platform/base'
+sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
 
 def load(name, path):
     spec=importlib.util.spec_from_file_location(name,BASE/path)

@@ -7,6 +7,14 @@ source "$REPO_ROOT/scripts/shared/lib.sh"
 STAGE_NAME="070-advanced-app-platform"
 load_env
 check_oc_logged_in
+if [[ "${1:-}" == --revision && $# -eq 2 ]]; then
+  GIT_REPO_BRANCH="$2"
+elif [[ $# -ne 0 ]]; then
+  echo "Usage: $0 [--revision <published ref or commit>]" >&2; exit 1
+fi
+require_env GIT_REPO_URL "reviewed Stage 070 source repository"
+assert_required_env
+REVISION=$(python3 "$SCRIPT_DIR/application.py" select --revision "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL")
 "$REPO_ROOT/scripts/platform/require-node-sizing.sh"
 
 log_step "Stage 070: GitLab and advanced application platform"
@@ -58,7 +66,9 @@ fi
 # First cluster mutation: install the single Argo CD owner. Publish/review the
 # configured source revision before invoking this script; local edits are not
 # a deployment source. Credentials and chart migrations are native sync hooks.
-apply_stage_app "$STAGE_NAME"
+python3 "$SCRIPT_DIR/application.py" render --revision "$REVISION" --repo-url "$GIT_REPO_URL" | oc apply -f -
+python3 "$SCRIPT_DIR/application.py" sync --revision "$REVISION" --repo-url "$GIT_REPO_URL"
+python3 "$SCRIPT_DIR/application.py" wait --revision "$REVISION" --repo-url "$GIT_REPO_URL" --timeout "${STAGE070_SYNC_TIMEOUT:-3600}"
 
 log_info "Argo CD installs identity clients, GitLab/NooBaa storage, Dev Spaces,"
 log_info "Pipelines/TAS, SonarQube, Developer Hub and MTA 8.3 with AI components."

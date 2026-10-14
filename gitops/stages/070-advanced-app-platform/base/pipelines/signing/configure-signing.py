@@ -33,10 +33,10 @@ def client_configuration():
 def main():
     host = oc('get', 'route', 'keycloak', '-n', 'keycloak', '-o', 'json')['spec']['host']
     base = 'https://' + host
-    admin = oc('get', 'secret', 'keycloak-initial-admin', '-n', 'keycloak', '-o', 'json')['data']
-    credentials = {key: base64.b64decode(admin[key]).decode() for key in ('username', 'password')}
-    request = urllib.request.Request(base + '/realms/master/protocol/openid-connect/token',
-        urlencode({'grant_type': 'password', 'client_id': 'admin-cli', **credentials}).encode(),
+    admin = oc('get', 'secret', 'stage070-signing-provisioner', '-n', 'trusted-artifact-signer', '-o', 'json')['data']
+    credentials = {key: base64.b64decode(admin[key]).decode() for key in ('client_id', 'client_secret')}
+    request = urllib.request.Request(base + '/realms/platform/protocol/openid-connect/token',
+        urlencode({'grant_type': 'client_credentials', **credentials}).encode(),
         {'Content-Type': 'application/x-www-form-urlencoded'}, method='POST')
     with urllib.request.urlopen(request, timeout=30) as response: token = json.load(response)['access_token']
 

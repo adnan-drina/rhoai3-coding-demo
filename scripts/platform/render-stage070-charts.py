@@ -5,6 +5,7 @@ Helm is an authoring dependency only. Neither Argo CD nor a workload operator
 renders these charts at deployment. Run with --check before publishing changes.
 """
 import argparse
+import base64
 import hashlib
 import json
 import shutil
@@ -19,6 +20,19 @@ ROOT = Path(__file__).resolve().parents[2]
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform/base'
 LOCK = Path(__file__).with_name('stage070-charts.lock.json')
 CLI_IMAGE = 'registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9'
+
+
+def rails_secret_writer(script):
+    old = 'kubectl --validate=false --namespace=$namespace apply -f rails-secrets.yml'
+    if script.count(old) != 1:
+        raise ValueError('Upstream Rails Secret writer changed; review before rendering')
+    new = '''if kubectl --namespace="$namespace" get secret "$rails_secret" >/dev/null 2>&1; then
+    kubectl --namespace="$namespace" patch secret "$rails_secret" --type=merge --patch-file=rails-secrets.yml
+  else
+    kubectl --namespace="$namespace" create -f rails-secrets.yml
+  fi
+  kubectl --namespace="$namespace" patch secret "$rails_secret" --type=merge -p '{"metadata":{"annotations":{"kubectl.kubernetes.io/last-applied-configuration":null}}}' '''.rstrip()
+    return script.replace(old, new)
 
 
 class Dumper(yaml.SafeDumper):
@@ -100,6 +114,10 @@ def gitlab_documents(documents, images):
             wave = 10
         if kind == 'ConfigMap':
             data = document.get('data', {})
+            if name == 'gitlab-shared-secrets':
+                # Retain the vendor generation/reuse logic and encryption keys;
+                # only replace the write that duplicated them into metadata.
+                data['generate-secrets'] = rails_secret_writer(data['generate-secrets'])
             if any('example.invalid' in text or 'pending-' in text for text in data.values()):
                 runtime[name] = data
                 # Preserve the full canonical config in Git; hooks write a separate
@@ -150,6 +168,13 @@ def sonarqube_documents(documents, images):
         if document['kind'] in ('SecurityContextConstraints', 'ClusterRoleBinding'):
             raise ValueError('Unexpected chart privilege; SCC/sysctl initialization must stay disabled')
         document['metadata']['namespace'] = 'sonarqube'
+        if document['kind'] == 'Secret':
+            # Argo's explicit SSA writer uses data, not stringData. The selected
+            # chart currently supplies only empty proxy placeholders here.
+            encoded = {k: base64.b64encode(v.encode()).decode() for k, v in document.pop('stringData', {}).items()}
+            if set(encoded) & document.get('data', {}).keys():
+                raise ValueError('Chart Secret has conflicting data/stringData')
+            document.setdefault('data', {}).update(encoded)
         if document['kind'] in ('Deployment', 'StatefulSet', 'Job'):
             pod = document['spec']['template']['spec']
             for container in (pod.get('containers') or []) + (pod.get('initContainers') or []):

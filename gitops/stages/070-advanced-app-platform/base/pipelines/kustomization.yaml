@@ -7,7 +7,6 @@ resources:
 - operators/rhtas-subscription.yaml
 - operators/approve-installplans.yaml
 - signing
-- console-plugin
 - build/namespace.yaml
 - build/persona-rbac.yaml
 - build/tektonconfig-affinity.yaml

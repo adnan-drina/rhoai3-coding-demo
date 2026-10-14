@@ -5,6 +5,7 @@ import subprocess
 import urllib.error
 import urllib.request
 from urllib.parse import urlencode, quote
+from secret_writer import write_secret
 
 
 def oc(*args, document=None):
@@ -58,7 +59,7 @@ def main():
     document = {'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {
         'name': 'gitlab-oidc', 'namespace': 'gitlab-system'}, 'type': 'Opaque',
         'stringData': {'provider': json.dumps(provider(base + '/realms/platform', gitlab_host, client_secret))}}
-    oc('apply', '-f', '-', '-o', 'json', document=document)
+    write_secret(document, oc)
     print('GitLab OIDC client and scoped provider Secret configured')
 
 

@@ -7,6 +7,7 @@ resources:
 - database-cache.yaml
 - bootstrap.yaml
 - integrations-bootstrap.yaml
+- bootstrap-cleanup.yaml
 - route.yaml
 - generated
 - serviceaccount-gitlab-app-nonroot.yaml

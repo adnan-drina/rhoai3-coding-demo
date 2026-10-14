@@ -10,6 +10,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '70'
     argocd.argoproj.io/manifest-generate-paths: /gitops/stages/070-advanced-app-platform
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   project: rhoai-demo
   source:
@@ -24,9 +25,9 @@ spec:
       selfHeal: true
     syncOptions:
     - CreateNamespace=true
-    - ServerSideDiff=true
     - SkipDryRunOnMissingResource=true
     - RespectIgnoreDifferences=true
+    - ClientSideApplyMigration=false
     retry:
       limit: 10
       backoff:
@@ -34,7 +35,6 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
-  # The service-ca controller injects this bundle after namespace creation.
   - group: ''
     kind: ConfigMap
     name: pipeline-registry-ca
@@ -66,8 +66,6 @@ spec:
     jsonPointers:
     - /spec/href
     - /spec/applicationMenu/imageURL
-  # DWO resolves HOST_USERS, its cluster configuration reference and SCC.
-  # Starting/stopping a workspace is user lifecycle, not GitOps drift.
   - group: workspace.devfile.io
     kind: DevWorkspace
     jsonPointers:
@@ -76,11 +74,6 @@ spec:
     - .spec.template.components[]?.container?.env[]? | select(.name == "HOST_USERS")
     - .spec.template.attributes."controller.devfile.io/devworkspace-config"
     - .spec.template.attributes."controller.devfile.io/scc"
-  # Bound PVC fields are assigned by the storage controller; keep their data.
-  - group: ''
-    kind: PersistentVolumeClaim
-    jsonPointers:
-    - /spec
   - group: console.openshift.io
     kind: ConsoleLink
     name: mta
@@ -100,8 +93,7 @@ spec:
     jsonPointers:
     - /spec/devEnvironments/allowedSources/urls
     jqPathExpressions:
-    - .spec.gitServices.gitlab[]? | select(.secretName == "gitlab-oauth-config") |
-      .endpoint
+    - .spec.gitServices.gitlab[]? | select(.secretName == "gitlab-oauth-config") | .endpoint
   - group: tackle.konveyor.io
     kind: Tackle
     name: mta
@@ -132,3 +124,51 @@ spec:
     namespace: wksp-ai-admin
     jsonPointers:
     - /spec/template/projects/0/git/remotes/origin
+  - group: ''
+    kind: Secret
+    namespace: gitlab-system
+    name: stage070-scm-provisioner
+    jsonPointers:
+    - /data
+  - group: ''
+    kind: Secret
+    namespace: rhdh
+    name: stage070-rhdh-provisioner
+    jsonPointers:
+    - /data
+  - group: ''
+    kind: Secret
+    namespace: openshift-mta
+    name: stage070-mta-provisioner
+    jsonPointers:
+    - /data
+  - group: ''
+    kind: Secret
+    namespace: trusted-artifact-signer
+    name: stage070-signing-provisioner
+    jsonPointers:
+    - /data
+  - group: ''
+    kind: PersistentVolumeClaim
+    name: gitlab-postgresql-data
+    namespace: gitlab-system
+    jsonPointers:
+    - /spec/volumeName
+  - group: ''
+    kind: PersistentVolumeClaim
+    name: gitlab-valkey-data
+    namespace: gitlab-system
+    jsonPointers:
+    - /spec/volumeName
+  - group: ''
+    kind: PersistentVolumeClaim
+    name: sonardb-data
+    namespace: sonarqube
+    jsonPointers:
+    - /spec/volumeName
+  - group: ''
+    kind: PersistentVolumeClaim
+    name: sonarqube
+    namespace: sonarqube
+    jsonPointers:
+    - /spec/volumeName

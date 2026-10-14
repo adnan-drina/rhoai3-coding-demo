@@ -10,11 +10,11 @@ context="$REPO_ROOT/stages/070-advanced-app-platform/tools-image"
 auth=()
 [[ -z "${REGISTRY_AUTH_FILE:-}" ]] || auth=(--authfile "$REGISTRY_AUTH_FILE")
 podman --connection "$connection" info >/dev/null
-podman --connection "$connection" build "${auth[@]}" --platform linux/amd64 -t "$image" -f "$context/Dockerfile" "$context"
+podman --connection "$connection" build ${auth[@]+"${auth[@]}"} --platform linux/amd64 -t "$image" -f "$context/Dockerfile" "$context"
 podman --connection "$connection" run --rm --platform linux/amd64 --entrypoint /bin/sh "$image" -c 'set -e; git --version; python3 --version; oc version --client'
 if [[ "${2:-}" == --push ]]; then
   digest_file=$(mktemp)
   trap 'rm -f "$digest_file"' EXIT
-  podman --connection "$connection" push "${auth[@]}" --digestfile "$digest_file" "$image"
+  podman --connection "$connection" push ${auth[@]+"${auth[@]}"} --digestfile "$digest_file" "$image"
   printf 'Published: %s@%s\n' "${image%:*}" "$(cat "$digest_file")"
 fi

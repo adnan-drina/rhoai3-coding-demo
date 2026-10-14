@@ -30,6 +30,14 @@ rules:
   verbs:
   - get
   - patch
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - stage070-signing-provisioner
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -55,14 +63,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '3'
 rules:
-- apiGroups:
-  - ''
-  resources:
-  - secrets
-  resourceNames:
-  - keycloak-initial-admin
-  verbs:
-  - get
 - apiGroups:
   - route.openshift.io
   resources:

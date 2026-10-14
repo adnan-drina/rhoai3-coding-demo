@@ -1,4 +1,5 @@
 """Platform enrollment from publisher-authored GitLab issues, never from push payloads."""
+import datetime
 import base64
 import hashlib
 import json
@@ -9,6 +10,7 @@ import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
+from secret_writer import write_secret
 from urllib.parse import quote
 from urllib.parse import urlencode
 
@@ -17,6 +19,37 @@ NAME = re.compile(r'^[a-z][a-z0-9-]{2,40}$')
 SONAR_KEY = 'rhoai3.io/sonar-project-key'
 SONAR_TYPE = 'rhoai3.io/sonar-token-type'
 SONAR_NAME = 'rhoai3.io/sonar-token-name'
+
+
+class EnrollmentPending(ValueError):
+    """A known native project operation has not reached a terminal state."""
+
+
+def enrollment_failure(error, created_at, now=None):
+    transient = isinstance(error, (EnrollmentPending, TimeoutError))
+    if isinstance(error, urllib.error.HTTPError):
+        transient = error.code in (408, 429) or 500 <= error.code <= 599
+    elif isinstance(error, urllib.error.URLError):
+        transient = True
+    elif isinstance(error, subprocess.CalledProcessError):
+        transient = '(NotFound)' in (error.stderr or '')
+    if transient:
+        if not created_at:
+            return 'refused', 'MISSING_REQUEST_TIME'
+        try:
+            stamp = re.sub(r'([+-][0-9]{2}):([0-9]{2})$', r'\1\2', created_at.replace('Z', '+0000'))
+            try:
+                start = datetime.datetime.strptime(stamp, '%Y-%m-%dT%H:%M:%S.%f%z')
+            except ValueError:
+                start = datetime.datetime.strptime(stamp, '%Y-%m-%dT%H:%M:%S%z')
+            age = ((now or datetime.datetime.now(datetime.timezone.utc)) - start).total_seconds()
+        except (ValueError, TypeError):
+            return 'refused', 'INVALID_REQUEST_TIME'
+        if age < 0 or age >= 3600:
+            return 'refused', 'ENROLLMENT_DEADLINE'
+        return 'pending', 'NATIVE_OPERATION_PENDING' if isinstance(error, EnrollmentPending) else 'TRANSIENT_UPSTREAM'
+    return 'refused', 'INVALID_REQUEST' if isinstance(error, (ValueError, KeyError)) else 'PLATFORM_COMMAND_REFUSED'
+
 
 
 class Sonar:
@@ -121,6 +154,8 @@ def oc(*args, document=None):
 
 
 def apply(document):
+    if document.get('kind') == 'Secret':
+        return write_secret(document, oc)
     return oc('apply', '-f', '-', '-o', 'json', document=document)
 
 
@@ -162,7 +197,12 @@ def validate_request(row, project, commit, group_id, import_receipt=None):
 
 
 def resource(kind, name, ns, spec, api='rbac.authorization.k8s.io/v1'):
-    return {'apiVersion': api, 'kind': kind, 'metadata': {'name': name, 'namespace': ns, 'labels': {'app.kubernetes.io/part-of':'developer-platform','app.kubernetes.io/managed-by':'argocd','demo.rhoai.io/stage':'070'}}, **spec}
+    result = {'apiVersion': api, 'kind': kind, 'metadata': {'name': name, 'namespace': ns,
+              'labels': {'app.kubernetes.io/part-of': 'developer-platform',
+                         'app.kubernetes.io/managed-by': 'argocd', 'demo.rhoai.io/stage': '070'}}, **spec}
+    if kind == 'Application':
+        result['metadata'].setdefault('annotations', {})['argocd.argoproj.io/compare-options'] = 'ServerSideDiff=true'
+    return result
 
 
 def trigger_resources(name, ns, project_id, repo, sha):
@@ -262,7 +302,7 @@ def ensure_delivery(api, name, ns, source_project, config, source_repo):
         secret['metadata']['labels'] = {'argocd.argoproj.io/secret-type': 'repository'}
         apply(secret)
     apply(resource('ConfigMap', 'project-delivery-config', ns, {'data': {'delivery.json': json.dumps({'repo_name': name, 'source_project_id': source_project, 'source_repo': source_repo, 'delivery_project_id': delivery['id'], 'gitlab_base_url': config['GITLAB_BASE_URL'], 'argocd_url': config['ARGOCD_URL']})}}, 'v1'))
-    apply(resource('Application', 'runtime-' + name, 'openshift-gitops', {'spec': {'project': 'runtime-projects', 'source': {'repoURL': delivery['http_url_to_repo'], 'targetRevision': 'main', 'path': '.'}, 'destination': {'server': 'https://kubernetes.default.svc', 'namespace': ns}, 'syncPolicy': {'automated': {'prune': True, 'selfHeal': True}, 'retry': {'limit': 10, 'backoff': {'duration': '5s', 'factor': 2, 'maxDuration': '3m'}}, 'syncOptions': ['ServerSideDiff=true', 'RespectIgnoreDifferences=true']}}}, 'argoproj.io/v1alpha1'))
+    apply(resource('Application', 'runtime-' + name, 'openshift-gitops', {'spec': {'project': 'runtime-projects', 'source': {'repoURL': delivery['http_url_to_repo'], 'targetRevision': 'main', 'path': '.'}, 'destination': {'server': 'https://kubernetes.default.svc', 'namespace': ns}, 'syncPolicy': {'automated': {'prune': True, 'selfHeal': True}, 'retry': {'limit': 10, 'backoff': {'duration': '5s', 'factor': 2, 'maxDuration': '3m'}}, 'syncOptions': ['RespectIgnoreDifferences=true']}}}, 'argoproj.io/v1alpha1'))
 
 
 def bootstrap_project(api, row, project, commit, config, import_receipt=None):
@@ -393,11 +433,13 @@ def enroll(api, row, project, commit, config, import_receipt=None):
     apply(project_application(name, ns, row, config))
     app = oc('get', 'application', 'project-' + name, '-n', 'openshift-gitops', '-o', 'json')
     status = app.get('status',{})
+    if status.get('operationState', {}).get('phase') in ('Failed', 'Error'):
+        raise ValueError('Platform-owned project bootstrap failed; inspect its native operation')
     if (status.get('health',{}).get('status') != 'Healthy'
             or status.get('sync',{}).get('status') != 'Synced'
             or status.get('sync',{}).get('revision') != config['PLATFORM_REVISION']
             or status.get('operationState',{}).get('phase') != 'Succeeded') :
-        raise ValueError('Platform-owned project bootstrap is not yet complete')
+        raise EnrollmentPending('Platform-owned project bootstrap is not yet complete')
     if row['kind'] == 'migration':
         provision_migration(name, row, project, config)
     mount_project_scanner(name, ns, row, project['id'])
@@ -424,16 +466,27 @@ def main():
         return
     seeds = oc('get','configmap','gitlab-import-seeds','-n','app-platform-build','-o','json')
     if not seeds.get('immutable'): raise ValueError('Imported-app seeds must be immutable')
+    failures = 0
     for row in json.loads(seeds['data']['seeds.json']):
-        project = api.request('GET','projects/' + str(row['project_id']))
-        commit = api.request('GET','projects/%s/repository/commits/%s' % (project['id'],row['initial_commit']))
-        try: enroll(api,row,project,commit,config,row)
-        except (ValueError,subprocess.CalledProcessError): print('Imported project bootstrap pending')
+        try:
+            project = api.request('GET','projects/' + str(row['project_id']))
+            commit = api.request('GET','projects/%s/repository/commits/%s' % (project['id'],row['initial_commit']))
+            enroll(api,row,project,commit,config,row)
+        except EnrollmentPending:
+            print('Imported project bootstrap pending: native operation incomplete')
+        except (ValueError, KeyError, subprocess.CalledProcessError, urllib.error.URLError, TimeoutError):
+            failures += 1
+            print('REFUSE imported project bootstrap: validation or platform command failed')
     for page in range(1,11):
         issues = api.request('GET', "projects/%s/issues?state=opened&labels=platform-enrollment&per_page=100&page=%s" % (config['GITLAB_REGISTRATION_PROJECT_ID'],page))
         for issue in issues:
+            if 'platform-enrollment-refused' in issue.get('labels', []):
+                failures += 1
+                print('REFUSE enrollment:', issue['iid'], 'requires correction of the recorded request')
+                continue
             if issue['author']['id'] != int(config['GITLAB_PUBLISHER_USER_ID']):
-                print('REFUSE enrollment: author is not the trusted publisher'); continue
+                failures += 1
+                print('REFUSE enrollment:', issue['iid'], 'author is not the trusted publisher'); continue
             try:
                 row=json.loads(issue['description'])
                 project=api.request('GET','projects/' + str(row['project_id']))
@@ -441,10 +494,17 @@ def main():
                 enroll(api,row,project,commit,config)
                 api.request('PUT','projects/%s/issues/%s' % (config['GITLAB_REGISTRATION_PROJECT_ID'],issue['iid']),{'state_event':'close'})
                 print('Enrollment complete:',project['path'])
-            except (ValueError,KeyError,subprocess.CalledProcessError,urllib.error.HTTPError) as error:
-                print('Enrollment pending:',issue['iid'],type(error).__name__)
+            except (ValueError, KeyError, subprocess.CalledProcessError, urllib.error.URLError, TimeoutError) as error:
+                state, reason = enrollment_failure(error, issue.get('created_at'))
+                print('Enrollment ' + state + ':', issue['iid'], reason)
+                if state == 'refused':
+                    failures += 1
+                    labels = sorted(set(issue.get('labels', []) + ['platform-enrollment-refused']))
+                    api.request('PUT', 'projects/%s/issues/%s' % (config['GITLAB_REGISTRATION_PROJECT_ID'], issue['iid']), {'labels': ','.join(labels)})
         if len(issues)<100: break
     else: raise RuntimeError('Enrollment pagination bound reached')
+    if failures:
+        raise RuntimeError('Enrollment has terminal refusals; inspect the named requests')
 
 
 if __name__ == '__main__': main()

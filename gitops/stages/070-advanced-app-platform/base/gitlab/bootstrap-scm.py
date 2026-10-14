@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from secret_writer import write_secret
 from urllib.parse import quote, urlencode
 
 
@@ -167,9 +168,12 @@ def oc(*args, data=None):
 
 
 def apply(kind, name, ns, data, labels=None, annotations=None):
-    return oc('apply', '-f', '-', data={'apiVersion': 'v1', 'kind': kind,
+    document = {'apiVersion': 'v1', 'kind': kind,
         'metadata': {'name': name, 'namespace': ns, 'labels': labels or {}, 'annotations': annotations or {}},
-        'stringData' if kind == 'Secret' else 'data': data})
+        'stringData' if kind == 'Secret' else 'data': data}
+    if kind == 'Secret':
+        return write_secret(document, lambda *args, document=None: oc(*args, data=document))
+    return oc('apply', '-f', '-', data=document)
 
 
 def main():
@@ -329,8 +333,7 @@ def main():
             read_token = argo('POST', 'account/rhdh/token', {'expiresIn': 7776000}, session)['token']
             apply('Secret', 'rhdh-argocd-reader', 'openshift-gitops', {'token': read_token})
         synced = oc('get', 'application', '070-advanced-app-platform', '-n', 'openshift-gitops', '-o', 'json')
-        platform_sha = (synced.get('status', {}).get('operationState', {}).get('syncResult', {}).get('revision')
-                        or synced.get('status', {}).get('sync', {}).get('revision'))
+        platform_sha = synced['spec']['source']['targetRevision']
         if not platform_sha or not re.fullmatch('[0-9a-f]{40}', platform_sha): raise RuntimeError('Stage 070 has no immutable source revision')
         mirror = imports['rhoai3-coding-demo']
         try:

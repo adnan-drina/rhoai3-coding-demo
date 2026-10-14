@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -11,6 +12,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform/base'
+sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
 
 
 def module(name, path):

@@ -50,6 +50,12 @@ replacements:
     options:
       create: true
   - select:
+      kind: NetworkPolicy
+    fieldPaths:
+    - metadata.namespace
+    options:
+      create: true
+  - select:
       kind: PersistentVolumeClaim
     fieldPaths:
     - metadata.namespace

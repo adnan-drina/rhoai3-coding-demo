@@ -1,0 +1,358 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+rules:
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  resourceNames:
+  - gitlab-integrations-bootstrap
+  - gitlab-bootstrap-exec
+  verbs:
+  - get
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stage070-bootstrap-cleanup
+subjects:
+- kind: ServiceAccount
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+rules:
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  resourceNames:
+  - gitlab-integrations-bootstrap
+  verbs:
+  - get
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stage070-bootstrap-cleanup
+subjects:
+- kind: ServiceAccount
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+rules:
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  resourceNames:
+  - gitlab-integrations-bootstrap
+  verbs:
+  - get
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stage070-bootstrap-cleanup
+subjects:
+- kind: ServiceAccount
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+rules:
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  resourceNames:
+  - gitlab-integrations-bootstrap
+  verbs:
+  - get
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stage070-bootstrap-cleanup
+subjects:
+- kind: ServiceAccount
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+rules:
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  resourceNames:
+  - gitlab-integrations-bootstrap
+  verbs:
+  - get
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stage070-bootstrap-cleanup
+subjects:
+- kind: ServiceAccount
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+rules:
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  resourceNames:
+  - gitlab-integrations-mta
+  verbs:
+  - get
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stage070-bootstrap-cleanup
+subjects:
+- kind: ServiceAccount
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+rules:
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  resourceNames:
+  - gitlab-standing-workspace-source
+  verbs:
+  - get
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stage070-bootstrap-cleanup
+subjects:
+- kind: ServiceAccount
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: wksp-ai-admin
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+rules:
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  resourceNames:
+  - gitlab-standing-workspace-source
+  verbs:
+  - get
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: wksp-ai-admin
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stage070-bootstrap-cleanup
+subjects:
+- kind: ServiceAccount
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+rules:
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  resourceNames:
+  - gitlab-integrations-personas
+  verbs:
+  - get
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stage070-bootstrap-cleanup
+subjects:
+- kind: ServiceAccount
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stage070-bootstrap-cleanup
+  namespace: gitlab-system
+  annotations:
+    argocd.argoproj.io/hook: PostSync,SyncFail
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: '99'
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      serviceAccountName: stage070-bootstrap-cleanup
+      restartPolicy: Never
+      containers:
+      - name: cleanup
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -eu
+          oc delete rolebinding gitlab-integrations-bootstrap -n gitlab-system --ignore-not-found
+          oc delete rolebinding gitlab-bootstrap-exec -n gitlab-system --ignore-not-found
+          oc delete rolebinding gitlab-integrations-bootstrap -n rhdh --ignore-not-found
+          oc delete rolebinding gitlab-integrations-bootstrap -n app-platform-build --ignore-not-found
+          oc delete rolebinding gitlab-integrations-bootstrap -n openshift-devspaces --ignore-not-found
+          oc delete rolebinding gitlab-integrations-bootstrap -n openshift-gitops --ignore-not-found
+          oc delete rolebinding gitlab-integrations-mta -n openshift-mta --ignore-not-found
+          oc delete rolebinding gitlab-standing-workspace-source -n wksp-ai-developer --ignore-not-found
+          oc delete rolebinding gitlab-standing-workspace-source -n wksp-ai-admin --ignore-not-found
+          oc delete rolebinding gitlab-integrations-personas -n keycloak --ignore-not-found
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+            - ALL
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault

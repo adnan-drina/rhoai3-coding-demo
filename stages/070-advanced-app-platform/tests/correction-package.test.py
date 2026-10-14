@@ -1,0 +1,323 @@
+"""Executable regressions for Secret lifecycle, source pinning and scoped authority."""
+import base64
+import copy
+import datetime
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+import urllib.error
+import yaml
+
+ROOT=Path(__file__).resolve().parents[3]
+BASE=ROOT/'gitops/stages/070-advanced-app-platform/base'
+sys.path.insert(0,str(BASE/'pipelines/gitlab'))
+import secret_writer
+
+def load(name,path):
+ spec=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
+app=load('pinned_application',ROOT/'stages/070-advanced-app-platform/application.py')
+scm=load('correction_enrollment',BASE/'pipelines/gitlab/reconcile.py')
+bootstrap=load('correction_bootstrap',BASE/'gitlab/bootstrap-scm.py')
+identity=load('scoped_identity',BASE/'identity/jobs/configure-scm-identity.py')
+sys.path.insert(0,str(ROOT/'stages/070-advanced-app-platform'))
+rotation=load('reviewed_rotation',ROOT/'stages/070-advanced-app-platform/rotate-credentials.py')
+security=load('live_security',ROOT/'stages/070-advanced-app-platform/security-status.py')
+renderer=load('correction_renderer',ROOT/'scripts/platform/render-stage070-charts.py')
+
+class SecretAPI:
+ def __init__(self,existing=None):self.value=copy.deepcopy(existing);self.calls=[];self.fail=None
+ def __call__(self,*args,document=None):
+  self.calls.append((args,copy.deepcopy(document)))
+  if self.fail:raise subprocess.CalledProcessError(1,['oc',*args],stderr=self.fail)
+  if args[0]=='get':
+   if self.value is None:raise subprocess.CalledProcessError(1,['oc',*args],stderr='(NotFound)')
+   return copy.deepcopy(self.value)
+  if args[0]=='create':
+   if self.value is not None:raise subprocess.CalledProcessError(1,['oc',*args],stderr='(AlreadyExists)')
+   self.value=copy.deepcopy(document)
+  elif args[0]=='patch':
+   for k,values in document.get('metadata',{}).items():
+    target=self.value.setdefault('metadata',{}).setdefault(k,{})
+    for key,value in values.items():
+     if value is None:target.pop(key,None)
+     else:target[key]=value
+   self.value.setdefault('data',{}).update(document.get('data',{}))
+   self.value.setdefault('stringData',{}).update(document.get('stringData',{}))
+  elif args[0]=='apply':
+   # Kubernetes client-side apply is the bug: it retains the complete payload.
+   self.value=copy.deepcopy(document);self.value['metadata'].setdefault('annotations',{})[secret_writer.LAST_APPLIED]=json.dumps(document)
+  return copy.deepcopy(self.value)
+
+class SecretLifecycle(unittest.TestCase):
+ def setUp(self):
+  self.doc={'apiVersion':'v1','kind':'Secret','metadata':{'name':'credential','namespace':'test','labels':{'owned':'yes'}},'stringData':{'token':'synthetic-token'}}
+ def test_first_write_does_not_copy_payload(self):
+  api=SecretAPI();secret_writer.write_secret(self.doc,api)
+  self.assertEqual([a[0] for a,d in api.calls],['get','create'])
+  self.assertNotIn(secret_writer.LAST_APPLIED,api.value['metadata'].get('annotations',{}))
+ def test_update_removes_copy_and_preserves_foreign_fields(self):
+  old=copy.deepcopy(self.doc);old['metadata']['uid']='retained';old['metadata']['annotations']={secret_writer.LAST_APPLIED:'old-token','foreign':'keep'};old['data']={'other':'dW5yZWxhdGVk'}
+  api=SecretAPI(old);before=copy.deepcopy(self.doc)
+  for _ in range(2):secret_writer.write_secret(self.doc,api)
+  self.assertEqual(self.doc,before);self.assertEqual(api.value['metadata']['uid'],'retained');self.assertEqual(api.value['data']['other'],'dW5yZWxhdGVk');self.assertEqual(api.value['metadata']['annotations'],{'foreign':'keep'})
+  self.assertTrue(all('--force-conflicts' not in a for a,d in api.calls))
+ def test_forbidden_does_not_fall_back_or_expose_payload(self):
+  api=SecretAPI();api.fail='(Forbidden) synthetic-token'
+  with self.assertRaisesRegex(RuntimeError,'redacted') as caught:secret_writer.write_secret(self.doc,api)
+  self.assertNotIn('synthetic-token',str(caught.exception));self.assertEqual(len(api.calls),1)
+ def test_create_race_updates_existing(self):
+  api=SecretAPI();original=api.__call__;first=True
+  def race(*args,document=None):
+   if args[0]=='create':api.value=copy.deepcopy(self.doc)
+   return original(*args,document=document)
+  secret_writer.write_secret(self.doc,race)
+  self.assertEqual(api.calls[-1][0][0],'patch')
+ def test_wrong_kind_or_implicit_namespace_is_refused(self):
+  for field in ('kind','namespace'):
+   doc=copy.deepcopy(self.doc)
+   if field=='kind':doc['kind']='ConfigMap'
+   else:del doc['metadata']['namespace']
+   api=SecretAPI()
+   with self.assertRaises(ValueError):secret_writer.write_secret(doc,api)
+   self.assertEqual(api.calls,[])
+ def test_real_reconciler_routes_secrets_but_keeps_normal_apply(self):
+  api=SecretAPI()
+  with patch.object(scm,'oc',api):scm.apply(self.doc)
+  self.assertNotIn(secret_writer.LAST_APPLIED,api.value['metadata'].get('annotations',{}))
+  with patch.object(scm,'oc',api):scm.apply({'kind':'ConfigMap','metadata':{'name':'x'}})
+  self.assertEqual(api.calls[-1][0][0],'apply')
+ def test_real_bootstrap_routes_typed_secrets(self):
+  api=SecretAPI()
+  def call(*args,data=None):return api(*args,document=data)
+  with patch.object(bootstrap,'oc',call):bootstrap.apply('Secret','credential','test',{'token':'synthetic-token'})
+  self.assertNotIn(secret_writer.LAST_APPLIED,api.value['metadata'].get('annotations',{}))
+
+class Deployment(unittest.TestCase):
+ sha='1'*40;repo='https://source.example/demo.git'
+ def ready(self):return {'spec':{'project':'rhoai-demo','source':app.source(self.sha,self.repo),'destination':app.DESTINATION},'status':{'sync':{'revision':self.sha,'status':'Synced'},'health':{'status':'Healthy'},'operationState':{'phase':'Succeeded','syncResult':{'revision':self.sha}}}}
+ def test_exact_operation_is_required(self):
+  for key in ('operation_revision','observed_revision','moving_source','repo','active'):
+   value=self.ready()
+   if key=='operation_revision':value['status']['operationState']['syncResult']['revision']='2'*40
+   elif key=='observed_revision':value['status']['sync']['revision']='2'*40
+   elif key=='moving_source':value['spec']['source']['targetRevision']='main'
+   elif key=='repo':value['spec']['source']['repoURL']='https://foreign.example/demo.git'
+   else:value['operation']={'sync':{}}
+   if key in ('moving_source','repo'):
+    with self.assertRaises(ValueError):app.reconciled(value,self.sha,self.repo)
+   else:self.assertFalse(app.reconciled(value,self.sha,self.repo))
+  self.assertTrue(app.reconciled(self.ready(),self.sha,self.repo))
+ def test_failed_hook_is_terminal(self):
+  value=self.ready();value['status']['operationState']['phase']='Failed'
+  with self.assertRaises(ValueError):app.reconciled(value,self.sha,self.repo)
+ def test_previous_revision_failure_does_not_fail_new_operation(self):
+  value=self.ready();value['status']['operationState']['phase']='Failed';value['status']['operationState']['syncResult']['revision']='2'*40
+  self.assertFalse(app.reconciled(value,self.sha,self.repo))
+ def test_bounded_wait_observes_delayed_completion(self):
+  now=[0];sleep=lambda seconds:now.__setitem__(0,now[0]+seconds)
+  pending=self.ready();pending['status']['health']['status']='Progressing';states=iter([pending,pending,self.ready()])
+  app.wait(self.sha,self.repo,30,reader=lambda:next(states),clock=lambda:now[0],sleep=sleep);self.assertEqual(now[0],20)
+  with self.assertRaises(TimeoutError):app.wait(self.sha,self.repo,15,reader=lambda:pending,clock=lambda:now[0],sleep=sleep)
+  self.assertEqual(now[0],35)
+ def test_source_rejects_credentials_and_moving_revision(self):
+  for revision,repo in [('main',self.repo),(self.sha,'https://token@example.test/repo.git'),(self.sha,self.repo+'?token=secret')]:
+   with self.assertRaises(ValueError):app.source(revision,repo)
+ def test_render_keeps_existing_destination_and_has_effective_diff(self):
+  value=app.application(self.sha,self.repo)
+  self.assertEqual(value['spec']['destination'],{'server':'https://kubernetes.default.svc'})
+  self.assertEqual(value['metadata']['annotations']['argocd.argoproj.io/compare-options'],'ServerSideDiff=true')
+  self.assertNotIn('ServerSideDiff=true',value['spec']['syncPolicy']['syncOptions'])
+  claims=[x for x in value['spec']['ignoreDifferences'] if x.get('kind')=='PersistentVolumeClaim']
+  self.assertTrue(claims);self.assertTrue(all(x.get('name') and x.get('namespace') and x['jsonPointers']==['/spec/volumeName'] for x in claims))
+ def test_git_source_selection_rejects_dirty_untracked_and_unpublished(self):
+  with tempfile.TemporaryDirectory() as temp:
+   root=Path(temp)/'repo';remote=Path(temp)/'remote.git';root.mkdir()
+   def git(*a):return subprocess.check_output(['git','-C',str(root),*a],stderr=subprocess.DEVNULL,text=True).strip()
+   git('init');git('config','user.name','Fixture');git('config','user.email','fixture@example.invalid')
+   file=root/'stages/070-advanced-app-platform/deploy.sh';file.parent.mkdir(parents=True);file.write_text('initial')
+   git('add','.');git('commit','-m','fixture');sha=git('rev-parse','HEAD');subprocess.run(['git','init','--bare',str(remote)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True);git('push',str(remote),'HEAD:main')
+   env={'GIT_CONFIG_COUNT':'1','GIT_CONFIG_KEY_0':'url.'+remote.as_uri()+'.insteadOf','GIT_CONFIG_VALUE_0':self.repo}
+   with patch.dict(os.environ,env):
+    self.assertEqual(app.select_revision('HEAD',self.repo,root),sha)
+    file.write_text('dirty')
+    with self.assertRaises(subprocess.CalledProcessError):app.select_revision('HEAD',self.repo,root)
+    file.write_text('initial');extra=file.parent/'extra';extra.write_text('untracked')
+    with self.assertRaises(ValueError):app.select_revision('HEAD',self.repo,root)
+    git('add','.');git('commit','-m','unpublished')
+    with self.assertRaisesRegex(ValueError,'not advertised'):app.select_revision('HEAD',self.repo,root)
+
+class EnrollmentErrors(unittest.TestCase):
+ def test_permanent_failures_are_never_pending(self):
+  for error in [ValueError('foreign identity'),KeyError('missing'),urllib.error.HTTPError('https://example',403,'denied',None,None),subprocess.CalledProcessError(1,['oc'],stderr='(Forbidden)')]:
+   self.assertEqual(scm.enrollment_failure(error,'2026-10-14T00:00:00Z')[0],'refused')
+ def test_transient_has_one_fixed_request_deadline(self):
+  now=datetime.datetime(2026,10,14,0,30,tzinfo=datetime.timezone.utc)
+  for error in [scm.EnrollmentPending(),urllib.error.HTTPError('https://example',429,'limited',None,None)]:
+   self.assertEqual(scm.enrollment_failure(error,'2026-10-14T00:00:00Z',now)[0],'pending')
+   self.assertEqual(scm.enrollment_failure(error,'2026-10-13T23:00:00Z',now),('refused','ENROLLMENT_DEADLINE'))
+   self.assertEqual(scm.enrollment_failure(error,None,now)[0],'refused')
+ def test_generated_apps_use_diff_annotation(self):
+  doc=scm.project_application('example','example-dev',{}, {'PLATFORM_REPO_URL':'https://example.test/repo.git','PLATFORM_REVISION':'1'*40})
+  self.assertEqual(doc['metadata']['annotations']['argocd.argoproj.io/compare-options'],'ServerSideDiff=true')
+
+class ScopedAuthority(unittest.TestCase):
+ def test_client_roles_stay_in_platform_and_keep_secret(self):
+  requests=[];written=[]
+  def api(method,path,data=None):
+   requests.append((method,path,data))
+   if path=='clients?clientId=stage070-rhdh-provisioner':return [{'id':'existing-client','attributes':{'rhoai3.owner':'stage070'}}]
+   if path=='clients?clientId=realm-management':return [{'id':'manager'}]
+   if path.endswith('/service-account-user'):return {'id':'service-user'}
+   if '/roles/' in path:return {'name':path.rsplit('/',1)[-1]}
+   if path.endswith('/client-secret'):return {'value':'preserved-synthetic-secret'}
+   if method=='GET':return []
+  identity.configure(api,'stage070-rhdh-provisioner','rhdh',('manage-clients',),writer=written.append)
+  self.assertEqual(written[0]['stringData']['client_secret'],'preserved-synthetic-secret')
+  put=next(data for method,path,data in requests if method=='PUT');self.assertFalse(put['fullScopeAllowed']);self.assertFalse(put['directAccessGrantsEnabled'])
+  self.assertFalse(any('/master/' in path or '/sso/' in path for method,path,data in requests))
+  self.assertTrue(any('/scope-mappings/' in path for method,path,data in requests))
+ def test_bootstrap_authority_is_removed_on_success_or_failure(self):
+  docs=list(yaml.safe_load_all((BASE/'gitlab/integrations-bootstrap.yaml').read_text()))
+  bindings=[d for d in docs if d and d['kind']=='RoleBinding' and any(s.get('name')=='gitlab-integrations-bootstrap' for s in d.get('subjects',[]))]
+  self.assertTrue(bindings)
+  self.assertTrue(all(d['metadata']['annotations'].get('argocd.argoproj.io/hook')=='Sync' for d in bindings))
+  cleanup=list(yaml.safe_load_all((BASE/'gitlab/bootstrap-cleanup.yaml').read_text()));job=next(d for d in cleanup if d['kind']=='Job')
+  self.assertEqual(job['metadata']['annotations']['argocd.argoproj.io/hook'],'PostSync,SyncFail')
+  script=job['spec']['template']['spec']['containers'][0]['command'][-1]
+  for d in bindings:self.assertIn('oc delete rolebinding '+d['metadata']['name']+' -n '+d['metadata']['namespace'],script)
+  roles=[d for d in cleanup if d['kind']=='Role'];self.assertTrue(all(r['rules'][0]['resources']==['rolebindings'] and r['rules'][0]['verbs']==['get','delete'] and r['rules'][0].get('resourceNames') for r in roles))
+ def test_downstream_jobs_have_no_master_secret_access(self):
+  for file in ['rhdh/jobs/configure-rhdh.yaml','mta/jobs/configure-mta-platform-sso.yaml','pipelines/signing/bootstrap.yaml']:
+   for d in yaml.safe_load_all((BASE/file).read_text()):
+    if d and d.get('kind')=='Role' and d['metadata'].get('namespace')=='keycloak':self.assertFalse(any('secrets' in r.get('resources',[]) for r in d.get('rules',[])))
+ def test_all_shell_commands_parse(self):
+  for file in ['rhdh/jobs/configure-rhdh.yaml','mta/jobs/configure-mta-platform-sso.yaml','sonarqube/configure-sonarqube.yaml','devspaces/maas-api-key-provisioning.yaml']:
+   for d in yaml.safe_load_all((BASE/file).read_text()):
+    if d and d.get('kind')=='Job':
+     for c in d['spec']['template']['spec']['containers']:
+      for s in c.get('command',[])+c.get('args',[]):
+       if '\n' in s:subprocess.run(['/bin/bash','-n'],input=s,text=True,check=True,capture_output=True)
+ def test_bash32_empty_auth_array_is_safe(self):
+  result=subprocess.run(['/bin/bash','-uc','auth=(); set -- ${auth[@]+"${auth[@]}"}; test "$#" = 0'],capture_output=True,text=True)
+  self.assertEqual(result.returncode,0,result.stderr)
+
+class RotationSafety(unittest.TestCase):
+ def test_annotation_cleanup_preserves_values_and_avoids_master_credentials(self):
+  before={'metadata':{'uid':'same','annotations':{secret_writer.LAST_APPLIED:'synthetic-copy'}},'data':{'token':'c3ludGhldGlj'},'type':'Opaque'}
+  after=copy.deepcopy(before);after['metadata']['annotations']={}
+  with patch.object(rotation,'oc',side_effect=[before,after]),patch.object(rotation,'write_secret') as writer,patch.object(rotation,'data') as credential_read:
+   self.assertTrue(all(rotation.remove_annotation('test/credential').values()));credential_read.assert_not_called()
+   self.assertNotIn('data',writer.call_args.args[0]);self.assertNotIn('stringData',writer.call_args.args[0])
+ def test_removed_rotated_key_is_already_invalidated(self):
+  r=rotation.Rotation.__new__(rotation.Rotation);r.sso='https://sso.example';r.client=lambda name:'same-id';current=['old']
+  def api(method,path,payload=None):
+   if method=='POST':current[0]='new'
+   if method=='DELETE':raise urllib.error.HTTPError(r.sso,404,'already absent',None,None)
+   return {'value':current[0]}
+  r.keycloak=api
+  def denied(*args,**kwargs):raise urllib.error.HTTPError(r.sso,401,'refused',None,None)
+  with patch.object(rotation,'request',side_effect=denied):self.assertTrue(all(r.rotate_client('expected',lambda value:None).values()))
+ def test_client_persist_precedes_predecessor_invalidation(self):
+  r=rotation.Rotation.__new__(rotation.Rotation);r.sso='https://sso.example';calls=[];current=['old']
+  def api(method,path,payload=None):
+   calls.append((method,path))
+   if path=='clients?clientId=expected':return [{'id':'retained-id','clientId':'expected'}]
+   if method=='POST':current[0]='new';return {'value':'new'}
+   if method=='GET':return {'value':current[0]}
+  r.keycloak=api
+  def denied(*a,**kw):raise urllib.error.HTTPError('https://sso.example',401,'refused',None,None)
+  with patch.object(rotation,'request',side_effect=denied):
+   proof=r.rotate_client('expected',lambda value:calls.append(('persist',value)))
+  self.assertTrue(all(proof.values()));self.assertLess(calls.index(('persist','new')),next(i for i,(method,path) in enumerate(calls) if method=='DELETE'))
+ def test_publisher_authority_change_is_refused_before_secret_write(self):
+  r=rotation.Rotation.__new__(rotation.Rotation);r.gitlab='https://gitlab.example'
+  previous={'id':12,'user_id':7,'scopes':['api','read_repository'],'expires_at':'2026-12-01'}
+  def api(method,path,payload=None):
+   if method=='GET':return {'username':'rhdh-publisher','id':7}
+   return {'user_id':7,'scopes':['api','read_repository','sudo'],'expires_at':'2026-12-01','token':'new'}
+  r.root_api=api
+  with patch.object(rotation,'data',return_value=({}, {'token':'old'})),patch.object(rotation,'request',return_value=previous),patch.object(rotation,'update') as writer:
+   with self.assertRaisesRegex(ValueError,'authority'):r.publisher()
+   writer.assert_not_called()
+ def test_publisher_updates_both_copies_before_revoke(self):
+  r=rotation.Rotation.__new__(rotation.Rotation);r.gitlab='https://gitlab.example';calls=[];revoked=[False]
+  old={'id':12,'user_id':7,'scopes':['api','read_repository'],'expires_at':'2026-12-01'}
+  def api(method,path,payload=None):
+   calls.append((method,path))
+   if method=='GET':return {'username':'rhdh-publisher','id':7}
+   if method=='DELETE':revoked[0]=True;return
+   return dict(old,token='new')
+  def request(base,method,path,payload=None,headers=None,**kwargs):
+   if headers['PRIVATE-TOKEN']=='old' and revoked[0]:raise urllib.error.HTTPError(base,401,'refused',None,None)
+   return old
+  r.root_api=api
+  with patch.object(rotation,'data',return_value=({}, {'token':'old'})),patch.object(rotation,'request',side_effect=request),patch.object(rotation,'update',side_effect=lambda ns,name,value:calls.append(('write',name))):
+   self.assertTrue(all(r.publisher().values()))
+  self.assertLess(calls.index(('write','gitlab-publisher')),calls.index(('DELETE','personal_access_tokens/12')))
+  self.assertLess(calls.index(('write','rhdh-gitlab')),calls.index(('DELETE','personal_access_tokens/12')))
+ def test_foreign_maas_key_never_mints_or_revokes(self):
+  r=rotation.Rotation.__new__(rotation.Rotation)
+  gateway={'spec':{'listeners':[{'hostname':'maas.example'}]}}
+  with patch.object(rotation,'oc',return_value=gateway),patch.object(rotation,'command',return_value='synthetic-jwt'),patch.object(rotation,'data',return_value=({}, {'MAAS_KEY_ID':'old'})),patch.object(rotation,'request',return_value={'username':'other','subscription':'foreign'}) as req,patch.object(rotation,'update') as writer:
+   with self.assertRaisesRegex(ValueError,'Foreign'):r.mta()
+   self.assertEqual(req.call_count,1);writer.assert_not_called()
+
+class NativeSyncAndIngress(unittest.TestCase):
+ def test_declarative_secrets_have_explicit_ssa_without_stringdata(self):
+  docs=list(yaml.safe_load_all(subprocess.check_output(['kustomize','build',str(BASE)],text=True)))
+  secrets=[d for d in docs if d and d['kind']=='Secret'];self.assertTrue(secrets)
+  for d in secrets:
+   self.assertEqual(d['metadata']['annotations']['argocd.argoproj.io/sync-options'],'ServerSideApply=true');self.assertNotIn('stringData',d)
+  app=yaml.safe_load((ROOT/'gitops/argocd/app-of-apps/070-advanced-app-platform.yaml').read_text())
+  self.assertIn('ClientSideApplyMigration=false',app['spec']['syncPolicy']['syncOptions'])
+ def test_chart_writer_refuses_unreviewed_upstream_shape(self):
+  old='kubectl --validate=false --namespace=$namespace apply -f rails-secrets.yml'
+  script=renderer.rails_secret_writer(old)
+  self.assertNotIn(' apply ',script);self.assertIn('--patch-file=rails-secrets.yml',script);self.assertIn('create -f rails-secrets.yml',script)
+  subprocess.run(['/bin/bash','-n'],input=script,text=True,check=True)
+  for changed in ('changed upstream',old+'\n'+old):
+   with self.assertRaises(ValueError):renderer.rails_secret_writer(changed)
+ def test_auto_started_exact_sync_is_reused(self):
+  value={'spec':{'project':'rhoai-demo','destination':app.DESTINATION,'source':app.source('1'*40,'https://example.com/demo.git')},'operation':{'sync':{'revision':'1'*40}}}
+  with patch.object(app,'read',return_value=value),patch.object(app,'run') as command:
+   app.sync('1'*40,'https://example.com/demo.git');command.assert_not_called()
+  value['operation']['sync']['revision']='2'*40
+  with patch.object(app,'read',return_value=value),patch.object(app,'run') as command:
+   with self.assertRaisesRegex(ValueError,'different'):app.sync('1'*40,'https://example.com/demo.git')
+   command.assert_not_called()
+ def test_new_native_sync_is_full_and_prunes_obsolete_owners(self):
+  value={'spec':{'project':'rhoai-demo','destination':app.DESTINATION,'source':app.source('1'*40,'https://example.com/demo.git')}}
+  with patch.object(app,'read',return_value=value),patch.object(app,'run') as command:app.sync('1'*40,'https://example.com/demo.git')
+  operation=json.loads(command.call_args.kwargs['input'])['operation']['sync']
+  self.assertTrue(operation['prune']);self.assertIn('ApplyOutOfSyncOnly=false',operation['syncOptions']);self.assertNotIn('resources',operation)
+ def test_ingress_contract_preserves_only_declared_cross_namespace_path(self):
+  policies=list(yaml.safe_load_all((BASE/'network-policies.yaml').read_text()))
+  self.assertEqual({p['metadata']['namespace'] for p in policies},{'gitlab-system','sonarqube','rhdh','app-platform-build','trusted-artifact-signer'})
+  for p in policies:
+   self.assertEqual(p['spec']['podSelector'],{});self.assertEqual(p['spec']['policyTypes'],['Ingress']);self.assertNotIn('egress',p['spec'])
+   peers=p['spec']['ingress'][0]['from'];self.assertIn({'podSelector':{}},peers)
+   self.assertTrue(all(peer.get('podSelector')=={} if 'podSelector' in peer else bool(peer.get('namespaceSelector',{}).get('matchLabels')) for peer in peers))
+   if p['metadata']['namespace']!='sonarqube':self.assertEqual(len(p['spec']['ingress']),1)
+   else:
+    sonar=p['spec']['ingress'][1];self.assertEqual(sonar['ports'],[{'protocol':'TCP','port':9000}])
+    self.assertIn({'namespaceSelector':{'matchLabels':{'rhoai3.redhat.com/pipeline-project':'true'}}},sonar['from'])
+  k=(BASE/'pipelines/project-enrollment/kustomization.yaml').read_text();self.assertIn('NetworkPolicy',k)
+  project=yaml.safe_load((BASE/'pipelines/project-pipeline/network-policy.yaml').read_text());self.assertEqual(project['spec']['policyTypes'],['Ingress'])
+ def test_security_authorization_does_not_turn_api_errors_into_denials(self):
+  with patch.object(security.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'no\n','')):self.assertTrue(security.denied('get','secret/x','test','principal'))
+  with patch.object(security.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'','API unavailable')):
+   with self.assertRaises(RuntimeError):security.denied('get','secret/x','test','principal')
+ def test_service_credentials_are_not_writable_by_downstream_jobs(self):
+  for file,ns,name in [('rhdh/jobs/configure-rhdh.yaml','rhdh','stage070-rhdh-provisioner'),('mta/jobs/configure-mta-platform-sso.yaml','openshift-mta','stage070-mta-provisioner')]:
+   roles=[d for d in yaml.safe_load_all((BASE/file).read_text()) if d and d['kind']=='Role' and d['metadata']['namespace']==ns]
+   for role in roles:
+    for rule in role['rules']:
+     if 'secrets' in rule.get('resources',[]) and 'patch' in rule.get('verbs',[]):self.assertNotIn(name,rule.get('resourceNames',[]));self.assertTrue(rule.get('resourceNames'))
+
+if __name__=='__main__':unittest.main()
