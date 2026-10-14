@@ -60,6 +60,13 @@ exporter, MIG manager, operator validator); the `gpu-operator`, `nvidia-dcgm-exp
 `cluster-monitoring-metrics-api` is owned by the Cluster Monitoring Operator. While the GPU pools are parked at
 zero replicas, the operand DaemonSets schedule no pods and the `ClusterPolicy` still reports `ready`.
 
+### `rhoai-monitoring/`: GPU metrics for OpenShift AI
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| ServiceMonitor | `accelerator-gpu-utilization` | `redhat-ods-monitoring` | Scrapes the DCGM exporter in `nvidia-gpu-operator` into the OpenShift AI datasource and renames DCGM series to the `accelerator_*` names the product LLM Utilization dashboard queries. Label `monitoring.opendatahub.io/scrape=true` |
+
+
 ## How
 
 - **Installation.** Channel `v26.7`, Automatic approval, no `startingCSV`.
@@ -87,6 +94,8 @@ zero replicas, the operand DaemonSets schedule no pods and the `ClusterPolicy` s
 - **ignoreDifferences / delegated fields.** None.
 - **Secrets.** None. vGPU licensing (`licensingConfig.secretName`) is empty because vGPU is not used.
 - **Cluster-specific values.** None.
+
+- **GPU utilization ServiceMonitor.** The product LLM Utilization dashboard queries `accelerator_gpu_utilization` on the OpenShift AI datasource, and the generated collector job does not deliver it (`BACKLOG.md`, `docs/TROUBLESHOOTING.md`). This ServiceMonitor applies the same renames as the NVIDIA operator's own `nvidia-dcgm-exporter` PrometheusRule: `DCGM_FI_DEV_GPU_UTIL` to `accelerator_gpu_utilization`, `DCGM_FI_DEV_MEM_COPY_UTIL` to `accelerator_memory_used_bytes`, `DCGM_FI_DEV_FB_TOTAL` to `accelerator_memory_total_bytes`. It also derives `model_name` from the consuming pod name. The OpenShift AI guide documents the `monitoring.opendatahub.io/scrape=true` label on a workload's pod template and warns against adding it to operator-managed workloads [2]. The demo puts it on its own ServiceMonitor instead, so no operator-managed pod is changed. The repository records this as a workaround for an OpenShift AI 3.5.1 product gap (`BACKLOG.md`).
 
 ## Validation
 

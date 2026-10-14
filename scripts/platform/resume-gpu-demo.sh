@@ -19,7 +19,7 @@ case "$GPU_POOL" in
     l40s)       GPU_POOL_LABEL=nvidia-gpu;        GPU_POOL_INSTANCE=g6e.2xlarge ;;
     *) echo "Unknown GPU_POOL '$GPU_POOL' (rtxpro6000 or l40s)" >&2; exit 2 ;;
 esac
-GPU_POOL_LABELS='["nvidia-gpu","nvidia-rtxpro6000","nvidia-h100"]'
+GPU_POOL_LABELS='["nvidia-gpu","nvidia-rtxpro6000"]'
 GPU_RESUME_TIMEOUT_SECONDS="${GPU_RESUME_TIMEOUT_SECONDS:-1800}"
 GPU_RESUME_POLL_SECONDS="${GPU_RESUME_POLL_SECONDS:-15}"
 

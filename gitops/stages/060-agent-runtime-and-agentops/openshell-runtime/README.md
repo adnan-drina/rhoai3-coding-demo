@@ -11,7 +11,7 @@ through the OpenShell CLI; the AgentOps console (`060-agent-console`) only reads
 | Argo CD Application | `060-openshell-runtime` ([manifest](../../../argocd/app-of-apps/060-agent-runtime-and-agentops/openshell-runtime.yaml)) |
 | Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-runtime.sh`](../../../../stages/060-agent-runtime-and-agentops/deploy-runtime.sh) (own deploy script; also called at the end of `deploy.sh`) |
 | Validated by | No component validator. `deploy-runtime.sh` gates on `setup-runtime.py`, `check-operator-policy.py` and `argocd app wait --sync --health`; opt-in qualifiers `qualify-host.sh`, `qualify-opencode.py`, `qualify-hermes.py`, `owner-client.py --check`. [`validate.sh`](../../../../stages/060-agent-runtime-and-agentops/validate.sh) reports the stage as pending (exit 2). |
-| Sync | Manual. Pinned to a published SHA; `argocd --core app sync --strategy hook`. Annotation `compare-options: ServerSideDiff=false` (client-side comparison, see How). Sync option `RespectIgnoreDifferences=true`; `ignoreDifferences` on `/data` of three runtime-owned objects. |
+| Sync | Manual. Pinned to a published SHA; `argocd --core app sync --strategy hook`. Annotation `compare-options: ServerSideDiff=true`. Sync option `RespectIgnoreDifferences=true`; `ignoreDifferences` on `/data` of three runtime-owned objects. |
 | Depends on | `060-openshell-identity` (realm `openshell` must exist for the issuer check). Stage 040 MaaS (`MaaSSubscription` API, model `internal-models/qwen3-8-27b`). Stage 050 MLflow (`mlflow.kubeflow.org` authorization). Group `rhods-admins` (Stage 010). The `redhat-operators` catalog with package `agent-sandbox-operator`. |
 | Used by | `060-agent-console` (needs this Application Healthy and the Sandbox CRD). OpenCode and Hermes sandboxes in `ai-agents`, created through the gateway by `setup-opencode.py` / `setup-hermes.py`. `owner-client.py` and `selected_task_trace.py` (MLflow experiment `agent-runtime-traces`). |
 
@@ -141,15 +141,10 @@ All at wave 10.
   `openshell-runtime-ready`, with `RespectIgnoreDifferences=true` so a sync does not write Git's empty map over the
   runtime values [7], [8]. Metadata, Secret type and every other object stay compared. Adding authored data to these
   placeholders would need this boundary revisited.
-- **Client-side comparison (`ServerSideDiff=false`).** The Application first used `ServerSideDiff=true`. Commit
-  `30466007` ("use native client-side runtime comparison") set the annotation to `false` and dropped the
-  `ServerSideDiff=true` sync option, which Argo CD does not read [10]. The next commit, `a769444a`, widened the
-  ignores to whole `/data` maps and removed the empty `triggers: []` from the BuildConfig, to remove empty-versus-absent
-  differences. Neither commit message records the exact failure that server-side diff produced; the stage plan only
-  records the resulting ownership rule. With server-side diff off and `controller.diff.server.side` unset in
-  `openshift-gitops`, the annotation matches the global default; it keeps the Application on client-side comparison
-  if server-side diff is ever enabled globally [10]. Server-side diff also does not run for objects that do not yet
-  exist [10], which matters here because the placeholders are created during the first sync.
+- **Server-side comparison.** Commit `30466007` had switched this Application to client-side comparison
+  (`ServerSideDiff=false`) without a recorded reason. Re-tested on 2026-10-14 with server-side diff after
+  a769444a widened the ignores to whole maps: Synced, no resource out of sync. The annotation is `true` again,
+  like every other Application.
 - **Operator install.** Channel `preview-0.9`, `Automatic` approval, no `startingCSV`, checked by
   `check-operator-policy.py` before the first write. The first install (2026-10-06) used a manually approved
   InstallPlan for `agent-sandbox-operator.v0.9.0`; that InstallPlan is still listed as `Manual`, approved.
@@ -198,7 +193,7 @@ oc get statefulset openshell -n openshell; oc get csv -n agent-sandbox-system | 
 | MLflow authorization | `experiments` pseudo-resource in `mlflow.kubeflow.org` covers runs and traces [3] | Project-wide Role for `ai-admin` in `ai-agents` | Aligned |
 | MaaS access | Subscriptions grant per-model token limits; explicit subscription bypasses priority [11] | One subscription per agent, Qwen 3.8 only | Aligned |
 | Delegated fields | `RespectIgnoreDifferences` applies ignores during sync [8] | Used for the three runtime-owned data maps | Aligned |
-| Diff strategy | Server-side diff is opt-in per Application or global [10] | Explicit `ServerSideDiff=false` | Deviation (justified: client-side comparison chosen in `30466007`; reason not recorded) |
+| Diff strategy | Server-side diff is opt-in per Application or global [10] | `ServerSideDiff=true` | Aligned (re-tested 2026-10-14) |
 | Validation | n/a | No read-only component validator | Gap |
 
 ## References

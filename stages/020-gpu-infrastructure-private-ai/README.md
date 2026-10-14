@@ -11,7 +11,7 @@ This stage turns the GPU into a platform service. Data scientists select a hardw
 ## Architecture
 
 ```
-AWS GPU MachineSets (default g7e.2xlarge, 1x RTX PRO 6000 each; L40S and H100 pools; all at 0 replicas in Git)
+AWS GPU MachineSets (default g7e.2xlarge, 1x RTX PRO 6000 each; L40S pool; all at 0 replicas in Git)
    │
    ▼
 NFD Operator → NodeFeatureDiscovery → node hardware feature labels
@@ -56,7 +56,7 @@ The CPU queue supports workbenches; `cq-gpu-rtxpro6000` (two RTX PRO 6000 units)
 
 The GPU-as-a-Service layer on top of the Stage 010 base platform.
 
-- **GPU pools** — the default pool is AWS `g7e.2xlarge` (one NVIDIA RTX PRO 6000 Blackwell Server Edition, 96 GB, FP8 and NVFP4 tensor cores), one MachineSet per `us-east-2` zone, chosen by the 2026-10-13 serving study; the former `g6e.2xlarge` (one NVIDIA L40S, 48 GB) pool stays declared at zero, and dormant per-zone `p5.4xlarge` (H100) MachineSets record the capacity probe. All use 200 GB gp3 encrypted EBS root volumes and the `nvidia-gpu-only:NoSchedule` taint; the Argo CD Application ignores `MachineSet.spec.replicas` drift so operators scale to zero between sessions for cost control
+- **GPU pools** — the default pool is AWS `g7e.2xlarge` (one NVIDIA RTX PRO 6000 Blackwell Server Edition, 96 GB, FP8 and NVFP4 tensor cores), one MachineSet per `us-east-2` zone, chosen by the 2026-10-13 serving study; the former `g6e.2xlarge` (one NVIDIA L40S, 48 GB) pool stays declared at zero. A dormant H100 (`p5.4xlarge`) pool was removed on 2026-10-14. All use 200 GB gp3 encrypted EBS root volumes and the `nvidia-gpu-only:NoSchedule` taint; the Argo CD Application ignores `MachineSet.spec.replicas` drift so operators scale to zero between sessions for cost control
 - **Node Feature Discovery** — NFD Operator (`stable` channel, Automatic approval) publishes hardware feature labels; GPU Feature Discovery within the GPU Operator adds NVIDIA-specific labels used for Kueue placement
 - **NVIDIA GPU Operator** — certified operator (`v26.7` channel, Automatic updates within the channel (installed `gpu-operator-certified.v26.7.2` on 2026-10-14), driver 595.91.07 supports Blackwell) installs driver stack, container toolkit, GFD, DCGM exporter, and device plugin; each GPU is one schedulable `nvidia.com/gpu` unit with no time-slicing
 - **Red Hat build of Kueue** — standalone operator (`stable-v1.4` channel, Automatic approval); integration enabled by patching the shared DSC to `kueue.managementState: Unmanaged` via an Argo CD Sync hook Job; the existing Red Hat cert-manager installation is reused as a prerequisite

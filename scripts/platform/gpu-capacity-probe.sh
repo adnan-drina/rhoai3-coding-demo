@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Probe AWS GPU launch capacity (H100 p5.4xlarge, RTX PRO 6000 g7e.2xlarge), one us-east-2 zone at a time.
+# Probe AWS GPU launch capacity for the RTX PRO 6000 pool (g7e.2xlarge), one us-east-2 zone at a time.
 #
 # For each zone: scale its zero-replica <pool> MachineSet to 1, record what AWS
 # answers (Running, Failed with reason, or still Provisioning with the
@@ -7,7 +7,7 @@
 # Machine. A Running machine is billed until it is removed; with --gpu the
 # probe also waits for the node to advertise nvidia.com/gpu before removing it.
 #
-# Usage: gpu-capacity-probe.sh [--pool h100|rtxpro6000] [--zones "a b c"] [--timeout-min 10] [--gpu]
+# Usage: gpu-capacity-probe.sh [--pool rtxpro6000] [--zones "a b c"] [--timeout-min 10] [--gpu]
 # Receipt: tmp/<pool>-capacity-probe-<UTC timestamp>.jsonl (tmp/ is gitignored)
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,7 +16,7 @@ source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
 
-POOL=h100; ZONES="a b c"; TIMEOUT_MIN=10; GPU=false
+POOL=rtxpro6000; ZONES="a b c"; TIMEOUT_MIN=10; GPU=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pool) POOL="$2"; shift 2 ;;
@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "$POOL" =~ ^(h100|rtxpro6000)$ ]] || { echo "Unknown pool: $POOL" >&2; exit 2; }
+[[ "$POOL" =~ ^(rtxpro6000)$ ]] || { echo "Unknown pool: $POOL" >&2; exit 2; }
 NS=openshift-machine-api
 INFRA="$(oc get infrastructure cluster -o jsonpath='{.status.infrastructureName}')"
 RECEIPT="$REPO_ROOT/tmp/$POOL-capacity-probe-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
