@@ -20,6 +20,16 @@ def issuer_configuration(host):
              'issuerURL': issuer, 'type': 'email'}]
 
 
+def client_configuration():
+    # Keycloak normalizes native HTTP loopback ports to 80 for comparison.
+    # A wildcard inside the port is not a supported redirect pattern.
+    return {'clientId': 'trusted-artifact-signer', 'enabled': True, 'protocol': 'openid-connect',
+        'publicClient': True, 'standardFlowEnabled': True, 'directAccessGrantsEnabled': False,
+        'serviceAccountsEnabled': False,
+        'redirectUris': ['http://localhost/auth/callback', 'http://localhost:80/auth/callback'],
+        'attributes': {'pkce.code.challenge.method': 'S256'}}
+
+
 def main():
     host = oc('get', 'route', 'keycloak', '-n', 'keycloak', '-o', 'json')['spec']['host']
     base = 'https://' + host
@@ -39,10 +49,7 @@ def main():
 
     clients = api('GET', 'clients?clientId=trusted-artifact-signer')
     if len(clients) > 1: raise RuntimeError('Duplicate signing client')
-    desired = {'clientId': 'trusted-artifact-signer', 'enabled': True, 'protocol': 'openid-connect',
-        'publicClient': True, 'standardFlowEnabled': True, 'directAccessGrantsEnabled': False,
-        'serviceAccountsEnabled': False, 'redirectUris': ['http://localhost:*/auth/callback'],
-        'attributes': {'pkce.code.challenge.method': 'S256'}}
+    desired = client_configuration()
     if clients: api('PUT', 'clients/' + clients[0]['id'], {**clients[0], **desired})
     else: api('POST', 'clients', desired)
     # The native CR and this hook share a wave. Wait only for CR creation;

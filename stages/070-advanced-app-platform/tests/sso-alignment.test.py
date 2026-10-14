@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Account preservation, conflicting-subject refusals and signed SAML configuration."""
+import base64
 import copy
 import importlib.util
 import unittest
@@ -20,6 +21,7 @@ def load(name, path):
 
 identity = load('base_sso', 'identity/jobs/configure-base-sso.py')
 sonar = load('sonar_sso', 'sonarqube/configure-sso.py')
+signing = load('signing_sso', 'pipelines/signing/configure-signing.py')
 
 
 class IdentityPreservation(unittest.TestCase):
@@ -153,6 +155,28 @@ class SignedSAML(unittest.TestCase):
         self.assertEqual(role['rules'], [{'apiGroups': ['config.openshift.io'], 'resources': ['oauths'],
                                         'resourceNames': ['cluster'], 'verbs': ['get']}])
         self.assertNotIn('keycloak-initial-admin', (BASE / 'sonarqube/configure-sso.py').read_text())
+
+
+class ReconciliationSafety(unittest.TestCase):
+    def test_runtime_secret_cannot_overwrite_ignored_data_through_string_data(self):
+        secret = yaml.safe_load((BASE / 'rhdh/rhdh-instance/rhdh-secrets.yaml').read_text())
+        application = yaml.safe_load((ROOT / 'gitops/argocd/app-of-apps/070-advanced-app-platform.yaml').read_text())
+        self.assertNotIn('stringData', secret)
+        self.assertEqual(base64.b64decode(secret['data']['SESSION_SECRET']).decode(), 'PLACEHOLDER_WILL_BE_PATCHED')
+        self.assertEqual(base64.b64decode(secret['data']['RHDH_OIDC_CLIENT_SECRET']).decode(), 'PLACEHOLDER_WILL_BE_PATCHED')
+        self.assertIn('RespectIgnoreDifferences=true', application['spec']['syncPolicy']['syncOptions'])
+        ignore = next(r for r in application['spec']['ignoreDifferences']
+                      if r.get('name') == 'rhdh-secrets' and r.get('namespace') == 'rhdh')
+        self.assertIn('/data', ignore['jsonPointers'])
+
+    def test_signer_uses_exact_loopback_paths_with_pkce_and_no_password_grant(self):
+        client = signing.client_configuration()
+        self.assertEqual(client['redirectUris'], ['http://localhost/auth/callback', 'http://localhost:80/auth/callback'])
+        self.assertTrue(client['publicClient'])
+        self.assertFalse(client['serviceAccountsEnabled'])
+        self.assertFalse(client['directAccessGrantsEnabled'])
+        self.assertEqual(client['attributes']['pkce.code.challenge.method'], 'S256')
+        self.assertFalse(any('*' in uri for uri in client['redirectUris']))
 
 
 if __name__ == '__main__':
