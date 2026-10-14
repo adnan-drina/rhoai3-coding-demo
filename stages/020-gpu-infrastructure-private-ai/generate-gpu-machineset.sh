@@ -17,8 +17,7 @@ APP_MANIFEST="gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai/gpu-ma
 # MachineSet per zone). Capacity annotations ("-" for none) are what the cluster autoscaler reads to scale from zero.
 # The file comment ("~" separates lines) is written at the top of the pool file.
 POOLS='l40s|machineset-gpu.yaml|gpu|g6e.2xlarge|nvidia-gpu|-|source|1:65536:8|L40S pool: g6e.2xlarge (1x 48GB GPU), Kueue flavor gpu-l40s; one MachineSet in the source worker zone.~Scale with scripts/platform/resume-gpu-demo.sh (GPU_POOL=l40s).
-rtxpro6000|machineset-rtxpro6000.yaml|gpu-rtxpro6000|g7e.2xlarge|nvidia-rtxpro6000|rtxpro6000|all|-|RTX PRO 6000 Blackwell pool: g7e.2xlarge (1x 96GB GPU, FP8 and NVFP4), Kueue flavor gpu-rtxpro6000.~One MachineSet per zone; the Machine API fills in the GPU/CPU/memory annotations from DescribeInstanceTypes.~Scale with scripts/platform/resume-gpu-demo.sh (default pool).
-h100|machineset-h100.yaml|gpu-h100|p5.4xlarge|nvidia-h100|h100|all|1:262144:16|Optional H100 pool: one MachineSet per zone, no Kueue flavor or hardware profile yet.~Scale through scripts/platform/gpu-capacity-probe.sh --pool h100, never the L40S resume helper.'
+rtxpro6000|machineset-rtxpro6000.yaml|gpu-rtxpro6000|g7e.2xlarge|nvidia-rtxpro6000|rtxpro6000|all|-|RTX PRO 6000 Blackwell pool: g7e.2xlarge (1x 96GB GPU, FP8 and NVFP4), Kueue flavor gpu-rtxpro6000.~One MachineSet per zone; the Machine API fills in the GPU/CPU/memory annotations from DescribeInstanceTypes.~Scale with scripts/platform/resume-gpu-demo.sh (default pool).'
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -39,7 +38,7 @@ while [[ $# -gt 0 ]]; do
 Usage:
   ./stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh --source <worker-machineset> [--write]
 
-Generates every reviewed GPU pool (L40S, RTX PRO 6000, H100) from the active AWS CPU
+Generates every reviewed GPU pool (L40S, RTX PRO 6000) from the active AWS CPU
 worker MachineSets: the L40S pool in the --source worker's zone, the other pools in
 every zone that has exactly one active CPU worker pool. Each MachineSet is declared
 with replicas 0; scripts/platform/resume-gpu-demo.sh scales the pool in use, and the

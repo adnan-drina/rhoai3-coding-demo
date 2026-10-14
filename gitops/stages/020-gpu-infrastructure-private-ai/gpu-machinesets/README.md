@@ -1,7 +1,7 @@
 # GPU MachineSets (`020-gpu-machinesets`)
 
 This Application declares the AWS GPU worker pools as Machine API MachineSets. There are three pools: RTX PRO 6000
-Blackwell (`g7e.2xlarge`, the default pool), L40S (`g6e.2xlarge`) and a dormant H100 pool (`p5.4xlarge`). Git owns
+Blackwell (`g7e.2xlarge`, the default pool), and L40S (`g6e.2xlarge`). Git owns
 each pool's shape (instance type, disk, labels, taint); the GPU pause/resume scripts own the replica count. All GPU
 workloads in Stages 030 to 050 run on nodes from these pools.
 
@@ -22,7 +22,7 @@ creating it from a hook at sync time. GPUs are expensive, so the demo parks the 
 hand [2]; Argo CD therefore ignores `spec.replicas`.
 
 A Machine API MachineSet launches in exactly one subnet and zone and never retries another zone. To reach
-whichever zone has capacity, the RTX PRO 6000 and H100 pools have one MachineSet per `us-east-2` zone (pool table in
+whichever zone has capacity, the RTX PRO 6000 pool has one MachineSet per `us-east-2` zone (pool table in
 the generator).
 
 The pools are their own Application because they hold cluster-specific data and must never be pruned or deleted
@@ -34,9 +34,8 @@ with the rest of the stage.
 |---|---|---|---|
 | MachineSet | `<infra-id>-gpu-us-east-2a` | `openshift-machine-api` | L40S pool: `g6e.2xlarge`, label `cluster-api/accelerator: nvidia-gpu`, Git replicas 0 |
 | MachineSet | `<infra-id>-gpu-rtxpro6000-us-east-2{a,b,c}` | `openshift-machine-api` | RTX PRO 6000 pool (default): `g7e.2xlarge`, label `cluster-api/accelerator: nvidia-rtxpro6000`, `demo.rhoai.io/gpu-pool: rtxpro6000`, Git replicas 0 |
-| MachineSet | `<infra-id>-gpu-h100-us-east-2{a,b,c}` | `openshift-machine-api` | Dormant H100 pool: `p5.4xlarge`, label `cluster-api/accelerator: nvidia-h100`, `demo.rhoai.io/gpu-pool: h100`, Git replicas 0; no Kueue flavor or hardware profile |
 
-Common to all seven: 200 GB encrypted `gp3` root volume; node labels `cluster-api/accelerator` and
+Common to all four: 200 GB encrypted `gp3` root volume; node labels `cluster-api/accelerator` and
 `node-role.kubernetes.io/gpu`; node taint `nvidia-gpu-only:NoSchedule`; resource annotation
 `argocd.argoproj.io/sync-options: Prune=false,Delete=false`; provider references (AMI, subnet and security group
 filters, IAM instance profile, `worker-user-data`, `aws-cloud-credentials`, tags) copied from the active CPU worker
@@ -50,7 +49,7 @@ Other files:
 | `kustomization.yaml` | Lists the three MachineSet files |
 
 Objects not in Git (Machine API-owned): Machines, Nodes, AWS instances, and the live `spec.replicas` value. The
-L40S and H100 files set the `machine.openshift.io/GPU`, `vCPU` and `memoryMb` annotations; for the RTX PRO 6000
+L40S file sets the `machine.openshift.io/GPU`, `vCPU` and `memoryMb` annotations; for the RTX PRO 6000
 MachineSets the Machine API fills them in (live: 1 GPU, 8 vCPU, 65536 MiB).
 
 ## How
@@ -58,7 +57,7 @@ MachineSets the Machine API fills them in (live: 1 GPU, 8 vCPU, 65536 MiB).
 - **Generation.** `generate-gpu-machineset.sh --source <cpu-machineset> --write` generates all three pool files
   from one pool table in the script. It checks that the source is an active native AWS CPU worker pool on amd64
   with the cluster's infrastructure name, then derives each MachineSet from the active CPU worker pool of its own
-  zone: the L40S pool in the source's zone, the RTX PRO 6000 and H100 pools in every zone (it refuses a zone with
+  zone: the L40S pool in the source's zone, the RTX PRO 6000 pool in every zone (it refuses a zone with
   several active worker pools). Every MachineSet gets its instance type, accelerator and pool labels, 0 replicas,
   a 200 GB gp3 encrypted disk and the taint. It writes the replica exception for every generated MachineSet to
   `application-patch.yaml` and the Application manifest, so regenerating never drops one. Without `--write` it
@@ -69,7 +68,7 @@ MachineSets the Machine API fills them in (live: 1 GPU, 8 vCPU, 65536 MiB).
   tolerates it, and each Kueue GPU flavor tolerates it and selects its pool by `cluster-api/accelerator`. OpenShift
   documents `cluster-api/accelerator` as the GPU label for the cluster autoscaler [1]; no `ClusterAutoscaler` is
   used here, so the label only serves Kueue and the scripts.
-- **Replica delegation.** `ignoreDifferences` on `/spec/replicas` for all seven MachineSets, with
+- **Replica delegation.** `ignoreDifferences` on `/spec/replicas` for all four MachineSets, with
   `RespectIgnoreDifferences=true` so a sync does not reset a scaled pool. This applies only to MachineSets that
   already exist; a new MachineSet is created with the Git value [3], which is 0 for every pool, so a new cluster
   starts no GPU workers until a pool is scaled. `resume-gpu-demo.sh up|resume` scales one
@@ -109,7 +108,7 @@ scripts/platform/resume-gpu-demo.sh status
 | Scaling | Scale a compute MachineSet manually [2] | Scripts scale; Argo CD ignores replicas | Aligned |
 | Ignored field on create | `RespectIgnoreDifferences` only protects existing resources [3] | Every MachineSet has `replicas: 0` in Git, so a fresh deploy starts no GPU worker | Aligned |
 | Generator coverage | Reproducible from Git (repository rule `.agents/rules/gitops.md`) | All three pool files are generated; `--write` keeps the replica exception for every generated MachineSet | Aligned |
-| One resource per file | Repository rule `.agents/rules/gitops.md` | `machineset-h100.yaml` and `machineset-rtxpro6000.yaml` hold three each | Deviation (no reason recorded; one file per pool keeps its zones together) |
+| One resource per file | Repository rule `.agents/rules/gitops.md` | `machineset-rtxpro6000.yaml` holds three | Deviation (no reason recorded; one file per pool keeps its zones together) |
 
 ## References
 
