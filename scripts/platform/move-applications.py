@@ -25,6 +25,7 @@ import argparse
 import copy
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -69,11 +70,13 @@ def application(name):
 
 
 def guard():
-    result = subprocess.run(["bash", "-c", 'REPO_ROOT="$1"; source "$1/scripts/shared/lib.sh"; load_env; check_oc_logged_in; '
+    result = subprocess.run(["bash", "-c", 'REPO_ROOT="$1"; source "$1/scripts/shared/lib.sh"; load_env; check_oc_logged_in >&2; '
                              'printf "%s" "$GIT_REPO_URL"', "guard", str(ROOT)], capture_output=True, text=True)
-    if result.returncode or not result.stdout.strip():
-        raise RuntimeError("Cluster identity guard failed or GIT_REPO_URL is unset; nothing was read or changed")
-    return result.stdout.strip()
+    url = result.stdout.strip()
+    # lib.sh logs to stdout; anything but a bare URL here would be written into every Application's repoURL.
+    if result.returncode or not re.fullmatch(r"(https://|git@)\S+", url):
+        raise RuntimeError(f"Cluster identity guard failed or GIT_REPO_URL is not a URL ({url!r}); nothing was read or changed")
+    return url
 
 
 def kind_arg(group, kind):
@@ -165,6 +168,9 @@ class Plan:
                 raise RuntimeError(name + " has finalizers: deleting it would cascade")
             if app["metadata"].get("ownerReferences") or app["metadata"].get("deletionTimestamp"):
                 raise RuntimeError(name + " is owned by something else or terminating")
+            if app["spec"]["source"].get("repoURL") != self.repo_url:
+                raise RuntimeError(name + " points at " + repr(app["spec"]["source"].get("repoURL")) + ", not " + self.repo_url
+                                   + "; a move never changes the repository")
             sources.append(app)
         if len(self.old) > 1 or (len(self.old) == 1 and len(self.new) > 1):
             for name in self.old:
