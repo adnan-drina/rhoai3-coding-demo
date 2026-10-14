@@ -11,3 +11,4 @@ configMapGenerator:
   namespace: keycloak
   files:
   - jobs/configure-scm-identity.py
+  - jobs/configure-base-sso.py

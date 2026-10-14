@@ -2,6 +2,10 @@
 
 Open limitations and the evidence needed to understand them. Completed narratives remain in Git history; `tmp/` holds local evidence excluded from Git.
 
+## Stage 070 shared base SSO
+
+Authoring aligns application sign-in with the existing base Keycloak `sso` realm. The retained `platform` realm preserves application subjects and roles and delegates directly to base SSO; SonarQube uses supported, signed SAML directly. No base-platform users, passwords, OAuth configuration, model replicas or application permissions are reset. Publication and fresh live login validation are pending. The evidence packet is `tmp/stage070-live-20261013/sso-alignment/`. See [operation and rollback](docs/OPERATIONS.md#shared-base-platform-sso). A successful redirect is not authenticated application access; SonarQube SAML does not provide global single logout.
+
 ## Stage 070 integrated upgrade — first install paused (2026-10-13)
 
 Integrated source is published on `main` through `7b121dd1` (including the approved P0 review correction). The pending security package is isolated on `codex/stage070-release`; no other contributor’s primary-checkout changes are included. [Release status and remaining exits](docs/migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status). The first install remains intentionally paused before project enrollment. Operator-only installation does not qualify the full release.

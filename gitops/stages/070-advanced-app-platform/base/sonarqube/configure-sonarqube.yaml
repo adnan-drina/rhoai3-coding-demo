@@ -8,6 +8,37 @@
 #    deterministic.
 # Idempotent: safe to re-run on every sync.
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-configure-sonarqube-sso
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "11"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+rules:
+  - apiGroups: ["config.openshift.io"]
+    resources: ["oauths"]
+    resourceNames: ["cluster"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-configure-sonarqube-sso
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "11"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-configure-sonarqube-sso
+subjects:
+  - kind: ServiceAccount
+    name: job-configure-sonarqube
+    namespace: sonarqube
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -31,6 +62,10 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "create", "patch", "apply", "update"]
+  - apiGroups: ["route.openshift.io"]
+    resources: ["routes"]
+    resourceNames: ["sonarqube"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -176,6 +211,8 @@ spec:
               curl -s -u "${AUTH}" -X POST "${SONAR}/api/qualitygates/set_as_default" \
                 --data-urlencode "name=${GATE}" >/dev/null
               echo "'${GATE}' set as default quality gate"
+
+              python3 /scripts/configure-sso.py
           volumeMounts:
             - name: admin-bootstrap
               mountPath: /scripts

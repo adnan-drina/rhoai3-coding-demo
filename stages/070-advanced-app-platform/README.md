@@ -35,7 +35,8 @@ TAS: persistent signing services; signed delivery remains to be qualified
 
 ## What This Stage Adds
 
-- **Private GitLab workflows.** Existing demo users sign in through the platform realm. Templates create private repositories and request platform enrollment of their immutable first commit. Project-bound webhooks trigger only that project's main-branch builds.
+- **Shared platform sign-in.** OpenShift AI, Dev Spaces and Argo CD retain their native OpenShift login. Developer Hub, GitLab, MTA and TAS retain their application identities in the `platform` realm, which delegates directly to the existing base `sso` realm. SonarQube uses its supported SAML integration directly with that base realm. The retained application realm preserves existing subjects, memberships and roles; it does not introduce another SSO deployment or password store.
+- **Private GitLab workflows.** Templates create private repositories and request platform enrollment of their immutable first commit. Project-bound webhooks trigger only that project's main-branch builds.
 - **Managed development.** Dev Spaces 3.30.2 uses one persistent volume per workspace, authenticated GitLab access, explicit source allowlists and retained migration worker identities. The MTA image contains verified 8.3 tools and editor extensions.
 - **Developer Hub 1.10.5.** Catalog, templates and TechDocs come from one pinned GitLab platform revision. Kubernetes, Topology, Tekton and Argo integrations make the project's delivery visible in the portal.
 - **GitOps delivery.** Pipelines 1.24 checks out an exact commit, builds/tests, enforces the SonarQube gate and pushes to the internal registry. Promotion writes the image digest into a platform-owned delivery repository and waits for Argo and the deployment to agree.
@@ -85,6 +86,8 @@ Source: [Stage 070 Kustomize resources](../../gitops/stages/070-advanced-app-pla
 - [Pipelines 1.24 security](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index)
 - [MTA 8.3 documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3)
 - [GitLab OpenShift deployment guidance](https://docs.gitlab.com/charts/installation/cloud/openshift/)
+- [Keycloak identity brokering](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/server_administration_guide/identity_broker)
+- [SonarQube Community Build: Keycloak SAML](https://docs.sonarsource.com/sonarqube-community-build/instance-administration/authentication/saml/how-to-set-up-keycloak)
 
 ## Next Stage
 

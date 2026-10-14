@@ -102,7 +102,7 @@ def golden_actions(files, current):
 
 
 def realm_personas():
-    """Only the two already-brokered OpenShift identities receive membership."""
+    """Only the existing subject-linked base-platform identities receive membership."""
     host = oc('get', 'route', 'keycloak', '-n', 'keycloak', '-o', 'json')['spec']['host']
     admin = oc('get', 'secret', 'stage070-scm-provisioner', '-n', 'gitlab-system', '-o', 'json')['data']
     credentials = {key: base64.b64decode(admin[key]).decode() for key in ('client_id', 'client_secret')}
@@ -116,8 +116,13 @@ def realm_personas():
         request = urllib.request.Request(base + '/admin/realms/platform/users?username=' + username + '&exact=true',
                                          headers={'Authorization': 'Bearer ' + token})
         with urllib.request.urlopen(request, timeout=30) as response: matches = json.load(response)
-        if len(matches) != 1 or not matches[0].get('emailVerified'):
-            raise RuntimeError('Verified platform persona missing: ' + username)
+        if len(matches) != 1 or not matches[0].get('enabled'):
+            raise RuntimeError('Platform persona missing or disabled: ' + username)
+        request = urllib.request.Request(base + '/admin/realms/platform/users/' + matches[0]['id'] + '/federated-identity',
+                                         headers={'Authorization': 'Bearer ' + token})
+        with urllib.request.urlopen(request, timeout=30) as response: links = json.load(response)
+        if len([link for link in links if link.get('identityProvider') == 'base-sso' and link.get('userId')]) != 1:
+            raise RuntimeError('Platform persona has no base SSO subject link: ' + username)
         rows.append(matches[0])
     return rows
 

@@ -2534,6 +2534,12 @@ same card for verification and advance. Do not broaden its write set, mint a new
 budget, waive the assessment, or repeat the product edits.
 
 
+## Stage 070 shared SSO refuses a user or SonarQube login
+
+The application `platform` realm retains existing subjects and delegates sign-in to the base `sso` realm. `Missing, disabled or ambiguous base identity`, `Conflicting base SSO identity` or `no verified OpenShift link` is a refusal to relink an account by name alone. Compare the base subject, OpenShift Identity's user UID and the stored federated identity before correcting the supported Keycloak link. Do not delete and recreate the application user, reset its password or broadly enable email-based account linking.
+
+For SonarQube, verify its public server URL and `/oauth2/callback/saml`, `sso` metadata issuer, active signing certificate and `login`, `name`, `email` mapper names. After a base SSO signing-key rollover, re-sync Stage 070 so SonarQube receives current signing metadata. Retain the local recovery administrator; do not revoke scanner tokens or turn off authentication to diagnose SAML. Group synchronization remains disabled to preserve existing memberships. See [shared SSO operations and rollback](OPERATIONS.md#shared-base-platform-sso).
+
 ## Argo CD applications missing after OpenShift SSO login
 
 OpenShift cluster-admin permission granted directly to a User does not automatically grant Argo CD access through Dex. Argo CD evaluates the group claims in its SSO token. The dedicated OpenShift Group `rhoai-gitops-admins` contains the intended `admin` user; the operator-owned ArgoCD CR maps this group to `role:admin`, with `groups` scope and an empty default policy. It grants no new Kubernetes cluster role and preserves existing Argo mappings.
