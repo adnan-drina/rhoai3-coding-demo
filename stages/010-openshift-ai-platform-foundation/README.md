@@ -31,14 +31,14 @@ The OpenShift console integrates Perses dashboards through the native monitoring
 │  │   storage)      │   │                                  │   │
 │  │  NooBaa/S3 ─────┼──▶│  DSCI · DSC (v2)                 │   │
 │  │  OBC storage    │   │  Dashboard · Workbenches         │   │
-│  │  class          │   │  Workbenches             │   │
+│  │  class          │   │                                  │   │
 │  │       │         │   │  (redhat-ods-applications)       │   │
 │  └───────┼─────────┘   └──────────────────────────────────┘   │
 │          │ OBC                          ▲                      │
 │          ▼                              │ Contributor          │
 │  ┌──────────────────────────────────────┴────────────────┐    │
 │  │  demo-sandbox (data science project)                  │    │
-│  │  S3 connection (demo-sandbox-s3)  ·  ai-developer     │    │
+│  │  S3 connections: Models, Workbench  ·  ai-developer   │    │
 │  └───────────────────────────────────────────────────────┘    │
 │  Auth: existing identity provider and explicit demo groups  │
 └─────────────────────────────────────────────────────────────────┘
@@ -80,14 +80,14 @@ Demo groups (`rhods-admins`, `rhoai-developers`) establishing the identity base 
 
 A durable demo AI platform foundation that all subsequent stages build on.
 
-- **OpenShift GitOps** — Argo CD (channel `gitops-1.21`) with AppProject `rhoai-demo` and annotation-based resource tracking, reconciling all platform resources from Git; `gitops-plugin` console plugin enabled for Argo CD visibility in the OpenShift web console. The full console plugin list (`consoles.operator.openshift.io/cluster` `spec.plugins`) is declared in `console-observability/base/console-plugins.yaml` and kept by Argo CD self-heal; add plugins there
+- **OpenShift GitOps** — Argo CD (channel `gitops-1.21`) with AppProject `rhoai-demo` and annotation-based resource tracking, reconciling all platform resources from Git; `gitops-plugin` console plugin enabled for Argo CD visibility in the OpenShift web console. The full console plugin list (`consoles.operator.openshift.io/cluster` `spec.plugins`) is declared in `gitops/stages/010-openshift-ai-platform-foundation/console-observability/console-plugins.yaml` and kept by Argo CD self-heal; add plugins there
 - **OpenShift Data Foundation MCG** — standalone Multicloud Object Gateway (NooBaa) providing S3-compatible object storage via `ObjectBucketClaim`; StorageCluster uses `dbStorageClassName: gp3-csi`
 - **Red Hat OpenShift AI 3.5** — operator on `stable-3.5`; Dashboard and Workbenches; model serving and MaaS are added by later stages
 - **Observability stack** — Cluster Observability Operator, Red Hat build of OpenTelemetry and Tempo through native RHOAI monitoring; metrics dashboards and PV-backed tracing
 - **Dashboard capabilities** — native metrics dashboards; AutoRAG and AutoML are disabled
 - **Platform access** — existing provider identities mapped to explicit `rhods-admins` and `rhoai-developers` groups; administrators and developers receive separate project permissions
 - **Demo storage** — native NooBaa local object storage and separate persistent PostgreSQL databases; finite capacity and single-instance databases suit the workshop rather than an HA production deployment
-- **S3 connection** — project-scoped `ObjectBucketClaim` exposed as `demo-sandbox-s3` using the dashboard's pre-installed S3 connection type
+- **S3 connections** — two project-scoped `ObjectBucketClaim` buckets exposed as the **Models** and **Workbench** connections (`010-sandbox-storage`) using the dashboard's pre-installed S3 connection type
 
 ## What To Notice And Why It Matters
 
@@ -95,7 +95,7 @@ A durable demo AI platform foundation that all subsequent stages build on.
 - **DSC component isolation** — removed components are explicitly listed; later stages enable their own deltas through hook Jobs, allowing one-stage-at-a-time validation
 - **The `010-rhoai-platform` Application ignores DSC component fields** that later stage patches modify, preventing reconciliation conflicts
 - **MCG-only ODF** — no Ceph OSDs; full block/file storage is deferred until a stage explicitly needs it
-- **Observability-first** — prerequisite operators are deployed before RHOAI so the observability dashboard menu is backed by real services
+- **Observability-first** — the observability operators and RHOAI are applied together; Argo CD retries the observability settings until the operators are installed, so the dashboard menu is backed by real services
 - **Identity separation** — `rhods-admins` is the operator-owned admin group referenced in the RHOAI auth CR; `rhoai-developers` is a project-level contributor group; both are distinct roles with distinct access
 
 ## How Red Hat And Open Source Make It Work

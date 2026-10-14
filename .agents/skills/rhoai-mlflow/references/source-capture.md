@@ -6,21 +6,21 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Working with MLflow |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_mlflow/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index |
 | Documentation category | Develop / Working with MLflow |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 1 About MLflow; 2 Install and configure MLflow; 2.1 MLflow and MLflowConfig configuration parameters; 2.2 Aggregate cluster roles; 2.3 RBAC model for MLflow API usage; 3 Install and authenticate the MLflow SDK; 3.1 Configuring the MLflow SDK for a local workstation; 3.2 Configuring MLflow SDK environment variables for pods; 3.3 Upstream MLflow SDK reference; 3.4 MLflow SDK troubleshooting reference; 3.5 MLflow version compatibility; 3.6 MLflow storage and database compatibility; 3.7 Tracking experiments with MLflow SDK; 3.8 Configure project-specific S3 artifact storage |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_on_projects | OpenShift AI project and workspace lifecycle context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_data_in_an_s3-compatible_object_store/index | S3-compatible object storage context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_in_your_data_science_ide/index | Workbench notebook and SDK execution context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/managing-connection-types | Connection type and S3 connection context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/experimenting_with_models_in_the_gen_ai_playground/index | Prompt persistence context that depends on MLflow availability |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_model_registries/index | Distinguishes OpenShift AI model registry user workflows from MLflow model registry APIs |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects | OpenShift AI project and workspace lifecycle context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index | S3-compatible object storage context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index | Workbench notebook and SDK execution context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/managing-connection-types | Connection type and S3 connection context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/experimenting_with_models_in_the_gen_ai_playground/index | Prompt persistence context that depends on MLflow availability |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_model_registries/index | Distinguishes OpenShift AI model registry user workflows from MLflow model registry APIs |
 
 ## Supporting Project Sources
 

@@ -67,6 +67,6 @@ All paths should use the same YAML test assets and judge prompt.
 
 ## References
 
-- Current baseline Evaluating AI Systems docs: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/evaluating_ai_systems/
-- Current baseline LMEvalJob docs: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/evaluating_ai_systems/evaluating-large-language-models_evaluate
+- Current baseline Evaluating AI Systems docs: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/evaluating_ai_systems/
+- Current baseline LMEvalJob docs: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/evaluating_ai_systems/evaluating-llms-with-lm-eval_evaluate
 - Current baseline RAGAS docs: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/evaluating_ai_systems/evaluating-rag-systems-with-ragas_evaluate

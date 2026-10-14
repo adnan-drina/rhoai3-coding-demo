@@ -6,21 +6,21 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Deploying models |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/deploying_models/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index |
 | Documentation category | Deploy / Deploying models |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 1 Storing models; 1.1 OCI containers/modelcars; 1.2 storing a model in an OCI image; 1.3 uploading model files to a PVC; 2 Deploying models; 2.1 automatic serving-runtime selection; 2.2 deployment strategies; 2.3 Deploy a model wizard; 2.4 MLServer runtime; 2.5 OCI model deployment by CLI; 2.6 monitoring model handoff; 3 NVIDIA NIM model deployment and metrics handoff; 4 making inference requests; 4.1 token lookup; 4.2 endpoint lookup; 4.4 runtime-specific inference endpoints |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/configuring_your_model-serving_platform | Platform, runtime, NIM, vLLM, and deployment strategy configuration boundary |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_and_monitoring_models | Deployed model operations, metrics, autoscaling, and Grafana boundary |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_the_model_catalog/index | Catalog discovery and deploy-from-catalog boundary |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_model_registries/index | Registered model and model version deployment boundary |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/experimenting_with_models_in_the_gen_ai_playground/index | AI asset endpoint and playground testing boundary |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_accelerators/enabling-nvidia-gpus_accelerators | NVIDIA GPU prerequisite boundary |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/configuring_your_model-serving_platform | Platform, runtime, NIM, vLLM, and deployment strategy configuration boundary |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_and_monitoring_models | Deployed model operations, metrics, autoscaling, and Grafana boundary |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index | Catalog discovery and deploy-from-catalog boundary |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_model_registries/index | Registered model and model version deployment boundary |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/experimenting_with_models_in_the_gen_ai_playground/index | AI asset endpoint and playground testing boundary |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_accelerators/enabling-nvidia-gpus_accelerators | NVIDIA GPU prerequisite boundary |
 
 ## Supporting Project Sources
 

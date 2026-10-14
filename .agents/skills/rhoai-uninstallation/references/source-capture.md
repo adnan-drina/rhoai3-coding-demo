@@ -6,9 +6,9 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Chapter title | Uninstalling Red Hat OpenShift AI Self-Managed |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/uninstalling-openshift-ai-self-managed_uninstalling-openshift-ai-self-managed |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/uninstalling-openshift-ai-self-managed_uninstalling-openshift-ai-self-managed |
 | Documentation category | Install |
-| Retrieved date | 2026-06-09 |
+| Retrieved date | 2026-06-09 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 11.1 Understanding the uninstallation process; 11.2 Uninstalling OpenShift AI Self-Managed by using the CLI |
 
 ## Related Official Sources

@@ -109,7 +109,7 @@ These are proposed locations, not files/resources that already exist. Use chart/
 | Surface | Candidate location and responsibility |
 |---|---|
 | Argo owner | `gitops/argocd/app-of-apps/060-agent-runtime-and-agentops.yaml`: immutable reviewed source, exact destination, retention rules; app-first deployment |
-| Runtime desired state | `gitops/stages/060-agent-runtime-and-agentops/base/`: namespace, reviewed chart/native Sandbox-controller installation, persistence, TLS/auth, policy and narrowly named RBAC/NetworkPolicy; no duplicate DSC or generated Deployment patches |
+| Runtime desired state | `gitops/stages/060-agent-runtime-and-agentops/base/` (moved to the five component folders under `gitops/stages/060-agent-runtime-and-agentops/` in the 2026-10-14 layout change): namespace, reviewed chart/native Sandbox-controller installation, persistence, TLS/auth, policy and narrowly named RBAC/NetworkPolicy; no duplicate DSC or generated Deployment patches |
 | BYO agent images | `stages/060-agent-runtime-and-agentops/runtime-images/`: reproducible OpenCode/Hermes recipes, immutable source/tool/image stamps; reuse existing Stage 130 patch inputs without deleting rebuild authority |
 | Lifecycle entry points | `stages/060-agent-runtime-and-agentops/deploy.sh` and existing `scripts/platform/` conventions: guarded app-first install, owned create/pause/resume/cancel/archive; no arbitrary cluster-admin toolbox |
 | Acceptance | existing Stage 060 `validate.sh`: planned exit2 until implementation; readiness checks separate from opt-in bounded proof and actual trace/verifier acceptance |
@@ -356,7 +356,7 @@ Both reference MaaS model `publishers/internal-models/models/qwen3-8-27b-int4` a
 
 Regeneration owners:
 
-- Catalog: [`agent-catalog-sources.yaml`](../../gitops/stages/030-private-model-serving/base/model-discovery/agent-catalog-sources.yaml), lines 16–75; the Stage 030 Kustomization and preflight require exactly these two metadata entries. Editing live cards alone would be reverted by their GitOps owner.
+- Catalog: [`agent-catalog-sources.yaml`](../../gitops/stages/030-private-model-serving/private-model-serving/model-discovery/agent-catalog-sources.yaml) (moved from `base/model-discovery/` in the 2026-10-14 layout change), lines 16–75; the Stage 030 Kustomization and preflight require exactly these two metadata entries. Editing live cards alone would be reverted by their GitOps owner.
 - Saved fixtures: [`studio-api.py`](../../stages/040-governed-models-as-a-service/studio-api.py), `qualify_agents`, lines 145–159, and explicit `--qualify-agents` dispatch at 221/241–244. The helper creates absent fixed-name fixtures and retains them. No deploy/sync caller of that flag was found. A later explicit qualification rerun would recreate them unless the helper's fixture lifecycle is corrected.
 - Profile store/lifecycle: pinned dashboard `f4a81e89` GenAI BFF creates `agent-profile-<UUID>` ConfigMaps and deletes that single ConfigMap through the native profile endpoint. It does not deploy OpenCode/Hermes or delete the playground, prompt registry, provider credentials or PVCs.
 

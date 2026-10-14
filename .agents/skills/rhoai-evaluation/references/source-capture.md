@@ -6,21 +6,21 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Evaluating AI systems |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/evaluating_ai_systems/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index |
 | Documentation category | Evaluate / Evaluating AI systems |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 1 Overview of evaluating AI systems; 2 Evaluate LLMs with EvalHub; 2.1 Understanding EvalHub; 2.2 EvalHub architecture; 2.3 Deploy EvalHub with the TrustyAI Operator; 2.4 EvalHub SDK and CLI; 2.5 EvalHub multi-tenancy; 2.6 Providers and benchmarks; 2.7 Submit an evaluation job; 2.8 Track jobs and results; 2.9 Cancel and delete jobs; 2.10 Built-in collections; 2.11 Custom collections; 2.12 API key authentication; 2.13 ServiceAccount token authentication; 2.14 S3 custom data; 2.15 OCI result export; 2.16 MLflow tracking; 2.17-2.20 custom providers, ConfigMaps, collections, adapters; 2.21 API endpoints; 2.22 configuration; 2.23-2.26 tenant RBAC; 3 Evaluating LLMs with LM-Eval; 3.1-3.7 setup, external access, jobs, dashboard, metrics, scenarios; 4 Automated risk assessment; 4.1-4.7 overview, disconnected preparation, EvalHub execution, KFP SDK execution, results, custom harm categories, configuration |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_mlflow/index | MLflow platform, SDK auth, workspaces, and artifact storage context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_ai_pipelines/index | AI Pipelines server, runs, artifacts, and KFP context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/configuring_your_model-serving_platform | KServe, vLLM, serving runtime, and OpenAI-compatible endpoint context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_data_in_an_s3-compatible_object_store/index | S3-compatible object storage context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_autorag/index | Product AutoRAG evaluation-adjacent workflow boundary |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index | Training, SDG, and model customization context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index | MLflow platform, SDK auth, workspaces, and artifact storage context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index | AI Pipelines server, runs, artifacts, and KFP context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/configuring_your_model-serving_platform | KServe, vLLM, serving runtime, and OpenAI-compatible endpoint context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index | S3-compatible object storage context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index | Product AutoRAG evaluation-adjacent workflow boundary |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index | Training, SDG, and model customization context |
 
 ## Supporting Project Sources
 

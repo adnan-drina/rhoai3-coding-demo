@@ -6,9 +6,9 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Guide title | Deliver consistent ML features to models with Feature Store |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_machine_learning_features/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index |
 | Documentation category | Develop / Feature Store guide |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | Chapter 1 Overview of machine learning features and Feature Store; Chapter 2 Configuring Feature Store; Chapter 3 Defining machine learning features; Chapter 4 Retrieving features for model training; Chapter 5 Feature Store integration with workbenches; Chapter 6 Understanding compute engines in Feature Store; Chapter 7 Feature Store command line interface reference |
 
 ## Supporting Red Hat Sources

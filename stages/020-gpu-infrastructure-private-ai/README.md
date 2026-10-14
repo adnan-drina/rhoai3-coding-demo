@@ -11,7 +11,7 @@ This stage turns the GPU into a platform service. Data scientists select a hardw
 ## Architecture
 
 ```
-AWS GPU MachineSet (g6e.2xlarge, 1x L40S each, replicas=2)
+AWS GPU MachineSets (default g7e.2xlarge, 1x RTX PRO 6000 each; L40S and H100 pools; all at 0 replicas in Git)
    │
    ▼
 NFD Operator → NodeFeatureDiscovery → node hardware feature labels
@@ -26,7 +26,7 @@ device plugin: 1 physical GPU → 1 schedulable nvidia.com/gpu unit (no time-sli
 Red Hat build of Kueue → ResourceFlavor → ClusterQueue → LocalQueue
    │
    ▼
-RHOAI Hardware Profiles → CPU Default / GPU Reserved
+RHOAI Hardware Profiles → CPU Default / NVIDIA L40S / NVIDIA RTX PRO 6000
    │
    ▼
 Data scientist selects governed capacity from the RHOAI dashboard
@@ -65,7 +65,7 @@ The GPU-as-a-Service layer on top of the Stage 010 base platform.
 
 ## What To Notice And Why It Matters
 
-- **Two cards, one model per card** — this project uses exclusive cards to leave memory available for its selected model weights and inference runtime; it does not demonstrate GPU time-slicing
+- **One model per card** — this project uses exclusive cards to leave memory available for its selected model weights and inference runtime; it does not demonstrate GPU time-slicing
 - **CPU queue sizing** — `cq-cpu-default` provides cpu: 40, memory: 128Gi, sized for the CPU model plane (reranker, embedding InferenceServices, workbenches)
 - **MachineSet is cluster-specific** — carries AMI, subnet, and cluster labels; must be regenerated from the cluster's own worker pool on each new environment via `generate-gpu-machineset.sh`
 - **DSC patch mechanism** — Stage 020 does not own a second DataScienceCluster; it patches the Stage 010 shared owner through a dedicated ServiceAccount and ClusterRole
@@ -90,9 +90,9 @@ OpenShift Machine API creates GPU worker capacity from a declarative MachineSet.
 |---------|-----------------|
 | Red Hat OpenShift Container Platform | 4.22 (Machine API) |
 | Red Hat OpenShift AI Self-Managed | stable-3.5 (hardware profiles, Kueue integration) |
-| Node Feature Discovery Operator | stable (CSV nfd.4.22.0-202609212027) |
+| Node Feature Discovery Operator | stable, Automatic (installed nfd.4.22.0-202609291750 on 2026-10-14) |
 | NVIDIA GPU Operator (certified) | v26.7, Automatic (installed v26.7.2 on 2026-10-14) |
-| Red Hat build of Kueue | stable-v1.4 (CSV kueue-operator.v1.4.2) |
+| Red Hat build of Kueue | stable-v1.4, Automatic (installed kueue-operator.v1.4.3 on 2026-10-14) |
 
 ## Open Source Projects To Know
 
@@ -111,10 +111,10 @@ The stage is deployed as five Argo CD Applications at one reviewed revision: `02
 # Generate the cluster-specific GPU pools (required on each new environment; all start at 0 replicas)
 ./stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh --source "$RHOAI_SOURCE_WORKER_MACHINESET" --write
 
-# Review and publish the generated environment overlay, then deploy its exact revision
+# Review and publish the generated pool files, then deploy their exact revision
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 
-# Native readiness (requires two Ready exclusive GPU workers)
+# Native readiness (requires every scaled GPU pool Ready, one exclusive GPU per worker)
 ./stages/020-gpu-infrastructure-private-ai/validate.sh --readiness
 
 # Read-only native CUDA validator and per-node DCGM checks

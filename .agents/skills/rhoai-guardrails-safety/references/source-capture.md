@@ -6,20 +6,20 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Ensuring AI safety with guardrails |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/enabling_ai_safety_with_guardrails/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index |
 | Documentation category | Maintain Safety / Ensuring AI safety with guardrails |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 1 Enabling AI safety with NeMo Guardrails; 1.1 NeMo Guardrails standalone quickstart; 1.2 Deploying the NeMo Guardrails service with an LLM; 1.2.1 authentication; 1.2.2 basic deployment; 1.2.3 custom Python actions; 1.2.4 self-check guardrails; 1.2.5 separate self-check model; 1.2.6 `NemoGuardrails` reference; 1.2.7 OpenTelemetry; 1.3 validation-only checks; 1.4 library flows; 1.5 common examples; 1.6 industry examples; 2 FMS Guardrails; 2.1 detectors; 2.2 orchestrator configuration; 2.3 Guardrails Gateway; 2.4 deployment; 2.5 AutoConfig; 2.6 OpenTelemetry; 2.7 metrics; 3 FMS usage scenarios |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/configuring_your_model-serving_platform | KServe, vLLM, serving runtime, and OpenAI-compatible endpoint context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_llama_stack/index | Llama Stack platform and API context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai | OpenTelemetry, metrics, and platform observability context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/evaluating_ai_systems/index | EvalHub, LM-Eval, and automated risk assessment context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_model_registries/index | OCI model artifact and model lifecycle context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/configuring_your_model-serving_platform | KServe, vLLM, serving runtime, and OpenAI-compatible endpoint context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index | Llama Stack platform and API context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-observability_managing-rhoai | OpenTelemetry, metrics, and platform observability context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index | EvalHub, LM-Eval, and automated risk assessment context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_model_registries/index | OCI model artifact and model lifecycle context |
 
 ## Supporting Project Sources
 

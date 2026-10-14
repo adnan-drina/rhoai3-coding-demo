@@ -373,7 +373,7 @@ Apply these rules:
 ## References
 
 - KFP v2 docs: https://www.kubeflow.org/docs/components/pipelines/
-- Current RHOAI baseline AI pipelines docs: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_ai_pipelines/
+- Current RHOAI baseline AI pipelines docs: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_ai_pipelines/
 - Red Hat Developer reusable components article: https://developers.redhat.com/articles/2026/06/03/build-modular-ai-pipelines-openshift-ai-and-reusable-components
 - Generic component catalog: https://github.com/kubeflow/pipelines-components
 - Red Hat Data Services component catalog: https://github.com/red-hat-data-services/pipelines-components

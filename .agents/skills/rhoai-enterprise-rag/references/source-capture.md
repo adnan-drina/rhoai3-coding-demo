@@ -2,15 +2,17 @@
 
 ## Official Product Sources
 
+Links were retargeted to the verified 3.5 pages on 2026-10-14; the content was captured from 3.4 and not recaptured.
+
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_llama_stack/index | Product authority for Llama Stack / OGX support posture, API behavior, `LlamaStackDistribution`, provider configuration, vector stores, ingestion, query, PostgreSQL metadata, pgvector, Milvus, and RAG examples |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/govern_llm_access_with_models-as-a-service/index | Product authority for consuming Nemotron through governed MaaS access |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/deploying_models/index | Product authority for model deployment and endpoint behavior when a reranker is served through OpenShift AI |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_on_projects/index | Product authority for project workbench lifecycle, connections, project storage, and project permissions |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_in_your_data_science_ide/index | Product authority for notebook/IDE Git and `requirements.txt` workflows inside the workbench |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_ai_pipelines/index | Product authority if the ingestion workflow later moves into DSPA/KFP |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/customize_models_for_gen_ai_and_agentic_ai_applications/prepare-your-data-for-ai-consumption_custom-models | Product authority for preparing unstructured data with Docling and automating Docling processing with Kubeflow Pipelines |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index | Product authority for Llama Stack / OGX support posture, API behavior, `LlamaStackDistribution`, provider configuration, vector stores, ingestion, query, PostgreSQL metadata, pgvector, Milvus, and RAG examples |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index | Product authority for consuming Nemotron through governed MaaS access |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index | Product authority for model deployment and endpoint behavior when a reranker is served through OpenShift AI |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index | Product authority for project workbench lifecycle, connections, project storage, and project permissions |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index | Product authority for notebook/IDE Git and `requirements.txt` workflows inside the workbench |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index | Product authority if the ingestion workflow later moves into DSPA/KFP |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/customize_models_for_gen_ai_and_agentic_ai_applications/prepare-your-data-for-ai-consumption_custom-models | Product authority for preparing unstructured data with Docling and automating Docling processing with Kubeflow Pipelines |
 
 ## Red Hat Narrative And Implementation Sources
 

@@ -7,9 +7,9 @@
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Configure user access, storage, and telemetry in OpenShift AI |
 | Chapter title | Chapter 7. Managing storage classes |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/managing-storage-classes |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/managing-storage-classes |
 | Documentation category | Administer / Managing resources |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 7.1 About persistent storage; 7.1.1 Storage classes in OpenShift AI; 7.1.2 Access modes; 7.1.2.1 Using shared storage (RWX); 7.2 Configuring storage class settings; 7.3 Configuring the default storage class for your cluster; 7.4 Overview of object storage endpoints; 7.4.1 MinIO (On-Cluster); 7.4.2 Amazon S3; 7.4.3 Other S3-Compatible Object Stores; 7.4.4 Verification and Troubleshooting |
 
 ## Related Official Sources
@@ -17,10 +17,10 @@
 | Source | Role |
 |--------|------|
 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/storage/understanding-persistent-storage | OpenShift persistent storage, PVC, PV, and dynamic provisioning background |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/managing-cluster-pvc-size | Adjacent OpenShift AI default PVC size dashboard workflow |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/customizing-the-dashboard | Dashboard visibility for Settings -> Cluster settings -> Storage classes |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_resources/managing-connection-types | Connection type templates that can represent object storage connection forms |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/creating_a_workbench/index | Workbench workflows that consume project storage |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/managing-cluster-pvc-size | Adjacent OpenShift AI default PVC size dashboard workflow |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/customizing-the-dashboard | Dashboard visibility for Settings -> Cluster settings -> Storage classes |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/managing-connection-types | Connection type templates that can represent object storage connection forms |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_a_workbench/index | Workbench workflows that consume project storage |
 
 ## Supporting Project Sources
 

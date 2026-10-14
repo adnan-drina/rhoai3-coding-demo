@@ -119,7 +119,7 @@ oc get application "$APP" -n openshift-gitops -o json \
 **Diagnose:**
 
 ```bash
-oc get llminferenceservice -n models-as-a-service <model> \
+oc get llminferenceservice -n internal-models <model> \
   -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}{"\n"}{end}'
 ```
 
@@ -127,7 +127,7 @@ oc get llminferenceservice -n models-as-a-service <model> \
 
 ## Large Hybrid-MoE Model Crash-Loops With CUDA OOM At Engine Init
 
-**Affected stage:** Stage 040 (qwen3-6-35b-a3b on a 48GB L40S)
+**Affected stage:** Stage 040 (qwen3-6-35b-a3b on a 48GB L40S; that model is retired, the entry is kept for its fit recipe)
 
 **Likely cause:** a ~35GB-weight hybrid SSM/MoE model leaves almost no headroom on a 44.4GiB-usable card, and several vLLM consumers claim the rest by default: the multimodal vision-encoder cache (profiled with a max-size image), the per-slot mamba/GDN state cache sized by max_num_seqs (~8GiB at the default), and the MoE prefill activation workspace sized by max_num_batched_tokens. vLLM sizes the KV budget from the profiling peak, so these overheads produce num_gpu_blocks=0 and an OOM when the KServe template block override forces an allocation anyway.
 
@@ -145,7 +145,7 @@ Rolling updates of single-replica GPU models deadlock when the new pod is Schedu
 
 ## Qwen3.6 tool-call probe returns HTTP 500 / vLLM `assert content is not None`
 
-**Affected stage:** Stage 040 (`qwen3-6-27b` through MaaS)
+**Affected stage:** Stage 040 (`qwen3-6-27b` through MaaS; Qwen 3.6 was removed on 2026-10-13, the entry is kept for reference)
 
 **Likely cause:** The Hugging Face / RedHatAI Qwen3.6 card's vLLM example still uses `--tool-call-parser qwen3_coder` with `--reasoning-parser qwen3`. Combined with a **named** `tool_choice` (`{"type":"function","function":{"name":"..."}}`), the reasoning parser can consume the entire completion into thinking so `content` is `None`, and vLLM 0.18 asserts in `vllm/entrypoints/openai/engine/serving.py` (see [vLLM #40528](https://github.com/vllm-project/vllm/issues/40528)). MaaS, the gateway, and GPU placement are unrelated: unauthenticated calls still 401, and `gpt-4o-mini` tools still work. Kilo Code / OpenCode send `tool_choice: auto`.
 
@@ -250,8 +250,8 @@ Prevention: hook jobs must have bounded retries and fail fast; never let a wait-
 
 ```bash
 # Compare what git has against what Argo tracked
-kustomize build gitops/stages/<stage>/base | grep <new-resource>
-oc get application <stage> -n openshift-gitops -o json \
+kustomize build gitops/stages/<stage>/<component> | grep <new-resource>   # Stage 070: gitops/stages/070-advanced-app-platform/base
+oc get application <NNN-component> -n openshift-gitops -o json \
   | jq -r '.status.resources[] | "\(.kind) \(.namespace)/\(.name)"' | grep <new-resource>
 ```
 
@@ -660,7 +660,7 @@ curl -sS https://api.anthropic.com/v1/chat/completions -H "x-api-key: $ANTHROPIC
 **Recover:**
 
 - Claude 5.x: in the playground's model settings set **Temperature to 1** (verified end-to-end through the gateway at temperature 1 with the playground's shape); API clients send `temperature: 1` or omit it, never `top_p`.
-- GPT-6 Luna: the MaaS provider path needs the playground to stop sending the provider-level `max_tokens` (RHOAIENG-90257, merged upstream 2026-09-09, not in the 3.5.1 `gen-ai-ui` image). Until the backport, use the pre-provisioned playground **custom endpoint** "GPT-6 Luna (Playground)" (Stage 040 `studio/base` Job `provision-playground-endpoint` in `demo-sandbox`: Secret `endpoint-api-key-gpt-6-luna-maas` + ConfigMap `gen-ai-aa-custom-model-endpoints`, a `remote::openai` provider on `https://maas.<ingress-domain>/v1` with a key from the `playground-sandbox` subscription): custom endpoints are provisioned without that default; add the endpoint model to the playground and chat with Temperature 1. If the endpoint is missing, check the Job (`oc get job provision-playground-endpoint -n demo-sandbox`; it skips a ConfigMap that users already extended from the UI) and whether the Secret's key is still `active` (`GET /maas-api/v1/api-keys/<key_id>` as the ServiceAccount; re-sync Stage 040 to renew). Otherwise use Nemotron 3 Ultra (`nemotron-3-ultra-550b-a55b`), which accepts the playground's request shape.
+- GPT-6 Luna: the MaaS provider path needs the playground to stop sending the provider-level `max_tokens` (RHOAIENG-90257, merged upstream 2026-09-09, not in the 3.5.1 `gen-ai-ui` image). Until the backport, use the pre-provisioned playground **custom endpoint** "GPT-6 Luna (Playground)" (Stage 040 `genai-studio` component, Job `provision-playground-endpoint` in `demo-sandbox`: Secret `endpoint-api-key-gpt-6-luna-maas` + ConfigMap `gen-ai-aa-custom-model-endpoints`, a `remote::openai` provider on `https://maas.<ingress-domain>/v1` with a key from the `playground-sandbox` subscription): custom endpoints are provisioned without that default; add the endpoint model to the playground and chat with Temperature 1. If the endpoint is missing, check the Job (`oc get job provision-playground-endpoint -n demo-sandbox`; it skips a ConfigMap that users already extended from the UI) and whether the Secret's key is still `active` (`GET /maas-api/v1/api-keys/<key_id>` as the ServiceAccount; re-sync Stage 040 to renew). Otherwise use Nemotron 3 Ultra (`nemotron-3-ultra-550b-a55b`), which accepts the playground's request shape.
 - Check the provider balance before blaming the gateway.
 
 ## Gen AI Playground MCP Tools Fail Or Return No Tools
@@ -882,34 +882,21 @@ sleep 60
 
 ## GuideLLM Load Test Does Not Run
 
-**Affected stage:** Stage 040
+**Where it appears:** Stage 050 (GuideLLM through EvalHub)
 
-**Likely cause:** The `ghcr.io/vllm-project/guidellm` image cannot be pulled, `kai-api-keys` is missing, the MaaS Gateway hostname is still a placeholder, or the target model is not ready.
+**Likely cause:** The Stage 040 wrapper `run-guidellm-load-test.sh` was removed. Latency and throughput runs now go through the EvalHub `guidellm` provider in the Evaluated Models tenant. A run without `max_seconds` or `max_requests` runs unbounded, the evaluation key Secret is missing, or the target model is stopped.
 
-**Diagnose:**
-
-```bash
-oc get gateway maas-default-gateway -n openshift-ingress \
-  -o jsonpath='{.spec.listeners[0].hostname}{"\n"}'
-oc get secret kai-api-keys -n openshift-mta
-oc get maasmodelref -n maas
-oc get jobs,pods -n maas -l app.kubernetes.io/name=guidellm-load-test
-```
-
-**Recover:**
+**Check:**
 
 ```bash
-GUIDELLM_MODEL=nemotron-3-nano-30b-a3b \
-GUIDELLM_PROFILE=constant \
-GUIDELLM_RATE=1 \
-GUIDELLM_MAX_SECONDS=20 \
-GUIDELLM_REQUESTS=5 \
-GUIDELLM_OUTPUT_TOKENS=64 \
-GUIDELLM_PROMPT="Explain why governed model access matters for enterprise software teams." \
-./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh
+oc get secret evalhub-model-auth-maas -n evaluated-models
+oc get llminferenceservice -n internal-models
+./stages/050-model-evaluation/submit-evaluation.sh --help
 ```
 
-Set `GUIDELLM_SKIP_LOAD_TEST=true` when you need Stage 040 structural validation without exercising the model endpoint.
+**Recover:** Resume the model if it is parked (`scripts/platform/resume-gpu-demo.sh up`). Submit a bounded run with `submit-evaluation.sh --provider guidellm` and a benchmark bounded by `max_seconds` or `max_requests`, or run the qualification pipeline with only the latency and throughput steps. The parameters are in the Stage 050 README provider table.
+
+**Related docs:** [Stage 050 README](../stages/050-model-evaluation/README.md), [operations: Stage 050 governed evaluations](OPERATIONS.md#stage-050-governed-evaluations-2026-10-09)
 
 ## MaaS Gateway Approaches Its Memory Limit
 
@@ -1952,6 +1939,8 @@ retain any recurrence as a platform issue.
 
 ## MaaS Gateway Times Out On Every Path (RHCL 1.4.x Drift)
 
+> **Historical (RHCL 1.3 era, 2026-07).** The demo now runs RHCL 1.4.3 on purpose, with Automatic approval on the `stable` channel. Do not use the 1.3.z rollback below on the current platform. For a gateway that holds responses open on 1.4.3, see [MaaS Gateway Holds A Response Open Until The Client Times Out](#maas-gateway-holds-a-response-open-until-the-client-times-out).
+
 **Affected stage:** Stage 040 (breaks every AI consumer: Kilo Code, key provisioning, app LLM calls)
 
 **Symptoms (observed live 2026-07-10):** `curl https://maas.<apps-domain>/maas-api/v1/models` returns 000 from outside AND from in-cluster pods (even via the gateway Service ClusterIP); the `maas-default-gateway-*` envoy pod shows repeated OOMKills and logs `Unknown field ... 'allow_on_headers_stop_iteration'` wasm config rejections.
@@ -2039,7 +2028,7 @@ curl -sSI https://<maas-host>/ >/dev/null && echo "OS store: OK"
 
 **Recover:**
 
-- **Durable (platform):** `init-ai-tools.sh` exports `NODE_USE_SYSTEM_CA=1` into `~/.bashrc` alongside the opencode PATH block, so every workspace start trusts the gateway. See `gitops/stages/050-.../devspaces/maas-api-key-provisioning.yaml` (`ensure_opencode_latest`). Applies on a fresh workspace/PV.
+- **Durable (platform):** `init-ai-tools.sh` exports `NODE_USE_SYSTEM_CA=1` into `~/.bashrc` alongside the opencode PATH block, so every workspace start trusts the gateway. See `gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_opencode_latest`). Applies on a fresh workspace/PV.
 - **Immediate (running workspace):** quit OpenCode, then `export NODE_USE_SYSTEM_CA=1 && opencode` — the new server inherits it.
 - **Do NOT** use `NODE_EXTRA_CA_CERTS` (broken on Bun 1.3.x — [oven-sh/bun#24581](https://github.com/oven-sh/bun/issues/24581)) or `NODE_TLS_REJECT_UNAUTHORIZED=0` (Bun's `fetch` ignores it, and it disables verification entirely).
 
@@ -2300,7 +2289,7 @@ For browser access failures, verify the platform realm's GitLab client, the subj
 
 **Cause:** `spec.plugins` on `consoles.operator.openshift.io/cluster` is an atomic list. Any writer replaces it whole, and operators that register a plugin only append their own name, so a rewrite drops the others. Append-only Sync hooks did not prevent this (2026-10-12, 2026-10-13).
 
-**Fix:** Application `010-console-observability` owns the list by server-side apply (`console-observability/base/console-plugins.yaml`), and self-heal restores it. To add a plugin, add it to that file and publish; do not `oc patch` the list. `validate-console-observability.sh` fails when an installed ConsolePlugin is disabled or missing from Git.
+**Fix:** Application `010-console-observability` owns the list by server-side apply (`gitops/stages/010-openshift-ai-platform-foundation/console-observability/console-plugins.yaml`), and self-heal restores it. To add a plugin, add it to that file and publish; do not `oc patch` the list. `validate-console-observability.sh` fails when an installed ConsolePlugin is disabled or missing from Git.
 
 ## References
 
@@ -2326,7 +2315,7 @@ oc logs -n evaluated-models <pod> -c sidecar | grep -E 'Proxying model request|E
 oc get cm -n evaluated-models <job-id-prefix>-...-spec -o jsonpath='{.data.sidecar_config\.json}' | jq .model
 ```
 
-**Recover:** Keep each request under 30 seconds: both Stage 040 Qwen profiles admit 16 concurrent sequences since 2026-10-09 (a 16-sample request then takes about 14 seconds), keep the helper's code-only system prompt and 512-token cap, and bound the job with `--num-examples` so it ends inside the adapter's one-hour limit. If every sample reports `finish_reason: length` with empty content, the model is serving thinking mode by default (Qwen 3.6): the adapter cannot pass `enable_thinking` per request and Qwen 3.6 ignores `/no_think`, so the server default must be non-thinking with the card's non-thinking sampling, as on Qwen 3.8. Delete the zero-score probe (`DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true`) and its MLflow run so comparisons stay clean. The timeout itself is a Red Hat item (BACKLOG).
+**Recover:** Keep each request under 30 seconds: the Stage 040 Qwen 3.8 profile admits 16 concurrent sequences (since 2026-10-09) (a 16-sample request then takes about 14 seconds), keep the helper's code-only system prompt and 512-token cap, and bound the job with `--num-examples` so it ends inside the adapter's one-hour limit. If every sample reports `finish_reason: length` with empty content, the model is serving thinking mode by default (Qwen 3.6): the adapter cannot pass `enable_thinking` per request and Qwen 3.6 ignores `/no_think`, so the server default must be non-thinking with the card's non-thinking sampling, as on Qwen 3.8. Delete the zero-score probe (`DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true`) and its MLflow run so comparisons stay clean. The timeout itself is a Red Hat item (BACKLOG).
 
 ## Model Catalog Safety And Security Insights Tab Spins Forever
 

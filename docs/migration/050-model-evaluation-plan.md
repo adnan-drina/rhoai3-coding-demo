@@ -14,7 +14,7 @@ Stage 040 is deployed, with local/MiniMax bounded API and quota evidence. Regist
 
 ## Artifact-by-artifact disposition
 
-Paths below are relative to `gitops/stages/050-model-evaluation/base/`. Kustomizations compose resources; the eventual Stage 050 Application owns authored customer resources, not generated operands. The reviewed design is implemented and deployed. The table retains the original audit dispositions; current runtime evidence below distinguishes service readiness from an evaluation.
+Paths below are relative to `gitops/stages/050-model-evaluation/base/` (moved to the component folders under `gitops/stages/050-model-evaluation/` in the 2026-10-14 layout change). Kustomizations compose resources; the eventual Stage 050 Application owns authored customer resources, not generated operands. The reviewed design is implemented and deployed. The table retains the original audit dispositions; current runtime evidence below distinguishes service readiness from an evaluation.
 
 | File | Current resource, namespace and purpose | Proposed action and exit |
 |---|---|---|

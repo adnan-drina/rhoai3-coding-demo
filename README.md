@@ -67,7 +67,7 @@ The demo follows a ten-stage flow organized in two parts.
 
 **Part 1: Building the platform (GitOps-driven)**
 
-Stages 010–070 construct the three platform layers declaratively — implemented platform resources reconciled from Git by Argo CD; Stage 060 AgentOps is currently planned.
+Stages 010–070 construct the three platform layers declaratively — implemented platform resources reconciled from Git by Argo CD.
 
 | Stage | Intent |
 |-------|--------|
@@ -76,7 +76,7 @@ Stages 010–070 construct the three platform layers declaratively — implement
 | [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Prepare native KServe, Model Registry, Model Catalog and Agent Catalog discovery for governed model deployments |
 | [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | Expose private and external models through a governed MaaS gateway with API keys, rate limits, and telemetry |
 | [050 - Model Evaluation](stages/050-model-evaluation/README.md) | Evaluate model behavior through EvalHub and retain experiments and artifacts in MLflow |
-| [060 - Agent Runtime and AgentOps](stages/060-agent-runtime-and-agentops/README.md) | Plan isolated agent hosting, lifecycle and evidence integration (not yet deployed) |
+| [060 - Agent Runtime and AgentOps](stages/060-agent-runtime-and-agentops/README.md) | Host standalone OpenCode and Hermes agents in isolated, policy-controlled sandboxes with governed models, MCP tools and traced evidence |
 | [070 - Advanced Application Platform](stages/070-advanced-app-platform/README.md) | Add the developer-facing layer: Developer Hub, Dev Spaces, Pipelines, quality gates, and provenance |
 
 **Part 2: Climbing the AI development maturity ladder (use-case-driven)**
@@ -93,7 +93,7 @@ Stages 110–130 are developer workflow exercises that consume the platform buil
 
 Red Hat OpenShift provides the enterprise Kubernetes foundation: identity, RBAC, networking, routing, scheduling, storage integration, monitoring, and GitOps patterns. Red Hat OpenShift AI adds the AI control plane for model serving, GenAI Studio, model registry, and MaaS. Red Hat Advanced Developer Suite capabilities bring workspaces, modernization, portal discovery, and AI-assisted developer experiences into the same platform story.
 
-Open-source models and AI-assisted tooling make the developer experience possible. Models such as Nemotron and Qwen run locally on the platform through vLLM, keeping prompts and code inside the trust boundary. [Kilo Code](https://kilocode.ai/) is an open-source AI coding assistant that runs inside the IDE, providing one-shot prompt-and-edit workflows — the starting point of the maturity ladder. [OpenCode](https://opencode.ai/) is a terminal-based AI coding agent that goes further: it reads `AGENTS.md` (a project-level file that organizes reusable skills) to apply enterprise conventions on every change without longer prompts. [Spec-kit](https://github.com/adnan-drina/spec-kit) completes the agentic workflow — a lightweight spec-driven development tool that turns natural-language requirement briefs into structured specifications the agent implements against, closing the loop between what the team wants and what the agent builds. All three tools consume models exclusively through the governed MaaS gateway, so platform teams retain full visibility and control regardless of which tool or model a developer chooses.
+Open-source models and AI-assisted tooling make the developer experience possible. Open models such as Qwen run locally on the platform through vLLM, keeping prompts and code inside the trust boundary. [Kilo Code](https://kilocode.ai/) is an open-source AI coding assistant that runs inside the IDE, providing one-shot prompt-and-edit workflows — the starting point of the maturity ladder. [OpenCode](https://opencode.ai/) is a terminal-based AI coding agent that goes further: it reads `AGENTS.md` (a project-level file that organizes reusable skills) to apply enterprise conventions on every change without longer prompts. [Spec-kit](https://github.com/adnan-drina/spec-kit) completes the agentic workflow — a lightweight spec-driven development tool that turns natural-language requirement briefs into structured specifications the agent implements against, closing the loop between what the team wants and what the agent builds. All three tools consume models exclusively through the governed MaaS gateway, so platform teams retain full visibility and control regardless of which tool or model a developer chooses.
 
 Red Hat's role in this architecture is integration, lifecycle, support posture, and operational consistency — turning open-source building blocks into a governed enterprise platform.
 
@@ -103,7 +103,7 @@ The READMEs explain the architecture. Use the commands below only in a prepared 
 
 The workshop uses an AWS multinode OpenShift Container Platform 4.22 foundation with OpenShift AI 3.5. See the [Operations Guide](docs/OPERATIONS.md) for environment requirements and deployment preparation.
 
-**Environment sizing (required).** The full stack (RHOAI + ODF + GPU + MaaS + model serving) puts heavy, sustained load on the control plane. Provision `m6a.4xlarge`-class nodes (16 vCPU / 64 GiB) for the control plane *and* the CPU workers. The `m6a.xlarge` (4 vCPU / 16 GiB) control plane is **not** sufficient: kube-apiserver exhausts the node's CPU/memory and masters fail one after another. GPU nodes are sized by accelerator (e.g. `g6e.2xlarge`) and are exempt. Every stage's `deploy.sh` runs `scripts/platform/require-node-sizing.sh` first and refuses to start on undersized nodes.
+**Environment sizing (required).** The full stack (RHOAI + ODF + GPU + MaaS + model serving) puts heavy, sustained load on the control plane. Provision `m6a.4xlarge`-class nodes (16 vCPU / 64 GiB) for the control plane *and* the CPU workers. The `m6a.xlarge` (4 vCPU / 16 GiB) control plane is **not** sufficient: kube-apiserver exhausts the node's CPU/memory and masters fail one after another. GPU nodes are sized by accelerator (the default pool is `g7e.2xlarge`) and are exempt. Every stage's `deploy.sh` runs `scripts/platform/require-node-sizing.sh` first and refuses to start on undersized nodes.
 
 ```bash
 git clone https://github.com/adnan-drina/rhoai3-coding-demo.git
@@ -126,10 +126,14 @@ oc login --token=<token> --server=<api>
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
+./stages/050-model-evaluation/deploy.sh
+./stages/060-agent-runtime-and-agentops/deploy.sh
 ./stages/070-advanced-app-platform/deploy.sh
 ```
 
-**Validate the developer workflow stages.** Stages 110–130 are workflow-only: their developer tooling and infrastructure (workspaces, pipelines, quality gates, the MTA stack) are supplied by Stage 070; planned standalone agent hosting belongs to Stage 060. Each keeps a read-only `validate.sh` for its demo prerequisites:
+Stage 060 `deploy.sh` deploys the OpenShell identity and runtime. Its MCP platform, agent tools and console components have their own deploy scripts; see the [Stage 060 README](stages/060-agent-runtime-and-agentops/README.md#deploy-and-validate).
+
+**Validate the developer workflow stages.** Stages 110–130 are workflow-only: their developer tooling and infrastructure (workspaces, pipelines, quality gates, the MTA stack) are supplied by Stage 070; standalone agent hosting belongs to Stage 060. Each keeps a read-only `validate.sh` for its demo prerequisites:
 
 ```bash
 ./stages/110-ai-assisted-development/validate.sh
@@ -157,7 +161,7 @@ rhoai3-coding-demo/
 |-- .agents/                         # Tool-neutral shared agent guidance: rules, skills, hooks, references
 |-- gitops/
 |   |-- bootstrap/                   # Declarative OpenShift GitOps bootstrap (stage 010)
-|   |-- argocd/app-of-apps/          # Argo CD Applications for implemented stages 010–050 and 070
+|   |-- argocd/app-of-apps/          # Argo CD Applications: one per component for stages 010–060, one for 070
 |   `-- stages/                      # GitOps source for stage manifests
 |-- stages/                          # Stage READMEs and per-stage deploy/validate scripts
 `-- docs/                            # Operations, troubleshooting, TechDocs, and governance docs

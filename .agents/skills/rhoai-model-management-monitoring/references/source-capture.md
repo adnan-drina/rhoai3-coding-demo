@@ -6,19 +6,19 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Managing and monitoring models |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/managing_and_monitoring_models/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_and_monitoring_models/index |
 | Documentation category | Administer / Managing and monitoring models |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 1 Managing model-serving runtimes; 1.1 Adding a custom model-serving runtime; 2 Managing and monitoring models; 2.1 Setting a timeout for KServe; 2.2 Deploying models by using multiple GPU nodes; 2.3 Configuring an inference service for Kueue; 2.4 Configuring an inference service for Spyre; 2.5 Optimizing performance and tuning; 2.5.1 GPU requirements; 2.5.2 RAG and summarization considerations; 2.5.3 Inference performance metrics; 2.5.4 Metrics-based autoscaling; 2.5.5 Autoscaling guidelines; 2.6 Monitoring models; 2.7 Grafana model performance dashboards; 3 NVIDIA NIM model serving platform model selection and metrics |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/configuring_your_model-serving_platform/index | Model-serving platform and runtime configuration context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-workloads-with-kueue | Kueue workload management context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai | OpenShift AI observability stack context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_accelerators/enabling-nvidia-gpus_accelerators | NVIDIA GPU monitoring and accelerator prerequisite context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/configuring_your_model-serving_platform/index | Model-serving platform and runtime configuration context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-workloads-with-kueue | Kueue workload management context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-observability_managing-rhoai | OpenShift AI observability stack context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_accelerators/enabling-nvidia-gpus_accelerators | NVIDIA GPU monitoring and accelerator prerequisite context |
 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/monitoring | User Workload Monitoring context |
 | https://access.redhat.com/support/offerings/techpreview | Technology Preview support scope |
 

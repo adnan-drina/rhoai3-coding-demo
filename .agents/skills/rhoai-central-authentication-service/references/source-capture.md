@@ -6,9 +6,9 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Chapter title | Chapter 10. Configuring a central authentication service for an external OIDC identity provider |
-| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/configuring-external-oidc-provider_managing-rhoai |
+| Chapter URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/configuring-external-oidc-provider_managing-rhoai |
 | Documentation category | Administer |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | 10.1 About the central authentication service; 10.2 Configuring OpenShift AI to use an external OIDC provider; 10.3 Accessing OpenShift AI APIs by using a service account token; 10.4 Using a custom certificate authority bundle; 10.5 Troubleshooting central authentication service problems |
 
 ## Supporting Red Hat Sources

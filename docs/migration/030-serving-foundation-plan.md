@@ -2,6 +2,8 @@
 
 Status: **deployed at `147b6208a694f1cfb38c6d15c165c28e8b776025`; canonical native/API validation passed; independent preservation and genuine-persona API audit passed**, 2026-10-05. Core Stage 010 uses the f38-based omission bridge at `882f327fb25dd047ca7144058b6cca46e693df3a`; Stage 020 remains at metrics repair `797a270b760c921fc835b285d26aaa1854d0234d`. User-confirmed Model Catalog and Agent Catalog visual acceptance passed on 2026-10-05; no agent browser check was performed. Scratch evidence: `/private/tmp/stage030-live-handoff/` and `/private/tmp/stage030-audit-20261005/`. Do not repoint the core at the fresh foundation base while retained MLflow data remains owned there.
 
+Layout note: the `base/` and `overlays/` paths below are from the earlier layout (moved to the component folders under `gitops/stages/030-private-model-serving/private-model-serving/` in the 2026-10-14 layout change).
+
 ## Intended stage contract
 
 Stage030 supplies the native basic KServe control plane, existing Model Registry with native database, Model Catalog and Developer Preview Agent Catalog, and native OCP monitoring configuration needed by later model telemetry. Stage040 owns model selection/registration/deployment, MaaS, RHCL/LWS and llm-d integration. No model, ServingRuntime clone, workload, new bucket, MLflow, EvalHub or TrustyAI creation belongs in030. Existing MLflow remains unchanged through the temporary foundation bridge until its reviewed050 handoff.

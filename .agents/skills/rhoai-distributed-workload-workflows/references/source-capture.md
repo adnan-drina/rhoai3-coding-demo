@@ -6,21 +6,21 @@
 |-------|-------|
 | Product baseline | `docs/PLATFORM_BASELINE.md` |
 | Document title | Accelerate data processing and training with distributed workloads |
-| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_distributed_workloads/index |
+| Guide URL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index |
 | Documentation category | Develop / Working with distributed workloads |
-| Retrieved date | 2026-06-10 |
+| Retrieved date | 2026-06-10 (3.4 content; links retargeted to the verified 3.5 pages on 2026-10-14, not recaptured) |
 | Sections used | Preface; 1 Overview of distributed workloads; 1.1 Distributed workloads infrastructure; 1.2 Types of distributed workloads; 2 Preparing the distributed training environment; 2.1 Creating a workbench; 2.2 Using cluster server and token; 2.3 Managing custom training images; 3 RoCE networking for distributed LLM deployments; 4 Running Ray-based distributed workloads; 4.1 Jupyter notebooks; 4.2 AI pipelines; 4.3 disconnected environments; 5 Training Operator workloads; 5.1 PyTorchJob; 5.2 Training Operator SDK; 5.3 fine-tuning; 5.4 RDMA; 6 Kubeflow Trainer v2 workloads; 6.1 training runtimes; 6.2 TrainJob; 6.3 SDK; 6.4 fine-tuning; 6.5 examples; 7 checkpointing with PVC or S3; 8 monitoring distributed workloads; 9 user troubleshooting |
 
 ## Related Official Sources
 
 | Source | Role |
 |--------|------|
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/installing-the-distributed-workloads-components_install | Distributed workload component installation |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-workloads-with-kueue | Kueue integration and queue enforcement |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-distributed-workloads_managing-rhoai | Administrator queue resources, quotas, RDMA, and troubleshooting |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_accelerators | Accelerator prerequisites and supported accelerator context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_on_projects | Projects, workbenches, and project access context |
-| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_ai_pipelines | AI pipeline launch-surface context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/installing-the-distributed-workloads-components_install | Distributed workload component installation |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-workloads-with-kueue | Kueue integration and queue enforcement |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-distributed-workloads_managing-rhoai | Administrator queue resources, quotas, RDMA, and troubleshooting |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_accelerators | Accelerator prerequisites and supported accelerator context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects | Projects, workbenches, and project access context |
+| https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_ai_pipelines | AI pipeline launch-surface context |
 | https://access.redhat.com/articles/rhoai-supported-configs-3.x | Supported configurations, images, packages, and accelerator context |
 
 ## Supporting Project Sources
