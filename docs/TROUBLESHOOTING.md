@@ -2247,6 +2247,14 @@ oc delete pipelinerun <name>-seed-<hash> -n <name>-dev
 
 Stuck pre-fix Jobs (pull policy Always baked into their pods) must be deleted for the CronJob to mint fresh ones.
 
+## Stage 070 correction sync and credential maintenance
+
+A Bound `sonardb-data` claim can retain its defaulted storage class in an old client-side apply annotation. The source now explicitly declares the existing `gp3-csi` class. For a migration failure, compare the UID and entire live spec first; the standard `oc apply set-last-applied` operation may repair only the stale apply metadata. Never delete the claim, clear its binding, or edit its storage class to force a sync.
+
+A successful native operation with overall Progressing health can mean OLM is waiting on an unapproved newer patch. Inspect the Subscription and exact pending InstallPlan; do not weaken the Healthy requirement or approve an arbitrary CSV. The selected MTA operator is 8.3.1 with Manual approval and an exact allowlist.
+
+The operator rotation tool uses GitLab’s `application_name`/`callback_url` response fields and Argo’s `rhdh:apiKey` token subject. It validates replacement identity, authority and expiry before storing the new credential. Keep its failed report and investigate a refusal; do not repeat the rotation blindly or remove its exact-source/Healthy guard.
+
 ## Stage 070 GitLab project enrollment is pending
 
 GitLab Self-Managed disables importers by default. HTTP403 while creating a project with `import_url` and an empty `import_sources` means Repository by URL is unavailable. Trusted bootstrap enables only the `git` importer. Other import methods and public signup stay disabled; local-network request restrictions are unchanged. The normal sync retries the preserved imports rather than deleting projects.

@@ -60,6 +60,11 @@ def rejected(action, statuses=(400, 401, 403)):
     return False
 
 
+def token_claims(token):
+    payload = token.split('.')[1]
+    return json.loads(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))
+
+
 def remove_annotation(identifier):
     if not re.fullmatch(r'[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9.-]*', identifier or ''):
         raise ValueError('Annotation cleanup requires one exact namespace/Secret name')
@@ -175,22 +180,28 @@ class Rotation:
     def devspaces_oauth(self):
         _, old = data('openshift-devspaces', 'gitlab-oauth-config')
         rows = [a for a in self.root_api('GET', 'applications') if a['application_id'] == old['id']]
-        if len(rows) != 1 or rows[0]['name'] != 'Dev Spaces':
+        if len(rows) != 1 or rows[0]['application_name'] != 'Dev Spaces':
             raise ValueError('Dev Spaces OAuth application identity mismatch')
+        previous = rows[0]
         new = self.root_api('POST', 'applications/%s/renew-secret' % rows[0]['id'])
-        if new['application_id'] != old['id'] or new['secret'] == old['secret']:
-            raise ValueError('OAuth renewal changed identity or retained the old secret')
+        # GitLab returns application_name/callback_url, unlike request fields.
+        # https://docs.gitlab.com/api/applications/#renew-an-application-secret
+        identity = ('id', 'application_id', 'application_name', 'callback_url', 'confidential')
+        if (any(new[k] != previous[k] for k in identity)
+                or set(new['scopes']) != set(previous['scopes'])
+                or not new.get('secret') or new['secret'] == old['secret']):
+            raise ValueError('OAuth renewal changed authority or retained the old secret')
         update('openshift-devspaces', 'gitlab-oauth-config', {'secret': new['secret']})
         # invalid_grant proves client authentication; invalid_client rejects it.
         def auth(secret):
             try:
                 request(self.gitlab, 'POST', '/oauth/token', {'grant_type': 'authorization_code',
                     'client_id': old['id'], 'client_secret': secret, 'code': 'stage070-invalid-code',
-                    'redirect_uri': rows[0]['redirect_uri']}, form=True)
+                    'redirect_uri': previous['callback_url']}, form=True)
             except urllib.error.HTTPError as error:
                 return json.loads(error.read()).get('error')
             raise ValueError('An intentionally invalid authorization code was accepted')
-        return {'application_id_preserved': True, 'old_secret_refused': auth(old['secret']) == 'invalid_client',
+        return {'application_authority_preserved': True, 'old_secret_refused': auth(old['secret']) == 'invalid_client',
                 'new_secret_authenticates': auth(new['secret']) == 'invalid_grant'}
 
     def sonar(self):
@@ -221,17 +232,25 @@ class Rotation:
         _, old = data('openshift-gitops', 'rhdh-argocd-reader')
         session = request(base, 'POST', '/api/v1/session', {'username': 'admin', 'password': admin['admin.password']})['token']
         headers = {'Authorization': 'Bearer ' + session}
-        payload = old['token'].split('.')[1]
-        claims = json.loads(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))
-        if claims.get('sub') != 'rhdh' or not claims.get('jti'):
+        claims = token_claims(old['token'])
+        if (claims.get('sub') != 'rhdh:apiKey' or claims.get('iss') != 'argocd'
+                or not claims.get('jti') or claims.get('exp', 0) <= time.time()):
             raise ValueError('Argo credential is not the expected reader account')
         remaining = max(1, int(claims['exp'] - time.time()))
         new = request(base, 'POST', '/api/v1/account/rhdh/token', {'expiresIn': remaining, 'id': uuid.uuid4().hex}, headers)['token']
+        replacement = token_claims(new)
+        if (replacement.get('sub') != claims['sub'] or replacement.get('iss') != claims['iss']
+                or not replacement.get('jti') or replacement['jti'] == claims['jti']
+                or abs(replacement.get('exp', 0) - claims['exp']) > 2):
+            raise ValueError('Argo replacement changed reader identity or expiry')
+        valid = isinstance(request(base, 'GET', '/api/v1/applications', headers={'Authorization': 'Bearer ' + new}), dict)
+        if not valid:
+            raise ValueError('Argo replacement did not authenticate')
         update('openshift-gitops', 'rhdh-argocd-reader', {'token': new})
         update('rhdh', 'rhdh-secrets', {'RHDH_ARGOCD_TOKEN': new})
         request(base, 'DELETE', '/api/v1/account/rhdh/token/' + urllib.parse.quote(claims['jti'], safe=''), headers=headers)
         return {'reader_identity_and_expiry_preserved': True,
-                'new_reader_valid': bool(request(base, 'GET', '/api/v1/applications', headers={'Authorization': 'Bearer ' + new})),
+                'new_reader_valid': valid,
                 'old_reader_refused': rejected(lambda: request(base, 'GET', '/api/v1/applications', headers={'Authorization': 'Bearer ' + old['token']}))}
 
     def mta(self):

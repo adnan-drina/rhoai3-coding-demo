@@ -24,7 +24,7 @@ that the upgraded components have been deployed or accepted on this cluster.
 
 | Product | Current documentation reviewed | Branch deployment selection |
 |---|---|---|
-| MTA | 8.3 / 8.3.0 | 8.3.0; CLI/RPC/editor artifacts qualified separately |
+| MTA | 8.3 / 8.3.1 | Operator/operands 8.3.1 selected from the Red Hat catalog; workspace CLI/RPC remains independently qualified at 8.3.0 |
 | OpenShift Vertical Pod Autoscaler | OCP4.22 Nodes and live4.22 CRD, reviewed2026-10-14 | Official stable4.22.0-202609291750; one memory-only MTA controller policy |
 | OpenShift Dev Spaces | 3.30 / 3.30.2 | 3.30.2 |
 | OpenShift Pipelines | 1.24, including 1.24.1 | 1.24.0; qualify the newer security patch before repinning |

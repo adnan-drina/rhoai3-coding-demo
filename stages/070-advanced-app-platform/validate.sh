@@ -37,7 +37,7 @@ fi
 for row in \
   'openshift-devspaces devspaces devspacesoperator.v3.30.2' \
   'rhdh-operator rhdh rhdh-operator.v1.10.5' \
-  'openshift-mta mta-operator mta-operator.v8.3.0' \
+  'openshift-mta mta-operator mta-operator.v8.3.1' \
   'openshift-operators openshift-pipelines-operator-rh openshift-pipelines-operator-rh.v1.24.' \
   'openshift-operators rhtas-operator rhtas-operator.v1.5.'; do
   read -r ns subscription csv <<< "$row"

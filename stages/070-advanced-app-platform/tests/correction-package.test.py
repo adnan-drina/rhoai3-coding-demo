@@ -208,6 +208,66 @@ class ScopedAuthority(unittest.TestCase):
   self.assertEqual(result.returncode,0,result.stderr)
 
 class RotationSafety(unittest.TestCase):
+ def test_gitlab_renewal_uses_documented_response_and_preserves_authority(self):
+  self.oauth_case()
+ def test_gitlab_renewal_rejects_changed_scope_before_persistence(self):
+  self.oauth_case('scopes')
+ def test_gitlab_renewal_rejects_changed_callback_before_persistence(self):
+  self.oauth_case('callback_url')
+ def test_gitlab_renewal_rejects_changed_id_before_persistence(self):
+  self.oauth_case('application_id')
+ def oauth_case(self,mutation=None):
+  r=rotation.Rotation.__new__(rotation.Rotation);r.gitlab='https://gitlab.example';calls=[]
+  old={'id':'client-id','secret':'old'}
+  previous={'id':4,'application_id':'client-id','application_name':'Dev Spaces','callback_url':'https://devspaces.example/callback','confidential':True,'scopes':['api','read_user']}
+  new=dict(previous,secret='new')
+  if mutation:new[mutation]=['api','sudo'] if mutation=='scopes' else 'foreign'
+  def api(method,path,payload=None):
+   calls.append((method,path));return [previous] if method=='GET' else new
+  def auth(base,method,path,payload=None,**kwargs):
+   self.assertEqual(payload['redirect_uri'],previous['callback_url'])
+   error='invalid_client' if payload['client_secret']=='old' else 'invalid_grant'
+   import io
+   raise urllib.error.HTTPError(base,401,'OAuth error',None,io.BytesIO(json.dumps({'error':error}).encode()))
+  r.root_api=api
+  with patch.object(rotation,'data',return_value=({},old)),patch.object(rotation,'update') as writer,patch.object(rotation,'request',side_effect=auth):
+   if mutation:
+    with self.assertRaisesRegex(ValueError,'authority'):r.devspaces_oauth()
+    writer.assert_not_called()
+   else:
+    self.assertTrue(all(r.devspaces_oauth().values()));writer.assert_called_once_with('openshift-devspaces','gitlab-oauth-config',{'secret':'new'})
+  self.assertEqual(calls,[('GET','applications'),('POST','applications/4/renew-secret')])
+ def test_argo_native_api_key_subject_and_expiry_are_preserved(self):
+  self.argo_case()
+ def test_argo_foreign_subject_refuses_before_mint(self):
+  self.argo_case('old_subject')
+ def test_argo_replacement_foreign_identity_refuses_before_write_or_old_revoke(self):
+  self.argo_case('subject')
+ def test_argo_replacement_extended_expiry_refuses_before_write_or_old_revoke(self):
+  self.argo_case('expiry')
+ def argo_case(self,mutation=None):
+  def jwt(claims):return 'header.'+base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip('=')+'.signature'
+  claims={'sub':'rhdh:apiKey','iss':'argocd','jti':'old-id','exp':10000}
+  if mutation=='old_subject':claims['sub']='other:apiKey'
+  replacement=dict(claims,jti='new-id')
+  if mutation=='subject':replacement['sub']='other:apiKey'
+  if mutation=='expiry':replacement['exp']=11000
+  old=jwt(claims);new=jwt(replacement);calls=[];revoked=[False];r=rotation.Rotation.__new__(rotation.Rotation)
+  def req(base,method,path,payload=None,headers=None,**kw):
+   calls.append((method,path))
+   if path=='/api/v1/session':return {'token':'session'}
+   if method=='POST':self.assertEqual(payload['expiresIn'],9000);return {'token':new}
+   if method=='DELETE':revoked[0]=True;return
+   if headers['Authorization']=='Bearer '+old and revoked[0]:raise urllib.error.HTTPError(base,401,'revoked',None,None)
+   return {'items':[]}
+  with patch.object(rotation,'oc',return_value={'spec':{'host':'argo.example'}}),patch.object(rotation,'data',side_effect=[({}, {'admin.password':'admin'}),({}, {'token':old})]),patch.object(rotation,'request',side_effect=req),patch.object(rotation,'time') as clock,patch.object(rotation,'update') as writer:
+   clock.time.return_value=1000
+   if mutation:
+    with self.assertRaisesRegex(ValueError,'identity|credential'):r.argo()
+    writer.assert_not_called();self.assertFalse(revoked[0])
+    if mutation=='old_subject':self.assertEqual(calls,[('POST','/api/v1/session')])
+   else:
+    self.assertTrue(all(r.argo().values()));self.assertEqual(writer.call_count,2);self.assertTrue(revoked[0])
  def test_annotation_cleanup_preserves_values_and_avoids_master_credentials(self):
   before={'metadata':{'uid':'same','annotations':{secret_writer.LAST_APPLIED:'synthetic-copy'}},'data':{'token':'c3ludGhldGlj'},'type':'Opaque'}
   after=copy.deepcopy(before);after['metadata']['annotations']={}
@@ -269,6 +329,13 @@ class RotationSafety(unittest.TestCase):
    self.assertEqual(req.call_count,1);writer.assert_not_called()
 
 class NativeSyncAndIngress(unittest.TestCase):
+ def test_mta_patch_is_exact_in_subscription_allowlist_and_validator(self):
+  selected=yaml.safe_load((BASE/'mta/mta-operator/subscription.yaml').read_text())['spec']
+  self.assertEqual(selected['startingCSV'],'mta-operator.v8.3.1');self.assertEqual(selected['installPlanApproval'],'Manual')
+  approval=(BASE/'pipelines/operators/approve-installplans.yaml').read_text()
+  self.assertIn('openshift-mta:mta-operator:mta-operator.v8.3.1',approval)
+  self.assertNotIn('mta-operator.v8.3.0',approval)
+  self.assertIn('openshift-mta mta-operator mta-operator.v8.3.1',(ROOT/'stages/070-advanced-app-platform/validate.sh').read_text())
  def test_pvc_storage_classes_are_explicit_and_match_the_deploy_contract(self):
   docs=list(yaml.safe_load_all(subprocess.check_output(['kustomize','build',str(BASE)],text=True)))
   claims=[d for d in docs if d and d['kind']=='PersistentVolumeClaim'];self.assertTrue(claims)

@@ -11,4 +11,4 @@ spec:
   source: redhat-operators
   sourceNamespace: openshift-marketplace
   installPlanApproval: Manual
-  startingCSV: mta-operator.v8.3.0
+  startingCSV: mta-operator.v8.3.1
