@@ -395,15 +395,10 @@ def main():
             need(owner(r, obj["metadata"]["uid"]), "External route is not owned by native model")
             route_ready(r, "api", gateway_controller)
         if kind == "MaaSModelRef":
-            for t in (("GovernanceAttached",) if parked_ref else ("Ready", "GovernanceAttached", "RuntimeReady")):
+            for t in ("Ready", "GovernanceAttached", "RuntimeReady"):
                 condition(obj, t, True)
-            if parked_ref:
-                runtime = conditions(obj).get("RuntimeReady", {})
-                need(runtime.get("observedGeneration") == obj["metadata"]["generation"] and runtime.get("status") in ("True", "False"), "Parked model runtime observation is stale or absent")
-                print("[PASS] Parked model reference governance/current native observation; runtime status is not inference qualification")
             need(obj["spec"].get("modelRef") == d["spec"]["modelRef"] and obj["spec"].get("tenantRef") == d["spec"].get("tenantRef"), "Native model reference differs")
-            if not parked_ref:
-                need(obj.get("status", {}).get("endpoint"), "Native model endpoint discovery is absent")
+            need(obj.get("status", {}).get("endpoint"), "Native model endpoint discovery is absent")
             if ns == "external-models":
                 endpoint = "https://" + listeners["api"]["hostname"]
                 if d["spec"].get("endpointOverride"):

@@ -81,6 +81,7 @@ ruby -ryaml -e 'a=YAML.load_file(ARGV[0]);a["spec"]["source"]["repoURL"]=ENV.fet
 # The first modifying action is this stage's own Application.
 python3 "$SCRIPT_DIR/preflight-agent-catalog.py"
 oc --request-timeout=10s apply -f "$work/application.yaml"
+python3 "$ROOT_DIR/scripts/shared/stage_apps.py" sync 030 --app 030-private-model-serving  # an unchanged render gets no automatic sync operation
 echo 'Stage 030 native serving/discovery Application submitted at the reviewed immutable revision; no models or registry records are created.'
 for _ in $(seq 1 120); do
  if oc --request-timeout=10s get application 030-private-model-serving -n openshift-gitops -o json | python3 -c 'import json,sys;x=json.load(sys.stdin);s=x.get("status",{});sys.exit(not(s.get("sync",{}).get("status")=="Synced" and s.get("sync",{}).get("revision")==x["spec"]["source"]["targetRevision"] and s.get("health",{}).get("status")=="Healthy" and s.get("operationState",{}).get("phase")=="Succeeded" and s.get("operationState",{}).get("syncResult",{}).get("revision")==x["spec"]["source"]["targetRevision"] and s.get("operationState",{}).get("syncResult",{}).get("source",{}).get("path")==x["spec"]["source"]["path"]))'; then
