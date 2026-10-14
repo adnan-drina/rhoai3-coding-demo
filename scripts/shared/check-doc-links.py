@@ -237,21 +237,25 @@ class Checker:
                     self.add("MISSING-SKILL", family, f"{self.rel(path)}:{number}", f"no skill named {name}")
 
     def check_live(self, urls, delay: float, limit: int | None) -> None:
-        seen: dict[str, tuple[int | None, str]] = {}
+        seen: set[str] = set()
+        pages: dict[str, tuple[int | None, str]] = {}  # one request per page, many anchors
         for family, where, url in urls:
-            if url in seen or (limit is not None and len(seen) >= limit):
-                continue
             base, _, anchor = url.partition("#")
-            status, body = fetch(base)
-            seen[url] = (status, body)
+            if url in seen or (base not in pages and limit is not None and len(pages) >= limit):
+                continue
+            seen.add(url)
+            if base not in pages:
+                if pages:
+                    time.sleep(delay)
+                pages[base] = fetch(base)
+            status, body = pages[base]
             if status in (404, 410):
                 self.add("LIVE-BROKEN", family, where, f"HTTP {status} {url}")
             elif status is None or status in INCONCLUSIVE:
                 print(f"INCONCLUSIVE {family} {where}: HTTP {status} {url}")
             elif anchor and f'id="{anchor}"' not in body:
                 self.add("LIVE-BROKEN", family, where, f"anchor #{anchor} not found in {base}")
-            time.sleep(delay)
-        print(f"live: {len(seen)} URLs fetched")
+        print(f"live: {len(seen)} URLs checked, {len(pages)} pages fetched")
 
 
 def fetch(url: str) -> tuple[int | None, str]:
