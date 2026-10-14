@@ -214,17 +214,17 @@ DS_LABEL=$(oc get namespace demo-sandbox \
 [[ "$DS_LABEL" == "true" ]] && R="pass" || R="dashboard-label=${DS_LABEL:-missing}"
 check "demo-sandbox data science project present" "$R"
 
-# ── 16. demo-sandbox object bucket bound ─────────────────────────────────────
-OBC_PHASE=$(oc get obc demo-sandbox-bucket -n demo-sandbox \
-  -o jsonpath='{.status.phase}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$OBC_PHASE" == "Bound" ]] && R="pass" || R="phase=${OBC_PHASE:-not found}"
-check "demo-sandbox ObjectBucketClaim Bound" "$R"
+# ── 16. environment Keycloak ready (prerequisite, not owned by GitOps) ───────
+KC_READY=$(oc get keycloak keycloak -n keycloak \
+  -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
+[[ "$KC_READY" == "True" ]] && R="pass" || R="ready=${KC_READY:-not found}"
+check "Environment Keycloak keycloak/keycloak Ready" "$R"
 
-# ── 17. demo-sandbox S3 connection present ───────────────────────────────────
-CONN_LABEL=$(oc get secret demo-sandbox-s3 -n demo-sandbox \
-  -o jsonpath='{.metadata.labels.opendatahub\.io/dashboard}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$CONN_LABEL" == "true" ]] && R="pass" || R="connection=${CONN_LABEL:-missing}"
-check "demo-sandbox S3 connection present" "$R"
+# ── 17. OpenShift login uses the environment Keycloak (rhbk provider) ────────
+IDP_TYPE=$(oc get oauth cluster -o jsonpath='{.spec.identityProviders[?(@.name=="rhbk")].type}' \
+  --insecure-skip-tls-verify=true 2>/dev/null || echo "")
+[[ "$IDP_TYPE" == "OpenID" ]] && R="pass" || R="identity-provider=${IDP_TYPE:-missing}"
+check "OpenShift OAuth rhbk identity provider present" "$R"
 
 # ── 18. RHOAI admins can manage demo-sandbox ─────────────────────────────────
 ADMIN_RB=$(oc get rolebinding rhods-admins-admin -n demo-sandbox \

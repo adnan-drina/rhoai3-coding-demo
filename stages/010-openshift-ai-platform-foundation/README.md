@@ -137,6 +137,8 @@ OpenShift GitOps provides declarative reconciliation through Argo CD. OpenShift 
 
 ## Deploy And Validate
 
+**Prerequisite:** the demo environment provides Red Hat build of Keycloak (`keycloak/keycloak`, realm `sso`) and configures it as the OpenShift login provider `rhbk`. GitOps does not own it; `validate.sh` checks that it is Ready and in use.
+
 ```bash
 # Bootstrap GitOps and deploy stage
 ./stages/010-openshift-ai-platform-foundation/deploy.sh
