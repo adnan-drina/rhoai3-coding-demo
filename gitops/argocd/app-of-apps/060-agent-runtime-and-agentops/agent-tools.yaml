@@ -19,7 +19,7 @@ spec:
     path: gitops/stages/060-agent-runtime-and-agentops/agent-tools
   destination:
     server: https://kubernetes.default.svc
-    namespace: mcp-servers
+    namespace: openshift-gitops
   syncPolicy:
     syncOptions:
       - RespectIgnoreDifferences=true

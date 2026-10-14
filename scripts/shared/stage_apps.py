@@ -259,17 +259,37 @@ def aggregate_path(stage, root=ROOT):
     return roots.pop()
 
 
+# Cluster-scoped kinds the stages render. Any other kind must set metadata.namespace itself: the Application
+# destination namespace is never relied on to place an object.
+CLUSTER_SCOPED = {
+    ("", "Namespace"), ("rbac.authorization.k8s.io", "ClusterRole"), ("rbac.authorization.k8s.io", "ClusterRoleBinding"),
+    ("user.openshift.io", "Group"), ("operator.openshift.io", "Console"), ("operator.openshift.io", "LeaderWorkerSetOperator"),
+    ("observability.openshift.io", "UIPlugin"), ("nvidia.com", "ClusterPolicy"), ("kueue.x-k8s.io", "ClusterQueue"),
+    ("kueue.x-k8s.io", "ResourceFlavor"), ("datasciencecluster.opendatahub.io", "DataScienceCluster"),
+    ("dscinitialization.opendatahub.io", "DSCInitialization"), ("services.platform.opendatahub.io", "Auth"),
+    ("mlflow.opendatahub.io", "MLflow"),
+}
+
+
 def check_static(stage, root=ROOT):
-    """Components render disjoint object sets whose union is exactly the stage base render."""
+    """Components render disjoint object sets whose union is exactly the stage base render; namespaced objects set
+    their own namespace."""
     owners(stage, root)  # raises on overlap
     base = {}
     apps = _components(stage, str(root))
     for obj in render(aggregate_path(stage, root), root):
         base[suffix(obj)] = obj
     union = {}
+    unplaced = []
     for app in apps:
         for obj in render(app["spec"]["source"]["path"], root):
             union[suffix(obj)] = obj
+            api = obj["apiVersion"]
+            if not obj["metadata"].get("namespace") and (api.split("/")[0] if "/" in api else "", obj["kind"]) not in CLUSTER_SCOPED:
+                unplaced.append(app["metadata"]["name"] + ": " + obj["kind"] + "/" + obj["metadata"]["name"])
+    if unplaced:
+        raise RuntimeError("namespaced objects must set metadata.namespace (add the kind to CLUSTER_SCOPED only if it is "
+                           "cluster-scoped): " + ", ".join(unplaced))
     missing, extra = sorted(set(base) - set(union)), sorted(set(union) - set(base))
     changed = sorted(k for k in set(base) & set(union) if base[k] != union[k])
     if missing or extra or changed:

@@ -79,6 +79,13 @@ def guard():
     return url
 
 
+def identity(obj):
+    """'<group>/<Kind>:<namespace>/<name>' with an empty namespace for cluster-scoped objects. Unlike a tracking-id
+    suffix it does not depend on the Application destination, so a destination change keeps every object matched."""
+    api = obj["apiVersion"]
+    return (api.split("/")[0] if "/" in api else "") + "/" + obj["kind"] + ":" + (obj["metadata"].get("namespace") or "") + "/" + obj["metadata"]["name"]
+
+
 def kind_arg(group, kind):
     return kind.lower() + "." + group if group else kind.lower()
 
@@ -119,9 +126,10 @@ class Plan:
         self.owner = {}
         for name, app in self.new.items():
             for obj in self.sa.render(app["spec"]["source"]["path"], self.worktree):
-                self.owner[self.tracking_suffix(obj, app)] = name
+                self.owner[identity(obj)] = (name, self.tracking_suffix(obj, app))
 
     def tracking_suffix(self, obj, app):
+        """Tracking-id suffix under the new Application (cluster-scoped objects take its destination namespace)."""
         api = obj["apiVersion"]
         group = api.split("/")[0] if "/" in api else ""
         meta = obj["metadata"]
@@ -156,7 +164,7 @@ class Plan:
     def preflight(self):
         self.state.mkdir(parents=True, exist_ok=True)
         os.chmod(self.state, 0o700)
-        recorded = self.state / "objects.json"
+        recorded = self.state / "objects-v2.json"  # keyed by identity(), not tracking suffix
         sources = []
         for name in self.old + list(self.new):
             app = application(name)
@@ -191,7 +199,7 @@ class Plan:
                 owner, _, suffix = tracking.partition(":")
                 if owner not in old_names:
                     raise RuntimeError(kind + " " + ns + "/" + obj_name + " has foreign tracking id " + tracking)
-                objects[tracking.split(":", 1)[1]] = {"uid": obj["metadata"]["uid"], "group": group, "kind": kind,
+                objects[group + "/" + kind + ":" + ns + "/" + obj_name] = {"uid": obj["metadata"]["uid"], "group": group, "kind": kind,
                                                       "namespace": ns, "name": obj_name, "hook": is_hook(obj), "from": owner}
         if recorded.exists():
             before = json.loads(recorded.read_text())
@@ -311,19 +319,19 @@ class Plan:
 
     def verify(self):
         bad, hooks = [], []
-        for suffix, v in self.objects.items():
-            owner = self.owner.get(suffix)
-            if not owner:
+        for key, v in self.objects.items():
+            if key not in self.owner:
                 continue
+            owner, suffix = self.owner[key]
             obj = get_json("get", kind_arg(v["group"], v["kind"]), v["name"], *(["-n", v["namespace"]] if v["namespace"] else []))
             if not obj:
-                (hooks if v["hook"] else bad).append(suffix)
+                (hooks if v["hook"] else bad).append(key)
                 continue
             if v["hook"]:
-                hooks.append(suffix)
+                hooks.append(key)
             tracking = obj["metadata"].get("annotations", {}).get(TRACKING, "")
             if (obj["metadata"]["uid"] != v["uid"] and not v["hook"]) or tracking != owner + ":" + suffix:
-                bad.append(suffix + " (tracking " + tracking + ")")
+                bad.append(key + " (tracking " + tracking + ", expected " + owner + ":" + suffix + ")")
         if bad:
             raise RuntimeError("not moved cleanly: " + ", ".join(bad))
         log("PASS objects carry their new owners' tracking ids with unchanged UIDs"
@@ -341,8 +349,8 @@ class Plan:
 
     def leftovers(self):
         names = set(self.old)
-        for suffix, v in sorted(self.objects.items()):
-            if suffix in self.owner:
+        for key, v in sorted(self.objects.items()):
+            if key in self.owner:
                 continue
             args = [kind_arg(v["group"], v["kind"]), v["name"], *(["-n", v["namespace"]] if v["namespace"] else [])]
             obj = get_json("get", *args)
@@ -351,9 +359,9 @@ class Plan:
             owner = obj["metadata"].get("annotations", {}).get(TRACKING, "").split(":", 1)[0]
             if self.args.delete_leftovers and owner in names:
                 oc("delete", *args, "--wait=true")
-                log("  deleted leftover " + suffix)
+                log("  deleted leftover " + key)
             else:
-                log("  leftover " + suffix + " (tracked by " + (owner or "nothing") + "); not deleted"
+                log("  leftover " + key + " (tracked by " + (owner or "nothing") + "); not deleted"
                     + ("" if self.args.delete_leftovers else ": re-run with --delete-leftovers after review"))
 
 

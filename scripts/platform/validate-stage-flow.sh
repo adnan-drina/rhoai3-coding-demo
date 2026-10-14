@@ -137,6 +137,10 @@ def check_stage_app(stage_id, name, app_path, component):
         expected_path = f"gitops/stages/{name}/{app_path.stem}"
         if metadata.get("name") != f"{stage_id}-{app_path.stem}":
             fail(f"{app_path.relative_to(repo)} must be named {stage_id}-{app_path.stem}")
+        # Destination namespace is only Argo's default for objects without one and the namespace in cluster-scoped
+        # objects' tracking ids; one fixed value keeps those ids predictable (.agents/rules/gitops.md).
+        if spec.get("destination") != {"server": "https://kubernetes.default.svc", "namespace": "openshift-gitops"}:
+            fail(f"{app_path.relative_to(repo)} destination must be in-cluster namespace openshift-gitops")
 
     app_name = metadata.get("name")
     if not isinstance(app_name, str) or not app_name or app_name in application_names:

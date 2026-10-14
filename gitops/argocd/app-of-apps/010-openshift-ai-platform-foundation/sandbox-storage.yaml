@@ -22,7 +22,7 @@ spec:
     path: gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage
   destination:
     server: https://kubernetes.default.svc
-    namespace: demo-sandbox
+    namespace: openshift-gitops
   ignoreDifferences:
     - group: ""
       kind: Secret

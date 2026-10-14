@@ -31,7 +31,7 @@ import sys;sys.path.insert(0,os.environ['CONSOLE_ROOT']+'/scripts/shared');impor
 assert '/spec/dashboardConfig/agentOps' in stage_apps.delegated('010','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications','opendatahub.io'),'Foundation has not delegated agentOps'
 app=get('application','060-agent-console','openshift-gitops')
 if app:
- s=app['spec'];assert not app['metadata'].get('ownerReferences') and not app['metadata'].get('deletionTimestamp') and not s.get('sources') and s['source']['repoURL']==os.environ['GIT_REPO_URL'] and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/agent-console' and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'redhat-ods-applications'},'Foreign console Application'
+ s=app['spec'];assert not app['metadata'].get('ownerReferences') and not app['metadata'].get('deletionTimestamp') and not s.get('sources') and s['source']['repoURL']==os.environ['GIT_REPO_URL'] and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/agent-console' and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Foreign console Application'
 objects=[('serviceaccount','enable-agent-console','redhat-ods-applications','/ServiceAccount'),('role','enable-agent-console','redhat-ods-applications','rbac.authorization.k8s.io/Role'),('rolebinding','enable-agent-console','redhat-ods-applications','rbac.authorization.k8s.io/RoleBinding'),('job','enable-agent-console','redhat-ods-applications','batch/Job')]
 for ns in ['openshell-admin','openshell-developer']:
  assert get('namespace',ns),'Existing workspace namespace is missing'

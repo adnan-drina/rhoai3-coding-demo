@@ -17,7 +17,7 @@ spec:
     path: gitops/stages/060-agent-runtime-and-agentops/agent-console
   destination:
     server: https://kubernetes.default.svc
-    namespace: redhat-ods-applications
+    namespace: openshift-gitops
   syncPolicy:
     retry:
       limit: 10

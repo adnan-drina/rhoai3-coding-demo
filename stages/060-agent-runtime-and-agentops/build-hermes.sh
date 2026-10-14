@@ -19,7 +19,7 @@ app='060-openshell-runtime'
 def read(kind,name):
  r=subprocess.run(['oc','--request-timeout=15s','get',kind,name,'-n','ai-agents' if kind!='application' else 'openshift-gitops','-o','json'],capture_output=True,text=True);assert r.returncode==0;return json.loads(r.stdout)
 a=read('application',app);s=a['spec'];src={'repoURL':'https://github.com/adnan-drina/rhoai3-coding-demo.git','targetRevision':sys.argv[1],'path':'gitops/stages/060-agent-runtime-and-agentops/openshell-runtime'}
-assert s['source']==src and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshell'} and not a['metadata'].get('ownerReferences') and not a.get('operation') and not a['metadata'].get('deletionTimestamp')
+assert s['source']==src and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'} and not a['metadata'].get('ownerReferences') and not a.get('operation') and not a['metadata'].get('deletionTimestamp')
 assert a['status']['sync']['status']=='Synced' and a['status']['sync']['revision']==sys.argv[1]
 o=a['status']['operationState'];assert o['phase']=='Succeeded' and o['syncResult']['revision']==sys.argv[1] and o['syncResult']['source']==src
 for kind,name,group in [('buildconfig','hermes-runtime-api','build.openshift.io'),('imagestream','hermes-runtime-api','image.openshift.io')]:

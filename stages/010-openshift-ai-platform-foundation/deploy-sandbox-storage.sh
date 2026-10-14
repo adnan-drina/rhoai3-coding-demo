@@ -28,7 +28,7 @@ for kind,name,ns in [("application",app,"openshift-gitops"),("obc","rhoai-models
         p=subprocess.run(["oc","--request-timeout=10s","get",kind,name,"-n",ns,"-o","jsonpath={.spec}"],capture_output=True,text=True)
         if p.returncode: raise SystemExit("ERROR: Application API unavailable")
         s=json.loads(p.stdout)
-        if s.get('sources') or s.get("source",{}).get("repoURL")!=os.environ["GIT_REPO_URL"] or s.get("destination")!={"server":"https://kubernetes.default.svc","namespace":"demo-sandbox"} or s.get("project")!="rhoai-demo" or s.get("source",{}).get("path")!="gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage": raise SystemExit("ERROR: Existing Application identity differs")
+        if s.get('sources') or s.get("source",{}).get("repoURL")!=os.environ["GIT_REPO_URL"] or s.get("destination")!={"server":"https://kubernetes.default.svc","namespace":"openshift-gitops"} or s.get("project")!="rhoai-demo" or s.get("source",{}).get("path")!="gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage": raise SystemExit("ERROR: Existing Application identity differs")
 PY_ADOPT
 manifest=$(mktemp)
 trap 'rm -f "$manifest"' EXIT

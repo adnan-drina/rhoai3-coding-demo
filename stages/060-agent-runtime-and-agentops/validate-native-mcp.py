@@ -9,7 +9,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 NS = "mcp-servers"
-APP_DESTINATION = NS
+APP_DESTINATION = "openshift-gitops"
 # Customer MCPServers in the hosting project and their reviewed policy.
 SERVERS = {
     "openshift-mcp-server": {"read_only": True, "require_oauth": False, "route": False, "sa": "openshift-mcp-server-ro"},

@@ -23,7 +23,7 @@
     },
     "destination": {
       "server": "https://kubernetes.default.svc",
-      "namespace": "openshell"
+      "namespace": "openshift-gitops"
     },
     "syncPolicy": {
       "syncOptions": [

@@ -12,7 +12,7 @@ def oc(*a,payload=None):
 def get(kind,name,namespace=NS):return oc('get',kind,name,'-n',namespace,'-o','json')
 app=get('application',APP,'openshift-gitops');m=app['metadata'];s=app['spec'];assert not m.get('ownerReferences') and not m.get('deletionTimestamp') and 'sources' not in s
 source={'repoURL':'https://github.com/adnan-drina/rhoai3-coding-demo.git','targetRevision':args.revision,'path':'gitops/stages/060-agent-runtime-and-agentops/openshell-runtime'}
-assert s['source']==source and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':NS}
+assert s['source']==source and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'}
 operation=app['status']['operationState'];assert operation['phase'] in ('Running','Succeeded') and operation['syncResult']['revision']==args.revision and operation['syncResult']['source']==source
 assert 'RespectIgnoreDifferences=true' in s['syncPolicy']['syncOptions']
 for kind,name,pointers in [('Secret','openshell-credentials',['/data/key-encryption-key']),('ConfigMap','openshell-identity',['/data/issuer']),('ConfigMap','openshell-runtime-ready',['/data/controller-ready','/data/source-revision','/data/controller-csv-uid'])]:
@@ -20,7 +20,7 @@ for kind,name,pointers in [('Secret','openshell-credentials',['/data/key-encrypt
     assert any(i.get('group','')=='' and i.get('kind')==kind and i.get('name')==name and i.get('namespace')==NS and i.get('jsonPointers') in (pointers,['/data']) for i in s.get('ignoreDifferences',[])),'Missing runtime field delegation'
 def tracked(obj):
     m=obj['metadata'];group=obj['apiVersion'].split('/')[0] if '/' in obj['apiVersion'] else ''
-    expected=APP+':'+group+'/'+obj['kind']+':'+m.get('namespace',NS)+'/'+m['name']
+    expected=APP+':'+group+'/'+obj['kind']+':'+m.get('namespace','openshift-gitops')+'/'+m['name']
     assert m.get('annotations',{}).get('argocd.argoproj.io/tracking-id')==expected and not m.get('ownerReferences') and not m.get('deletionTimestamp'),'Foreign runtime object'
     return obj
 tracked(get('namespace',NS))
