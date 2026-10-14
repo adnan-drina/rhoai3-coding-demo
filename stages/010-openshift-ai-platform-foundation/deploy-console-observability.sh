@@ -33,6 +33,7 @@ manifest=$(mktemp);trap 'rm -f "$manifest"' EXIT
 ruby -ryaml -e 'a=YAML.load_file(ARGV[0]);a["spec"]["source"]["repoURL"]=ENV.fetch("GIT_REPO_URL");a["spec"]["source"]["targetRevision"]=ARGV[1];puts YAML.dump(a)' "$REPO_ROOT/gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/console-observability.yaml" "$commit" > "$manifest"
 # First write is our Application; COO owns the generated plugin/Perses.
 oc --request-timeout=10s apply -f "$manifest"
+python3 "$REPO_ROOT/scripts/shared/stage_apps.py" sync 010 --app 010-console-observability  # an unchanged render gets no automatic sync operation
 deadline=$((SECONDS + 600))
 while (( SECONDS < deadline )); do
  if "$SCRIPT_DIR/validate-console-observability.sh"; then exit 0; fi

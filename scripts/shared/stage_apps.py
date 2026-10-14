@@ -217,15 +217,17 @@ def stage_problems(stage, revision=None, repo_url=None, root=ROOT):
     return problems
 
 
-def start_syncs(stage, root=ROOT):
+def start_syncs(stage, root=ROOT, only=None):
     """Start one sync for each deployed component whose last operation is not a successful sync of its current source.
 
     Argo CD reports Synced at a new revision without running an operation when the render is unchanged, so automated
     sync alone never runs hooks or produces the operation stage_problems() requires. The sync carries the
     Application's own syncOptions (a bare operation.sync drops RespectIgnoreDifferences)."""
     started = []
-    for desired in _deployed(stage, str(root), False):
+    for desired in _deployed(stage, str(root), bool(only)):
         name = desired["metadata"]["name"]
+        if only and name not in only:
+            continue
         app = get_application(name)
         if not app:
             continue
@@ -343,7 +345,8 @@ def main():
     p = sub.add_parser("delegated")
     p.add_argument("stage"); p.add_argument("kind"); p.add_argument("name"); p.add_argument("namespace", nargs="?"); p.add_argument("--group", default="")
     sub.add_parser("check-static").add_argument("stage")
-    sub.add_parser("sync").add_argument("stage")
+    p = sub.add_parser("sync")
+    p.add_argument("stage"); p.add_argument("--app", action="append", help="limit to these Applications (also deploy-script ones)")
     args = parser.parse_args()
     if args.command == "names":
         print("\n".join(names(args.stage)))
@@ -361,7 +364,7 @@ def main():
     elif args.command == "delegated":
         print("\n".join(sorted(delegated(args.stage, args.kind, args.name, args.namespace, args.group))))
     elif args.command == "sync":
-        for name in start_syncs(args.stage):
+        for name in start_syncs(args.stage, only=args.app):
             print("started sync of " + name)
     elif args.command == "check-static":
         print("PASS Stage " + args.stage + ": " + str(len(names(args.stage, separate=True))) + " components render " + str(check_static(args.stage)) + " objects, disjoint and equal to " + str(aggregate_path(args.stage)))

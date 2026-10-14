@@ -35,6 +35,7 @@ trap 'rm -f "$manifest"' EXIT
 sed -e "s|repoURL: .*|repoURL: $repo|" -e "s|targetRevision: .*|targetRevision: $commit|" "$REPO_ROOT/gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/sandbox-storage.yaml" > "$manifest"
 # First write targets only this additive component, never the core foundation.
 oc --request-timeout=10s apply -f "$manifest"
+python3 "$REPO_ROOT/scripts/shared/stage_apps.py" sync 010 --app 010-sandbox-storage  # an unchanged render gets no automatic sync operation
 deadline=$((SECONDS+720))
 while (( SECONDS < deadline )); do
   state=$(oc --request-timeout=10s get application 010-sandbox-storage -n openshift-gitops -o jsonpath='{.status.sync.revision} {.status.sync.status} {.status.health.status}')
