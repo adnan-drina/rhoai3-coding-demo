@@ -8,6 +8,7 @@ kind: Kustomization
 # analysis; developer commits are then genuinely new code).
 
 resources:
+  - network-policy.yaml
   # Wave 0: namespace + persona access
   - namespace.yaml
   - persona-rbac.yaml
@@ -23,8 +24,20 @@ configMapGenerator:
   - name: sonarqube-admin-bootstrap
     namespace: sonarqube
     files:
+      - secret_writer.py
       - bootstrap-admin.py
       - configure-sso.py
     options:
       annotations:
         argocd.argoproj.io/sync-wave: "10"
+
+# Only declarative Secret placeholders use Argo's argocd-controller SSA manager.
+# The Application disables the client-apply migration bridge; runtime writers
+# remain named create/merge-patch and ignored data stays with its producer.
+patches:
+- target:
+    kind: Secret
+  patch: |-
+    - op: add
+      path: /metadata/annotations/argocd.argoproj.io~1sync-options
+      value: ServerSideApply=true

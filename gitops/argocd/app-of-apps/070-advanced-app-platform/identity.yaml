@@ -1,0 +1,74 @@
+# Platform Keycloak clients and scoped provisioner identities for the developer platform (existing environment Keycloak).
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: 070-identity
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/instance: openshift-gitops
+    app.kubernetes.io/name: identity
+    app.kubernetes.io/component: identity
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+    argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/070-advanced-app-platform"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+    demo.rhoai.io/deploy-order: '1'
+spec:
+  project: rhoai-demo
+  source:
+    repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
+    targetRevision: main
+    path: gitops/stages/070-advanced-app-platform/identity
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - SkipDryRunOnMissingResource=true
+    - RespectIgnoreDifferences=true
+    - ClientSideApplyMigration=false
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+  - group: oauth.openshift.io
+    kind: OAuthClient
+    name: platform-keycloak
+    jsonPointers:
+    - "/secret"
+    - "/redirectURIs"
+  - group: ''
+    kind: Secret
+    namespace: gitlab-system
+    name: stage070-scm-provisioner
+    jsonPointers:
+    - "/data"
+  - group: ''
+    kind: Secret
+    namespace: rhdh
+    name: stage070-rhdh-provisioner
+    jsonPointers:
+    - "/data"
+  - group: ''
+    kind: Secret
+    namespace: openshift-mta
+    name: stage070-mta-provisioner
+    jsonPointers:
+    - "/data"
+  - group: ''
+    kind: Secret
+    namespace: trusted-artifact-signer
+    name: stage070-signing-provisioner
+    jsonPointers:
+    - "/data"

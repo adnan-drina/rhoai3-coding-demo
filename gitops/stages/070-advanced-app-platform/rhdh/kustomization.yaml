@@ -8,6 +8,7 @@ kind: Kustomization
 # Ref: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10
 
 resources:
+  - network-policy.yaml
   # Wave 0-2: RHDH Operator
   - rhdh-operator/namespace.yaml
   - rhdh-operator/operatorgroup.yaml
@@ -62,3 +63,14 @@ configMapGenerator:
   - templates__app-migration__skeleton__migration.yaml=templates/app-migration/skeleton/migration.yaml
   - templates__app-migration__skeleton__run-budget.json=templates/app-migration/skeleton/run-budget.json
   - templates__app-migration__template.yaml=templates/app-migration/template.yaml
+
+# Only declarative Secret placeholders use Argo's argocd-controller SSA manager.
+# The Application disables the client-apply migration bridge; runtime writers
+# remain named create/merge-patch and ignored data stays with its producer.
+patches:
+- target:
+    kind: Secret
+  patch: |-
+    - op: add
+      path: /metadata/annotations/argocd.argoproj.io~1sync-options
+      value: ServerSideApply=true

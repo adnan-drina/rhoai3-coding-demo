@@ -1,0 +1,61 @@
+# GitLab Community Edition, its storage and the integration hub that wires GitLab into the other components.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: 070-gitlab
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/instance: openshift-gitops
+    app.kubernetes.io/name: gitlab
+    app.kubernetes.io/component: gitlab
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+  annotations:
+    argocd.argoproj.io/sync-wave: '7'
+    argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/070-advanced-app-platform"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+    demo.rhoai.io/deploy-order: '7'
+spec:
+  project: rhoai-demo
+  source:
+    repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
+    targetRevision: main
+    path: gitops/stages/070-advanced-app-platform/gitlab
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - SkipDryRunOnMissingResource=true
+    - RespectIgnoreDifferences=true
+    - ClientSideApplyMigration=false
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+  - group: ''
+    kind: Namespace
+    jsonPointers:
+    - "/metadata/annotations"
+    - "/metadata/labels"
+  - group: ''
+    kind: PersistentVolumeClaim
+    name: gitlab-postgresql-data
+    namespace: gitlab-system
+    jsonPointers:
+    - "/spec/volumeName"
+  - group: ''
+    kind: PersistentVolumeClaim
+    name: gitlab-valkey-data
+    namespace: gitlab-system
+    jsonPointers:
+    - "/spec/volumeName"

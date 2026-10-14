@@ -56,3 +56,19 @@ configMapGenerator:
       controller.devfile.io/mount-as: file
       controller.devfile.io/mount-path: /etc/rhoai3/model-profiles
       controller.devfile.io/mount-on-start: "true"
+# The typed Secret writer the MaaS key provisioner pipes into (copy of pipelines/gitlab/secret_writer.py).
+- name: stage070-secret-writer
+  namespace: wksp-ai-developer
+  files:
+  - secret_writer.py
+
+# Only declarative Secret placeholders use Argo's argocd-controller SSA manager.
+# The Application disables the client-apply migration bridge; runtime writers
+# remain named create/merge-patch and ignored data stays with its producer.
+patches:
+- target:
+    kind: Secret
+  patch: |-
+    - op: add
+      path: /metadata/annotations/argocd.argoproj.io~1sync-options
+      value: ServerSideApply=true
