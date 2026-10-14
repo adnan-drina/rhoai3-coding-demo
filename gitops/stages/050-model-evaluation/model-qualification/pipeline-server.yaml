@@ -110,7 +110,8 @@ spec:
               oc $T create secret generic dashboard-dspa-secret -n "$NS" \
                 --from-literal=AWS_ACCESS_KEY_ID="$(val AWS_ACCESS_KEY_ID)" \
                 --from-literal=AWS_SECRET_ACCESS_KEY="$(val AWS_SECRET_ACCESS_KEY)" \
-                --dry-run=client -o yaml | oc $T apply -f - >/dev/null
+                --dry-run=client -o yaml | oc $T apply --server-side --force-conflicts --field-manager=pipeline-server-config -f - >/dev/null
+              oc $T annotate secret dashboard-dspa-secret -n "$NS" kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
               if oc $T get dspa dspa -n "$NS" >/dev/null 2>&1; then
                 current=$(oc $T get dspa dspa -n "$NS" -o jsonpath='{.spec.objectStorage.externalStorage.host} {.spec.objectStorage.externalStorage.bucket}')
                 [[ "$current" == "$host $bucket" ]] || { echo "ERROR: pipeline server dspa uses '$current'; delete it and sync again to reconfigure" >&2; exit 1; }

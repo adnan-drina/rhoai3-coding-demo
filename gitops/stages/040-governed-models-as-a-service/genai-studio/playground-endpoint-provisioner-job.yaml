@@ -23,13 +23,22 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 2
+  activeDeadlineSeconds: 600
   template:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: playground-maas-key-provisioner
       containers:
         - name: provision
-          image: registry.redhat.io/openshift4/ose-cli
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
           command:
             - /bin/bash
             - -ceu
@@ -54,7 +63,7 @@ spec:
               # endpoint is reachable only from the MaaS namespaces. Keys default to the server maximum
               # (API_KEY_MAX_EXPIRATION_DAYS, 90 days); an expired or revoked key is re-minted on the next sync.
               key_state() {
-                curl -sk -m 20 -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/$1" \
+                curl -s -m 20 -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/$1" \
                   | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""), d.get("subscription",""))' 2>/dev/null || true
               }
 
@@ -65,13 +74,13 @@ spec:
                 key="${current_key}"; id="${current_id}"; expires_at="$(secret_value expires_at)"
               else
                 if [ -n "${current_id}" ]; then
-                  status=$(curl -sk --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
+                  status=$(curl -s --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
                   echo "Revoked previous key ${current_id} (HTTP ${status})"
                 fi
                 response="${WORK}/response.json"; key=""
                 # The subscription and its model may still be reconciling in the same sync; retry briefly.
                 for attempt in $(seq 1 18); do
-                  status=$(curl -sk -o "${response}" -w '%{http_code}' -X POST -H "Authorization: Bearer ${SA_TOKEN}" -H "Content-Type: application/json" \
+                  status=$(curl -s -o "${response}" -w '%{http_code}' -X POST -H "Authorization: Bearer ${SA_TOKEN}" -H "Content-Type: application/json" \
                     -d "{\"name\":\"playground-sandbox-${MODEL_ID}\",\"subscription\":\"${SUBSCRIPTION}\"}" "${MAAS_BASE_URL}/maas-api/v1/api-keys")
                   key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("key",""))' "${response}" 2>/dev/null || true)"
                   if [ "${status}" -ge 200 ] && [ "${status}" -lt 300 ] && echo "${key}" | grep -q '^sk-oai-'; then break; fi
@@ -83,7 +92,9 @@ spec:
                 echo "Provisioned a MaaS API key for ${SUBSCRIPTION} (id ${id}, expires ${expires_at:-unset})"
               fi
               printf 'api_key=%s\nkey_id=%s\nexpires_at=%s\nsubscription=%s\n' "${key}" "${id}" "${expires_at}" "${SUBSCRIPTION}" > "${WORK}/secret.env"
-              oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-env-file="${WORK}/secret.env" --dry-run=client -o yaml | oc apply -f -
+              oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-env-file="${WORK}/secret.env" --dry-run=client -o yaml \
+                | oc apply --server-side --force-conflicts --field-manager=playground-endpoint-provisioner -f -
+              oc annotate secret "${SECRET_NAME}" -n "${NS}" kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
 
               if oc get configmap "${CM_NAME}" -n "${NS}" >/dev/null 2>&1; then
                 if oc get configmap "${CM_NAME}" -n "${NS}" -o jsonpath='{.data.config\.yaml}' | grep -q "provider_id: ${PROVIDER_ID}"; then

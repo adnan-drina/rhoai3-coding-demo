@@ -159,7 +159,8 @@ spec:
               [ -s "${WORK}/api-key" ] && grep -q 'BEGIN CERTIFICATE' /service-ca/service-ca.crt
               oc create secret generic qualification-model-auth -n evaluated-models \
                 --from-file=api-key="${WORK}/api-key" --from-file=ca_cert=/service-ca/service-ca.crt \
-                --dry-run=client -o yaml | oc apply -f -
+                --dry-run=client -o yaml | oc apply --server-side --force-conflicts --field-manager=candidate-model-auth -f -
+              oc annotate secret qualification-model-auth -n evaluated-models kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
               echo "qualification-model-auth ready (api-key, ca_cert)"
           resources:
             requests: {cpu: 50m, memory: 128Mi}
