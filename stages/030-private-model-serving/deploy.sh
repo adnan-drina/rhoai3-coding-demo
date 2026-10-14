@@ -61,7 +61,8 @@ if existing:
  assert e['destination']=={'namespace':'openshift-gitops','server':'https://kubernetes.default.svc'},'Unexpected Stage 030 destination'
 for ns,name in [('openshift-monitoring','cluster-monitoring-config'),('openshift-user-workload-monitoring','user-workload-monitoring-config')]:
  cm=get('configmap',name,ns,True)
- if cm:assert cm['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith(appname+':'),'Provider monitoring configuration requires a reviewed merge before adoption'
+ # Platform monitoring configuration is owned by Stage 010 (observability-operators/cluster-monitoring).
+ if cm:assert cm['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('010-observability-operators:'),'Platform monitoring configuration must be owned by 010-observability-operators'
 sc=get('storageclass','gp3-csi');assert sc['provisioner']=='ebs.csi.aws.com','Reviewed native monitoring storage class unavailable'
 for namespace in ['redhat-ods-applications','openshift-gitops']:get('namespace',namespace)
 print('PASS Read-only foundation ownership/delegation and native storage prerequisites')
@@ -77,11 +78,6 @@ fi
 work=$(mktemp -d);trap 'rm -rf "$work"' EXIT
 export GIT_REPO_URL
 ruby -ryaml -e 'a=YAML.load_file(ARGV[0]);a["spec"]["source"]["repoURL"]=ENV.fetch("GIT_REPO_URL");a["spec"]["source"]["targetRevision"]=ARGV[1];puts YAML.dump(a)' "$ROOT_DIR/gitops/argocd/app-of-apps/030-private-model-serving/private-model-serving.yaml" "$remote_sha" > "$work/application.yaml"
-# Recheck configuration ownership immediately before submitting the Application.
-for pair in 'openshift-monitoring cluster-monitoring-config' 'openshift-user-workload-monitoring user-workload-monitoring-config'; do
- read -r namespace name <<< "$pair"
- oc --request-timeout=10s get configmap "$name" -n "$namespace" --ignore-not-found -o json | python3 -c 'import json,sys;s=sys.stdin.read();assert not s.strip() or json.loads(s)["metadata"].get("annotations",{}).get("argocd.argoproj.io/tracking-id","").startswith("030-private-model-serving:"),"Provider configuration appeared: stop for reviewed merge"'
-done
 # The first modifying action is this stage's own Application.
 python3 "$SCRIPT_DIR/preflight-agent-catalog.py"
 oc --request-timeout=10s apply -f "$work/application.yaml"

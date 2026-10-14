@@ -23,4 +23,3 @@ resources:
   - mcp-access-rolebinding.yaml
   - mcp-client-identity.yaml
   - tenant
-  - prompts
