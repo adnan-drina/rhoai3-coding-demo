@@ -9,6 +9,7 @@ metadata:
     app.kubernetes.io/part-of: gpu-infra
     app.kubernetes.io/managed-by: argocd
   annotations:
+    demo.rhoai.io/writes-delegated: "DataScienceCluster:/spec/components/kueue"
     argocd.argoproj.io/sync-wave: '2'
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded

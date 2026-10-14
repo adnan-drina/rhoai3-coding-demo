@@ -308,6 +308,9 @@ while IFS= read -r gitops_path; do
     kustomize build "$REPO_ROOT/$gitops_path" >/dev/null
 done <"$TMP_PATHS"
 
+log_step "Checking Stage 010 delegations against hook Job declarations"
+python3 "$REPO_ROOT/scripts/shared/stage_apps.py" check-delegations
+
 log_success "Stage layout static validation passed"
 
 if [[ "$LIVE" -eq 0 ]]; then

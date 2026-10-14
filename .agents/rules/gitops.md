@@ -133,6 +133,9 @@ Every Application MUST use `destination: {server: https://kubernetes.default.svc
 ### Server-Side Diff
 Enable it with the Application annotation `argocd.argoproj.io/compare-options: ServerSideDiff=true` (accurate diff for CRDs, defaulted fields and admission mutations). A `ServerSideDiff=true` entry in `syncPolicy.syncOptions` does **not** enable it: Argo CD reads diff strategy only from this annotation or the global `controller.diff.server.side` setting, which this repository does not set. An Application that needs client-side comparison sets `ServerSideDiff=false` in the annotation and records the reason in its component README. None does today: `060-openshell-runtime` was re-tested with server-side diff on 2026-10-14 (Synced, no resource out of sync) and switched back.
 
+### Delegated fields on shared singletons
+`010-rhoai-platform` owns the `DataScienceCluster` and `OdhDashboardConfig`. A later stage that switches on its feature does so from a hook Job that patches only its own fields, after its prerequisites are ready, and declares them in the Job annotation `demo.rhoai.io/writes-delegated` (comma-separated `Kind:/json/pointer`). Each such field is listed in `010-rhoai-platform` `ignoreDifferences`. `stage_apps.py check-delegations` (run by `validate-stage-flow.sh`) fails on a written field that is not delegated, a delegated field with no writer, a field with two writers, or a Job that patches these objects without the annotation. Design rationale: `docs/migration/settings-in-git-design.md`.
+
 ### Hook Jobs
 Every Job that runs as an Argo CD hook (or is created by a deploy script) follows these rules; reviews check them:
 - `activeDeadlineSeconds` and a small `backoffLimit`, so a hook cannot block a sync indefinitely; `oc` calls use `--request-timeout`.

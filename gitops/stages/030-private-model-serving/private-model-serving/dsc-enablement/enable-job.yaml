@@ -5,6 +5,7 @@ metadata:
   name: job-enable-dsc-kserve
   namespace: redhat-ods-applications
   annotations:
+    demo.rhoai.io/writes-delegated: "DataScienceCluster:/spec/components/kserve"
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
     argocd.argoproj.io/sync-wave: '2'
