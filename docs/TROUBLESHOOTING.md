@@ -179,7 +179,7 @@ oc debug node/<gpu-node> -- chroot /host df -h /var  # watch used% growth
 
 **Recover:**
 
-- If the volume is undersized, recreate the GPU machines: scale the GPU MachineSet to 0, regenerate with `generate-gpu-machineset.sh --write` (200GB gp3 default), sync Stage 020, scale back up.
+- If the volume is undersized, recreate the GPU machines: scale the GPU MachineSet to 0, regenerate with `generate-gpu-machineset.sh --source <worker-machineset> --write` (200GB gp3 for every pool), sync Stage 020, scale back up with `resume-gpu-demo.sh`.
 - If pressure already cleared, the pull resumes on its own; disk usage growth in /var confirms progress.
 
 ## InstallPlan Approval Carries Hidden Passenger CSVs

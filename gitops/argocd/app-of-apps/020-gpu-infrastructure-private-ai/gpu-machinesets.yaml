@@ -42,12 +42,6 @@ spec:
   ignoreDifferences:
   - group: machine.openshift.io
     kind: MachineSet
-    name: ocp-wzxl7-gpu-us-east-2a
-    namespace: openshift-machine-api
-    jsonPointers:
-    - "/spec/replicas"
-  - group: machine.openshift.io
-    kind: MachineSet
     name: ocp-wzxl7-gpu-h100-us-east-2a
     namespace: openshift-machine-api
     jsonPointers:
@@ -79,6 +73,12 @@ spec:
   - group: machine.openshift.io
     kind: MachineSet
     name: ocp-wzxl7-gpu-rtxpro6000-us-east-2c
+    namespace: openshift-machine-api
+    jsonPointers:
+    - "/spec/replicas"
+  - group: machine.openshift.io
+    kind: MachineSet
+    name: ocp-wzxl7-gpu-us-east-2a
     namespace: openshift-machine-api
     jsonPointers:
     - "/spec/replicas"

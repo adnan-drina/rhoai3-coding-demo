@@ -108,9 +108,8 @@ OpenShift Machine API creates GPU worker capacity from a declarative MachineSet.
 The stage is deployed as five Argo CD Applications at one reviewed revision: `020-node-feature-discovery`, `020-nvidia-gpu-operator`, `020-kueue`, `020-gpu-machinesets` (the generated pools in `gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/`, with replicas left to the resume and park scripts) and `020-gpu-quotas` (Kueue queues and hardware profiles). Changing a pool or a quota syncs only that component.
 
 ```bash
-# Generate cluster-specific GPU MachineSet (required on each new environment)
-RHOAI_GPU_MACHINESET_REPLICAS=2 \
-  ./stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh --source "$RHOAI_SOURCE_WORKER_MACHINESET" --write
+# Generate the cluster-specific GPU pools (required on each new environment; all start at 0 replicas)
+./stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh --source "$RHOAI_SOURCE_WORKER_MACHINESET" --write
 
 # Review and publish the generated environment overlay, then deploy its exact revision
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
