@@ -17,7 +17,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE = ROOT / 'gitops/stages/070-advanced-app-platform/base'
+BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
 LOCK = Path(__file__).with_name('stage070-charts.lock.json')
 CLI_IMAGE = 'registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9'
 

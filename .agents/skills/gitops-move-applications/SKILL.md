@@ -22,7 +22,7 @@ The Applications have no `resources-finalizer`, and tracking is by annotation: a
 
 ## When to invoke
 
-- Splitting one Application into stage components (`040-governed-models-as-a-service` became eight `040-*` Applications).
+- Splitting one Application into stage components (`040-governed-models-as-a-service` became eight `040-*` Applications; `070-advanced-app-platform` became eight `070-*` Applications, moved with `--sequential`).
 - Renaming an Application (`agent-console` became `060-agent-console`).
 - Moving a component's folder, which changes `spec.source.path` (the one-folder-per-Application layout).
 
@@ -48,6 +48,7 @@ python3 scripts/platform/move-applications.py --stage NNN --revision <sha> [--ap
 
 - Split or rename: `--from` names the old Application(s) to retire; `--app` limits the targets (default: the whole stage).
 - Re-point only: no `--from`; the names stay and only the source path changes.
+- `--sequential` applies, syncs and waits for one Application at a time in deploy order. Use it when a component's hooks need another component's hooks to have run at the new revision (Stage 070: the GitLab integration hub needs the earlier components, Developer Hub's catalog hook needs the GitLab mirror). Without it every new Application syncs at once.
 - Objects that no new Application renders are reported; `--delete-leftovers` deletes those still tracked by a `--from` Application, after you reviewed the list.
 - The tool is safe to re-run after a failure: it keeps the UIDs recorded on the first run in `~/.local/state/rhoai3-coding-demo/move-applications/`.
 

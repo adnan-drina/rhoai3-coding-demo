@@ -41,7 +41,7 @@ rules:
   resources:
   - applications
   resourceNames:
-  - 070-advanced-app-platform
+  - 070-gitlab
   verbs:
   - get
 - apiGroups:
@@ -424,7 +424,7 @@ rules:
   resources:
   - applications
   resourceNames:
-  - 070-advanced-app-platform
+  - 070-gitlab
   verbs:
   - get
 - apiGroups:

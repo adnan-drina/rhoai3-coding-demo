@@ -19,9 +19,9 @@ set -euo pipefail
 # The mandatory wave-17 Sync hook verifies that transaction after its mirror
 # exists. Keep the last catalog during the transaction; publish nothing here.
 if [ "${SKIP_IF_CURRENT:-false}" = "true" ]; then
-  ACTIVE_OPERATION=$(oc get application 070-advanced-app-platform -n openshift-gitops \
+  ACTIVE_OPERATION=$(oc get application 070-rhdh -n openshift-gitops \
     -o jsonpath='{.operation}' 2>/dev/null || true)
-  ACTIVE_PHASE=$(oc get application 070-advanced-app-platform -n openshift-gitops \
+  ACTIVE_PHASE=$(oc get application 070-rhdh -n openshift-gitops \
     -o jsonpath='{.status.operationState.phase}' 2>/dev/null || true)
   if [ -n "$ACTIVE_OPERATION" ] && [[ "$ACTIVE_PHASE" = Running || "$ACTIVE_PHASE" = Terminating ]]; then
     echo 'Catalog refresh deferred to the active source-bound platform Sync hook; nothing published'
@@ -39,9 +39,9 @@ done
 RENDER="python3 ${BUNDLE}/jobs__catalog__render_catalog.py"
 BUNDLE_ID=$(${RENDER} digest --bundle "${BUNDLE}")
 
-APP_SYNC_REVISION=$(oc get application 070-advanced-app-platform -n openshift-gitops \
+APP_SYNC_REVISION=$(oc get application 070-rhdh -n openshift-gitops \
   -o jsonpath='{.status.operationState.syncResult.revision}' 2>/dev/null || true)
-[ -z "$APP_SYNC_REVISION" ] && APP_SYNC_REVISION=$(oc get application 070-advanced-app-platform -n openshift-gitops \
+[ -z "$APP_SYNC_REVISION" ] && APP_SYNC_REVISION=$(oc get application 070-rhdh -n openshift-gitops \
   -o jsonpath='{.status.sync.revision}' 2>/dev/null || true)
 # The private GitLab mirror must contain this exact bundle revision before
 # the portal publishes any template links. No stale GitHub reader fallback.
@@ -163,11 +163,11 @@ PSQL_POD=$(oc get pods -n rhdh --no-headers 2>/dev/null \
 if [ -n "$PSQL_POD" ]; then
   if oc exec -n rhdh "$PSQL_POD" -- psql -d backstage_plugin_catalog -v ON_ERROR_STOP=1 -c "
     DELETE FROM locations
-    WHERE target ~ '/blob/[0-9a-f]{40}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/[^/]+/template\\.yaml'
+    WHERE target ~ '/blob/[0-9a-f]{40}/gitops/stages/070-advanced-app-platform/(base/)?rhdh/templates/[^/]+/template\\.yaml'
       AND target !~ '/blob/${APP_SYNC_REVISION}/';
     DELETE FROM refresh_state
     WHERE entity_ref LIKE 'location:%'
-      AND unprocessed_entity ~ '/blob/[0-9a-f]{40}/gitops/stages/070-advanced-app-platform/base/rhdh/templates/'
+      AND unprocessed_entity ~ '/blob/[0-9a-f]{40}/gitops/stages/070-advanced-app-platform/(base/)?rhdh/templates/'
       AND unprocessed_entity !~ '/blob/${APP_SYNC_REVISION}/';
   "; then
     echo "Pruned template Locations of superseded revisions"

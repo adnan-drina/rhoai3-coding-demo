@@ -58,13 +58,13 @@ def main():
         values = oc('get', 'secrets', '-n', ns)['items']
         checks['no_retained_secret_annotation:' + ns] = all(LAST_APPLIED not in x['metadata'].get('annotations', {}) for x in values)
     apps = oc('get', 'applications', '-n', 'openshift-gitops')['items']
-    selected = [a for a in apps if a['metadata']['name'] == '070-advanced-app-platform'
-                or a['spec'].get('project') in ('platform-projects', 'runtime-projects')]
+    components = [a for a in apps if a['metadata'].get('labels', {}).get('demo.rhoai.io/stage') == '070']
+    selected = components + [a for a in apps if a['spec'].get('project') in ('platform-projects', 'runtime-projects')]
     checks['diff_strategy_on_stage_and_generated_apps'] = bool(selected) and all(
         'ServerSideDiff=true' in a['metadata'].get('annotations', {}).get('argocd.argoproj.io/compare-options', '').split(',') for a in selected)
-    stage = next(a for a in selected if a['metadata']['name'] == '070-advanced-app-platform')
-    checks['no_client_apply_migration_for_declarative_secrets'] = 'ClientSideApplyMigration=false' in stage['spec'].get('syncPolicy', {}).get('syncOptions', [])
-    claims = [x for x in stage['spec'].get('ignoreDifferences', []) if x.get('kind') == 'PersistentVolumeClaim']
+    checks['no_client_apply_migration_for_declarative_secrets'] = bool(components) and all(
+        'ClientSideApplyMigration=false' in a['spec'].get('syncPolicy', {}).get('syncOptions', []) for a in components)
+    claims = [x for a in components for x in a['spec'].get('ignoreDifferences', []) if x.get('kind') == 'PersistentVolumeClaim']
     checks['only_named_controller_pvc_fields_ignored'] = bool(claims) and all(
         x.get('name') and x.get('namespace') and x.get('jsonPointers') == ['/spec/volumeName'] for x in claims)
     bootstrap = 'system:serviceaccount:gitlab-system:gitlab-integrations-bootstrap'

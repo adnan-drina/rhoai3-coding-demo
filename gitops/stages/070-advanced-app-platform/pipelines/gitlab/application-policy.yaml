@@ -47,7 +47,7 @@ spec:
   - expression: object.spec.project != 'platform-projects' || (object.spec.source.repoURL
       == params.data['repo_url'] && (object.spec.source.targetRevision == params.data['revision']
       || (oldObject != null && object.spec.source == oldObject.spec.source)) && object.spec.source.path
-      == 'gitops/stages/070-advanced-app-platform/base/pipelines/project-enrollment')
+      == 'gitops/stages/070-advanced-app-platform/pipelines/project-enrollment')
     message: Project Application exceeds its platform-owned source or scope
   - expression: object.spec.project != 'runtime-projects' || (object.spec.source.repoURL
       == params.data['delivery_base_url'] + object.metadata.name.substring(8) + '-deployment.git'

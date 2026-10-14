@@ -111,7 +111,7 @@ def main():
             current.update({r['path']: r for r in rows if r['type'] == 'blob'})
             if len(rows) < 100: break
         else: raise RuntimeError('Reset exceeds bounded inventory')
-        spec = importlib.util.spec_from_file_location('golden', ROOT / 'gitops/stages/070-advanced-app-platform/base/gitlab/bootstrap-scm.py')
+        spec = importlib.util.spec_from_file_location('golden', ROOT / 'gitops/stages/070-advanced-app-platform/gitlab/bootstrap-scm.py')
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
         actions = module.golden_actions(files, current)
         if actions:

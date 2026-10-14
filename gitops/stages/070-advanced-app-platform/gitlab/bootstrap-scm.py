@@ -332,7 +332,7 @@ def main():
             session = argo('POST', 'session', {'username': 'admin', 'password': password})['token']
             read_token = argo('POST', 'account/rhdh/token', {'expiresIn': 7776000}, session)['token']
             apply('Secret', 'rhdh-argocd-reader', 'openshift-gitops', {'token': read_token})
-        synced = oc('get', 'application', '070-advanced-app-platform', '-n', 'openshift-gitops', '-o', 'json')
+        synced = oc('get', 'application', '070-gitlab', '-n', 'openshift-gitops', '-o', 'json')
         platform_sha = synced['spec']['source']['targetRevision']
         if not platform_sha or not re.fullmatch('[0-9a-f]{40}', platform_sha): raise RuntimeError('Stage 070 has no immutable source revision')
         mirror = imports['rhoai3-coding-demo']

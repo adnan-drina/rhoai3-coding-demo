@@ -32,7 +32,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-RHDH_BASE = "gitops/stages/070-advanced-app-platform/base/rhdh"
+RHDH_BASE = "gitops/stages/070-advanced-app-platform/rhdh"
 CATALOG_KEY = "catalog__all.yaml"
 HOST_RE = re.compile(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*")
 IPV4_RE = re.compile(r"(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}")

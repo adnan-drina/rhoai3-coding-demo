@@ -405,7 +405,7 @@ def project_application(name, ns, row, config):
     return resource('Application', 'project-' + name, 'openshift-gitops', {'spec': {
         'project': 'platform-projects',
         'source': {'repoURL': config['PLATFORM_REPO_URL'], 'targetRevision': config['PLATFORM_REVISION'],
-                   'path': 'gitops/stages/070-advanced-app-platform/base/pipelines/project-enrollment',
+                   'path': 'gitops/stages/070-advanced-app-platform/pipelines/project-enrollment',
                    'kustomize': {'commonAnnotations': {'rhoai3.io/project-name': name, 'rhoai3.io/project-namespace': ns,
                                                        'rhoai3.io/enrollment': json.dumps(row, sort_keys=True)}}},
         'destination': {'server': 'https://kubernetes.default.svc', 'namespace': ns},

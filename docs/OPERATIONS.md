@@ -138,7 +138,7 @@ The repository follows a GitOps-first pattern:
 
 1. Stage 010 `deploy.sh` installs OpenShift GitOps and the demo Argo CD project.
 2. Each stage `deploy.sh` applies its Argo CD `Application`s: one per component for Stages 010–060 (`NNN-<component>`), one for Stage 070.
-3. Argo CD reconciles manifests from `gitops/stages/NNN-*/<component>/` (Stage 070: `gitops/stages/070-advanced-app-platform/base/`).
+3. Argo CD reconciles manifests from `gitops/stages/NNN-*/<component>/` (Stage 070: `gitops/stages/070-advanced-app-platform/`).
 4. Sync waves and in-cluster Jobs perform cluster-specific setup.
 5. Each `validate.sh` confirms that the stage reached the expected operational state.
 
@@ -496,7 +496,7 @@ Each script applies its stage's Applications from `gitops/argocd/app-of-apps/`. 
 | 040 | `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access`, `040-genai-studio` | MaaS operators, PostgreSQL (data), Gateway with Kuadrant/Authorino, MaaS enablement and monitoring, private models, external models, subscriptions and auth policies, Gen AI studio playground and MCP list |
 | 050 | `050-mlflow`, `050-model-qualification`, `050-evalhub`, `050-evaluation-content`, `050-oci-export` | MLflow tracking (data), Evaluated Models project and qualification pipeline, EvalHub (data) and curated prompts, evaluation collections and SWE-bench, OCI export |
 | 060 | `060-openshell-identity`, `060-openshell-runtime`, `060-mcp-platform`, `060-agent-tools`, `060-agent-console` | OpenShell identity realm, OpenShell runtime and agent workspaces, native MCP lifecycle enablement, agent MCP tool servers, AgentOps console discovery (each deployed by its own script) |
-| 070 | `070-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA, coolstore dev environment |
+| 070 | `070-identity`, `070-devspaces`, `070-pipelines`, `070-sonarqube`, `070-mta`, `070-coolstore`, `070-gitlab`, `070-rhdh` | Platform Keycloak clients, Dev Spaces, Pipelines + Trusted Artifact Signer + project enrollment, SonarQube, MTA, coolstore namespace, GitLab and its integration hub, Developer Hub (deployed one at a time in this order) |
 | 110 | *(workflow-only)* | AI-assisted development on stage 070 workspaces |
 | 120 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
 | 130 | *(workflow-only)* | AI-autonomous migration on the stage 070 MTA stack |
@@ -595,15 +595,16 @@ When validating developer-workflow changes on a sandbox cluster, patch only the 
 For Stage 110 assisted-development changes, patch Stage 070 (it owns Dev Spaces and the developer portal) to the feature branch being validated:
 
 ```bash
-oc patch application 070-advanced-app-platform -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
-oc annotate application 070-advanced-app-platform -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+# Patch the component that owns the change (070-devspaces for workspaces, 070-rhdh for the portal and templates).
+oc patch application 070-devspaces -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
+oc annotate application 070-devspaces -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
 Rollback to the stable platform branch:
 
 ```bash
-oc patch application 070-advanced-app-platform -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
-oc annotate application 070-advanced-app-platform -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+# Re-pin every Stage 070 component to the reviewed commit (application.py pins and orders them).
+./stages/070-advanced-app-platform/deploy.sh
 ```
 
 Do not merge a feature branch to `main` only to validate developer workflow catalog or workspace changes. Do not create Stage `100-170` directories or Argo CD applications until a workflow owns executable artifacts or dedicated cluster resources.
@@ -906,7 +907,7 @@ The Argo CD Applications intentionally do not include finalizers. Deleting an Ap
 For a full cleanup, prefer an explicit Argo CD cascade delete from the OpenShift GitOps UI or CLI:
 
 ```bash
-argocd app delete 070-advanced-app-platform --cascade
+for app in $(python3 scripts/shared/stage_apps.py names 070); do argocd app delete "$app" --cascade; done
 for app in 060-agent-console 060-agent-tools 060-mcp-platform 060-openshell-runtime 060-openshell-identity; do argocd app delete "$app" --cascade; done
 for app in $(python3 scripts/shared/stage_apps.py names 050); do argocd app delete "$app" --cascade; done
 for app in $(python3 scripts/shared/stage_apps.py names 040); do argocd app delete "$app" --cascade; done

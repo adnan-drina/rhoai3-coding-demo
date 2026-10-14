@@ -10,7 +10,7 @@ echo "Stage 120: Agentic Development — Validation"
 echo ""
 
 log_step "Argo CD Application (platform stage owns the resources)"
-check_argocd_app "070-advanced-app-platform"
+while IFS= read -r app; do check_argocd_app "$app"; done < <(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" names 070)
 
 log_step "Agentic workspace"
 check "agentic-coolstore DevWorkspace exists" \
@@ -33,7 +33,7 @@ check "Published agentic golden matches the reviewed staging tree" \
 # Factory destfile is the GitOps skeleton (template replace:true), not the
 # GitLab golden destfile. per-workspace avoids RWO FailedMount when the
 # Stage 070 agentic-coolstore seat is still Running.
-SKELETON_070="$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml"
+SKELETON_070="$REPO_ROOT/gitops/stages/070-advanced-app-platform/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml"
 STAGING_070="$SCRIPT_DIR/scaffold-repo/agentic-quarkus-scaffold/devfile.yaml"
 check "GitOps 070 factory destfile uses per-workspace storage" \
   "grep -q 'controller.devfile.io/storage-type: per-workspace' '$SKELETON_070' && echo present || echo missing" \

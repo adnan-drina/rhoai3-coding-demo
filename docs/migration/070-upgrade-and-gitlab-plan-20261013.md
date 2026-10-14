@@ -515,7 +515,7 @@ Paths below identify future implementation work. They were inspected, not edited
 
 | Workstream | Existing files / proposed addition |
 |---|---|
-| Stage ownership and install order | `gitops/stages/070-advanced-app-platform/base/kustomization.yaml`, overlays, Stage 070 Argo Application definition, `stages/070-advanced-app-platform/deploy.sh` |
+| Stage ownership and install order | `gitops/stages/070-advanced-app-platform/kustomization.yaml`, overlays, Stage 070 Argo Application definition, `stages/070-advanced-app-platform/deploy.sh` |
 | Existing identity adoption | `base/identity/kustomization.yaml`, `identity/rhbk-operator/*`, `identity/rhbk-instance/*`, `identity/jobs/configure-platform-identity.yaml` |
 | GitLab deployment | **New** `base/gitlab/` for pinned operator/CR, external DB/cache/storage, Routes, credential references and bounded reconciliation |
 | Dev Spaces | `base/devspaces/subscription.yaml`, `checluster.yaml`, `agentic-workspace.yaml`, editor configuration, workspace image references |
@@ -696,13 +696,13 @@ Apply the following as one Dev Spaces/GitLab integration slice, without changing
 
 Exact existing files affected by a future implementation, not changed by this review:
 
-- `gitops/stages/070-advanced-app-platform/base/devspaces/subscription.yaml` and `checluster.yaml` — operator/settings.
+- `gitops/stages/070-advanced-app-platform/devspaces/subscription.yaml` and `checluster.yaml` — operator/settings.
 - `.../devspaces/kustomization.yaml` — register any separate client/SCM configuration resources.
 - `.../devspaces/workspace-git-credentials.yaml`, `workspaces.yaml` — OAuth versus automation credentials and namespace registration.
 - `.../devspaces/maas-api-key-provisioning.yaml`, `workspace-maas-model-endpoint.yaml` — public key lookup, TLS and thin initialization.
 - `.../devspaces/workspace-sonar-credentials.yaml` — rotation behavior.
 - `.../devspaces/vscode-editor-configurations.yaml`, `model-profiles.json` — consistent client delivery; preserve approved model values and run pins.
-- `.../devspaces/agentic-workspace.yaml` and `gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml` — actual resources, selected runtime and required mounts.
+- `.../devspaces/agentic-workspace.yaml` and `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml` — actual resources, selected runtime and required mounts.
 - `stages/070-advanced-app-platform/validate.sh`, stage README and operations documentation — assertions and supported restart/rotation procedure.
 - Relevant workspace-image build inputs — bake verified tool versions; discover the current canonical inputs before editing them rather than reviving obsolete local Dockerfile snapshots.
 
@@ -812,10 +812,10 @@ Native project declarations and lifecycle hooks are documented by [Devfile proje
 
 Extend the integration slice in A.5 with the Devfile improvements above. The exact additional existing files are:
 
-- `gitops/stages/070-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml` and its `template.yaml`.
-- `gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`, its `template.yaml`, and `app-migration-template.test.py`.
+- `gitops/stages/070-advanced-app-platform/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml` and its `template.yaml`.
+- `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml`, its `template.yaml`, and `app-migration-template.test.py`.
 - `stages/120-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold/devfile.yaml` and its golden validation.
-- `gitops/stages/070-advanced-app-platform/base/devspaces/agentic-workspace.yaml`, editor configuration and the image-baked startup entrypoints they consume.
+- `gitops/stages/070-advanced-app-platform/devspaces/agentic-workspace.yaml`, editor configuration and the image-baked startup entrypoints they consume.
 - Catalog endpoint generation and existing workspace-creation checks, discovered from the current source tree when implementation starts. Keep `/spec/started` ownership rules in `gitops/argocd/app-of-apps/070-advanced-app-platform.yaml`.
 
 Required evidence, scaled to this workspace change:
@@ -1020,10 +1020,10 @@ Existing implementation files requiring changes:
 
 - `env.example`, `scripts/shared/lib.sh`, `stages/070-advanced-app-platform/deploy.sh` and `validate.sh`.
 - `scripts/demo/bootstrap-scaffold-repos.sh`, `reset-coolstore-demo.sh`, `delete-scaffolded-project.sh`, `check-workspace-creation.py`.
-- `gitops/stages/070-advanced-app-platform/base/pipelines/build/triggers.yaml`, `project-provisioner.yaml`, `task-provision-migration-run.yaml`, `pipeline-provision-migration-run.yaml`, `appproject-scaffolded.yaml`, `persona-rbac.yaml` and associated tests.
-- `gitops/stages/070-advanced-app-platform/base/pipelines/project-pipeline/pipeline.yaml`, `task-deploy.yaml`, registry Tasks and RBAC. Add per-project listeners/bindings/templates/Routes, external hook reconcile and manifest-promotion Task using existing Kustomize conventions.
-- `gitops/stages/070-advanced-app-platform/base/rhdh/rhdh-instance/app-config-configmap.yaml`, `dynamic-plugins-configmap.yaml`, `backstage.yaml` and credential references.
-- `gitops/stages/070-advanced-app-platform/base/rhdh/jobs/catalog/generate.sh`, `render_catalog.py`, catalog tests and generation Jobs; `catalog/all.yaml`.
+- `gitops/stages/070-advanced-app-platform/pipelines/build/triggers.yaml`, `project-provisioner.yaml`, `task-provision-migration-run.yaml`, `pipeline-provision-migration-run.yaml`, `appproject-scaffolded.yaml`, `persona-rbac.yaml` and associated tests.
+- `gitops/stages/070-advanced-app-platform/pipelines/project-pipeline/pipeline.yaml`, `task-deploy.yaml`, registry Tasks and RBAC. Add per-project listeners/bindings/templates/Routes, external hook reconcile and manifest-promotion Task using existing Kustomize conventions.
+- `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/app-config-configmap.yaml`, `dynamic-plugins-configmap.yaml`, `backstage.yaml` and credential references.
+- `gitops/stages/070-advanced-app-platform/rhdh/jobs/catalog/generate.sh`, `render_catalog.py`, catalog tests and generation Jobs; `catalog/all.yaml`.
 - Both `base/rhdh/templates/*/template.yaml` and their `skeleton/catalog-info.yaml`, `devfile.yaml`, deployment skeletons and tests.
 - Dev Spaces Git credential/mount resources and source initializer described in Appendices A/B.
 - Stage 120/130 golden publication/validation and future-run source identity configuration; preserve frozen historical evidence instead of replacing URLs inside it.

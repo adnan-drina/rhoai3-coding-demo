@@ -71,7 +71,7 @@ metadata:
     gitlab.com/project-slug: __RHOAI3_GITLAB_WORKLOAD_GROUP__/coolstore-inventory-service
     backstage.io/kubernetes-id: coolstore-inventory-service
     janus-idp.io/tekton: coolstore-inventory-service
-    argocd/app-name: 070-advanced-app-platform
+    argocd/app-name: project-coolstore-inventory-service
     rhoai3.redhat.com/current-repository: adnan-drina/coolstore-inventory-service
     rhoai3.redhat.com/repository: adnan-drina/coolstore-inventory-service
     rhoai3.redhat.com/stage-070-role: target-service
@@ -199,7 +199,7 @@ metadata:
   description: Golden-path template for stage 070 AI-agentic development
 spec:
   type: url
-  target: __RHOAI3_PLATFORM_BLOB_URL__/gitops/stages/070-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/template.yaml
+  target: __RHOAI3_PLATFORM_BLOB_URL__/gitops/stages/070-advanced-app-platform/rhdh/templates/agentic-quarkus-scaffold/template.yaml
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Location
@@ -208,4 +208,4 @@ metadata:
   description: Golden-path template for stage 080 AI-autonomous migration
 spec:
   type: url
-  target: __RHOAI3_PLATFORM_BLOB_URL__/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml
+  target: __RHOAI3_PLATFORM_BLOB_URL__/gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/template.yaml

@@ -15,7 +15,7 @@ import urllib.request
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE = ROOT / 'gitops/stages/070-advanced-app-platform/base'
+BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
 sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
 from secret_writer import write_secret
 import application

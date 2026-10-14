@@ -99,9 +99,10 @@ prove recurring Jobs or future Tekton steps can pull their images.
 **Diagnose:**
 
 ```bash
-APP=070-advanced-app-platform
-oc get application "$APP" -n openshift-gitops -o json \
-  | jq -r '.status.resources[]? | select(.status != "Synced") | [.kind,.namespace,.name,.status,.message] | @tsv'
+for APP in $(python3 scripts/shared/stage_apps.py names 070); do
+  oc get application "$APP" -n openshift-gitops -o json \
+    | jq -r --arg app "$APP" '.status.resources[]? | select(.status != "Synced") | [$app,.kind,.namespace,.name,.status,.message] | @tsv'
+done
 ```
 
 **Recover:**
@@ -250,7 +251,7 @@ Prevention: hook jobs must have bounded retries and fail fast; never let a wait-
 
 ```bash
 # Compare what git has against what Argo tracked
-kustomize build gitops/stages/<stage>/<component> | grep <new-resource>   # Stage 070: gitops/stages/070-advanced-app-platform/base
+kustomize build gitops/stages/<stage>/<component> | grep <new-resource>
 oc get application <NNN-component> -n openshift-gitops -o json \
   | jq -r '.status.resources[] | "\(.kind) \(.namespace)/\(.name)"' | grep <new-resource>
 ```
@@ -1055,7 +1056,7 @@ oc exec deployment/backstage-developer-hub -n rhdh -c backstage-backend -- \
 oc logs deployment/backstage-developer-hub -n rhdh --tail=200 | grep -i catalog
 oc get configmap app-config-rhdh -n rhdh -o yaml
 oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.RHDH_CATALOG_URL}' | base64 -d; echo
-oc get application 070-advanced-app-platform -n openshift-gitops \
+oc get application 070-rhdh -n openshift-gitops \
   -o jsonpath='{.spec.source.repoURL}{" "}{.spec.source.targetRevision}{"\n"}'
 ```
 
@@ -1098,7 +1099,7 @@ Since B2 (2026-09-24) the runtime catalog pins template Location targets to the 
 - Re-run `job-generate-rhdh-catalog` (full Argo sync or wait for `refresh-rhdh-catalog`). Do not restart RHDH as the fix.
 - Confirm Stage 070/080 validation. Only the published revision's Location rows remain, and `catalog-runtime-rhdh` carries `rhoai3.redhat.com/catalog-revision` and `rhoai3.redhat.com/catalog-bundle`.
 
-**Related:** `gitops/stages/070-advanced-app-platform/base/rhdh/catalog/all.yaml`, `jobs/catalog/generate.sh`, `jobs/catalog/render_catalog.py`
+**Related:** `gitops/stages/070-advanced-app-platform/rhdh/catalog/all.yaml`, `jobs/catalog/generate.sh`, `jobs/catalog/render_catalog.py`
 
 ## RHDH Catalog Generator Refuses `FACTORY_BUNDLE_MISMATCH`
 
@@ -1145,7 +1146,7 @@ This avoids charging transient pre-bootstrap refreshes as installation failures.
 **Diagnose:**
 
 ```bash
-oc get application 070-advanced-app-platform -n openshift-gitops -o json \
+oc get application 070-rhdh -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | select(.status != "Synced") | [.kind,.namespace,.name,.status,.message] | @tsv'
 
 oc get backstage developer-hub -n rhdh -o yaml
@@ -1382,7 +1383,7 @@ oc get dw "$DW" -n "$NS" -o jsonpath='{.status.phase}{"\n"}{.status.message}{"\n
 - Confirm live `devspace-ai-tools-init` derives `MAAS_BASE_URL` from `MAAS_API_BASE_URL` when the kube API poll is empty, points the mvn smoke JVM at the UBI JKS, and treats a python `SystemExit` from that smoke as `ensure_hermes` failure. Do not patch the MaaS hostAlias while postStart is running (DWO treats `FailedPostStartHook` as unrecoverable).
 - Delete any RWO debug pod on `storage-workspace<id>` before starting the workspace.
 - Restart the factory workspace (`spec.started: true`). Do not dest-complete, remint, or dest-sync as part of this recovery. Do not dest-read profile `.env`.
-- Keep Argo CD `070-advanced-app-platform` paused until this ConfigMap is committed and pushed; restoring auto-sync while GitHub still has the refuse/`secret_value`-only copy puts the failing script back.
+- Keep Argo CD `070-devspaces` paused until this ConfigMap is committed and pushed; restoring auto-sync while GitHub still has the refuse/`secret_value`-only copy puts the failing script back.
 
 ## Stage 130 dest postStart fails EX-3 write-set hook missing
 
@@ -1450,11 +1451,11 @@ oc exec -n "$NS" "$POD" -c development-tooling -- \
 
 **Recover:**
 
-- Confirm GitOps `kantra-assert-exec` contains `RULESET_FIXTURE_SHEBANG` and Argo `070-advanced-app-platform` has synced the `devspace-ai-tools-init` ConfigMap.
+- Confirm GitOps `kantra-assert-exec` contains `RULESET_FIXTURE_SHEBANG` and Argo `070-devspaces` has synced the `devspace-ai-tools-init` ConfigMap.
 - Re-run dest-init (or replace `~/.local/bin/kantra-assert-exec` from that ConfigMap) so the live helper skips `rulesets/` shebangs. Then `kantra-assert-exec /opt/mta-cli` exits 0.
 - Re-run isolated `rehearse-legacy.sh` (or a new M1 on a fresh destination). Do not rewrite the failed M1 `mta.json`. Do not `hermes kanban create|link` by hand.
 
-**Related docs:** `.agents/rules/ensure-cli-capability.md`, `gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`
+**Related docs:** `.agents/rules/ensure-cli-capability.md`, `gitops/stages/070-advanced-app-platform/devspaces/maas-api-key-provisioning.yaml`
 
 ## Stage 130 rehearsal dies on yamlite `[id]` under UDI python3.9
 
@@ -1505,7 +1506,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 - **Next provision:** restart the workspace so `postStart` re-runs (the fetch is idempotent). Do not re-stamp the RHDH catalog solely for this; the template is SHA-pinned, so only a published artifact that includes the retry is live.
 - **Already-running workspace:** do not treat Running as success. Extract the live ConfigMap and run it in the tooling container (`PROJECT_DIR` / `PROFILE` as that workspace expects). Do not restart a live migration seat to pick this up.
 
-**Related docs:** `gitops/stages/070-advanced-app-platform/base/rhdh/templates/*/skeleton/devfile.yaml`
+**Related docs:** `gitops/stages/070-advanced-app-platform/rhdh/templates/*/skeleton/devfile.yaml`
 
 ## Dest Hermes worker profiles missing (`harness-v2`)
 
@@ -1526,7 +1527,7 @@ ls /projects/modernized/.hermes/home/profiles/
 
 **Recover:** Fix the init error (overlay `/usr/local/bin/hermes`, templates present, secrets only in Managed Scope). Re-run `ensure_hermes` / restart only when the operator asks — do not clone from `default`.
 
-**Related docs:** `gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_dest_worker_profiles`); golden `.hermes/config/profiles/`
+**Related docs:** `gitops/stages/070-advanced-app-platform/devspaces/maas-api-key-provisioning.yaml` (`ensure_dest_worker_profiles`); golden `.hermes/config/profiles/`
 
 ## Dest Hermes terminal keeps literal `${env:MAAS_*}` (`harness-v2`)
 
@@ -1729,7 +1730,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 ```bash
 # Local skeleton (before publish / dest mint):
 ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
-  gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml
+  gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml
 ```
 
 **Recover:**
@@ -1738,7 +1739,7 @@ ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
 - Do not retry the factory URL pinned to the broken commit. Push a parseable `devfile.yaml` to dest `main`, then start a new workspace from current `main`.
 - Catalog re-stamp does not rewrite an existing dest repo.
 
-**Related docs:** `gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`
+**Related docs:** `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml`
 
 ## Factory Workspace hermes-dash Route Returns 503 Or Nothing Listens On 9119
 
@@ -1774,7 +1775,7 @@ for proc in ("/proc/net/tcp","/proc/net/tcp6"):
 - **Next provision:** after golden publish + catalog re-stamp, a new workspace should show `state=listening` / `bind=0.0.0.0:9119`. Login is Managed Scope basic-auth (`ai-developer` / demo password) behind the che-gateway OAuth on the `hermes-dash` endpoint.
 - **Already-running workspace:** do not restart a live migration seat. If Hermes is already installed, start by hand in the tooling container only when the operator asks: `hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open` after confirming `grep basic_auth /projects/.platform/hermes/config.yaml`.
 
-**Related docs:** `gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`; v2 golden `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard/`
+**Related docs:** `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml`; v2 golden `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard/`
 
 ## Kilo Code Is Missing From A Dev Spaces Workspace
 
@@ -2028,7 +2029,7 @@ curl -sSI https://<maas-host>/ >/dev/null && echo "OS store: OK"
 
 **Recover:**
 
-- **Durable (platform):** `init-ai-tools.sh` exports `NODE_USE_SYSTEM_CA=1` into `~/.bashrc` alongside the opencode PATH block, so every workspace start trusts the gateway. See `gitops/stages/070-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_opencode_latest`). Applies on a fresh workspace/PV.
+- **Durable (platform):** `init-ai-tools.sh` exports `NODE_USE_SYSTEM_CA=1` into `~/.bashrc` alongside the opencode PATH block, so every workspace start trusts the gateway. See `gitops/stages/070-advanced-app-platform/devspaces/maas-api-key-provisioning.yaml` (`ensure_opencode_latest`). Applies on a fresh workspace/PV.
 - **Immediate (running workspace):** quit OpenCode, then `export NODE_USE_SYSTEM_CA=1 && opencode` — the new server inherits it.
 - **Do NOT** use `NODE_EXTRA_CA_CERTS` (broken on Bun 1.3.x — [oven-sh/bun#24581](https://github.com/oven-sh/bun/issues/24581)) or `NODE_TLS_REJECT_UNAUTHORIZED=0` (Bun's `fetch` ignores it, and it disables verification entirely).
 

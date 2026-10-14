@@ -12,7 +12,7 @@ echo "╚═══════════════════════�
 echo ""
 
 log_step "Argo CD Application (platform stage owns the resources)"
-check_argocd_app "070-advanced-app-platform"
+while IFS= read -r app; do check_argocd_app "$app"; done < <(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" names 070)
 
 log_step "Dev Spaces Operator"
 check_csv_succeeded "openshift-devspaces" "devspaces"

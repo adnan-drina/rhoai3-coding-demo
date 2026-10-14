@@ -83,7 +83,7 @@ Review the complete published and pending release diff and the [release checklis
 
 Static checks need the [test dependencies](tests/requirements.txt), Kustomize and Git. Live deployment uses the repository's cluster guard. [Operations](../../docs/OPERATIONS.md#stage-070-gitlab-release) contains deployment order, credentials, lifecycle and acceptance. [Troubleshooting](../../docs/TROUBLESHOOTING.md#stage-070-gitlab-project-enrollment-is-pending) covers refusal and recovery.
 
-Source: [Stage 070 Kustomize resources](../../gitops/stages/070-advanced-app-platform/base/). The root platform Application retains its GitHub bootstrap source; project tooling, owned goldens, catalog and delivery use GitLab. A full platform-root cutover is a separate reviewed step.
+Source: [Stage 070 Kustomize resources](../../gitops/stages/070-advanced-app-platform/). The root platform Application retains its GitHub bootstrap source; project tooling, owned goldens, catalog and delivery use GitLab. A full platform-root cutover is a separate reviewed step.
 
 ## References
 

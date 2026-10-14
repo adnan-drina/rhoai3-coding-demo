@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 spec = importlib.util.spec_from_file_location('sonar', ROOT /
-    'gitops/stages/070-advanced-app-platform/base/sonarqube/bootstrap-admin.py')
+    'gitops/stages/070-advanced-app-platform/sonarqube/bootstrap-admin.py')
 sonar = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sonar)
 

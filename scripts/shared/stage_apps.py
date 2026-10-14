@@ -303,6 +303,8 @@ CLUSTER_SCOPED = {
     ("dscinitialization.opendatahub.io", "DSCInitialization"), ("services.platform.opendatahub.io", "Auth"),
     ("mlflow.opendatahub.io", "MLflow"), ("policy.networking.k8s.io", "AdminNetworkPolicy"),
     ("policy.networking.k8s.io", "BaselineAdminNetworkPolicy"), ("imageregistry.operator.openshift.io", "Config"),
+    ("oauth.openshift.io", "OAuthClient"), ("console.openshift.io", "ConsoleLink"),
+    ("admissionregistration.k8s.io", "ValidatingAdmissionPolicy"), ("admissionregistration.k8s.io", "ValidatingAdmissionPolicyBinding"),
 }
 
 

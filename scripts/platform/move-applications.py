@@ -12,7 +12,7 @@ commit), pinned to that commit and GIT_REPO_URL. Objects are taken over by rewri
 annotation; the old Applications (no finalizer) are deleted without cascade at the end.
 
   scripts/platform/move-applications.py --stage NNN --revision SHA [--app NAME ...] [--from OLD ...] --dry-run
-  scripts/platform/move-applications.py --stage NNN --revision SHA [--app NAME ...] [--from OLD ...] [--delete-leftovers]
+  scripts/platform/move-applications.py --stage NNN --revision SHA [--app NAME ...] [--from OLD ...] [--sequential] [--delete-leftovers]
 
 Steps: guard and preflight (read only) -> stop automated sync on --from Applications -> apply the new Applications ->
 start one sync for each that has not synced this source (carrying their own syncOptions, running any sync gate below) ->
@@ -244,8 +244,8 @@ class Plan:
                 oc("patch", "applications.argoproj.io", name, "-n", NS, "--type", "merge", "-p", '{"spec":{"syncPolicy":{"automated":null}}}')
                 log("  stopped automated sync on " + name)
 
-    def apply_new(self):
-        for name in self.ordered():
+    def apply_new(self, only=None):
+        for name in (only or self.ordered()):
             oc("apply", "-f", "-", payload=json.dumps(self.stamped(name)))
             log("  applied " + name + " at " + self.revision[:8])
 
@@ -253,8 +253,8 @@ class Plan:
         order = lambda n: int(self.new[n]["metadata"].get("annotations", {}).get("demo.rhoai.io/deploy-order", 10**6))
         return sorted(self.new, key=lambda n: (order(n), n))
 
-    def start_syncs(self):
-        for name in self.ordered():
+    def start_syncs(self, only=None):
+        for name in (only or self.ordered()):
             app = application(name)
             status, op = app.get("status", {}), app.get("status", {}).get("operationState", {})
             # Automated sync alone is not enough: when the render is unchanged (a re-point) Argo reports Synced at the
@@ -295,11 +295,11 @@ class Plan:
         log("  " + name + ": hook " + job + " is waiting; running " + " ".join(command))
         subprocess.run(command, cwd=self.worktree, check=True)
 
-    def wait(self):
+    def wait(self, only=None):
         deadline = time.monotonic() + self.args.timeout
         while True:
             problems = []
-            for name in self.ordered():
+            for name in (only or self.ordered()):
                 desired, app = self.new[name], application(name)
                 if not app:
                     problems.append(name + ": missing")
@@ -310,7 +310,7 @@ class Plan:
                     found = [p for p in found if not p.endswith("RespectIgnoreDifferences is off")]
                 problems += found
             if not problems:
-                log("PASS every Application Synced and Healthy at " + self.revision[:8])
+                log("PASS " + (", ".join(only) if only else "every Application") + " Synced and Healthy at " + self.revision[:8])
                 return
             if time.monotonic() > deadline:
                 raise RuntimeError("not reconciled in time (old Applications kept, automated sync off): " + "; ".join(problems))
@@ -373,6 +373,7 @@ def main():
     parser.add_argument("--from", dest="old", action="append", help="Application(s) to retire once their objects moved")
     parser.add_argument("--dry-run", action="store_true", help="read-only preflight; prints what would change")
     parser.add_argument("--delete-leftovers", action="store_true", help="delete objects no new Application renders that the --from Applications still track")
+    parser.add_argument("--sequential", action="store_true", help="sync one Application at a time in deploy order, each after the previous is Synced and Healthy")
     parser.add_argument("--timeout", type=int, default=1800, help="seconds to wait for reconciliation (default 1800)")
     args = parser.parse_args()
     if len(args.revision) != 40 or any(c not in "0123456789abcdef" for c in args.revision):
@@ -390,12 +391,22 @@ def main():
             return 0
         log("== Stop automated sync on the Applications being retired")
         plan.stop_old()
-        log("== Apply the new Applications")
-        plan.apply_new()
-        log("== Start one sync for Applications that have not synced this source")
-        plan.start_syncs()
-        log("== Wait for reconciliation")
-        plan.wait()
+        if args.sequential:
+            # Sync waves order hooks only inside one Application: a component whose hooks need another component's
+            # hooks to have run at this revision (Stage 070 Developer Hub after GitLab) must start after it finished.
+            # Each Application is applied only now: an applied automated Application starts syncing at once.
+            for name in plan.ordered():
+                log("== Apply, sync and wait for " + name)
+                plan.apply_new([name])
+                plan.start_syncs([name])
+                plan.wait([name])
+        else:
+            log("== Apply the new Applications")
+            plan.apply_new()
+            log("== Start one sync for Applications that have not synced this source")
+            plan.start_syncs()
+            log("== Wait for reconciliation")
+            plan.wait()
         log("== Verify ownership and UIDs")
         plan.verify()
         log("== Retire the old Applications")

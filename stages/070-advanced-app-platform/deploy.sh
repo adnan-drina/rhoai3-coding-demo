@@ -63,18 +63,18 @@ if [[ "$SONAR_DATABASE_IMAGE" == *postgresql-15* ]]; then
   exit 1
 fi
 
-# First cluster mutation: install the single Argo CD owner. Publish/review the
+# First cluster mutation: install the component Argo CD owners. Publish/review the
 # configured source revision before invoking this script; local edits are not
 # a deployment source. Credentials and chart migrations are native sync hooks.
-python3 "$SCRIPT_DIR/application.py" render --revision "$REVISION" --repo-url "$GIT_REPO_URL" | oc apply -f -
-python3 "$SCRIPT_DIR/application.py" sync --revision "$REVISION" --repo-url "$GIT_REPO_URL"
-python3 "$SCRIPT_DIR/application.py" wait --revision "$REVISION" --repo-url "$GIT_REPO_URL" --timeout "${STAGE070_SYNC_TIMEOUT:-3600}"
+# Components deploy one at a time in their deploy order (application.py): sync waves
+# order hooks only inside one Application.
+python3 "$SCRIPT_DIR/application.py" deploy --revision "$REVISION" --repo-url "$GIT_REPO_URL" --timeout "${STAGE070_SYNC_TIMEOUT:-3600}"
 
 log_info "Argo CD installs identity clients, GitLab/NooBaa storage, Dev Spaces,"
 log_info "Pipelines/TAS, SonarQube, Developer Hub and MTA 8.3 with AI components."
 log_info "GitLab enrollment owns project listeners and build seeding; Tekton"
 log_info "promotes image digests into delivery Git, which Argo CD reconciles."
 log_info "Models remain at their operator-selected scale. No model call is made."
-log_info "Monitor: oc get application ${STAGE_NAME} -n openshift-gitops"
+log_info "Monitor: oc get applications.argoproj.io -n openshift-gitops -l demo.rhoai.io/stage=070"
 log_info "Validate platform: ./stages/${STAGE_NAME}/validate.sh"
 log_info "Model/IDE/native-agent validation requires models to be scaled up separately."
