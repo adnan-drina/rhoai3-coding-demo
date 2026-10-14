@@ -91,7 +91,11 @@ def kind_arg(group, kind):
 
 
 def is_hook(obj):
+    """Recreated by design on every sync, so a new UID is expected: hooks with BeforeHookCreation, and objects
+    synced with Replace=true (Stage 070's MaaS key provisioning Job)."""
     annotations = obj["metadata"].get("annotations", {})
+    if "Replace=true" in annotations.get("argocd.argoproj.io/sync-options", ""):
+        return True
     return HOOK in annotations and "BeforeHookCreation" in annotations.get(HOOK_DELETE, "")
 
 
@@ -123,10 +127,11 @@ class Plan:
         if set(self.old) & set(self.new):
             raise RuntimeError("--from names an Application that is also a target; a repath needs no --from")
         # Owner of every rendered object, with the tracking id its Application will write.
-        self.owner = {}
+        self.owner, self.desired = {}, {}
         for name, app in self.new.items():
             for obj in self.sa.render(app["spec"]["source"]["path"], self.worktree):
                 self.owner[identity(obj)] = (name, self.tracking_suffix(obj, app))
+                self.desired[identity(obj)] = obj
 
     def tracking_suffix(self, obj, app):
         """Tracking-id suffix under the new Application (cluster-scoped objects take its destination namespace)."""
@@ -223,6 +228,7 @@ class Plan:
             objects = before
         if not self.args.dry_run:
             recorded.write_text(json.dumps(objects, indent=1))
+        self.check_field_removal(objects)
         leftovers = sorted(k for k in objects if k not in self.owner)
         log("PASS " + str(len(objects)) + " live objects recorded; " + str(len(objects) - len(leftovers)) + " rendered by the new Applications"
             + ("; not rendered any more: " + ", ".join(leftovers) if leftovers else ""))
@@ -250,6 +256,40 @@ class Plan:
             "removed=" + str(removed) + " added=" + str(added) + " changed=" + str(changed)))
 
     # -- changes ----------------------------------------------------------------------------------------------------
+    def check_field_removal(self, objects):
+        """Refuse when the new apply would delete labels or annotations other controllers set.
+
+        Client-side apply deletes every key that is in the object's last-applied-configuration but not in the new
+        manifest. With RespectIgnoreDifferences, Argo CD copies ignored live fields into what it applies, so an
+        ignore rule on /metadata/annotations records controller-owned keys there (2026-10-14: dropping the Namespace
+        rule deleted OpenShift's openshift.io/sa.scc.* allocations from 13 namespaces and they were reallocated)."""
+        removed = []
+        for key, v in objects.items():
+            desired = self.desired.get(key)
+            if not desired or v["hook"]:
+                continue
+            live = get_json("get", kind_arg(v["group"], v["kind"]), v["name"], *(["-n", v["namespace"]] if v["namespace"] else []))
+            applied = (live or {}).get("metadata", {}).get("annotations", {}).get("kubectl.kubernetes.io/last-applied-configuration")
+            if not applied:
+                continue
+            last = json.loads(applied).get("metadata", {})
+            # Keys the new owner still ignores with RespectIgnoreDifferences are carried from live, not deleted.
+            owner_spec = self.new[self.owner[key][0]]["spec"]
+            respected = "RespectIgnoreDifferences=true" in owner_spec.get("syncPolicy", {}).get("syncOptions", [])
+            pointers = [ptr for entry in owner_spec.get("ignoreDifferences", []) if respected and self.ignore_matches(entry, key)
+                        for ptr in entry.get("jsonPointers", [])]
+            for field in ("labels", "annotations"):
+                kept = lambda k: any(ptr in ("/metadata", "/metadata/" + field,
+                                             "/metadata/" + field + "/" + k.replace("~", "~0").replace("/", "~1")) for ptr in pointers)
+                gone = {k for k in set(last.get(field) or {}) - set(desired["metadata"].get(field) or {}) - {TRACKING} if not kept(k)}
+                removed += [key + " " + field + ": " + k for k in sorted(gone)]
+        if removed and not self.args.allow_field_removal:
+            raise RuntimeError("the new apply would delete these keys recorded in last-applied-configuration (controller-owned "
+                               "keys are reallocated or lost; remove them from last-applied first, or re-run with "
+                               "--allow-field-removal if every one is meant to go): " + "; ".join(removed))
+        if removed:
+            log("  allowed field removal: " + "; ".join(removed))
+
     def stop_old(self):
         # Sequential: existing target Applications also wait for their turn. One still at the old revision would
         # otherwise take back an object that an earlier target just adopted. Applying it at its turn restores
@@ -390,6 +430,7 @@ def main():
     parser.add_argument("--from", dest="old", action="append", help="Application(s) to retire once their objects moved")
     parser.add_argument("--dry-run", action="store_true", help="read-only preflight; prints what would change")
     parser.add_argument("--delete-leftovers", action="store_true", help="delete objects no new Application renders that the --from Applications still track")
+    parser.add_argument("--allow-field-removal", action="store_true", help="accept deleting labels/annotations that only last-applied-configuration still records")
     parser.add_argument("--sequential", action="store_true", help="sync one Application at a time in deploy order, each after the previous is Synced and Healthy")
     parser.add_argument("--timeout", type=int, default=1800, help="seconds to wait for reconciliation (default 1800)")
     args = parser.parse_args()
