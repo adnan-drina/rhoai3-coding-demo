@@ -49,3 +49,14 @@ leaves exactly those fields alone) is the right pattern for shared singletons in
    entry would have been caught).
 
 Items 1-4 are tracked in `BACKLOG.md`; each needs a live adoption or behaviour check and is done one at a time.
+
+## Outcome (2026-10-14)
+
+- Done: item 4 (`stage_apps.py check-delegations`, run by `validate-stage-flow.sh`) and item 2 (`010-rhoai-platform`
+  declares `spec.defaultRoute: true`; the Stage 050 hook only waits for the route).
+- Not done: item 1. The DSPA spec needs the generated bucket name and a custom server config derived from the
+  operator-generated one, which the hook patches in after creation; Git ownership would add a deploy-time patch and a
+  delegated field while keeping the hook.
+- Not done: item 3's flag move. Stage 060 requires the MCP Catalog to be enabled before it deploys and the Stage 040
+  playground uses tool calling, so Stage 030 stays their writer. The uniform-hook goal is covered by the declared
+  writes and the delegation check.
