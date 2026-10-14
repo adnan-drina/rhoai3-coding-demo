@@ -57,7 +57,7 @@ if [[ -n "$LEGACY_REALM" ]]; then
   log_error "Legacy rhbk namespace exists. Protect/export it and review the realm migration before deploying this fresh-install release."
   exit 1
 fi
-SONAR_DATABASE_IMAGE=$(oc get deployment postgresql -n sonarqube --ignore-not-found -o jsonpath='{.spec.template.spec.containers[0].image}')
+SONAR_DATABASE_IMAGE=$(oc get deployment sonardb -n sonarqube --ignore-not-found -o jsonpath='{.spec.template.spec.containers[0].image}')
 if [[ "$SONAR_DATABASE_IMAGE" == *postgresql-15* ]]; then
   log_error "SonarQube uses PostgreSQL 15. Back up and migrate its data before the PostgreSQL 16 release; an image swap is refused."
   exit 1

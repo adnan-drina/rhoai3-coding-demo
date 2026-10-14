@@ -48,9 +48,8 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
-    # Dev Spaces control plane. Required egress row R2 (class PRIMARY), derived
-    # from Red Hat Dev Spaces ingress documentation — see
-    # harness-refactoring/source-analysis/control-admission/20260808-required-egress.md
+    # Dev Spaces control plane (required egress row R2), derived from the
+    # Red Hat OpenShift Dev Spaces 3.30 documentation on workspace ingress.
     # The per-workspace che-gateway sidecar reaches
     # che-gateway.openshift-devspaces for workspace-plane traffic.
     #

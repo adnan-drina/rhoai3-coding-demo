@@ -1079,13 +1079,13 @@ check "080 trusted platform code renders a run's resources, not the destination 
   "test -f '${PIPELINES_BUILD}/task-provision-migration-run.yaml' && test -f '${PIPELINES_BUILD}/pipeline-provision-migration-run.yaml' && ! test -e '${APP_MIGRATION_TMPL}/skeleton/k8s-run' && ! test -e '${PIPELINES_BUILD}/appproject-migration-run.yaml' && echo 1 || echo 0" \
   "1"
 check "080 no Argo CD Application is created over a self-service destination repository" \
-  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/triggers.yaml').read_text()); d=[x for x in t.split(chr(10)+'---'+chr(10)) if 'migration-run-resources-template' in x and 'TriggerTemplate' in x][0]; print('open' if 'kind: Application' in d or 'repoURL' in d else 'platform')\"" \
+  "python3 -c \"import re,pathlib; f=re.search(r'def provision_migration.*?(?=\\ndef )',pathlib.Path('$REPO_ROOT/gitops/stages/070-advanced-app-platform/pipelines/gitlab/reconcile.py').read_text(),re.S).group(0); print('platform' if \\\"resource('PipelineRun'\\\" in f and \\\"'Application'\\\" not in f else 'open')\"" \
   "platform"
 check "080 the provisioner identity cannot be selected by a workload in the workspace namespace" \
   "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('$REPO_ROOT/gitops/stages/070-advanced-app-platform/devspaces/migration-run-resources-rbac.yaml').read_text()); m=re.search(r'kind: ServiceAccount.*?namespace: (\S+)', t, re.S); print(m.group(1) if m else 'absent')\"" \
   "app-platform-build"
 check "080 provisioning is bound to the scaffolding event, and a retired run cannot be resurrected" \
-  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/triggers.yaml').read_text()); k=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/task-provision-migration-run.yaml').read_text()); print(sum(1 for p in ['body.created == true','body.forced == false'] if p in t) + sum(1 for p in ['phase=retired','was retired','was provisioned from'] if p in k))\"" \
+  "python3 -c \"import re,pathlib; f=re.search(r'def provision_migration.*?(?=\\ndef )',pathlib.Path('$REPO_ROOT/gitops/stages/070-advanced-app-platform/pipelines/gitlab/reconcile.py').read_text(),re.S).group(0); k=re.sub(r'(?m)^\\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/task-provision-migration-run.yaml').read_text()); print(sum(1 for p in [\\\"'provision-' + name\\\",'(AlreadyExists)'] if p in f) + sum(1 for p in ['phase=retired','was retired','was provisioned from'] if p in k))\"" \
   "5"
 check "080 the run's secrets are watched and mounted, so DWO's cache can see them at all" \
   "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/task-provision-migration-run.yaml').read_text()); print(t.count('controller.devfile.io/watch-secret: \\\"true\\\"'))\"" \

@@ -1,6 +1,6 @@
 # ServiceAccount for the RHDH Kubernetes/Topology/Tekton plugins.
 # The kubernetes.io/service-account-token Secret is populated by the token
-# controller with a long-lived token; the configure-rhdh PostSync job copies
+# controller with a long-lived token; the configure-rhdh Sync hook (wave 18) copies
 # it into rhdh-secrets as RHDH_KUBERNETES_SA_TOKEN for app-config env
 # substitution. The 'view' ClusterRole covers workloads, routes, and the
 # Tekton CRs (aggregated to view by the Pipelines operator).

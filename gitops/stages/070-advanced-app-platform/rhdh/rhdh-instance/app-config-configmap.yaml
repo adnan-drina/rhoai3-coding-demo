@@ -1,5 +1,5 @@
 # RHDH app-config — uses environment variable substitution for cluster-specific values.
-# The PostSync Job patches rhdh-secrets with real URLs; the Backstage CR injects them as env vars.
+# The configure-rhdh Sync hook (wave 18) patches rhdh-secrets with real URLs; the Backstage CR injects them as env vars.
 apiVersion: v1
 kind: ConfigMap
 metadata:

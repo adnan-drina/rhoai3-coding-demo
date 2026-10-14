@@ -1,4 +1,4 @@
-# The ONLY thing that creates or removes a Stage 080 migration run's resources.
+# The ONLY thing that creates or removes a Stage 130 migration run's resources.
 #
 # A run needs a parity database and fixture identities that belong to it alone,
 # created before its workspace starts and removed when the run retires. An
@@ -12,10 +12,10 @@
 #
 # So the manifests are HERE, in the platform repository, rendered by platform
 # code from a VALIDATED RUN IDENTITY and nothing else. The destination
-# repository contributes a name, and the name arrives through an HMAC-verified
-# GitHub webhook that the dispatcher has already established is the scaffolding
-# event (branch creation, zero `before`, the migration-run topic). Repository
-# content reaches this task in exactly one place: the factory-stamped
+# repository contributes a name, and the name arrives through a
+# publisher-authored GitLab enrollment request that the reconciler has
+# validated against the registered project and its immutable first commit.
+# Repository content reaches this task in exactly one place: the factory-stamped
 # board_protocol request in run-budget.json AT the validated scaffolding commit
 # (content-addressed; one enum value; everything else in the file ignored).
 # Editing k8s manifests into a destination repository changes nothing at all,

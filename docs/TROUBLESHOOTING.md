@@ -2007,7 +2007,7 @@ oc get application <app> -n openshift-gitops -o json \
   | jq '.spec.ignoreDifferences[] | select(.kind=="Namespace")'
 ```
 
-**Recover:** apply the label imperatively (`oc label ns <ns> key=value --overwrite`). For labels a controller depends on (like the pipeline-project provisioning label), the stage deploy.sh must assert the label on every run — see `seed_coolstore` step 0 in stage 070.
+**Recover:** apply the label imperatively (`oc label ns <ns> key=value --overwrite`). Stage 070 namespaces no longer ignore metadata: `070-namespaces` uses `ServerSideDiff=true`, so a label declared in `gitops/stages/070-advanced-app-platform/namespaces/namespaces.yaml` (such as the pipeline-project enrollment label on `coolstore-dev`) is applied to an existing namespace on the next sync.
 
 ## OpenCode: "unknown certificate verification error" for Every Model
 
@@ -2827,7 +2827,9 @@ The reused RHBK 26.4 operator serves `KeycloakRealmImport` at `k8s.keycloak.org/
 
 ## Stage 070 identity hook stops after an existing demo user
 
-An absent federated-identity link returns 404 to DELETE. The hook now measures the link first: retain a correct OpenShift UID, delete only a stale link, and create a missing link directly. Unknown/read errors still refuse. Tests execute the actual shell function for missing, current and stale links.
+**Symptom:** the base-SSO identity hook (`identity/jobs/configure-base-sso.py`) fails with `Existing application identity has no verified OpenShift link: <user>` or `Conflicting base SSO identity: <user>`.
+
+The hook validates the whole linking plan before it changes any user or client, and it never deletes a federated-identity link. An existing `platform` realm user is linked to `base-sso` only when its OpenShift identity and user UID agree and its single `openshift` link carries that UID, or when it already has a `base-sso` link to the same base user. A missing, stale or foreign link refuses the run instead of being repaired. Inspect the user's federated identities in the `platform` realm and the OpenShift `User`/`Identity` objects, correct the conflicting record, then resync. `stages/070-advanced-app-platform/tests/sso-alignment.test.py` covers the unbound, stale and foreign cases.
 
 ## Stage 070 shared-namespace upgrades or MaaS discovery refuse
 
@@ -2953,7 +2955,7 @@ If a service becomes unreachable after ingress policy installation, distinguish 
 
 ## Stage 070 broker logout reports Invalid redirect uri
 
-The current base-SSO broker returns logout to `/realms/platform/broker/base-sso/endpoint/logout_response`, a different URL from its login callback. The initial configuration omitted the client’s valid post-logout URI. The correction declares only that exact HTTPS endpoint in `post.logout.redirect.uris`; login redirects, scopes and user links remain unchanged. Do not allow arbitrary callbacks or disable redirect checks. [Red Hat Keycloak broker guidance](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html-single/securing_applications_and_services_guide/index) describes the separate post-logout setting.
+The current base-SSO broker returns logout to `/realms/platform/broker/base-sso/endpoint/logout_response`, a different URL from its login callback. The initial configuration omitted the client’s valid post-logout URI. The correction declares only that exact HTTPS endpoint in `post.logout.redirect.uris`; login redirects, scopes and user links remain unchanged. Do not allow arbitrary callbacks or disable redirect checks. [Red Hat Keycloak broker guidance](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.4/html-single/securing_applications_and_services_guide/index) describes the separate post-logout setting.
 
 The reviewed correction is published and deployed at `5c16b8c9`. Real browser logout reaches sign-in, fresh developer login succeeds, the exact callback is accepted and a foreign callback is refused. For an older retained session that still cannot log out, use supported session controls for that exact user, then verify fresh login and unchanged identity/roles. A successful login alone does not qualify logout. Keep token-bearing logout URLs out of logs and screenshots.
 

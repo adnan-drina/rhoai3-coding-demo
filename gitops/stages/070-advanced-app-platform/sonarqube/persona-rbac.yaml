@@ -1,6 +1,6 @@
 # Demo persona access to the SonarQube namespace (console visibility;
-# SonarQube's own UI allows anonymous browsing for the demo, and the admin
-# credential lives in the sonarqube-admin Secret).
+# SonarQube itself requires sign-in, so unauthenticated API requests get 401,
+# and the admin credential lives in the sonarqube-admin Secret).
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

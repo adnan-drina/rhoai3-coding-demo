@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import io
+import re
 import tarfile
 import subprocess
 import unittest
@@ -166,6 +167,12 @@ class IntegratedContract(unittest.TestCase):
         guard = steps[ids.index('require-mta-hub')]
         self.assertIn('mta-hub-url', guard['if'])
         self.assertEqual(guard['input']['url'], './refusals/FACTORY_MTA_HUB_MISSING')
+
+    def test_sonarqube_database_guard_names_the_rendered_deployment(self):
+        guard = re.search(r'oc get deployment (\S+) -n sonarqube', (ROOT / 'stages/070-advanced-app-platform/deploy.sh').read_text()).group(1)
+        rendered = [d['metadata']['name'] for d in yaml.safe_load_all((BASE / 'sonarqube/postgresql.yaml').read_text())
+                    if d and d['kind'] == 'Deployment']
+        self.assertEqual(rendered, [guard])
 
     def test_coolstore_namespace_precedes_its_delivery_bindings(self):
         namespace = next(d for d in yaml.safe_load_all((BASE / 'namespaces/namespaces.yaml').read_text())

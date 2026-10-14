@@ -1,5 +1,5 @@
 ---
-# Phase E observability: the stage 080 harness supervisor (running inside
+# Phase E observability: the Stage 130 harness supervisor (running inside
 # a Dev Spaces workspace in wksp-ai-developer) polls the project pipeline
 # for its factory verdict and reads the route to prove the deploy. This
 # Role grants read-only access to exactly those surfaces; the binding

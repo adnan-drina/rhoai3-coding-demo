@@ -484,9 +484,9 @@ Deploy stages in order:
 
 Stage 060 `deploy.sh` covers `060-openshell-identity` and `060-openshell-runtime`; its other three components use `deploy-mcp-platform.sh`, `deploy-native-mcp.sh` and `deploy-console.sh` (see the Stage 060 README).
 
-Stages 110–130 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 070 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 070's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
+Stages 110–130 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 070 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 070's deploy script creates no secrets from `.env`; it checks read-only preconditions (node sizing, a Managed and Available internal registry) and Sync hooks create the scoped GitLab, SonarQube and integration identities.
 
-Each script applies its stage's Applications from `gitops/argocd/app-of-apps/`. GitOps stages are the `stages/*/` directories that have `deploy.sh`; each of its Applications is one file in `gitops/argocd/app-of-apps/<directory-name>/<component>.yaml` and renders `gitops/stages/<directory-name>/<component>/` (Stage 070 still uses the single file `gitops/argocd/app-of-apps/070-advanced-app-platform.yaml`). Workflow-only stages omit `deploy.sh` and have no Application.
+Each script applies its stage's Applications from `gitops/argocd/app-of-apps/`. GitOps stages are the `stages/*/` directories that have `deploy.sh`; each of its Applications is one file in `gitops/argocd/app-of-apps/<directory-name>/<component>.yaml` and renders `gitops/stages/<directory-name>/<component>/`. Workflow-only stages omit `deploy.sh` and have no Application.
 
 | Stage | Argo CD app | Purpose |
 |------|-------------|---------|
@@ -749,7 +749,7 @@ The upstream-image OpenShift MCP server in `rhoai-mcp` and the inactive Slack/Br
 
 The stage 070 `devspaces` component installs Red Hat OpenShift Dev Spaces and persona namespaces (consumed by the workflow-only stages 110/120/130).
 
-Validation now checks both service readiness and persona namespace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users, and the Stage 110 catalog seat `agentic-coolstore` exists in `wksp-ai-developer` and `wksp-ai-admin`. Stages 120 and 130 create additional workspaces from RHDH factory templates at demo time. Those factory destfiles set `controller.devfile.io/storage-type: per-workspace` so they can run beside `agentic-coolstore` without multi-attaching the CheCluster per-user RWO claim. Standing `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces were retired.
+`validate.sh` checks that the component Application is Synced and Healthy and that the standing `agentic-coolstore` workspace in `wksp-ai-developer` and `wksp-ai-admin` clones from the private GitLab `rhoai-workloads/coolstore-inventory-service` project. Stages 120 and 130 create additional workspaces from RHDH factory templates at demo time. The CheCluster uses the `per-workspace` PVC strategy, so each workspace gets its own claim and factory workspaces run beside `agentic-coolstore`. Standing `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces were retired. Component detail: [devspaces README](../gitops/stages/070-advanced-app-platform/devspaces/README.md).
 
 Useful checks:
 
@@ -799,14 +799,36 @@ oc get tackle mta -n openshift-mta -o yaml
 oc get deployment -n openshift-mta
 ```
 
-### Stage 070 — Coolstore dev environment (coolstore component)
+### Stage 070 — Pipelines (pipelines component)
 
-The `coolstore` component keeps a running `coolstore-inventory-service` in `coolstore-dev` so the demo starts from a deployed brownfield system. The Deployment pins `quay.io/…/coolstore-inventory-service:latest`; the shared pipeline's `tag-latest` task republishes that tag on every green run. `deploy.sh` seeds the first run (topic, PipelineRun, rollout) and provisions `quay-pull-secret` from `.env`. If the deployment shows ImagePullBackOff on a fresh cluster, the seed run has not completed yet — re-run `stages/070-advanced-app-platform/deploy.sh`.
+The Stage 070 `pipelines` component installs OpenShift Pipelines and Trusted Artifact Signer, tunes the cluster `TektonConfig`, and runs the GitLab project enrollment coordinator in `app-platform-build`. Each enrolled project gets its own `<project>-dev` namespace, Tekton pipeline and Argo CD runtime Application; Stage 130 migration runs are provisioned from the same namespace. Contents, ordering and checks: [pipelines README](../gitops/stages/070-advanced-app-platform/pipelines/README.md).
+
+### Stage 070 — SonarQube (sonarqube component)
+
+The Stage 070 `sonarqube` component runs SonarQube Community Build with its own PostgreSQL database in `sonarqube`, defines the `AI Platform Gate` quality gate and gives `app-platform-build` the control token the pipelines use to mint project-scoped scanner tokens. Sign-in uses SAML with the base `sso` realm. Contents, ordering and checks: [sonarqube README](../gitops/stages/070-advanced-app-platform/sonarqube/README.md).
+
+### Stage 070 — GitLab (gitlab component)
+
+The Stage 070 `gitlab` component runs GitLab Community Edition in `gitlab-system` with its PostgreSQL, Valkey, Gitaly storage and NooBaa buckets. Its integration hub creates the GitLab groups, service users, tokens and repository imports, and writes the credentials and configuration that Dev Spaces, Developer Hub, the enrollment pipeline and Argo CD consume. Contents, ordering and checks: [gitlab README](../gitops/stages/070-advanced-app-platform/gitlab/README.md).
+
+### Stage 070 — Coolstore dev environment
+
+Stage 070 declares only the `coolstore-dev` namespace for Coolstore (`namespaces/namespaces.yaml`, labelled `rhoai3.redhat.com/pipeline-project: "true"`). The workload reaches it in four steps:
+
+1. **Namespace.** `070-namespaces` creates `coolstore-dev` with the enrollment label.
+2. **GitLab enrollment.** The GitLab setup hook (`gitlab/bootstrap-scm.py`) imports `coolstore-inventory-service` into the `rhoai-workloads` group, commits the platform-reviewed runtime (`gitlab/coolstore-runtime.json`) as `k8s-run/platform-app.yaml`, and records the seed in the immutable ConfigMap `gitlab-import-seeds` in `app-platform-build`. The enrollment reconciler and the project's enrollment Job (both `pipelines/gitlab/reconcile.py`) then create the `project-coolstore-inventory-service` Application (pipeline, webhook listener), the delivery repository and the `runtime-coolstore-inventory-service` Application.
+3. **Internal registry digest.** The project pipeline builds into the internal registry (`image-registry.openshift-image-registry.svc:5000/coolstore-dev/coolstore-inventory-service`). Until the first green run the declared runtime references the `:bootstrap` tag.
+4. **Delivery Git.** The promotion step (`pipelines/project-pipeline/promote.py`) writes the runtime with the image pinned by `@sha256` digest to `rhoai-delivery/coolstore-inventory-service-deployment`; `runtime-coolstore-inventory-service` syncs the Deployment, Service and Route from that repository.
+
+`deploy.sh` does not seed a pipeline run or create pull secrets. An empty `coolstore-dev` or an image pull failure on a fresh cluster means enrollment or the first pipeline run has not completed; check the steps above in order. Component detail: [gitlab README](../gitops/stages/070-advanced-app-platform/gitlab/README.md), [pipelines README](../gitops/stages/070-advanced-app-platform/pipelines/README.md), [namespaces README](../gitops/stages/070-advanced-app-platform/namespaces/README.md).
 
 Useful checks:
 
 ```bash
-oc get pipelinerun -n coolstore-dev -l backstage.io/kubernetes-id=coolstore-inventory-service
+oc get configmap gitlab-import-seeds -n app-platform-build
+oc get application project-coolstore-inventory-service runtime-coolstore-inventory-service -n openshift-gitops
+oc get pipelinerun -n coolstore-dev
+oc get deployment coolstore-inventory-service -n coolstore-dev -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 oc get deployment,route -n coolstore-dev
 curl -s https://$(oc get route coolstore-inventory-service -n coolstore-dev -o jsonpath='{.spec.host}')/q/health/ready
 ```
@@ -1168,7 +1190,7 @@ Live read-back on 2026-10-14 passed at SSO code `78a14254` plus correction `1c4a
 
 For rollback, revert the SSO change and sync Stage 070. The previous hook restores the OpenShift identity provider configuration; reset the application realm's browser redirector to `openshift` through the supported Keycloak Admin API because reverting a script does not undo its database effects. Disable SonarQube SAML through its settings API. Retain all linked users, application roles, local recovery credentials and scanner tokens; do not recreate accounts or change the base platform's login. Existing sessions may require a sign-out and fresh sign-in after either transition.
 
-Sources: [RHBK identity brokering](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/server_administration_guide/identity_broker), [SonarQube Keycloak SAML](https://docs.sonarsource.com/sonarqube-community-build/instance-administration/authentication/saml/how-to-set-up-keycloak), [SonarQube SAML limitations](https://docs.sonarsource.com/sonarqube-community-build/instance-administration/authentication/saml/overview), [Argo CD ignored-field sync behavior](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/#respect-ignore-differences-configs), [Keycloak 26.6 loopback redirect validation](https://github.com/keycloak/keycloak/blob/26.6.0/services/src/main/java/org/keycloak/protocol/oidc/utils/RedirectUtils.java).
+Sources: [RHBK identity brokering](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.4/html/server_administration_guide/identity_broker), [SonarQube Keycloak SAML](https://docs.sonarsource.com/sonarqube-community-build/instance-administration/authentication/saml/how-to-set-up-keycloak), [SonarQube SAML limitations](https://docs.sonarsource.com/sonarqube-community-build/instance-administration/authentication/saml/overview), [Argo CD ignored-field sync behavior](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/#respect-ignore-differences-configs), [Keycloak 26.4 loopback redirect validation](https://github.com/keycloak/keycloak/blob/26.4.0/services/src/main/java/org/keycloak/protocol/oidc/utils/RedirectUtils.java).
 
 The fresh authenticated Developer Hub template → private GitLab project → initial Tekton pipeline → internal image registry → Git delivery/Argo → HTTP workflow passed on 2026-10-14 for `stage070-validation-20261014`. Its first pipeline passed all six Tasks without a retry. The portal's CI, Topology and Kubernetes views passed; the generated Dev Spaces link cloned private source, initialized tooling and reopened the same workspace UID without duplication. Earlier failed installation checks and the older Coolstore validation retry remain preserved. [Current qualification](../BACKLOG.md#stage-070-live-qualification) separates this completed workflow from the resolved MTA controller startup issue, the deferred Solution Server defect and unqualified inference.
 

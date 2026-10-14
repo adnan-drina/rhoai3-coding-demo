@@ -26,7 +26,7 @@ resources:
   - rhdh-instance/backstage.yaml
   # Wave 15: ConsoleLink (OpenShift launcher menu entry)
   - rhdh-instance/consolelink.yaml
-  # PostSync: Configure RHDH auth (RHBK client), patch secrets, restart
+  # Sync hook, wave 18: configure RHDH auth (RHBK client), patch secrets, restart
   - jobs/configure-rhdh.yaml
 
 # B2: the runtime-catalog generator, its renderer, the catalog and EVERY

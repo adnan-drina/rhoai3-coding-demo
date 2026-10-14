@@ -18,6 +18,6 @@ metadata:
     argocd.argoproj.io/sync-wave: "17"
 data:
   # Common OpenAI base; request model IDs select the backend.
-  # Qwen 3.6 is configured but remains parked until explicitly resumed.
+  # Qwen 3.6 was retired on 2026-10-13; MAAS_API_PATH_QWEN36 stays until its consumers are removed.
   MAAS_API_PATH: /v1
   MAAS_API_PATH_QWEN36: /v1

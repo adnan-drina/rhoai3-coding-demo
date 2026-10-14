@@ -107,7 +107,7 @@ Source: [Stage 070 component folders](../../gitops/stages/070-advanced-app-platf
 - [Pipelines 1.24 security](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index)
 - [MTA 8.3 documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3)
 - [GitLab OpenShift deployment guidance](https://docs.gitlab.com/charts/installation/cloud/openshift/)
-- [Keycloak identity brokering](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/server_administration_guide/identity_broker)
+- [Keycloak identity brokering](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.4/html/server_administration_guide/identity_broker)
 - [SonarQube Community Build: Keycloak SAML](https://docs.sonarsource.com/sonarqube-community-build/instance-administration/authentication/saml/how-to-set-up-keycloak)
 
 ## Next Stage
