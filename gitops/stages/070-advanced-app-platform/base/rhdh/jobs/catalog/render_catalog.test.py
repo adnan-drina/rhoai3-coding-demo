@@ -37,6 +37,8 @@ log="${FAKE_OC_LOG}"
 args="$*"
 echo "$args" >> "${log}.calls"
 case "$args" in
+  *"get application"*".operation}"*) echo -n "${FAKE_ACTIVE_REVISION:-}";;
+  *"get application"*"operationState.phase"*) echo -n "${FAKE_ACTIVE_PHASE:-Succeeded}";;
   *"get application"*"syncResult.revision"*) echo -n "${FAKE_REVISION}";;
   *"get application"*"sync.revision"*) echo -n "${FAKE_REVISION}";;
   *"get application"*"repoURL"*) echo -n "https://github.com/example/demo.git";;
@@ -137,7 +139,7 @@ def _stage(td: Path, revision: str, *, skew: dict[str, bytes] | None = None) -> 
     return bundle, td / "repo"
 
 
-def _generate(td: Path, bundle: Path, repo: Path, revision: str, host: str, ip: str, domain: str, *, scm_url: str | None = None) -> tuple[int, str, Path]:
+def _generate(td: Path, bundle: Path, repo: Path, revision: str, host: str, ip: str, domain: str, *, scm_url: str | None = None, refresh=False, active=False) -> tuple[int, str, Path]:
     bindir = td / "bin"
     bindir.mkdir(exist_ok=True)
     oc = bindir / "oc"
@@ -155,9 +157,26 @@ def _generate(td: Path, bundle: Path, repo: Path, revision: str, host: str, ip: 
     }))
     env = dict(os.environ, SCM_CONFIG_FILE=str(config), PATH="%s:%s" % (bindir, os.environ.get("PATH", "")), FAKE_OC_LOG=str(log),
                FAKE_REVISION=revision, FAKE_MAAS_HOST=host, FAKE_MAAS_IP=ip, FAKE_DOMAIN=domain,
-               BUNDLE_DIR=str(bundle), CATALOG_RAW_BASE=repo.as_uri())
+               BUNDLE_DIR=str(bundle), CATALOG_RAW_BASE=repo.as_uri(),
+               SKIP_IF_CURRENT='true' if refresh else 'false',
+               FAKE_ACTIVE_REVISION=revision if active else '', FAKE_ACTIVE_PHASE='Running' if active else 'Succeeded')
     p = subprocess.run(["bash", str(bundle / "jobs__catalog__generate.sh")], env=env, capture_output=True, text=True)
     return p.returncode, p.stdout + p.stderr, log
+
+
+def _active_sync_refresh_case():
+    with tempfile.TemporaryDirectory() as d:
+        td=Path(d);revision='a'*40;bundle,repo=_stage(td,revision)
+        (repo/revision/rc.key_path('catalog__all.yaml')).unlink()
+        args=(td,bundle,repo,revision,'maas.apps.example.test','172.30.250.250','apps.example.test')
+        status,out,log=_generate(*args,refresh=True,active=True)
+        if status or 'deferred' not in out or Path(str(log)+'.published').exists():
+            return _fail('background refresh must publish nothing during an active transaction')
+        for refresh,active in ((False,True),(True,False)):
+            status,out,log=_generate(*args,refresh=refresh,active=active)
+            if status==0 or 'FACTORY_BUNDLE_MISMATCH' not in out or Path(str(log)+'.published').exists():
+                return _fail('the Sync hook and a settled refresh must still refuse an unreadable revision')
+    return 0
 
 
 def _end_to_end_case(revision: str, host: str, ip: str, domain: str) -> int:
@@ -246,7 +265,7 @@ def _python36_case() -> int:
 
 
 def main() -> int:
-    if _python36_case() or _coverage_case() or _bundle_name_case() or _deployment_order_case():
+    if _python36_case() or _coverage_case() or _bundle_name_case() or _deployment_order_case() or _active_sync_refresh_case():
         return 1
     if (_end_to_end_case("a" * 40, "maas.apps.example.test", "172.30.250.250", "apps.example.test")
             or _end_to_end_case("0123456789abcdef0123456789abcdef01234567", "maas.cluster-b.lab", "10.0.4.7", "cluster-b.lab")):

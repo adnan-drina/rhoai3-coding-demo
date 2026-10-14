@@ -15,6 +15,20 @@
 # placeholder; on any refusal the runtime catalog stays as it was.
 set -euo pipefail
 
+# A recurring refresh is not the publisher for an in-flight platform upgrade.
+# The mandatory wave-17 Sync hook verifies that transaction after its mirror
+# exists. Keep the last catalog during the transaction; publish nothing here.
+if [ "${SKIP_IF_CURRENT:-false}" = "true" ]; then
+  ACTIVE_OPERATION=$(oc get application 070-advanced-app-platform -n openshift-gitops \
+    -o jsonpath='{.operation}' 2>/dev/null || true)
+  ACTIVE_PHASE=$(oc get application 070-advanced-app-platform -n openshift-gitops \
+    -o jsonpath='{.status.operationState.phase}' 2>/dev/null || true)
+  if [ -n "$ACTIVE_OPERATION" ] && [[ "$ACTIVE_PHASE" = Running || "$ACTIVE_PHASE" = Terminating ]]; then
+    echo 'Catalog refresh deferred to the active source-bound platform Sync hook; nothing published'
+    exit 0
+  fi
+fi
+
 SRC="${BUNDLE_DIR:-/bundle}"
 BUNDLE="$(mktemp -d /tmp/rhdh-catalog-bundle.XXXXXX)"
 # one local copy per invocation: a projected-volume update mid-run cannot mix

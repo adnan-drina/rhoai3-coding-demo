@@ -1145,7 +1145,9 @@ The owner-only client (`owner-client.py --check` / `--trace`) runs from the sour
 
 ## Stage 070 GitLab release
 
-The integrated release and P0 review correction are published on `main` through `7b121dd1`. The first install is paused before enrollment while the security follow-up on `codex/stage070-release` is validated. The models remain stopped. Review the complete diff, [version/acceptance plan](migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status) and data-retention changes before source publication and installation.
+The exact-SHA native pipeline and independent Argo/image/HTTP delivery checks passed on 2026-10-14 after installation corrections. Earlier failed pipeline records and the original initial-build receipt are preserved; this is not an unassisted first-build claim. [Current qualification](../BACKLOG.md#stage-070-live-qualification) separates completed delivery from the remaining authenticated portal/workspace workflow, MTA AI-service startup failures and deliberately deferred model inference.
+
+The integrated release and reviewed security corrections are published on `main`. Enrollment and exact-SHA delivery have been exercised on the installed platform. Models remain stopped. The [version/acceptance plan](migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status) records the release scope and data-retention requirements; current qualification above records the remaining limits.
 
 ### Installation and acceptance
 
@@ -1195,7 +1197,7 @@ Retain GitLab database/Gitaly/object-store data, encryption Secrets and the succ
 
 ### Stage 070 security review follow-up
 
-Keep the full Stage 070 Application paused until the security package and negative tests have been reviewed. An operator-only selective sync or approved InstallPlan is not full stage acceptance. Restoring Automatic approval does not change an already-created Manual InstallPlan: inspect its exact CSV set and approve only the selected Pipelines/TAS versions; do not approve unrelated plans or edit shared operator policies.
+For a future security correction, hold automatic Stage 070 installation until its package and negative tests have been reviewed. Install the approved revision through a full native sync before restoring automation. An operator-only selective sync or approved InstallPlan is not full stage acceptance. Restoring Automatic approval does not change an already-created Manual InstallPlan: inspect its exact CSV set and approve only the selected Pipelines/TAS versions; do not approve unrelated plans or edit shared operator policies.
 
 `runtime-projects` permits only validated namespaced runtime kinds in project namespaces and private delivery sources; it has no cluster resources. `platform-projects` permits only the pinned platform project setup. Admission checks protect the coordinator’s Application source/renderer and project-local credentials/provisioning. The coordinator has namespace create and constrained Application rights; it cannot write ServiceAccounts or RBAC. It reads only the named project scanner Secret and mirrors project-analysis credentials into the two approved persona namespaces, targeted to one workspace. The platform-pinned project bootstrap alone reads the Sonar control credential; source-controlled build and IDE containers receive only their own project-analysis token. Promotion never mounts the build workspace: fresh Git, neutral configuration and `git show <sha>:path` provide the source artifacts. Route host/subdomain claims and foreign credentials remain refused. Portal registration is administrator-only; GitLab discovery ingests workload `catalog-info.yaml` files without granting ordinary users location/template registration.
 
