@@ -26,8 +26,8 @@ spec:
       - memory
       controlledValues: RequestsAndLimits
       # The operator fixes a 2:1 limit/request ratio. Admission preserves it:
-      # request 256–512Mi, limit 512Mi–1Gi, without editing its Deployment.
+      # request 256Mi–2Gi, limit 512Mi–4Gi, without editing its Deployment.
       minAllowed:
         memory: 256Mi
       maxAllowed:
-        memory: 512Mi
+        memory: 2Gi

@@ -26,7 +26,7 @@ class ProductSchemas(unittest.TestCase):
         self.assertEqual(manager['controlledResources'], ['memory'])
         self.assertEqual(manager['controlledValues'], 'RequestsAndLimits')
         self.assertEqual(manager['minAllowed'], {'memory': '256Mi'})
-        self.assertEqual(manager['maxAllowed'], {'memory': '512Mi'})
+        self.assertEqual(manager['maxAllowed'], {'memory': '2Gi'})
         # Keep the single-replica exception local. Other workloads, including
         # stopped models, are not selected by this policy.
         self.assertEqual(policy['spec']['updatePolicy']['minReplicas'], 1)
