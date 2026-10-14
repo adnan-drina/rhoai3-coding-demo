@@ -59,10 +59,11 @@ try:
  for name,namespace in [('rhcl-operator','openshift-operators'),('authorino-operator','openshift-operators'),('dns-operator','openshift-operators'),('limitador-operator','openshift-operators'),('servicemeshoperator3','openshift-operators'),('leader-worker-set','openshift-lws-operator')]:
   subscription=get('subscriptions.operators.coreos.com',name,namespace)
   if subscription:assert tracked(subscription) and not subscription['metadata'].get('deletionTimestamp'),'Existing operator Subscription requires reviewed native adoption'
- result=subprocess.run(['oc','--request-timeout=10s','get','secret','maas-gateway-tls','-n','openshift-ingress','--ignore-not-found','-o','jsonpath={.metadata}'],capture_output=True,text=True,timeout=15)
- assert result.returncode==0,'Gateway certificate metadata read failed'
- tls={'apiVersion':'v1','kind':'Secret','metadata':json.loads(result.stdout)} if result.stdout.strip() else None
- if tls:assert tracked(tls) and not tls['metadata'].get('ownerReferences') and not tls['metadata'].get('deletionTimestamp'),'Existing gateway certificate requires reviewed adoption'
+ # The Gateway terminates TLS with the cluster's cert-manager ingress certificate; require that source (no copy).
+ ingress=get('ingresscontrollers.operator.openshift.io','default','openshift-ingress-operator')
+ assert ingress and ingress['spec'].get('defaultCertificate',{}).get('name')=='cert-manager-ingress-cert','Ingress certificate source requires review'
+ result=subprocess.run(['oc','--request-timeout=10s','get','secret','cert-manager-ingress-cert','-n','openshift-ingress','-o','go-template={{if index .data "tls.crt"}}crt{{end}}|{{if index .data "tls.key"}}key{{end}}'],capture_output=True,text=True,timeout=15)
+ assert result.returncode==0 and result.stdout=='crt|key','Gateway certificate Secret is incomplete'
  database=get('statefulset','maas-postgres','models-as-a-service-db')
  db_namespace=get('namespace','models-as-a-service-db');storage=get('pvc',ns='models-as-a-service-db') if db_namespace else {'items':[]}
  assert storage is not None or db_namespace is None,'Unexpected empty storage API response in existing namespace'

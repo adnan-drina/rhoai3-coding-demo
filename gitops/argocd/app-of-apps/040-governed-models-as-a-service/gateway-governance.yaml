@@ -42,12 +42,6 @@ spec:
         maxDuration: 3m
   ignoreDifferences:
   - group: ''
-    kind: Secret
-    name: maas-gateway-tls
-    namespace: openshift-ingress
-    jsonPointers:
-    - "/data"
-  - group: ''
     kind: ConfigMap
     name: authorino-service-ca
     namespace: kuadrant-system
