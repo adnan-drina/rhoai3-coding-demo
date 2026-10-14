@@ -24,10 +24,17 @@ Every GitOps stage must be reproducible from `gitops/` and operated through `dep
 
 ## Mandatory: Argo CD Applications in Every deploy.sh
 
-Every stage's `deploy.sh` applies its Argo CD Applications as its first cluster-modifying action, pinned to one reviewed published commit:
+Every stage's `deploy.sh` applies its Argo CD Applications as its first cluster-modifying action, pinned to one reviewed published commit, through the shared flow:
 ```bash
-python3 "$REPO_ROOT/scripts/shared/stage_apps.py" applications NNN --revision "$SHA" --repo-url "$GIT_REPO_URL" | oc apply -f -
+source "$REPO_ROOT/scripts/shared/lib.sh"; load_env; check_oc_logged_in        # cluster guard
+SHA=$(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" select NNN --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" [--extra PATH ...])
+# stage-specific read-only preflight here
+python3 "$REPO_ROOT/scripts/shared/stage_apps.py" deploy NNN --revision "$SHA" --repo-url "$GIT_REPO_URL"
 ```
+- `select` refuses a checkout whose stage source differs from the commit, untracked stage files, and a commit `GIT_REPO_URL` does not advertise. Never hand-write the publish check.
+- `deploy` applies every deploy-order component, starts a sync only where this source has not been synced yet (carrying the Application's own `syncOptions` and prune), and waits for each to be Synced and Healthy. A stage whose own setup must run before its components can become healthy uses `--no-wait`, runs the setup, then `stage_apps.py wait`. Components that declare `demo.rhoai.io/deploy-mode: sequential` deploy one order group at a time (Stage 070). `--resync` re-runs every hook.
+- Each stage takes `deploy.sh [--revision REF]`; the default is `GIT_REPO_BRANCH`, then `HEAD`. No default repository URL in scripts.
+- `validate.sh` checks its Applications with `check_stage_applications NNN [SHA]` (bash, `validate-lib.sh`) or `stage_apps.stage_problems(NNN, ..., separate=True)` (Python): every component, never a subset. Exit 0 pass, 1 fail, 2 warnings or pending.
 
 Every GitOps stage (`stages/NNN-name/deploy.sh` present) MUST have:
 1. `gitops/stages/NNN-name/<component>/` - one folder per Argo CD Application (its `source.path`)
@@ -42,7 +49,7 @@ Every GitOps stage (`stages/NNN-name/deploy.sh` present) MUST have:
 
 - Each Application carries the stage prefix and label (`demo.rhoai.io/stage: 'NNN'`) and exactly one of:
   - `demo.rhoai.io/deploy-order: '<n>'`: deployed by the stage `deploy.sh` with the other ordered components, all at one revision; validation requires each Synced and Healthy at that revision (`stage_apps.py status`).
-  - `demo.rhoai.io/deploy-script: stages/NNN-name/<script>.sh`: deployed by that script with its own procedure and revision (for example the Stage 060 Applications and `010-sandbox-storage`).
+  - `demo.rhoai.io/deploy-script: stages/NNN-name/<script>.sh`: deployed by that script with its own procedure and revision (the Stage 060 Applications, `010-sandbox-storage`, `010-console-observability`). Validation still checks it (`stage_apps.py status` covers every component).
 - A component that reports another health state by design names it in `demo.rhoai.io/accepted-health`.
 - Components are disjoint (one owner per object, including singletons). `scripts/shared/stage_apps.py check-static NNN` enforces this and that their union equals the stage kustomization; `validate-stage-flow.sh` runs it.
 - Group by lifecycle: operators, data (Prune=false,Delete=false), fast-changing content (models, access policies) and shared configuration each get their own component.
