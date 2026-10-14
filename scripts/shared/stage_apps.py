@@ -267,7 +267,8 @@ CLUSTER_SCOPED = {
     ("observability.openshift.io", "UIPlugin"), ("nvidia.com", "ClusterPolicy"), ("kueue.x-k8s.io", "ClusterQueue"),
     ("kueue.x-k8s.io", "ResourceFlavor"), ("datasciencecluster.opendatahub.io", "DataScienceCluster"),
     ("dscinitialization.opendatahub.io", "DSCInitialization"), ("services.platform.opendatahub.io", "Auth"),
-    ("mlflow.opendatahub.io", "MLflow"),
+    ("mlflow.opendatahub.io", "MLflow"), ("policy.networking.k8s.io", "AdminNetworkPolicy"),
+    ("policy.networking.k8s.io", "BaselineAdminNetworkPolicy"),
 }
 
 

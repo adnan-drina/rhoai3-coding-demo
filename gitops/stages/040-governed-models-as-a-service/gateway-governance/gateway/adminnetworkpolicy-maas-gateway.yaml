@@ -1,0 +1,155 @@
+# Enforced traffic boundary for the MaaS gateway pods.
+# The Ingress Operator gives every Gateway an allow-all NetworkPolicy (maas-default-gateway-allow), and NetworkPolicies
+# only add permissions, so a restrictive NetworkPolicy cannot narrow it. An AdminNetworkPolicy is evaluated before
+# NetworkPolicies and its Allow/Deny actions cannot be overridden by them, so this policy is the boundary.
+# Rules are evaluated in the order written: specific allows, then deny for every cluster pod and private network,
+# then public HTTPS for the registered external providers, then deny everything else.
+# Traffic that arrives from outside the cluster (LoadBalancer, externalTrafficPolicy Cluster) comes from node addresses,
+# which no ingress rule here can name, so it falls through to the operator's allow-all policy.
+# Destinations come from the gateway's own Envoy clusters and its HTTPRoutes; stages/040-governed-models-as-a-service/validate-gateway-boundary.sh checks them.
+apiVersion: policy.networking.k8s.io/v1alpha1
+kind: AdminNetworkPolicy
+metadata:
+  name: maas-gateway-boundary
+  labels:
+    app.kubernetes.io/name: maas-gateway-boundary
+    app.kubernetes.io/component: maas-gateway
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '9'
+spec:
+  priority: 40
+  subject:
+    pods:
+      namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: openshift-ingress}
+      podSelector:
+        matchLabels: {gateway.networking.k8s.io/gateway-name: maas-default-gateway}
+  ingress:
+  - name: allow-gateway-listeners
+    action: Allow
+    from:
+    - namespaces: {}
+    ports:
+    - portNumber: {protocol: TCP, port: 443}
+    - portNumber: {protocol: TCP, port: 15021}
+  - name: allow-metrics-scrape
+    action: Allow
+    from:
+    - namespaces:
+        matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [openshift-monitoring, openshift-user-workload-monitoring]
+    ports:
+    - portNumber: {protocol: TCP, port: 15020}
+    - portNumber: {protocol: TCP, port: 15090}
+  - name: deny-other-pod-traffic
+    action: Deny
+    from:
+    - namespaces: {}
+  egress:
+  - name: allow-dns
+    action: Allow
+    to:
+    - pods:
+        namespaceSelector:
+          matchLabels: {kubernetes.io/metadata.name: openshift-dns}
+        podSelector:
+          matchLabels: {dns.operator.openshift.io/daemonset-dns: default}
+    ports:
+    - portNumber: {protocol: UDP, port: 53}
+    - portNumber: {protocol: TCP, port: 53}
+    - portNumber: {protocol: UDP, port: 5353}
+    - portNumber: {protocol: TCP, port: 5353}
+  - name: allow-istiod-xds
+    action: Allow
+    to:
+    - pods:
+        namespaceSelector:
+          matchLabels: {kubernetes.io/metadata.name: openshift-ingress}
+        podSelector:
+          matchLabels: {app: istiod, istio.io/rev: openshift-gateway}
+    ports:
+    - portNumber: {protocol: TCP, port: 15012}
+  - name: allow-payload-processing
+    action: Allow
+    to:
+    - pods:
+        namespaceSelector:
+          matchLabels: {kubernetes.io/metadata.name: openshift-ingress}
+        podSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values: [payload-processing, payload-pre-processing]
+    ports:
+    - portNumber: {protocol: TCP, port: 9004}
+  - name: allow-authorino
+    action: Allow
+    to:
+    - pods:
+        namespaceSelector:
+          matchLabels: {kubernetes.io/metadata.name: kuadrant-system}
+        podSelector:
+          matchLabels: {authorino-resource: authorino, control-plane: controller-manager}
+    ports:
+    - portNumber: {protocol: TCP, port: 50051}
+  - name: allow-limitador
+    action: Allow
+    to:
+    - pods:
+        namespaceSelector:
+          matchLabels: {kubernetes.io/metadata.name: kuadrant-system}
+        podSelector:
+          matchLabels: {app: limitador, limitador-resource: limitador}
+    ports:
+    - portNumber: {protocol: TCP, port: 8081}
+  - name: allow-kuadrant-wasm-module
+    action: Allow
+    to:
+    - pods:
+        namespaceSelector:
+          matchLabels: {kubernetes.io/metadata.name: openshift-operators}
+        podSelector:
+          matchLabels: {app: kuadrant, control-plane: controller-manager}
+    ports:
+    - portNumber: {protocol: TCP, port: 8082}
+  - name: allow-maas-api
+    action: Allow
+    to:
+    - pods:
+        namespaceSelector:
+          matchLabels: {kubernetes.io/metadata.name: redhat-ai-gateway-infra}
+        podSelector:
+          matchLabels: {app.kubernetes.io/name: maas-api, maas.opendatahub.io/tenant-instance: maas-api}
+    ports:
+    - portNumber: {protocol: TCP, port: 8443}
+  - name: allow-local-models
+    action: Allow
+    to:
+    - namespaces:
+        matchLabels: {kubernetes.io/metadata.name: internal-models}
+    ports:
+    - portNumber: {protocol: TCP, port: 8000}
+    - portNumber: {protocol: TCP, port: 9002}
+  - name: deny-other-cluster-pods
+    action: Deny
+    to:
+    - namespaces: {}
+  - name: deny-private-networks
+    action: Deny
+    to:
+    - networks: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 127.0.0.0/8]
+  - name: allow-public-https
+    action: Allow
+    to:
+    - networks: [0.0.0.0/0]
+    ports:
+    - portNumber: {protocol: TCP, port: 443}
+  - name: deny-everything-else
+    action: Deny
+    to:
+    - networks: [0.0.0.0/0, '::/0']
