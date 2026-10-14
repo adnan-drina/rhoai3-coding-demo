@@ -12,8 +12,9 @@ spec:
     kind: Deployment
     name: agentic-controller
   updatePolicy:
-    updateMode: InPlaceOrRecreate
-    # This controller already tolerates a leader handover; do not change
+    updateMode: Recreate
+    # The old OOM-looping pod did not recover after in-place resizing.
+    # Re-admit with VPA resources; this controller tolerates leader handover; do not change
     # the VPA cluster-wide replica minimum for a single broken operand.
     minReplicas: 1
   resourcePolicy:
@@ -26,8 +27,8 @@ spec:
       - memory
       controlledValues: RequestsAndLimits
       # The operator fixes a 2:1 limit/request ratio. Admission preserves it:
-      # request 256Mi–2Gi, limit 512Mi–4Gi, without editing its Deployment.
+      # request 256–512Mi, limit 512Mi–1Gi, without editing its Deployment.
       minAllowed:
         memory: 256Mi
       maxAllowed:
-        memory: 2Gi
+        memory: 512Mi

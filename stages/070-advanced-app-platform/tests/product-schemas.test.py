@@ -26,10 +26,10 @@ class ProductSchemas(unittest.TestCase):
         self.assertEqual(manager['controlledResources'], ['memory'])
         self.assertEqual(manager['controlledValues'], 'RequestsAndLimits')
         self.assertEqual(manager['minAllowed'], {'memory': '256Mi'})
-        self.assertEqual(manager['maxAllowed'], {'memory': '2Gi'})
+        self.assertEqual(manager['maxAllowed'], {'memory': '512Mi'})
         # Keep the single-replica exception local. Other workloads, including
         # stopped models, are not selected by this policy.
-        self.assertEqual(policy['spec']['updatePolicy']['minReplicas'], 1)
+        self.assertEqual(policy['spec']['updatePolicy'], {'minReplicas': 1, 'updateMode': 'Recreate'})
         controller = yaml.safe_load((BASE / 'mta/controller-sizing/controller.yaml').read_text())
         self.assertEqual(controller['spec']['minReplicas'], 2)
 
