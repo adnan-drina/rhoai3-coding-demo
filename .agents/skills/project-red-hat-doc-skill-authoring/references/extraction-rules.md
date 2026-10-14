@@ -1,87 +1,41 @@
-# Extraction Rules
+# Citation Rules (keep, link, or delete)
 
-Use these rules to convert official Red Hat documentation into skill knowledge.
+Product skills cite official Red Hat documentation; they do not extract it.
+(The file name is kept for existing links.) Apply these rules to every claim
+in a new skill and to every section of an old `official-doc-extraction.md`
+during conversion.
 
-## Extract
+## Classify each item
 
-Capture these facts when present:
+| Item | Action |
+|---|---|
+| Generic product behavior (what a component is, a procedure, a field table, a supported-configuration table) | Delete. Add a row to "Official documentation" linking the section with its anchor. |
+| A fact the repo depends on, overrides, or got wrong before (API-group mismatch, Technology Preview posture, a deprecated release, a default the repo changes, a known issue the repo hit) | Keep as one line under "Repo decisions" or "Pitfalls", with its manifest path and a section link. Re-verify against the map's `docs_version`. |
+| YAML or CLI example | Replace with the path of the repo's own manifest or script. If the repo has none, link the official procedure. |
+| Supported-version tables, release dates, advisory IDs | Link the section; quote at most the single value a decision depends on. |
+| Retrieval date, sections used, source URLs | Move to the map route (`reviewed`, `sections`, `note`). |
 
-- component purpose in one or two sentences
-- supported, Technology Preview, Developer Preview, deprecated, or unsupported
-  posture
-- prerequisites and cluster assumptions
-- required operators, namespaces, subscriptions, and dependencies
-- CRDs, API groups, kinds, spec fields, status fields, labels, and annotations
-- Operator channel, catalog source, CSV, and install mode details
-- Red Hat registry images, validated artifacts, storage drivers, or
-  product-provided resources
-- install, configure, use, upgrade, migrate, backup, restore, and remove
-  workflows
-- validation commands and expected healthy signals
-- common failure modes explicitly described by docs
-- boundaries between product feature and custom demo integration
+## Verification standard
 
-## Product-Family Emphasis
+- Verify each kept claim against the section of the map's `docs_version`.
+- If docs.redhat.com answers 403/429/5xx, keep only claims the repo proves
+  (manifest, README, validate script) and record the unverified gap in the
+  route `note`.
+- Mark unresolved product details explicitly:
 
-For `ocp-*` skills, prioritize:
+  ```markdown
+  Unresolved: <field or behavior>. Verify with `oc explain <kind>.<field>` before use in GitOps.
+  ```
 
-- cluster-scoped APIs and operators
-- networking, ingress, routes, Gateway API, authentication, RBAC, monitoring,
-  logging, nodes, MachineSets, storage classes, and OpenShift GitOps
-- security context, SCC, namespace, and cluster-admin implications
-- interactions with the live demo environment guard
+## Do not treat as product truth
 
-For `odf-*` skills, prioritize:
+- Upstream Kubernetes, Ceph, Kuadrant, KServe, Kubeflow or community docs not
+  confirmed by Red Hat docs or the installed schema.
+- Examples from older product versions, guessed defaults, blog snippets.
+- Legacy repo text that is not tied back to Git or to the current docs.
 
-- ODF Operator installation and update behavior
-- `StorageCluster`, backing storage, storage classes, and Ceph health
-- object storage, ObjectBucketClaims, NooBaa/Multi-Cloud Gateway, S3 endpoints
-- PVC behavior, RWX/RWO access modes, encryption, backup/restore, and
-  capacity planning
-- interactions with RHOAI workbenches, pipelines, model storage, registries,
-  and object-store connections
+## Licensing
 
-For `rhoai-*` skills, use the existing RHOAI component extraction standard and
-component roadmap.
-
-## Do Not Extract As Product Truth
-
-Do not promote these into skill instructions without verification:
-
-- upstream Kubernetes, Ceph, NooBaa, KServe, Kubeflow, or community docs fields
-  not confirmed by Red Hat docs or installed schema
-- examples from old product versions
-- guessed default values
-- UI behavior observed in screenshots but not documented
-- blog snippets that conflict with official product docs
-- existing legacy demo code that has not been tied back to official docs
-
-## Skill Mapping
-
-Before mapping extracted content, read
-`.agents/references/red-hat-doc-map.yaml` and classify the source by product,
-version, category, book, and chapter topic. Use the mapped skill when the route
-is `active`, create the planned flat skill when the route is `planned`, and
-update the map when a new route is needed.
-
-| Extracted content | Generated skill location |
-|-------------------|--------------------------|
-| component purpose, when to use | `SKILL.md` intro and description |
-| positive and negative triggers | `SKILL.md` frontmatter description |
-| source metadata | `references/source-capture.md` |
-| detailed product behavior | `references/official-doc-extraction.md` |
-| verification and review checklist | `references/validation-checklist.md` |
-| small demo snippets | `examples/` |
-
-## Ambiguity Handling
-
-If official docs do not confirm a detail, write:
-
-```markdown
-Unresolved: <field or behavior>
-Verification: `oc explain <kind>.<field>` or `oc get crd <name> -o yaml`
-Do not use in GitOps until verified.
-```
-
-Do not silently omit unresolved product-critical items; generated skills must
-make uncertainty visible.
+Red Hat documentation text is CC BY-SA 3.0. Linking plus short quotations of
+the names a decision needs avoids redistributing adapted text under
+share-alike terms. Do not paste paragraphs, tables, or example blocks.

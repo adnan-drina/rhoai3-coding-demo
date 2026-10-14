@@ -1,26 +1,40 @@
-schema_version: 1
+schema_version: 2
 owner: project-red-hat-doc-skill-authoring
-baseline_source: docs/PLATFORM_BASELINE.md
+checker: scripts/shared/check-doc-links.py
 purpose: >
-  Route official Red Hat documentation sources to flat repo skills. This file
-  references Red Hat documentation products, versions, categories, books, and
-  topics, but uses repo-specific routing categories where useful. It does not
-  mirror the documentation hierarchy in .agents/skills/.
+  The single registry of Red Hat product documentation versions for this
+  repository, and the route from official documentation books to flat repo
+  skills. Each product has exactly one docs_version. Its pin names the Git
+  file and field that must agree with it. Skills and component READMEs link
+  to sections of that version; they do not copy documentation text.
 
 usage:
-  - Read docs/PLATFORM_BASELINE.md first and verify the product version.
-  - Match a source by product, version, category, book, and chapter topic.
-  - Prefer an existing mapped skill before creating a new one.
-  - If a required topic is missing, create or update a flat skill folder and
-    add a new route here.
+  - Look up the product, its docs_version and the book or section you need.
+  - Build links from docs_url_template; never use /latest/ or another version.
+  - Prefer an existing routed skill before creating a new one.
+  - Record provenance here (route `reviewed` and `sections`), not in skill
+    reference files.
   - Do not create nested skill folders to match documentation categories.
-  - Keep exact product versions in docs/PLATFORM_BASELINE.md; this map points
-    to that baseline and may include current root URLs for discoverability.
+  - Run scripts/shared/check-doc-links.py after changing this file, a skill,
+    or a component README.
+
+docs_url_template: "https://docs.redhat.com/en/documentation/{docs_slug}/{docs_version}/"
+
+# Families whose skills follow the thin-skill contract (no copied documentation,
+# no official-doc-extraction.md, no source-capture.md, frontmatter product and
+# docs-version). The checker fails on findings in these families and only
+# reports findings in the others.
+converted_families:
+  - odf
+  - rhcl
+
+# Backticked names on skill lines that look like skill names but are not skills.
+skill_reference_ignore: [rhcl-operator, ocp-baseline]
 
 status_values:
   active: Skill exists and is the preferred route.
   planned: Skill does not exist yet but the route is expected.
-  blocked-baseline: Do not create until docs/PLATFORM_BASELINE.md pins a version.
+  blocked-baseline: Do not create until the product version is pinned here.
 
 source_types:
   docs_redhat_com: Versioned Red Hat product documentation on docs.redhat.com.
@@ -31,14 +45,28 @@ source_types:
   repo_specific: Repo-owned guidance that is grounded in official docs but is
     not itself a Red Hat documentation book.
 
+# Product fields:
+#   docs_slug      path segment on docs.redhat.com
+#   docs_version   the documentation version every link and skill must use
+#   deployed       false when no stage installs the product
+#   pin            file + field (+ pattern whose group 1 is the version) that must
+#                  equal docs_version; `none: <reason>` when Git holds no pin
+#   routes         book -> skill; `sections` are anchor ids in that book;
+#                  `reviewed` records the version and date a skill was checked against it
+
 products:
   rhoai:
     name: Red Hat OpenShift AI Self-Managed
     baseline_component: Red Hat OpenShift AI Self-Managed
     skill_prefix: rhoai-
     rule: .agents/rules/rhoai.md
-    documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/
-    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/
+    docs_slug: red_hat_openshift_ai_self-managed
+    docs_version: "3.5"
+    deployed: true
+    pin:
+      file: gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/subscription.yaml
+      field: spec.channel
+      pattern: 'stable-(\d+\.\d+)'
     categories:
       whats_new:
         description: Release posture, lifecycle, API tiers, and support notes.
@@ -366,8 +394,15 @@ products:
     baseline_component: Red Hat OpenShift Container Platform
     skill_prefix: ocp-
     rule: .agents/rules/ocp.md
-    documentation_root: https://docs.redhat.com/en/documentation/openshift_container_platform/
-    active_baseline_root: https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/
+    docs_slug: openshift_container_platform
+    docs_version: "4.22"
+    deployed: true
+    pin:
+      # OpenShift itself is not installed from Git. The NFD operator ships per OpenShift
+      # minor, so its qualified minimum in the operator policy carries the platform minor.
+      file: scripts/platform/check-operator-policy.py
+      field: minimum['nfd']
+      pattern: "'nfd':'(\\d+\\.\\d+)\\.\\d+'"
     categories:
       configure:
         routes:
@@ -518,8 +553,13 @@ products:
     baseline_component: Red Hat OpenShift Dev Spaces
     skill_prefix: ocp-devspaces-
     rule: .agents/rules/ocp.md
-    documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/
-    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/
+    docs_slug: red_hat_openshift_dev_spaces
+    docs_version: "3.30"
+    deployed: true
+    pin:
+      file: gitops/stages/070-advanced-app-platform/devspaces/subscription.yaml
+      field: spec.startingCSV
+      pattern: 'v(\d+\.\d+)\.'
     categories:
       discover:
         description: Product overview, architecture, DevWorkspace operator, supported IDEs, and workspace lifecycle.
@@ -554,8 +594,11 @@ products:
     baseline_component: Red Hat OpenShift Lightspeed
     skill_prefix: ocp-lightspeed-
     rule: .agents/rules/ocp.md
-    documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/
-    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/
+    docs_slug: red_hat_openshift_lightspeed
+    docs_version: "1.0"
+    deployed: true
+    pin:
+      none: Preinstalled on the cluster, not managed in Git (live 1.1.5 on 2026-10-15; a 1.1 documentation set is unverified).
     categories:
       about:
         description: Product overview, supported LLM providers, resource requirements, data handling, and OLSConfig CR concepts.
@@ -596,8 +639,13 @@ products:
     baseline_component: Red Hat OpenShift Pipelines
     skill_prefix: ocp-pipelines-
     rule: .agents/rules/ocp.md
-    documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/
-    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/
+    docs_slug: red_hat_openshift_pipelines
+    docs_version: "1.24"
+    deployed: true
+    pin:
+      file: gitops/stages/070-advanced-app-platform/pipelines/operators/pipelines-subscription.yaml
+      field: spec.channel
+      pattern: 'pipelines-(\d+\.\d+)'
     categories:
       about:
         description: Release notes, concepts, Tekton CRDs, and key features.
@@ -661,45 +709,74 @@ products:
     baseline_component: Red Hat OpenShift Data Foundation
     skill_prefix: odf-
     rule: .agents/rules/odf.md
-    documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/
-    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.20/
+    docs_slug: red_hat_openshift_data_foundation
+    docs_version: "4.22"
+    deployed: true
+    pin:
+      file: gitops/stages/010-openshift-ai-platform-foundation/odf/subscription.yaml
+      field: spec.channel
+      pattern: 'stable-(\d+\.\d+)'
     status: active
     note: >
-      ODF is pinned to 4.20 to match the OCP 4.20 baseline. The demo should
-      start with the minimum ODF footprint needed for RHOAI object storage:
-      standalone Multicloud Object Gateway, NooBaa, and ObjectBucketClaims.
-      Full StorageCluster/Ceph guidance is covered for cases where the demo
-      needs ODF-provided block or file storage.
+      ODF follows the OpenShift minor (stable-4.22 on OCP 4.22). Stage 010
+      deploys only a standalone Multicloud Object Gateway; there is no Ceph
+      block or file storage. Repo facts live in
+      gitops/stages/010-openshift-ai-platform-foundation/odf/README.md.
     categories:
       planning:
         routes:
           - book: planning_your_deployment
             status: active
             skill: odf-storagecluster
+            reviewed: { version: "4.22", date: 2026-10-15 }
           - book: red_hat_openshift_data_foundation_architecture
             status: active
             skill: odf-storagecluster
+            reviewed: { version: "4.22", date: 2026-10-15 }
       install_and_configure:
         routes:
           - book: deploying_openshift_data_foundation_using_amazon_web_services
             topics:
               - operator_installation
-              - storagecluster
               - standalone_multicloud_object_gateway
             status: active
             skill: odf-storagecluster
+            sections:
+              - deploy-standalone-multicloud-object-gateway
+              - creating-standalone-multicloud-object-gateway_rhodf
+              - uninstalling_openshift_data_foundation
+            reviewed: { version: "4.22", date: 2026-10-15 }
           - book: deploying_openshift_data_foundation_using_amazon_web_services
             topics:
               - standalone_multicloud_object_gateway
               - noobaa
-              - minimum_s3_object_storage
             status: active
             skill: odf-multicloud-gateway
+            sections:
+              - deploy-standalone-multicloud-object-gateway
+              - creating-standalone-multicloud-object-gateway_rhodf
+            reviewed: { version: "4.22", date: 2026-10-15 }
+          - book: updating_openshift_data_foundation
+            status: active
+            skill: odf-storagecluster
+            reviewed: { version: "4.22", date: 2026-10-15, note: "book index only; page timed out on review" }
       storage_classes:
         routes:
           - book: managing_and_allocating_storage_resources
             status: active
             skill: odf-storage-classes
+            sections:
+              - storage-classes_rhodf
+              - creating-storage-classes-and-pools_rhodf
+            reviewed: { version: "4.22", date: 2026-10-15 }
+          - book: managing_and_allocating_storage_resources
+            topics:
+              - noobaa_db_backup
+            status: active
+            skill: odf-multicloud-gateway
+            sections:
+              - enabling-automatic-backup-of-multicloud-object-gateway-metadata-database_rhodf
+            reviewed: { version: "4.22", date: 2026-10-15 }
       object_storage:
         routes:
           - book: managing_hybrid_and_multicloud_resources
@@ -707,40 +784,40 @@ products:
               - object_bucket_claims
             status: active
             skill: odf-object-bucket-claims
+            sections:
+              - object-bucket-claim
+            reviewed: { version: "4.22", date: 2026-10-15, note: "chapter slug from the 010-odf README; page returned 503 on review" }
           - book: managing_hybrid_and_multicloud_resources
             topics:
               - multicloud_gateway
-              - noobaa
-              - s3_endpoint
+              - backing_stores
               - bucket_classes
             status: active
             skill: odf-multicloud-gateway
+            reviewed: { version: "4.22", date: 2026-10-15, note: "book index only; page timed out on review" }
       monitoring_and_troubleshooting:
         routes:
           - book: monitoring_openshift_data_foundation
             status: active
             skill: odf-storagecluster
+            reviewed: { version: "4.22", date: 2026-10-15 }
           - book: troubleshooting_openshift_data_foundation
             status: active
             skill: odf-storagecluster
-      supporting_red_hat_articles:
-        routes:
-          - book: red_hat_openshift_data_foundation_for_developers_and_data_scientists
-            status: active
-            skill: odf-multicloud-gateway
-          - book: red_hat_openshift_data_foundation_for_developers_and_data_scientists
-            topics:
-              - object_bucket_claims
-              - s3_credentials
-            status: active
-            skill: odf-object-bucket-claims
+            sections:
+              - downloading-log-files-and-diagnostic-information_rhodf
+              - troubleshooting-alerts-and-errors-in-openshift-data-foundation
+            reviewed: { version: "4.22", date: 2026-10-15 }
 
   tpa:
     name: Red Hat Trusted Profile Analyzer
     baseline_component: Red Hat Trusted Profile Analyzer
     skill_prefix: tpa-
-    documentation_root: https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/
-    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2/
+    docs_slug: red_hat_trusted_profile_analyzer
+    docs_version: "2.2"
+    deployed: false
+    pin:
+      none: Not deployed by any stage.
     categories:
       discover:
         description: Release notes, new features, bug fixes, known issues, and deprecated endpoints.
@@ -768,8 +845,11 @@ products:
     name: Red Hat Advanced Developer Suite - software supply chain
     baseline_component: Red Hat Advanced Developer Suite - software supply chain
     skill_prefix: rhads-
-    documentation_root: https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/
-    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/
+    docs_slug: red_hat_advanced_developer_suite_-_software_supply_chain
+    docs_version: "1.9"
+    deployed: false
+    pin:
+      none: Not deployed by any stage.
     categories:
       discover:
         description: Product overview, architecture, Trusted Application Pipeline, and release notes.
@@ -830,8 +910,13 @@ products:
     name: Migration Toolkit for Applications
     baseline_component: Migration Toolkit for Applications
     skill_prefix: mta-
-    documentation_root: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/
-    active_baseline_root: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/
+    docs_slug: migration_toolkit_for_applications
+    docs_version: "8.3"
+    deployed: true
+    pin:
+      file: gitops/stages/070-advanced-app-platform/mta/mta-operator/subscription.yaml
+      field: spec.startingCSV
+      pattern: 'v(\d+\.\d+)\.'
     categories:
       whats_new:
         description: Release notes, new features, bug fixes, known issues, and removed features.
@@ -877,8 +962,13 @@ products:
     name: Red Hat Developer Hub
     baseline_component: Red Hat Developer Hub
     skill_prefix: rhdh-
-    documentation_root: https://docs.redhat.com/en/documentation/red_hat_developer_hub/
-    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/
+    docs_slug: red_hat_developer_hub
+    docs_version: "1.10"
+    deployed: true
+    pin:
+      file: gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/subscription.yaml
+      field: spec.startingCSV
+      pattern: 'v(\d+\.\d+)\.'
     categories:
       discover:
         description: Product overview, architecture, software catalog, deployment methods, sizing, HA, integrations, and supported platforms.
@@ -1029,9 +1119,20 @@ products:
     name: Red Hat Connectivity Link
     baseline_component: Red Hat Connectivity Link
     skill_prefix: rhcl-
-    rule: .agents/rules/rhcl.md
-    documentation_root: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/
-    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/
+    docs_slug: red_hat_connectivity_link
+    docs_version: "1.4"
+    deployed: true
+    pin:
+      # The Subscription in gitops/stages/040-governed-models-as-a-service/maas-operators/rhcl/
+      # follows the unversioned `stable` channel; the operator policy holds the qualified minor line.
+      file: scripts/platform/check-operator-policy.py
+      field: minimum['rhcl-operator']
+      pattern: "'rhcl-operator':'(\\d+\\.\\d+)\\.\\d+'"
+    note: >
+      Stage 040 installs Connectivity Link 1.4.x (qualified minimum 1.4.3) as the
+      MaaS policy layer. The 1.4 release notes deprecate 1.4.0 and direct users to
+      1.4.1 or later. Book slugs changed between 1.3 and 1.4 (installing_* ->
+      install_*, troubleshooting -> troubleshoot).
     categories:
       discover:
         description: Connectivity Link concepts, architecture, and MCP gateway overview.
@@ -1039,58 +1140,169 @@ products:
           - book: red_hat_connectivity_link
             status: active
             skill: rhcl-about
+            sections:
+              - about-connectivity-link_rhcl-introduction
+              - rhcl-supported-configs_rhcl-introduction
+            reviewed: { version: "1.4", date: 2026-10-15 }
           - book: mcp_gateway
             status: active
             skill: rhcl-mcp-gateway
+            sections:
+              - con-about-mcp-gateway_mcp-gateway-introduction
+              - mcp-gateway-architecture_mcp-gateway-introduction
+            reviewed: { version: "1.4", date: 2026-10-15 }
       whats_new:
         description: Release notes, new features, bug fixes, and known issues.
         routes:
           - book: release_notes
             status: active
             skill: rhcl-release-notes
+            sections:
+              - rhcl-relnotes-about_rhcl-release-notes
+              - rhcl-relnotes-tech-preview_rhcl-release-notes
+              - rhcl-relnotes-known-issues_rhcl-release-notes
+              - rhcl-relnotes-1.4.3-z-stream_rhcl-release-notes
+            reviewed: { version: "1.4", date: 2026-10-15 }
       install:
-        description: Installing Connectivity Link and MCP gateway on single and multiple clusters.
+        description: Installing Connectivity Link and the MCP gateway.
         routes:
-          - book: installing_connectivity_link
+          - book: install_connectivity_link
             status: active
             skill: rhcl-install
-          - book: installing_the_mcp_gateway
+            sections:
+              - rhcl-required-platforms-components_install-on-ocp
+              - rhcl-optional-components_install-on-ocp
+              - proc-install-on-ocp-cmd-cio_install-on-ocp
+              - proc-install-on-ocp-cmd-istio_install-on-ocp
+              - rhcl-install-disconnected
+            reviewed: { version: "1.4", date: 2026-10-15 }
+          - book: install_the_mcp_gateway
             status: active
             skill: rhcl-install-mcp
+            sections:
+              - proc-mcp-gateway-install-olm_mcp-gateway-install
+              - con-mcp-gateway-install-olm-ext-cr_mcp-gateway-install
+              - proc-mcp-gateway-custom-route_mcp-gateway-install
+              - mcp-gateway-isolated-deployment
+            reviewed: { version: "1.4", date: 2026-10-15 }
       configure_and_secure:
         description: Deploying, configuring, and securing APIs and MCP servers.
         routes:
-          - book: deploying_red_hat_connectivity_link
+          - book: deploy_red_hat_connectivity_link
             status: active
             skill: rhcl-configure
-          - book: registering_mcp_servers_and_creating_policies
+            sections:
+              - proc-set-default-auth-policy_rhcl-config-deploy-gateway-policies
+              - proc-set-default-rate-limit-policy_rhcl-config-deploy-gateway-policies
+              - con-about-token-based-rate-limiting_rhcl-config-deploy-gateway-policies
+              - con-about-grpc-support_connect-secure-apis-services
+              - rhcl-planpolicy
+            reviewed: { version: "1.4", date: 2026-10-15 }
+          - book: develop_apis_with_the_web_console
+            status: active
+            skill: rhcl-configure
+            reviewed: { version: "1.4", date: 2026-10-15, note: "book index only" }
+          - book: register_mcp_servers_and_create_policies
             status: active
             skill: rhcl-mcp-config
+            sections:
+              - ref-mcp-server-registration-cr_mcp-gateway-register-on-prem-servers
+              - mcp-gateway-register-ext-mcp-servers
+              - mcp-gateway-create-virtual-mcp-servers
+              - mcp-gateway-authentication
+              - mcp-gateway-authorization
+              - mcp-gateway-revoke-mcp-server-tool-access
+            reviewed: { version: "1.4", date: 2026-10-15 }
       observe_and_troubleshoot:
         description: Observability, monitoring, and troubleshooting.
         routes:
           - book: observability
             status: active
             skill: rhcl-observability
-          - book: troubleshooting
+            sections:
+              - rhcl-enable-observability-monitor_rhcl-observability
+              - rhcl-about-configuring-observability-dashboards_rhcl-observability
+              - rhcl-obs-about-tracing_rhcl-observability
+              - ref-obs-configure-access-logs_rhcl-observability
+              - mcp-gateway-observe
+            reviewed: { version: "1.4", date: 2026-10-15 }
+          - book: troubleshoot
             status: active
             skill: rhcl-troubleshoot
+            sections:
+              - mcp-gateway-troubleshooting
+              - mcp-gateway-ts-isolated-deployment
+            reviewed: { version: "1.4", date: 2026-10-15 }
       upgrade:
-        description: Updating Connectivity Link within the 1.3.x line.
+        description: Updating Connectivity Link to and within the 1.4 line.
         routes:
-          - book: updating_red_hat_connectivity_link
+          - book: update_red_hat_connectivity_link
             status: active
             skill: rhcl-update
+            sections:
+              - rhcl-supported-configs_updating-rhcl
+              - proc-update-rhcl-with-web-console_updating-rhcl
+            reviewed: { version: "1.4", date: 2026-10-15 }
+
+# Products cited by skills or component READMEs that have no skill family of
+# their own. Their links are checked against docs_version like any product.
+cited_products:
+  monitoring_stack:
+    name: Monitoring stack for Red Hat OpenShift
+    docs_slug: monitoring_stack_for_red_hat_openshift
+    docs_version: "4.22"
+    pin:
+      file: scripts/platform/check-operator-policy.py
+      field: minimum['nfd']
+      pattern: "'nfd':'(\\d+\\.\\d+)\\.\\d+'"
+  cluster_observability_operator:
+    name: Red Hat OpenShift Cluster Observability Operator
+    docs_slug: red_hat_openshift_cluster_observability_operator
+    docs_version: "1-latest"
+    pin:
+      none: Rolling `stable` channel; Red Hat publishes this documentation only as 1-latest.
+  opentelemetry:
+    name: Red Hat build of OpenTelemetry
+    docs_slug: red_hat_build_of_opentelemetry
+    docs_version: "3.11"
+    pin:
+      none: Rolling `stable` channel; operator 0.158 maps to product 3.11 (docs/PLATFORM_BASELINE.md).
+  distributed_tracing:
+    name: Red Hat OpenShift distributed tracing platform
+    docs_slug: red_hat_openshift_distributed_tracing_platform
+    docs_version: "3.11"
+    pin:
+      none: Rolling `stable` channel; Tempo operator 0.22 maps to product 3.11 (docs/PLATFORM_BASELINE.md).
+  keycloak:
+    name: Red Hat build of Keycloak
+    docs_slug: red_hat_build_of_keycloak
+    docs_version: "26.4"
+    pin:
+      none: The Keycloak operator is not installed from a Git Subscription.
+  trusted_artifact_signer:
+    name: Red Hat Trusted Artifact Signer
+    docs_slug: red_hat_trusted_artifact_signer
+    docs_version: "1.5"
+    pin:
+      file: gitops/stages/070-advanced-app-platform/pipelines/operators/rhtas-subscription.yaml
+      field: spec.channel
+      pattern: 'stable-v(\d+\.\d+)'
+  red_hat_ai:
+    name: Red Hat AI
+    docs_slug: red_hat_ai
+    docs_version: "3"
+    pin:
+      none: Portfolio-level documentation; versioned by major release only.
 
 route_update_rules:
   when_adding_skill:
-    - Add a route with product, category, book, status, and skill.
+    - Add a route with product, category, book, status, skill, sections and reviewed.
     - Keep the skill path flat under .agents/skills/<skill-name>/.
-    - Update the matching .agents/rules/<family>.md file.
-    - Update AGENTS.md and project skill inventories only if they explicitly
-      list skill names.
+    - Update AGENTS.md only if it explicitly lists skill names.
   when_upgrading_product:
-    - Update docs/PLATFORM_BASELINE.md first.
-    - Review active_baseline_root values here.
-    - Recheck routes whose official documentation book or chapter changed.
+    - Change the Git pin (Subscription channel, startingCSV or operator policy) first.
+    - Set docs_version here to the same minor; the checker fails until both agree.
+    - Run scripts/shared/check-doc-links.py; it lists every skill and README link behind.
+    - Re-read the release notes and each cited section, adjust repo decisions and
+      pitfalls, fix renamed book slugs and anchors, then bump each skill's docs-version.
     - Prefer updating existing skills over creating versioned skill names.

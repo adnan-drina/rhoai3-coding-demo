@@ -1,59 +1,71 @@
-# Component Skill Outline
+# Thin Product Skill Template
 
-Use this as a starting point for a generated Red Hat product skill.
+Copy, then replace every `<...>`. Keep it under ~150 lines. Converted examples:
+`.agents/skills/odf-storagecluster/SKILL.md`, `.agents/skills/rhcl-configure/SKILL.md`.
 
 ```markdown
 ---
 name: <prefix>-<capability>
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "<rhoai|ocp|odf>"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
-  skill-group: "<RHOAI Platform|OpenShift Platform|OpenShift Data Foundation>"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: <map product key, e.g. odf>
+  docs-version: "<map docs_version, e.g. 4.22>"
+  skill-group: "<group from platform-skill-taxonomy.md>"
 description: >
-  <Strong trigger description tied to official Red Hat docs. Include specific
-  scenarios and negative triggers.>
+  Use when <repo-specific situations, named resources and paths>. Do NOT use
+  for <neighbour task> (use <other skill>).
 ---
 
-# <Capability Name>
+# <Title>
 
-Use this skill for <component/workflow> on the active product baseline in
-`docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+<Product> <docs-version> sections. Detailed record: `<component README path>`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat docs are product authority. Red Hat articles and rh-brain are
-supporting narrative and examples only.
+- <situation tied to a path or symptom>
 
-## Workflow
+## Repo decisions
 
-1. Confirm prerequisites.
-2. Follow the official-doc-backed install/configure/use sequence.
-3. Verify with readonly commands.
-4. Update README, GitOps, scripts, and validation together when implementing
-   demo content.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| <what this repo chose> | `<gitops/... path>` | [<section title>][<ref>] |
 
-## Validation
+## Procedure
 
-- <readonly command or schema check>
-- <expected healthy signal>
-- <failure signal and next diagnostic>
+1. <repo step: file to change, script to run>
+2. Validate after the OpenShift safety guard in `AGENTS.md`:
 
-## References
+   ```bash
+   <read-only oc commands or stage validate.sh>
+   ```
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
+## Pitfalls
+
+- <product quirk or repo trap>, linked to [<section>][<ref>] or
+  `docs/TROUBLESHOOTING.md#<anchor>`.
+
+## Official documentation (<Product> <docs-version>)
+
+| Topic | Section |
+|---|---|
+| <topic> | [<section title>][<ref>] |
+
+## Related skills
+
+`<skill>`, `<skill>`.
+
+[<ref>]: https://docs.redhat.com/en/documentation/<docs_slug>/<docs_version>/html-single/<book>/index#<anchor>
 ```
 
-Suggested generated reference files:
+Then add or update the route in `.agents/references/red-hat-doc-map.yaml`:
 
-```text
-references/source-capture.md
-references/official-doc-extraction.md
-references/validation-checklist.md
-examples/<minimal-example>.md
+```yaml
+          - book: <book_slug>
+            status: active
+            skill: <prefix>-<capability>
+            sections:
+              - <anchor-id>
+            reviewed: { version: "<docs_version>", date: <YYYY-MM-DD> }
 ```

@@ -2,7 +2,7 @@
 # Validate the demo stage layout from the repository tree.
 #
 #   ./scripts/platform/validate-stage-flow.sh
-#       Static: stages/*/ + matching Argo CD apps + kustomize build. No cluster.
+#       Static: stages/*/ + matching Argo CD apps + kustomize build + skill and doc-link checks. No cluster.
 #   ./scripts/platform/validate-stage-flow.sh --live
 #       Static, then each stage validate.sh in directory order (needs oc + .env).
 set -euo pipefail
@@ -18,7 +18,7 @@ while [[ $# -gt 0 ]]; do
             cat <<'EOF'
 Usage:
   ./scripts/platform/validate-stage-flow.sh
-      Static: stages/*/ + matching Argo CD apps + kustomize build. No cluster.
+      Static: stages/*/ + matching Argo CD apps + kustomize build + skill and doc-link checks. No cluster.
   ./scripts/platform/validate-stage-flow.sh --live
       Static, then each stage validate.sh in directory order (needs oc + .env).
 EOF
@@ -310,6 +310,11 @@ done <"$TMP_PATHS"
 
 log_step "Checking Stage 010 delegations against hook Job declarations"
 python3 "$REPO_ROOT/scripts/shared/stage_apps.py" check-delegations
+
+log_step "Validating shared skills and product documentation links"
+python3 "$REPO_ROOT/.agents/skills/agentskills-authoring/scripts/validate-skills.py" --all
+# Fails only on families listed in converted_families of the doc map; other families are counted.
+python3 "$REPO_ROOT/scripts/shared/check-doc-links.py" --brief
 
 log_success "Stage layout static validation passed"
 

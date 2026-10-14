@@ -2,107 +2,75 @@
 name: rhcl-troubleshoot
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhcl"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
-  skill-group: "OpenShift Platform"
+  version: 2.0.0
+  product: rhcl
+  docs-version: "1.4"
+  skill-group: "Connectivity Link"
 description: >
-  Use when troubleshooting common Connectivity Link issues including MCP
-  gateway pods not starting, gateway listener problems, traffic not reaching
-  backend MCP servers, requests failing or bypassing the router,
-  MCPGatewayExtension not ready, on-premise and external MCP server
-  registration issues, external MCP server connectivity and authentication
-  failures, MCP gateway authentication issues (OAuth discovery, JWT
-  validation, WWW-Authenticate headers), and MCP gateway authorization issues
-  (AuthPolicy, CEL evaluation, Authorino). Do NOT use for Connectivity Link
-  installation, deployment, API management, or observability configuration;
-  use the relevant rhcl-* skill. Do NOT invent diagnostic commands, error
-  codes, or recovery steps not documented in the official source.
+  Use when the MaaS Gateway or its Connectivity Link components misbehave:
+  responses held open, timeouts on every path, 429s, gateway memory pressure,
+  Kuadrant operator restarts, missing usage metrics, AuthPolicy or
+  TokenRateLimitPolicy not enforced, and — if adopted later — MCP gateway pods,
+  routing, registration, authentication and authorization failures. Do NOT use
+  for installing or upgrading (use rhcl-install or rhcl-update), or for model
+  serving failures behind the gateway (use rhoai-troubleshoot).
 ---
 
-# RHCL Troubleshoot
+# Connectivity Link troubleshooting
 
-Use this skill to ground Connectivity Link troubleshooting guidance in the
-official Red Hat Connectivity Link 1.4 documentation for the active baseline
-in `docs/PLATFORM_BASELINE.md`.
+Thin skill: a routing table. The Connectivity Link 1.4 troubleshooting book
+covers only the MCP gateway; MaaS Gateway failures seen in this demo are
+documented in `docs/TROUBLESHOOTING.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill captures diagnostic
-procedures for MCP gateway, gateway routing, server registration,
-authentication, and authorization issues.
+- A MaaS consumer (Dev Spaces, playground, evaluations, migration workers)
+  gets hangs, 4xx/5xx, or no metering.
 
-## Key Troubleshooting Areas
+## Symptom → where to look
 
-### MCP Gateway Pods Not Starting
+| Symptom | Repo runbook (`docs/TROUBLESHOOTING.md#…`) | Official section |
+|---|---|---|
+| Response body arrives, connection never closes | `maas-gateway-holds-a-response-open-until-the-client-times-out` | [Release notes][relnotes] (wasm-shim fix not yet shipped in 1.4.3) |
+| Every path times out; gateway OOMKills | `maas-gateway-times-out-on-every-path-rhcl-14x-drift` (historical 1.3 era) | [1.4.3 fixes][z143] |
+| 429 | `maas-gateway-returns-429` | [TokenRateLimitPolicy][trlp] |
+| Gateway near its memory limit | `maas-gateway-approaches-its-memory-limit` | — |
+| Gateway not reachable | `maas-gateway-is-not-reachable` | — |
+| Kuadrant controller restarts, new policies not enforced | `kuadrant-operator-controller-restarts-until-probes-time-out` | — |
+| Usage panels show zeros | `usage-dashboard-shows-zeros-or-gaps-limitador-podmonitor-churn` | [Enable observability monitoring][obs] |
+| External model stream resets | `external-model-streaming-resets-through-the-maas-gateway-connection-reset-by-server` | — |
+| MCP gateway problems (not deployed today) | — | [Troubleshoot the MCP gateway][mcp-ts], [Isolated deployments][mcp-iso] |
 
-Common states: `ImagePullBackOff` (check image access), `CrashLoopBackOff`
-(check logs), `Pending` (check resources), Init Container Failure (check
-RBAC).
+## Procedure
 
-### Gateway and Routing
+1. Run the OpenShift safety guard in `AGENTS.md`; work read-only first.
+2. Check policy and gateway status:
 
-Three diagnostic layers by error type:
+   ```bash
+   oc get authpolicy,tokenratelimitpolicy -A
+   oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.status.conditions}'
+   oc get pods -n kuadrant-system
+   oc get csv -n openshift-operators | grep -E 'rhcl|authorino|limitador|dns-operator'
+   ```
 
-- **Connection Refused/Timeout**: check the listener (port, load balancer, TLS)
-- **HTTP 404**: check the `HTTPRoute` CR (route rejected or not programmed)
-- **503 or bypass**: check API-level and Envoy filters (`EnvoyFilter` presence,
-  label matching, controller logs)
+3. Match the symptom to the table and follow that runbook's Diagnose/Recover.
+4. A new failure mode goes into `docs/TROUBLESHOOTING.md` (symptom, cause,
+   diagnose, recover), not into this skill.
 
-### MCPGatewayExtension Not Ready
+## Pitfalls
 
-Common conditions: `InvalidMCPGatewayExtension` (invalid targetRef),
-`ReferenceGrantRequired` (cross-namespace), `Conflict` (duplicate extension).
+- Generated MaaS policies are overwritten by the MaaS controller; fix the
+  MaaS objects, not the policy (`rhcl-configure`).
+- Exact-timeout disconnects usually point at a client, gateway or ELB timeout,
+  not at the model; compare the duration with each configured timeout.
 
-### MCP Server Registration
+## Related skills
 
-On-premise: verify `MCPServerRegistration` CR status, `targetRef` pointing to
-correct `HTTPRoute`, backend server running, service endpoints, tool prefix
-configuration.
+`rhcl-configure`, `rhcl-observability`, `rhcl-update`, `rhoai-maas-governance`, `rhoai-troubleshoot`.
 
-External: verify `ServiceEntry` CR, `DestinationRule` CR, DNS resolution,
-external connectivity, TLS settings.
-
-### Authentication
-
-OAuth discovery: check `HTTPRoute` path for `/.well-known/`, verify
-`AuthPolicy` exclusion for well-known paths. JWT validation: check `AuthPolicy`
-configuration, Authorino logs, JWT claims, issuer reachability. Missing
-`WWW-Authenticate`: check `AuthPolicy` response configuration.
-
-### Authorization
-
-`AuthPolicy` targeting, `sectionName` matching `Gateway` listener, Kuadrant
-Operator pod health, CEL evaluation errors in Authorino logs.
-
-## Workflow
-
-1. Confirm the active RHCL baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify the symptom category:
-   - pod startup failures
-   - gateway listener or routing issues
-   - MCPGatewayExtension status problems
-   - MCP server registration (on-premise or external)
-   - authentication failures (OAuth, JWT, WWW-Authenticate)
-   - authorization failures (AuthPolicy, CEL, Authorino)
-4. Follow the documented diagnostic commands in order.
-5. Do not run cluster-modifying commands without verifying the cluster context.
-
-## Related Skills
-
-- Use `rhcl-develop` for API management, console plugin, RBAC, and API product
-  workflows.
-- Use `rhcl-observability` for metrics, tracing, dashboards, access logs, and
-  MCP gateway observability.
-- Use `ocp-ingress-gateway-routes` for Gateway API and HTTPRoute
-  infrastructure.
-- Use `ocp-security-rbac-scc` for general OCP RBAC and SCC troubleshooting.
-- Use `rhoai-troubleshoot` for live demo environment troubleshooting.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[relnotes]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index
+[z143]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-1.4.3-z-stream_rhcl-release-notes
+[trlp]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/deploy_red_hat_connectivity_link/index#con-about-token-based-rate-limiting_rhcl-config-deploy-gateway-policies
+[obs]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/observability/index#rhcl-enable-observability-monitor_rhcl-observability
+[mcp-ts]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/troubleshoot/index#mcp-gateway-troubleshooting
+[mcp-iso]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/troubleshoot/index#mcp-gateway-ts-isolated-deployment

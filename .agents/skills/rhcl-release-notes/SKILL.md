@@ -2,142 +2,62 @@
 name: rhcl-release-notes
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhcl"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
-  skill-group: "OpenShift Platform"
+  version: 2.0.0
+  product: rhcl
+  docs-version: "1.4"
+  skill-group: "Connectivity Link"
 description: >
-  Use when checking RHCL 1.3 release notes, new features, bug fixes, known
-  issues, async releases (1.3.1 through 1.3.5), MCP gateway Technology Preview
-  introduction, wasm-shim fixes, Limitador storage fixes, DNS operator fixes,
-  and Authorino operator fixes. Note: RHCL 1.4.0 is deprecated; the demo stays
-  on 1.3.4. Do NOT use for general Connectivity Link concepts (use rhcl-about),
-  MCP gateway architecture (use rhcl-mcp-gateway), or installation (use
-  rhcl-install or rhcl-install-mcp).
+  Use when checking which Connectivity Link 1.4 release fixes or breaks
+  something the demo depends on: the 1.4.0 deprecation, the 1.4.1-1.4.3
+  z-stream fixes (wasm-shim host matching, EnvoyFilter targeting, operator
+  memory leak, large request bodies, AuthConfig v1beta3), Technology Preview
+  status (MCP gateway, GRPCRoute), and known issues. Do NOT use for concepts
+  (use rhcl-about), the update procedure (use rhcl-update), or MCP gateway
+  architecture (use rhcl-mcp-gateway).
 ---
 
-# RHCL Release Notes
+# Connectivity Link release notes
 
-Use this skill to check Red Hat Connectivity Link 1.3 release notes, including
-new features, bug fixes, known issues, and async patch releases. The demo pins
-`rhcl-operator.v1.3.4`.
+Thin skill: what matters to this demo, with links to the 1.4 release notes.
+Re-read the notes themselves before acting; they are updated per z-stream.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+- Deciding whether to raise the qualified minimum in
+  `scripts/platform/check-operator-policy.py`.
+- A MaaS Gateway symptom might match a fixed or known issue.
 
-## RHCL 1.3 GA Features
+## Relevant to this demo
 
-- CoreDNS integration for on-premise DNS (Generally Available)
-- Enhanced observability documentation (access logs, tracing, request
-  correlation)
-- OpenShift Service Mesh 3.2 as the Gateway API provider
-- OCP 4.19, 4.20, 4.21 support
-- cert-manager Operator 1.18 support
-- Red Hat build of Keycloak Version 26.4 support
+| Release | Item (Jira) | Why it matters here | Section |
+|---|---|---|---|
+| 1.4.0 | Deprecated (auth failures, API-key errors, gateway instability, memory pressure) | The policy minimum is 1.4.3; never qualify 1.4.0 | [About this release][about] |
+| 1.4.1 | AuthConfig `v1beta3` served, `v1beta2` removed (CONNLINK-1131) | Upgrades no longer blocked by CEL predicates | [1.4.1][z141] |
+| 1.4.2 | Request bodies over 1 MB corrupted next to other body filters (CONNLINK-1311) | Large prompts through the MaaS Gateway | [1.4.2][z142] |
+| 1.4.3 | Case-insensitive host matching in wasm-shim (CONNLINK-1448); EnvoyFilter `workloadSelector` instead of namespace-wide `targetRef` (CONNLINK-1510); operator reconcile loop causing OOMKills and 503 (CONNLINK-1567) | The installed baseline; gateway stability | [1.4.3][z143] |
+| known issue | First request after a Limitador restart with Redis storage is not limited (CONNLINK-856) | Applies only with Redis storage; Git sets no Limitador storage (the operator creates `limitador` from the `Kuadrant` CR) | [Known issues][known] |
+| Tech Preview | MCP gateway, GRPCRoute policy attachment | Neither is used by the demo | [Technology Preview][tp] |
 
-## Async Releases
+Not in the release notes but affecting this demo: 1.4.3 ships wasm-shim
+0.14.2, which holds responses lacking `usage.total_tokens` open
+(Kuadrant/wasm-shim#425, fixed in 0.14.3). See
+`docs/TROUBLESHOOTING.md#maas-gateway-holds-a-response-open-until-the-client-times-out`.
 
-### 1.3.5 (1 July 2026)
+## Procedure
 
-Advisory: RHBA-2026:34242
+1. Open the [z-stream list][zstream] and compare it with the installed CSV
+   (`rhcl-update` has the command).
+2. Record any fix the repo depends on next to the minimum in the
+   operator-policy change and in the Stage 040 README.
 
-Bug fix:
+## Related skills
 
-- `AuthConfig` CRD v1beta2 schema validation blocked upgrades when CEL
-  predicates were used. Now v1beta3 is the standard served version and v1beta2
-  is deprecated and removed. Upgrades proceed without OLM blocking.
-  (CONNLINK-1131)
+`rhcl-update`, `rhcl-troubleshoot`, `rhoai-maas-governance`.
 
-### 1.3.4 (2 June 2026) — Demo pinned version
-
-Advisory: RHBA-2026:22741
-
-Bug fixes:
-
-- Limitador deployment stuck on Multi-Attach PVC error when disk storage
-  enabled. Fix: `DeploymentStrategy` is `Recreate` by default for all storage
-  options. (CONNLINK-855)
-- DNS Operator silently discarded wildcard replacement due to `strings.Replace`
-  return value not being captured. Fixed. (Kuadrant-750)
-- DNS Operator rejected valid hostnames under private registry suffixes
-  (`httpbin.org`, `github.io`, `s3.amazonaws.com`). Now only rejects true
-  ICANN-managed TLDs. (Kuadrant-765)
-- Authorino Operator TLS preflight check missed empty-string certificate secret
-  names. Now validates against both empty values and empty strings.
-  (Kuadrant-309)
-
-### 1.3.3 (30 April 2026)
-
-Advisory: RHEA-2026:10743
-
-New features:
-
-- MCP gateway available as Technology Preview on the `preview` update channel
-- MCP gateway aggregates in-cluster and remote MCP servers behind a single
-  endpoint
-- Elicitation support for interactive workflows (requires client support)
-
-Known issue:
-
-- `MCPGatewayExtension` with `httpRouteManagement: Enabled` only creates
-  `/mcp` rule, missing `/.well-known/oauth-protected-resource`. Workaround:
-  set `httpRouteManagement: Disabled` and use manual HTTPRoute.
-
-### 1.3.2 (8 April 2026)
-
-Advisory: RHBA-2026:7016
-
-Bug fix:
-
-- `wasm-shim` processed protection policies out of sequence with data
-  forwarding, creating a race condition where upstream received denied requests
-  before connection was cut. Fixed: policy check is now blocking before data
-  dispatch. (CONNLINK-912)
-
-### 1.3.1 (18 March 2026)
-
-Advisory: RHBA-2026:4903
-
-Bug fix:
-
-- `wasm-shim` incorrectly appended values to existing request headers instead
-  of replacing them during external authorization flow. Fixed: headers in
-  `CheckResponse` now correctly replace existing values. (CONNLINK-867)
-
-## Known Issues (1.3 GA)
-
-- When Redis or RedisCached storage is set in a `Limitador` CR and the pod
-  restarts, the first request to the gateway is never rate-limited. Subsequent
-  requests are rate-limited. (CONNLINK-856)
-
-## Version Deprecation Notice
-
-RHCL 1.4.0 is deprecated. The demo stays on RHCL 1.3.4. All guidance in this
-skill is grounded in RHCL 1.3 release notes only.
-
-## Update Channel
-
-Red Hat Connectivity Link uses the `stable` update channel to track and receive
-updates for the Operator. Manage updates through the OLM subscription resource.
-
-## Workflow
-
-1. Read `references/official-doc-extraction.md` for full release details.
-2. Check the specific async release for the version in question.
-3. For known issues, verify current cluster state against documented
-   workarounds.
-4. For bug fixes, confirm the fix applies to the pinned version (1.3.4).
-
-## Related Skills
-
-- Use `rhcl-about` for general Connectivity Link concepts.
-- Use `rhcl-mcp-gateway` for MCP gateway architecture.
-- Use `rhcl-install-mcp` for MCP gateway installation.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[about]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-about_rhcl-release-notes
+[tp]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-tech-preview_rhcl-release-notes
+[known]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-known-issues_rhcl-release-notes
+[zstream]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-z-stream_rhcl-release-notes
+[z141]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-1.4.1-z-stream_rhcl-release-notes
+[z142]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-1.4.2-z-stream_rhcl-release-notes
+[z143]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-1.4.3-z-stream_rhcl-release-notes

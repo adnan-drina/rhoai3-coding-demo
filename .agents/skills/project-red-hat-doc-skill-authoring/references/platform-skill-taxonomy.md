@@ -1,94 +1,60 @@
 # Platform Skill Taxonomy
 
-Use this taxonomy when creating official-doc-backed Red Hat product skills.
+Naming and ownership of Red Hat product skills. Versions, pins and book →
+skill routes live in `.agents/references/red-hat-doc-map.yaml`; this file does
+not repeat them.
 
-Use `.agents/references/red-hat-doc-map.yaml` as the routing layer between Red
-Hat product documentation hierarchy and flat repo skills. The taxonomy below
-defines naming and ownership; the doc map defines which product, category,
-book, and chapter topic routes to which existing or planned skill.
+## Product families
 
-## Product Families
+| Product | Map key | Prefix | `metadata.skill-group` |
+|---|---|---|---|
+| Red Hat OpenShift AI Self-Managed | `rhoai` | `rhoai-` | `RHOAI Platform` |
+| OpenShift Container Platform | `ocp` | `ocp-` | `OpenShift Platform` |
+| OpenShift Dev Spaces | `ocp_devspaces` | `ocp-devspaces-` | `OpenShift Platform` |
+| OpenShift Lightspeed | `ocp_lightspeed` | `ocp-lightspeed-` | `OpenShift Platform` |
+| OpenShift Pipelines | `ocp_pipelines` | `ocp-pipelines-` | `OpenShift Platform` |
+| OpenShift Data Foundation | `odf` | `odf-` | `OpenShift Data Foundation` |
+| Connectivity Link | `rhcl` | `rhcl-` | `Connectivity Link` |
+| Developer Hub | `rhdh` | `rhdh-` | `Developer Hub` |
+| Migration Toolkit for Applications | `mta` | `mta-` | `Application Modernization` |
+| Advanced Developer Suite (SSC) | `rhads` | `rhads-` | `Trusted Software Supply Chain` |
+| Trusted Profile Analyzer | `tpa` | `tpa-` | `Trusted Software Supply Chain` |
 
-| Product family | Prefix | Skill group | Metadata `platform-family` | Rule file |
-|----------------|--------|-------------|-----------------------------|-----------|
-| Red Hat OpenShift AI Self-Managed | `rhoai-*` | `RHOAI Platform` | `rhoai` | `.agents/rules/rhoai.md` |
-| Red Hat OpenShift Container Platform | `ocp-*` | `OpenShift Platform` | `ocp` | `.agents/rules/ocp.md` |
-| Red Hat OpenShift Data Foundation | `odf-*` | `OpenShift Data Foundation` | `odf` | `.agents/rules/odf.md` |
+The checker attributes a skill to a family by the longest matching prefix
+(`ocp-devspaces-` before `ocp-`), and `metadata.product` must equal that map key.
 
-Do not create empty OCP or ODF component skills. Create the first `ocp-*` or
-`odf-*` skill only when an official Red Hat source is provided and the product
-baseline is pinned in `docs/PLATFORM_BASELINE.md`.
+## Naming
 
-## Skill Naming
+- Stable capability names, never versions: `odf-object-bucket-claims`, not
+  `odf-4-22-obc`.
+- Flat folders under `.agents/skills/<skill-name>/`; documentation hierarchy
+  belongs in the map, not in folders.
+- Name by product capability, not by demo stage.
 
-Use stable capability names:
-
-- `ocp-etcd`
-- `ocp-ai-workloads`
-- `ocp-cicd-builds`
-- `ocp-distributed-tracing`
-- `ocp-gitops-operator`
-- `ocp-machine-configuration`
-- `ocp-machine-management`
-- `ocp-node-feature-discovery`
-- `ocp-nodes`
-- `ocp-observability`
-- `ocp-opentelemetry`
-- `ocp-storage`
-- `ocp-web-console`
-- `ocp-gateway-api`
-- `ocp-authentication-identity-providers`
-- `odf-storagecluster`
-- `odf-storage-classes`
-- `odf-object-bucket-claims`
-- `odf-multicloud-gateway`
-
-Prefer names based on product capability rather than one demo stage. Avoid
-version numbers in skill names.
-
-Keep skill folders flat under `.agents/skills/<skill-name>/`. Do not create
-category or product subdirectories to mirror Red Hat documentation structure;
-represent that hierarchy in `.agents/references/red-hat-doc-map.yaml`.
-
-## Frontmatter Template
+## Frontmatter
 
 ```yaml
 ---
 name: <prefix>-<capability>
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "<rhoai|ocp|odf>"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
-  skill-group: "<RHOAI Platform|OpenShift Platform|OpenShift Data Foundation>"
+  author: rhoai3-coding-demo
+  version: <skill semver>
+  product: <map key>
+  docs-version: "<map docs_version>"
+  skill-group: "<group above>"
 description: >
-  <Strong trigger description tied to official Red Hat docs. Include positive
-  and negative triggers.>
+  <Repo-specific positive triggers; negative triggers naming the other skill.>
 ---
 ```
 
-For ODF skills, keep `ocp-baseline: "repo"` because ODF runs on the active
-OpenShift baseline and the OCP version affects API availability, operators,
-storage classes, and cluster behavior.
+The former keys `platform-family`, `platform-baseline: "repo"` and
+`ocp-baseline: "repo"` carried no version and are dropped when a skill is
+converted.
 
-## Inventory Updates
+## New family
 
-When adding the first skill in a new product family:
-
-- add the family row to `AGENTS.md` if it is not already present
-- add the family row to `.agents/skills/project-structure/SKILL.md`
-- add the family row to `.agents/skills/project-agent-guidance/SKILL.md`
-- create `.agents/rules/ocp.md` or `.agents/rules/odf.md` as a thin pointer
-  to the new skills
-- create or update a roadmap in
-  `.agents/skills/project-structure/references/`
-
-When adding later skills in an existing family:
-
-- update `.agents/references/red-hat-doc-map.yaml`
-- update the family rule file
-- update the relevant roadmap
-- update inventory counts in `project-agent-guidance`
-- update `AGENTS.md` and `project-structure` if those files list explicit
-  skill names
+1. Add the product to the map with `docs_slug`, `docs_version`, `pin`,
+   `deployed`, and routes.
+2. Add a row here and to the `AGENTS.md` Shared Skills table.
+3. Add a rule file only if the family needs always-on posture or cross-family
+   handoffs.

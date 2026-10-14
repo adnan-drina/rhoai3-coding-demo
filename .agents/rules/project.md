@@ -37,6 +37,12 @@ reuse the legacy OCP 4.20/RHOAI 3.4/MTA 8.1/RHDH 1.9 posture as current.
 
 If changing a version, update the manifests, validation logic, README narrative, operations notes, and references together.
 
+Documentation versions for links are written once per product in
+`.agents/references/red-hat-doc-map.yaml` (`docs_version`, checked against
+its Git pin). When a pin moves, update that entry in the same change and run
+`python3 scripts/shared/check-doc-links.py`; its findings are the list of
+skills and component READMEs to re-check.
+
 ## Absolute Priority: Official Documentation Alignment
 
 - Treat official Red Hat documentation for the relevant product versions as the source of truth.
@@ -172,6 +178,13 @@ A shared rule or skill may be committed only when it applies to all contributors
 Rules should be: short, specific, durable, enforceable, non-duplicative.
 
 Skills should include: when to use, required inputs, files to inspect, steps to follow, validation commands, expected output, things the agent must not do.
+
+### Product Skills Link, They Do Not Copy
+
+Red Hat product skills hold repo decisions (with manifest paths), repo
+procedures and pitfalls, and link to versioned official sections. Do not add
+copied documentation, `official-doc-extraction.md` or `source-capture.md`.
+Follow `project-red-hat-doc-skill-authoring`.
 
 ## Plan Documents (PLAN.md)
 

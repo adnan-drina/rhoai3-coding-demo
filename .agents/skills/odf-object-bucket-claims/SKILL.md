@@ -1,66 +1,88 @@
 ---
 name: odf-object-bucket-claims
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "odf"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: odf
+  docs-version: "4.22"
   skill-group: "OpenShift Data Foundation"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift Data
-  Foundation ObjectBucketClaim workflows for the demo: project-scoped S3
-  buckets, generated ConfigMaps and Secrets, OBC lifecycle, application
-  consumption, RHOAI object-store handoff, and NooBaa-backed bucket claims.
-  Do NOT use for MCG service administration (use odf-multicloud-gateway),
-  full StorageCluster decisions (use odf-storagecluster), generic OCP storage
-  concepts (use ocp-storage), or RHOAI user-facing S3 workflow instructions
-  (use rhoai-s3-object-storage-data).
+  Use when adding, reviewing, or debugging an ObjectBucketClaim in this demo:
+  project-scoped S3 buckets on openshift-storage.noobaa.io, the generated
+  ConfigMap and Secret, mapping OBC output into RHOAI S3 connections, Argo CD
+  prune/delete protection for bucket data, and OBC deletion behavior. Do NOT use
+  for MCG/NooBaa service administration (use odf-multicloud-gateway), the ODF
+  install (use odf-storagecluster), generic OpenShift storage (use ocp-storage),
+  or RHOAI user-facing S3 workflows (use rhoai-s3-object-storage-data).
 ---
 
 # ODF ObjectBucketClaims
 
-Use this skill when the demo needs project-scoped S3-compatible buckets from
-ODF/NooBaa.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+ODF 4.22 sections. Copy the pattern from an existing claim in Git, not from
+documentation examples.
 
-## Source Grounding
+## When to use
 
-1. Confirm the active ODF version in `docs/PLATFORM_BASELINE.md`.
-2. Read `.agents/rules/odf.md`.
-3. Use `references/source-capture.md` for source provenance.
-4. Use `references/official-doc-extraction.md` for supported behavior.
-5. Use `references/validation-checklist.md` before finalizing OBC content.
+- A stage needs a new S3 bucket.
+- An OBC stays `Pending`, or a consumer cannot read the generated credentials.
+- Reviewing how bucket credentials reach a workload or an RHOAI connection.
 
-## Scope
+## Repo decisions
 
-- `ObjectBucketClaim` resources for project-scoped bucket requests.
-- Generated ConfigMaps and Secrets that expose bucket endpoint and
-  credentials.
-- Handoff from GitOps-created OBCs to RHOAI components that consume S3.
-- Demo examples that use `openshift-storage.noobaa.io` only after validating
-  that the storage class exists.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Every bucket is an OBC on `openshift-storage.noobaa.io` | OBCs listed below | [Object Bucket Claim][obc] |
+| Fixed `bucketName` (not `generateBucketName`) so buckets are predictable across rebuilds; exception: the Stage 070 GitLab buckets use `generateBucketName` | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/obc-models.yaml`; `gitops/stages/070-advanced-app-platform/gitlab/buckets.yaml` | [Object Bucket Claim][obc] |
+| Bucket objects carry `argocd.argoproj.io/sync-options: Prune=false,Delete=false` so data outlives the Application (GitLab buckets: `Prune=false` only) | `sandbox-storage/obc-*.yaml`, Stage 050 OBCs | — (Argo CD behavior) |
+| Generated credentials never enter Git; a hook Job copies OBC output into RHOAI connection Secrets in-cluster, with owner-UID and HTTPS/443 checks | `sandbox-storage/connection-job.yaml`, `role.yaml` | [Object Bucket Claim][obc] |
+| RHOAI connections are Secret skeletons in Git (`opendatahub.io/connection-type-protocol: s3`), data filled at runtime and ignored by Argo CD | `sandbox-storage/connection-*.yaml` | see `rhoai-connection-types` |
 
-## Boundaries
+Existing claims to copy from:
 
-- Do not commit generated OBC Secrets or NooBaa credentials.
-- Do not use this skill to administer NooBaa or MCG backing stores; use
-  `odf-multicloud-gateway`.
-- Do not use this skill for generic RHOAI S3 usage instructions; use
-  `rhoai-s3-object-storage-data`.
+- `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/obc-models.yaml`, `obc-workbench.yaml`
+- `gitops/stages/050-model-evaluation/mlflow/objectbucketclaim.yaml`
+- `gitops/stages/050-model-evaluation/model-qualification/storage/obc-*.yaml`
+- `gitops/stages/070-advanced-app-platform/gitlab/buckets.yaml`
 
-## Workflow
+## Procedure
 
-1. Verify ODF/MCG is present and the object storage class exists.
-2. Define the project namespace that owns the bucket.
-3. Create a minimal OBC manifest using official schema and live `oc explain`
-   verification when needed.
-4. Consume generated ConfigMap and Secret through workload references, not by
-   copying credential values into Git.
-5. Validate OBC phase, generated bucket data, and application consumption.
+1. Copy the nearest existing claim; keep the namespace, a fixed `bucketName`,
+   `storageClassName: openshift-storage.noobaa.io`, and the
+   `Prune=false,Delete=false` sync option.
+2. Consume the generated ConfigMap and Secret (both named after the claim)
+   through `envFrom`/`valueFrom` or an in-cluster Job; never copy values.
+3. Document the bucket in the owning component README (What table, Not in Git).
+4. Validate after the OpenShift safety guard in `AGENTS.md`:
 
-## References
+   ```bash
+   oc get obc -n <namespace> <claim> -o jsonpath='{.status.phase}{"\n"}'   # Bound
+   oc get configmap,secret -n <namespace> <claim>
+   ```
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/object-bucket-claim-pattern.md`
+## Pitfalls
+
+- `openshift-storage.noobaa.io` has reclaim policy `Delete`: removing a claim
+  removes its bucket and data. That is why the repo forbids prune and delete
+  on bucket objects; read the deletion section of [Object Bucket Claim][obc]
+  before deleting one by hand.
+- The ConfigMap may lack `BUCKET_REGION`; the sandbox Job falls back to
+  `us-east-1`.
+- Generated Secrets are owned by the OBC; an OBC that already has another
+  owner or tracking id is refused by `deploy-sandbox-storage.sh`.
+
+## Official documentation (ODF 4.22)
+
+| Topic | Section |
+|---|---|
+| OBC lifecycle, generated ConfigMap/Secret, deletion | [Object Bucket Claim][obc] |
+| The MCG service behind the claims | [Managing hybrid and multicloud resources][mcg] |
+| Storage class model | [Storage classes][sc] |
+
+## Related skills
+
+`odf-multicloud-gateway`, `rhoai-s3-object-storage-data`, `rhoai-connection-types`.
+
+[obc]: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html/managing_hybrid_and_multicloud_resources/object-bucket-claim
+[mcg]: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html/managing_hybrid_and_multicloud_resources/index
+[sc]: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html-single/managing_and_allocating_storage_resources/index#storage-classes_rhodf

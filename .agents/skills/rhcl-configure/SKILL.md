@@ -2,83 +2,94 @@
 name: rhcl-configure
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhcl"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
-  skill-group: "OpenShift Platform"
+  version: 2.0.0
+  product: rhcl
+  docs-version: "1.4"
+  skill-group: "Connectivity Link"
 description: >
-  Use when deploying and configuring Connectivity Link to secure, protect, and
-  connect APIs on OpenShift, including AuthPolicy, RateLimitPolicy,
-  TokenRateLimitPolicy, DNSPolicy, TLSPolicy, HTTPRoute, GRPCRoute, Gateway
-  object setup, and application-level policy overrides. Do NOT use for
-  Connectivity Link operator installation; use rhcl-install. Do NOT use for MCP
-  gateway registration or MCP auth policies; use rhcl-mcp-config.
+  Use when reading, reviewing, or debugging Connectivity Link policies on the
+  MaaS Gateway: the MaaS-generated AuthPolicy and TokenRateLimitPolicy objects,
+  how TokenRateLimitPolicy meters usage.total_tokens, policy status conditions,
+  default-deny, and when a hand-written AuthPolicy, RateLimitPolicy,
+  TLSPolicy, DNSPolicy, GRPCRoute or PlanPolicy would be appropriate. Do NOT
+  use for operator installation (use rhcl-install), MaaS subscriptions and
+  API keys (use rhoai-maas-governance), or MCP server policies (use
+  rhcl-mcp-config).
 ---
 
-# RHCL Configure
+# Connectivity Link policies
 
-Use this skill to ground Connectivity Link policy deployment decisions in
-official RHCL 1.4 documentation for the active baseline in
-`docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+Connectivity Link 1.4 sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+- A model call is denied, unmetered, or limited unexpectedly.
+- Someone proposes writing a policy object into Git.
 
-## Key Concepts
+## Repo decisions
 
-- All policies use `apiVersion: kuadrant.io/v1` except TokenRateLimitPolicy
-  (`kuadrant.io/v1alpha1`).
-- Policies target Gateway or HTTPRoute/GRPCRoute via `spec.targetRef`.
-- Gateway-level policies provide defaults; route-level policies override.
-- Zero-trust pattern: apply `deny-all` AuthPolicy at Gateway level; each app
-  developer creates route-level AuthPolicy overrides.
-- Rate limiting uses Limitador; shared Redis required for multicluster.
-- TokenRateLimitPolicy counts LLM tokens from OpenAI-compatible
-  `usage.total_tokens` response field.
-- GRPCRoute support is Technology Preview in 1.4.
-- CoreDNS can provide on-premise DNS as an alternative to cloud providers.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| No policy objects in Git: the OpenShift AI MaaS controller generates `AuthPolicy maas-gateway-auth` and `TokenRateLimitPolicy` objects (`gateway-default-deny`, `maas-trlp-<model>`) from MaaS subscriptions | not in Git; `gitops/stages/040-governed-models-as-a-service/maas-operators/README.md` ("Objects not in Git") | [TokenRateLimitPolicy][trlp]; see `rhoai-maas-governance` |
+| Limits are expressed as `MaaSSubscription` token limits, not RateLimitPolicy | `gitops/stages/040-governed-models-as-a-service/model-access/` | see `rhoai-maas-governance` |
+| Every external model uses `apiFormat: openai-chat` so responses carry `usage.total_tokens` for metering | `gitops/stages/040-governed-models-as-a-service/external-models/` | [How token rate limiting works][trlp-how] |
+| The MaaS Gateway terminates TLS with the cert-manager ingress certificate; no TLSPolicy, no DNSPolicy | `gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/` | [Set a TLS policy][tls] (not used) |
 
-## Workflow
+## Procedure
 
-1. Confirm the active RHCL baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - Gateway object creation and listener configuration
-   - TLSPolicy and certificate issuer setup
-   - DNSPolicy for DNS automation and load balancing
-   - AuthPolicy (deny-all default or route-level override)
-   - RateLimitPolicy (gateway default or user-specific override)
-   - TokenRateLimitPolicy for LLM token budgets
-   - HTTPRoute or GRPCRoute for application traffic
-   - Rate-limit response headers
-   - On-premise DNS with CoreDNS
-4. For manifests, verify API versions against official docs.
-5. Validate with verification commands from the extraction.
+1. Inspect, after the OpenShift safety guard in `AGENTS.md`:
 
-## Validation Signals
+   ```bash
+   oc get authpolicy,tokenratelimitpolicy -A
+   oc get tokenratelimitpolicy <name> -n <ns> -o jsonpath='{.status.conditions}'
+   oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.status.conditions}'
+   ```
 
-```bash
-oc get authpolicy <name> -n <ns> -o=jsonpath='{.status.conditions}'
-oc get ratelimitpolicy <name> -n <ns> -o=jsonpath='{.status.conditions}'
-oc get tlspolicy <name> -n <ns> -o=jsonpath='{.status.conditions}'
-oc get dnspolicy <name> -n <ns> -o=jsonpath='{.status.conditions}'
-oc get gateway <name> -n <ns> -o=jsonpath='{.status.conditions}'
-```
+   Healthy policies report `Accepted` and `Enforced`; the Gateway reports
+   `Accepted` and `Programmed`.
+2. To change who may call a model or how much, change the MaaS objects
+   (`rhoai-maas-governance`), never the generated policies; the controller
+   overwrites them.
+3. A hand-written policy needs a README decision first. Use `kuadrant.io/v1`
+   for AuthPolicy, RateLimitPolicy, TLSPolicy and DNSPolicy and
+   `kuadrant.io/v1alpha1` for TokenRateLimitPolicy, as in the
+   [deploy guide][deploy]; check the schema with `oc explain`.
 
-All policies report `Accepted` and `Enforced` conditions when healthy.
+## Pitfalls
 
-## Related Skills
+- Connectivity Link 1.4.3 ships wasm-shim 0.14.2: a response without OpenAI
+  `usage.total_tokens` (Anthropic Messages, error bodies, some SSE streams) is
+  held open until the client times out. See
+  `docs/TROUBLESHOOTING.md#maas-gateway-holds-a-response-open-until-the-client-times-out`.
+- 429 from the gateway is usually an exhausted subscription budget:
+  `docs/TROUBLESHOOTING.md#maas-gateway-returns-429`.
+- GRPCRoute policy attachment is Technology Preview in 1.4 and excludes
+  TokenRateLimitPolicy ([GRPCRoute][grpc]).
 
-- `rhcl-install` for Connectivity Link operator installation.
-- `rhcl-install-mcp` for MCP gateway installation.
-- `rhcl-mcp-config` for MCP server registration and auth.
-- `rhoai-maas-governance` for RHOAI MaaS governance integration.
-- `ocp-ingress-gateway-routes` for OCP Gateway API primitives.
+## Official documentation (Connectivity Link 1.4)
 
-## References
+| Topic | Section |
+|---|---|
+| Default deny AuthPolicy | [Set the default AuthPolicy][authdeny] |
+| Default rate limit | [Set a default rate-limit policy][rlp] |
+| Token-based rate limiting | [About TokenRateLimitPolicy][trlp], [How it works][trlp-how] |
+| Routes and overrides | [Connect and secure APIs][connect] |
+| GRPCRoute (TP) | [GRPCRoute policy attachment][grpc] |
+| Tiered plans (not used) | [PlanPolicy][plan] |
+| API management console (not used) | [Develop APIs with the web console][webconsole] |
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+## Related skills
+
+`rhoai-maas-governance`, `rhcl-observability`, `rhcl-troubleshoot`, `ocp-ingress-gateway-routes`.
+
+[deploy]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/deploy_red_hat_connectivity_link/index
+[authdeny]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/deploy_red_hat_connectivity_link/index#proc-set-default-auth-policy_rhcl-config-deploy-gateway-policies
+[rlp]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/deploy_red_hat_connectivity_link/index#proc-set-default-rate-limit-policy_rhcl-config-deploy-gateway-policies
+[trlp]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/deploy_red_hat_connectivity_link/index#con-about-token-based-rate-limiting_rhcl-config-deploy-gateway-policies
+[trlp-how]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/deploy_red_hat_connectivity_link/index#rhcl-token-rate-limiting_rhcl-config-deploy-gateway-policies
+[tls]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/deploy_red_hat_connectivity_link/index#proc-set-tls-policy_rhcl-config-deploy-gateway-policies
+[connect]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/deploy_red_hat_connectivity_link/index#connect-secure-apis-services
+[grpc]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/deploy_red_hat_connectivity_link/index#con-about-grpc-support_connect-secure-apis-services
+[plan]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/deploy_red_hat_connectivity_link/index#rhcl-planpolicy
+[webconsole]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/develop_apis_with_the_web_console/index
