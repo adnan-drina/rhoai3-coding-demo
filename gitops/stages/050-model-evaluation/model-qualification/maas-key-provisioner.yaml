@@ -28,9 +28,18 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 rules:
+  # Only the tenant key Secret and the endpoint ConfigMap; create cannot be limited by name.
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [evalhub-model-auth-maas]
+    verbs: [get, patch, update]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [qualification-endpoints]
+    verbs: [get, patch, update]
   - apiGroups: [""]
     resources: [secrets, configmaps]
-    verbs: [create, get, patch, update]
+    verbs: [create]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

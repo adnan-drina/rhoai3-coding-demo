@@ -59,9 +59,36 @@ rules:
     resources: [configs]
     resourceNames: [cluster]
     verbs: [get, patch]
+---
+# Read only the registry's default route, not every Route in the cluster.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: evalhub-oci-export-registry-route
+  namespace: openshift-image-registry
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
   - apiGroups: [route.openshift.io]
     resources: [routes]
+    resourceNames: [default-route]
     verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-oci-export-registry-route
+  namespace: openshift-image-registry
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: evalhub-oci-export-registry-route
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-oci-export-provisioner
+    namespace: evaluated-models
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
