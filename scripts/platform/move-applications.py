@@ -141,8 +141,9 @@ class Plan:
             if live["source"].get("kustomize") and not app["spec"]["source"].get("kustomize"):
                 app["spec"]["source"]["kustomize"] = live["source"]["kustomize"]
                 log("  carry " + name + ": source.kustomize from " + source_app["metadata"]["name"])
-            have = [json.dumps(i, sort_keys=True) for i in app["spec"].get("ignoreDifferences", [])]
-            extra = [i for i in live.get("ignoreDifferences", []) if json.dumps(i, sort_keys=True) not in have]
+            norm = lambda i: json.dumps({**i, "group": i.get("group", "")}, sort_keys=True)  # Argo drops group: ""
+            have = [norm(i) for i in app["spec"].get("ignoreDifferences", [])]
+            extra = [i for i in live.get("ignoreDifferences", []) if norm(i) not in have]
             if extra:
                 app["spec"].setdefault("ignoreDifferences", []).extend(extra)
                 log("  carry " + name + ": " + str(len(extra)) + " live ignoreDifferences entries from " + source_app["metadata"]["name"])
