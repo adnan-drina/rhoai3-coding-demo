@@ -105,6 +105,32 @@ class RuntimeArtifact(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(ValueError): promotion.validate_runtime([obj], 'example', 'example-dev', self.image)
 
 
+class CatalogEnvelope(unittest.TestCase):
+    def test_rendered_annotations_remain_strings_for_numeric_gitlab_id(self):
+        renderer = module('catalog_renderer', 'rhdh/jobs/catalog/render_catalog.py')
+        body = renderer.render((BASE / 'rhdh/catalog/all.yaml').read_text(),
+            revision='a' * 40, devspaces_url='https://devspaces.example.test',
+            rhdh_url='https://rhdh.example.test', coolstore_url='https://inventory.example.test',
+            sonarqube_url='https://sonar.example.test', maas_host='maas.example.test',
+            maas_internal_ip='172.30.0.1', scm={
+                'PLATFORM_CATALOG_REPO': 'https://gitlab.example.test/platform/demo.git',
+                'GITLAB_HOST': 'gitlab.example.test', 'GITLAB_BASE_URL': 'https://gitlab.example.test',
+                'GITLAB_WORKLOAD_GROUP': 'workloads', 'GITLAB_REGISTRATION_PROJECT_ID': 42,
+                'agentic-quarkus-scaffold': 'https://gitlab.example.test/platform/app/-/tree/abc',
+                'quarkus-migration-scaffold-v2': 'https://gitlab.example.test/platform/migration/-/tree/abc',
+                'MTA_HUB_URL': 'https://mta.example.test',
+            })
+        entities = list(yaml.safe_load_all(body))
+        component = next(e for e in entities if e and e.get('kind') == 'Component'
+                         and e['metadata']['name'] == 'coolstore-inventory-service')
+        self.assertEqual(component['metadata']['annotations'][
+            'rhoai3.redhat.com/gitlab-registration-project-id'], '42')
+        for entity in entities:
+            if entity:
+                for key, value in entity['metadata'].get('annotations', {}).items():
+                    self.assertIsInstance(value, str, (entity['metadata']['name'], key))
+
+
 class IntegratedContract(unittest.TestCase):
     def test_mta_consumers_use_the_governed_model_id(self):
         tackle = yaml.safe_load((BASE / 'mta/mta-instance/tackle.yaml').read_text())
