@@ -383,6 +383,33 @@ curl() {
 
 
 class GatewayAndPolicy(unittest.TestCase):
+    def test_native_gateway_origin_is_distinct_from_lightspeed_api_base(self):
+        from unittest.mock import patch
+        calls = []
+        def fake_oc(*args, **kwargs):
+            calls.append(args)
+            if args[:2] == ('get', 'gateway.gateway.networking.k8s.io'):
+                return {'spec': {'listeners': [{'hostname': 'maas.example.test'}]}}
+            if args[:2] == ('get', 'secret'):
+                return {'data': {'MAAS_KEY_ID': base64.b64encode(b'test-key-id').decode(),
+                                 'OPENAI_API_KEY': base64.b64encode(b'test-only').decode()}}
+        owner = {'username': 'system:serviceaccount:openshift-mta:mta-maas-provisioner',
+                 'subscription': 'mta-migration-ai', 'status': 'active'}
+        with patch.object(ai, 'oc', side_effect=fake_oc), \
+             patch.object(ai.Path, 'read_text', return_value='test-service-account-token'), \
+             patch.object(ai.urllib.request, 'urlopen') as urlopen:
+            urlopen.return_value.__enter__.return_value = io.BytesIO(json.dumps(owner).encode())
+            ai.main()
+        patches = {call[1]: json.loads(call[-1])['spec'] for call in calls if call[0] == 'patch'}
+        self.assertEqual(patches['tackle']['kai_llm_baseurl'], 'https://maas.example.test/v1')
+        endpoint = patches['gateways.konveyor.io']['endpoint']
+        # Pinned vendor gateway_controller.go adds /v1/models to the origin.
+        self.assertEqual(endpoint + '/v1/models', 'https://maas.example.test/v1/models')
+        resources = list(yaml.safe_load_all((BASE / 'mta/jobs/configure-ai.yaml').read_text()))
+        gateway = next(row for row in resources if row['kind'] == 'Gateway')
+        self.assertEqual(gateway['spec']['endpoint'], 'https://maas.pending.invalid')
+        self.assertFalse(any(call[0] == 'apply' for call in calls), 'Existing key must be reused')
+
     def test_maas_host_from_current_gateway_not_listener_name(self):
         gateway = yaml.safe_load((ROOT / 'gitops/stages/040-governed-models-as-a-service/base/gateway/base/gateway.yaml').read_text())
         self.assertEqual(ai.gateway_host(gateway), 'maas.placeholder.example.com')

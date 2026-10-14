@@ -2832,6 +2832,8 @@ Pipelines and TAS keep Automatic approval on versioned channels in the shared `o
 
 ## MTA 8.3 Solution Server crashes or its agentic controller OOMKills
 
+Native Gateway connectivity also has a separate URL contract: `Gateway.spec.endpoint` is the MaaS origin without `/v1`, while Tackle `kai_llm_baseurl` retains `/v1` for Lightspeed. The selected vendor controller appends `/v1/models` to its endpoint, so reusing the Lightspeed URL produces `/v1/v1/models`. This path correction does not repair the startup failures below. See the [exact vendor controller source](https://github.com/migtools/mta-agentic-controller/blob/6d5432c31238b98f8a8c55dcb2b0d296f3a4d5e7/internal/controller/gateway_controller.go#L71).
+
 **Where it appears:** Stage 070, `openshift-mta/kai-api` and `agentic-controller`. These failures occur before model inference; deliberately stopped models are not their cause.
 
 **Confirmed cause (2026-10-14):** the selected official Solution Server image contains SQLAlchemy 2.1.1 without `greenlet`. A bounded pod using that exact image found neither an importable module nor a package in its Python paths. Its vendor source declares plain `sqlalchemy>=2.0.22` and installs the project without the checked-in requirements lock. SQLAlchemy 2.1 requires the `asyncio` extra to include `greenlet`. The agentic controller's selected operator template fixes the memory limit at 128Mi; the inspected operator exposes no controller resource override. `analyzer_container_limits_memory` sizes analysis pods, not this controller. The Tackle schema preserves unknown fields, so a successful dry run alone cannot prove a guessed setting works.

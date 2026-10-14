@@ -62,7 +62,8 @@ def main():
             raise ValueError('MaaS did not return a usable key and identity')
         oc('apply', '-f', '-', data={'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'kai-api-keys', 'namespace': 'openshift-mta'}, 'stringData': {'OPENAI_API_KEY': key, 'MAAS_KEY_ID': key_id}})
     oc('patch', 'tackle', 'mta', '-n', 'openshift-mta', '--type=merge', '-p', json.dumps({'spec': {'kai_llm_baseurl': base + '/v1'}}))
-    oc('patch', 'gateways.konveyor.io', 'maas-qwen', '-n', 'openshift-mta', '--type=merge', '-p', json.dumps({'spec': {'endpoint': base + '/v1'}}))
+    # Native Gateway verification appends /v1/models; Lightspeed takes an API base.
+    oc('patch', 'gateways.konveyor.io', 'maas-qwen', '-n', 'openshift-mta', '--type=merge', '-p', json.dumps({'spec': {'endpoint': base}}))
     print('MTA MaaS credential and native Gateway configured; readiness requires live connection verification')
 
 

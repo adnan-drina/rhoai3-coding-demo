@@ -103,7 +103,10 @@ check 'MTA credential provisioned' "oc get secret kai-api-keys -n openshift-mta 
 check 'MTA LLM proxy ready without inference' "oc get deployment llm-proxy -n openshift-mta -o jsonpath='{.status.readyReplicas}'" '1'
 check 'MTA Solution Server ready' "oc get deployment kai-api -n openshift-mta -o jsonpath='{.status.readyReplicas}'" '1'
 check 'MTA native agentic controller ready' "oc get deployment agentic-controller -n openshift-mta -o jsonpath='{.status.readyReplicas}'" '1'
-check 'MTA uses governed MaaS endpoint' "oc get gateways.konveyor.io maas-qwen -n openshift-mta -o jsonpath='{.spec.endpoint}' | contains -E '^https://maas\\..*/v1$' && echo GOVERNED" 'GOVERNED'
+MTA_MAAS_ORIGIN=$(oc get gateway.gateway.networking.k8s.io maas-default-gateway -n openshift-ingress -o json | "$PYTHON" -c 'import json,sys; hosts=[x.get("hostname", "") for x in json.load(sys.stdin)["spec"]["listeners"] if x.get("hostname", "").startswith("maas.")]; print("https://"+hosts[0] if len(hosts)==1 else "UNRESOLVED")' 2>/dev/null || echo UNRESOLVED)
+check 'MTA MaaS origin is unambiguous' "printf '%s' '$MTA_MAAS_ORIGIN' | contains -E '^https://maas[.][^/]+$' && echo GOVERNED" 'GOVERNED'
+check 'MTA native Gateway uses MaaS origin' "oc get gateways.konveyor.io maas-qwen -n openshift-mta -o jsonpath='{.spec.endpoint}'" "$MTA_MAAS_ORIGIN"
+check 'MTA Lightspeed uses versioned MaaS API base' "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_baseurl}'" "$MTA_MAAS_ORIGIN/v1"
 
 log_step 'Signing service and portal'
 check 'TAS service Ready' "oc get securesign platform -n trusted-artifact-signer -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" 'True'

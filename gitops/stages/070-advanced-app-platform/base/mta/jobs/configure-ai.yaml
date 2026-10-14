@@ -166,7 +166,7 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   provider: openai
-  endpoint: https://maas.pending.invalid/v1
+  endpoint: https://maas.pending.invalid
   credentialRef:
     secretName: kai-api-keys
     key: OPENAI_API_KEY
