@@ -19,8 +19,8 @@ Validated on `cluster-klvxt` for Stage 220 on 2026-06-12 and refreshed on
 | Tenant namespace | `models-as-a-service` |
 | Gateway | `maas-default-gateway` in `openshift-ingress`, with `opendatahub.io/managed: "false"` and `security.opendatahub.io/authorino-tls-bootstrap: "true"` |
 | Gateway TLS | stable `maas-gateway-tls` Secret in `openshift-ingress`, generated from the active OpenShift ingress certificate by deploy automation |
-| Connectivity Link | `rhcl-operator.v1.3.4`, manual InstallPlan approval, with the approval job accepting only the pinned CSV |
-| Connectivity Link dependencies | GitOps-managed Authorino, DNS, and Limitador Subscriptions with manual approval and validated 1.3.x `startingCSV` values |
+| Connectivity Link | Superseded (2026-10): Stage 040 runs `rhcl-operator` 1.4.x on `stable` with Automatic approval, gated by `scripts/platform/check-operator-policy.py` (minimum 1.4.3). Use the `rhcl-update` skill; the 1.3.4 pin below is history |
+| Connectivity Link dependencies | Superseded: Authorino, DNS and Limitador Subscriptions on `stable`, Automatic, minima in the same operator policy |
 | Kuadrant and Authorino | `Kuadrant` and `Authorino` are managed in `kuadrant-system`; Authorino TLS and service CA trust are configured through GitOps |
 | PostgreSQL | demo-local PostgreSQL 16 StatefulSet in `models-as-a-service-db`, outside the Kueue-managed MaaS model namespace |
 | MaaS DB Secret | `maas-db-config` in `redhat-ods-applications`, with key `DB_CONNECTION_URL`; generated from local secrets and never committed; for this demo it must point to `maas-postgres.models-as-a-service-db.svc.cluster.local` |
@@ -78,21 +78,11 @@ Validated on `cluster-klvxt` for Stage 220 on 2026-06-12 and refreshed on
   Checking or unchecking a MaaS model can recreate the project
   `LlamaStackDistribution`, ConfigMap, and generated deployment. Revalidate
   the product-generated model list and response path after each regeneration.
-- Pin RHCL until the end-to-end RHOAI/RHCL/Gateway path is validated on a
-  newer CSV. Automatic operator upgrades are normal for many demo components,
-  but MaaS Gateway policy generation is a compatibility boundary. On the
-  active baseline, use `rhcl-operator.v1.3.4` as the latest supported 1.3.z
-  compatibility hold because RHCL 1.4.0 is deprecated in the official release
-  notes.
-- Do not approve RHCL dependency upgrades just because OLM offers them. RHCL,
-  Authorino, DNS, and Limitador must be represented as GitOps-owned
-  Subscriptions with manual approval and pinned `startingCSV` values on the
-  active baseline. On `cluster-xgg8t`, RHCL `1.3.4` installed cleanly, but the
-  combined dependency plan for DNS Operator `1.3.1`, Service Mesh `3.3.5`, and
-  Authorino CRD changes failed because existing generated MaaS `AuthConfig`
-  resources did not validate against the stricter Authorino schema. Treat this
-  as an operator compatibility boundary and rerun full MaaS validation before
-  accepting any newer dependency set.
+- Connectivity Link versioning (superseded 2026-10): the 1.3.4 Manual pin
+  recorded here was retired when Stage 040 qualified 1.4.3. Current posture,
+  update procedure and the 1.4.0 deprecation are in the `rhcl-update` skill.
+  The lesson still holds: rerun full MaaS validation (AuthConfig schema,
+  generated policies, metering) before raising the qualified minimum.
 - Enable `Tenant.spec.telemetry.metrics.captureUser` only as an explicit demo
   choice. The official guide defaults user capture off for privacy and
   cardinality reasons.

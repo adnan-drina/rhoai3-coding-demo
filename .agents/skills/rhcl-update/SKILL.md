@@ -2,131 +2,80 @@
 name: rhcl-update
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhcl"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
-  skill-group: "OpenShift Platform"
+  version: 2.0.0
+  product: rhcl
+  docs-version: "1.4"
+  skill-group: "Connectivity Link"
 description: >
-  Use when updating Red Hat Connectivity Link within the 1.3.x line or
-  understanding upgrade constraints. Covers supported configurations, OCP
-  version compatibility, dependent operator versions, and the web console
-  update procedure. Note: RHCL 1.4.0 is deprecated per official 1.4 release
-  notes; the demo stays pinned at rhcl-operator.v1.3.4. Do NOT upgrade to 1.4.
+  Use when updating Red Hat Connectivity Link in this demo: z-stream updates on
+  the stable channel, raising the qualified minimum in the operator policy,
+  moving to a new minor, checking supported OpenShift / Service Mesh /
+  cert-manager versions, and the Gateway API CRD constraint. Also use when old
+  guidance says to pin 1.3.z or block 1.4 — that posture is retired. Do NOT use
+  for first install (use rhcl-install) or policy changes (use rhcl-configure).
 ---
 
-# RHCL Update
+# Connectivity Link update
 
-Use this skill to ground Connectivity Link update decisions in official RHCL 1.3
-documentation for the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product procedure in the linked
+Connectivity Link 1.4 sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+- A new Connectivity Link z-stream or minor is available.
+- A wasm-shim or gateway fix you need ships in a newer release.
+- Someone cites the old "stay on 1.3.4" rule.
 
-## RHCL 1.4.0 Deprecation Warning
+## Repo decisions
 
-RHCL 1.4.0 is deprecated. Per the official 1.4 release notes
-(RHBA-2026:25234), clusters running 1.4.0 may experience authentication
-failures, API key management errors, gateway instability, or gateway pod memory
-pressure due to integration incompatibilities across OCP and Service Mesh
-combinations.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Channel `stable`, Automatic approval, no `startingCSV`: z-streams arrive without a Git change | `gitops/stages/040-governed-models-as-a-service/maas-operators/rhcl/rhcl-operator-subscription.yaml` | [Update with the web console][update-console] |
+| The qualified minor line and minimum (rhcl 1.4.3) live in the operator policy, which refuses other channels and older or other-minor releases | `scripts/platform/check-operator-policy.py` (`minimum`, `channels`) | [Release notes][relnotes] |
+| The doc map's `products.rhcl.docs_version` must equal that minor; the checker enforces it | `.agents/references/red-hat-doc-map.yaml` | — |
+| The 1.3.4 pin with Manual approval (2026-07) is retired; its rollback is historical only | `docs/TROUBLESHOOTING.md#maas-gateway-times-out-on-every-path-rhcl-14x-drift` | [Release notes][relnotes] (1.4.0 deprecated; install or upgrade to 1.4.1+) |
 
-Official guidance:
+## Procedure (new minor)
 
-- **New installations:** Do NOT install RHCL 1.4.0.
-- **Existing 1.3.x installations:** Pin the Connectivity Link and its dependent
-  operators to the latest 1.3.z release. Prevent upgrades to 1.4.0.
+1. Read the target [release notes][relnotes] and [supported
+   configurations][configs]; confirm OpenShift, Service Mesh (3.3/3.4 for 1.4)
+   and cert-manager versions match the cluster.
+2. In one change: update `minimum`/`channels` in `check-operator-policy.py`
+   for rhcl, authorino, limitador and dns; set `docs_version` in the doc map;
+   run `python3 scripts/shared/check-doc-links.py` and fix every `rhcl`
+   finding (skills, READMEs, book slugs and anchors — they changed between
+   1.3 and 1.4).
+3. Re-test the MaaS paths that depend on wasm-shim behavior (metering,
+   streaming, error bodies) with `./stages/040-governed-models-as-a-service/validate.sh`
+   and the `docs/TROUBLESHOOTING.md` diagnostics.
+4. Check live after the OpenShift safety guard in `AGENTS.md`:
 
-This demo pins `rhcl-operator.v1.3.4`. Do NOT change the Subscription to allow
-automatic upgrade to 1.4.
+   ```bash
+   oc get csv -n openshift-operators | grep -E 'rhcl|authorino|limitador|dns-operator'
+   oc get subscription rhcl-operator -n openshift-operators -o jsonpath='{.status.installedCSV}{"\n"}'
+   ```
 
-## Demo Posture
+## Pitfalls
 
-For this demo:
+- On OpenShift 4.19+, pre-existing Gateway API CRDs must exactly match the
+  version OpenShift supports before updating ([Update to 1.4][update-proc]).
+- Connectivity Link 1.4.0 is deprecated; never qualify it.
+- `openshift-operators` is shared: one InstallPlan can move the whole Kuadrant
+  family at once.
 
-- The Subscription `startingCSV` is pinned to `rhcl-operator.v1.3.4`.
-- Update approval should be `Manual` to prevent unintended minor-version jumps.
-- The `stable` channel delivers 1.3.z patch updates; verify the channel does
-  not auto-resolve to 1.4 before approving an InstallPlan.
-- Before approving any InstallPlan, confirm the CSV version with
-  `oc get installplan -n <ns>` and reject plans that resolve to 1.4.x.
+## Official documentation (Connectivity Link 1.4)
 
-## Supported Configurations (RHCL 1.3)
+| Topic | Section |
+|---|---|
+| Supported configurations for the update | [Supported configurations][configs] |
+| Update procedure | [Update with the web console][update-console], [Update to 1.4][update-proc] |
+| What changed in each z-stream | [Release notes][relnotes] |
 
-### OCP Versions
+## Related skills
 
-| RHCL | OCP | OSD | ROSA | ARO |
-|------|-----|-----|------|-----|
-| 1.3  | 4.21, 4.20, 4.19 | 4.21, 4.20, 4.19 | 4.21, 4.20, 4.19 | 4.19 |
+`rhcl-release-notes`, `rhcl-install`, `rhcl-troubleshoot`.
 
-### Dependent Operators
-
-| RHCL | Service Mesh | cert-manager Operator |
-|------|-------------|----------------------|
-| 1.3  | 3.2         | 1.18                 |
-
-### Gateway API CRD Constraint
-
-On OCP 4.19+, if updating from a previous OCP version that contains Gateway API
-CRDs, ensure those resources exactly match the Gateway API version supported by
-your OCP version before updating RHCL.
-
-## Lifecycle
-
-With the release of RHCL 1.4, maintenance support for 1.3 was shortened:
-maintenance support for 1.3 ends with the release of RHCL 1.5 (previously
-announced as ending with 1.6). See the Red Hat Connectivity Link Life Cycle
-Policy for current support dates.
-
-## Update Procedure (1.2.x to 1.3)
-
-Prerequisites:
-
-- RHCL 1.2.x installed on OCP 4.19 or later.
-- OCP version compatible with RHCL 1.3 (see table above).
-
-Steps (web console):
-
-1. Navigate to **Ecosystem > Installed Operators > Red Hat Connectivity Link**.
-2. Ensure the **Update channel** is set to `stable`.
-3. If **Update approval** is `Automatic`, the update installs immediately.
-4. If **Update approval** is `Manual`, click **Install**.
-5. Wait for the Connectivity Link Operator deployment to complete.
-6. Verify RHCL 1.3 is installed and running.
-
-## Validation Signals
-
-```bash
-oc get csv -n <ns> | grep connectivity
-oc get sub -n <ns> -o yaml | grep -E 'currentCSV|installedCSV|startingCSV'
-oc get installplan -n <ns>
-```
-
-Healthy state: CSV phase is `Succeeded`, installedCSV matches the expected
-1.3.z version, and no pending InstallPlans resolve to 1.4.x.
-
-## Workflow
-
-1. Confirm the active RHCL baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - a 1.3.z patch update within the pinned line
-   - verifying supported configuration (OCP, Service Mesh, cert-manager)
-   - blocking an unintended upgrade to 1.4
-   - understanding the lifecycle and support window for 1.3
-4. For Subscription or InstallPlan changes, verify the target CSV version.
-5. Validate with the commands above.
-
-## Related Skills
-
-- `rhcl-install` for Connectivity Link core operator installation.
-- `rhcl-configure` for gateway policy deployment.
-- `rhcl-mcp-config` for MCP server registration (RHCL 1.4 Tech Preview).
-- `rhcl-troubleshoot` for diagnostics and recovery.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[configs]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/update_red_hat_connectivity_link/index#rhcl-supported-configs_updating-rhcl
+[update-console]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/update_red_hat_connectivity_link/index#con-update-rhcl-with-web-console_updating-rhcl
+[update-proc]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/update_red_hat_connectivity_link/index#proc-update-rhcl-with-web-console_updating-rhcl
+[relnotes]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-about_rhcl-release-notes

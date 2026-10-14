@@ -2,171 +2,73 @@
 name: rhcl-mcp-config
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhcl"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
-  skill-group: "OpenShift Platform"
+  version: 2.0.0
+  product: rhcl
+  docs-version: "1.4"
+  skill-group: "Connectivity Link"
 description: >
-  Register MCP servers and create authentication/authorization policies for the
-  Red Hat Connectivity Link 1.3 MCP gateway. Covers MCPServerRegistration for
-  on-prem and external servers, MCPVirtualServer for curated tool collections,
-  AuthPolicy for OAuth/JWT authentication, tool-level authorization with CEL
-  expressions, and tool access revocation. Use when registering MCP servers,
-  configuring auth for MCP gateway, creating virtual servers, or revoking tool
-  access. Do NOT use for MCP gateway installation (use rhcl-install-mcp). Do
-  NOT use for general RHCL policy configuration (use rhcl-configure).
+  Use when designing MCP server registration and policies for a Connectivity
+  Link MCP gateway in this demo: MCPServerRegistration for in-cluster and
+  external servers, credential Secrets, MCPVirtualServer tool curation,
+  OAuth/JWT authentication on the mcp listener, tool-level authorization with
+  CEL on the mcps listener, revocation, and Vault credentials. Do NOT use for
+  installing the MCP gateway (use rhcl-install-mcp), general Connectivity
+  Link policies (use rhcl-configure), or the MCP servers Stage 060 runs today
+  under the OpenShift AI lifecycle operator.
 ---
 
-# Red Hat Connectivity Link 1.3 — MCP Server Registration and Policies
+# MCP server registration and policies
+
+Thin skill: no MCP gateway runs in the demo yet (see `rhcl-mcp-gateway`).
+These are the facts an adoption must respect and where they are documented.
 
 ## When to use
 
-- Registering on-prem MCP servers with MCPServerRegistration
-- Registering external MCP servers (ServiceEntry + DestinationRule + HTTPRoute)
-- Creating credential secrets for MCP servers
-- Setting up OAuth/JWT authentication for MCP gateway
-- Configuring tool-level authorization with AuthPolicy + CEL
-- Creating MCPVirtualServer for curated tool collections
-- Revoking tool access for users/groups
+- Designing how Stage 060 MCP servers would move behind a governed gateway.
+- Reviewing a proposed `MCPServerRegistration`, `MCPVirtualServer` or MCP
+  AuthPolicy.
 
-## Key APIs
+## Repo constraints
 
-| Kind | apiVersion | Purpose |
-|------|-----------|---------|
-| MCPServerRegistration | `mcp.kuadrant.io/v1alpha1` | Register MCP server |
-| MCPVirtualServer | `mcp.kuadrant.io/v1alpha1` | Curated tool subset |
-| AuthPolicy | `kuadrant.io/v1` | Auth/authz on MCP gateway |
-| HTTPRoute | `gateway.networking.k8s.io/v1` | Route to MCP server |
+| Constraint | Where | Official section |
+|---|---|---|
+| Credentials never in Git: MCP credential Secrets are created at runtime | `AGENTS.md` (Security and privacy) | [Register an MCP server][register] |
+| Use the existing platform Keycloak (RHBK) as the OIDC issuer rather than a new identity provider | `gitops/stages/070-advanced-app-platform/identity/README.md` | [Authentication][authn] |
+| Today's per-server controls (caller-token passthrough, Secret denial, local rate limit) are the baseline a gateway must not weaken | `gitops/stages/060-agent-runtime-and-agentops/agent-tools/README.md` | — |
 
-## MCPServerRegistration — on-prem
+## Facts to keep straight (verified against 1.4 on 2026-10-15)
 
-```yaml
-apiVersion: mcp.kuadrant.io/v1alpha1
-kind: MCPServerRegistration
-metadata:
-  name: my-mcp-server
-  namespace: mcp-test
-spec:
-  toolPrefix: myserver_
-  targetRef:
-    group: "gateway.networking.k8s.io"
-    kind: "HTTPRoute"
-    name: "mcp-server-route"
-    namespace: "mcp-test"
-  credentialRef:
-    name: mcp-server-secret
-    key: api-key
-```
+- `MCPServerRegistration` and `MCPVirtualServer` are `mcp.kuadrant.io/v1alpha1`
+  ([CR reference][cr], [Virtual servers][virtual]).
+- Credential Secrets need the label `mcp.kuadrant.io/secret=true` ([Register][register]).
+- Clients select a virtual server with the `X-Mcp-Virtualserver: namespace/name` header ([Virtual servers][virtual]).
+- Authentication AuthPolicy targets the `mcp` listener; tool authorization
+  targets the `mcps` listener and checks `tool:` roles from
+  `x-mcp-toolname`/`x-mcp-servername` with CEL ([Authentication][authn], [Authorization][authz]).
+- Revocation takes effect when a new token lacks the role; filtering revoked
+  tools from `tools/list` needs extra broker configuration ([Revoke][revoke]).
 
-### Spec fields
+## Official documentation (Connectivity Link 1.4)
 
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `targetRef.name` | Yes | — | HTTPRoute pointing to MCP server |
-| `toolPrefix` | No | — | Prefix for tools (immutable, alphanumeric/`-`/`_`) |
-| `path` | No | `/mcp` | MCP endpoint path |
-| `credentialRef.name` | No | — | Secret with credentials |
-| `credentialRef.key` | No | `token` | Key within Secret |
+| Topic | Section |
+|---|---|
+| In-cluster servers | [Register on-premise MCP servers][onprem], [CR reference][cr] |
+| External servers | [Register external MCP servers][external] |
+| Virtual servers | [Create virtual MCP servers][virtual] |
+| Authentication / authorization | [Authentication][authn], [Authorization][authz] |
+| Revocation | [Revoke tool access][revoke] |
+| Vault credentials | [Vault with the MCP gateway][vault] |
 
-### Credential secret
+## Related skills
 
-Must have label `mcp.kuadrant.io/secret: "true"`:
+`rhcl-mcp-gateway`, `rhcl-install-mcp`, `rhcl-troubleshoot`, `ocp-authentication-identity-providers`.
 
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: mcp-server-secret
-  namespace: mcp-test
-  labels:
-    mcp.kuadrant.io/secret: "true"
-type: Opaque
-stringData:
-  api-key: "your-api-key-here"
-```
-
-## MCPServerRegistration — external servers
-
-Requires Istio. Resources needed in order:
-
-1. **ServiceEntry** — register external host (`networking.istio.io/v1beta1`)
-2. **DestinationRule** — TLS settings (SIMPLE/MUTUAL)
-3. **HTTPRoute** — URLRewrite filter to external hostname
-4. **Secret** — backend API key with `mcp.kuadrant.io/secret: "true"` label
-5. **AuthPolicy** — pass-through Authorization header (if OAuth)
-6. **MCPServerRegistration** — register with gateway
-
-See `references/official-doc-extraction.md` for full YAML examples.
-
-## MCPVirtualServer — curated tool collections
-
-```yaml
-apiVersion: mcp.kuadrant.io/v1alpha1
-kind: MCPVirtualServer
-metadata:
-  name: dev-tools
-  namespace: mcp-system
-spec:
-  description: "Development and debugging tools"
-  tools:
-  - server1_devtool
-  - server2_debug
-```
-
-- Access via header: `X-Mcp-Virtualserver: namespace/name`
-- Filters `tools/list` only; does not change `tools/call` routing
-- Combined with auth: result is intersection of identity filter + virtual filter
-
-## Authentication — OAuth/JWT
-
-1. Set OAuth env vars on MCP gateway deployment:
-   `OAUTH_RESOURCE_NAME`, `OAUTH_RESOURCE`, `OAUTH_AUTHORIZATION_SERVERS`,
-   `OAUTH_BEARER_METHODS_SUPPORTED`, `OAUTH_SCOPES_SUPPORTED`
-
-2. Create AuthPolicy on **`mcp` listener** for JWT validation:
-   - Target: Gateway sectionName `mcp`
-   - Skip `/.well-known` paths
-   - Validate JWT via `issuerUrl`
-   - Return 401 with `WWW-Authenticate` header pointing to discovery endpoint
-
-3. Broker exposes `/.well-known/oauth-protected-resource` for MCP client discovery
-
-## Authorization — tool-level
-
-Create AuthPolicy on **`mcps` listener** (internal tools/call routing):
-
-- Validates JWT and extracts `resource_access` claims
-- CEL expression checks `x-mcp-toolname` header against user's roles
-- JWT client ID format: `{namespace}/{MCPServerRegistration name}`
-- Roles map to tool names (e.g., `"roles": ["add", "multiply"]`)
-
-Key CEL predicate:
-```
-request.headers['x-mcp-toolname'] in auth.identity.resource_access[request.headers['x-mcp-servername']].roles
-```
-
-See `references/official-doc-extraction.md` for full AuthPolicy examples.
-
-## Revocation
-
-- Remove role from user/group in identity provider (e.g., Keycloak)
-- New tokens lack the role; `tools/call` returns error
-- Existing sessions: access until token expires (reduce lifespan for faster revocation)
-- Filter from `tools/list`: configure wristband JWT (`x-authorized-tools` header)
-  via Authorino ECDSA key pair + MCPGatewayExtension `trustedHeadersKey`
-
-## Validation
-
-```bash
-oc get mcpsr -A
-oc get mcpvirtualserver -A
-oc get authpolicy -n gateway-system \
-  -o jsonpath='{.items[*].status.conditions[?(@.type=="Enforced")].status}'
-```
-
-## References
-
-- `references/source-capture.md` — source provenance
-- `references/official-doc-extraction.md` — full extraction with all YAML examples
-- Official: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/registering_mcp_servers_and_creating_policies/index
+[onprem]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#mcp-gateway-register-on-prem-mcp-servers
+[register]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#proc-register-mcp-server_mcp-gateway-register-on-prem-servers
+[cr]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#ref-mcp-server-registration-cr_mcp-gateway-register-on-prem-servers
+[external]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#mcp-gateway-register-ext-mcp-servers
+[virtual]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#mcp-gateway-create-virtual-mcp-servers
+[authn]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#mcp-gateway-authentication
+[authz]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#mcp-gateway-authorization
+[revoke]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#mcp-gateway-revoke-mcp-server-tool-access
+[vault]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#mcp-gateway-vault
