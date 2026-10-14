@@ -1,6 +1,6 @@
-# Removes stale Replace=true annotations from DevWorkspace resources created
-# by earlier demo revisions. DevWorkspace IDs are controller-assigned and
-# immutable, so replace-based syncs fail after initial creation.
+# Reconciles only the platform workspaces' declared sync option, replacing
+# legacy Force/Replace values without deleting the valid GitOps annotation.
+# DevWorkspace IDs and user start/stop lifecycle remain controller/user-owned.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -63,11 +63,21 @@ spec:
 
               for namespace in wksp-ai-developer wksp-ai-admin; do
                 for workspace in agentic-coolstore; do
-                  if oc get devworkspace "$workspace" -n "$namespace" &>/dev/null; then
-                    echo "Removing stale DevWorkspace sync-options annotation from ${namespace}/${workspace}"
-                    oc annotate devworkspace "$workspace" -n "$namespace" argocd.argoproj.io/sync-options- || true
-                  else
+                  identity=$(oc get devworkspace "$workspace" -n "$namespace" --ignore-not-found \
+                    -o jsonpath='{.metadata.uid}')
+                  if [ -z "$identity" ]; then
                     echo "No existing DevWorkspace ${namespace}/${workspace}; nothing to repair"
+                    continue
+                  fi
+                  current=$(oc get devworkspace "$workspace" -n "$namespace" \
+                    -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/sync-options}')
+                  desired="SkipDryRunOnMissingResource=true"
+                  if [ "$current" != "$desired" ]; then
+                    echo "Reconciling declared DevWorkspace sync option for ${namespace}/${workspace}"
+                    oc annotate devworkspace "$workspace" -n "$namespace" \
+                      "argocd.argoproj.io/sync-options=${desired}" --overwrite
+                  else
+                    echo "DevWorkspace sync option already current for ${namespace}/${workspace}"
                   fi
                 done
               done

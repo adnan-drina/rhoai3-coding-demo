@@ -9,6 +9,9 @@ import io
 import tarfile
 import subprocess
 import unittest
+import tempfile
+import os
+import sys
 from pathlib import Path
 import yaml
 
@@ -409,5 +412,67 @@ class HookRuntime(unittest.TestCase):
                     if isinstance(node.func.value, ast.Name) and node.func.value.id == 'subprocess':
                         with self.subTest(script=script.name, line=node.lineno):
                             self.assertFalse({'text', 'capture_output'} & {k.arg for k in node.keywords})
+
+
+class WorkspaceAnnotationRepair(unittest.TestCase):
+    def run_repair(self, state, fail_get=False):
+        rows=list(yaml.safe_load_all((BASE/'devspaces/repair-devworkspace-sync-options.yaml').read_text()))
+        job=next(r for r in rows if r['kind']=='Job')
+        script=job['spec']['template']['spec']['containers'][0]['command'][-1]
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); statefile=root/'state.json';statefile.write_text(json.dumps(state))
+            fake=root/'oc'
+            fake.write_text('#!'+sys.executable+'\n'+r"""
+import json,os,sys
+from pathlib import Path
+p=Path(os.environ['FAKE_OC_STATE']);s=json.loads(p.read_text());a=sys.argv[1:]
+ns=a[a.index('-n')+1];row=s['rows'].get(ns)
+if a[0]=='get':
+    if os.environ.get('FAIL_GET')=='true':raise SystemExit(42)
+    if row is None:raise SystemExit(0 if '--ignore-not-found' in a else 1)
+    if '-o' not in a:print(a[2])
+    elif 'metadata.uid' in a[a.index('-o')+1]:print(row['uid'],end='')
+    else:print(row.get('annotation',''),end='')
+elif a[0]=='annotate':
+    s['writes'].append(ns)
+    if any(v.endswith('sync-options-') for v in a):row.pop('annotation',None)
+    else:
+        value=next(v.split('=',1)[1] for v in a if v.startswith('argocd.argoproj.io/sync-options='))
+        row['annotation']=value
+    p.write_text(json.dumps(s))
+else:raise SystemExit('Unexpected mutation or command')
+""")
+            fake.chmod(0o755)
+            env=dict(os.environ,PATH=str(root)+os.pathsep+os.environ['PATH'],FAKE_OC_STATE=str(statefile),FAIL_GET='true' if fail_get else 'false')
+            result=subprocess.run(['bash','-c',script],env=env,capture_output=True,text=True)
+            return result,json.loads(statefile.read_text())
+
+    def test_current_workspace_annotation_is_not_deleted(self):
+        state={'rows':{ns:{'uid':ns,'annotation':'SkipDryRunOnMissingResource=true','started':False} for ns in ('wksp-ai-developer','wksp-ai-admin')},'writes':[]}
+        result,after=self.run_repair(state)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(after,state)
+
+    def test_legacy_annotation_reconciles_without_lifecycle_change(self):
+        state={'rows':{'wksp-ai-developer':{'uid':'a','annotation':'Force=true,Replace=true','started':False},'wksp-ai-admin':{'uid':'b','started':False}},'writes':[]}
+        result,after=self.run_repair(state)
+        self.assertEqual(result.returncode,0,result.stderr)
+        for ns,row in after['rows'].items():
+            self.assertEqual(row['annotation'],'SkipDryRunOnMissingResource=true')
+            self.assertFalse(row['started'])
+            self.assertEqual(row['uid'],state['rows'][ns]['uid'])
+        self.assertEqual(len(after['writes']),2)
+        result,again=self.run_repair(after)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(again,after)
+
+    def test_absence_is_distinct_from_read_failure(self):
+        state={'rows':{},'writes':[]}
+        result,after=self.run_repair(state)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(after,state)
+        result,after=self.run_repair(state,fail_get=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertEqual(after,state)
 
 if __name__ == '__main__': unittest.main()

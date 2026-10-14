@@ -2874,3 +2874,15 @@ With Tekton, AI Pipelines and MTA installed, short names such as `pipeline` and 
 to another API group. Enrollment and validation use `pipelines.tekton.dev`,
 `pipelineruns.tekton.dev` and `tasks.tekton.dev` explicitly. Do not expand the
 project's permissions to the unrelated API to make an ambiguous query succeed.
+
+### Stage 070 stays OutOfSync after a successful workspace sync
+
+If Argo reports only the two platform `agentic-coolstore` workspaces as
+OutOfSync, inspect the normalized comparison before changing ignore rules. A
+legacy repair hook removed the whole `argocd.argoproj.io/sync-options`
+annotation after GitOps applied it. The corrected hook retains the declared
+`SkipDryRunOnMissingResource=true`, replaces legacy Force/Replace values and
+makes no write when current. It never starts a workspace or changes its ID.
+A missing workspace is distinct from an API read failure. Deploy the corrected
+hook through a full native sync; do not hide this metadata conflict with a broad
+ignore or repeated manual patches.
