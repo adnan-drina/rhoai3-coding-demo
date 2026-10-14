@@ -92,7 +92,7 @@ Not in Git: the GitLab OAuth Secret `gitlab-oauth-config`, the CheCluster `gitSe
 
 **Cross-component writes.** `070-gitlab`'s integration hub (wave 14 of that Application) writes the GitLab OAuth Secret with the labels and annotations the guide requires [7], patches the CheCluster `gitServices` and `allowedSources`, and patches the workspaces' `origin` remote. `070-pipelines` runs the migration-run provisioner and the project enrollment that mirror per-run and Sonar credentials into `wksp-ai-developer`.
 
-**ignoreDifferences.** OperatorGroup and Subscription annotations and `startingCSV`; DevWorkspace `spec.started` (user lifecycle) and the `HOST_USERS` env, `devworkspace-config` and `scc` attributes that Dev Spaces injects; CheCluster `allowedSources.urls` and the GitLab endpoint (owned by `070-gitlab`); the two `agentic-coolstore` remotes (owned by `070-gitlab`).
+**ignoreDifferences.** OperatorGroup annotation `olm.providedAPIs` (OLM-owned) and Subscription `startingCSV`; DevWorkspace `spec.started` (user lifecycle) and the `HOST_USERS` env, `devworkspace-config` and `scc` attributes that Dev Spaces injects; CheCluster `allowedSources.urls` and the GitLab endpoint (owned by `070-gitlab`); the two `agentic-coolstore` remotes (owned by `070-gitlab`).
 
 Operations: [Stage 070 Dev Spaces](../../../../docs/OPERATIONS.md#stage-070--dev-spaces-devspaces-component). Failures: [workspace does not start](../../../../docs/TROUBLESHOOTING.md#red-hat-openshift-dev-spaces-workspace-does-not-start), [workspace tools unavailable](../../../../docs/TROUBLESHOOTING.md#stage-070-workspace-tools-or-mta-ai-are-unavailable).
 

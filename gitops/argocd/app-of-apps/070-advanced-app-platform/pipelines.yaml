@@ -45,7 +45,6 @@ spec:
   - group: operators.coreos.com
     kind: Subscription
     jsonPointers:
-    - "/metadata/annotations"
     - "/spec/startingCSV"
   - group: rhtas.redhat.com
     kind: Securesign

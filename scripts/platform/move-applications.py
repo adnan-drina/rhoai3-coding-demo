@@ -225,6 +225,8 @@ class Plan:
             if changed:
                 raise RuntimeError("object UIDs changed since the first run: " + ", ".join(changed))
             before.update({k: v for k, v in objects.items() if k not in before})
+            for k, v in objects.items():  # whether an object is recreated by design follows the current manifest
+                before[k]["hook"] = v["hook"]
             objects = before
         if not self.args.dry_run:
             recorded.write_text(json.dumps(objects, indent=1))

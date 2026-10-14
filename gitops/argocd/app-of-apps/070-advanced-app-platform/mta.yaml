@@ -45,11 +45,10 @@ spec:
   - group: operators.coreos.com
     kind: OperatorGroup
     jsonPointers:
-    - "/metadata/annotations"
+    - "/metadata/annotations/olm.providedAPIs"
   - group: operators.coreos.com
     kind: Subscription
     jsonPointers:
-    - "/metadata/annotations"
     - "/spec/startingCSV"
   - group: console.openshift.io
     kind: ConsoleLink
