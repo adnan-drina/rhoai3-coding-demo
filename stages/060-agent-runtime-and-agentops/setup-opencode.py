@@ -72,7 +72,7 @@ class Setup:
         pending.replace(self.journal)
 
     def preflight(self):
-        app=self.get('application','openshell-runtime','openshift-gitops')
+        app=self.get('application','060-openshell-runtime','openshift-gitops')
         need(app['spec']['source']['targetRevision']==self.args.revision and app['status']['sync']['revision']==self.args.revision and app['status']['sync']['status']=='Synced' and app['status']['health']['status']=='Healthy' and not app.get('operation'),'Exact runtime revision is not ready')
         need(subprocess.check_output(['git','-C',str(ROOT),'show',self.args.revision+':'+str(self.helper_path.resolve().relative_to(ROOT))])==self.helper_path.read_bytes(),'Published helper differs')
         for path in [Path(__file__),self.policy_path,Path(__file__).with_name('native_api.py'),Path(__file__).with_name('qualify-inference.py'),ROOT/'gitops/stages/060-agent-runtime-and-agentops/runtime-candidate/source-pins.json']:

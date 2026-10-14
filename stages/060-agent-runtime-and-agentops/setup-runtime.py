@@ -2,7 +2,7 @@
 """Initialize only retained customer runtime keys and verify native controller readiness."""
 import argparse,base64,json,os,pathlib,secrets,subprocess,urllib.request
 p=argparse.ArgumentParser();p.add_argument('--revision',required=True);p.add_argument('--prepare-only',action='store_true');args=p.parse_args()
-ROOT=pathlib.Path(__file__).resolve().parents[2];APP='openshell-runtime';NS='openshell';OPNS='agent-sandbox-system'
+ROOT=pathlib.Path(__file__).resolve().parents[2];APP='060-openshell-runtime';NS='openshell';OPNS='agent-sandbox-system'
 g=subprocess.run(['bash','-c','REPO_ROOT="$1";source "$1/scripts/shared/lib.sh";load_env;check_oc_logged_in','guard',str(ROOT)],capture_output=True,text=True);assert g.returncode==0,'Shared guard failed'
 assert subprocess.check_output(['git','-C',str(ROOT),'show',args.revision+':'+str(pathlib.Path(__file__).resolve().relative_to(ROOT))])==pathlib.Path(__file__).read_bytes(),'Published helper content differs'
 def oc(*a,payload=None):

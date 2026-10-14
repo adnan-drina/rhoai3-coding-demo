@@ -13,6 +13,7 @@ Import it from Python (sys.path.insert(0, "<repo>/scripts/shared"); import stage
   stage_apps.py applications STAGE --revision SHA --repo-url URL   # JSON List to `oc apply -f -`
   stage_apps.py status STAGE [--revision SHA]                      # exit 1 unless all reconciled
   stage_apps.py owner STAGE KIND NAME [NAMESPACE]                  # component that renders it
+  stage_apps.py delegated STAGE KIND NAME [NAMESPACE] [--group G]  # fields the live owner leaves to later stages
   stage_apps.py check-static STAGE                                 # disjoint components == base
 """
 import argparse
@@ -206,6 +207,16 @@ def stage_problems(stage, revision=None, repo_url=None, root=ROOT):
     return problems
 
 
+def delegated(stage, kind, name, namespace=None, group="", root=ROOT):
+    """JSON pointers the live component owning an object leaves to later stages (empty unless it respects them)."""
+    app = get_application(owner(stage, kind, name, namespace, group, root))
+    if not app or "RespectIgnoreDifferences=true" not in app["spec"].get("syncPolicy", {}).get("syncOptions", []):
+        return set()
+    return {p for i in app["spec"].get("ignoreDifferences", [])
+            if i.get("group", "") == group and i.get("kind") == kind and i.get("name") == name
+            and i.get("namespace") == namespace for p in i.get("jsonPointers", [])}
+
+
 def stage_revision(stage, root=ROOT):
     """The single revision all components are pinned to (raises when absent or mixed)."""
     revisions = set()
@@ -265,6 +276,8 @@ def main():
     p.add_argument("stage"); p.add_argument("--revision"); p.add_argument("--repo-url")
     p = sub.add_parser("owner")
     p.add_argument("stage"); p.add_argument("kind"); p.add_argument("name"); p.add_argument("namespace", nargs="?"); p.add_argument("--group", default="")
+    p = sub.add_parser("delegated")
+    p.add_argument("stage"); p.add_argument("kind"); p.add_argument("name"); p.add_argument("namespace", nargs="?"); p.add_argument("--group", default="")
     sub.add_parser("check-static").add_argument("stage")
     args = parser.parse_args()
     if args.command == "names":
@@ -280,6 +293,8 @@ def main():
         return 1 if problems else 0
     elif args.command == "owner":
         print(owner(args.stage, args.kind, args.name, args.namespace, args.group))
+    elif args.command == "delegated":
+        print("\n".join(sorted(delegated(args.stage, args.kind, args.name, args.namespace, args.group))))
     elif args.command == "check-static":
         print("PASS Stage " + args.stage + ": " + str(len(names(args.stage))) + " components render " + str(check_static(args.stage)) + " objects, disjoint and equal to " + str(aggregate_path(args.stage)))
     return 0

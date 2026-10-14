@@ -1,0 +1,56 @@
+---
+# Demo sandbox project, developer group and bucket.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: 010-access
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/instance: openshift-gitops
+    app.kubernetes.io/name: access
+    app.kubernetes.io/component: access
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '010'
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+    argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/010-openshift-ai-platform-foundation"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+    demo.rhoai.io/deploy-order: '3'
+spec:
+  project: rhoai-demo
+  source:
+    repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
+    targetRevision: main
+    path: gitops/stages/010-openshift-ai-platform-foundation/apps/access
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+      - ServerSideDiff=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+    # Membership is assigned from provider identities by setup-access.sh.
+    - group: user.openshift.io
+      kind: Group
+      name: rhoai-developers
+      jsonPointers:
+        - /users
+    # Stage 050 enables tenant authorization on the existing sandbox.
+    - group: ""
+      kind: Namespace
+      name: demo-sandbox
+      jsonPointers:
+        - /metadata/labels/evalhub.trustyai.opendatahub.io~1tenant

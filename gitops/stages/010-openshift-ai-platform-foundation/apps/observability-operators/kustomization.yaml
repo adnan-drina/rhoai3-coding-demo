@@ -1,0 +1,7 @@
+# Cluster Observability, OpenTelemetry and Tempo operators, and the trace reader/writer roles.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base/observability/aggregate/overlays/demo
+  - ../../base/observability/trace-roles

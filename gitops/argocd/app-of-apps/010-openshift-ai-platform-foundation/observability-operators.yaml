@@ -1,0 +1,43 @@
+---
+# Observability operators and trace roles.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: 010-observability-operators
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/instance: openshift-gitops
+    app.kubernetes.io/name: observability-operators
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '010'
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+    argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/010-openshift-ai-platform-foundation"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+    demo.rhoai.io/deploy-order: '1'
+spec:
+  project: rhoai-demo
+  source:
+    repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
+    targetRevision: main
+    path: gitops/stages/010-openshift-ai-platform-foundation/apps/observability-operators
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+      - ServerSideDiff=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

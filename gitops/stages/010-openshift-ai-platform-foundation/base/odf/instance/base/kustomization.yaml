@@ -5,6 +5,3 @@ resources:
   - storagecluster.yaml
   # OCSInitialization is an operator-owned singleton (ocs-operator auto-creates
   # and reconciles `ocsinit`); managing it here only causes perpetual OutOfSync.
-  - console-plugin-rbac.yaml
-  - console-plugin-script.yaml
-  - console-plugin-job.yaml

@@ -22,14 +22,14 @@ def get(kind,name,ns=None):
  r=subprocess.run(a,capture_output=True,text=True,timeout=15)
  assert r.returncode==0,'Prerequisite API read failed'
  return json.loads(r.stdout) if r.stdout.strip() else None
-runtime=get('application','openshell-runtime','openshift-gitops')
+runtime=get('application','060-openshell-runtime','openshift-gitops')
 assert runtime and not runtime['metadata'].get('deletionTimestamp') and runtime['status']['health']['status']=='Healthy' and runtime['status']['sync']['status']=='Synced','Existing OpenShell runtime must be healthy'
 assert runtime['spec']['source']['repoURL']==os.environ['GIT_REPO_URL'] and runtime['spec']['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/runtime','Unexpected runtime source'
 crd=get('crd','sandboxes.agents.x-k8s.io')
 assert crd and any(c['type']=='Established' and c['status']=='True' for c in crd['status']['conditions']),'Native Sandbox CRD is not established'
-core=get('application','010-openshift-ai-platform-foundation','openshift-gitops')
-assert core and 'RespectIgnoreDifferences=true' in core['spec'].get('syncPolicy',{}).get('syncOptions',[]) and any(i.get('group')=='opendatahub.io' and i.get('kind')=='OdhDashboardConfig' and i.get('name')=='odh-dashboard-config' and i.get('namespace')=='redhat-ods-applications' and '/spec/dashboardConfig/agentOps' in i.get('jsonPointers',[]) for i in core['spec'].get('ignoreDifferences',[])),'Foundation has not delegated agentOps'
-app=get('application','agent-console','openshift-gitops')
+import sys;sys.path.insert(0,os.environ['CONSOLE_ROOT']+'/scripts/shared');import stage_apps
+assert '/spec/dashboardConfig/agentOps' in stage_apps.delegated('010','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications','opendatahub.io'),'Foundation has not delegated agentOps'
+app=get('application','060-agent-console','openshift-gitops')
 if app:
  s=app['spec'];assert not app['metadata'].get('ownerReferences') and not app['metadata'].get('deletionTimestamp') and not s.get('sources') and s['source']['repoURL']==os.environ['GIT_REPO_URL'] and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/agent-console' and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'redhat-ods-applications'},'Foreign console Application'
 objects=[('serviceaccount','enable-agent-console','redhat-ods-applications','/ServiceAccount'),('role','enable-agent-console','redhat-ods-applications','rbac.authorization.k8s.io/Role'),('rolebinding','enable-agent-console','redhat-ods-applications','rbac.authorization.k8s.io/RoleBinding'),('job','enable-agent-console','redhat-ods-applications','batch/Job')]
@@ -39,12 +39,12 @@ for ns in ['openshell-admin','openshell-developer']:
 for kind,name,ns,tracking in objects:
  x=get(kind,name,ns)
  if x:
-  m=x['metadata'];assert app and not m.get('ownerReferences') and not m.get('deletionTimestamp') and m.get('annotations',{}).get('argocd.argoproj.io/tracking-id')=='agent-console:'+tracking+':'+ns+'/'+name,'Foreign console resource'
+  m=x['metadata'];assert app and not m.get('ownerReferences') and not m.get('deletionTimestamp') and m.get('annotations',{}).get('argocd.argoproj.io/tracking-id')=='060-agent-console:'+tracking+':'+ns+'/'+name,'Foreign console resource'
 payload=json.loads(subprocess.check_output(['oc','create','--dry-run=client','-f',os.environ['CONSOLE_ROOT']+'/gitops/argocd/app-of-apps/060-agent-runtime-and-agentops-console.yaml','-o','json']))
 payload['spec']['source']['targetRevision']=os.environ['CONSOLE_SHA']
 r=subprocess.run(['oc','apply','-f','-'],input=json.dumps(payload),text=True,capture_output=True,timeout=20)
 assert r.returncode==0,'Console Application apply failed'
 print('PASS Console prerequisites and exact source ownership')
 PY
-ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync agent-console --app-namespace openshift-gitops --strategy hook --revision "$sha" --timeout 180
-ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait agent-console --app-namespace openshift-gitops --health --sync --timeout 180
+ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 060-agent-console --app-namespace openshift-gitops --strategy hook --revision "$sha" --timeout 180
+ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait 060-agent-console --app-namespace openshift-gitops --health --sync --timeout 180

@@ -1,0 +1,9 @@
+# Tempo trace reader/writer roles for RHOAI monitoring (OCP distributed tracing multitenancy).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - tempo-traces-writer-role.yaml
+  - tempo-traces-writer-binding.yaml
+  - tempo-traces-reader-role.yaml
+  - tempo-traces-reader-binding.yaml

@@ -93,7 +93,7 @@ A durable demo AI platform foundation that all subsequent stages build on.
 
 - **GitOps from day one** — every resource is in Git and reconciled by Argo CD, so the platform is reproducible and auditable
 - **DSC component isolation** — removed components are explicitly listed; later stages enable their own deltas through hook Jobs, allowing one-stage-at-a-time validation
-- **Argo CD Application ignores DSC component fields** that later stage patches modify, preventing reconciliation conflicts
+- **The `010-rhoai-platform` Application ignores DSC component fields** that later stage patches modify, preventing reconciliation conflicts
 - **MCG-only ODF** — no Ceph OSDs; full block/file storage is deferred until a stage explicitly needs it
 - **Observability-first** — prerequisite operators are deployed before RHOAI so the observability dashboard menu is backed by real services
 - **Identity separation** — `rhods-admins` is the operator-owned admin group referenced in the RHOAI auth CR; `rhoai-developers` is a project-level contributor group; both are distinct roles with distinct access
@@ -148,7 +148,7 @@ OpenShift GitOps provides declarative reconciliation through Argo CD. OpenShift 
 ./stages/010-openshift-ai-platform-foundation/validate.sh
 ```
 
-The deploy script bootstraps OpenShift GitOps, then applies the Argo CD Application that reconciles all Stage 010 resources. Platform access (identity group membership and S3 connection secret) is configured imperatively by `setup-access.sh` to keep credentials out of Git.
+The deploy script bootstraps OpenShift GitOps, then applies five component Argo CD Applications that reconcile the Stage 010 resources: `010-rhoai-operator`, `010-odf`, `010-observability-operators`, `010-rhoai-platform` and `010-access`. It then deploys the separate `010-sandbox-storage` and `010-console-observability` Applications. Platform access (identity group membership and S3 connection secret) is configured imperatively by `setup-access.sh` to keep credentials out of Git.
 
 ## References
 

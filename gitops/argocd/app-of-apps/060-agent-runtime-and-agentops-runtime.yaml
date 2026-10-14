@@ -2,7 +2,7 @@
   "apiVersion": "argoproj.io/v1alpha1",
   "kind": "Application",
   "metadata": {
-    "name": "openshell-runtime",
+    "name": "060-openshell-runtime",
     "namespace": "openshift-gitops",
     "labels": {
       "app.kubernetes.io/part-of": "rhoai3-coding-demo",

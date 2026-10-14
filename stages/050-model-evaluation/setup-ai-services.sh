@@ -124,12 +124,6 @@ def ensure_database_secret(feature, namespace):
         meta=existing.get("metadata", {})
         if meta.get("ownerReferences") or meta.get("deletionTimestamp") or meta.get("annotations", {}).get("argocd.argoproj.io/tracking-id"):
             raise RuntimeError("Runtime database Secret has foreign ownership; refusing reuse or rotation.")
-        evidence=os.environ.get("RHOAI_STAGE050_HANDOFF_EVIDENCE")
-        if feature=="mlflow" and evidence:
-            from pathlib import Path
-            baseline=json.loads((Path(evidence)/"baseline.json").read_text())
-            if meta.get("uid")!=baseline["resources"]["secret/mlflow-db-credentials"]["uid"]:
-                raise RuntimeError("Retained MLflow credential identity changed.")
         validate_database_secret(feature, namespace, existing)
         print(f"Reusing {feature} database credentials.", flush=True)
         return

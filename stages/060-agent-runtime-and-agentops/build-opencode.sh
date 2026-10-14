@@ -15,7 +15,7 @@ git -C "$REPO_ROOT" ls-remote origin | awk -v revision="$REVISION" '$1 == revisi
 git -C "$REPO_ROOT" diff --exit-code "$REVISION" -- "$SCRIPT_DIR/build-opencode.sh" "$SCRIPT_DIR/images/opencode" gitops/stages/060-agent-runtime-and-agentops/runtime/images >/dev/null
 python3 - "$REVISION" <<'PY'
 import json,subprocess,sys
-app='openshell-runtime'
+app='060-openshell-runtime'
 def read(kind,name):
  r=subprocess.run(['oc','--request-timeout=15s','get',kind,name,'-n','ai-agents' if kind!='application' else 'openshift-gitops','-o','json'],capture_output=True,text=True);assert r.returncode==0;return json.loads(r.stdout)
 a=read('application',app);s=a['spec'];src={'repoURL':'https://github.com/adnan-drina/rhoai3-coding-demo.git','targetRevision':sys.argv[1],'path':'gitops/stages/060-agent-runtime-and-agentops/runtime'}

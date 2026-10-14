@@ -22,7 +22,7 @@
         "applications"
       ],
       "resourceNames": [
-        "openshell-runtime"
+        "060-openshell-runtime"
       ],
       "verbs": [
         "get"

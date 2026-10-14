@@ -1,6 +1,6 @@
 # Stage 060 native runtime candidate
 
-Customer configuration consumed by the openshell-runtime Application through
+Customer configuration consumed by the 060-openshell-runtime Application through
 ../runtime/kustomization.yaml.
 
 Source NVIDIA/OpenShell 12cec59bf4c36c305032143eb90870bd16d8820b, the merge commit

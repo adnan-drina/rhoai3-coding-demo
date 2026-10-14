@@ -1,13 +1,12 @@
+# Stage 010 foundation desired state: the union of its component Applications (gitops/argocd/app-of-apps/010-*/).
+# Argo CD syncs each component from apps/<component>; validators read this aggregate.
+# console-observability/ and sandbox-storage/ are separate Applications with their own deploy scripts.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - observability/tempo-traces-writer-role.yaml
-  - observability/tempo-traces-writer-binding.yaml
-  - observability/tempo-traces-reader-role.yaml
-  - observability/tempo-traces-reader-binding.yaml
-  - observability/aggregate/overlays/demo
-  - odf/aggregate/overlays/demo
-  - rhoai/aggregate/overlays/demo
-  - access/base
-  - console-plugins/base
+  - ../apps/rhoai-operator
+  - ../apps/odf
+  - ../apps/observability-operators
+  - ../apps/rhoai-platform
+  - ../apps/access

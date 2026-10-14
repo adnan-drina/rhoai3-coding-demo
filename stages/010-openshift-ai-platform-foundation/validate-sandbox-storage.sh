@@ -17,7 +17,7 @@ try:
         obc=get("obc",claim);cm=get("configmap",claim);source=get("secret",claim);connection=get("secret",claim+"-connection")
         assert obc.get("status",{}).get("phase")=="Bound"
         for obj in [obc,connection]:
-            assert obj["metadata"].get("annotations",{}).get("argocd.argoproj.io/tracking-id","").startswith("sandbox-storage:")
+            assert obj["metadata"].get("annotations",{}).get("argocd.argoproj.io/tracking-id","").startswith("010-sandbox-storage:")
         uid=obc["metadata"]["uid"]
         for obj in [cm,source]: assert any(o.get("kind")=="ObjectBucketClaim" and o.get("uid")==uid for o in obj["metadata"].get("ownerReferences",[]))
         data=cm.get("data",{});target=connection.get("data",{})

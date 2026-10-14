@@ -596,7 +596,7 @@ oc get secret prometheus-web-tls-ca -n redhat-ods-monitoring
 Re-sync Stage 010 so the GitOps hook creates the Secret from the injected ConfigMap:
 
 ```bash
-argocd app sync 010-openshift-ai-platform-foundation
+argocd app sync 010-rhoai-platform
 ./stages/010-openshift-ai-platform-foundation/validate.sh
 ```
 
@@ -2755,7 +2755,7 @@ The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` a
 **Recover:** Restore the annotations from the Application file in `gitops/argocd/app-of-apps/` (`oc annotate application ... --overwrite`, one key at a time) and hard-refresh. Republish the playground entries with Stage 040's own publisher, as `deploy.sh` does:
 
 ```bash
-RHOAI_STAGE040_EXPECTED_REVISION=<Stage 040 revision> RHOAI_STAGE060_EXPECTED_REVISION=<agent-tools revision> \
+RHOAI_STAGE040_EXPECTED_REVISION=<Stage 040 revision> RHOAI_STAGE060_EXPECTED_REVISION=<060-agent-tools revision> \
   python3 stages/040-governed-models-as-a-service/publish-catalog-mcp.py --key OpenShift-MCP --defer-if-absent
 # repeat with --key OpenShift-MCP-ReadWrite
 ```
@@ -2779,7 +2779,7 @@ oc patch gateway maas-default-gateway -n openshift-ingress --type json \
 
 ## OpenShell Runtime Redeploy Refuses: Credential Key Missing Or Delegation Mismatch
 
-**Affected stage:** Stage 060 `openshell-runtime`
+**Affected stage:** Stage 060 `060-openshell-runtime`
 
 **Symptom:** The `openshell-runtime-prerequisites` hook fails (`index of untyped nil` on `key-encryption-key`, or `Runtime prerequisites did not qualify`), or `setup-runtime.py` stops with `Missing key with retained storage; rotation refused` or `Missing narrow runtime field delegation`.
 
