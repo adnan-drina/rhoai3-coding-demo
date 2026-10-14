@@ -13,10 +13,10 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     demo.rhoai.io/stage: '070'
   annotations:
-    argocd.argoproj.io/sync-wave: '5'
+    argocd.argoproj.io/sync-wave: '6'
     argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/070-advanced-app-platform"
     argocd.argoproj.io/compare-options: ServerSideDiff=true
-    demo.rhoai.io/deploy-order: '5'
+    demo.rhoai.io/deploy-order: '6'
 spec:
   project: rhoai-demo
   source:
@@ -42,11 +42,6 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
-  - group: ''
-    kind: Namespace
-    jsonPointers:
-    - "/metadata/annotations"
-    - "/metadata/labels"
   - group: operators.coreos.com
     kind: OperatorGroup
     jsonPointers:

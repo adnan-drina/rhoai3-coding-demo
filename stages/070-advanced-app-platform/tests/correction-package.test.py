@@ -347,8 +347,8 @@ class NativeSyncAndIngress(unittest.TestCase):
  def test_mta_patch_is_exact_in_subscription_allowlist_and_validator(self):
   selected=yaml.safe_load((BASE/'mta/mta-operator/subscription.yaml').read_text())['spec']
   self.assertEqual(selected['startingCSV'],'mta-operator.v8.3.1');self.assertEqual(selected['installPlanApproval'],'Manual')
-  approval=(BASE/'pipelines/operators/approve-installplans.yaml').read_text()
-  self.assertIn('openshift-mta:mta-operator:mta-operator.v8.3.1',approval)
+  approval=(BASE/'mta/mta-operator/approve-installplan.yaml').read_text()
+  self.assertIn('value: mta-operator.v8.3.1',approval)
   self.assertNotIn('mta-operator.v8.3.0',approval)
   self.assertIn('openshift-mta mta-operator mta-operator.v8.3.1',(ROOT/'stages/070-advanced-app-platform/validate.sh').read_text())
  def test_pvc_storage_classes_are_explicit_and_match_the_deploy_contract(self):

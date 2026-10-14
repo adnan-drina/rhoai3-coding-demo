@@ -1,9 +1,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-- mta-operator/namespace.yaml
 - mta-operator/operatorgroup.yaml
 - mta-operator/subscription.yaml
+- mta-operator/approve-installplan.yaml
 - controller-sizing
 - mta-instance/tackle.yaml
 - mta-instance/consolelink.yaml

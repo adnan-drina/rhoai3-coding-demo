@@ -10,9 +10,9 @@ kind: Kustomization
 resources:
   - network-policy.yaml
   # Wave 0-2: RHDH Operator
-  - rhdh-operator/namespace.yaml
   - rhdh-operator/operatorgroup.yaml
   - rhdh-operator/subscription.yaml
+  - rhdh-operator/approve-installplan.yaml
   # Wave 5: RHDH instance prerequisites (ConfigMaps, Secrets)
   - rhdh-instance/app-config-configmap.yaml
   - rhdh-instance/rbac-policy.yaml

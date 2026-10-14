@@ -43,11 +43,6 @@ spec:
         maxDuration: 3m
   ignoreDifferences:
   - group: ''
-    kind: Namespace
-    jsonPointers:
-    - "/metadata/annotations"
-    - "/metadata/labels"
-  - group: ''
     kind: PersistentVolumeClaim
     name: gitlab-postgresql-data
     namespace: gitlab-system

@@ -238,7 +238,11 @@ class Plan:
 
     # -- changes ----------------------------------------------------------------------------------------------------
     def stop_old(self):
-        for name in self.old:
+        # Sequential: existing target Applications also wait for their turn. One still at the old revision would
+        # otherwise take back an object that an earlier target just adopted. Applying it at its turn restores
+        # automated sync from its manifest.
+        held = [n for n in self.new if self.args.sequential and application(n)]
+        for name in self.old + held:
             app = application(name)
             if app and app["spec"].get("syncPolicy", {}).get("automated"):
                 oc("patch", "applications.argoproj.io", name, "-n", NS, "--type", "merge", "-p", '{"spec":{"syncPolicy":{"automated":null}}}')
@@ -389,7 +393,7 @@ def main():
                 plan.stamped(name)
             log("DRY RUN: no changes made.")
             return 0
-        log("== Stop automated sync on the Applications being retired")
+        log("== Stop automated sync on the Applications being retired" + (" and on existing targets until their turn" if args.sequential else ""))
         plan.stop_old()
         if args.sequential:
             # Sync waves order hooks only inside one Application: a component whose hooks need another component's

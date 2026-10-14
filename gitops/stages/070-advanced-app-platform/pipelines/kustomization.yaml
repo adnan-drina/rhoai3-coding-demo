@@ -6,9 +6,7 @@ resources:
 - operators/image-builder-scc.yaml
 - operators/configure-tekton-pruner.yaml
 - operators/rhtas-subscription.yaml
-- operators/approve-installplans.yaml
 - signing
-- build/namespace.yaml
 - build/persona-rbac.yaml
 - build/tektonconfig-affinity.yaml
 - build/tekton-triggers-core-config.yaml

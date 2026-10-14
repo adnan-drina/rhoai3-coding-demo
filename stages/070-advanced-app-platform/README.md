@@ -47,7 +47,22 @@ TAS: persistent signing services; signed delivery remains to be qualified
 
 The reference [OpenShift Developer Days project](https://github.com/rhpds/ocp-dev-days-rdshw-gitops) informs the integration patterns. Product versions, credential boundaries and deployment checks are reviewed independently. Chart-based services are rendered during authoring into ordinary checked-in resources; deployment uses Kustomize, with no Helm runtime.
 
-Use the full Stage 070 base for this GitLab release. The retained `slim` overlay is a legacy render, not a qualified deployment: it lacks the full GitLab and root script-bundle composition. Its repair or retirement is separate work. Application migration also requires the full MTA stack.
+### Components
+
+Each component is its own Argo CD Application with its own folder and README. `deploy.sh` deploys them one at a time in this order: sync waves order hooks only inside one Application, and later components' hooks need the earlier ones.
+
+| Order | Application | What it owns |
+|---|---|---|
+| 1 | [`070-namespaces`](../../gitops/stages/070-advanced-app-platform/namespaces/README.md) | Every Stage 070 namespace (`Prune=false`) |
+| 2 | [`070-identity`](../../gitops/stages/070-advanced-app-platform/identity/README.md) | Platform Keycloak clients and scoped provisioner identities |
+| 3 | [`070-devspaces`](../../gitops/stages/070-advanced-app-platform/devspaces/README.md) | Dev Spaces, persona workspaces, workspace model access |
+| 4 | [`070-pipelines`](../../gitops/stages/070-advanced-app-platform/pipelines/README.md) | Pipelines, Trusted Artifact Signer, build namespace, project enrollment |
+| 5 | [`070-sonarqube`](../../gitops/stages/070-advanced-app-platform/sonarqube/README.md) | SonarQube and its database |
+| 6 | [`070-mta`](../../gitops/stages/070-advanced-app-platform/mta/README.md) | MTA with Hub Agents and the Developer Lightspeed proxy |
+| 7 | [`070-gitlab`](../../gitops/stages/070-advanced-app-platform/gitlab/README.md) | GitLab and the integration hub that wires it into the other components |
+| 8 | [`070-rhdh`](../../gitops/stages/070-advanced-app-platform/rhdh/README.md) | Developer Hub, its generated catalog and templates |
+
+Application migration needs every component, including the full MTA stack.
 
 ## Trust Boundaries
 
@@ -83,7 +98,7 @@ Review the complete published and pending release diff and the [release checklis
 
 Static checks need the [test dependencies](tests/requirements.txt), Kustomize and Git. Live deployment uses the repository's cluster guard. [Operations](../../docs/OPERATIONS.md#stage-070-gitlab-release) contains deployment order, credentials, lifecycle and acceptance. [Troubleshooting](../../docs/TROUBLESHOOTING.md#stage-070-gitlab-project-enrollment-is-pending) covers refusal and recovery.
 
-Source: [Stage 070 Kustomize resources](../../gitops/stages/070-advanced-app-platform/). The root platform Application retains its GitHub bootstrap source; project tooling, owned goldens, catalog and delivery use GitLab. A full platform-root cutover is a separate reviewed step.
+Source: [Stage 070 component folders](../../gitops/stages/070-advanced-app-platform/) and [Applications](../../gitops/argocd/app-of-apps/070-advanced-app-platform/). The root platform Application retains its GitHub bootstrap source; project tooling, owned goldens, catalog and delivery use GitLab. A full platform-root cutover is a separate reviewed step.
 
 ## References
 

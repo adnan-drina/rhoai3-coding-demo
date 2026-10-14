@@ -1,28 +1,28 @@
-# Namespace for the Coolstore reference workload; its delivery is enrolled through GitLab.
+# Every Stage 070 namespace, deployed first: earlier components write into namespaces later components use.
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: 070-coolstore
+  name: 070-namespaces
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/instance: openshift-gitops
-    app.kubernetes.io/name: coolstore
-    app.kubernetes.io/component: coolstore
+    app.kubernetes.io/name: namespaces
+    app.kubernetes.io/component: namespaces
     app.kubernetes.io/managed-by: argocd
     demo.rhoai.io/stage: '070'
   annotations:
-    argocd.argoproj.io/sync-wave: '6'
+    argocd.argoproj.io/sync-wave: '1'
     argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/070-advanced-app-platform"
     argocd.argoproj.io/compare-options: ServerSideDiff=true
-    demo.rhoai.io/deploy-order: '6'
+    demo.rhoai.io/deploy-order: '1'
 spec:
   project: rhoai-demo
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/070-advanced-app-platform/coolstore
+    path: gitops/stages/070-advanced-app-platform/namespaces
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops

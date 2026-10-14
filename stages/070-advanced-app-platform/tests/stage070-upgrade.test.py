@@ -168,7 +168,8 @@ class IntegratedContract(unittest.TestCase):
         self.assertEqual(guard['input']['url'], './refusals/FACTORY_MTA_HUB_MISSING')
 
     def test_coolstore_namespace_precedes_its_delivery_bindings(self):
-        namespace = yaml.safe_load((BASE / 'coolstore/namespace.yaml').read_text())
+        namespace = next(d for d in yaml.safe_load_all((BASE / 'namespaces/namespaces.yaml').read_text())
+                         if d and d['metadata']['name'] == 'coolstore-dev')
         binding = yaml.safe_load((BASE / 'pipelines/project-pipeline/rbac-image-builder.yaml').read_text())
         self.assertLess(int(namespace['metadata']['annotations']['argocd.argoproj.io/sync-wave']),
                         int(binding['metadata']['annotations']['argocd.argoproj.io/sync-wave']))
