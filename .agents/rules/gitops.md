@@ -133,6 +133,17 @@ Every Application MUST use `destination: {server: https://kubernetes.default.svc
 ### Server-Side Diff
 Enable it with the Application annotation `argocd.argoproj.io/compare-options: ServerSideDiff=true` (accurate diff for CRDs, defaulted fields and admission mutations). A `ServerSideDiff=true` entry in `syncPolicy.syncOptions` does **not** enable it: Argo CD reads diff strategy only from this annotation or the global `controller.diff.server.side` setting, which this repository does not set. An Application that needs client-side comparison sets `ServerSideDiff=false` in the annotation and records the reason in its component README. `060-openshell-runtime` does this today (30466007) without a recorded failure; re-test it with server-side diff.
 
+### Hook Jobs
+Every Job that runs as an Argo CD hook (or is created by a deploy script) follows these rules; reviews check them:
+- `activeDeadlineSeconds` and a small `backoffLimit`, so a hook cannot block a sync indefinitely; `oc` calls use `--request-timeout`.
+- Images pinned by digest.
+- A restricted `securityContext` (no privilege escalation, all capabilities dropped, non-root, `RuntimeDefault` seccomp) and `resources`; size memory for the `oc` client (256Mi request, 1Gi limit for `ose-cli`).
+- TLS is verified: no `curl -k`/`--insecure`, no `--trusted-host`; use the image trust store for public certificates or mount the service CA for cluster services.
+- Secrets are written with server-side apply (`oc apply --server-side --field-manager=<job>`), never `oc apply -f` of a rendered Secret: client-side apply copies every value into the `kubectl.kubernetes.io/last-applied-configuration` annotation. Remove a legacy annotation idempotently after writing.
+- RBAC names the exact objects (`resourceNames`) wherever the verb allows it; `create` is the only verb that cannot be limited by name. Prefer a namespaced Role over a ClusterRole.
+- `hook-delete-policy: BeforeHookCreation,HookSucceeded` unless the completed Job is kept as evidence (say so in a comment).
+- No remote installer piped into a shell; download a pinned release and verify its published checksum.
+
 ### Resource Tracking
 `resourceTrackingMethod: annotation` only. Never `annotation+label` or `label`.
 

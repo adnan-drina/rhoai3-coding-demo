@@ -33,7 +33,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - SkipDryRunOnMissingResource=true
-      - ServerSideDiff=true
       - RespectIgnoreDifferences=true
     retry:
       limit: 10
@@ -53,7 +52,6 @@ spec:
         - /spec/components/kueue
         - /spec/components/kserve
         - /spec/components/modelregistry
-        - /spec/components/llamastackoperator
         - /spec/components/trustyai
         - /spec/components/mlflowoperator
         - /spec/components/aipipelines

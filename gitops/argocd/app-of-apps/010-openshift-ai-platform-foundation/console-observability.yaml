@@ -30,7 +30,6 @@ spec:
     syncOptions:
       - SkipDryRunOnMissingResource=true
       - RespectIgnoreDifferences=true
-      - ServerSideDiff=true
     retry:
       limit: 10
       backoff:

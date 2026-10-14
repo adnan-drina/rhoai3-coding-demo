@@ -95,7 +95,6 @@ delegated (`sparkoperator`, `trainer`) Removed. Delegated fields and their runti
 | `/spec/components/aigateway`, `/spec/components/ogx` | Stage 040 `maas-platform/jobs/enable-maas-job.yaml` | `Managed` |
 | `/spec/components/trustyai`, `/spec/components/mlflowoperator`, `/spec/components/aipipelines` | Stage 050 `mlflow/dsc-enablement/enable-job.yaml` | `Managed` |
 | `/spec/components/mcplifecycleoperator` | Stage 060 `mcp-platform/enable-job.yaml` | `Managed` |
-| `/spec/components/llamastackoperator` | None. No stage patches it | `Removed` |
 
 The same model applies to `odh-dashboard-config`. Stage 030 owns `agentsCatalog`, `disableModelCatalog`,
 `disableModelRegistry`, `toolCalling`, `mcpCatalog` and `mcpRegistry`. Stage 040 owns `genAiStudio`, `genAiTracing`,
@@ -171,7 +170,7 @@ python3 scripts/shared/stage_apps.py delegated 010 DataScienceCluster default-ds
 | Observability dashboard | Available automatically once metrics are enabled [3]; `observabilityDashboard` default `true` [2] | `true`, written down | Aligned |
 | Access groups | Select admin and user groups; groups must exist; `system:authenticated` allows all users [6]; groups set in the `Auth` resource [2] | `Auth` from Git with explicit groups | Aligned |
 | Dashboard options | Documented options and defaults [2] | Four non-default values (table above), two of them Technology or Developer Preview | Deviation (justified: demo features; `disableKueue: false` enables a Developer Preview UI) |
-| Deprecated component | Live CRD: `llamastackoperator` deprecated, use OGX | Kept `Removed` in Git and listed in `ignoreDifferences` with no owner | Gap (stale delegation, see findings) |
+| Deprecated component | Live CRD: `llamastackoperator` deprecated, use OGX | Kept `Removed` in Git and enforced by Argo CD (no delegation) | Aligned |
 | Ownership of shared CRs | GitOps diffing with `ignoreDifferences` and `RespectIgnoreDifferences` (upstream) [4][5] | Delegated pointers, enforced by `stage_apps.delegated` | Aligned |
 
 ## References
