@@ -19,6 +19,8 @@ spec:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops
   syncPolicy:
+    syncOptions:
+    - RespectIgnoreDifferences=true
     retry:
       limit: 10
       backoff: {duration: 5s, factor: 2, maxDuration: 3m}

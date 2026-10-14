@@ -343,7 +343,9 @@ for stage in "${stages[@]}"; do
     log_step "Validating ${stage}"
     "$REPO_ROOT/stages/${stage}/validate.sh"
     rc=$?
-    if [[ $rc -eq 1 ]]; then
+    # 0 passed, 2 passed with warnings; anything else (1, a cluster-guard refusal, a missing script) is a failure.
+    if [[ $rc -ne 0 && $rc -ne 2 ]]; then
+        [[ $rc -eq 1 ]] || log_error "${stage}/validate.sh exited ${rc}"
         max_rc=1
     elif [[ $rc -eq 2 && $max_rc -eq 0 ]]; then
         max_rc=2

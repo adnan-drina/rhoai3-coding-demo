@@ -24,9 +24,11 @@ check "Tackle CR exists" \
 check "Tackle LLM proxy enabled (inference separately qualified)" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_proxy_enabled}'" \
   "true"
-check "Tackle Solution Server enabled (inference separately qualified)" \
+# Stage 070 deliberately keeps the Solution Server disabled (database retained) until its vendor dependency fix;
+# BACKLOG "Stage 070 live qualification". This check follows that decision instead of contradicting it.
+check "Tackle Solution Server stays disabled as Stage 070 decided" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_solution_server_enabled}'" \
-  "true"
+  "false"
 check "Tackle hub auth enabled (built-in OIDC provider)" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.feature_auth_required}'" \
   "true"

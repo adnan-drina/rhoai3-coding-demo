@@ -163,7 +163,7 @@ def accepted_health(app):
     return {"Healthy"} | {h.strip() for h in value.split(",") if h.strip()}
 
 
-def app_problems(app, revision=None, repo_url=None, path=None, accepted=("Healthy",)):
+def app_problems(app, revision=None, repo_url=None, path=None, accepted=("Healthy",), destination=None):
     """Reasons an Application is not exactly reconciled at an immutable revision; empty when ready."""
     problems = []
     meta, spec, status = app["metadata"], app["spec"], app.get("status", {})
@@ -172,7 +172,7 @@ def app_problems(app, revision=None, repo_url=None, path=None, accepted=("Health
     target = source.get("targetRevision", "")
     if meta.get("ownerReferences") or meta.get("deletionTimestamp") or spec.get("sources"):
         problems.append(name + ": foreign, terminating or multi-source")
-    if spec.get("project") != "rhoai-demo" or spec.get("destination") != DESTINATION:
+    if spec.get("project") != "rhoai-demo" or spec.get("destination") != (destination or DESTINATION):
         problems.append(name + ": project or destination differs")
     if repo_url and source.get("repoURL") != repo_url:
         problems.append(name + ": repository differs")
@@ -201,17 +201,24 @@ def get_application(name):
     return json.loads(result.stdout) if result.stdout.strip() else None
 
 
-def stage_problems(stage, revision=None, repo_url=None, root=ROOT):
-    """Problems across every component of the stage (missing, drifted, or mixed revisions)."""
+def stage_problems(stage, revision=None, repo_url=None, root=ROOT, separate=False):
+    """Problems across the stage's components (missing, drifted, or mixed revisions).
+
+    separate=True also checks the components a component script deploys (all of Stages 030 and 060, two of 010);
+    validation uses it, so a stage is never reported ready with nothing checked."""
     problems, revisions = [], set()
-    for desired in _deployed(stage, str(root), False):
+    desired_apps = _deployed(stage, str(root), separate)
+    if not desired_apps:
+        return ["Stage " + stage + " has no component Applications to check"]
+    for desired in desired_apps:
         name = desired["metadata"]["name"]
         app = get_application(name)
         if not app:
             problems.append(name + ": missing")
             continue
         revisions.add(app["spec"].get("source", {}).get("targetRevision"))
-        problems += app_problems(app, revision, repo_url, desired["spec"]["source"]["path"], accepted_health(desired))
+        problems += app_problems(app, revision, repo_url, desired["spec"]["source"]["path"], accepted_health(desired),
+                                 desired["spec"]["destination"])
     if len(revisions) > 1:
         problems.append("components are at different revisions")
     return problems
@@ -395,8 +402,8 @@ def main():
     elif args.command == "applications":
         print(json.dumps({"apiVersion": "v1", "kind": "List", "items": stamped(args.stage, args.revision, args.repo_url)}))
     elif args.command == "status":
-        problems = stage_problems(args.stage, args.revision, args.repo_url)
-        for name in names(args.stage):
+        problems = stage_problems(args.stage, args.revision, args.repo_url, separate=True)
+        for name in names(args.stage, separate=True):
             print(("FAIL " if any(p.startswith(name + ":") for p in problems) else "OK   ") + name)
         for problem in problems:
             print("  - " + problem)
