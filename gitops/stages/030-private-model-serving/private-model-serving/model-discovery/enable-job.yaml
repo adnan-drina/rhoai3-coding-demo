@@ -9,6 +9,7 @@ metadata:
     app.kubernetes.io/component: platform-configuration
     app.kubernetes.io/managed-by: argocd
   annotations:
+    demo.rhoai.io/writes-delegated: "DataScienceCluster:/spec/components/modelregistry,OdhDashboardConfig:/spec/dashboardConfig/agentsCatalog,OdhDashboardConfig:/spec/dashboardConfig/disableModelCatalog,OdhDashboardConfig:/spec/dashboardConfig/disableModelRegistry,OdhDashboardConfig:/spec/dashboardConfig/mcpCatalog,OdhDashboardConfig:/spec/dashboardConfig/mcpRegistry,OdhDashboardConfig:/spec/dashboardConfig/toolCalling"
     argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded

@@ -9,4 +9,3 @@ resources:
   - group-rhoai-developers.yaml
   - rolebinding-developer-edit.yaml
   - rolebinding-admins-admin.yaml
-  - obc-demo-sandbox.yaml

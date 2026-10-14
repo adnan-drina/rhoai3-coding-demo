@@ -9,6 +9,7 @@ metadata:
     app.kubernetes.io/component: platform-configuration
     app.kubernetes.io/managed-by: argocd
   annotations:
+    demo.rhoai.io/writes-delegated: "DataScienceCluster:/spec/components/aipipelines,DataScienceCluster:/spec/components/mlflowoperator,DataScienceCluster:/spec/components/trustyai,OdhDashboardConfig:/spec/dashboardConfig/disableLMEval,OdhDashboardConfig:/spec/dashboardConfig/globalProjectPrompts,OdhDashboardConfig:/spec/globalMLflowNamespaces"
     argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded

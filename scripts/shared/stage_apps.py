@@ -302,7 +302,7 @@ CLUSTER_SCOPED = {
     ("kueue.x-k8s.io", "ResourceFlavor"), ("datasciencecluster.opendatahub.io", "DataScienceCluster"),
     ("dscinitialization.opendatahub.io", "DSCInitialization"), ("services.platform.opendatahub.io", "Auth"),
     ("mlflow.opendatahub.io", "MLflow"), ("policy.networking.k8s.io", "AdminNetworkPolicy"),
-    ("policy.networking.k8s.io", "BaselineAdminNetworkPolicy"),
+    ("policy.networking.k8s.io", "BaselineAdminNetworkPolicy"), ("imageregistry.operator.openshift.io", "Config"),
 }
 
 
@@ -332,6 +332,45 @@ def check_static(stage, root=ROOT):
     return len(union)
 
 
+WRITES = "demo.rhoai.io/writes-delegated"
+DELEGATED_KINDS = {"DataScienceCluster", "OdhDashboardConfig"}
+
+
+def check_delegations(root=ROOT):
+    """Hook Jobs in later stages declare the shared-singleton fields they patch (annotation demo.rhoai.io/writes-delegated,
+    "Kind:/json/pointer" entries); 010-rhoai-platform must delegate exactly those fields, each to one writer."""
+    root = Path(root)
+    app = load_yaml_stream((root / "gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/rhoai-platform.yaml").read_text())[0]
+    delegated = {i["kind"] + ":" + p for i in app["spec"].get("ignoreDifferences", []) if i.get("kind") in DELEGATED_KINDS
+                 for p in i.get("jsonPointers", [])}
+    writers, problems = {}, []
+    for stage_path in sorted((root / "gitops/stages").glob("0[2-9]0-*")):
+        stage = stage_path.name[:3]
+        if not is_regrouped(stage, root):
+            continue
+        for component in _components(stage, str(root)):
+            for obj in render(component["spec"]["source"]["path"], root):
+                if obj["kind"] != "Job":
+                    continue
+                name = component["metadata"]["name"] + "/Job/" + obj["metadata"]["name"]
+                declared = [w.strip() for w in obj["metadata"].get("annotations", {}).get(WRITES, "").split(",") if w.strip()]
+                script = json.dumps(obj["spec"]["template"]["spec"]).lower()
+                if not declared and re.search(r"patch\s+(datasciencecluster|odhdashboardconfig)", script):
+                    problems.append(name + " patches a shared singleton but does not declare " + WRITES)
+                for field in declared:
+                    writers.setdefault(field, []).append(name)
+    for field, names in sorted(writers.items()):
+        if field not in delegated:
+            problems.append(field + " is written by " + ", ".join(names) + " but 010-rhoai-platform does not delegate it")
+        if len(names) > 1:
+            problems.append(field + " has several writers: " + ", ".join(names))
+    for field in sorted(delegated - set(writers)):
+        problems.append(field + " is delegated by 010-rhoai-platform but no hook Job declares that it writes it")
+    if problems:
+        raise RuntimeError("delegation mismatch: " + "; ".join(problems))
+    return len(delegated)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -345,6 +384,7 @@ def main():
     p = sub.add_parser("delegated")
     p.add_argument("stage"); p.add_argument("kind"); p.add_argument("name"); p.add_argument("namespace", nargs="?"); p.add_argument("--group", default="")
     sub.add_parser("check-static").add_argument("stage")
+    sub.add_parser("check-delegations")
     p = sub.add_parser("sync")
     p.add_argument("stage"); p.add_argument("--app", action="append", help="limit to these Applications (also deploy-script ones)")
     args = parser.parse_args()
@@ -363,6 +403,8 @@ def main():
         print(owner(args.stage, args.kind, args.name, args.namespace, args.group))
     elif args.command == "delegated":
         print("\n".join(sorted(delegated(args.stage, args.kind, args.name, args.namespace, args.group))))
+    elif args.command == "check-delegations":
+        print("PASS " + str(check_delegations()) + " Stage 010 delegated fields, each written by exactly one declared hook Job")
     elif args.command == "sync":
         for name in start_syncs(args.stage, only=args.app):
             print("started sync of " + name)

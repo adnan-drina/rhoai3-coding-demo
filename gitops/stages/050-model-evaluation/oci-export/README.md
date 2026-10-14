@@ -31,15 +31,15 @@ configuration [2].
 | Secret (`kubernetes.io/service-account-token`) | `evalhub-oci-pusher-token` | `evaluated-models` | Wave 12. Long-lived token for the pusher, filled by Kubernetes. |
 | RoleBinding | `evalhub-oci-pusher-image-builder` | `evaluated-models` | Wave 12. `system:image-builder` (push to image streams in this namespace). |
 | ServiceAccount | `evalhub-oci-export-provisioner` | `evaluated-models` | Wave 12. Hook identity. |
-| ClusterRole / ClusterRoleBinding | `evalhub-oci-export-provisioner` | cluster | Wave 12. `get`/`patch` on `configs.imageregistry.operator.openshift.io/cluster`; `get` on Routes in every namespace. |
+| Role / RoleBinding | `evalhub-oci-export-registry-route` | `openshift-image-registry` | Wave 12. `get` on Route `default-route` only |
 | Role / RoleBinding | `evalhub-oci-export-provisioner` | `evaluated-models` | Wave 12. get/patch/update on the pusher token and `evalhub-oci-registry`; create Secrets. |
-| Job | `provision-evalhub-oci-export` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`, `backoffLimit: 3`, no deadline. Sets `defaultRoute: true`, waits for Route `default-route`, builds a docker config from the pusher token and writes Secret `evalhub-oci-registry`. |
+| Job | `provision-evalhub-oci-export` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`, `backoffLimit: 3`, 600 s deadline. Waits for Route `default-route`, builds a docker config from the pusher token and writes Secret `evalhub-oci-registry`. |
 
 ### Objects not in Git
 
 | Object | Created by |
 |---|---|
-| `configs.imageregistry.operator.openshift.io/cluster` field `spec.defaultRoute: true` | The hook (cluster-scoped object owned by the Image Registry Operator, not by any Application) |
+| `configs.imageregistry.operator.openshift.io/cluster` field `spec.defaultRoute: true` | `010-rhoai-platform` (partial manifest, `Prune=false,Delete=false`) |
 | Route `openshift-image-registry/default-route` | Image Registry Operator |
 | Secret `evaluated-models/evalhub-oci-registry` (`.dockerconfigjson`) | The hook |
 | ImageStream `evaluated-models/evaluation-results` and its tags (`evalhub-<hash>`, `evaluation-card-<job id>`) | Registry, on first push by an EvalHub job |
@@ -75,7 +75,7 @@ oc get secret evalhub-oci-registry -n evaluated-models -o jsonpath='{.type}{"\n"
 | Topic | Official guidance (link) | This repository | Status |
 |---|---|---|---|
 | Export mechanism | `exports.oci` with host, repository and a `kubernetes.io/dockerconfigjson` Secret [1] | Secret `evalhub-oci-registry`, repository `evaluated-models/evaluation-results` | Aligned |
-| Registry exposure | `defaultRoute: true` creates `default-route` [2] | Set by a hook Job | Deviation (justified: cluster object not owned in Git; sidecar needs a publicly trusted certificate) |
+| Registry exposure | `defaultRoute: true` creates `default-route` [2] | Declared in Git by `010-rhoai-platform` | Aligned |
 | Least privilege | Narrow RBAC | Cluster-wide `get` on Routes and `patch` on the registry config for the hook | Gap (see findings) |
 | Credential lifetime | Short-lived tokens preferred | Long-lived ServiceAccount token Secret | Deviation (justified: the export Secret must stay valid between syncs; rotation documented) |
 | Hook bounds | Bounded Jobs | No `activeDeadlineSeconds` | Gap (see findings) |

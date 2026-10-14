@@ -8,6 +8,7 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: "060"
   annotations:
+    demo.rhoai.io/writes-delegated: "DataScienceCluster:/spec/components/mcplifecycleoperator"
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     argocd.argoproj.io/sync-wave: "5"

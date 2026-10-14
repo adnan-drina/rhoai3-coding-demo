@@ -10,6 +10,7 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/managed-by: argocd
   annotations:
+    demo.rhoai.io/writes-delegated: "DataScienceCluster:/spec/components/aigateway,DataScienceCluster:/spec/components/ogx,OdhDashboardConfig:/spec/dashboardConfig/agentConfigManagement,OdhDashboardConfig:/spec/dashboardConfig/aiAssetCustomEndpoints,OdhDashboardConfig:/spec/dashboardConfig/externalModels,OdhDashboardConfig:/spec/dashboardConfig/genAiStudio,OdhDashboardConfig:/spec/dashboardConfig/genAiTracing,OdhDashboardConfig:/spec/dashboardConfig/guardrails,OdhDashboardConfig:/spec/dashboardConfig/llmdTemplates,OdhDashboardConfig:/spec/dashboardConfig/modelAsService,OdhDashboardConfig:/spec/dashboardConfig/promptManagement,OdhDashboardConfig:/spec/dashboardConfig/vLLMDeploymentOnMaaS,OdhDashboardConfig:/spec/genAiStudioConfig"
     argocd.argoproj.io/sync-wave: '14'
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
