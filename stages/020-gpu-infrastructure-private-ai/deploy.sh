@@ -22,13 +22,12 @@ overlay="$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai/overlays/envi
 [[ -f "$overlay/machinesets/machineset-gpu.yaml" && -f "$overlay/machinesets/application-patch.yaml" ]] || { echo 'ERROR: generate, review and publish the environment MachineSet and Application patch first.' >&2; exit 1; }
 export REPO_ROOT
 # All prerequisites are read-only and run before the first Application write.
-foundation=$(oc --request-timeout=10s get applications.argoproj.io 010-openshift-ai-platform-foundation -n openshift-gitops -o json)
-python3 - "$foundation" <<'PY'
-import json,sys
-x=json.loads(sys.argv[1]); s=x.get('status',{}); spec=x['spec']
-assert s.get('sync',{}).get('status')=='Synced' and s.get('health',{}).get('status')=='Healthy','Stage 010 must be Synced/Healthy'
-assert 'RespectIgnoreDifferences=true' in spec['syncPolicy']['syncOptions'],'Stage 010 must respect delegated fields'
-assert any(i.get('kind')=='DataScienceCluster' and i.get('name')=='default-dsc' and '/spec/components/kueue' in i.get('jsonPointers',[]) for i in spec.get('ignoreDifferences',[])),'Stage 010 must delegate Kueue'
+python3 - <<'PY'
+import os,sys
+sys.path.insert(0,os.environ['REPO_ROOT']+'/scripts/shared');import stage_apps
+problems=stage_apps.stage_problems('010')
+assert not problems,'Stage 010 must be reconciled: '+'; '.join(problems)
+assert '/spec/components/kueue' in stage_apps.delegated('010','DataScienceCluster','default-dsc',group='datasciencecluster.opendatahub.io'),'Stage 010 must delegate Kueue'
 PY
 oc --request-timeout=10s get csv -A -o json | python3 -c 'import json,sys; x=json.load(sys.stdin); assert any(i["metadata"]["name"].startswith("cert-manager-operator.v1.20.") and i.get("status",{}).get("phase")=="Succeeded" for i in x["items"]), "Provider cert-manager prerequisite unavailable"'
 python3 - <<'PY_OWNERSHIP'

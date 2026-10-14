@@ -8,7 +8,6 @@ REPO_ROOT="${RHOAI_ENV_ROOT:-$ROOT_DIR}"
 load_env
 check_oc_logged_in
 revision="${1:-${GIT_REPO_BRANCH:-}}"
-export RHOAI_REGISTRY_HANDOFF_EVIDENCE="${2:-${RHOAI_REGISTRY_HANDOFF_EVIDENCE:-}}"
 [[ -n "$revision" ]] || { echo 'ERROR: select the reviewed published branch.' >&2; exit 1; }
 remote_sha=$(git ls-remote "${GIT_REPO_URL:?Set GIT_REPO_URL}" "$revision" "refs/heads/$revision" | awk '{print $1}' | sort -u)
 [[ "$remote_sha" =~ ^[0-9a-f]{40}$ && "$remote_sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published branch differs from the reviewed checkout.' >&2; exit 1; }
@@ -18,7 +17,7 @@ paths=(gitops/stages/030-private-model-serving gitops/argocd/app-of-apps/030-pri
 python3 - "$ROOT_DIR" <<'PY_PREREQUISITE'
 import json,os,subprocess,sys
 from pathlib import Path
-appname='030-private-model-serving';core='010-openshift-ai-platform-foundation'
+appname='030-private-model-serving'
 registry={('Namespace','rhoai-model-registries',''),('ModelRegistry','demo-registry','rhoai-model-registries'),('RoleBinding','demo-registry-rhods-admins','rhoai-model-registries'),('RoleBinding','demo-registry-rhoai-developers','rhoai-model-registries')}
 def get(kind,name,ns=None,optional=False):
  args=['oc','--request-timeout=10s','get',kind,name,'-o','json']
@@ -27,41 +26,20 @@ def get(kind,name,ns=None,optional=False):
  p=subprocess.run(args,capture_output=True,text=True,timeout=15)
  assert p.returncode==0,'Prerequisite API read failed'
  return json.loads(p.stdout) if p.stdout.strip() else None
-foundation=get('application',core,'openshift-gitops');spec=foundation['spec'];status=foundation['status']
-assert status['health']['status']=='Healthy','Foundation must be Healthy'
-operation=status.get('operationState',{});result=operation.get('syncResult',{})
-assert status['sync'].get('revision')==spec['source']['targetRevision'] and operation.get('phase')=='Succeeded' and result.get('revision')==spec['source']['targetRevision'] and result.get('source',{}).get('path')==spec['source']['path'],'Foundation exact source/path has not reconciled'
-bridge=spec['source']['path']=='gitops/stages/030-private-model-serving/migration/foundation-omit'
+sys.path.insert(0,sys.argv[1]+'/scripts/shared');import stage_apps
+problems=stage_apps.stage_problems('010')
+assert not problems,'Stage 010 must be reconciled: '+'; '.join(problems)
 registry_crd=get('customresourcedefinition','modelregistries.modelregistry.opendatahub.io',optional=True)
-if status['sync']['status']!='Synced':
- assert bridge and status.get('operationState',{}).get('phase')=='Succeeded','Foundation transition is incomplete'
- def informational_project(r):
-  if r.get('group')!='project.openshift.io' or r.get('kind')!='Project' or r.get('name')!='rhoai-model-registries' or r.get('namespace') or r.get('status') is not None or r.get('requiresPruning') is not None:return False
-  project=get('projects.project.openshift.io','rhoai-model-registries')
-  namespace=get('namespace','rhoai-model-registries')
-  assert project['metadata']['uid']==namespace['metadata']['uid'],'Informational Project alias UID differs from retained Namespace'
-  return True
- drift_resources=[r for r in status.get('resources',[]) if r.get('status')!='Synced' and not informational_project(r)]
- drift={(r['kind'],r['name'],r.get('namespace','')) for r in drift_resources}
- assert drift<=registry and all(r.get('requiresPruning') for r in drift_resources),'Unexpected foundation drift'
-assert 'RespectIgnoreDifferences=true' in spec['syncPolicy']['syncOptions'],'Foundation must respect delegated fields'
-def paths(group,kind,name,ns=None):
- return {p for i in spec.get('ignoreDifferences',[]) if i.get('group')==group and i.get('kind')==kind and i.get('name')==name and (ns is None or i.get('namespace')==ns) for p in i.get('jsonPointers',[])}
-assert {'/spec/components/kserve','/spec/components/modelregistry'}<=paths('datasciencecluster.opendatahub.io','DataScienceCluster','default-dsc'),'Foundation has not delegated serving/discovery'
-assert {'/spec/dashboardConfig/'+field for field in ['agentsCatalog','disableModelCatalog','disableModelRegistry','toolCalling','mcpCatalog','mcpRegistry']}<=paths('opendatahub.io','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications'),'Foundation discovery visibility is not delegated'
-# Delegation alone cannot remove old Argo ownership: require the omission bridge.
+assert {'/spec/components/kserve','/spec/components/modelregistry'}<=stage_apps.delegated('010','DataScienceCluster','default-dsc',group='datasciencecluster.opendatahub.io'),'Foundation has not delegated serving/discovery'
+assert {'/spec/dashboardConfig/'+field for field in ['agentsCatalog','disableModelCatalog','disableModelRegistry','toolCalling','mcpCatalog','mcpRegistry']}<=stage_apps.delegated('010','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications','opendatahub.io'),'Foundation discovery visibility is not delegated'
 for kind,name,ns in registry:
  lookup={'Namespace':'namespace','ModelRegistry':'modelregistries.modelregistry.opendatahub.io','RoleBinding':'rolebinding'}[kind]
  obj=None if kind=='ModelRegistry' and not registry_crd else get(lookup,name,ns or None,True)
  if not obj:
-  assert not bridge,"Protected registry resource is missing; refusing recreation"
   continue
  tracking=obj['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','')
- assert tracking.startswith(appname+':') or (bridge and tracking.startswith(core+':')),'Registry ownership handoff has not completed'
+ assert tracking.startswith(appname+':'),'Registry is not owned by Stage 030'
  assert not obj['metadata'].get('deletionTimestamp'),'Retained registry resource is terminating'
- if bridge:
-  options=obj['metadata'].get('annotations',{}).get('argocd.argoproj.io/sync-options','').split(',')
-  assert {'Prune=false','Delete=false'}<=set(options),'Retained registry protection missing'
 # Existing deployments must retain their native database contract on every rerun.
 mr=get('modelregistries.modelregistry.opendatahub.io','demo-registry','rhoai-model-registries',True) if registry_crd else None
 claim=get('pvc','demo-registry-postgres-storage','rhoai-model-registries',True)
@@ -75,17 +53,6 @@ if mr:
  assert uid and any(o.get('uid')==mr['metadata']['uid'] and o.get('controller') for o in json.loads(owners)),'Existing registry credential missing or foreign'
 else:
  assert not claim and not credential.stdout.strip(),'Partial retained registry database forbids clean recreation'
-if bridge:
- evidence=os.environ.get('RHOAI_REGISTRY_HANDOFF_EVIDENCE','');assert evidence,'Supply the completed bridge evidence directory for adoption'
- baseline=json.loads((Path(evidence)/'omit-after.json').read_text())
- for kind,name,ns in registry:
-  lookup={'Namespace':'namespace','ModelRegistry':'modelregistries.modelregistry.opendatahub.io','RoleBinding':'rolebinding'}[kind]
-  obj=get(lookup,name,ns or None);assert obj['metadata']['uid']==baseline['resources'][lookup+'/'+name]['uid'],'Retained registry UID changed'
- mr=get('modelregistries.modelregistry.opendatahub.io','demo-registry','rhoai-model-registries');assert mr['spec']==baseline['registrySpec'],'Retained registry native spec changed'
- claim=get('pvc','demo-registry-postgres-storage','rhoai-model-registries')
- assert claim['metadata']['uid']==baseline['resources']['pvc/demo-registry-postgres-storage']['uid'] and claim['status']['phase']=='Bound' and any(o.get('uid')==mr['metadata']['uid'] and o.get('controller') for o in claim['metadata'].get('ownerReferences',[])),'Registry database identity/owner changed'
- args=['oc','--request-timeout=10s','get','secret','demo-registry-postgres-credentials','-n','rhoai-model-registries','-o','jsonpath={.metadata.uid}'];p=subprocess.run(args,capture_output=True,text=True,timeout=15)
- assert p.returncode==0 and p.stdout==baseline['resources']['secret/demo-registry-postgres-credentials']['uid'],'Registry database credential identity changed'
 existing=get('application',appname,'openshift-gitops',True)
 if existing:
  e=existing['spec'];assert not existing['metadata'].get('ownerReferences') and not e.get('sources'),'Foreign Application ownership'

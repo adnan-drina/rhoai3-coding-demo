@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: agent-console
+  name: 060-agent-console
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo

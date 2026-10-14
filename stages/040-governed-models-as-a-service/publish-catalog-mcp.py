@@ -64,7 +64,7 @@ def patch(env, kind, name, namespace, before, changes):
 
 
 def desired(env, expected, key=KEY):
-    backend = get(env, 'applications.argoproj.io', 'agent-tools', 'openshift-gitops', True)
+    backend = get(env, 'applications.argoproj.io', '060-agent-tools', 'openshift-gitops', True)
     if backend is None:
         return None
     revision = backend['spec']['source']['targetRevision']
@@ -101,7 +101,7 @@ def publish(args, env):
     expected = args.expected_stage060_revision
     if args.validate and not expected:
         # Validation checks the deployed revision; publishing still needs a supplied reviewed SHA.
-        backend = get(env, 'applications.argoproj.io', 'agent-tools', 'openshift-gitops', True)
+        backend = get(env, 'applications.argoproj.io', '060-agent-tools', 'openshift-gitops', True)
         expected = backend['spec']['source']['targetRevision'] if backend else None
     value = desired(env, expected, key)
     if value is None:

@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: sandbox-storage
+  name: 010-sandbox-storage
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/name: sandbox-storage

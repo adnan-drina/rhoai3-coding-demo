@@ -485,15 +485,16 @@ Each script applies its stage's Applications from `gitops/argocd/app-of-apps/`. 
 
 | Stage | Argo CD app | Purpose |
 |------|-------------|---------|
-| 010 | `010-openshift-ai-platform-foundation` | OpenShift AI platform foundation |
+| 010 | `010-rhoai-operator`, `010-odf`, `010-observability-operators`, `010-rhoai-platform`, `010-access`; separately `010-console-observability`, `010-sandbox-storage` | RHOAI operator, ODF, observability operators and trace roles, DSCI/DSC/Auth/dashboard configuration, demo sandbox access; console plugin list and monitoring UI, sandbox S3 connections |
 | 020 | `020-node-feature-discovery`, `020-nvidia-gpu-operator`, `020-kueue`, `020-gpu-machinesets`, `020-gpu-quotas` | NFD, GPU Operator with metrics access and console dashboard, Red Hat build of Kueue, GPU MachineSets, queue quota and hardware profiles |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access`, `040-genai-studio` | MaaS operators, PostgreSQL (data), Gateway with Kuadrant/Authorino, MaaS enablement and monitoring, private models, external models, subscriptions and auth policies, Gen AI studio playground and MCP list |
 | 050 | `050-mlflow`, `050-model-qualification`, `050-evalhub`, `050-evaluation-content`, `050-oci-export` | MLflow tracking (data), Evaluated Models project and qualification pipeline, EvalHub (data) and curated prompts, evaluation collections and SWE-bench, OCI export |
 | 070 | `070-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA, coolstore dev environment |
-| 060 | *(workflow-only)* | AI-assisted development on stage 070 workspaces |
-| 070 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
-| 080 | *(workflow-only)* | AI-autonomous migration on the stage 070 MTA stack |
+| 060 | `060-openshell-identity`, `060-openshell-runtime`, `060-mcp-platform`, `060-agent-tools`, `060-agent-console` | OpenShell identity realm, OpenShell runtime and agent workspaces, native MCP lifecycle enablement, agent MCP tool servers, AgentOps console discovery (each deployed by its own script) |
+| 110 | *(workflow-only)* | AI-assisted development on stage 070 workspaces |
+| 120 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
+| 130 | *(workflow-only)* | AI-autonomous migration on the stage 070 MTA stack |
 
 ## Validation Strategy
 
@@ -567,7 +568,7 @@ If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for auto
 
 ### Stage component Applications
 
-Stages 020, 040 and 050 are deployed as several component Applications instead of one large one, so a model switch, a policy change or a failing hook touches only its own component, and data lives in components that never prune it. A component that is expected to report another health state by design names it in its `demo.rhoai.io/accepted-health` annotation (`050-model-qualification` is Suspended while its candidate model is stopped). Each component renders `gitops/stages/<stage>/apps/<component>/` and keeps the stage prefix; `base/` renders their union for validation. `deploy.sh` applies all components at one reviewed revision and validation requires each of them Synced and Healthy at that revision. The layout rules are in `.agents/rules/gitops.md`.
+Stages 010, 020, 040 and 050 are deployed as several component Applications instead of one large one, so a model switch, a policy change or a failing hook touches only its own component, and data lives in components that never prune it. A component that is expected to report another health state by design names it in its `demo.rhoai.io/accepted-health` annotation (`050-model-qualification` is Suspended while its candidate model is stopped). Each component renders `gitops/stages/<stage>/apps/<component>/` and keeps the stage prefix; `base/` renders their union for validation. `deploy.sh` applies all components at one reviewed revision and validation requires each of them Synced and Healthy at that revision. The layout rules are in `.agents/rules/gitops.md`.
 
 ### Moving objects between Applications
 
@@ -630,7 +631,7 @@ Point-in-time validation logs from 2026-05 and 2026-07 remain in Git history. Th
 
 ### Stage 010 console observability component
 
-The permanent `010-console-observability` Application manages only `UIPlugin/monitoring`; COO manages the generated monitoring plugin and console Perses server. Fresh foundation deployment includes it; the current retained core bridge can add it independently with `./stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh --revision <published ref>`. Validate with `validate-console-observability.sh`. These commands do not repoint the core or deploy held Lightspeed/storage drafts.
+The permanent `010-console-observability` Application manages only `UIPlugin/monitoring`; COO manages the generated monitoring plugin and console Perses server. Stage 010 `deploy.sh` deploys it after the foundation components; redeploy it alone with `./stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh --revision <published ref>` and validate with `validate-console-observability.sh`. These commands do not touch the foundation components or deploy held Lightspeed/storage drafts.
 
 The native Perses operator synchronizes the existing RHOAI dashboards/datasources into the console instance. No privileged global datasource or new metrics permission is configured. Native readiness passed. The console Perses accelerator datasource is restricted to platform administrators: installation-administrator proxy queries returned nonempty HTTP 200; genuine `ai-admin` and `ai-developer` returned HTTP 403. The RHOAI `ai-admin` Infrastructure metrics access remains enabled. No additional RBAC is granted; browser checks are user-owned. In the console, reload, open **Observe → Dashboards (Perses)** and select `redhat-ods-monitoring`; then open **Observe → Dashboards → NVIDIA DCGM Exporter Dashboard** for GPU metrics. Model-serving dashboards require later models/traffic. The existing trace dashboard backend error remains a separate issue.
 
@@ -705,16 +706,7 @@ See [the Stage 020 implementation plan](migration/020-gpu-foundation-plan.md) fo
 
 Stage 030 owns the native KServe control plane, `demo-registry` with its operator-managed PostgreSQL database, Model Catalog and Developer Preview Agent Catalog. Stage 040 owns model selection, registry records, runtime/model deployment and MaaS; Stage 030 creates no model or runtime clone.
 
-Fresh deployments use the delegated foundation fields and the normal Stage 030 deploy entrypoint. The current cluster completed the separately reviewed [registry handoff](migration/030-serving-foundation-plan.md) through the f38-based omission bridge at `882f327f`; Stage 030 reconciled at `147b6208`: never repoint the core at the newer fresh Stage 010 base while its MLflow data remains retained. The explicit one-time helper uses immutable f38-based protect/omit overlays, checks both existing Bound OBCs and registry/database/credential identities, and preserves the rest of the core. No bucket is created or renamed. For a future reviewed handoff, run each phase and inspect its private evidence before continuing:
-
-```bash
-./scripts/platform/handoff-model-registry.sh protect "$GIT_REPO_BRANCH" /private/tmp/registry-handoff
-./scripts/platform/handoff-model-registry.sh omit "$GIT_REPO_BRANCH" /private/tmp/registry-handoff
-./stages/030-private-model-serving/deploy.sh "$GIT_REPO_BRANCH" /private/tmp/registry-handoff
-./stages/030-private-model-serving/validate.sh
-```
-
-Protection adds `Prune=false,Delete=false` to the exact registry namespace, CR and two group bindings. Omission retains them until Stage 030 adopts the unchanged identities; the native registry CR retains its PostgreSQL PVC and credentials. Deliberate deletion requires a separate data/lifecycle review. The f38 bridge retains MLflow and existing operator approval policies; stop for unexpected CSV or InstallPlan advancement. The additive ODF console-plugin hook may replay, preserving the existing plugin list.
+Fresh deployments use the delegated foundation fields (declared on `010-rhoai-platform`) and the normal Stage 030 deploy entrypoint. The registry handoff from the former single Stage 010 Application is complete, and its one-time protect/omit helpers and bridge overlays are retired; see [the registry handoff](migration/030-serving-foundation-plan.md) for the history. Deployment refuses a registry namespace that Stage 030 does not own.
 
 Native monitoring configuration enables user-workload monitoring and requests gp3-csi storage: 40Gi platform Prometheus and 20Gi user-workload Prometheus, with 7-day retention and size limits. The current provider configuration was absent and platform metrics used ephemeral 15-day storage; this rollout changes those defaults and may reset historical ephemeral metrics. Deployment rechecks named ConfigMap ownership before its Application write and refuses unreviewed provider configuration. The provider Alertmanager Secret remains untouched; the unused fake webhook is removed from source.
 
@@ -722,7 +714,7 @@ Canonical validation passed exact Application reconciliation, current native DSC
 
 ### Stage 040
 
-Stage 040 source targets native OpenShift AI 3.5 AIGateway/MaaS and GenAI Studio. It preserves the retained Stage 010 bridge and Stage 030 registry/serving foundation. It is deployed as eight component Applications (see [Stage component Applications](#stage-component-applications)); the cluster's Gateway hostnames are a source patch on `040-gateway-governance`, model replica delegation lives on `040-local-models` and the playground MCP field delegation on `040-genai-studio`. The ordinary deployment's first write is its own immutable component Applications; run the reviewed `scripts/platform/delegate-maas-fields.sh` separately before the first existing-cluster deployment. This merges only exact component/dashboard delegation paths and does not repoint the core Application.
+Stage 040 source targets native OpenShift AI 3.5 AIGateway/MaaS and GenAI Studio. It builds on the Stage 010 foundation and the Stage 030 registry/serving foundation. It is deployed as eight component Applications (see [Stage component Applications](#stage-component-applications)); the cluster's Gateway hostnames are a source patch on `040-gateway-governance`, model replica delegation lives on `040-local-models` and the playground MCP field delegation on `040-genai-studio`. The ordinary deployment's first write is its own immutable component Applications. The DSC component and dashboard fields Stage 040 enables are delegated in Git on `010-rhoai-platform`; the preflight refuses to deploy until they are.
 
 Persistent Manual OLM subscriptions select RHCL 1.4.3, Authorino 1.4.3, DNS 0.6.0, Limitador 1.4.2, Service Mesh 3.4.3 and LWS 1.0.1. The native OpenShift Gateway controller supplies the existing accepted GatewayClass; installing the Mesh operator is not proof of an initialized Istio instance. Native operators own generated workloads. Do not patch their CSVs, Deployments or monitoring operands.
 
@@ -909,11 +901,14 @@ For a full cleanup, prefer an explicit Argo CD cascade delete from the OpenShift
 
 ```bash
 argocd app delete 070-advanced-app-platform --cascade
+for app in 060-agent-console 060-agent-tools 060-mcp-platform 060-openshell-runtime 060-openshell-identity; do argocd app delete "$app" --cascade; done
 for app in $(python3 scripts/shared/stage_apps.py names 050); do argocd app delete "$app" --cascade; done
 for app in $(python3 scripts/shared/stage_apps.py names 040); do argocd app delete "$app" --cascade; done
 argocd app delete 030-private-model-serving --cascade
 for app in $(python3 scripts/shared/stage_apps.py names 020); do argocd app delete "$app" --cascade; done
-argocd app delete 010-openshift-ai-platform-foundation --cascade
+argocd app delete 010-sandbox-storage --cascade
+argocd app delete 010-console-observability --cascade  # Console list is Prune/Delete=false
+for app in $(python3 scripts/shared/stage_apps.py names 010); do argocd app delete "$app" --cascade; done
 ```
 
 Delete in reverse deployment order. Review GPU MachineSets and persistent volumes separately before removing them because cloud infrastructure and storage cleanup can be environment-specific.

@@ -24,7 +24,7 @@ require_env GIT_REPO_URL "repository URL containing the reviewed Stage 010 sourc
 require_env GIT_REPO_BRANCH "reviewed published branch or commit for Argo CD"
 assert_required_env
 selected_commit=$(git -C "$ROOT_DIR" rev-parse --verify "${GIT_REPO_BRANCH}^{commit}")
-source_paths=(gitops/bootstrap gitops/stages/010-openshift-ai-platform-foundation gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation.yaml stages/010-openshift-ai-platform-foundation scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/check-operator-policy.py)
+source_paths=(gitops/bootstrap gitops/stages/010-openshift-ai-platform-foundation gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation stages/010-openshift-ai-platform-foundation scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/check-operator-policy.py)
 if ! git -C "$ROOT_DIR" diff --quiet "$selected_commit" -- "${source_paths[@]}" ||
    [[ -n "$(git -C "$ROOT_DIR" ls-files --others --exclude-standard -- "${source_paths[@]}")" ]]; then
   echo "ERROR: Selected revision does not contain the local reviewed Stage 010 source." >&2
@@ -39,43 +39,24 @@ GIT_REPO_BRANCH="$selected_commit"
 command -v python3 >/dev/null || { echo "ERROR: python3 is required for native operator checks" >&2; exit 1; }
 
 
-# Source relocation must not prune a registry still owned by an older Stage 010.
 # Read-only preflight runs before the first bootstrap/Application write.
 python3 - <<'PY_GUARD'
 import json, subprocess, sys
-old_app = "010-openshift-ai-platform-foundation"
-new_app = "030-private-model-serving"
 def read(args):
     result = subprocess.run(["oc", "--request-timeout=10s", *args], capture_output=True, text=True)
     if result.returncode:
-        raise RuntimeError("Registry handoff preflight could not inspect cluster ownership")
+        raise RuntimeError("Preflight could not inspect cluster ownership")
     return result.stdout.strip()
 def tracked_by(obj, app):
     return obj.get("metadata", {}).get("annotations", {}).get("argocd.argoproj.io/tracking-id", "").startswith(app + ":")
 try:
-    # MLflow has no receiving stage yet. Never remove its live service or data.
-    apis = read(["api-resources", "-o", "name"]).splitlines()
-    if "mlflows.mlflow.opendatahub.io" in apis:
-        existing = json.loads(read(["get", "mlflows.mlflow.opendatahub.io", "-o", "json"]))
-        if existing.get("items"):
-            raise RuntimeError("Existing MLflow requires a reviewed evaluation-stage ownership handoff; keep the deployed foundation pinned")
-    for resource, names in [("persistentvolumeclaim", ["mlflow-postgresql"]), ("secret", ["mlflow-db-credentials", "rhoai-mlflow-artifacts"]), ("statefulset", ["mlflow-postgresql"]), ("service", ["mlflow-postgresql"]), ("networkpolicy", ["mlflow-postgresql"]), ("configmap", ["mlflow-service-ca"])]:
-        for name in names:
-            if read(["get", resource, name, "-n", "redhat-ods-applications", "--ignore-not-found", "-o", "jsonpath={.metadata.uid}"]):
-                raise RuntimeError("Retained MLflow data/configuration requires an explicit future-stage handoff")
-    if "objectbucketclaims.objectbucket.io" in apis:
-        if read(["get", "objectbucketclaims.objectbucket.io", "rhoai-mlflow-artifacts", "-n", "redhat-ods-applications", "--ignore-not-found", "-o", "jsonpath={.metadata.uid}"]):
-            raise RuntimeError("Retained MLflow artifact bucket requires an explicit future-stage handoff")
+    # The retired single foundation Application would fight its components (docs/OPERATIONS.md "Moving objects between Applications").
+    if read(["get", "applications.argoproj.io", "010-openshift-ai-platform-foundation", "-n", "openshift-gitops", "--ignore-not-found", "-o", "name"]):
+        raise RuntimeError("Retired single Stage 010 Application still exists; finish the component move first")
+    # The model registry belongs to Stage 030; never let a foundation component take it back.
     text = read(["get", "namespace", "rhoai-model-registries", "--ignore-not-found", "-o", "json"])
-    namespace = json.loads(text) if text else {}
-    if tracked_by(namespace, old_app):
-        raise RuntimeError("Registry namespace is still Stage 010-owned; keep the deployed revision pinned until the reviewed Stage 030 adoption")
-    available = read(["api-resources", "--api-group=modelregistry.opendatahub.io", "-o", "name"])
-    if "modelregistries.modelregistry.opendatahub.io" in available.splitlines():
-        text = read(["get", "modelregistries.modelregistry.opendatahub.io", "demo-registry", "-n", "rhoai-model-registries", "--ignore-not-found", "-o", "json"])
-        registry = json.loads(text) if text else {}
-        if registry and not tracked_by(registry, new_app):
-            raise RuntimeError("Existing demo-registry has not been adopted by Stage 030; refusing a potentially destructive foundation transition")
+    if text and not tracked_by(json.loads(text), "030-private-model-serving"):
+        raise RuntimeError("Registry namespace exists but is not owned by Stage 030")
 except (RuntimeError, ValueError) as error:
     print("ERROR: " + str(error), file=sys.stderr)
     sys.exit(1)
@@ -134,27 +115,17 @@ oc apply -k "$ROOT_DIR/gitops/bootstrap/overlays/demo" --insecure-skip-tls-verif
 echo "✓ ArgoCD configured (annotation resource tracking)"
 echo "✓ AppProject rhoai-demo created"
 
-# ── Step 4: Patch Application with repo URL and branch from .env ──────────────
+# ── Step 4: Apply the Stage 010 component Applications at the reviewed revision ──
 echo ""
-echo "── Step 4: Applying stage-010 Argo CD Application ──"
-
-GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/adnan-drina/rhoai3-coding-demo.git}"
-
-
-APP_MANIFEST=$(mktemp)
-sed \
-  -e "s|repoURL: .*|repoURL: ${GIT_REPO_URL}|" \
-  -e "s|targetRevision: .*|targetRevision: ${GIT_REPO_BRANCH}|" \
-  "$ROOT_DIR/gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation.yaml" \
-  > "$APP_MANIFEST"
-
-oc apply -f "$APP_MANIFEST" --insecure-skip-tls-verify=true
-rm -f "$APP_MANIFEST"
-
-echo "✓ Application 010-openshift-ai-platform-foundation created"
+echo "── Step 4: Applying Stage 010 component Argo CD Applications ──"
+python3 "$ROOT_DIR/scripts/shared/stage_apps.py" applications 010 --revision "$GIT_REPO_BRANCH" --repo-url "$GIT_REPO_URL" \
+  | oc apply -f - --insecure-skip-tls-verify=true
+echo "✓ Applications $(python3 "$ROOT_DIR/scripts/shared/stage_apps.py" names 010 | tr '\n' ' ')created"
 echo "  Argo CD will now sync ODF and RHOAI. This takes 10–20 minutes."
 
 python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation/base" --wait 1800
+echo "   Waiting for every Stage 010 component Synced and Healthy at ${GIT_REPO_BRANCH:0:8} …"
+wait_for 1800 "Stage 010 components" python3 "$ROOT_DIR/scripts/shared/stage_apps.py" status 010 --revision "$GIT_REPO_BRANCH" --repo-url "$GIT_REPO_URL" || exit 1
 
 
 "$SCRIPT_DIR/deploy-sandbox-storage.sh" --revision "$selected_commit"
@@ -167,7 +138,7 @@ ARGOCD_URL=$(oc get route openshift-gitops-server -n openshift-gitops \
 if [[ -n "$ARGOCD_URL" ]]; then
   echo ""
   echo "  Argo CD console: https://$ARGOCD_URL"
-  echo "  Application:     https://$ARGOCD_URL/applications/010-openshift-ai-platform-foundation"
+  echo "  Applications:    https://$ARGOCD_URL/applications?labels=demo.rhoai.io%2Fstage%3D010"
 fi
 
 echo ""

@@ -63,26 +63,15 @@ def main():
     require_owned_or_absent("namespace", "ai-curated-prompts")
     for kind in ["role", "rolebinding"]:
         require_owned_or_absent(kind, "enable-model-evaluation-dashboard", NAMESPACE)
-    foundation = get("application", "010-openshift-ai-platform-foundation", "openshift-gitops")
-    require(foundation.get("status", {}).get("sync", {}).get("status") in ["Synced", "OutOfSync"]
-            and foundation.get("status", {}).get("health", {}).get("status") == "Healthy",
-            "Foundation must have completed the reviewed handoff before evaluation deployment.")
-    require("RespectIgnoreDifferences=true" in foundation.get("spec", {}).get("syncPolicy", {}).get("syncOptions", []),
-            "Foundation must respect delegated shared-field ownership.")
-    ignores = foundation.get("spec", {}).get("ignoreDifferences", [])
-    dashboard_fields = {path for entry in ignores
-                        if entry.get("group") == "opendatahub.io" and entry.get("kind") == "OdhDashboardConfig"
-                        and entry.get("name") == "odh-dashboard-config" and entry.get("namespace") == NAMESPACE
-                        for path in entry.get("jsonPointers", [])}
+    foundation = stage_apps.stage_problems("010")
+    require(not foundation, "Stage 010 must be reconciled: " + "; ".join(foundation))
+    dashboard_fields = stage_apps.delegated("010", "OdhDashboardConfig", "odh-dashboard-config", NAMESPACE, "opendatahub.io")
     require({"/spec/dashboardConfig/disableLMEval", "/spec/dashboardConfig/globalProjectPrompts", "/spec/globalMLflowNamespaces"} <= dashboard_fields,
             "Foundation has not delegated evaluation/global prompt configuration.")
     dashboard = get("odhdashboardconfig", "odh-dashboard-config", NAMESPACE)
     require(dashboard.get("spec", {}).get("globalMLflowNamespaces", []) in [[], ["ai-curated-prompts"]],
             "Foreign global prompt configuration requires reviewed merge before deployment.")
-    delegated = {path for entry in ignores
-                 if entry.get("group") == "datasciencecluster.opendatahub.io"
-                 and entry.get("kind") == "DataScienceCluster" and entry.get("name") == "default-dsc"
-                 for path in entry.get("jsonPointers", [])}
+    delegated = stage_apps.delegated("010", "DataScienceCluster", "default-dsc", group="datasciencecluster.opendatahub.io")
     require({"/spec/components/trustyai", "/spec/components/mlflowoperator"} <= delegated,
             "Foundation has not delegated both evaluation components; complete reviewed handoff first.")
     # The EvalHub tenant is Stage 050's own Evaluated Models namespace; no foundation delegation is needed.
@@ -106,18 +95,6 @@ def main():
     health = argocd.get("spec", {}).get("extraConfig", {}).get("resource.customizations.health.mlflow.opendatahub.io_MLflow", "")
     require(all(word in health for word in ["Available", "MLflowOperatorReady", "Migration", "observedGeneration"]),
             "Install the reviewed native MLflow health gate before Stage 050.")
-    source = foundation.get("spec", {}).get("source", {})
-    status = foundation.get("status", {})
-    result = status.get("operationState", {}).get("syncResult", {})
-    bridge = source.get("path") == "gitops/stages/050-model-evaluation/migration/foundation-omit"
-    require(status.get("operationState", {}).get("phase") == "Succeeded"
-            and result.get("revision") == source.get("targetRevision")
-            and result.get("source", {}).get("path") == source.get("path")
-            and status.get("sync", {}).get("revision") == source.get("targetRevision"), "Foundation source/operation is stale.")
-    require(source.get("repoURL") == os.environ["GIT_REPO_URL"]
-            and foundation["spec"].get("project") == "rhoai-demo"
-            and foundation["spec"].get("destination") == {"server":"https://kubernetes.default.svc","namespace":"openshift-gitops"}
-            and not foundation["spec"].get("sources") and not foundation["metadata"].get("deletionTimestamp"), "Foundation identity differs.")
     require(not get("application", RETIRED_APP, "openshift-gitops"),
             "Retired single Stage050 Application still exists; finish the component move (docs/OPERATIONS.md).")
     for desired in stage_apps.components("050"):
@@ -135,36 +112,17 @@ def main():
                  ("networkpolicy", "NetworkPolicy", "mlflow-postgresql", NAMESPACE),
                  ("configmap", "ConfigMap", "mlflow-service-ca", NAMESPACE)]
     api_present = bool(get("crd", "mlflows.mlflow.opendatahub.io"))
-    evidence = os.environ.get("RHOAI_STAGE050_HANDOFF_EVIDENCE")
-    baseline = json.loads((Path(evidence)/"baseline.json").read_text()) if bridge and evidence else None
-    if bridge:
-        require(baseline is not None, "Protected adoption requires the original private handoff baseline.")
-        proof=Path(evidence)/"omit-after.json"
-        require(proof.is_file() and json.loads(proof.read_text()) == baseline, "Successful omission preservation proof is missing or differs.")
-        for name in ["mlflow-db-credentials","rhoai-mlflow-artifacts"]:
-            result=subprocess.run(["oc","--request-timeout=10s","get","secret",name,"-n",NAMESPACE,"-o","jsonpath={.metadata}"],capture_output=True,text=True,timeout=15)
-            require(result.returncode==0 and bool(result.stdout.strip()), "Retained credential metadata unavailable.")
-            meta=json.loads(result.stdout);saved=baseline["resources"]["secret/"+name]
-            require(meta.get("uid")==saved["uid"] and meta.get("ownerReferences",[])==saved["owners"] and not meta.get("deletionTimestamp"), "Retained credential UID/native owner changed before adoption.")
     for kind, typename, name, namespace in resources:
         obj = get(kind, name, namespace) if not kind.startswith("mlflows") or api_present else {}
         if not obj:
-            require(not bridge, "A retained MLflow resource is missing; refusing replacement.")
             continue
         meta=obj["metadata"];tracking=meta.get("annotations",{}).get("argocd.argoproj.io/tracking-id", "")
         group=obj["apiVersion"].split("/")[0] if "/" in obj["apiVersion"] else ""
         suffix=group+"/"+typename+":"+(namespace or "openshift-gitops")+"/"+name
         require(not meta.get("ownerReferences") and not meta.get("deletionTimestamp"), "Retained authored resource has a foreign owner or is terminating.")
-        require(tracking == owned(suffix) or (bridge and tracking == "010-openshift-ai-platform-foundation:"+suffix), "Existing retained resource has another GitOps owner.")
-        if bridge:
-            saved=baseline["resources"][kind+"/"+name]
-            require(meta["uid"]==saved["uid"] and obj.get("spec")==saved["spec"], "Retained resource identity/spec changed after protection.")
-            require({"Prune=false","Delete=false"} <= set(meta.get("annotations",{}).get("argocd.argoproj.io/sync-options","").split(",")), "Retained resource protection missing.")
+        require(tracking == owned(suffix), "Existing retained resource has another GitOps owner.")
         if kind=="pvc":require(obj.get("status",{}).get("phase")=="Bound", "Retained MLflow PVC is not Bound.")
         if kind=="objectbucketclaim":require(obj.get("status",{}).get("phase")=="Bound" and obj["spec"].get("bucketName")=="rhoai-mlflow-artifacts", "Retained artifact bucket differs.")
-    expected_drift={(t,n,ns or "") for _,t,n,ns in resources}
-    drift=[r for r in status.get("resources",[]) if r.get("status")!="Synced"]
-    require(not drift or (bridge and all((r.get("kind"),r.get("name"),r.get("namespace", "")) in expected_drift and r.get("requiresPruning") for r in drift)), "Unexpected foundation drift.")
     # EvalHub targets must be absent or exactly owned by this Application.
     for kind,typename,name,namespace in [("namespace","Namespace","evalhub",None),("statefulset","StatefulSet","evalhub-postgresql","evalhub"),("pvc","PersistentVolumeClaim","evalhub-postgresql","evalhub"),("service","Service","evalhub-postgresql","evalhub"),("networkpolicy","NetworkPolicy","evalhub-postgresql","evalhub")]:
         obj=get(kind,name,namespace)

@@ -61,7 +61,7 @@ spec:
                   region=$(oc --request-timeout=10s get cm "$claim" -n demo-sandbox -o jsonpath='{.data.BUCKET_REGION}')
                   region="${region:-us-east-1}"
                   tracking=$(oc --request-timeout=10s get secret "$claim-connection" -n demo-sandbox -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/tracking-id}')
-                  [[ "$tracking" == "sandbox-storage:"* ]] || { echo "ERROR: Target connection is not component-owned" >&2; exit 1; }
+                  [[ "$tracking" == "010-sandbox-storage:"* ]] || { echo "ERROR: Target connection is not component-owned" >&2; exit 1; }
                   rv=$(oc --request-timeout=10s get secret "$claim-connection" -n demo-sandbox -o jsonpath='{.metadata.resourceVersion}')
                   [[ "$rv" =~ ^[0-9]+$ ]] || { echo "ERROR: Connection skeleton unavailable" >&2; exit 1; }
                   printf '{"metadata":{"resourceVersion":"%s"},"data":{"AWS_ACCESS_KEY_ID":"%s","AWS_SECRET_ACCESS_KEY":"%s","AWS_S3_ENDPOINT":"%s","AWS_S3_BUCKET":"%s","AWS_DEFAULT_REGION":"%s"}}' "$rv" "$ak" "$sk" "$(encode "https://$host:$port")" "$(encode "$bucket")" "$(encode "$region")" | oc --request-timeout=10s patch secret "$claim-connection" -n demo-sandbox --type merge --patch-file /dev/stdin >/dev/null

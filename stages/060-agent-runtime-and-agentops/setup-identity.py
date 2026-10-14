@@ -7,7 +7,7 @@ ROOT=pathlib.Path(__file__).resolve().parents[2]
 guard=subprocess.run(['bash','-c','REPO_ROOT="$1"; source "$1/scripts/shared/lib.sh"; load_env; check_oc_logged_in','stage060-guard',str(ROOT)],capture_output=True,text=True)
 assert guard.returncode==0,'Shared environment/login guard failed'
 assert subprocess.check_output(['git','-C',str(ROOT),'show',args.revision+':'+str(pathlib.Path(__file__).resolve().relative_to(ROOT))])==pathlib.Path(__file__).read_bytes(),'Helper differs from selected published source'
-APP='openshell-identity';REALM='openshell';NS='keycloak';MARKER='rhoai3-coding-demo';BROKER='openshell-broker'
+APP='060-openshell-identity';REALM='openshell';NS='keycloak';MARKER='rhoai3-coding-demo';BROKER='openshell-broker'
 class IdentityFailure(RuntimeError):
     def __init__(self,status):self.status=status;super().__init__('Identity API status '+str(status))
 class NoRedirect(urllib.request.HTTPRedirectHandler):

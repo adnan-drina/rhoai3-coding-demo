@@ -13,7 +13,7 @@ def get(kind,name,ns=None):
  if ns:a+=['-n',ns]
  r=subprocess.run(a,capture_output=True,text=True,timeout=15);assert r.returncode==0,'Native MCP readiness API read failed'
  return json.loads(r.stdout) if r.stdout.strip() else None
-a=get('application','mcp-platform','openshift-gitops');assert a,'MCP platform Application missing'
+a=get('application','060-mcp-platform','openshift-gitops');assert a,'MCP platform Application missing'
 s=a['spec'];st=a['status'];op=st.get('operationState',{});result=op.get('syncResult',{})
 assert not a['metadata'].get('ownerReferences') and not a['metadata'].get('deletionTimestamp') and not s.get('sources') and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'redhat-ods-applications'} and s['source']['repoURL']==os.environ['GIT_REPO_URL'] and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/mcp-platform','Unexpected MCP platform Application identity'
 assert st['sync']['status']=='Synced' and st['sync']['revision']==s['source']['targetRevision'] and st['health']['status']=='Healthy' and op.get('phase')=='Succeeded' and result.get('revision')==s['source']['targetRevision'] and result.get('source',{}).get('path')==s['source']['path'],'MCP platform source not reconciled'

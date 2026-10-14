@@ -1,22 +1,28 @@
+---
+# OpenShift AI DSCI, DSC, Auth and dashboard configuration.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: 010-openshift-ai-platform-foundation
+  name: 010-rhoai-platform
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/instance: openshift-gitops
-    demo.rhoai.io/stage: "010"
+    app.kubernetes.io/name: rhoai-platform
+    app.kubernetes.io/component: platform
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '010'
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/manifest-generate-paths: .
+    argocd.argoproj.io/sync-wave: '1'
+    argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/010-openshift-ai-platform-foundation"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+    demo.rhoai.io/deploy-order: '2'
 spec:
   project: rhoai-demo
   source:
-    # repoURL and targetRevision are set by deploy.sh from .env (GIT_REPO_URL, GIT_REPO_BRANCH)
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/010-openshift-ai-platform-foundation/base
+    path: gitops/stages/010-openshift-ai-platform-foundation/apps/rhoai-platform
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops
@@ -81,15 +87,3 @@ spec:
         - /spec/dashboardConfig/disableLMEval
         - /spec/dashboardConfig/globalProjectPrompts
         - /spec/globalMLflowNamespaces
-    # Membership is assigned from provider identities by setup-access.sh.
-    - group: user.openshift.io
-      kind: Group
-      name: rhoai-developers
-      jsonPointers:
-        - /users
-    # Stage 050 enables tenant authorization on the existing sandbox.
-    - group: ""
-      kind: Namespace
-      name: demo-sandbox
-      jsonPointers:
-        - /metadata/labels/evalhub.trustyai.opendatahub.io~1tenant

@@ -71,15 +71,16 @@ ARGOCD_PHASE=$(oc get argocd openshift-gitops -n openshift-gitops \
 [[ "$ARGOCD_PHASE" == "Available" ]] && R="pass" || R="phase=${ARGOCD_PHASE:-not found}"
 check "ArgoCD instance Available" "$R"
 
-# ── 3. ArgoCD Application Synced + Healthy ────────────────────────────────────
-APP_SYNC=$(oc get applications.argoproj.io 010-openshift-ai-platform-foundation -n openshift-gitops \
-  -o jsonpath='{.status.sync.status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-APP_HEALTH=$(oc get applications.argoproj.io 010-openshift-ai-platform-foundation -n openshift-gitops \
-  -o jsonpath='{.status.health.status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
-[[ "$APP_SYNC" == "Synced" ]] && R="pass" || R="sync=${APP_SYNC:-not found}"
-check "Argo CD Application Synced" "$R"
-[[ "$APP_HEALTH" == "Healthy" ]] && R="pass" || R="health=${APP_HEALTH:-not found}"
-check "Argo CD Application Healthy" "$R"
+# ── 3. Component Applications Synced + Healthy at one revision ──────────────
+STAGE_APPS="$ROOT_DIR/scripts/shared/stage_apps.py"
+revision_args=()
+[[ -n "${RHOAI_STAGE010_EXPECTED_REVISION:-}" ]] && revision_args=(--revision "$RHOAI_STAGE010_EXPECTED_REVISION")
+if APP_STATUS=$(python3 "$STAGE_APPS" status 010 "${revision_args[@]}" 2>&1); then R="pass"
+else R="$(printf '%s\n' "$APP_STATUS" | grep -E '^(  - |ERROR)' | head -3 | tr '\n' ' ')"; fi
+check "Stage 010 component Applications Synced/Healthy at one revision" "$R"
+RETIRED=$(oc get applications.argoproj.io 010-openshift-ai-platform-foundation -n openshift-gitops --ignore-not-found -o name 2>/dev/null || echo "read failed")
+[[ -z "$RETIRED" ]] && R="pass" || R="retired single Application still present"
+check "Retired single foundation Application absent" "$R"
 
 # ── 4. ODF operator ───────────────────────────────────────────────────────────
 ODF_CSV=$(csv_phase_from_subscription openshift-storage odf-operator)
@@ -181,13 +182,13 @@ fi
 
 # Native Auth and foundation component ownership.
 check "Native Auth Ready at current generation" "$(native_ready auth.services.platform.opendatahub.io auth true)"
-# Later stages enable components the foundation Application delegates through ignoreDifferences.
-COMPONENT_CHECK=$(python3 -c '
-import json,subprocess
+# Later stages enable components 010-rhoai-platform delegates through ignoreDifferences.
+COMPONENT_CHECK=$(SHARED="$ROOT_DIR/scripts/shared" python3 -c '
+import json,os,subprocess,sys
+sys.path.insert(0,os.environ["SHARED"]);import stage_apps
 get=lambda *a: json.loads(subprocess.run(["oc","--request-timeout=15s","get",*a,"-o","json"],capture_output=True,text=True,check=True).stdout)
 c=get("datasciencecluster","default-dsc")["spec"]["components"]
-app=get("application","010-openshift-ai-platform-foundation","-n","openshift-gitops")
-delegated={p.rsplit("/",1)[1] for i in app["spec"].get("ignoreDifferences",[]) if i.get("kind")=="DataScienceCluster" for p in i.get("jsonPointers",[]) if p.startswith("/spec/components/")}
+delegated={p.rsplit("/",1)[1] for p in stage_apps.delegated("010","DataScienceCluster","default-dsc",group="datasciencecluster.opendatahub.io") if p.startswith("/spec/components/")}
 managed=["dashboard","workbenches"]
 removed=[k for k in ["ogx","aigateway","mcplifecycleoperator","sparkoperator","trainer"] if k not in delegated]
 print("pass" if all(c.get(k,{}).get("managementState")=="Managed" for k in managed) and all(c.get(k,{}).get("managementState")=="Removed" for k in removed) else "component ownership mismatch")

@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: mcp-platform
+  name: 060-mcp-platform
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo

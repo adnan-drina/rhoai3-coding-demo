@@ -36,7 +36,7 @@ def main():
     need(cli.is_file() and hashlib.sha256(cli.read_bytes()).hexdigest() == pins['cliBinarySha256'], 'Set RHOAI_STAGE060_OPENSHELL_CLI to the pinned native CLI')
     def get(kind, name, ns=None):
         return json.loads(oc(env, 'get', kind, name, *(['-n', ns] if ns else []), '-o', 'json'))
-    app = get('application', 'openshell-runtime', 'openshift-gitops')
+    app = get('application', '060-openshell-runtime', 'openshift-gitops')
     need(app['spec']['source']['targetRevision'] == args.revision and app['status']['sync']['revision'] == args.revision and app['status']['sync']['status'] == 'Synced' and app['status']['health']['status'] == 'Healthy' and not app.get('operation'), 'Exact runtime GitOps revision is not ready')
     ns = get('namespace', WORKSPACE)
     need(ns['metadata']['labels'].get('rhoai3.redhat.com/openshell-workspace') == 'true' and ns['metadata']['labels'].get('opendatahub.io/dashboard') == 'true' and not ns['metadata'].get('deletionTimestamp'), 'GitOps workspace namespace is not admitted')

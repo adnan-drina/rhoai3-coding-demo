@@ -26,20 +26,16 @@ try:
     assert item['roleRef']=={'apiGroup':'rbac.authorization.k8s.io','kind':'ClusterRole','name':'prepare-maas-route-access'} and item['subjects']==[{'kind':'ServiceAccount','name':'prepare-maas-route-access','namespace':'redhat-ods-applications'}],'Namespace-label binding differs'
    if kind=='clusterrole':
     assert item['rules']==[{'apiGroups':[''],'resources':['namespaces'],'resourceNames':['redhat-ods-applications','redhat-ai-gateway-infra'],'verbs':['get','patch']}],'Namespace-label permission scope differs'
- core=get('applications.argoproj.io','010-openshift-ai-platform-foundation','openshift-gitops')
+ foundation=stage_apps.stage_problems('010')
+ assert not foundation,'Stage 010 must be reconciled: '+'; '.join(foundation)
  serving=get('applications.argoproj.io','030-private-model-serving','openshift-gitops')
- assert core and serving and reconciled(core) and reconciled(serving),'Foundation and serving exact source/path must be reconciled'
- for app in (core,serving):
-  a=app['spec'];assert not app['metadata'].get('ownerReferences') and not app['metadata'].get('deletionTimestamp') and not a.get('sources'),'Prerequisite Application ownership differs'
-  assert a['project']=='rhoai-demo' and a['source']['repoURL']==os.environ['GIT_REPO_URL'] and a['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Prerequisite Application repository/destination differs'
- retained_bridges={'882f327fb25dd047ca7144058b6cca46e693df3a':'gitops/stages/030-private-model-serving/migration/foundation-omit','eb75e6654ab73734c59b576235801561973efd2f':'gitops/stages/050-model-evaluation/migration/foundation-omit','c33790242e05da96dc4349373b154074e2277192':'gitops/stages/050-model-evaluation/migration/foundation-omit'}
- core_source=core['spec']['source']
- assert (core_source['path']=='gitops/stages/010-openshift-ai-platform-foundation/aggregate/overlays/demo' or retained_bridges.get(core_source['targetRevision'])==core_source['path']) and serving['spec']['source']['path']=='gitops/stages/030-private-model-serving/base','Prerequisite source path or retained immutable revision differs'
- spec=core['spec'];assert 'RespectIgnoreDifferences=true' in spec['syncPolicy']['syncOptions'],'Foundation must respect delegated ownership'
- entries=spec.get('ignoreDifferences',[])
- paths={p for i in entries if i.get('group')=='datasciencecluster.opendatahub.io' and i.get('kind')=='DataScienceCluster' and i.get('name')=='default-dsc' for p in i.get('jsonPointers',[])}
+ assert serving and reconciled(serving),'Serving exact source/path must be reconciled'
+ a=serving['spec'];assert not serving['metadata'].get('ownerReferences') and not serving['metadata'].get('deletionTimestamp') and not a.get('sources'),'Prerequisite Application ownership differs'
+ assert a['project']=='rhoai-demo' and a['source']['repoURL']==os.environ['GIT_REPO_URL'] and a['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Prerequisite Application repository/destination differs'
+ assert a['source']['path']=='gitops/stages/030-private-model-serving/base','Prerequisite source path differs'
+ paths=stage_apps.delegated('010','DataScienceCluster','default-dsc',group='datasciencecluster.opendatahub.io')
  assert {'/spec/components/aigateway','/spec/components/ogx'}<=paths,'Complete the reviewed retention-safe AIGateway/Studio delegation before Stage040'
- dashboard_paths={p for i in entries if i.get('group')=='opendatahub.io' and i.get('kind')=='OdhDashboardConfig' and i.get('name')=='odh-dashboard-config' and i.get('namespace')=='redhat-ods-applications' for p in i.get('jsonPointers',[])}
+ dashboard_paths=stage_apps.delegated('010','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications','opendatahub.io')
  assert {'/spec/dashboardConfig/'+field for field in ['genAiStudio','genAiTracing','modelAsService','vLLMDeploymentOnMaaS','externalModels','llmdTemplates','guardrails','agentConfigManagement','promptManagement']}<=dashboard_paths,'Complete reviewed dashboard delegation before Stage040'
  assert not get('applications.argoproj.io','040-governed-models-as-a-service','openshift-gitops'),'Retired single Stage040 Application still exists; finish the component move (docs/OPERATIONS.md)'
  for desired in stage_apps.components('040'):
