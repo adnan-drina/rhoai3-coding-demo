@@ -45,10 +45,10 @@ Scheduled:
 
 In progress (owner go-ahead 2026-10-14):
 - [x] Service Mesh 3 operator: **not removed**. The review's "no consumer" finding was wrong: its CSV provides the Istio API CRDs the platform uses (ServiceEntry and DestinationRule for the external providers, WasmPlugin for the Kuadrant shim, EnvoyFilter, Telemetry and others; 20 CRDs). The Ingress Operator's istiod is Helm-managed, but nothing shows it would supply those CRDs on a fresh cluster. Kept; documented in `040-maas-operators/README.md`.
-- [ ] Remove the dormant H100 MachineSet pool.
-- [ ] Re-test `060-openshell-runtime` with server-side diff.
-- [ ] Delete the OpenShell `*-pre-pr4150` recovery set (upgrade accepted).
-- [ ] Investigate who provisions Keycloak `keycloak/keycloak` and propose an owner.
+- [x] Removed the dormant H100 MachineSet pool (generator, Git, scripts, live MachineSets).
+- [x] `060-openshell-runtime` re-tested with server-side diff: Synced, nothing out of sync; switched to `ServerSideDiff=true`.
+- [x] Deleted the OpenShell `*-pre-pr4150` recovery set (PVC, VolumeSnapshot, four Secrets) after confirming nothing referenced it; runtime Synced/Healthy.
+- [ ] Keycloak `keycloak/keycloak`: investigated. The namespace, the RHBK operator Subscription, the Keycloak CR and its PostgreSQL, the `sso` realm import and the cluster OAuth identity provider `rhbk` were all created on 2026-09-28 at 10:38, 14 minutes after cluster install, by one provisioning client (`OpenAPI-Generator`): the demo environment provides it, and OpenShift login depends on it. **Proposal (awaiting owner decision):** keep it environment-provided rather than adopting it into Argo CD (prune/self-heal would put cluster login at risk and conflict with re-provisioning); document it as a Stage 010 prerequisite and add a read-only presence/readiness check to Stage 010 validation. Stage 060 (`openshell-realm`) and Stage 070 (`platform-realm`) keep owning only their realm imports.
 - [ ] Move the DCGM ServiceMonitor to Stage 020, the MCP and tool-calling dashboard flags out of the Stage 030 discovery hook, retire the imperative sandbox S3 connection in `setup-access.sh`, and remove the superseded v1 evaluation collections.
 - [ ] Declare Job-driven DataScienceCluster, dashboard, pipeline server and image-registry settings in Git, one stage at a time.
 
