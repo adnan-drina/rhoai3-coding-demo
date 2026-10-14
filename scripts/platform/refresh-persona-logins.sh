@@ -8,6 +8,9 @@
 #
 #   ./scripts/platform/refresh-persona-logins.sh              # both personas
 #   ./scripts/platform/refresh-persona-logins.sh --persona developer
+#   ./scripts/platform/refresh-persona-logins.sh --persona developer --private-window
+#     prints the login URL instead of opening the browser; paste it into a private window so an existing
+#     ai-admin browser session is not reused.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -15,13 +18,15 @@ source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
 
-personas="admin developer"
-if [[ "${1:-}" == --persona && -n "${2:-}" ]]; then
-  [[ "$2" == admin || "$2" == developer ]] || { echo "ERROR: --persona admin|developer" >&2; exit 2; }
-  personas="$2"
-elif [[ $# -ne 0 ]]; then
-  echo "Usage: $0 [--persona admin|developer]" >&2; exit 2
-fi
+personas="admin developer"; open_browser=true
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --persona) [[ "${2:-}" == admin || "${2:-}" == developer ]] || { echo "ERROR: --persona admin|developer" >&2; exit 2; }
+               personas="$2"; shift 2 ;;
+    --private-window) open_browser=false; shift ;;
+    *) echo "Usage: $0 [--persona admin|developer] [--private-window]" >&2; exit 2 ;;
+  esac
+done
 
 server="$(oc --request-timeout=10s whoami --show-server)"
 rc=0
@@ -43,14 +48,20 @@ print(json.dumps({"apiVersion": "v1", "kind": "Config", "clusters": [cluster], "
 ' > "$kubeconfig"
     chmod 600 "$kubeconfig"
   fi
-  echo "── Sign in as ${user} in the browser window that opens (session saved to ${kubeconfig})"
-  oc login --web --kubeconfig "$kubeconfig" "$server" >/dev/null
+  if [[ "$open_browser" == true ]]; then
+    echo "── Sign in as ${user} in the browser window that opens (session saved to ${kubeconfig})"
+    oc login --web --kubeconfig "$kubeconfig" "$server" >/dev/null
+  else
+    echo "── Open the URL below in a private browser window and sign in as ${user} (session saved to ${kubeconfig})"
+    oc login --web --auto-open-browser=false --kubeconfig "$kubeconfig" "$server"
+  fi
   chmod 600 "$kubeconfig"
   actual="$(oc --kubeconfig "$kubeconfig" --request-timeout=10s whoami 2>/dev/null || true)"
   if [[ "$actual" == "$user" ]]; then
     echo "✓ ${persona}: logged in as ${actual}"
   else
-    echo "✗ ${persona}: logged in as '${actual:-nobody}', expected ${user}; sign out of the browser session and run again" >&2
+    rm -f "$kubeconfig"  # never leave another user's session in this persona's kubeconfig
+    echo "✗ ${persona}: logged in as '${actual:-nobody}', expected ${user}; run again with --private-window" >&2
     rc=1
   fi
 done
