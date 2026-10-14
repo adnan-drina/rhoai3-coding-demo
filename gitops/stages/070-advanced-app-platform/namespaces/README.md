@@ -7,7 +7,7 @@ This Application owns every namespace Stage 070 uses, and nothing else. It deplo
 | Argo CD Application | `070-namespaces` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/namespaces.yaml)) |
 | Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `application.py deploy` (deploy-order 1) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (component Applications Synced and Healthy); `scripts/shared/stage_apps.py check-static 070` |
-| Sync | Automated, `prune: true`, `selfHeal: true`; every Namespace carries `Prune=false`; `ignoreDifferences` on Namespace `/metadata/annotations` and `/metadata/labels` |
+| Sync | Automated, `prune: true`, `selfHeal: true`; every Namespace carries `Prune=false`; compare-option `ServerSideDiff=true`; no `ignoreDifferences` |
 | Used by | Every other Stage 070 component |
 
 ## Why
@@ -40,7 +40,8 @@ The `coolstore-dev` namespace is the only object the demo platform declares for 
 ## How
 
 - **Order.** `application.py` syncs this Application first and waits until it is Synced and Healthy before `070-identity` starts.
-- **Ignored metadata.** Operators add labels and annotations after creation (pod security synchronization, SCC annotations, the Pipelines operator). The Application ignores Namespace labels and annotations, so it stays Synced without fighting them. With `RespectIgnoreDifferences=true`, ignored fields are also left out of later syncs. A label added in Git to an existing namespace therefore does not reach the cluster: see [TROUBLESHOOTING: a namespace label added in Git never reaches the cluster](../../../../docs/TROUBLESHOOTING.md#a-namespace-label-added-in-git-never-reaches-the-cluster).
+- **Metadata owned by controllers.** Controllers add their own labels and annotations after creation: pod security label synchronization, SCC range annotations, OLM and the Pipelines operator. Each writes keys Git does not declare, under its own field manager. With `ServerSideDiff=true` Argo CD compares only the fields it applies, so those keys are not drift and need no `ignoreDifferences`. A label or annotation declared here (for example the enrollment label) is enforced, and a change in Git reaches the cluster.
+- **No ignored metadata.** Ignoring `/metadata/annotations` would also hide the `argocd.argoproj.io/tracking-id` annotation: with `RespectIgnoreDifferences` Argo CD then never rewrites it, so an Application could not take a namespace over from another.
 - **Label contract.** The enrollment reconciler and the SonarQube ingress policy select namespaces by `rhoai3.redhat.com/pipeline-project=true`, which `coolstore-dev` carries from creation.
 
 ## Validation
@@ -61,7 +62,7 @@ oc get namespaces app-platform-build coolstore-dev gitlab-system openshift-devsp
 | Namespaces from Git | Argo CD manages a declared Namespace like any resource; `CreateNamespace` creates only the destination namespace [1] | All namespaces declared explicitly in one Application, deployed first | Aligned |
 | Protecting stateful namespaces | `Prune=false` keeps a resource when it leaves Git [1] | Every Stage 070 namespace | Aligned |
 | Ordering across Applications | Waves order resources only inside one Application [2] | Cross-component order comes from `demo.rhoai.io/deploy-order` in `application.py` | Aligned |
-| Ignored metadata | `RespectIgnoreDifferences` leaves ignored fields out of sync [1] | Labels and annotations ignored | Deviation (justified: controllers own most namespace metadata); drift in a contract label is not detected |
+| Diffing controller-owned metadata | Server-side diff compares only the fields Argo CD applies [4] | `ServerSideDiff=true`, no `ignoreDifferences`; declared labels and annotations are enforced | Aligned |
 | Pod security | `warn`/`audit` labels are synchronized from service account SCC permissions [3] | Not set in Git | Aligned |
 
 ## References
@@ -69,5 +70,7 @@ oc get namespaces app-platform-build coolstore-dev gitlab-system openshift-devsp
 1. Sync options (`CreateNamespace`, `Prune=false`, `RespectIgnoreDifferences`), Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/
 2. Sync phases and waves, Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
 3. Understanding and managing pod security admission, OpenShift Container Platform 4.22. https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/authentication_and_authorization/understanding-and-managing-pod-security-admission
+
+4. Diff strategies (server-side diff), Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/diff-strategies/
 
 Repository: [Stage 070 README](../../../../stages/070-advanced-app-platform/README.md), [OPERATIONS: Stage 070 GitLab release](../../../../docs/OPERATIONS.md#stage-070-gitlab-release).
