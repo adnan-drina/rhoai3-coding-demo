@@ -29,7 +29,7 @@ converted_families:
   - rhcl
 
 # Backticked names on skill lines that look like skill names but are not skills.
-skill_reference_ignore: []
+skill_reference_ignore: [rhcl-operator, ocp-baseline]
 
 status_values:
   active: Skill exists and is the preferred route.
