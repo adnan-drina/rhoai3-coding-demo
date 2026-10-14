@@ -1,6 +1,6 @@
 # Stage 070: Advanced Application Platform
 
-> **Release status:** Stage 070 installation and live developer-workflow validation are in progress. GitLab login and private repository access, core GitLab/Dev Spaces/SonarQube readiness and the Sonar quality-gate configuration have passed live checks. Build, delivery, workspace and portal acceptance remain separate checks. Models remain stopped. This is a fresh installation; existing database migration and backup/restore are not qualified.
+> **Release status:** The fresh GitLab → Developer Hub → Tekton/internal registry → deployed application → Dev Spaces workflow passed live validation on 2026-10-14. A new private project completed its initial pipeline without a retry; reopening its generated link reused the same workspace. Portal CI, Topology and Kubernetes views passed. Full Stage 070 acceptance remains blocked by two MTA 8.3.0 startup failures. Models remain stopped; inference, signed-delivery enforcement, existing database migration and backup restore are not qualified.
 
 ## Why This Matters
 
@@ -38,7 +38,7 @@ TAS: persistent signing services; signed delivery remains to be qualified
 - **Managed development.** Dev Spaces 3.30.2 uses one persistent volume per workspace, authenticated GitLab access, explicit source allowlists and retained migration worker identities. The MTA image contains verified 8.3 tools and editor extensions.
 - **Developer Hub 1.10.5.** Catalog, templates and TechDocs come from one pinned GitLab platform revision. Kubernetes, Topology, Tekton and Argo integrations make the project's delivery visible in the portal.
 - **GitOps delivery.** Pipelines 1.24 checks out an exact commit, builds/tests, enforces the SonarQube gate and pushes to the internal registry. Promotion writes the image digest into a platform-owned delivery repository and waits for Argo and the deployment to agree.
-- **Modernization with AI.** MTA 8.3.0 configures the LLM proxy, Solution Server and native Agentic Migration Factory through an owner-bound MaaS subscription. Startup and inference are separate checks; [current qualification](../../BACKLOG.md#stage-070-live-qualification) records the vendor startup failures and remaining browser workflow. Models remain stopped until the operator authorizes validation.
+- **Modernization with AI.** MTA 8.3.0 configures the LLM proxy, Solution Server and native Agentic Migration Factory through an owner-bound MaaS subscription. Startup and inference are separate checks; [current qualification](../../BACKLOG.md#stage-070-live-qualification) records the vendor startup failures and completed developer workflow. Models remain stopped until the operator authorizes validation.
 - **Persistent shared services.** GitLab CE 19.4.2 and SonarQube Community Build 26.9 use dedicated PostgreSQL services. TAS 1.5.0 retains signing roots and service data. GitLab object storage uses six scoped NooBaa claims.
 
 The reference [OpenShift Developer Days project](https://github.com/rhpds/ocp-dev-days-rdshw-gitops) informs the integration patterns. Product versions, credential boundaries and deployment checks are reviewed independently. Chart-based services are rendered during authoring into ordinary checked-in resources; deployment uses Kustomize, with no Helm runtime.

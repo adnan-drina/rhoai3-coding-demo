@@ -1147,7 +1147,7 @@ The owner-only client (`owner-client.py --check` / `--trace`) runs from the sour
 
 ## Stage 070 GitLab release
 
-The exact-SHA native pipeline and independent Argo/image/HTTP delivery checks passed on 2026-10-14 after installation corrections. Earlier failed pipeline records and the original initial-build receipt are preserved; this is not an unassisted first-build claim. [Current qualification](../BACKLOG.md#stage-070-live-qualification) separates completed delivery from the remaining authenticated portal/workspace workflow, MTA AI-service startup failures and deliberately deferred model inference.
+The fresh authenticated Developer Hub template → private GitLab project → initial Tekton pipeline → internal image registry → Git delivery/Argo → HTTP workflow passed on 2026-10-14 for `stage070-validation-20261014`. Its first pipeline passed all six Tasks without a retry. The portal's CI, Topology and Kubernetes views passed; the generated Dev Spaces link cloned private source, initialized tooling and reopened the same workspace UID without duplication. Earlier failed installation checks and the older Coolstore validation retry remain preserved. [Current qualification](../BACKLOG.md#stage-070-live-qualification) separates this completed workflow from the two MTA AI-service startup failures and deliberately deferred inference.
 
 The integrated release and reviewed security corrections are published on `main`. Enrollment and exact-SHA delivery have been exercised on the installed platform. Models remain stopped. The [version/acceptance plan](migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status) records the release scope and data-retention requirements; current qualification above records the remaining limits.
 
@@ -1221,4 +1221,4 @@ On OpenShift 4.22, only the image-builder service account receives `use` of the 
 
 RHDH1.10 Argo frontend/backend plugins are installed as the documented Community OCI artifacts, pinned from Backstage1.49.4-compatible tags; the previous embedded paths no longer exist. Existing Argo read-only credentials and API configuration remain the same.
 
-The earlier custom RuntimeDefault/no-escalation constraint passed admission but failed actual Buildah user-namespace creation, including with UID0. It is replaced by the documented built-in nested-container path above; its disposable probe built a Red Hat Java base successfully. The complete Tekton build/push remains a separate qualification. Do not modify the built-in SCC or grant privileged/host access.
+The earlier custom RuntimeDefault/no-escalation constraint passed admission but failed actual Buildah user-namespace creation, including with UID0. It is replaced by the documented built-in nested-container path above; both its disposable probe and the complete Tekton build/internal push passed live qualification. Do not modify the built-in SCC or grant privileged/host access.
