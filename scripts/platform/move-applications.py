@@ -154,11 +154,24 @@ class Plan:
                 log("  carry " + name + ": source.kustomize from " + source_app["metadata"]["name"])
             norm = lambda i: json.dumps({**i, "group": i.get("group", "")}, sort_keys=True)  # Argo drops group: ""
             have = [norm(i) for i in app["spec"].get("ignoreDifferences", [])]
-            extra = [i for i in live.get("ignoreDifferences", []) if norm(i) not in have]
+            # Only entries that still match an object this Application renders: an entry for an object that moved
+            # elsewhere (or left Git) is stale and would bring back a rule its manifest dropped.
+            rendered = [key for key, (owner, _) in self.owner.items() if owner == name]
+            extra = [i for i in live.get("ignoreDifferences", []) if norm(i) not in have
+                     and any(self.ignore_matches(i, key) for key in rendered)]
             if extra:
                 app["spec"].setdefault("ignoreDifferences", []).extend(extra)
                 log("  carry " + name + ": " + str(len(extra)) + " live ignoreDifferences entries from " + source_app["metadata"]["name"])
         return app
+
+    @staticmethod
+    def ignore_matches(entry, key):
+        """True when an ignoreDifferences entry selects the object identified by key (see identity())."""
+        group_kind, _, namespaced = key.partition(":")
+        group, _, kind = group_kind.rpartition("/")
+        namespace, _, name = namespaced.rpartition("/")
+        return (entry.get("group", "") == group and entry.get("kind") == kind
+                and entry.get("name", name) == name and entry.get("namespace", namespace) == namespace)
 
     # -- preflight --------------------------------------------------------------------------------------------------
     def preflight(self):
