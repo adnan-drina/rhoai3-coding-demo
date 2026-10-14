@@ -1,7 +1,0 @@
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-# Platform owns the namespace and delivery tooling. Runtime resources are
-# seeded into GitLab delivery Git and reconciled by runtime-coolstore.
-resources:
-  - namespace.yaml

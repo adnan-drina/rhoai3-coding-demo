@@ -1,0 +1,97 @@
+# Manual InstallPlan approval for this component's operator only: the Job approves the plan when every CSV in it
+# is on the reviewed allowlist, and refuses any other. Namespace-scoped: it cannot touch another operator.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: approve-installplan
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: approve-installplan
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+rules:
+- apiGroups: [operators.coreos.com]
+  resources: [installplans]
+  verbs: [get, list, patch]
+- apiGroups: [operators.coreos.com]
+  resources: [subscriptions]
+  resourceNames: [mta-operator]
+  verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: approve-installplan
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '1'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: approve-installplan
+subjects:
+- kind: ServiceAccount
+  name: approve-installplan
+  namespace: openshift-mta
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: approve-installplan
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '2'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+  template:
+    spec:
+      serviceAccountName: approve-installplan
+      restartPolicy: Never
+      containers:
+      - name: approve
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        env:
+        - name: NAMESPACE
+          value: openshift-mta
+        - name: SUBSCRIPTION
+          value: mta-operator
+        - name: EXPECTED_CSV
+          value: mta-operator.v8.3.1
+        - name: ALLOWED_CSVS
+          value: mta-operator.v8.3.1
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+        command:
+        - /bin/bash
+        - -ec
+        - |
+          set -euo pipefail
+          # Approve only this component's reviewed InstallPlan: every CSV in the plan must be on the allowlist.
+          for attempt in $(seq 1 90); do
+            installed=$(oc get subscription "$SUBSCRIPTION" -n "$NAMESPACE" -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)
+            [ "$installed" = "$EXPECTED_CSV" ] && exit 0
+            plan=$(oc get subscription "$SUBSCRIPTION" -n "$NAMESPACE" -o jsonpath='{.status.installPlanRef.name}' 2>/dev/null || true)
+            if [ -n "$plan" ]; then
+              csvs=$(oc get installplan "$plan" -n "$NAMESPACE" -o jsonpath='{.spec.clusterServiceVersionNames[*]}')
+              if [ -n "$csvs" ]; then
+                for csv in $csvs; do
+                  case " $ALLOWED_CSVS " in *" $csv "*) ;; *) echo "REFUSE: InstallPlan $NAMESPACE/$plan includes unreviewed CSV $csv" >&2; exit 1 ;; esac
+                done
+                case " $csvs " in *" $EXPECTED_CSV "*) oc patch installplan "$plan" -n "$NAMESPACE" --type=merge -p '{"spec":{"approved":true}}' ;; esac
+              fi
+            fi
+            sleep 10
+          done
+          echo "$EXPECTED_CSV did not install before the deadline" >&2
+          exit 1

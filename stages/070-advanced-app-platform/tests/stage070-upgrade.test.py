@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import io
+import re
 import tarfile
 import subprocess
 import unittest
@@ -16,7 +17,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
-BASE = ROOT / 'gitops/stages/070-advanced-app-platform/base'
+BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
 sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
 
 
@@ -167,8 +168,15 @@ class IntegratedContract(unittest.TestCase):
         self.assertIn('mta-hub-url', guard['if'])
         self.assertEqual(guard['input']['url'], './refusals/FACTORY_MTA_HUB_MISSING')
 
+    def test_sonarqube_database_guard_names_the_rendered_deployment(self):
+        guard = re.search(r'oc get deployment (\S+) -n sonarqube', (ROOT / 'stages/070-advanced-app-platform/deploy.sh').read_text()).group(1)
+        rendered = [d['metadata']['name'] for d in yaml.safe_load_all((BASE / 'sonarqube/postgresql.yaml').read_text())
+                    if d and d['kind'] == 'Deployment']
+        self.assertEqual(rendered, [guard])
+
     def test_coolstore_namespace_precedes_its_delivery_bindings(self):
-        namespace = yaml.safe_load((BASE / 'coolstore/namespace.yaml').read_text())
+        namespace = next(d for d in yaml.safe_load_all((BASE / 'namespaces/namespaces.yaml').read_text())
+                         if d and d['metadata']['name'] == 'coolstore-dev')
         binding = yaml.safe_load((BASE / 'pipelines/project-pipeline/rbac-image-builder.yaml').read_text())
         self.assertLess(int(namespace['metadata']['annotations']['argocd.argoproj.io/sync-wave']),
                         int(binding['metadata']['annotations']['argocd.argoproj.io/sync-wave']))

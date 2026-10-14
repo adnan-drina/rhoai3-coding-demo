@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
-BASE = ROOT / 'gitops/stages/070-advanced-app-platform/base'
+BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
 sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
 
 
@@ -171,7 +171,7 @@ class SignedSAML(unittest.TestCase):
 class ReconciliationSafety(unittest.TestCase):
     def test_runtime_secret_cannot_overwrite_ignored_data_through_string_data(self):
         secret = yaml.safe_load((BASE / 'rhdh/rhdh-instance/rhdh-secrets.yaml').read_text())
-        application = yaml.safe_load((ROOT / 'gitops/argocd/app-of-apps/070-advanced-app-platform.yaml').read_text())
+        application = yaml.safe_load((ROOT / 'gitops/argocd/app-of-apps/070-advanced-app-platform/rhdh.yaml').read_text())
         self.assertNotIn('stringData', secret)
         self.assertEqual(base64.b64decode(secret['data']['SESSION_SECRET']).decode(), 'PLACEHOLDER_WILL_BE_PATCHED')
         self.assertEqual(base64.b64decode(secret['data']['RHDH_OIDC_CLIENT_SECRET']).decode(), 'PLACEHOLDER_WILL_BE_PATCHED')

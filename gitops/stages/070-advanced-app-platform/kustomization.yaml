@@ -1,0 +1,14 @@
+# Stage 070 desired state: the union of its component Applications (gitops/argocd/app-of-apps/070-*/).
+# Argo CD syncs each component from its folder; validators read this aggregate.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespaces
+  - identity
+  - devspaces
+  - pipelines
+  - sonarqube
+  - mta
+  - gitlab
+  - rhdh

@@ -1,0 +1,70 @@
+# Migration Toolkit for Applications 8.3 with platform SSO and governed model access.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: 070-mta
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/instance: openshift-gitops
+    app.kubernetes.io/name: mta
+    app.kubernetes.io/component: mta
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '070'
+  annotations:
+    argocd.argoproj.io/sync-wave: '6'
+    argocd.argoproj.io/manifest-generate-paths: "/gitops/stages/070-advanced-app-platform"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+    demo.rhoai.io/deploy-order: '6'
+spec:
+  project: rhoai-demo
+  source:
+    repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
+    targetRevision: main
+    path: gitops/stages/070-advanced-app-platform/mta
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - SkipDryRunOnMissingResource=true
+    - RespectIgnoreDifferences=true
+    - ClientSideApplyMigration=false
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+  - group: operators.coreos.com
+    kind: OperatorGroup
+    jsonPointers:
+    - "/metadata/annotations/olm.providedAPIs"
+  - group: operators.coreos.com
+    kind: Subscription
+    jsonPointers:
+    - "/spec/startingCSV"
+  - group: console.openshift.io
+    kind: ConsoleLink
+    name: mta
+    jsonPointers:
+    - "/spec/href"
+    - "/spec/applicationMenu/imageURL"
+  - group: tackle.konveyor.io
+    kind: Tackle
+    name: mta
+    namespace: openshift-mta
+    jsonPointers:
+    - "/spec/kai_llm_baseurl"
+  - group: konveyor.io
+    kind: Gateway
+    name: maas-qwen
+    namespace: openshift-mta
+    jsonPointers:
+    - "/spec/endpoint"

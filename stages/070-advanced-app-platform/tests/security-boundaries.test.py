@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 import yaml
 
 ROOT=Path(__file__).resolve().parents[3]
-BASE=ROOT/'gitops/stages/070-advanced-app-platform/base'
+BASE=ROOT/'gitops/stages/070-advanced-app-platform'
 sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
 
 def load(name, path):

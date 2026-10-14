@@ -37,7 +37,6 @@ Every GitOps stage (`stages/NNN-name/deploy.sh` present) MUST have:
 5. `stages/NNN-name/validate.sh` - verifies deployment
 6. `stages/NNN-name/README.md` - educational narrative
 
-Stage 070 still uses the earlier single-Application layout (`gitops/argocd/app-of-apps/070-advanced-app-platform.yaml` rendering `gitops/stages/070-advanced-app-platform/base/`); `validate-stage-flow.sh` accepts both.
 
 ### Component Applications
 
@@ -133,6 +132,13 @@ Every Application MUST use `destination: {server: https://kubernetes.default.svc
 ### Server-Side Diff
 Enable it with the Application annotation `argocd.argoproj.io/compare-options: ServerSideDiff=true` (accurate diff for CRDs, defaulted fields and admission mutations). A `ServerSideDiff=true` entry in `syncPolicy.syncOptions` does **not** enable it: Argo CD reads diff strategy only from this annotation or the global `controller.diff.server.side` setting, which this repository does not set. An Application that needs client-side comparison sets `ServerSideDiff=false` in the annotation and records the reason in its component README. None does today: `060-openshell-runtime` was re-tested with server-side diff on 2026-10-14 (Synced, no resource out of sync) and switched back.
 
+### Removing an ignore rule
+
+With `RespectIgnoreDifferences=true` Argo CD copies the live values of ignored fields into what it applies, so client-side apply records them in `kubectl.kubernetes.io/last-applied-configuration`. Drop the rule (or move the object to an Application without it) and the next apply deletes every recorded key the manifest does not declare, including keys other controllers own. On 2026-10-14 dropping the Namespace `/metadata/annotations` rule deleted OpenShift's `openshift.io/sa.scc.*` allocations from the Stage 070 namespaces, and they were reallocated.
+
+- Never ignore all of `/metadata/annotations` or `/metadata/labels`: it also hides `argocd.argoproj.io/tracking-id`, so no other Application can take the object over. With `ServerSideDiff=true`, keys other field managers add are not drift and need no rule.
+- Before removing such a rule, compare each object's last-applied labels and annotations with the manifest; `move-applications.py` refuses a move that would delete recorded keys (`--allow-field-removal` after review).
+
 ### Delegated fields on shared singletons
 `010-rhoai-platform` owns the `DataScienceCluster` and `OdhDashboardConfig`. A later stage that switches on its feature does so from a hook Job that patches only its own fields, after its prerequisites are ready, and declares them in the Job annotation `demo.rhoai.io/writes-delegated` (comma-separated `Kind:/json/pointer`). Each such field is listed in `010-rhoai-platform` `ignoreDifferences`. `stage_apps.py check-delegations` (run by `validate-stage-flow.sh`) fails on a written field that is not delegated, a delegated field with no writer, a field with two writers, or a Job that patches these objects without the annotation. Design rationale: `docs/migration/settings-in-git-design.md`.
 
@@ -216,9 +222,9 @@ When creating or modifying manifests, verify:
 
 ## Workflow-Only Stages
 
-Stages 110, 120, and 130 are workflow-only: they have no Argo CD Application and no `deploy.sh`. Their `validate.sh` scripts validate against resources owned by the `070-advanced-app-platform` Argo CD Application.
+Stages 110, 120, and 130 are workflow-only: they have no Argo CD Application and no `deploy.sh`. Their `validate.sh` scripts validate against resources owned by the Stage 070 component Applications (`python3 scripts/shared/stage_apps.py names 070`).
 
-Stage 070 is a multi-component owner managing: identity (platform RHBK), devspaces, pipelines, sonarqube, rhdh, mta, and coolstore resources.
+Stage 070 deploys its components one at a time in deploy order (namespaces, identity, devspaces, pipelines, sonarqube, mta, gitlab, rhdh): its GitLab integration hook and Developer Hub catalog hook depend on the earlier components, and sync waves order hooks only inside one Application. `stages/070-advanced-app-platform/application.py deploy` and `move-applications.py --sequential` keep that order.
 
 ## MaaS and Model Access
 

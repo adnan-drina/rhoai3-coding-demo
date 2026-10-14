@@ -22,7 +22,7 @@ The Applications have no `resources-finalizer`, and tracking is by annotation: a
 
 ## When to invoke
 
-- Splitting one Application into stage components (`040-governed-models-as-a-service` became eight `040-*` Applications).
+- Splitting one Application into stage components (`040-governed-models-as-a-service` became eight `040-*` Applications; `070-advanced-app-platform` became eight `070-*` Applications, moved with `--sequential`).
 - Renaming an Application (`agent-console` became `060-agent-console`).
 - Moving a component's folder, which changes `spec.source.path` (the one-folder-per-Application layout).
 
@@ -48,6 +48,7 @@ python3 scripts/platform/move-applications.py --stage NNN --revision <sha> [--ap
 
 - Split or rename: `--from` names the old Application(s) to retire; `--app` limits the targets (default: the whole stage).
 - Re-point only: no `--from`; the names stay and only the source path changes.
+- `--sequential` applies, syncs and waits for one Application at a time in deploy order. Use it when a component's hooks need another component's hooks to have run at the new revision (Stage 070: the GitLab integration hub needs the earlier components, Developer Hub's catalog hook needs the GitLab mirror). Without it every new Application syncs at once.
 - Objects that no new Application renders are reported; `--delete-leftovers` deletes those still tracked by a `--from` Application, after you reviewed the list.
 - The tool is safe to re-run after a failure: it keeps the UIDs recorded on the first run in `~/.local/state/rhoai3-coding-demo/move-applications/`.
 
@@ -60,6 +61,8 @@ The tool stops automated sync on the old Applications, applies the new ones, sta
 - **Sync gates.** `060-openshell-runtime` waits in its `openshell-runtime-prerequisites` hook for `setup-runtime.py --revision <sha>` to stamp `openshell-runtime-ready`. The stamp must be written after this sync applied the ConfigMap; written earlier, the sync's own apply puts the old value back. `SYNC_GATES` in the tool holds this; add an entry for any new Application whose hook waits for a runtime step.
 - **Sync hooks with `BeforeHookCreation` get a new UID on every sync.** Only their owner is checked.
 - **Cluster-specific Application settings live only on the cluster** (Stage 040 Gateway hostname `source.kustomize` patch, Stage 020 MachineSet replica `ignoreDifferences`). The tool carries them from the Application that currently owns the objects and says so.
+- **No apply may delete keys only `last-applied-configuration` still records.** An ignore rule under `RespectIgnoreDifferences` copies live fields (controller-owned annotations included) into last-applied; the first apply without the rule deletes them. The preflight refuses such a move and lists the keys; `--allow-field-removal` accepts them after review. On 2026-10-14 this deleted OpenShift's `openshift.io/sa.scc.*` allocations from the Stage 070 namespaces (`.agents/rules/gitops.md` "Removing an ignore rule").
+- **Carried ignore rules must still select a rendered object.** Only cluster-specific rules for objects the Application keeps are carried; a rule for an object that moved away is dropped.
 - **Never `oc apply` a hand-edited JSON copy of a live Application**; never add `resources-finalizer.argocd.argoproj.io`.
 
 ## After the move

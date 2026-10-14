@@ -10,7 +10,7 @@ import unittest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
-BASE = ROOT / "gitops/stages/070-advanced-app-platform/base"
+BASE = ROOT / "gitops/stages/070-advanced-app-platform"
 TASKS = BASE / "pipelines/project-pipeline"
 SHA = "a" * 40
 DIGEST = "sha256:" + "b" * 64

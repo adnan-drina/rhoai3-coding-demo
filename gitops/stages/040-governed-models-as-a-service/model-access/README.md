@@ -47,7 +47,7 @@ Every subscription sets `tokenMetadata` (`organizationId: rhoai3-coding-demo`, `
 | API keys (stored in the MaaS PostgreSQL database) | Users (dashboard), Stage 070 Dev Spaces provisioner, `040-genai-studio` Job `provision-playground-endpoint`, Stage 050 provisioner, `validate-functional.py` (temporary) |
 | Generated Kuadrant `AuthPolicy` and `TokenRateLimitPolicy` objects | MaaS controller |
 | Other subscriptions in the same namespace: `hermes-private-qwen38`, `opencode-private-qwen38` | `060-openshell-runtime` |
-| Subscription and auth policy `mta-migration-ai` | `070-advanced-app-platform` |
+| Subscription and auth policy `mta-migration-ai` | `070-mta` |
 
 ## How
 

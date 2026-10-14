@@ -5,14 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 if [[ "${1:-}" == --static ]]; then
-  export PYTHONPATH="$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/pipelines/gitlab${PYTHONPATH:+:$PYTHONPATH}"
+  export PYTHONPATH="$REPO_ROOT/gitops/stages/070-advanced-app-platform/pipelines/gitlab${PYTHONPATH:+:$PYTHONPATH}"
   for test in correction-package.test.py internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py security-boundaries.test.py sonarqube-bootstrap.test.py sonarqube-scope.test.py sso-alignment.test.py; do
     "$PYTHON" "$SCRIPT_DIR/tests/$test"
   done
-  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/jobs/catalog/render_catalog.test.py"
-  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/base/rhdh/templates/app-migration/app-migration-template.test.py"
-  kustomize build "$REPO_ROOT/gitops/stages/070-advanced-app-platform/base" >/dev/null
-  kustomize build "$REPO_ROOT/gitops/stages/070-advanced-app-platform/overlays/slim" >/dev/null
+  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/rhdh/jobs/catalog/render_catalog.test.py"
+  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/app-migration-template.test.py"
+  kustomize build "$REPO_ROOT/gitops/stages/070-advanced-app-platform" >/dev/null
   bash -n "$SCRIPT_DIR/deploy.sh" "$SCRIPT_DIR/validate.sh"
   echo 'PASS: Stage 070 authoring checks. Live deployment and model-dependent checks are separate.'
   exit 0
@@ -26,7 +25,7 @@ fi
 source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 
 log_step 'Stage 070 GitOps and selected operators'
-check_argocd_app '070-advanced-app-platform'
+while IFS= read -r app; do check_argocd_app "$app"; done < <(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" names 070)
 revision_args=()
 [[ -z "$EXPECTED_REVISION" ]] || revision_args=(--revision "$EXPECTED_REVISION")
 if "$PYTHON" "$SCRIPT_DIR/application.py" status --repo-url "$GIT_REPO_URL" ${revision_args[@]+"${revision_args[@]}"}; then
