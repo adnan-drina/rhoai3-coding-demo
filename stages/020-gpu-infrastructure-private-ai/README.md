@@ -58,7 +58,7 @@ The GPU-as-a-Service layer on top of the Stage 010 base platform.
 
 - **GPU pools** — the default pool is AWS `g7e.2xlarge` (one NVIDIA RTX PRO 6000 Blackwell Server Edition, 96 GB, FP8 and NVFP4 tensor cores), one MachineSet per `us-east-2` zone, chosen by the 2026-10-13 serving study; the former `g6e.2xlarge` (one NVIDIA L40S, 48 GB) pool stays declared at zero, and dormant per-zone `p5.4xlarge` (H100) MachineSets record the capacity probe. All use 200 GB gp3 encrypted EBS root volumes and the `nvidia-gpu-only:NoSchedule` taint; the Argo CD Application ignores `MachineSet.spec.replicas` drift so operators scale to zero between sessions for cost control
 - **Node Feature Discovery** — NFD Operator (`stable` channel, Automatic approval) publishes hardware feature labels; GPU Feature Discovery within the GPU Operator adds NVIDIA-specific labels used for Kueue placement
-- **NVIDIA GPU Operator** — certified operator (`v26.7` channel, CSV `gpu-operator-certified.v26.7.1`, driver 595.91.07 supports Blackwell) installs driver stack, container toolkit, GFD, DCGM exporter, and device plugin; each GPU is one schedulable `nvidia.com/gpu` unit with no time-slicing
+- **NVIDIA GPU Operator** — certified operator (`v26.7` channel, Automatic updates within the channel (installed `gpu-operator-certified.v26.7.2` on 2026-10-14), driver 595.91.07 supports Blackwell) installs driver stack, container toolkit, GFD, DCGM exporter, and device plugin; each GPU is one schedulable `nvidia.com/gpu` unit with no time-slicing
 - **Red Hat build of Kueue** — standalone operator (`stable-v1.4` channel, Automatic approval); integration enabled by patching the shared DSC to `kueue.managementState: Unmanaged` via an Argo CD Sync hook Job; the existing Red Hat cert-manager installation is reused as a prerequisite
 - **Queue topology** — one CPU ResourceFlavor and one ResourceFlavor per GPU type, each selecting only its own pool by the MachineSet label `cluster-api/accelerator` (`gpu-l40s`, `gpu-rtxpro6000`) and tolerating the GPU taint; one ClusterQueue per GPU type (`cq-gpu-reserved-demo` for L40S, `cq-gpu-rtxpro6000`) because a hardware profile names one LocalQueue and Kueue picks the first fitting flavor inside a ClusterQueue
 - **RHOAI Hardware Profiles** — CPU Default, NVIDIA L40S and NVIDIA RTX PRO 6000 Queue-type profiles turn queue and resource choices into dashboard-friendly dropdown selections; the flavor, not the profile, places the workload (RHOAI 3.5, Manage workloads with Kueue)
@@ -91,7 +91,7 @@ OpenShift Machine API creates GPU worker capacity from a declarative MachineSet.
 | Red Hat OpenShift Container Platform | 4.22 (Machine API) |
 | Red Hat OpenShift AI Self-Managed | stable-3.5 (hardware profiles, Kueue integration) |
 | Node Feature Discovery Operator | stable (CSV nfd.4.22.0-202609212027) |
-| NVIDIA GPU Operator (certified) | v26.7 (CSV gpu-operator-certified.v26.7.1) |
+| NVIDIA GPU Operator (certified) | v26.7, Automatic (installed v26.7.2 on 2026-10-14) |
 | Red Hat build of Kueue | stable-v1.4 (CSV kueue-operator.v1.4.2) |
 
 ## Open Source Projects To Know
