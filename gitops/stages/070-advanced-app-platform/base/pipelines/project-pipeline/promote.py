@@ -110,6 +110,30 @@ def committed_artifacts(git, sha, directory):
     if not list(directory.iterdir()): raise ValueError('No declarative runtime artifacts')
 
 
+def decode_runtime_objects(output):
+    # oc prints one JSON value per resource for a directory/multi-document
+    # input. A single List is also valid; never discard later resources.
+    decoder = json.JSONDecoder()
+    objects = []
+    remaining = output.lstrip()
+    while remaining:
+        value, end = decoder.raw_decode(remaining)
+        if not isinstance(value, dict):
+            raise ValueError('Runtime output must contain Kubernetes objects')
+        if value.get('kind') == 'List':
+            if value.get('apiVersion') != 'v1' or not isinstance(value.get('items'), list):
+                raise ValueError('Malformed runtime List')
+            if not all(isinstance(item, dict) for item in value['items']):
+                raise ValueError('Runtime List items must be objects')
+            objects.extend(value['items'])
+        else:
+            objects.append(value)
+        remaining = remaining[end:].lstrip()
+    if not objects:
+        raise ValueError('No runtime objects in client output')
+    return objects
+
+
 def main():
     config = json.loads(Path('/config/delivery.json').read_text())
     name, ns = config['repo_name'], os.environ['NAMESPACE']
@@ -126,8 +150,7 @@ def main():
     directory = root / 'artifacts'; directory.mkdir()
     committed_artifacts(git, sha, directory)
     output = subprocess.check_output(['oc', 'create', '--dry-run=client', '-f', str(directory), '-o', 'json'], universal_newlines=True)
-    decoded = json.loads(output)
-    objects = validate_runtime(decoded.get('items', [decoded]), name, ns, image)
+    objects = validate_runtime(decode_runtime_objects(output), name, ns, image)
     token = Path('/credentials/token').read_text().strip()
     base = config['gitlab_base_url'].rstrip('/')
 

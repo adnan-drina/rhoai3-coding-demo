@@ -2857,3 +2857,9 @@ Without it, a successful image build can leave promotion Pending on the unhashed
 do not create a manual alias. Preserve and cancel the blocked validation run,
 sync the corrected project revision, then run the complete pipeline again.
 See [Kustomize transformer configuration](https://github.com/kubernetes-sigs/kustomize/tree/master/examples/transformerconfigs).
+
+The current `oc create --dry-run=client -f <directory> -o json` emits one JSON
+value per manifest. Promotion decodes the complete stream (or a single native
+List), then applies the same runtime allowlist to every object before publishing.
+`JSONDecodeError: Extra data` is a parser defect, not permission to publish only
+the first object. Malformed trailing output and later disallowed objects refuse.

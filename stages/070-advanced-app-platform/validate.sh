@@ -81,14 +81,16 @@ SONAR_HOST=$(oc get route sonarqube -n sonarqube -o jsonpath='{.spec.host}' 2>/d
 if [[ -n "$SONAR_HOST" ]]; then check_http_code 'SonarQube reachable' "https://${SONAR_HOST}/api/system/status" '200'; fi
 check 'TektonConfig ready' "oc get tektonconfig config -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" 'True'
 check 'Internal registry available' "oc get clusteroperator image-registry -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" 'True'
-check 'Coolstore pipeline installed' "oc get pipeline app-push -n coolstore-dev -o jsonpath='{.metadata.name}'" 'app-push'
+check 'Coolstore pipeline installed' "oc get pipelines.tekton.dev app-push -n coolstore-dev -o jsonpath='{.metadata.name}'" 'app-push'
 check 'Coolstore initial-build receipt bound' "oc get configmap initial-build-receipt -n coolstore-dev -o jsonpath='{.data.source_commit}' | contains -E '^[0-9a-f]{40}$' && echo BOUND" 'BOUND'
 check 'Coolstore uses digest from internal registry' "oc get deployment coolstore-inventory-service -n coolstore-dev -o jsonpath='{.spec.template.spec.containers[0].image}' | contains -E '^image-registry.openshift-image-registry.svc:5000/coolstore-dev/coolstore-inventory-service@sha256:[0-9a-f]{64}$' && echo PINNED" 'PINNED'
 check 'Coolstore deployment ready' "oc get deployment coolstore-inventory-service -n coolstore-dev -o jsonpath='{.status.readyReplicas}'" '1'
 check 'Runtime is reconciled from delivery Git' "oc get application runtime-coolstore-inventory-service -n openshift-gitops -o jsonpath='{.spec.source.repoURL}'" "https://${GITLAB_HOST}/rhoai-delivery/"
 check 'Webhook listener ready' "oc get deployment el-gitlab -n coolstore-dev -o jsonpath='{.status.readyReplicas}'" '1'
-check 'Pipeline may push its own images' "oc auth can-i update imagestreams/layers -n coolstore-dev --as=system:serviceaccount:coolstore-dev:image-builder" 'yes'
-check 'Pipeline cannot push another project image' "oc auth can-i update imagestreams/layers -n app-platform-build --as=system:serviceaccount:coolstore-dev:image-builder" 'no'
+check 'Pipeline may push its own images' "oc auth can-i update imagestreams --subresource=layers -n coolstore-dev --as=system:serviceaccount:coolstore-dev:image-builder" 'yes'
+# A normal authorization denial exits 1; preserve its real 'no' output. API
+# failures have no such stdout and still fail the expected-output check.
+check 'Pipeline cannot push another project image' "oc auth can-i update imagestreams --subresource=layers -n app-platform-build --as=system:serviceaccount:coolstore-dev:image-builder || true" 'no'
 
 log_step 'MTA 8.3 AI components configured (no inference request)'
 check 'MTA AI proxy enabled' "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_proxy_enabled}'" 'true'
@@ -105,7 +107,8 @@ check 'MTA uses governed MaaS endpoint' "oc get gateways.konveyor.io maas-qwen -
 
 log_step 'Signing service and portal'
 check 'TAS service Ready' "oc get securesign platform -n trusted-artifact-signer -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" 'True'
-check 'TAS uses existing platform realm' "oc get securesign platform -n trusted-artifact-signer -o jsonpath='{.spec.fulcio.config.oidcIssuers[0].issuer}' | contains -E '^https://keycloak.*\/realms/platform$' && echo CONFIGURED" 'CONFIGURED'
+KEYCLOAK_HOST=$(oc get route keycloak -n keycloak -o jsonpath='{.spec.host}' 2>/dev/null || true)
+check 'TAS uses existing platform realm' "oc get securesign platform -n trusted-artifact-signer -o jsonpath='{.spec.fulcio.config.oidcIssuers[0].issuer}'" "https://${KEYCLOAK_HOST}/realms/platform"
 check 'Portal instance exists' "oc get backstage developer-hub -n rhdh -o jsonpath='{.metadata.name}'" 'developer-hub'
 check 'Portal catalog bundle stamped' "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\\.redhat\\.com/catalog-bundle}' | contains -E '^[0-9a-f]{64}$' && echo STAMPED" 'STAMPED'
 check 'Portal catalog has no unresolved placeholders' "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | '$PYTHON' -c 'import sys; s=sys.stdin.read(); assert s and \"__RHOAI3_\" not in s and \"placeholder.example.com\" not in s; print(\"RESOLVED\")'" 'RESOLVED'

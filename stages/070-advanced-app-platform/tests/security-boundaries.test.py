@@ -242,6 +242,29 @@ class DeliveryBranch(unittest.TestCase):
         self.assertEqual(payload,{'name':'main','push_access_level':30,'merge_access_level':40,'allow_force_push':False})
 
 
+class PromotionClientOutput(unittest.TestCase):
+    def test_real_oc422_multi_resource_output_keeps_every_object(self):
+        output=(Path(__file__).parent/'fixtures/oc422-multiple-json-client-output.json').read_text()
+        with self.assertRaises(json.JSONDecodeError):json.loads(output)
+        objects=promote.decode_runtime_objects(output)
+        self.assertEqual([o['metadata']['name'] for o in objects],['stage070-parser-fixture-0','stage070-parser-fixture-1'])
+
+    def test_single_object_and_native_list_remain_supported(self):
+        obj={'apiVersion':'v1','kind':'Service','metadata':{'name':'example'}}
+        for output in (json.dumps(obj),json.dumps({'apiVersion':'v1','kind':'List','items':[obj]})):
+            self.assertEqual(promote.decode_runtime_objects(output),[obj])
+
+    def test_later_untrusted_objects_are_not_discarded(self):
+        good={'apiVersion':'apps/v1','kind':'Deployment','metadata':{'name':'example'},'spec':{'template':{'spec':{'containers':[{'name':'example','image':'placeholder:tag'}]}}}}
+        bad={'apiVersion':'v1','kind':'Secret','metadata':{'name':'example-secret'}}
+        objects=promote.decode_runtime_objects(json.dumps(good)+'\n'+json.dumps(bad))
+        with self.assertRaises(ValueError):promote.validate_runtime(objects,'example','example-dev','image-registry.openshift-image-registry.svc:5000/example-dev/example@sha256:'+'a'*64)
+
+    def test_malformed_trailing_or_empty_output_is_refused(self):
+        for output in ('','{} garbage','null','[]','{"kind":"List","apiVersion":"v1","items":{}}','{"kind":"List","apiVersion":"v1","items":[null]}'):
+            with self.subTest(output=output),self.assertRaises(ValueError):promote.decode_runtime_objects(output)
+
+
 class SourcePromotion(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
