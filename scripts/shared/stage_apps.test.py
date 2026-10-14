@@ -32,6 +32,10 @@ class DeployGroups(unittest.TestCase):
         self.assertEqual([[a["metadata"]["name"] for a in g] for g in groups][:2], [["070-namespaces"], ["070-identity"]])
         self.assertEqual(groups[-1][0]["metadata"]["name"], "070-rhdh")
 
+    def test_a_sequential_stage_cannot_skip_waiting(self):
+        with self.assertRaisesRegex(RuntimeError, "sequentially"):
+            stage_apps.deploy("070", SHA, REPO, wait=False)
+
     def test_other_stages_deploy_all_components_together(self):
         self.assertEqual(len(stage_apps.deploy_groups(stage_apps.stamped("050", SHA, REPO))), 1)
 

@@ -1,5 +1,5 @@
 # GPU MachineSets generated for this cluster by stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh.
-# application-patch.yaml (not a resource) holds their replica delegation for the 020-gpu-machinesets Application.
+# Their replica delegation is in the 020-gpu-machinesets Application manifest (the generator writes both).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

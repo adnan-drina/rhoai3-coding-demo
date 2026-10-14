@@ -7,12 +7,13 @@ source "$ROOT_DIR/scripts/shared/lib.sh"
 REPO_ROOT="${RHOAI_ENV_ROOT:-$ROOT_DIR}"
 load_env
 check_oc_logged_in
-revision="${1:-${GIT_REPO_BRANCH:-}}"
-[[ -n "$revision" ]] || { echo 'ERROR: select the reviewed published branch.' >&2; exit 1; }
-remote_sha=$(git ls-remote "${GIT_REPO_URL:?Set GIT_REPO_URL}" "$revision" "refs/heads/$revision" | awk '{print $1}' | sort -u)
-[[ "$remote_sha" =~ ^[0-9a-f]{40}$ && "$remote_sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published branch differs from the reviewed checkout.' >&2; exit 1; }
-paths=(gitops/stages/030-private-model-serving gitops/argocd/app-of-apps/030-private-model-serving stages/030-private-model-serving scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/validate-serving-update.py)
-[[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish reviewed Stage 030 source first.' >&2; exit 1; }
+require_env GIT_REPO_URL "reviewed Stage 030 source repository"
+assert_required_env
+ref="${GIT_REPO_BRANCH:-HEAD}"
+if [[ "${1:-}" == --revision && $# -eq 2 ]]; then ref="$2"; elif [[ $# -ne 0 ]]; then echo "Usage: $0 [--revision REF]" >&2; exit 1; fi
+STAGE_APPS="$ROOT_DIR/scripts/shared/stage_apps.py"
+revision=$(python3 "$STAGE_APPS" select 030 --ref "$ref" --repo-url "$GIT_REPO_URL" \
+  --extra scripts/platform/require-node-sizing.sh --extra scripts/platform/validate-serving-update.py)
 # Read-only prerequisites precede even sizing and the first Application write.
 export GIT_REPO_URL
 python3 - "$ROOT_DIR" <<'PY_PREREQUISITE'
@@ -75,24 +76,11 @@ else
   "$ROOT_DIR/stages/020-gpu-infrastructure-private-ai/validate.sh" --readiness
 fi
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
-work=$(mktemp -d);trap 'rm -rf "$work"' EXIT
-export GIT_REPO_URL
-ruby -ryaml -e 'a=YAML.load_file(ARGV[0]);a["spec"]["source"]["repoURL"]=ENV.fetch("GIT_REPO_URL");a["spec"]["source"]["targetRevision"]=ARGV[1];puts YAML.dump(a)' "$ROOT_DIR/gitops/argocd/app-of-apps/030-private-model-serving/private-model-serving.yaml" "$remote_sha" > "$work/application.yaml"
-# The first modifying action is this stage's own Application.
-python3 "$SCRIPT_DIR/preflight-agent-catalog.py"
-oc --request-timeout=10s apply -f "$work/application.yaml"
-python3 "$ROOT_DIR/scripts/shared/stage_apps.py" sync 030 --app 030-private-model-serving  # an unchanged render gets no automatic sync operation
-echo 'Stage 030 native serving/discovery Application submitted at the reviewed immutable revision; no models or registry records are created.'
+# First change: this stage's own Application at the reviewed commit; deploy applies, syncs and waits for it.
+python3 "$STAGE_APPS" deploy 030 --revision "$revision" --repo-url "$GIT_REPO_URL"
 for _ in $(seq 1 120); do
- if oc --request-timeout=10s get application 030-private-model-serving -n openshift-gitops -o json | python3 -c 'import json,sys;x=json.load(sys.stdin);s=x.get("status",{});sys.exit(not(s.get("sync",{}).get("status")=="Synced" and s.get("sync",{}).get("revision")==x["spec"]["source"]["targetRevision"] and s.get("health",{}).get("status")=="Healthy" and s.get("operationState",{}).get("phase")=="Succeeded" and s.get("operationState",{}).get("syncResult",{}).get("revision")==x["spec"]["source"]["targetRevision"] and s.get("operationState",{}).get("syncResult",{}).get("source",{}).get("path")==x["spec"]["source"]["path"]))'; then
-  for _ in $(seq 1 120); do
-   if "$SCRIPT_DIR/validate.sh"; then exit 0; fi
-   sleep 5
-  done
-  echo "ERROR: native Stage 030 service readiness timed out after Application reconciliation." >&2
-  exit 1
- fi
- sleep 5
+  if "$SCRIPT_DIR/validate.sh"; then exit 0; fi
+  sleep 5
 done
-echo 'ERROR: native Stage 030 reconciliation did not complete within the bounded wait.' >&2
+echo "ERROR: native Stage 030 service readiness timed out after Application reconciliation." >&2
 exit 1

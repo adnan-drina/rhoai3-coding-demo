@@ -8,18 +8,16 @@ source "$ROOT_DIR/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
 python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai"
-revision="${1:-${GIT_REPO_BRANCH:-}}"
-[[ -n "$revision" ]] || { echo 'ERROR: select a reviewed published revision.' >&2; exit 1; }
-command -v python3 >/dev/null
-command -v ruby >/dev/null
-command -v git >/dev/null
-remote_sha=$(git ls-remote "${GIT_REPO_URL:?Set GIT_REPO_URL}" "$revision" "refs/heads/$revision" | awk '{print $1}' | sort -u)
-[[ "$remote_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'ERROR: revision must resolve to one published branch.' >&2; exit 1; }
-[[ "$remote_sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published revision differs from reviewed checkout.' >&2; exit 1; }
-paths=(gitops/stages/020-gpu-infrastructure-private-ai gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai stages/020-gpu-infrastructure-private-ai scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/check-operator-policy.py)
-[[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish all reviewed Stage 020 source before deploying.' >&2; exit 1; }
+require_env GIT_REPO_URL "reviewed Stage 020 source repository"
+assert_required_env
+ref="${GIT_REPO_BRANCH:-HEAD}"
+if [[ "${1:-}" == --revision && $# -eq 2 ]]; then ref="$2"; elif [[ $# -ne 0 ]]; then echo "Usage: $0 [--revision REF]" >&2; exit 1; fi
+STAGE_APPS="$ROOT_DIR/scripts/shared/stage_apps.py"
+revision=$(python3 "$STAGE_APPS" select 020 --ref "$ref" --repo-url "$GIT_REPO_URL" \
+  --extra scripts/platform/require-node-sizing.sh --extra scripts/platform/check-operator-policy.py)
 stage_gitops="$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai"
-[[ -f "$stage_gitops/gpu-machinesets/machineset-gpu.yaml" && -f "$stage_gitops/gpu-machinesets/application-patch.yaml" ]] || { echo 'ERROR: generate, review and publish the environment MachineSet and Application patch first.' >&2; exit 1; }
+app_manifest="$ROOT_DIR/gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai/gpu-machinesets.yaml"
+[[ -f "$stage_gitops/gpu-machinesets/machineset-gpu.yaml" ]] || { echo 'ERROR: generate, review and publish the environment MachineSets first (generate-gpu-machineset.sh).' >&2; exit 1; }
 export REPO_ROOT
 # All prerequisites are read-only and run before the first Application write.
 python3 - <<'PY'
@@ -39,7 +37,6 @@ def read(kind,name,ns=''):
  p=subprocess.run(cmd,capture_output=True,text=True,timeout=15)
  assert p.returncode==0,'Ownership API read failed'
  return json.loads(p.stdout) if p.stdout.strip() else None
-assert not read('application','020-gpu-infrastructure-private-ai','openshift-gitops'),'Retired single Stage 020 Application still exists; finish the component move (docs/OPERATIONS.md)'
 for desired in stage_apps.components('020'):
  x=read('application',desired['metadata']['name'],'openshift-gitops')
  if not x:continue
@@ -82,10 +79,10 @@ for expected in pools:
   x=json.loads(p.stdout);assert not x["metadata"].get("ownerReferences"),name+": foreign MachineSet owner"
   assert x["metadata"].get("annotations",{}).get("argocd.argoproj.io/tracking-id","").startswith("020-gpu-machinesets:"),name+": existing MachineSet has not been adopted by reviewed Stage 020"
   for key in ["selector","template"]:assert x["spec"][key]==expected["spec"][key],name+": existing GPU provider/template differs from reviewed source"
-patch=json.loads(subprocess.run(["ruby","-ryaml","-rjson","-e","puts JSON.generate(YAML.load_file(ARGV[0]))",sys.argv[1]],capture_output=True,text=True,check=True).stdout)
-assert sorted(i["name"] for i in patch["spec"]["ignoreDifferences"])==sorted(d["metadata"]["name"] for d in pools),"application-patch.yaml must hold a replica exception for every GPU MachineSet"
+app=json.loads(subprocess.run(["ruby","-ryaml","-rjson","-e","puts JSON.generate(YAML.load_stream(File.read(ARGV[0])).compact[0])",sys.argv[1]],capture_output=True,text=True,check=True).stdout)
+assert sorted(i["name"] for i in app["spec"].get("ignoreDifferences",[]) if i.get("kind")=="MachineSet")==sorted(d["metadata"]["name"] for d in pools),"020-gpu-machinesets must hold a replica exception for every GPU MachineSet (re-run generate-gpu-machineset.sh --write)"
 print("PASS "+str(len(pools))+" GPU MachineSets match their active CPU sources and carry replica exceptions")
-' "$stage_gitops/gpu-machinesets/application-patch.yaml"
+' "$app_manifest"
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 oc kustomize "$stage_gitops" > "$work/render.yaml"
@@ -104,12 +101,7 @@ for expected in json.load(sys.stdin):
  tracking=x["metadata"].get("annotations",{}).get("argocd.argoproj.io/tracking-id","")
  assert stage_apps.tracked("020",x) or (expected["kind"]=="Namespace" and not tracking),"Unreviewed existing customer resource"
 '
-# The component Applications at one revision; the exact-name MachineSet replica exceptions go on 020-gpu-machinesets.
-python3 "$ROOT_DIR/scripts/shared/stage_apps.py" applications 020 --revision "$remote_sha" --repo-url "$GIT_REPO_URL" > "$work/components.json"
-ruby -ryaml -rjson -e 'apps=JSON.parse(File.read(ARGV[0]));p=YAML.load_file(ARGV[1])
-pools=apps["items"].find{|a| a["metadata"]["name"]=="020-gpu-machinesets"} or abort "ERROR: MachineSet component is missing."
-pools["spec"]["ignoreDifferences"]=p["spec"]["ignoreDifferences"];puts JSON.generate(apps)' "$work/components.json" "$stage_gitops/gpu-machinesets/application-patch.yaml" > "$work/applications.json"
-oc --request-timeout=10s apply -f "$work/applications.json"
-python3 "$ROOT_DIR/scripts/shared/stage_apps.py" sync 020  # an unchanged render gets no automatic sync operation
-echo 'Stage 020 component Applications submitted; native Automatic operator reconciliation is bounded below.'
+# First change: the component Applications at the reviewed commit; deploy applies, syncs and waits for each.
+python3 "$STAGE_APPS" deploy 020 --revision "$revision" --repo-url "$GIT_REPO_URL"
+echo 'Stage 020 components reconciled; native Automatic operator reconciliation is bounded below.'
 python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai" --wait 900

@@ -367,11 +367,17 @@ def deploy_groups(apps):
     return [groups[k] for k in sorted(groups)]
 
 
-def deploy(stage, revision, repo_url, timeout=1800, resync=False, root=ROOT, log=print):
+def deploy(stage, revision, repo_url, timeout=1800, resync=False, root=ROOT, log=print, wait=True):
     """Apply every deploy-order component pinned to revision, start a sync where its current source has not been
-    synced (all of them with resync), and wait until each is reconciled; sequential groups wait in between."""
+    synced (all of them with resync), and wait until each is reconciled; sequential groups wait in between.
+
+    wait=False returns after the syncs started, for a stage whose own setup step must run before its components can
+    become healthy (Stage 050 AI services); it then calls wait_for itself. A sequential stage always waits."""
     summary = []
-    for group in deploy_groups(stamped(stage, revision, repo_url, root)):
+    groups = deploy_groups(stamped(stage, revision, repo_url, root))
+    if not wait and len(groups) > 1:
+        raise RuntimeError("Stage " + stage + " deploys sequentially and must wait between its groups")
+    for group in groups:
         names = [a["metadata"]["name"] for a in group]
         for app in group:
             out = subprocess.run(["oc", "--request-timeout=15s", "apply", "-f", "-"], input=json.dumps(app),
@@ -381,6 +387,8 @@ def deploy(stage, revision, repo_url, timeout=1800, resync=False, root=ROOT, log
             summary.append(out.stdout.strip())
         started = start_syncs(stage, root, only=names, force=resync)
         log("applied " + ", ".join(names) + " at " + revision[:12] + ("; started sync of " + ", ".join(started) if started else "; no sync needed"))
+        if not wait:
+            return summary
         wait_for(stage, names, revision, repo_url, timeout, root)
         log("PASS " + ", ".join(names) + " Synced and Healthy at " + revision[:12])
     return summary
@@ -496,6 +504,10 @@ def main():
     p.add_argument("stage"); p.add_argument("--revision", required=True); p.add_argument("--repo-url", required=True)
     p.add_argument("--timeout", type=int, default=1800, help="seconds per deploy group")
     p.add_argument("--resync", action="store_true", help="sync every component even if this source is already synced (re-runs hooks)")
+    p.add_argument("--no-wait", action="store_true", help="return once the syncs started (run the stage's setup, then `wait`)")
+    p = sub.add_parser("wait")
+    p.add_argument("stage"); p.add_argument("--revision", required=True); p.add_argument("--repo-url", required=True)
+    p.add_argument("--timeout", type=int, default=1800)
     p = sub.add_parser("applications")
     p.add_argument("stage"); p.add_argument("--revision", required=True); p.add_argument("--repo-url", required=True)
     p = sub.add_parser("status")
@@ -514,8 +526,12 @@ def main():
     elif args.command == "select":
         print(select_revision(args.stage, args.ref, args.repo_url, extra=args.extra))
     elif args.command == "deploy":
-        for line in deploy(args.stage, args.revision, args.repo_url, args.timeout, args.resync, log=lambda m: print(m, flush=True)):
+        for line in deploy(args.stage, args.revision, args.repo_url, args.timeout, args.resync,
+                           log=lambda m: print(m, flush=True), wait=not args.no_wait):
             print("  " + line)
+    elif args.command == "wait":
+        wait_for(args.stage, names(args.stage), args.revision, args.repo_url, args.timeout)
+        print("PASS Stage " + args.stage + " components Synced and Healthy at " + args.revision[:12])
     elif args.command == "applications":
         print(json.dumps({"apiVersion": "v1", "kind": "List", "items": stamped(args.stage, args.revision, args.repo_url)}))
     elif args.command == "status":

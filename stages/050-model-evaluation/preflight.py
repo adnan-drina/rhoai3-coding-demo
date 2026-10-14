@@ -9,7 +9,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/shared"))
 import stage_apps  # noqa: E402
 
-RETIRED_APP = "050-model-evaluation"  # the single Application replaced by component Applications
 NAMESPACE = "redhat-ods-applications"
 
 
@@ -95,8 +94,6 @@ def main():
     health = argocd.get("spec", {}).get("extraConfig", {}).get("resource.customizations.health.mlflow.opendatahub.io_MLflow", "")
     require(all(word in health for word in ["Available", "MLflowOperatorReady", "Migration", "observedGeneration"]),
             "Install the reviewed native MLflow health gate before Stage 050.")
-    require(not get("application", RETIRED_APP, "openshift-gitops"),
-            "Retired single Stage050 Application still exists; finish the component move (docs/OPERATIONS.md).")
     for desired in stage_apps.components("050"):
         own = get("application", desired["metadata"]["name"], "openshift-gitops")
         if own:

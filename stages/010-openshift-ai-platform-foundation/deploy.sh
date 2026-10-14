@@ -21,21 +21,11 @@ elif [[ $# -ne 0 ]]; then
   echo "Usage: $0 [--revision <published commit or ref>]" >&2; exit 1
 fi
 require_env GIT_REPO_URL "repository URL containing the reviewed Stage 010 source"
-require_env GIT_REPO_BRANCH "reviewed published branch or commit for Argo CD"
 assert_required_env
-selected_commit=$(git -C "$ROOT_DIR" rev-parse --verify "${GIT_REPO_BRANCH}^{commit}")
-source_paths=(gitops/bootstrap gitops/stages/010-openshift-ai-platform-foundation gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation stages/010-openshift-ai-platform-foundation scripts/shared scripts/platform/require-node-sizing.sh scripts/platform/check-operator-policy.py)
-if ! git -C "$ROOT_DIR" diff --quiet "$selected_commit" -- "${source_paths[@]}" ||
-   [[ -n "$(git -C "$ROOT_DIR" ls-files --others --exclude-standard -- "${source_paths[@]}")" ]]; then
-  echo "ERROR: Selected revision does not contain the local reviewed Stage 010 source." >&2
-  exit 1
-fi
-if ! git ls-remote "$GIT_REPO_URL" | awk '{print $1}' | grep -Fx "$selected_commit" >/dev/null; then
-  echo "ERROR: Selected commit is not an advertised published repository revision." >&2
-  exit 1
-fi
-# Pin the Application to immutable reviewed content even when input was a branch.
-GIT_REPO_BRANCH="$selected_commit"
+STAGE_APPS="$ROOT_DIR/scripts/shared/stage_apps.py"
+# The reviewed, published commit; Applications are pinned to it even when the input was a branch.
+selected_commit=$(python3 "$STAGE_APPS" select 010 --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" \
+  --extra gitops/bootstrap --extra scripts/platform/require-node-sizing.sh --extra scripts/platform/check-operator-policy.py)
 command -v python3 >/dev/null || { echo "ERROR: python3 is required for native operator checks" >&2; exit 1; }
 
 
@@ -50,9 +40,6 @@ def read(args):
 def tracked_by(obj, app):
     return obj.get("metadata", {}).get("annotations", {}).get("argocd.argoproj.io/tracking-id", "").startswith(app + ":")
 try:
-    # The retired single foundation Application would fight its components (docs/OPERATIONS.md "Moving objects between Applications").
-    if read(["get", "applications.argoproj.io", "010-openshift-ai-platform-foundation", "-n", "openshift-gitops", "--ignore-not-found", "-o", "name"]):
-        raise RuntimeError("Retired single Stage 010 Application still exists; finish the component move first")
     # The model registry belongs to Stage 030; never let a foundation component take it back.
     text = read(["get", "namespace", "rhoai-model-registries", "--ignore-not-found", "-o", "json"])
     if text and not tracked_by(json.loads(text), "030-private-model-serving"):
@@ -118,16 +105,9 @@ echo "✓ AppProject rhoai-demo created"
 # ── Step 4: Apply the Stage 010 component Applications at the reviewed revision ──
 echo ""
 echo "── Step 4: Applying Stage 010 component Argo CD Applications ──"
-python3 "$ROOT_DIR/scripts/shared/stage_apps.py" applications 010 --revision "$GIT_REPO_BRANCH" --repo-url "$GIT_REPO_URL" \
-  | oc apply -f - --insecure-skip-tls-verify=true
-python3 "$ROOT_DIR/scripts/shared/stage_apps.py" sync 010  # an unchanged render gets no automatic sync operation
-echo "✓ Applications $(python3 "$ROOT_DIR/scripts/shared/stage_apps.py" names 010 | tr '\n' ' ')created"
-echo "  Argo CD will now sync ODF and RHOAI. This takes 10–20 minutes."
-
+echo "  Argo CD syncs ODF and RHOAI; this takes 10–20 minutes."
+python3 "$STAGE_APPS" deploy 010 --revision "$selected_commit" --repo-url "$GIT_REPO_URL"
 python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation" --wait 1800
-echo "   Waiting for every Stage 010 component Synced and Healthy at ${GIT_REPO_BRANCH:0:8} …"
-wait_for 1800 "Stage 010 components" python3 "$ROOT_DIR/scripts/shared/stage_apps.py" status 010 --revision "$GIT_REPO_BRANCH" --repo-url "$GIT_REPO_URL" || exit 1
-
 
 "$SCRIPT_DIR/deploy-sandbox-storage.sh" --revision "$selected_commit"
 

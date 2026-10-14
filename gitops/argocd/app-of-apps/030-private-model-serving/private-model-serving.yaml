@@ -14,7 +14,7 @@ metadata:
     argocd.argoproj.io/compare-options: ServerSideDiff=true
     argocd.argoproj.io/sync-wave: "3"
     argocd.argoproj.io/manifest-generate-paths: .
-    demo.rhoai.io/deploy-script: stages/030-private-model-serving/deploy.sh
+    demo.rhoai.io/deploy-order: '1'
 spec:
   project: rhoai-demo
   source:

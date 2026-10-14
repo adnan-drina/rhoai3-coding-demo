@@ -46,8 +46,7 @@ Application ignores /spec/replicas so Argo CD keeps the live count.
 
 By default, prints the MachineSets to stdout. With --write, replaces the pool files in
 gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/ and writes the replica
-exception for every generated MachineSet to application-patch.yaml and the
-020-gpu-machinesets Application manifest.
+exception for every generated MachineSet to the 020-gpu-machinesets Application manifest.
 
 Environment overrides:
   RHOAI_SOURCE_WORKER_MACHINESET  source CPU worker MachineSet (same as --source)
@@ -189,8 +188,8 @@ while IFS='|' read -r pool file infix instance accelerator pool_label zones capa
 done <<<"$POOLS"
 
 if [[ "$WRITE" == "true" ]]; then
-  # Every generated MachineSet keeps its live replica count: the same exact-name exceptions go to the
-  # deploy-time patch and to the Application manifest (stage_apps and move-applications read the latter).
+  # Every generated MachineSet keeps its live replica count: an exact-name exception per MachineSet goes into the
+  # 020-gpu-machinesets Application manifest, which deploy.sh applies as it is.
   python3 - "$ROOT_DIR" "$OUTPUT_DIR" "$APP_MANIFEST" "${NAMES[@]}" <<'PY_PATCH'
 import json, pathlib, subprocess, sys
 root, out_dir, manifest, names = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4:]
@@ -198,15 +197,12 @@ def to_yaml(data):
     return subprocess.check_output(['ruby', '-rjson', '-ryaml', '-e', 'puts YAML.dump(JSON.parse(STDIN.read))'], input=json.dumps(data), text=True)
 ignore = [{'group': 'machine.openshift.io', 'kind': 'MachineSet', 'name': n, 'namespace': 'openshift-machine-api',
            'jsonPointers': ['/spec/replicas']} for n in sorted(names)]
-patch = {'apiVersion': 'argoproj.io/v1alpha1', 'kind': 'Application',
-         'metadata': {'name': '020-gpu-machinesets', 'namespace': 'openshift-gitops'}, 'spec': {'ignoreDifferences': ignore}}
-(root / out_dir / 'application-patch.yaml').write_text(to_yaml(patch))
 app_path = root / manifest
 app = json.loads(subprocess.check_output(['ruby', '-ryaml', '-rjson', '-e', 'puts JSON.generate(YAML.load_file(ARGV[0]))', str(app_path)], text=True))
 app['spec']['ignoreDifferences'] = ignore
 app_path.write_text(to_yaml(app))
 PY_PATCH
-  echo "✓ Replica exceptions for ${#NAMES[@]} MachineSets written to application-patch.yaml and $APP_MANIFEST"
+  echo "✓ Replica exceptions for ${#NAMES[@]} MachineSets written to $APP_MANIFEST"
   echo "  Review native provider identifiers, AMI compatibility, disk and retention before publishing."
 else
   echo >&2

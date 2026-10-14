@@ -25,12 +25,10 @@ def parked_only(app):
         if isvc.returncode or isvc.stdout.strip()!="true":
             return False
     return True
-problems=stage_apps.stage_problems("050",os.environ.get("RHOAI_STAGE050_EXPECTED_REVISION"),os.environ["GIT_REPO_URL"])
+problems=stage_apps.stage_problems("050",os.environ.get("RHOAI_STAGE050_EXPECTED_REVISION"),os.environ["GIT_REPO_URL"],separate=True)
 qualification=stage_apps.get_application("050-model-qualification")
 if qualification and not parked_only(qualification):
     problems.append("050-model-qualification: Suspended by something other than a stopped candidate InferenceService")
-if stage_apps.get_application("050-model-evaluation"):
-    problems.append("retired single Application 050-model-evaluation still exists")
 for problem in problems:
     print("  - "+problem)
 print("[PASS] Stage 050 Applications Synced/Healthy" if not problems else "[FAIL] Stage 050 Applications not Synced/Healthy")

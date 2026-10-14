@@ -34,7 +34,7 @@ def current(x):return isinstance(x['metadata'].get('generation'),int) and x.get(
 sys.path.insert(0,os.environ['REPO_ROOT']+'/scripts/shared');import stage_apps
 problems=stage_apps.stage_problems('020')
 for problem in problems:print('  - '+problem)
-check('Component Applications at one exact revision, Synced/Healthy',lambda:not problems and not stage_apps.get_application('020-gpu-infrastructure-private-ai'))
+check('Component Applications at one exact revision, Synced/Healthy',lambda:not problems)
 def metrics_access():
  binding=get('rolebinding','rhoai-gpu-metrics-admins','openshift-monitoring')
  assert binding['roleRef']=={'apiGroup':'rbac.authorization.k8s.io','kind':'Role','name':'cluster-monitoring-metrics-api'}
