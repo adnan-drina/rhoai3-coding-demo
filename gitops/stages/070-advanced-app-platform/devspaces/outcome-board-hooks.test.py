@@ -32,7 +32,7 @@ import tempfile
 from pathlib import Path
 
 PRODUCER = Path(__file__).resolve().parent / "maas-api-key-provisioning.yaml"
-REPO = Path(__file__).resolve().parents[5]
+REPO = Path(__file__).resolve().parents[4]
 SCAFFOLD_LIB = REPO / "stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib"
 GOLDEN_LIB = Path(__import__("os").environ.get("GOLDEN_LIB") or
                   REPO / "stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib")
