@@ -1,0 +1,33 @@
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: mta-agentic-controller
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: '9'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: agentic-controller
+  updatePolicy:
+    updateMode: InPlaceOrRecreate
+    # This controller already tolerates a leader handover; do not change
+    # the VPA cluster-wide replica minimum for a single broken operand.
+    minReplicas: 1
+  resourcePolicy:
+    containerPolicies:
+    - containerName: '*'
+      mode: 'Off'
+    - containerName: manager
+      mode: Auto
+      controlledResources:
+      - memory
+      controlledValues: RequestsAndLimits
+      # The operator fixes a 2:1 limit/request ratio. Admission preserves it:
+      # request 256–512Mi, limit 512Mi–1Gi, without editing its Deployment.
+      minAllowed:
+        memory: 256Mi
+      maxAllowed:
+        memory: 512Mi

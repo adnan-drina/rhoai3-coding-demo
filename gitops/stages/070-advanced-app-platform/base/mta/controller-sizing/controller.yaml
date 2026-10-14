@@ -1,0 +1,15 @@
+apiVersion: autoscaling.openshift.io/v1
+kind: VerticalPodAutoscalerController
+metadata:
+  name: default
+  namespace: openshift-vertical-pod-autoscaler
+  annotations:
+    argocd.argoproj.io/sync-wave: '8'
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  # Retain the cluster-wide default. The single-replica exception belongs
+  # only to the MTA policy, not to any present or future model workload.
+  minReplicas: 2
+  safetyMarginFraction: 0.15
+  podMinCPUMillicores: 25
+  podMinMemoryMb: 250

@@ -15,6 +15,24 @@ FIXTURES = Path(__file__).with_name('fixtures')
 
 
 class ProductSchemas(unittest.TestCase):
+    def test_controller_memory_policy_uses_the_openshift_422_schema(self):
+        policy = yaml.safe_load((BASE / 'mta/controller-sizing/agentic-memory.yaml').read_text())
+        schema = json.loads((FIXTURES / 'vpa-4.22-spec.schema.json').read_text())['schema']
+        jsonschema.validate(policy['spec'], schema)
+        self.assertEqual(policy['spec']['targetRef'], {
+            'apiVersion': 'apps/v1', 'kind': 'Deployment', 'name': 'agentic-controller'})
+        self.assertEqual(policy['metadata']['namespace'], 'openshift-mta')
+        manager = next(c for c in policy['spec']['resourcePolicy']['containerPolicies'] if c['containerName'] == 'manager')
+        self.assertEqual(manager['controlledResources'], ['memory'])
+        self.assertEqual(manager['controlledValues'], 'RequestsAndLimits')
+        self.assertEqual(manager['minAllowed'], {'memory': '256Mi'})
+        self.assertEqual(manager['maxAllowed'], {'memory': '512Mi'})
+        # Keep the single-replica exception local. Other workloads, including
+        # stopped models, are not selected by this policy.
+        self.assertEqual(policy['spec']['updatePolicy']['minReplicas'], 1)
+        controller = yaml.safe_load((BASE / 'mta/controller-sizing/controller.yaml').read_text())
+        self.assertEqual(controller['spec']['minReplicas'], 2)
+
     def test_template_gitlab_inputs_match_installed_action_schemas(self):
         # Captured from official factory.schema objects in the installed RHDH
         # 1.10.5 gitlab-dynamic 0.11.4 module, 2026-10-14; no handlers invoked.

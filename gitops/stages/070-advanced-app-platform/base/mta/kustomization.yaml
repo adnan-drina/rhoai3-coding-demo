@@ -4,6 +4,7 @@ resources:
 - mta-operator/namespace.yaml
 - mta-operator/operatorgroup.yaml
 - mta-operator/subscription.yaml
+- controller-sizing
 - mta-instance/tackle.yaml
 - mta-instance/consolelink.yaml
 - jobs/configure-mta-platform-sso.yaml

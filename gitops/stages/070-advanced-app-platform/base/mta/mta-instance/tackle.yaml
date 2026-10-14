@@ -9,7 +9,9 @@ metadata:
 spec:
   rwx_supported: 'false'
   kai_llm_proxy_enabled: true
-  kai_solution_server_enabled: true
+  # Native Hub Agents use Gateway directly; the optional Solution Server has
+  # an unresolved vendor dependency failure. Keep the proxy and its DB/PVC.
+  kai_solution_server_enabled: false
   feature_auth_required: true
   idp_primary: true
   kai_llm_provider: openai

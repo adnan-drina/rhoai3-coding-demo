@@ -383,6 +383,32 @@ curl() {
 
 
 class GatewayAndPolicy(unittest.TestCase):
+    def test_native_agents_do_not_require_solution_server_or_drop_auth(self):
+        spec = yaml.safe_load((BASE / 'mta/mta-instance/tackle.yaml').read_text())['spec']
+        self.assertTrue(spec['agentic_enabled'])
+        self.assertFalse(spec['agentic_steer_enabled'])
+        self.assertFalse(spec['kai_solution_server_enabled'])
+        # The vendor kai.yml retains its common DB and PVC while the proxy is
+        # enabled. Disabling both is a separate lifecycle decision.
+        self.assertTrue(spec['kai_llm_proxy_enabled'])
+        self.assertTrue(spec['feature_auth_required'])
+        self.assertTrue(spec['idp_primary'])
+
+    def test_deferred_operand_absence_is_not_an_api_error_or_readiness(self):
+        import re
+        library = (ROOT / 'scripts/shared/validate-lib.sh').read_text()
+        check_function = re.search(r'(?ms)^check\(\) \{.*?^\}', library).group()
+        validator = (ROOT / 'stages/070-advanced-app-platform/validate.sh').read_text()
+        check_line = next(s for s in validator.splitlines() if s.startswith("check 'Deferred Solution Server"))
+        for stdout, status, failures in [('', 0, 0), ('deployment.apps/kai-api', 0, 1), ('', 1, 1)]:
+            script = 'set -euo pipefail\nGREEN= RED= NC=\nVALIDATE_PASS=0\nVALIDATE_FAIL=0\n'
+            script += check_function + '\noc() { printf "%s" "$TEST_RESULT"; return "$TEST_STATUS"; }\n'
+            script += check_line + '\nprintf "FAILURES=%s\\n" "$VALIDATE_FAIL"\n'
+            result = subprocess.run(['bash'], input=script, env=dict(os.environ, TEST_RESULT=stdout, TEST_STATUS=str(status)),
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('FAILURES=' + str(failures), result.stdout)
+
     def test_native_gateway_apply_precedes_endpoint_bootstrap(self):
         resources = list(yaml.safe_load_all((BASE / 'mta/jobs/configure-ai.yaml').read_text()))
         gateway = next(row for row in resources if row['kind'] == 'Gateway')
