@@ -2919,3 +2919,25 @@ makes no write when current. It never starts a workspace or changes its ID.
 A missing workspace is distinct from an API read failure. Deploy the corrected
 hook through a full native sync; do not hide this metadata conflict with a broad
 ignore or repeated manual patches.
+
+## Stage 070 account switching leaves an old session or rejects popup state
+
+**Where it appears:** Developer Hub/shared SSO after switching between the demo personas.
+
+**Observed on 2026-10-14:** an older platform-realm session failed front-channel logout with `Identity Provider [openshift] not found` after that provider was disabled in favour of the direct base-SSO broker. Supported per-user logout cleared only the selected developer's sessions. It changes session revocation metadata; it does not change the account's identity, password or roles. New GitLab, SonarQube, MTA, Dev Spaces and GitOps logins as the second persona passed.
+
+Separately, automated Developer Hub popup starts produced two `/api/auth/oidc/start` requests milliseconds apart and a rejected state value. A single manual sign-in succeeded as AI Admin. The request duplication's underlying cause is not established; do not classify it as an IdP password or account-linking defect, or count automation as qualified.
+
+**Check:** use one active sign-in flow, identify the actual application user after callback, and correlate sanitized request paths/timestamps. Keep tokens, cookies, authorization codes and credential values out of diagnostic output. Preserve the state-validation error rather than disabling the check.
+
+**Recover:** close competing sign-in popups and perform one fresh login. For a retained legacy session that cannot log out, use the supported Keycloak administrator session controls for that named user only, then sign in through the current broker. Do not re-enable the retired identity provider, delete federation links, recreate users or relax state/signature checks to pass validation. SonarQube's local logout does not promise global single logout.
+
+## Stage 070 portal component has no CD tab
+
+**Where it appears:** the new-project component in Developer Hub 1.10.5.
+
+**Observed:** direct GitOps login and the portal's CI/Topology/Kubernetes views pass, but the component exposes no CD tab. The current pinned Argo frontend has no explicit frontend mounting configuration, and its backend is from the other Argo plugin family. Package installation alone does not qualify the integration.
+
+**Check:** compare the deployed plugin configuration and entity annotations with the official [RHDH 1.10 Argo configuration](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/configuring_dynamic_plugins/install-and-configure-argo-cd_configuring-dynamic-plugins). Red Hat recommends matching Community frontend/backend plugins and explicit CD/summary mount points.
+
+**Recover:** prepare and review the smallest matching-pair/mount correction, retain the existing scoped GitOps reader, deploy normally, and verify the real component shows the expected application, revision and image. Do not grant broader reader permissions merely to make the tab appear. This validation/documentation change does not implement that correction.

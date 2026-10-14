@@ -1,6 +1,6 @@
 # Stage 070: Advanced Application Platform
 
-> **Release status:** The fresh GitLab → Developer Hub → Tekton/internal registry → deployed application → Dev Spaces workflow passed live validation on 2026-10-14. A new private project completed its initial pipeline without a retry; reopening its generated link reused the same workspace. Portal CI, Topology and Kubernetes views passed. Full Stage 070 acceptance remains blocked by two MTA 8.3.0 startup failures. Models remain stopped; inference, signed-delivery enforcement, existing database migration and backup restore are not qualified.
+> **Release status, 2026-10-14:** The fresh private-project → pipeline → deployment → reopened workspace journey passed, along with both-persona SSO, TechDocs, native MTA controller startup, TAS validation-artifact signing and isolated GitLab database/repository restoration. Full qualification remains partial: models are stopped; AI workflows, signed-image promotion, full service recovery and the portal CD view are unqualified. Optional Solution Server remains disabled for its vendor dependency defect. See [current qualification](../../BACKLOG.md#stage-070-live-qualification).
 
 ## Why This Matters
 
@@ -51,7 +51,7 @@ The `slim` overlay omits MTA. Application migration requires the full overlay; i
 
 GitLab publisher, enrollment, catalog, clone and delivery identities have separate credentials. A webhook can request a build, not provision a project. Project delivery uses a restricted AppProject with no cluster or RBAC kinds. Platform-pinned project setup uses a separate AppProject; the enrollment coordinator can create namespaces and constrained Applications. Only the image-build Task receives the build SCC and registry push permission; the operator’s blanket pipeline-SA RBAC is disabled. Runtime workloads receive no API token. Migration workers retain their existing restricted identities and run-control contract; no existing migration run is reset or upgraded by this release.
 
-The ordinary delivery contract requires a passing quality gate and an exact internal image digest. A configured TAS service is not proof of signed delivery. Signature/attestation production, verification and any blocking signed-promotion policy are explicitly pending live qualification. GitLab CE and SonarQube Community Build are upstream components, separate from Red Hat product support.
+The ordinary delivery contract requires a passing quality gate and an exact internal image digest. A configured TAS service is not proof of signed delivery. A validation artifact was signed and attested through TAS and verified against its configured identity, issuer, digest and predicate type. Wrong identity/issuer and tampered content were refused. This does not qualify container-image signing in the ordinary pipeline or a blocking signed-promotion policy; those remain separate. GitLab CE and SonarQube Community Build are upstream components, separate from Red Hat product support.
 
 ## Red Hat Products Used
 
