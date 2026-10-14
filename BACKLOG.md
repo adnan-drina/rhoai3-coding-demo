@@ -44,7 +44,7 @@ Scheduled:
 - [ ] Switch `qwen3-8-27b` from a full vLLM `command`/`args` override to `VLLM_ADDITIONAL_ARGS` at the next model change (needs GPUs and re-qualification).
 
 In progress (owner go-ahead 2026-10-14):
-- [ ] Remove the unused Service Mesh 3 operator.
+- [x] Service Mesh 3 operator: **not removed**. The review's "no consumer" finding was wrong: its CSV provides the Istio API CRDs the platform uses (ServiceEntry and DestinationRule for the external providers, WasmPlugin for the Kuadrant shim, EnvoyFilter, Telemetry and others; 20 CRDs). The Ingress Operator's istiod is Helm-managed, but nothing shows it would supply those CRDs on a fresh cluster. Kept; documented in `040-maas-operators/README.md`.
 - [ ] Remove the dormant H100 MachineSet pool.
 - [ ] Re-test `060-openshell-runtime` with server-side diff.
 - [ ] Delete the OpenShell `*-pre-pr4150` recovery set (upgrade accepted).
