@@ -8,25 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when creating, documenting, reviewing, or rebuilding Red Hat OpenShift AI
-  workbenches and custom workbench images: deriving images from default RHOAI
-  workbench images, building compatible bring-your-own workbench images,
-  ImageStream resources for dashboard-visible images, Kubeflow Notebook CRs for
-  workbench pods, OAuth proxy injection, workbench display annotations,
-  JUPYTER_IMAGE and NOTEBOOK_ARGS, custom CA environment variables and mounts,
-  persistent workbench PVCs, /dev/shm emptyDir, optional Kueue queue labels,
-  accelerator identifiers, and dashboard verification. For Gateway API
-  path-prefix compatibility and NB_PREFIX migration, use
-  rhoai-workbench-gateway-api-migration. For the dashboard-only import workflow
-  for an existing custom image, use rhoai-workbench-image-import. For basic
-  workbench administration, idle timeout, pod tolerations, and administrator
-  troubleshooting, use rhoai-basic-workbenches. For project workbench
-  lifecycle, use rhoai-project-workflows. For JupyterLab or code-server usage
-  inside a running workbench, use rhoai-data-science-ide-workflows. Do NOT use
-  for generic
-  container image design unrelated to RHOAI workbenches, model serving,
-  pipelines, Dev Spaces, or live troubleshooting; use the relevant rhoai-* or
-  env-* skill.
+  Use for RHOAI custom workbench images: default-image derivation, compatible bring-your-
+  own images, dashboard ImageStreams, Notebook CRs, OAuth proxy, display annotations,
+  JUPYTER_IMAGE/NOTEBOOK_ARGS, CA mounts/environment, PVCs, /dev/shm, Kueue labels,
+  accelerators and dashboard checks. Do NOT use for Gateway API/NB_PREFIX migration,
+  dashboard-only image import, basic-workbench administration, project lifecycle, IDE
+  usage, generic containers, model serving, pipelines, Dev Spaces or live troubleshooting;
+  use the matching skills.
 ---
 
 # RHOAI Workbenches And Custom Images

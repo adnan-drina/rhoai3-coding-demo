@@ -8,25 +8,12 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or operating Red Hat OpenShift AI model
-  customization and training workflows from the official Customize Models for
-  Gen AI and Agentic AI Applications guide: Red Hat Python index, disconnected
-  package mirroring, JupyterLab workbench setup, Docling data preparation,
-  Kubeflow Pipeline data processing, SDG Hub synthetic data generation,
-  Training Hub fine-tuning with SFT, OSFT, LoRA, and QLoRA, memory estimation,
-  MLflow tracking handoff, Kubeflow Trainer distributed fine-tuning,
-  inference-time scaling with ITS Hub, Knowledge Tuning examples, and Red Hat
-  support philosophy for model customization packages. Do NOT use for generic
-  workbench lifecycle (use rhoai-project-workflows), generic IDE workflows
-  (use rhoai-data-science-ide-workflows), AI Pipelines server administration
-  (use rhoai-ai-pipelines), repo-specific KFP code (use
-  rhoai-kfp-pipeline-authoring), MLflow platform or SDK configuration (use
-  rhoai-mlflow), distributed workload operations outside Training Hub context
-  (use rhoai-distributed-workload-workflows), model serving platform
-  configuration (use rhoai-model-serving-platform), formal evaluation
-  workflows (use rhoai-model-evaluation), runtime guardrails and safety
-  controls (use rhoai-guardrails-safety), or live cluster changes without the
-  OpenShift safety guard.
+  Use for official RHOAI model customization: Training Hub/SDG Hub/Docling/ITS Hub
+  workflows, SFT/OSFT, dataset preparation and curation, synthetic data,
+  training/evaluation configuration, checkpoints, hardware and model handoff. Do NOT use
+  for distributed-workload component installation, generic Ray/Trainer execution, AutoML,
+  EvalHub/LM-Eval risk assessment, inference serving or chatbot UI changes; use the
+  matching rhoai skills. Live changes require the OpenShift safety guard.
 ---
 
 # RHOAI Model Customization And Training

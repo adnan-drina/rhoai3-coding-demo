@@ -8,21 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift AI
-  observability from the Administer documentation: Technology Preview support
-  posture, DSCInitialization spec.monitoring enablement, redhat-ods-monitoring
-  namespace behavior, Cluster Observability Operator, Tempo Operator, Red Hat
-  build of OpenTelemetry, Prometheus, Alertmanager, OdhDashboardConfig
-  observabilityDashboard, monitoring.opendatahub.io/scrape labels for user
-  workloads, external metrics exporters, Tempo trace access, and built-in
-  alerts. Do NOT use for Operator pod logs or Kubernetes audit records; use
-  rhoai-logs-and-audit-records. Do NOT use for deployed-model runtime metrics,
-  KServe monitoring, Grafana model dashboards, or NIM metrics; use
-  rhoai-model-management-monitoring. Do NOT use for TrustyAI fairness, drift,
-  or bias monitoring; use rhoai-monitoring-trustyai. Do NOT use
-  for NeMo/FMS Guardrails-specific OpenTelemetry fields or guardrails metrics
-  endpoint behavior; use rhoai-guardrails-safety. For live diagnostics, pair
-  with env-troubleshoot and the OpenShift safety guard.
+  Use for official RHOAI observability: support posture, DSCInitialization monitoring,
+  monitoring namespace, COO/Tempo/OpenTelemetry, Prometheus/Alertmanager, observability
+  dashboard, scrape labels, external exporters, trace access and alerts. Do NOT use for
+  pod/audit logs (rhoai-logs-and-audit-records), deployed-model runtime dashboards (rhoai-
+  model-management-monitoring), TrustyAI fairness/drift or guardrails-specific telemetry;
+  use the matching rhoai skills. Pair live diagnostics with the environment
+  troubleshooting skill and OpenShift safety guard.
 ---
 
 # RHOAI Observability

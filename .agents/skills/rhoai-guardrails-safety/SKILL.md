@@ -8,23 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, deploying, or operating Red Hat OpenShift AI
-  guardrails and AI safety workflows from the official guardrails guide:
-  NeMo Guardrails, NemoGuardrails custom resources, TrustyAI-managed guardrails
-  services, built-in Presidio and regex detectors, validation-only guardrail
-  checks, guarded chat completions, service account token authentication to
-  model-serving endpoints, NeMo ConfigMaps with config.yaml, prompts.yml,
-  rails.co, custom Python actions, LLM self-check rails, separate self-check
-  models, OpenTelemetry, input/output/retrieval rails, PII masking, prompt
-  injection and jailbreak detection, hate/profanity filtering, industry
-  self-check examples, legacy FMS Guardrails, GuardrailsOrchestrator, detector
-  serving runtimes, Guardrails Gateway, Llama Stack PII integration, and
-  guardrails metrics. Do NOT use for chatbot UI prompts alone (use
-  rhoai-chatbot-customization), model-serving platform setup (use
-  rhoai-model-serving-platform), Llama Stack platform configuration (use
-  rhoai-llama-stack), formal evaluation and automated risk assessment (use
-  rhoai-evaluation), observability stack setup (use rhoai-observability), or
-  live cluster changes without the OpenShift safety guard.
+  Use for official RHOAI runtime guardrails: support posture, Guardrails
+  Orchestrator/GuardrailsOrchestrator CRs, FMS/NeMo services, detector and generation
+  models, request/response detection, routes/authentication, telemetry, configuration and
+  validation. Do NOT use for EvalHub/LM-Eval or automated risk assessment (rhoai-
+  evaluation), general model deployment, serving-platform setup, MaaS governance or
+  general observability; use the matching rhoai skills. Live changes require the OpenShift
+  safety guard.
 ---
 
 # RHOAI Guardrails Safety

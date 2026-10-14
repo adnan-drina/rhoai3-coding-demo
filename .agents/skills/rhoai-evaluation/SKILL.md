@@ -8,22 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, deploying, or operating official Red Hat
-  OpenShift AI evaluation workflows from the Evaluating AI systems guide:
-  TrustyAI EvalHub deployment, EvalHub REST API, SDK, CLI, multi-tenancy,
-  providers, benchmarks, collections, pass criteria, custom providers and
-  adapters, MLflow tracking, OCI result export, tenant RBAC, LM-Eval setup,
-  LMEvalJob custom resources, dashboard evaluations, external online access,
-  remote code execution, PVC and S3 evaluation data, KServe/vLLM endpoint
-  evaluation, LLM-as-a-judge metrics, and automated risk assessment with
-  Garak, KFP, SDG, judge models, disconnected translation-model cache, and
-  custom harm categories. Do NOT use for legacy repo-specific EvalHub scripts,
-  RAGAS scoring, custom judge prompts, or Step 08 rebuild details (use
-  rhoai-model-evaluation), AutoRAG product optimization (use rhoai-autorag),
-  MLflow platform setup (use rhoai-mlflow), AI Pipelines administration (use
-  rhoai-ai-pipelines), NeMo/FMS Guardrails control-plane configuration (use
-  rhoai-guardrails-safety), or live cluster changes without the OpenShift
-  safety guard.
+  Use for official RHOAI evaluation: TrustyAI EvalHub API/SDK/CLI, tenants/RBAC,
+  providers/benchmarks/collections, pass criteria, adapters, MLflow, OCI results, LM-
+  Eval/LMEvalJob/dashboard workflows, external access/remote code, PVC/S3 data,
+  KServe/vLLM evaluation and Garak/KFP/SDG/judge risk assessments with custom harms and
+  disconnected caches. Do NOT use for legacy repo evaluation glue or RAGAS (rhoai-model-
+  evaluation), AutoRAG optimization, MLflow installation, AI Pipelines administration or
+  guardrails control planes. Live changes require the OpenShift safety guard.
 ---
 
 # RHOAI Evaluation

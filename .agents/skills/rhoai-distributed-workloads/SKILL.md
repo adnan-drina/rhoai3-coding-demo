@@ -8,23 +8,12 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when installing, documenting, reviewing, or rebuilding Red Hat OpenShift
-  AI distributed workloads support: Red Hat build of Kueue Operator,
-  cert-manager, DataScienceCluster component states for kueue, ray,
-  trainingoperator, aipipelines, dashboard, and workbenches, GPU/RDMA
-  prerequisites, CA bundle behavior, and validation of Kueue, KubeRay, and
-  Kubeflow Training Operator pods. Do NOT use for Kueue day-2 queue
-  enforcement, dashboard Kueue enablement, or embedded Kueue migration; use
-  rhoai-kueue-workload-management. Do NOT use for ResourceFlavor,
-  ClusterQueue, LocalQueue, RDMA, or Ray administrator troubleshooting; use
-  rhoai-distributed-workload-operations. Do NOT use for user workflows that run
-  Ray, PyTorchJob, or TrainJob workloads; use
-  rhoai-distributed-workload-workflows. Do NOT use for general RHOAI
-  installation, model serving, KFP authoring, or live
-  troubleshooting; use rhoai-self-managed-installation,
-  rhoai-kfp-pipeline-authoring, and env-* skills as appropriate. Do NOT use for
-  Kubeflow Spark Operator activation or SparkApplication resources; use
-  rhoai-kubeflow-spark-operator.
+  Use for installing RHOAI distributed-workload components: Red Hat build of Kueue, cert-
+  manager, DSC kueue/ray/trainingoperator/aipipelines/dashboard/workbenches states,
+  GPU/RDMA and CA prerequisites, and component-pod validation. Do NOT use for Kueue day-2
+  enforcement, embedded migration, administrator queues/RDMA, user Ray/PyTorchJob/TrainJob
+  workflows, general installation, KFP authoring, SparkApplication activation or live
+  troubleshooting; use the corresponding rhoai and environment skills.
 ---
 
 # RHOAI Distributed Workloads

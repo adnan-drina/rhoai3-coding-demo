@@ -33,7 +33,7 @@ def frontmatter(text: str) -> str | None:
 
 def field(fm: str, key: str) -> str:
     """Return a scalar or folded/literal block value, whitespace-collapsed."""
-    m = re.search(rf"^{key}:\s*([>|][-+]?)?\s*(.*)$", fm, re.M)
+    m = re.search(rf"^{key}:[ \t]*([>|][-+]?)?[ \t]*(.*)$", fm, re.M)
     if not m:
         return ""
     if not m.group(1):

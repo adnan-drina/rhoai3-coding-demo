@@ -8,21 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or authoring Red Hat OpenShift AI workbench
-  workflows for S3-compatible object storage: creating a Boto3 S3 client from
-  project-scoped connection environment variables, listing buckets, creating
-  buckets, listing objects, downloading files, uploading files, copying objects
-  between buckets, deleting objects, deleting empty buckets, formatting MinIO,
-  Amazon S3, and other S3-compatible endpoints, troubleshooting endpoint,
-  authentication, and network access, and handling self-signed certificate trust
-  for in-cluster object stores. Do NOT use for connection type template
-  administration (use rhoai-connection-types), storage class administration
-  (use rhoai-storage-classes), broad certificate management (use
-  rhoai-certificate-management), AI pipeline server artifact storage and
-  pipeline object-store configuration (use rhoai-ai-pipelines),
-  project/workbench/connection lifecycle (use
-  rhoai-project-workflows), model registry/model serving storage, or live
-  cluster changes without the OpenShift safety guard.
+  Use for RHOAI workbench S3 data access: Boto3 clients from connection environment
+  variables, bucket/object listing, uploads/downloads/copies/deletion,
+  MinIO/AWS/S3-compatible endpoint formatting, authentication/network errors and self-
+  signed CA trust. Do NOT use for connection-type templates, storage classes, general
+  certificates, pipeline artifact-store configuration, project/workbench lifecycle or
+  model registry/serving storage; use the matching rhoai skills. Live changes require the
+  OpenShift safety guard.
 ---
 
 # RHOAI S3 Object Storage Data

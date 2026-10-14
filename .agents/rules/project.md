@@ -30,14 +30,10 @@ This repository demonstrates a governed enterprise AI developer platform on Red 
 
 The demo evolves across Red Hat product releases and early-access features. Do not invent or normalize versions in documentation. Use the versions currently implemented by the manifests and scripts.
 
-Current target posture:
-- Red Hat OpenShift Container Platform 4.20
-- Red Hat OpenShift AI 3.4 with MaaS governance as the active model-access path
-- Red Hat OpenShift GitOps for Argo CD based reconciliation
-- Red Hat OpenShift Dev Spaces for cloud development environments
-- Migration Toolkit for Applications 8.1 for modernization analysis and Developer Lightspeed
-- Red Hat Developer Hub 1.9 for the developer portal
-- Red Hat build of Keycloak where used by MTA authentication flows
+Use `docs/PLATFORM_BASELINE.md` for the current product targets and the selected
+stage manifests for exact deployment pins. Keep observed live versions,
+unpublished upgrade selections and documentation baselines distinct. Do not
+reuse the legacy OCP 4.20/RHOAI 3.4/MTA 8.1/RHDH 1.9 posture as current.
 
 If changing a version, update the manifests, validation logic, README narrative, operations notes, and references together.
 

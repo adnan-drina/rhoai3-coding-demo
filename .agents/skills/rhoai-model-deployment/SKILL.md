@@ -8,27 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, deploying, or operating Red Hat OpenShift AI
-  model deployment user workflows from the official Deploying models guide:
-  model storage in S3, URI, PVC, or OCI containers/modelcars; building OCI
-  model images; dashboard Deploy a model wizard; generative and predictive
-  model deployment; automatic serving-runtime selection; hardware profile
-  matching; manual runtime selection; administrator llm-d override behavior;
-  Rolling update versus Recreate deployment strategy; AI asset endpoint
-  registration; external routes; token authentication; MLServer deployment
-  settings; CLI deployment from OCI images with ServingRuntime and
-  InferenceService; NVIDIA NIM model deployment; endpoint token lookup; and
-  runtime-specific inference endpoint paths for Caikit, OpenVINO, vLLM,
-  Triton, and MLServer. Do NOT use for model-serving platform enablement,
-  runtime template configuration, vLLM runtime arguments, or NIM platform
-  enablement (use rhoai-model-serving-platform), deployed model metrics and
-  day-2 operations (use rhoai-model-management-monitoring), TrustyAI bias or
-  drift monitoring (use rhoai-monitoring-trustyai), model catalog or registry
-  workflows before deployment handoff (use rhoai-model-catalog-workflows or
-  rhoai-model-registry-workflows), MaaS governance (use
-  rhoai-maas-governance), llm-d distributed inference (use
-  rhoai-distributed-inference-llmd), or live cluster changes without the
-  OpenShift safety guard.
+  Use for RHOAI Deploy a model workflows: selecting models/connections/hardware/runtime,
+  InferenceService or LLMInferenceService settings, replicas/autoscaling, authentication,
+  endpoint checks and supported accelerator/runtime choices. Do NOT use for serving-
+  platform enablement (rhoai-model-serving-platform), deployed-model day-2 metrics (rhoai-
+  model-management-monitoring), TrustyAI bias/drift, model catalog/registry workflows,
+  MaaS governance or llm-d-specific architecture. Live changes require the OpenShift
+  safety guard.
 ---
 
 # RHOAI Model Deployment

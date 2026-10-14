@@ -8,23 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or authoring Red Hat OpenShift AI data
-  scientist workflows for distributed workloads: preparing workbenches and
-  training images, authenticating to OpenShift from notebooks, running
-  Ray-based workloads with CodeFlare SDK, running distributed workloads from AI
-  pipelines or disconnected environments, creating Kubeflow Training Operator
-  PyTorchJob workloads, using the Training Operator SDK, running Kubeflow
-  Trainer v2 TrainJob workloads, configuring training runtimes, fine-tuning
-  with OSFT or SFT, configuring PVC or S3 checkpointing, monitoring distributed
-  workload metrics and status, and troubleshooting user-facing Ray, Kueue, and
-  training job failures. Do NOT use for distributed workload component
-  installation (use rhoai-distributed-workloads), Kueue integration and
-  namespace enforcement (use rhoai-kueue-workload-management), administrator
-  ResourceFlavor/ClusterQueue/LocalQueue/RDMA operations (use
-  rhoai-distributed-workload-operations), GPU enablement (use
-  rhoai-nvidia-gpu-accelerators), Kubeflow Spark Operator SparkApplication
-  resources (use rhoai-kubeflow-spark-operator), or live cluster changes
-  without the OpenShift safety guard.
+  Use for data scientist distributed-workload workflows: workbench/training images,
+  notebook authentication, Ray/CodeFlare, AI Pipeline or disconnected execution,
+  PyTorchJob/Training SDK, Trainer v2 TrainJob/runtimes, OSFT/SFT, PVC/S3 checkpoints,
+  metrics and user-facing failures. Do NOT use for component installation (rhoai-
+  distributed-workloads), Kueue enforcement, administrator queues/RDMA, GPU enablement or
+  SparkApplication resources; use the matching rhoai skills. Live changes require the
+  OpenShift safety guard.
 ---
 
 # RHOAI Distributed Workload Workflows

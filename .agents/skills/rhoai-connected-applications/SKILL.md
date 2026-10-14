@@ -8,21 +8,12 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or operating Red Hat OpenShift AI connected
-  application workflows from the Working with connected applications guide:
-  viewing applications from Applications -> Explore, enabling SaaS-based
-  connected applications, understanding Operator-installed application
-  boundaries, finding API endpoints on Enabled tiles, removing disabled
-  application tiles from the dashboard, starting and updating the Start basic
-  workbench connected application, and routing basic workbench JupyterLab
-  notebook, Git, and package workflows. Do NOT use for administrator dashboard
-  application tile authoring or OdhApplication/OdhDashboardConfig manifests
-  (use rhoai-dashboard-applications), global user/group access management (use
-  rhoai-users-groups-access), project workbench lifecycle (use
-  rhoai-project-workflows), general JupyterLab/code-server IDE workflows (use
-  rhoai-data-science-ide-workflows), basic workbench administrator controls
-  (use rhoai-basic-workbenches), or live cluster changes without the OpenShift
-  safety guard.
+  Use for RHOAI connected applications: Explore/Enabled tiles, enabling SaaS applications,
+  Operator-installed boundaries, API endpoints, disabled-tile removal and Start basic
+  workbench notebook/Git/package workflows. Do NOT use for administrator tile manifests
+  (rhoai-dashboard-applications), global user access, project-workbench lifecycle, general
+  IDE usage or basic-workbench administrator controls; use the matching rhoai skills. Live
+  changes require the OpenShift safety guard.
 ---
 
 # RHOAI Connected Applications

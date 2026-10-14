@@ -8,25 +8,12 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Guide RHOAI evaluation workflows once active evaluation content exists;
-  during the reimplementation, use this skill to rebuild EvalHub, RAG
-  evaluation, KFP/MLflow evidence, RAGAS patterns, and standard model
-  benchmarking workflows from legacy references. Use when the user asks to run
-  evaluation, evaluate a model, benchmark model performance, check RAG quality,
-  compare pre-RAG vs post-RAG answers, run LM-Eval, create an LMEvalJob,
-  interpret eval results, add new test questions, or modify the judge prompt.
-  Also use when eval pipelines fail, LMEvalJob pods are stuck, or evaluation
-  reports show unexpected scores.
-  Do NOT use for official product EvalHub, LM-Eval, LMEvalJob, or automated
-  risk assessment workflows from the Red Hat evaluation guide (use
-  rhoai-evaluation), product AutoRAG dashboard optimization runs, leaderboard
-  review, or generated notebooks (use rhoai-autorag), MLflow platform
-  installation, SDK authentication, or artifact storage configuration (use
-  rhoai-mlflow), Training Hub, SDG Hub, Docling, or ITS Hub model
-  customization workflows (use rhoai-model-customization-training), chatbot UI
-  changes (use rhoai-chatbot-customization), deployment issues (use
-  env-troubleshoot), or inference performance tuning (see step-06 GuideLLM
-  benchmarks).
+  Use for repo-specific or legacy evaluation implementation: EvalHub rebuild references,
+  RAGAS/RAG scoring, KFP/MLflow evidence, model benchmarks, judge prompts/questions,
+  pre/post-RAG comparisons and evaluation failures. Do NOT use for official product
+  EvalHub/LM-Eval/LMEvalJob/risk workflows (rhoai-evaluation), AutoRAG dashboard
+  optimization, MLflow platform installation, model customization, chatbot UI, deployment
+  troubleshooting or GuideLLM inference tuning; use the matching skills.
 ---
 
 # Model Evaluation

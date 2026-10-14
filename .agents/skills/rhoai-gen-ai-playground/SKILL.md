@@ -8,21 +8,12 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or operating Red Hat OpenShift AI Gen AI
-  studio playground workflows: enabling the playground dashboard feature,
-  preparing AI asset endpoints, configuring project playgrounds, testing
-  models, comparing models side by side, using playground RAG uploads and RAG
-  chunk settings, saving reusable prompts in MLflow, configuring and testing
-  MCP servers, creating custom internal or external endpoints, exporting
-  playground Python templates, updating or deleting playgrounds, and
-  troubleshooting playground response, RAG, or MCP behavior. Do NOT use for
-  Llama Stack server/provider/vector-store configuration (use
-  rhoai-llama-stack), model-serving runtime configuration (use
-  rhoai-model-serving-platform), dashboard-wide feature flag authoring beyond
-  playground-related fields (use rhoai-dashboard-customization), custom app
-  chatbot code (use rhoai-chatbot-customization), NeMo/FMS Guardrails product
-  safety controls (use rhoai-guardrails-safety), or live cluster changes
-  without the OpenShift safety guard.
+  Use for RHOAI Gen AI studio playground workflows: enabling the feature, preparing AI
+  endpoints, project playgrounds, model comparison, RAG uploads/chunking/vector-store
+  settings, generated code/notebooks, and runtime limitations. Do NOT use for model-
+  serving platform installation, MaaS administration, AutoRAG optimization, Llama Stack
+  server configuration, enterprise RAG design or unrelated workbench workflows; use the
+  matching rhoai skills. Live changes require the OpenShift safety guard.
 ---
 
 # RHOAI Gen AI Playground

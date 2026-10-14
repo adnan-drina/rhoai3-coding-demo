@@ -8,23 +8,13 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, installing, configuring, or operating Red
-  Hat OpenShift AI TrustyAI model monitoring from the official Monitoring your
-  AI systems guide: TrustyAI component enablement, TrustyAIService custom
-  resources, per-project TrustyAI service installation, PVC or database
-  storage, MariaDB/MySQL database credentials, KServe RawDeployment logging
-  integration, OAuth proxy authentication, training data upload, model
-  registration checks, field name mapping, bias metrics, Statistical Parity
-  Difference, Disparate Impact Ratio, drift metrics, MeanShift, FourierMMD,
-  KSTest, ApproxKSTest, OpenShift dashboard metric views, TrustyAI REST
-  endpoints, metric request deletion, and TrustyAI Prometheus metrics. Do NOT
-  use for OpenShift AI observability stack setup (use rhoai-observability),
-  deployed model runtime dashboards, KServe timeouts, KEDA/CMA, or NIM metrics
-  (use rhoai-model-management-monitoring), LLM evaluation or automated risk
-  assessment (use rhoai-evaluation), runtime guardrails (use
-  rhoai-guardrails-safety), model-serving platform configuration beyond the
-  TrustyAI logger handoff (use rhoai-model-serving-platform), or live cluster
-  changes without the OpenShift safety guard.
+  Use for official TrustyAI bias/drift monitoring: component enablement, TrustyAIService,
+  project installation, PVC/database storage, credentials, KServe logging, OAuth, data
+  upload/model registration, field mapping,
+  SPD/DIR/MeanShift/FourierMMD/KSTest/ApproxKSTest, dashboard/REST metric operations and
+  Prometheus. Do NOT use for general observability, runtime dashboards/autoscaling, LLM
+  evaluation/risk assessment, guardrails or serving setup beyond logging; use the matching
+  rhoai skills. Live changes require the OpenShift safety guard.
 ---
 
 # RHOAI TrustyAI Monitoring
