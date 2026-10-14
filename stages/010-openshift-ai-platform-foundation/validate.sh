@@ -8,6 +8,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 PASS=0
 FAIL=0
+WARN=0
 
 # Shared fail-closed environment and cluster identity guard.
 REPO_ROOT="$ROOT_DIR"
@@ -27,6 +28,12 @@ check() {
     echo "✗ $label  ($result)"
     (( FAIL++ )) || true
   fi
+}
+
+# A missing or expired persona session is not a platform fault: warn and say how to refresh it.
+warn() {
+  echo "! $1  ($2)"
+  (( WARN++ )) || true
 }
 
 # Dex emits OpenShift Group membership; direct Kubernetes role bindings do not
@@ -148,13 +155,18 @@ check "RHOAI Observability dashboard menu enabled" "$R"
 # Native observability functional acceptance replaces legacy workaround-presence checks.
 validate_persona() {
   local label="$1" kubeconfig="$2" expected_user="$3" actual_user server permission guarded_server
+  local refresh="run scripts/platform/refresh-persona-logins.sh"
   if [[ -z "$kubeconfig" || ! -f "$kubeconfig" ]]; then
-    check "$label real authenticated session" "persona kubeconfig missing"
+    warn "$label real authenticated session" "no persona session; $refresh"
     return
   fi
   server=$(oc --kubeconfig="$kubeconfig" --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" whoami --show-server 2>/dev/null || true)
   actual_user=$(oc --kubeconfig="$kubeconfig" --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" whoami 2>/dev/null || true)
   guarded_server=$(oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" whoami --show-server)
+  if [[ "$server" == "$guarded_server" && -z "$actual_user" ]]; then
+    warn "$label real authenticated session" "session expired; $refresh"
+    return
+  fi
   if [[ "$server" != "$guarded_server" || "$actual_user" != "$expected_user" ]]; then
     check "$label real authenticated session" "identity or cluster mismatch"
     return
@@ -251,5 +263,7 @@ fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
-echo "Results: ${PASS} passed, ${FAIL} failed"
-[[ "$FAIL" -eq 0 ]] && exit 0 || exit 1
+echo "Results: ${PASS} passed, ${WARN} warnings, ${FAIL} failed"
+(( FAIL > 0 )) && exit 1
+(( WARN > 0 )) && exit 2
+exit 0
