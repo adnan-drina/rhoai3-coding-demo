@@ -110,5 +110,6 @@ ruby -ryaml -rjson -e 'apps=JSON.parse(File.read(ARGV[0]));p=YAML.load_file(ARGV
 pools=apps["items"].find{|a| a["metadata"]["name"]=="020-gpu-machinesets"} or abort "ERROR: MachineSet component is missing."
 pools["spec"]["ignoreDifferences"]=p["spec"]["ignoreDifferences"];puts JSON.generate(apps)' "$work/components.json" "$stage_gitops/gpu-machinesets/application-patch.yaml" > "$work/applications.json"
 oc --request-timeout=10s apply -f "$work/applications.json"
+python3 "$ROOT_DIR/scripts/shared/stage_apps.py" sync 020  # an unchanged render gets no automatic sync operation
 echo 'Stage 020 component Applications submitted; native Automatic operator reconciliation is bounded below.'
 python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai" --wait 900

@@ -18,6 +18,7 @@ fresh_databases=$(python3 "$SCRIPT_DIR/preflight.py")
 applications="$(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" applications 050 --revision "$revision" --repo-url "$repo_url")" || { echo '[FAIL] Cannot prepare the Stage 050 Applications'; exit 1; }
 oc --request-timeout=20s apply -f - <<<"$applications" >/dev/null || { echo '[FAIL] Cannot apply the Stage 050 Applications'; exit 1; }
 echo "Stage 050 component Applications applied at reviewed immutable revision."
+python3 "$REPO_ROOT/scripts/shared/stage_apps.py" sync 050 || { echo '[FAIL] Cannot start the Stage 050 syncs'; exit 1; }  # an unchanged render gets no automatic sync operation
 "$SCRIPT_DIR/setup-ai-services.sh" --fresh-databases "$fresh_databases"
 export RHOAI_STAGE050_EXPECTED_REVISION="$revision"
 deadline=$((SECONDS + 1200))

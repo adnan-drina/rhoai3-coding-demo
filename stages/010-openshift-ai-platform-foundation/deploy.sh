@@ -120,6 +120,7 @@ echo ""
 echo "── Step 4: Applying Stage 010 component Argo CD Applications ──"
 python3 "$ROOT_DIR/scripts/shared/stage_apps.py" applications 010 --revision "$GIT_REPO_BRANCH" --repo-url "$GIT_REPO_URL" \
   | oc apply -f - --insecure-skip-tls-verify=true
+python3 "$ROOT_DIR/scripts/shared/stage_apps.py" sync 010  # an unchanged render gets no automatic sync operation
 echo "✓ Applications $(python3 "$ROOT_DIR/scripts/shared/stage_apps.py" names 010 | tr '\n' ' ')created"
 echo "  Argo CD will now sync ODF and RHOAI. This takes 10–20 minutes."
 

@@ -217,6 +217,38 @@ def stage_problems(stage, revision=None, repo_url=None, root=ROOT):
     return problems
 
 
+def start_syncs(stage, root=ROOT):
+    """Start one sync for each deployed component whose last operation is not a successful sync of its current source.
+
+    Argo CD reports Synced at a new revision without running an operation when the render is unchanged, so automated
+    sync alone never runs hooks or produces the operation stage_problems() requires. The sync carries the
+    Application's own syncOptions (a bare operation.sync drops RespectIgnoreDifferences)."""
+    started = []
+    for desired in _deployed(stage, str(root), False):
+        name = desired["metadata"]["name"]
+        app = get_application(name)
+        if not app:
+            continue
+        source, status = app["spec"]["source"], app.get("status", {})
+        operation = status.get("operationState", {})
+        result = operation.get("syncResult", {})
+        if app.get("operation") or operation.get("phase") in ("Running", "Terminating"):
+            continue
+        if operation.get("phase") == "Succeeded" and result.get("revision") == source.get("targetRevision") \
+                and result.get("source", {}).get("path") == source.get("path"):
+            continue
+        sync = {"revision": source["targetRevision"], "syncStrategy": {"hook": {}}}
+        if app["spec"].get("syncPolicy", {}).get("syncOptions"):
+            sync["syncOptions"] = app["spec"]["syncPolicy"]["syncOptions"]
+        patch = {"operation": {"initiatedBy": {"username": "stage-deploy"}, "sync": sync}}
+        result = subprocess.run(["oc", "--request-timeout=10s", "patch", "applications.argoproj.io", name, "-n", NAMESPACE,
+                                 "--type", "merge", "-p", json.dumps(patch)], capture_output=True, text=True, timeout=20)
+        if result.returncode:
+            raise RuntimeError("Could not start a sync of " + name)
+        started.append(name)
+    return started
+
+
 def delegated(stage, kind, name, namespace=None, group="", root=ROOT):
     """JSON pointers the live component owning an object leaves to later stages (empty unless it respects them)."""
     app = get_application(owner(stage, kind, name, namespace, group, root))
@@ -311,6 +343,7 @@ def main():
     p = sub.add_parser("delegated")
     p.add_argument("stage"); p.add_argument("kind"); p.add_argument("name"); p.add_argument("namespace", nargs="?"); p.add_argument("--group", default="")
     sub.add_parser("check-static").add_argument("stage")
+    sub.add_parser("sync").add_argument("stage")
     args = parser.parse_args()
     if args.command == "names":
         print("\n".join(names(args.stage)))
@@ -327,6 +360,9 @@ def main():
         print(owner(args.stage, args.kind, args.name, args.namespace, args.group))
     elif args.command == "delegated":
         print("\n".join(sorted(delegated(args.stage, args.kind, args.name, args.namespace, args.group))))
+    elif args.command == "sync":
+        for name in start_syncs(args.stage):
+            print("started sync of " + name)
     elif args.command == "check-static":
         print("PASS Stage " + args.stage + ": " + str(len(names(args.stage, separate=True))) + " components render " + str(check_static(args.stage)) + " objects, disjoint and equal to " + str(aggregate_path(args.stage)))
     return 0
