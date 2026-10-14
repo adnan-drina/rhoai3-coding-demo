@@ -1120,6 +1120,13 @@ Since B2 (2026-09-24) the runtime catalog pins template Location targets to the 
 
 **Symptom:** The `job-generate-rhdh-catalog` or `refresh-rhdh-catalog` log ends with `REFUSE FACTORY_BUNDLE_MISMATCH: bundle <id>, revision <sha>: <file> at <sha> is not the bundled file`. The runtime catalog is unchanged.
 
+If the refresh CronJob fails before the GitLab mirror contains the sync revision,
+its degraded health can prevent Argo reaching later setup waves. The refresh runs
+at wave 19, after mirror bootstrap (14), initial catalog (17), and portal login
+configuration (18). Preserve the failed evidence and apply the corrected ordering
+through a full native sync; do not relax bundle verification or mark health green.
+See [Argo sync waves](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/).
+
 **Likely cause:** The generator, the catalog and every template file are one `rhdh-catalog-bundle` ConfigMap (kustomize `configMapGenerator`, content-hashed name). The generator publishes only when every bundled file is byte-identical at the revision Argo CD synced. A mismatch means the synced revision and the applied bundle disagree. For example, Argo reports a sync revision whose manifests were not yet applied, or someone edited the bundle ConfigMap by hand.
 
 **Recover:**

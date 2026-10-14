@@ -184,7 +184,9 @@ metadata:
   name: refresh-rhdh-catalog
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/sync-wave: '8'
+    # A failed refresh is unhealthy in Argo. Do not let it gate the mirror
+    # bootstrap (14), initial catalog (17), or portal configuration (18).
+    argocd.argoproj.io/sync-wave: '19'
 spec:
   schedule: '*/5 * * * *'
   concurrencyPolicy: Forbid

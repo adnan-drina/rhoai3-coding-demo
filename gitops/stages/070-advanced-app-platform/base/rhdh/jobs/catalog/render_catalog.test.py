@@ -102,6 +102,25 @@ def _bundle_name_case() -> int:
     return 0
 
 
+def _deployment_order_case() -> int:
+    # Read the actual resource annotations without adding a YAML dependency
+    # to this Python 3.6-compatible catalog qualification.
+    def wave(path, kind, name):
+        for doc in path.read_text().split("\n---\n"):
+            if (re.search(r"^kind: " + re.escape(kind) + r"$", doc, re.M)
+                    and re.search(r"^  name: " + re.escape(name) + r"$", doc, re.M)):
+                return int(re.search(r"sync-wave: ['\"]?(-?\d+)", doc).group(1))
+        raise AssertionError("resource not found: " + name)
+
+    mirror = wave(RHDH.parent / "gitlab" / "integrations-bootstrap.yaml", "Job", "gitlab-integrations-bootstrap")
+    catalog = wave(RHDH / "jobs" / "generate-rhdh-catalog.yaml", "Job", "job-generate-rhdh-catalog")
+    portal = wave(RHDH / "jobs" / "configure-rhdh.yaml", "Job", "job-configure-rhdh")
+    refresh = wave(RHDH / "jobs" / "generate-rhdh-catalog.yaml", "CronJob", "refresh-rhdh-catalog")
+    if not mirror < catalog < portal < refresh:
+        return _fail("refresh health must not gate mirror/catalog/portal setup: %s" % ((mirror, catalog, portal, refresh),))
+    return 0
+
+
 def _stage(td: Path, revision: str, *, skew: dict[str, bytes] | None = None) -> tuple[Path, Path]:
     """A bundle dir (as the ConfigMap volume presents it) and a file:// repo
     holding the same files at `revision`, optionally skewed."""
@@ -227,7 +246,7 @@ def _python36_case() -> int:
 
 
 def main() -> int:
-    if _python36_case() or _coverage_case() or _bundle_name_case():
+    if _python36_case() or _coverage_case() or _bundle_name_case() or _deployment_order_case():
         return 1
     if (_end_to_end_case("a" * 40, "maas.apps.example.test", "172.30.250.250", "apps.example.test")
             or _end_to_end_case("0123456789abcdef0123456789abcdef01234567", "maas.cluster-b.lab", "10.0.4.7", "cluster-b.lab")):
