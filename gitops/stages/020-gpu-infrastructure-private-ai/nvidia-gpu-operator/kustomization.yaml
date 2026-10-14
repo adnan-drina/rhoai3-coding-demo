@@ -9,3 +9,4 @@ resources:
   - cluster-policy.yaml
   - rolebinding-gpu-metrics-admins.yaml
   - console-dashboard
+  - rhoai-monitoring

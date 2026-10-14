@@ -59,13 +59,11 @@ spec:
     - toxicity-and-ethical-principles
     # Evaluation-driven development criteria for the agentic coding demo (edd/ ConfigMaps).
     - agentic-coding-capability-v1
-    - agentic-coding-security-quick-v1
     - agentic-coding-livecodebench-v1
     - agentic-coding-livecodebench-v2
     - agentic-coding-python-tasks-v1
     - agentic-coding-security-quick-v2
     - agentic-coding-security-full-v2
-    - agentic-coding-security-full-v1
     - agentic-coding-latency-v1
     - agentic-coding-throughput-v1
     - agentic-coding-throughput-v2
