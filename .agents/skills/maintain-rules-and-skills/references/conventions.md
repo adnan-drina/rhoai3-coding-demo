@@ -69,10 +69,10 @@ name: skill-name
 metadata:
   author: rhoai3-coding-demo
   version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
   skill-group: "Project Structure"
+  # product skills only:
+  # product: <map key>          # e.g. odf
+  # docs-version: "<x.y>"       # equals docs_version in the doc map
 description: >
   Use when [specific scenarios]. Do NOT use for [X] (use [Y] instead).
 ---
@@ -82,8 +82,11 @@ Conventions:
 
 - `name` must match the parent folder.
 - Folder prefix must match `metadata.skill-group`.
-- Use `platform-baseline: "repo"` and `ocp-baseline: "repo"` so the active
-  versions stay centralized in `docs/PLATFORM_BASELINE.md`.
+- Product skills carry `product` and `docs-version`; the version is written
+  once in `.agents/references/red-hat-doc-map.yaml` and checked against its
+  Git pin by `scripts/shared/check-doc-links.py`. Older skills still carry
+  `platform-family`, `platform-baseline: "repo"` and `ocp-baseline: "repo"`;
+  drop them when the skill is converted.
 - Descriptions should enumerate concrete trigger scenarios and negative
   triggers.
 - Keep `SKILL.md` focused; put deeper detail in `references/`, executable
@@ -94,20 +97,19 @@ Conventions:
 
 ### Product documentation skills
 
-Product documentation skills (`rhoai-*`, `ocp-*`, `odf-*`) follow an extended structure:
+Product documentation skills (every family in the doc map) are thin:
 
 ```
 skill-name/
-  SKILL.md                              # Workflow and usage guidance
-  references/
-    official-doc-extraction.md          # Extracted official docs content
-    validation-checklist.md             # Verification steps
-    source-capture.md                   # Provenance tracking
-  examples/
-    component-patterns.md              # Reusable configuration patterns
+  SKILL.md        # When to use, repo decisions (with paths), procedure,
+                  # pitfalls, links to versioned official sections (~150 lines)
+  references/     # optional, repo-owned material only (working configuration)
 ```
 
-Use `project-red-hat-doc-skill-authoring` for the generation workflow and `.agents/references/red-hat-doc-map.yaml` to route documentation topics to skills.
+No `official-doc-extraction.md` and no `source-capture.md`: provenance lives in
+the map route. Use `project-red-hat-doc-skill-authoring` for the contract and
+`.agents/references/red-hat-doc-map.yaml` for versions and routes. Families
+listed in the map's `converted_families` are enforced by the checker.
 
 ## Shared Hooks
 
@@ -147,10 +149,10 @@ Subagent bodies should be minimal — instruct the subagent to read and follow t
 
 ## Red Hat Documentation Alignment
 
-Every rule or skill that references RHOAI or OCP features should:
-- Include a References section with official doc URLs
-- Use `docs.redhat.com` as the primary source
-- Note version-specific behavior: `> **Note (RHOAI 3.4):** ...`
+Every rule or skill that references Red Hat product features should:
+- Link official sections on `docs.redhat.com` at the doc map's `docs_version`
+- Link instead of copying documentation text (CC BY-SA 3.0; copies go stale)
+- Run `python3 scripts/shared/check-doc-links.py` after changing links
 
 ## Anti-Patterns
 
@@ -173,8 +175,8 @@ Run this after major guidance changes:
       taxonomy changes.
 - [ ] Every rule points to the relevant skills instead of duplicating workflows.
 - [ ] Every skill `name` matches its folder.
-- [ ] Every skill has `metadata.skill-group`, `platform-baseline`, and
-      `ocp-baseline`.
+- [ ] Every skill has `metadata.skill-group`; converted product skills have
+      `product` and `docs-version` (`check-doc-links.py` passes).
 - [ ] No active references point to removed paths.
 - [ ] Hook scripts pass syntax checks and JSON hook configs parse.
 - [ ] `AGENTS.md` and `.agents/rules/README.md` inventories match the filesystem.

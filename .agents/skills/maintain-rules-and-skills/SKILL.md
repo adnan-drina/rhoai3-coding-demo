@@ -2,7 +2,7 @@
 name: maintain-rules-and-skills
 metadata:
   author: rhoai3-coding-demo
-  version: 3.1.0
+  version: 3.2.0
   platform-family: "rhoai"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -60,7 +60,7 @@ Keep folders flat and use the prefix plus frontmatter `metadata.skill-group` for
 | OpenShift Data Foundation | `odf-*` | Official-doc-backed OpenShift Data Foundation storage, object storage, Ceph, NooBaa, storage class, and data-service integration guidance |
 | Assets & Miscellaneous | (none) | Visual, deck, and presentation assets |
 
-Use `project-red-hat-doc-skill-authoring` for new `rhoai-*`, `ocp-*`, and `odf-*` skills generated from official Red Hat docs, and use `.agents/references/red-hat-doc-map.yaml` to route Red Hat product documentation categories and books to flat skills.
+Use `project-red-hat-doc-skill-authoring` for new or updated product skills (all prefixes listed in `AGENTS.md`), and `.agents/references/red-hat-doc-map.yaml` for product documentation versions and book → skill routes.
 
 ## Instructions
 
@@ -96,7 +96,8 @@ conventions below are this repo's additions on top — stricter, never
 looser.
 
 - `name` in frontmatter MUST match the parent folder name
-- Include `metadata` with `version`, `platform-family`, `platform-baseline`, `ocp-baseline`, and `skill-group`
+- Include `metadata` with `version` and `skill-group`; product skills add
+  `product` and `docs-version` (see `project-red-hat-doc-skill-authoring`)
 - Write "pushy" descriptions: enumerate specific scenarios, not generic triggers
 - Include negative triggers: "Do NOT use for X (use Y instead)"
 - Use `disable-model-invocation: true` for destructive operations
@@ -107,16 +108,20 @@ looser.
 
 ### Creating a Product Documentation Skill
 
-For skills backed by official Red Hat documentation (RHOAI, OCP, ODF):
+For skills backed by official Red Hat documentation (every product family in
+`.agents/references/red-hat-doc-map.yaml`):
 
-1. Use `project-red-hat-doc-skill-authoring` for the full generation workflow
-2. Use `project-rhoai-doc-chapter-skill-authoring` for RHOAI chapter-level skills
-3. Route documentation to the matching flat skill using
-   `.agents/references/red-hat-doc-map.yaml`
-4. Do not create nested skill folders that mirror Red Hat documentation categories
-5. Include `references/official-doc-extraction.md` for the source material
-6. Include `references/validation-checklist.md` for verification steps
-7. Include `references/source-capture.md` for provenance tracking
+1. Use `project-red-hat-doc-skill-authoring` for the thin-skill contract and
+   workflow; `project-rhoai-doc-chapter-skill-authoring` is its RHOAI entry point
+2. Skills are thin: repo decisions with manifest paths, procedure, pitfalls,
+   and links to versioned official sections; no copied documentation text
+3. Do not add `references/official-doc-extraction.md` or
+   `references/source-capture.md`; provenance goes into the map route
+   (`sections`, `reviewed`)
+4. Frontmatter carries `metadata.product` and `metadata.docs-version`; the
+   version itself lives once, in the map, checked against its Git pin
+5. Do not create nested skill folders that mirror Red Hat documentation categories
+6. Run `python3 scripts/shared/check-doc-links.py --family <family>`
 
 ### Creating a Subagent
 
@@ -143,7 +148,8 @@ Run this audit periodically or after major changes:
 3. Check for stale references (removed steps, renamed files)
 4. Verify skill `name` fields match folder names
 5. Verify always-apply budget hasn't crept up
-6. Check Red Hat doc links still resolve
+6. Run `python3 scripts/shared/check-doc-links.py --report` (static) and,
+   from an egress docs.redhat.com accepts, `--live --family <family>`
 7. Update `AGENTS.md`, `.agents/rules/*.md`, and this skill when inventory or taxonomy changes
 
 For detailed conventions and patterns, read `references/conventions.md`.
