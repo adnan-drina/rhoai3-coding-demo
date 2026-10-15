@@ -37,7 +37,6 @@ One Application holds these parts because they change together: the per-project 
 |---|---|---|---|
 | RoleBinding | `rhoai-developers-view`, `ai-admin-admin` | `app-platform-build` | Persona `view` and `admin` (wave 5) |
 | SA, ClusterRole, ClusterRoleBinding, Job (Sync hooks) | `job-configure-tektonconfig` | `app-platform-build` | Sets `spec.pipeline.coschedule: pipelineruns` and `createRbacResource=false` on `TektonConfig` (wave 11) |
-| ConfigMap | `config-triggers-core-interceptors` | `openshift-pipelines` | Upstream default Triggers interceptor map (wave 11; see How) |
 | Task, Pipeline | `provision-migration-run` | `app-platform-build` | Creates or retires one Stage 130 migration run's database, Secrets and worker identity (wave 12) |
 
 ### `signing/`: Trusted Artifact Signer
@@ -86,7 +85,7 @@ The coordinator creates `project-<name>` Applications that render `project-enrol
 - **TektonConfig.** The operator owns the singleton, so Sync hooks patch single fields instead of declaring the CR. `coschedule: pipelineruns` replaces the removed `disable-affinity-assistant` flag [3] and lets the source and Maven cache PVCs bind to one run. `createRbacResource=false` disables the operator's per-namespace pipeline ServiceAccount grants and `pipelines-scc-rolebinding` [1]. Only the `image-builder` ServiceAccount receives `nested-container` through `pipeline-userns-builder`.
 - **Image builds.** `build-internal-image` runs Buildah as UID 1000 in a pod user namespace (`hostUsers: false`, SCC `nested-container` [6]), refuses a non-mapped namespace, pushes only to its own project's internal registry path with a full commit tag, and returns the digest. Registry login uses the TaskRun's projected token.
 - **Promotion.** `promote-gitlab-runtime` writes the image digest into the platform-owned `rhoai-delivery/<name>-deployment` repository with the project's `gitlab-delivery-writer` token. Argo CD (`runtime-projects`) deploys it.
-- **Triggers interceptor map.** `config-triggers-core-interceptors` was added when a Pipelines 1.22.6 update shipped without it. It keeps the upstream default value; see [Troubleshooting](../../../../docs/TROUBLESHOOTING.md#pipelines-1226-template-publishes-but-provisioning-never-starts).
+- **Triggers interceptor map.** Pipelines 1.24 ships `config-triggers-core-interceptors` itself (owned by its `TektonInstallerSet`), so the Git copy added for the 1.22.6 gap was removed on 2026-10-15 after a signed webhook check; see [Troubleshooting](../../../../docs/TROUBLESHOOTING.md#pipelines-1226-template-publishes-but-provisioning-never-starts).
 - **Signing.** `configure-signing.py` authenticates with the `stage070-signing-provisioner` platform-realm service account, never the master administrator. It sets the issuer only; it never replaces keys or roots. Argo CD ignores `oidcIssuers` because the hook owns the cluster-specific URL.
 - **Credentials.** No credential is in Git. Secrets are written through `secret_writer.py`, which never stores a payload in `last-applied-configuration`. Per-project deploy tokens are read-only; the delivery writer is a 90-day project access token.
 

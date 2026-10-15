@@ -1,5 +1,7 @@
 """Exercise project token creation, reuse and exact workspace mounting."""
 import base64
+import io
+import urllib.error
 import importlib.util
 import subprocess
 import unittest
@@ -22,10 +24,14 @@ class Scope(unittest.TestCase):
         self.tokens = []
         self.writes = []
         self.calls = []
+        self.projects = set()
         self.client = Mock()
         def request(method, path, data=None):
             self.calls.append((method, path, data))
-            if path.startswith('projects/search'): return {'components': [{'key': 'example'}]}
+            if path == 'projects/create':
+                if data['project'] in self.projects:
+                    raise urllib.error.HTTPError(path, 400, 'Bad Request', {}, io.BytesIO(b'{"errors":[{"msg":"Could not create Project with key: \\"example\\". A similar key already exists: \\"example\\""}]}'))
+                self.projects.add(data['project']); return {'project': {'key': data['project']}}
             if path == 'user_tokens/search': return {'userTokens': self.tokens}
             if path == 'authentication/validate': return {'valid': True}
             if path == 'user_tokens/generate':
@@ -57,7 +63,13 @@ class Scope(unittest.TestCase):
         self.tokens = [{'name': 'gitlab-project-42', 'type': 'PROJECT_ANALYSIS_TOKEN', 'project': {'key': 'example'}}]
         with self.assertRaisesRegex(ValueError, 'without its Secret'): self.ensure()
         self.assertFalse(self.writes)
-        self.assertFalse(any(c[0] == 'POST' for c in self.calls))
+        self.assertFalse(any(c[1] == 'user_tokens/generate' for c in self.calls))
+
+    def test_the_provisioner_creates_the_project_or_accepts_its_existing_key(self):
+        self.projects = {'example'}
+        self.ensure()
+        self.assertIn(('POST', 'projects/create', {'project': 'example', 'name': 'example', 'visibility': 'private'}), self.calls)
+        self.assertFalse(any(c[1].startswith('projects/search') for c in self.calls))
 
     def test_foreign_or_user_token_cannot_be_reused(self):
         self.ensure()

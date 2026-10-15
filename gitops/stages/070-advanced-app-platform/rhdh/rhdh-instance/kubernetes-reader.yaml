@@ -2,8 +2,12 @@
 # The kubernetes.io/service-account-token Secret is populated by the token
 # controller with a long-lived token; the configure-rhdh Sync hook (wave 18) copies
 # it into rhdh-secrets as RHDH_KUBERNETES_SA_TOKEN for app-config env
-# substitution. The 'view' ClusterRole covers workloads, routes, and the
-# Tekton CRs (aggregated to view by the Pipelines operator).
+# substitution (the plugin's serviceAccountToken setting needs a static token;
+# the operator disables token automount in the portal pod).
+# The ClusterRole grants read on exactly the kinds the plugins query: the
+# Backstage Kubernetes plugin's documented rules (core workloads, batch,
+# metrics) plus the customResources in app-config (Tekton runs, Routes)
+# and the RHDH Topology rules for Tekton pipelines. It replaces 'view'.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -26,7 +30,7 @@ type: kubernetes.io/service-account-token
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: rhdh-kubernetes-reader-view
+  name: rhdh-kubernetes-reader
   annotations:
     argocd.argoproj.io/sync-wave: "5"
 subjects:
@@ -35,5 +39,37 @@ subjects:
     namespace: rhdh
 roleRef:
   kind: ClusterRole
-  name: view
+  name: rhdh-kubernetes-reader
   apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rhdh-kubernetes-reader
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, configmaps, services, limitranges, resourcequotas]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [metrics.k8s.io]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [tekton.dev]
+    resources: [pipelines, pipelineruns, taskruns]
+    verbs: [get, list]
+  - apiGroups: [route.openshift.io]
+    resources: [routes]
+    verbs: [get, list]

@@ -18,9 +18,16 @@ spec:
       limits:
         cpu: "2"
         memory: 8Gi
+  # Developer Hub's read-only Argo CD account. The operator creates it, stores its API token in the Secret
+  # rhdh-local-user (key apiToken) and renews it (OpenShift GitOps "Managing local users in Argo CD").
+  # Rotate with stages/070-advanced-app-platform/rotate-credentials.py --component argo; after an automatic renewal,
+  # re-run the 070-rhdh hooks (stage_apps.py sync 070 --app 070-rhdh --resync) so Developer Hub copies the new token.
+  localUsers:
+    - name: rhdh
+      apiKey: true
+      tokenLifetime: 2160h
+      autoRenewToken: true
   extraConfig:
-    # Shared portal/delivery read-back; account cannot sync or change apps.
-    accounts.rhdh: apiKey
     # gp3-csi (default) uses WaitForFirstConsumer: PVCs stay Pending until a
     # pod mounts them, but consumers are scheduled in later sync waves. Treat
     # Pending as healthy so waves do not deadlock on unbound PVCs.
@@ -89,6 +96,8 @@ spec:
       g, cluster-admins, role:admin
       g, rhoai-gitops-admins, role:admin
       p, role:rhdh-reader, applications, get, rhoai-demo/*, allow
+      p, role:rhdh-reader, applications, get, runtime-projects/*, allow
+      p, role:rhdh-reader, applications, get, platform-projects/*, allow
       g, rhdh, role:rhdh-reader
     scopes: '[groups]'
   server:

@@ -27,7 +27,7 @@ source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 log_step 'Stage 070 GitOps and selected operators'
 check_stage_applications 070 "$EXPECTED_REVISION"
 for row in \
-  'openshift-devspaces devspaces devspacesoperator.v3.30.2' \
+  'openshift-operators devspaces devspacesoperator.v3.30.' \
   'rhdh-operator rhdh rhdh-operator.v1.10.5' \
   'openshift-mta mta-operator mta-operator.v8.3.1' \
   'openshift-operators openshift-pipelines-operator-rh openshift-pipelines-operator-rh.v1.24.' \

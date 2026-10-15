@@ -14,22 +14,25 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: job-wait-devspaces-webhook
-  namespace: openshift-devspaces
+  namespace: openshift-operators
   annotations:
     argocd.argoproj.io/sync-wave: "8"
 rules:
+  # The operator runs in openshift-operators (Subscription there); read only its Deployment and webhook Service.
   - apiGroups: ["apps"]
     resources: ["deployments"]
+    resourceNames: ["devspaces-operator"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["endpoints", "services"]
+    resourceNames: ["devspaces-operator-service"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: job-wait-devspaces-webhook
-  namespace: openshift-devspaces
+  namespace: openshift-operators
   annotations:
     argocd.argoproj.io/sync-wave: "8"
 subjects:
@@ -67,11 +70,11 @@ spec:
               set -euo pipefail
 
               echo "Waiting for Dev Spaces operator deployment..."
-              oc rollout status deployment/devspaces-operator -n openshift-devspaces --timeout=240s
+              oc rollout status deployment/devspaces-operator -n openshift-operators --timeout=240s
 
               echo "Waiting for Dev Spaces operator webhook service endpoints..."
               for i in $(seq 1 60); do
-                ADDRESSES=$(oc get endpoints devspaces-operator-service -n openshift-devspaces -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+                ADDRESSES=$(oc get endpoints devspaces-operator-service -n openshift-operators -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
                 if [ -n "$ADDRESSES" ]; then
                   echo "Dev Spaces operator webhook endpoints are ready"
                   exit 0

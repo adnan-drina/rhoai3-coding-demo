@@ -96,7 +96,7 @@ class Enrollment(unittest.TestCase):
         self.patches = [patch.object(scm, 'oc', side_effect=self.oc), patch.object(scm, 'apply'),
                         patch.object(scm, 'ensure_delivery'), patch.object(scm, 'Sonar')]
         self.mocks = [p.start() for p in self.patches]
-        self.mocks[3].return_value.request.side_effect = lambda method, path, data=None: ({'components': [{'key': 'example'}]} if path.startswith('projects/search') else {'userTokens': [{'name':'gitlab-project-42','type':'PROJECT_ANALYSIS_TOKEN','project':{'key':'example'}}]} if path == 'user_tokens/search' else {'valid': True})
+        self.mocks[3].return_value.request.side_effect = lambda method, path, data=None: ({'project': {'key': 'example'}} if path == 'projects/create' else {'userTokens': [{'name':'gitlab-project-42','type':'PROJECT_ANALYSIS_TOKEN','project':{'key':'example'}}]} if path == 'user_tokens/search' else {'valid': True})
         for p in self.patches: self.addCleanup(p.stop)
 
     def oc(self, *args, document=None):

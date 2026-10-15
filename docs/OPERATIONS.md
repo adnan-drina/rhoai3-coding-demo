@@ -759,7 +759,31 @@ Useful checks:
 oc get checluster devspaces -n openshift-devspaces
 oc get devworkspace -A
 oc get pods -n openshift-devspaces
+oc get subscription devspaces -n openshift-operators -o jsonpath='{.status.installedCSV}{"\n"}'
 ```
+
+**Operator install location (moved 2026-10-15).** The Dev Spaces Subscription lives in `openshift-operators` with
+Automatic approval on `stable`, as the Dev Spaces 3.30 GitOps guide shows; OLM installs the DevWorkspace operator
+there too. The CheCluster, workspaces and PVCs stay in their namespaces. An existing install from before the move
+(Subscription, OperatorGroup and the two CSVs in `openshift-devspaces`) needs a one-time switch while Stage 070
+deploys the moved Subscription: Argo CD prunes the old Subscription and OperatorGroup, then remove the old CSVs and the
+OLM-created DevWorkspace Subscription in `openshift-devspaces` so OLM can install in `openshift-operators`. The operator
+is briefly absent; running workspaces keep running. The switch never deletes CRDs or the CheCluster.
+
+The 2026-10-15 switch needed three more steps, in this order (scripts in that day's `tmp/morning-20261015/`):
+
+1. Remove the old CSVs and the OLM-created DevWorkspace Subscription in `openshift-devspaces` once the new
+   Subscription exists (`move-devspaces-operator.sh`).
+2. The new DevWorkspace controller refuses to start while the `controller.devfile.io` webhooks point at the old
+   webhook server ("conflicting webhook definition"). Delete both webhook configurations and the old
+   `devworkspace-webhook-server` Deployment and `devworkspace-webhookserver` Service in `openshift-devspaces` in one pass;
+   the controller recreates them in `openshift-operators` (`move-devworkspace-webhooks.sh`). This is only the webhook
+   step of OpenShift's "Removing the DevWorkspace Operator"; never delete the CRDs or DevWorkspaces.
+3. The Dev Spaces InstallPlan fails validating the existing CheCluster when the CRD's conversion webhook points at a
+   missing Service (`eclipse-che/che-operator-service`). With `storedVersions: ["v2"]`, set the CRD conversion strategy
+   to `None`; OLM does not retry a failed InstallPlan, so delete the Pending CSV and the Subscription and let Argo CD
+   recreate it (`finish-devspaces-install.sh`, `retry-devspaces-install.sh`). The installed CSV restores the
+   conversion webhook to `openshift-operators/devspaces-operator-service`.
 
 Factory links specify `?revision=main&existing=<project>` so reopening matches
 the branch in the workspace. Migration workspace creation also requires its
@@ -1267,7 +1291,10 @@ After approved publication, load the project environment and verify the target A
 python3 stages/070-advanced-app-platform/security-status.py --models-stopped --output <private-evidence-directory>/security.json
 ```
 
-Rotation is operator-only, never part of a routine sync. The external Sonar maintenance command uses the existing HTTPS Route; it does not replace the pipeline Secret’s cluster-local `host` value. Run `rotate-credentials.py` once per component with the exact deployed `--revision`, configured `--repo-url`, `--execute` and a new `--report` path. Rotation components are `gitlab_oidc`, `scm_client`, `publisher`, `devspaces_oauth`, `sonar`, `argo` and `mta`. The separate `annotation_copy` action requires `--secret <namespace/name>` and only removes metadata while checking unchanged UID, data and type. Use that exact-object action for the additional inventory, including Rails; it neither replaces encryption keys nor claims provider revocation. The report contains results only, not credentials. Reusing a report path refuses. Keep old human identities, client IDs, permissions and project memberships. The script uses supported provider APIs and checks replacement credentials and predecessor invalidation; a partial result requires diagnosis before any rerun. Preserve the previous reports. Browser-only Keycloak client checks require a fresh browser login in addition to server secret read-back.
+Rotation is operator-only, never part of a routine sync. The external Sonar maintenance command uses the existing HTTPS Route; it does not replace the pipeline Secret’s cluster-local `host` value. Run `rotate-credentials.py` once per component with the exact deployed `--revision`, configured `--repo-url`, `--execute` and a new `--report` path. Rotation components are `gitlab_oidc`, `scm_client`, `publisher`, `devspaces_oauth`, `sonar`, `sonar_projects`, `delivery_writers`, `argo` and `mta`.
+- `sonar` mints a new control token for the `platform-provisioner` technical user (global Create Projects and Execute Analysis only) and revokes the previous one; `sonar_projects` re-mints any project analysis token the SonarQube administrator still owns under `platform-provisioner`, updates the project Secret and its workspace mirrors, and revokes the administrator's copy.
+- `delivery_writers` renews each project's `gitlab-delivery-writer` (90 days) through GitLab's project access token self-rotation, so no administrator token is involved. `security-status.py` fails when one has 14 days or less left.
+- `argo` deletes `openshift-gitops/rhdh-local-user`; the OpenShift GitOps operator issues a new token for the `rhdh` local user (declared in Stage 010 `argocd-instance.yaml`, 2160h, auto-renew), which the script copies to `rhdh-secrets`. The operator also renews the token itself; after a renewal, re-run the RHDH hooks so they copy it: `python3 scripts/shared/stage_apps.py sync 070 --app 070-rhdh --resync`. `security-status.py` fails when Developer Hub's copy differs from the operator's token or has 7 days or less left. The separate `annotation_copy` action requires `--secret <namespace/name>` and only removes metadata while checking unchanged UID, data and type. Use that exact-object action for the additional inventory, including Rails; it neither replaces encryption keys nor claims provider revocation. The report contains results only, not credentials. Reusing a report path refuses. Keep old human identities, client IDs, permissions and project memberships. The script uses supported provider APIs and checks replacement credentials and predecessor invalidation; a partial result requires diagnosis before any rerun. Preserve the previous reports. Browser-only Keycloak client checks require a fresh browser login in addition to server secret read-back.
 
 The GitLab webservice is reloaded by its rotation step. After both portal token copies are updated, restart only the discovered Developer Hub Deployment through its normal rollout and wait for readiness; its environment must consume the new publisher and Argo reader tokens. The Dev Spaces server caches the OAuth client: verify that its server pod actually changes when reloading the rotated Secret; the operator can cancel a plain Deployment restart annotation. Replace only the exact server pod through its normal owner if needed, and verify its mounted credential matches the Secret. This leaves workspace pods and PVCs intact. Renew the same user grant through native OAuth and check the actual Git helper. The running workspace’s separate Git carrier can retain an expired token after successful native reauthorization. The validated recovery is a normal dashboard Stop then Open of that exact workspace, after checking for active user/build work and taking identity/storage/source snapshots. This refreshes the carrier and preserves the CR/PVC/UID, images, complete specification and clean source; verify a temporary private clone and final running state afterward. Uninterrupted hot refresh is not qualified. Do not copy tokens into the workspace, extend expiry or replace them with a shared PAT. MTA key status checks make no inference request.
 

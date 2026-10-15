@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
 - network-policy.yaml
 - argocd-reader.yaml
+- integrations-secret-policy.yaml
 - buckets.yaml
 - database-cache.yaml
 - bootstrap.yaml

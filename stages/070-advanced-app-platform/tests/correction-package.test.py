@@ -68,10 +68,18 @@ class SecretLifecycle(unittest.TestCase):
   for _ in range(2):secret_writer.write_secret(self.doc,api)
   self.assertEqual(self.doc,before);self.assertEqual(api.value['metadata']['uid'],'retained');self.assertEqual(api.value['data']['other'],'dW5yZWxhdGVk');self.assertEqual(api.value['metadata']['annotations'],{'foreign':'keep'})
   self.assertTrue(all('--force-conflicts' not in a for a,d in api.calls))
+ def test_writer_without_read_creates_then_patches(self):
+  for existing,calls in ((None,['get','create']),({'metadata':{'name':'credential','namespace':'test'},'stringData':{'token':'old'}},['get','create','patch'])):
+   api=SecretAPI(copy.deepcopy(existing));original=api.__call__
+   def no_read(*args,document=None):
+    if args[0]=='get':api.calls.append((args,document));raise subprocess.CalledProcessError(1,args,stderr='Error from server (Forbidden): secrets is forbidden')
+    return original(*args,document=document)
+   secret_writer.write_secret(self.doc,no_read)
+   self.assertEqual([a[0] for a,d in api.calls],calls);self.assertEqual(api.value['stringData']['token'],'synthetic-token')
  def test_forbidden_does_not_fall_back_or_expose_payload(self):
   api=SecretAPI();api.fail='(Forbidden) synthetic-token'
   with self.assertRaisesRegex(RuntimeError,'redacted') as caught:secret_writer.write_secret(self.doc,api)
-  self.assertNotIn('synthetic-token',str(caught.exception));self.assertEqual(len(api.calls),1)
+  self.assertNotIn('synthetic-token',str(caught.exception));self.assertEqual([c[0][0] for c in api.calls],['get','create'])  # never patch past a refused create
  def test_create_race_updates_existing(self):
   api=SecretAPI();original=api.__call__;first=True
   def race(*args,document=None):
@@ -176,13 +184,34 @@ class RotationSafety(unittest.TestCase):
    return {'metadata':{'annotations':{}}}
   def api(base,method,path,payload=None,headers=None,**kw):
    self.assertEqual(base,'https://sonar.example');calls.append((method,path))
-   if path=='/api/user_tokens/generate':return {'token':'new'}
+   if path=='/api/user_tokens/generate':self.assertEqual(payload['login'],'platform-provisioner');return {'token':'new'}
+   if path=='/api/user_tokens/revoke':self.assertEqual(payload,{'login':'admin','name':'platform-pipeline'})
    if path=='/api/user_tokens/revoke':revoked[0]=True;return
    token=base64.b64decode(headers['Authorization'].split()[1]).decode().split(':')[0]
    return {'valid':token=='new' or not revoked[0]}
   with patch.object(rotation,'data',side_effect=[({}, {'password':'admin'}),({}, {'host':'http://sonarqube.sonarqube.svc:9000','token':'old'})]),patch.object(rotation,'oc',side_effect=oc),patch.object(rotation,'request',side_effect=api),patch.object(rotation,'update') as writer,patch.object(rotation.subprocess,'run'):
    self.assertTrue(all(r.sonar().values()));writer.assert_called_once_with('app-platform-build','sonarqube-credentials',{'token':'new'})
   self.assertIn(('POST','/api/user_tokens/revoke'),calls)
+ def test_project_tokens_move_from_admin_to_the_provisioner(self):
+  r=rotation.Rotation.__new__(rotation.Rotation);owned={'admin':{'gitlab-project-5'},'platform-provisioner':set()};live={'old5'};writes=[]
+  ann={'rhoai3.io/sonar-project-key':'coolstore','rhoai3.io/sonar-token-type':'PROJECT_ANALYSIS_TOKEN','rhoai3.io/sonar-token-name':'gitlab-project-5'}
+  def oc(*args):
+   if args[1]=='route':return {'spec':{'host':'sonar.example'}}
+   if '-A' in args:return {'items':[{'metadata':{'namespace':'coolstore-dev','annotations':ann},'data':{'token':base64.b64encode(b'old5').decode()}}]}
+   ns=args[args.index('-n')+1];return {'items':[{'metadata':{'namespace':ns,'name':'coolstore-sonar-credentials','annotations':{'rhoai3.io/sonar-project-key':'coolstore'}}}] if ns=='wksp-ai-developer' else []}
+  def api(base,method,path,payload=None,headers=None,**kw):
+   if path.startswith('/api/user_tokens/search'):
+    login=path.split('login=')[1];return {'userTokens':[{'name':n,'type':'PROJECT_ANALYSIS_TOKEN'} for n in owned[login]]}
+   if path=='/api/user_tokens/generate':
+    self.assertEqual(base64.b64decode(headers['Authorization'].split()[1]).decode(),'control:')  # minted as the provisioner
+    self.assertEqual((payload.get('login'),payload['projectKey'],payload['type']),(None,'coolstore','PROJECT_ANALYSIS_TOKEN'))
+    owned['platform-provisioner'].add(payload['name']);live.add('new5');return {'token':'new5','type':'PROJECT_ANALYSIS_TOKEN'}
+   if path=='/api/user_tokens/revoke':self.assertEqual(payload['login'],'admin');owned['admin'].discard(payload['name']);live.discard('old5');return
+   token=base64.b64decode(headers['Authorization'].split()[1]).decode().split(':')[0];return {'valid':token in live}
+  creds=lambda ns,name:({}, {'password':'admin'} if name=='sonarqube-admin' else {'token':'control'})
+  with patch.object(rotation,'data',side_effect=creds),patch.object(rotation,'oc',side_effect=oc),patch.object(rotation,'request',side_effect=api),patch.object(rotation,'update',side_effect=lambda *a:writes.append(a)):
+   self.assertTrue(all(r.sonar_projects().values()))
+  self.assertEqual(writes,[('coolstore-dev','sonarqube-credentials',{'token':'new5'}),('wksp-ai-developer','coolstore-sonar-credentials',{'SONAR_TOKEN':'new5'})])
  def test_gitlab_renewal_uses_documented_response_and_preserves_authority(self):
   self.oauth_case()
  def test_gitlab_renewal_rejects_changed_scope_before_persistence(self):
@@ -212,37 +241,44 @@ class RotationSafety(unittest.TestCase):
    else:
     self.assertTrue(all(r.devspaces_oauth().values()));writer.assert_called_once_with('openshift-devspaces','gitlab-oauth-config',{'secret':'new'})
   self.assertEqual(calls,[('GET','applications'),('POST','applications/4/renew-secret')])
- def test_argo_native_api_key_subject_and_expiry_are_preserved(self):
+ def test_argo_rotation_lets_the_operator_reissue_and_copies_to_developer_hub(self):
   self.argo_case()
- def test_argo_foreign_subject_refuses_before_mint(self):
+ def test_argo_foreign_subject_refuses_before_delete(self):
   self.argo_case('old_subject')
- def test_argo_replacement_foreign_identity_refuses_before_write_or_old_revoke(self):
+ def test_argo_replacement_with_another_subject_is_not_copied(self):
   self.argo_case('subject')
- def test_argo_replacement_extended_expiry_refuses_before_write_or_old_revoke(self):
-  self.argo_case('expiry')
  def argo_case(self,mutation=None):
   def jwt(claims):return 'header.'+base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip('=')+'.signature'
-  claims={'sub':'rhdh:apiKey','iss':'argocd','jti':'old-id','exp':10000}
+  claims={'sub':'rhdh:apiKey','iss':'argocd','jti':'old-id'}
   if mutation=='old_subject':claims['sub']='other:apiKey'
   replacement=dict(claims,jti='new-id')
   if mutation=='subject':replacement['sub']='other:apiKey'
-  if mutation=='expiry':replacement['exp']=11000
-  old=jwt(claims);new=jwt(replacement);calls=[];revoked=[False];r=rotation.Rotation.__new__(rotation.Rotation)
+  old=jwt(claims);new=jwt(replacement);deleted=[];r=rotation.Rotation.__new__(rotation.Rotation)
+  def data(ns,name):
+   self.assertEqual((ns,name),('openshift-gitops','rhdh-local-user'))
+   return ({'metadata':{'uid':'new' if deleted else 'old'}},{'apiToken':new if deleted else old})
   def req(base,method,path,payload=None,headers=None,**kw):
-   calls.append((method,path))
-   if path=='/api/v1/session':return {'token':'session'}
-   if method=='POST':self.assertEqual(payload['expiresIn'],9000);return {'token':new}
-   if method=='DELETE':revoked[0]=True;return
-   if headers['Authorization']=='Bearer '+old and revoked[0]:raise urllib.error.HTTPError(base,401,'revoked',None,None)
+   if headers['Authorization']=='Bearer '+old and deleted:raise urllib.error.HTTPError(base,401,'revoked',None,None)
    return {'items':[]}
-  with patch.object(rotation,'oc',return_value={'spec':{'host':'argo.example'}}),patch.object(rotation,'data',side_effect=[({}, {'admin.password':'admin'}),({}, {'token':old})]),patch.object(rotation,'request',side_effect=req),patch.object(rotation,'time') as clock,patch.object(rotation,'update') as writer:
-   clock.time.return_value=1000
+  with patch.object(rotation,'oc',return_value={'spec':{'host':'argo.example'}}),patch.object(rotation,'data',side_effect=data),patch.object(rotation,'command',side_effect=lambda *a:deleted.append(a)),patch.object(rotation,'request',side_effect=req),patch.object(rotation,'time'),patch.object(rotation,'update') as writer:
    if mutation:
     with self.assertRaisesRegex(ValueError,'identity|credential'):r.argo()
-    writer.assert_not_called();self.assertFalse(revoked[0])
-    if mutation=='old_subject':self.assertEqual(calls,[('POST','/api/v1/session')])
+    writer.assert_not_called()
+    if mutation=='old_subject':self.assertFalse(deleted)
    else:
-    self.assertTrue(all(r.argo().values()));self.assertEqual(writer.call_count,2);self.assertTrue(revoked[0])
+    self.assertTrue(all(r.argo().values()));writer.assert_called_once_with('rhdh','rhdh-secrets',{'RHDH_ARGOCD_TOKEN':new})
+ def test_delivery_writer_rotates_itself_and_the_old_token_stops(self):
+  r=rotation.Rotation.__new__(rotation.Rotation);r.gitlab='https://gitlab.example';live={'old'};writes=[]
+  secret={'metadata':{'namespace':'app-dev'},'data':{'token':base64.b64encode(b'old').decode()}}
+  def req(base,method,path,payload=None,headers=None,**kw):
+   token=headers['PRIVATE-TOKEN']
+   if token not in live:raise urllib.error.HTTPError(base,401,'revoked',None,None)
+   if path.startswith('/api/v4/projects?membership'):return [{'id':7}]
+   if path=='/api/v4/projects/7/access_tokens/self/rotate':live.discard(token);live.add('new');return {'token':'new','expires_at':payload['expires_at']}
+   return {'id':1}
+  with patch.object(rotation,'oc',return_value={'items':[secret]}),patch.object(rotation,'request',side_effect=req),patch.object(rotation,'update',side_effect=lambda *a:writes.append(a)):
+   self.assertTrue(all(r.delivery_writers().values()))
+  self.assertEqual(writes[0][:2],('app-dev','gitlab-delivery-writer'));self.assertEqual(writes[0][2]['token'],'new')
  def test_annotation_cleanup_preserves_values_and_avoids_master_credentials(self):
   before={'metadata':{'uid':'same','annotations':{secret_writer.LAST_APPLIED:'synthetic-copy'}},'data':{'token':'c3ludGhldGlj'},'type':'Opaque'}
   after=copy.deepcopy(before);after['metadata']['annotations']={}

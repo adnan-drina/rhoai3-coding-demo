@@ -49,9 +49,14 @@ metadata:
     argocd.argoproj.io/sync-wave: "11"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 rules:
+  # create cannot be limited by name (RBAC); get/patch only the admin credential.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "create", "patch", "apply", "update"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["sonarqube-admin"]
+    verbs: ["get", "patch"]
   - apiGroups: ["route.openshift.io"]
     resources: ["routes"]
     resourceNames: ["sonarqube"]
@@ -85,9 +90,14 @@ metadata:
     argocd.argoproj.io/sync-wave: "11"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 rules:
+  # create cannot be limited by name (RBAC); get/patch only the pipeline control credential.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "create", "patch", "apply", "update"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["sonarqube-credentials"]
+    verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -129,10 +139,49 @@ spec:
         command:
         - /bin/bash
         - -c
-        - "set -euo pipefail\nSONAR=\"http://sonarqube.sonarqube.svc:9000\"\nGATE=\"AI Platform Gate\"\n\necho \"Waiting for SonarQube API...\"\nup=\"\"\nfor i in $(seq 1 60); do\n  status=$(curl -s \"${SONAR}/api/system/status\" | grep -o '\"status\":\"[A-Z]*\"' || true)\n  if [ \"${status}\" = '\"status\":\"UP\"' ]; then up=yes; break; fi\n  echo \"  not up yet (${i}/60): ${status:-no response}\"\n  sleep 10\ndone\n[ -n \"${up}\" ] || { echo \"ERROR: SonarQube did not come up\"; exit 1; }\n\n# --- 1. Admin password ---\nADMIN_PASS=$(python3 /scripts/bootstrap-admin.py)\necho \"Admin password verified against its preserved secret\"\nAUTH=\"admin:${ADMIN_PASS}\"\n\n# --- 2. Scanner token for the pipeline ---\n# O-SONARMIRROR / W4-029a: do NOT revoke+regenerate on every PostSync.\n# Blind rotation races the workspace mirror: wksp keeps the revoked\n# token in env until remount \u2192 O-SONAR401 false ship-block. Reuse\n# the existing secret token when it still validates.\nTOKEN=\"\"\nif oc\
-          \ get secret sonarqube-credentials -n app-platform-build >/dev/null 2>&1; then\n  EXISTING=$(oc get secret sonarqube-credentials -n app-platform-build \\\n    -o jsonpath='{.data.token}' | base64 -d || true)\n  if [ -n \"${EXISTING}\" ]; then\n    code=$(curl -s -o /tmp/sonar-tok-probe.txt -w '%{http_code}' \\\n      -u \"${EXISTING}:\" \"${SONAR}/api/v2/analysis/version\" || echo 000)\n    if [ \"${code}\" = \"200\" ]; then\n      TOKEN=\"${EXISTING}\"\n      echo \"Reusing valid platform-pipeline token (O-SONARMIRROR; skip revoke)\"\n    else\n      echo \"Existing token probe HTTP ${code} \u2014 will mint a fresh one\"\n    fi\n  fi\nfi\nif [ -z \"${TOKEN}\" ]; then\n  curl -s -u \"${AUTH}\" -X POST \"${SONAR}/api/user_tokens/revoke\" \\\n    --data-urlencode \"name=platform-pipeline\" >/dev/null || true\n  TOKEN_RESPONSE=$(curl -s -u \"${AUTH}\" -X POST \"${SONAR}/api/user_tokens/generate\" \\\n    --data-urlencode \"name=platform-pipeline\")\n  TOKEN=$(echo \"${TOKEN_RESPONSE}\"\
-          \ | grep -o '\"token\":\"[^\"]*\"' | cut -d'\"' -f4)\n  [ -n \"${TOKEN}\" ] || { echo \"ERROR: token generation failed: ${TOKEN_RESPONSE}\"; exit 1; }\nfi\nSONAR_CONTROL_HOST=\"${SONAR}\" SONAR_CONTROL_TOKEN=\"${TOKEN}\" \\\n  python3 /scripts/secret_writer.py --name sonarqube-credentials --namespace app-platform-build \\\n    --from-env host=SONAR_CONTROL_HOST --from-env token=SONAR_CONTROL_TOKEN\necho \"Scanner token provisioned into app-platform-build/sonarqube-credentials\"\n\n# --- 3. Custom quality gate: fail on any new issue ---\ncurl -s -u \"${AUTH}\" -X POST \"${SONAR}/api/qualitygates/create\" \\\n  --data-urlencode \"name=${GATE}\" >/dev/null || true\nconditions=$(curl -s -u \"${AUTH}\" \\\n  \"${SONAR}/api/qualitygates/show?name=$(echo ${GATE} | sed 's/ /%20/g')\")\nif ! echo \"${conditions}\" | grep -q '\"metric\":\"new_violations\"'; then\n  curl -s -u \"${AUTH}\" -X POST \"${SONAR}/api/qualitygates/create_condition\" \\\n    --data-urlencode \"gateName=${GATE}\"\
-          \ \\\n    --data-urlencode \"metric=new_violations\" \\\n    --data-urlencode \"op=GT\" \\\n    --data-urlencode \"error=0\" >/dev/null\n  echo \"Gate condition added: new issues > 0 fails\"\nelse\n  echo \"Gate condition already present\"\nfi\ncurl -s -u \"${AUTH}\" -X POST \"${SONAR}/api/qualitygates/set_as_default\" \\\n  --data-urlencode \"name=${GATE}\" >/dev/null\necho \"'${GATE}' set as default quality gate\"\n\npython3 /scripts/configure-sso.py\n"
+        - |
+          set -euo pipefail
+          SONAR="http://sonarqube.sonarqube.svc:9000"
+          GATE="AI Platform Gate"
+
+          echo "Waiting for SonarQube API..."
+          up=""
+          for i in $(seq 1 60); do
+            status=$(curl -s "${SONAR}/api/system/status" | grep -o '"status":"[A-Z]*"' || true)
+            if [ "${status}" = '"status":"UP"' ]; then up=yes; break; fi
+            echo "  not up yet (${i}/60): ${status:-no response}"
+            sleep 10
+          done
+          [ -n "${up}" ] || { echo "ERROR: SonarQube did not come up"; exit 1; }
+
+          # --- 1. Admin password ---
+          ADMIN_PASS=$(python3 /scripts/bootstrap-admin.py)
+          echo "Admin password verified against its preserved secret"
+          AUTH="admin:${ADMIN_PASS}"
+
+          # --- 2. Control token of the platform-provisioner technical user (Create Projects + Execute Analysis only) ---
+          ADMIN_PASS="${ADMIN_PASS}" python3 /scripts/ensure-provisioner.py ADMIN_PASS
+
+          # --- 3. Custom quality gate: fail on any new issue ---
+          curl -s -u "${AUTH}" -X POST "${SONAR}/api/qualitygates/create" \
+            --data-urlencode "name=${GATE}" >/dev/null || true
+          conditions=$(curl -s -u "${AUTH}" \
+            "${SONAR}/api/qualitygates/show?name=$(echo ${GATE} | sed 's/ /%20/g')")
+          if ! echo "${conditions}" | grep -q '"metric":"new_violations"'; then
+            curl -s -u "${AUTH}" -X POST "${SONAR}/api/qualitygates/create_condition" \
+              --data-urlencode "gateName=${GATE}" \
+              --data-urlencode "metric=new_violations" \
+              --data-urlencode "op=GT" \
+              --data-urlencode "error=0" >/dev/null
+            echo "Gate condition added: new issues > 0 fails"
+          else
+            echo "Gate condition already present"
+          fi
+          curl -s -u "${AUTH}" -X POST "${SONAR}/api/qualitygates/set_as_default" \
+            --data-urlencode "name=${GATE}" >/dev/null
+          echo "'${GATE}' set as default quality gate"
+
+          python3 /scripts/configure-sso.py
         volumeMounts:
         - name: admin-bootstrap
           mountPath: /scripts

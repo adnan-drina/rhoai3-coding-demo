@@ -124,7 +124,7 @@ def render(content: str, *, revision: str, devspaces_url: str, rhdh_url: str, co
     out = out.replace("https://sonarqube.placeholder.example.com", sonarqube_url.rstrip("/"))
     # B2: template Locations resolve at the SAME revision as every other link,
     # so the template and its skeleton are the bundled ones, never a moving
-    # branch head (superseded Locations are pruned by the generator).
+    # branch head (superseded Locations are deleted as catalog orphans).
     out = out.replace("__RHOAI3_DEMO_LOCATION_REF__", revision)
     out = out.replace("__RHOAI3_DEMO_REVISION__", revision)
     out = out.replace("__RHOAI3_MAAS_HOST__", maas_host)

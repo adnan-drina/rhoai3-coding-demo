@@ -15,6 +15,8 @@ import urllib.request
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
+PROVISIONER = 'platform-provisioner'
+SONAR_KEY, SONAR_TYPE, SONAR_NAME = 'rhoai3.io/sonar-project-key', 'rhoai3.io/sonar-token-type', 'rhoai3.io/sonar-token-name'
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
 sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
 from secret_writer import write_secret
@@ -215,46 +217,117 @@ class Rotation:
             raise ValueError('Sonar administrator secret schema mismatch')
         auth = {'Authorization': 'Basic ' + base64.b64encode(('admin:' + password).encode()).decode()}
         old_secret = oc('get', 'secret', 'sonarqube-credentials', '-n', 'app-platform-build')
-        previous_name = old_secret['metadata'].get('annotations', {}).get('rhoai3.io/control-token-name', 'platform-pipeline')
+        annotations = old_secret['metadata'].get('annotations', {})
+        previous_name = annotations.get('rhoai3.io/control-token-name', 'platform-pipeline')
+        previous_owner = annotations.get('rhoai3.io/control-token-owner', 'admin')
+        # The control credential belongs to the technical user the configure-sonarqube hook creates.
         name = 'platform-pipeline-rotation-' + uuid.uuid4().hex[:12]
-        new = request(host, 'POST', '/api/user_tokens/generate', {'name': name, 'type': 'USER_TOKEN'}, auth, form=True)
+        new = request(host, 'POST', '/api/user_tokens/generate',
+                      {'login': PROVISIONER, 'name': name, 'type': 'USER_TOKEN'}, auth, form=True)
         update('app-platform-build', 'sonarqube-credentials', {'token': new['token']})
-        patch = {'metadata': {'annotations': {'rhoai3.io/control-token-name': name}}}
+        patch = {'metadata': {'annotations': {'rhoai3.io/control-token-name': name,
+                                              'rhoai3.io/control-token-owner': PROVISIONER}}}
         subprocess.run(['oc', 'patch', 'secret', 'sonarqube-credentials', '-n', 'app-platform-build',
             '--type=merge', '--patch-file=/dev/stdin'], input=json.dumps(patch), universal_newlines=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-        request(host, 'POST', '/api/user_tokens/revoke', {'name': previous_name}, auth, form=True)
+        request(host, 'POST', '/api/user_tokens/revoke', {'login': previous_owner, 'name': previous_name}, auth, form=True)
         def valid(token):
             headers = {'Authorization': 'Basic ' + base64.b64encode((token + ':').encode()).decode()}
             return request(host, 'GET', '/api/authentication/validate', headers=headers).get('valid')
         return {'old_token_refused': not valid(old['token']), 'new_token_valid': valid(new['token'])}
 
+    def sonar_projects(self):
+        """Re-mint each enrolled project's analysis token under the provisioner user, update its Secret and the
+        workspace mirrors, then revoke the administrator's token of the same name."""
+        _, admin = data('sonarqube', 'sonarqube-admin')
+        host = 'https://' + oc('get', 'route', 'sonarqube', '-n', 'sonarqube')['spec']['host']
+        auth = {'Authorization': 'Basic ' + base64.b64encode(('admin:' + admin['password']).encode()).decode()}
+        # SonarQube mints a project analysis token only for the calling user: authenticate as the provisioner.
+        _, control = data('app-platform-build', 'sonarqube-credentials')
+        provisioner = {'Authorization': 'Basic ' + base64.b64encode((control['token'] + ':').encode()).decode()}
+        def tokens(login):
+            return {t['name']: t for t in request(host, 'GET', '/api/user_tokens/search?' + urllib.parse.urlencode({'login': login}),
+                                                  headers=auth)['userTokens']}
+        def valid(token):
+            headers = {'Authorization': 'Basic ' + base64.b64encode((token + ':').encode()).decode()}
+            return request(host, 'GET', '/api/authentication/validate', headers=headers).get('valid')
+        admin_tokens, checks = tokens('admin'), {}
+        stored = [s for s in oc('get', 'secret', '-A', '--field-selector', 'metadata.name=sonarqube-credentials')['items']
+                  if s['metadata'].get('annotations', {}).get(SONAR_TYPE) == 'PROJECT_ANALYSIS_TOKEN']
+        mirrors = [s for ns in ('wksp-ai-developer', 'wksp-ai-admin') for s in oc('get', 'secret', '-n', ns)['items']
+                   if s['metadata']['name'].endswith('-sonar-credentials')]
+        for secret in stored:
+            meta = secret['metadata']; key, name = meta['annotations'][SONAR_KEY], meta['annotations'][SONAR_NAME]
+            old = base64.b64decode(secret['data']['token']).decode()
+            if name not in admin_tokens:
+                checks[meta['namespace'] + '_already_migrated'] = name in tokens(PROVISIONER) and bool(valid(old))
+                continue
+            new = request(host, 'POST', '/api/user_tokens/generate', {'name': name,
+                          'type': 'PROJECT_ANALYSIS_TOKEN', 'projectKey': key}, provisioner, form=True)
+            if new.get('type') != 'PROJECT_ANALYSIS_TOKEN' or not new.get('token'):
+                raise ValueError('SonarQube did not emit a project analysis token')
+            update(meta['namespace'], 'sonarqube-credentials', {'token': new['token']})
+            for mirror in mirrors:
+                if mirror['metadata'].get('annotations', {}).get(SONAR_KEY) == key:
+                    update(mirror['metadata']['namespace'], mirror['metadata']['name'], {'SONAR_TOKEN': new['token']})
+            request(host, 'POST', '/api/user_tokens/revoke', {'login': 'admin', 'name': name}, auth, form=True)
+            checks[meta['namespace'] + '_new_valid'] = bool(valid(new['token']))
+            checks[meta['namespace'] + '_old_refused'] = not valid(old)
+        checks['no_admin_project_tokens_left'] = not [t for t in tokens('admin').values() if t.get('type') == 'PROJECT_ANALYSIS_TOKEN']
+        return checks
+
     def argo(self):
+        """The OpenShift GitOps operator owns the rhdh local user's token (Secret rhdh-local-user, key apiToken);
+        deleting the Secret makes it issue a new one. Developer Hub's copy then follows."""
         base = 'https://' + oc('get', 'route', 'openshift-gitops-server', '-n', 'openshift-gitops')['spec']['host']
-        _, admin = data('openshift-gitops', 'openshift-gitops-cluster')
-        _, old = data('openshift-gitops', 'rhdh-argocd-reader')
-        session = request(base, 'POST', '/api/v1/session', {'username': 'admin', 'password': admin['admin.password']})['token']
-        headers = {'Authorization': 'Bearer ' + session}
-        claims = token_claims(old['token'])
-        if (claims.get('sub') != 'rhdh:apiKey' or claims.get('iss') != 'argocd'
-                or not claims.get('jti') or claims.get('exp', 0) <= time.time()):
+        before, old = data('openshift-gitops', 'rhdh-local-user')
+        claims = token_claims(old['apiToken'])
+        if claims.get('sub') != 'rhdh:apiKey' or claims.get('iss') != 'argocd':
             raise ValueError('Argo credential is not the expected reader account')
-        remaining = max(1, int(claims['exp'] - time.time()))
-        new = request(base, 'POST', '/api/v1/account/rhdh/token', {'expiresIn': remaining, 'id': uuid.uuid4().hex}, headers)['token']
-        replacement = token_claims(new)
-        if (replacement.get('sub') != claims['sub'] or replacement.get('iss') != claims['iss']
-                or not replacement.get('jti') or replacement['jti'] == claims['jti']
-                or abs(replacement.get('exp', 0) - claims['exp']) > 2):
-            raise ValueError('Argo replacement changed reader identity or expiry')
-        valid = isinstance(request(base, 'GET', '/api/v1/applications', headers={'Authorization': 'Bearer ' + new}), dict)
-        if not valid:
-            raise ValueError('Argo replacement did not authenticate')
-        update('openshift-gitops', 'rhdh-argocd-reader', {'token': new})
-        update('rhdh', 'rhdh-secrets', {'RHDH_ARGOCD_TOKEN': new})
-        request(base, 'DELETE', '/api/v1/account/rhdh/token/' + urllib.parse.quote(claims['jti'], safe=''), headers=headers)
-        return {'reader_identity_and_expiry_preserved': True,
-                'new_reader_valid': valid,
-                'old_reader_refused': rejected(lambda: request(base, 'GET', '/api/v1/applications', headers={'Authorization': 'Bearer ' + old['token']}))}
+        command('oc', 'delete', 'secret', 'rhdh-local-user', '-n', 'openshift-gitops', '--wait=true')
+        for _ in range(60):
+            try:
+                after, new = data('openshift-gitops', 'rhdh-local-user')
+                if after['metadata']['uid'] != before['metadata']['uid'] and new.get('apiToken'):
+                    break
+            except subprocess.CalledProcessError:
+                pass
+            time.sleep(5)
+        else:
+            raise ValueError('The GitOps operator did not issue a new reader token')
+        replacement = token_claims(new['apiToken'])
+        if replacement.get('sub') != claims['sub'] or replacement.get('jti') == claims.get('jti'):
+            raise ValueError('Argo replacement changed reader identity or kept the old token')
+        def works(token):
+            return isinstance(request(base, 'GET', '/api/v1/applications', headers={'Authorization': 'Bearer ' + token}), dict)
+        valid = works(new['apiToken'])
+        update('rhdh', 'rhdh-secrets', {'RHDH_ARGOCD_TOKEN': new['apiToken']})
+        return {'reader_identity_preserved': True, 'new_reader_valid': valid,
+                'old_reader_refused': rejected(lambda: works(old['apiToken']))}
+
+    def delivery_writers(self):
+        """Renew every project's gitlab-delivery-writer token with GitLab's self-rotation (the token rotates itself;
+        no administrator token). The bot user of a project access token is a member of exactly its own project."""
+        checks = {}
+        for secret in oc('get', 'secret', '-A', '--field-selector', 'metadata.name=gitlab-delivery-writer')['items']:
+            ns = secret['metadata']['namespace']
+            old = base64.b64decode(secret['data']['token']).decode()
+            headers = {'PRIVATE-TOKEN': old}
+            projects = request(self.gitlab, 'GET', '/api/v4/projects?membership=true&simple=true', headers=headers)
+            if len(projects) != 1:
+                raise ValueError('Delivery writer token is not bound to exactly one project')
+            expiry = (datetime.date.today() + datetime.timedelta(days=90)).isoformat()
+            new = request(self.gitlab, 'POST', '/api/v4/projects/%s/access_tokens/self/rotate' % projects[0]['id'],
+                          {'expires_at': expiry}, headers)
+            if not new.get('token') or new.get('expires_at') != expiry:
+                raise ValueError('GitLab did not rotate the delivery writer token')
+            update(ns, 'gitlab-delivery-writer', {'token': new['token'], 'expires_at': expiry})
+            def works(token):
+                return isinstance(request(self.gitlab, 'GET', '/api/v4/personal_access_tokens/self',
+                                          headers={'PRIVATE-TOKEN': token}), dict)
+            checks[ns + '_new_valid'] = works(new['token'])
+            checks[ns + '_old_refused'] = rejected(lambda: works(old))
+        return checks
 
     def mta(self):
         gateway = oc('get', 'gateway.gateway.networking.k8s.io', 'maas-default-gateway', '-n', 'openshift-ingress')
@@ -286,7 +359,7 @@ class Rotation:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--component', choices=['gitlab_oidc', 'scm_client', 'publisher', 'devspaces_oauth', 'sonar', 'argo', 'mta', 'annotation_copy'], required=True)
+    parser.add_argument('--component', choices=['gitlab_oidc', 'scm_client', 'publisher', 'devspaces_oauth', 'sonar', 'sonar_projects', 'delivery_writers', 'argo', 'mta', 'annotation_copy'], required=True)
     parser.add_argument('--secret', help='One exact namespace/name, only for annotation_copy')
     parser.add_argument('--revision', required=True)
     parser.add_argument('--repo-url', required=True)

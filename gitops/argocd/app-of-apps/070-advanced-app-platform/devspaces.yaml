@@ -43,14 +43,6 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
-  - group: operators.coreos.com
-    kind: OperatorGroup
-    jsonPointers:
-    - "/metadata/annotations/olm.providedAPIs"
-  - group: operators.coreos.com
-    kind: Subscription
-    jsonPointers:
-    - "/spec/startingCSV"
   - group: workspace.devfile.io
     kind: DevWorkspace
     jsonPointers:

@@ -34,7 +34,7 @@ the Dev Spaces 3.30 Discover topics. Detailed record:
 | Concept in this repo | Where in Git | Official section |
 |---|---|---|
 | One `CheCluster` `devspaces` in `openshift-devspaces` drives server, dashboard, gateway and plug-in registry | `gitops/stages/070-advanced-app-platform/devspaces/checluster.yaml` | [Operator and lifecycle][operator], [Server components][components] |
-| DevWorkspaces are reconciled by the Dev Workspace Operator (0.43.0), installed with Dev Spaces | `devspaces/approve-installplan.yaml` | [Dev Workspace Operator][dwo] |
+| DevWorkspaces are reconciled by the Dev Workspace Operator (0.43.0 observed), which OLM installs with Dev Spaces in `openshift-operators` | `devspaces/subscription.yaml` | [Dev Workspace Operator][dwo] |
 | Each persona works in a pre-provisioned project (`wksp-ai-developer`, `wksp-ai-admin`, `wksp-kubeadmin`) | `gitops/stages/070-advanced-app-platform/namespaces/namespaces.yaml` | [Server and namespace provisioning][server] |
 | Users sign in with native OpenShift login; Git access through GitLab OAuth | `gitops/stages/070-advanced-app-platform/gitlab/README.md` | [Gateway and routing][gateway] |
 | Extensions come from `open-vsx.org` or baked VSIX files | `devspaces/checluster.yaml`, `stages/070-advanced-app-platform/workspace-image/` | [Plug-in registry][registry] |

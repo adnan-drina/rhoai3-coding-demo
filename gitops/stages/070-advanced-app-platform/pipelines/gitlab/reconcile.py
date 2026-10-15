@@ -89,11 +89,13 @@ def ensure_project_scanner(name, ns, project_id):
         raise ValueError('Platform Sonar control credential is incomplete')
     host = base64.b64decode(control['host']).decode()
     sonar = Sonar(host, base64.b64decode(control['token']).decode())
-    projects = sonar.request('GET', 'projects/search?' + urlencode({'projects': name}))['components']
-    if not projects:
+    # The control credential is the platform-provisioner user (Create Projects + Execute Analysis), which cannot
+    # search projects; create by exact key and accept the key that already exists.
+    try:
         sonar.request('POST', 'projects/create', {'project': name, 'name': name, 'visibility': 'private'})
-    elif len(projects) != 1 or projects[0]['key'] != name:
-        raise ValueError('Sonar project identity mismatch')
+    except urllib.error.HTTPError as error:
+        if error.code != 400 or 'already exists' not in error.read().decode('utf-8', 'replace'):
+            raise
     token_name = 'gitlab-project-' + str(project_id)
     tokens = sonar.request('GET', 'user_tokens/search')['userTokens']
     match = [t for t in tokens if t['name'] == token_name]

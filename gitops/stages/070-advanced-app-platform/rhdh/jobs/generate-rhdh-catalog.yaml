@@ -14,28 +14,24 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '7'
 rules:
+# Only the runtime catalog ConfigMap; create cannot be limited by name. No pod or exec access: superseded
+# template Locations leave the catalog through orphanStrategy: delete (app-config), not SQL.
 - apiGroups:
   - ''
   resources:
   - configmaps
   verbs:
-  - get
   - create
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  resourceNames:
+  - catalog-runtime-rhdh
+  verbs:
+  - get
   - patch
   - update
-- apiGroups:
-  - ''
-  resources:
-  - pods
-  verbs:
-  - get
-  - list
-- apiGroups:
-  - ''
-  resources:
-  - pods/exec
-  verbs:
-  - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

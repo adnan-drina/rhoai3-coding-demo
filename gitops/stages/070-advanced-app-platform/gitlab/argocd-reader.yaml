@@ -14,10 +14,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '0'
 rules:
-  - apiGroups: [argoproj.io]
-    resources: [argocds]
-    resourceNames: [openshift-gitops]
-    verbs: [get, patch]
   - apiGroups: ['']
     resources: [configmaps]
     resourceNames: [argocd-cm, argocd-rbac-cm]

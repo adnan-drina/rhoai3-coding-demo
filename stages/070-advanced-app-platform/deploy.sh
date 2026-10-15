@@ -17,8 +17,11 @@ assert_required_env
 STAGE_APPS="$REPO_ROOT/scripts/shared/stage_apps.py"
 REVISION=$(python3 "$STAGE_APPS" select 070 --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" \
   --extra scripts/platform/require-node-sizing.sh --extra scripts/platform/render-stage070-charts.py \
-  --extra scripts/platform/stage070-charts.lock.json --extra scripts/platform/build-stage070-platform-tools.sh)
+  --extra scripts/platform/stage070-charts.lock.json --extra scripts/platform/build-stage070-platform-tools.sh \
+  --extra scripts/platform/check-operator-policy.py)
 "$REPO_ROOT/scripts/platform/require-node-sizing.sh"
+# Read-only: the Automatic Dev Spaces Subscription (openshift-operators) offers the reviewed channel and minimum.
+python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/devspaces"
 
 log_step "Stage 070: GitLab and advanced application platform"
 # Preconditions are read-only. Do not generate shared GitHub credentials or

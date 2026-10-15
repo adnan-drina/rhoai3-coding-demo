@@ -23,10 +23,7 @@ The operator, the instance and the workspace contract form one Application becau
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| OperatorGroup | `devspaces-operator` | `openshift-devspaces` | Empty spec, so AllNamespaces mode (wave 1) |
-| Subscription | `devspaces` | `openshift-devspaces` | Channel `stable`, `installPlanApproval: Manual`, `startingCSV: devspacesoperator.v3.30.2` (wave 2). The InstallPlan also carries `devworkspace-operator.v0.43.0` |
-| ServiceAccount, Role, RoleBinding | `approve-installplan` | `openshift-devspaces` | `get`/`list`/`patch` InstallPlans; `get` on Subscription `devspaces` only (wave 1) |
-| Job (Sync hook) | `approve-installplan` | `openshift-devspaces` | Approves this operator's InstallPlan only if every CSV is on its allowlist, then waits for `devspacesoperator.v3.30.2` (wave 2; `BeforeHookCreation,HookSucceeded`) |
+| Subscription | `devspaces` | `openshift-operators` | Channel `stable`, `installPlanApproval: Automatic`, no `startingCSV` (wave 2), as in the GitOps guide [1]. OLM adds the DevWorkspace operator dependency in the same namespace |
 | ServiceAccount, Role, RoleBinding | `job-wait-devspaces-webhook` | `openshift-devspaces` | Read deployments, services and endpoints (wave 8) |
 | Job (Sync hook) | `job-wait-devspaces-webhook` | `openshift-devspaces` | Waits for the operator rollout and webhook endpoints before the CheCluster (wave 9; `BeforeHookCreation,HookSucceeded`) |
 | CheCluster | `devspaces` | `openshift-devspaces` | The Dev Spaces instance (wave 10; see How) |
@@ -74,7 +71,7 @@ Not in Git: the GitLab OAuth Secret `gitlab-oauth-config`, the CheCluster `gitSe
 
 ## How
 
-**Installation.** The Subscription uses `Manual` approval with an exact `startingCSV`. This component's own `approve-installplan` hook approves the plan only if every CSV in it is on its allowlist (`devworkspace-operator.v0.43.0`, `devspacesoperator.v3.30.2`), and waits until `devspacesoperator.v3.30.2` is installed. Its Role reaches only this namespace's InstallPlans and the `devspaces` Subscription. The webhook-wait hook then holds the CheCluster until the operator answers admission calls.
+**Installation.** The Subscription lives in `openshift-operators` (AllNamespaces) with `Automatic` approval on `stable`, as the 3.30 GitOps guide shows [1]. `scripts/platform/check-operator-policy.py` (run by Stage 070 `deploy.sh`) refuses another channel or an offered version outside the qualified 3.30 line (minimum 3.30.2). The webhook-wait hook then holds the CheCluster until the operator, which runs in `openshift-operators`, answers admission calls; its Role there reads only the `devspaces-operator` Deployment and Service. Until 2026-10-15 the Subscription lived in `openshift-devspaces` with Manual approval and its own approver hook; `docs/OPERATIONS.md` records the move.
 
 **CheCluster choices** (field reference [3]):
 
@@ -92,7 +89,7 @@ Not in Git: the GitLab OAuth Secret `gitlab-oauth-config`, the CheCluster `gitSe
 
 **Cross-component writes.** `070-gitlab`'s integration hub (wave 14 of that Application) writes the GitLab OAuth Secret with the labels and annotations the guide requires [7], patches the CheCluster `gitServices` and `allowedSources`, and patches the workspaces' `origin` remote. `070-pipelines` runs the migration-run provisioner and the project enrollment that mirror per-run and Sonar credentials into `wksp-ai-developer`.
 
-**ignoreDifferences.** OperatorGroup annotation `olm.providedAPIs` (OLM-owned) and Subscription `startingCSV`; DevWorkspace `spec.started` (user lifecycle) and the `HOST_USERS` env, `devworkspace-config` and `scc` attributes that Dev Spaces injects; CheCluster `allowedSources.urls` and the GitLab endpoint (owned by `070-gitlab`); the two `agentic-coolstore` remotes (owned by `070-gitlab`).
+**ignoreDifferences.** DevWorkspace `spec.started` (user lifecycle) and the `HOST_USERS` env, `devworkspace-config` and `scc` attributes that Dev Spaces injects; CheCluster `allowedSources.urls` and the GitLab endpoint (owned by `070-gitlab`); the two `agentic-coolstore` remotes (owned by `070-gitlab`).
 
 Operations: [Stage 070 Dev Spaces](../../../../docs/OPERATIONS.md#stage-070--dev-spaces-devspaces-component). Failures: [workspace does not start](../../../../docs/TROUBLESHOOTING.md#red-hat-openshift-dev-spaces-workspace-does-not-start), [workspace tools unavailable](../../../../docs/TROUBLESHOOTING.md#stage-070-workspace-tools-or-mta-ai-are-unavailable).
 
@@ -120,8 +117,8 @@ oc get devworkspace -n wksp-ai-developer
 | Topic | Official guidance | This repository | Status |
 |---|---|---|---|
 | GitOps installation | Subscription, CheCluster v2 and Kustomization in Git, reconciled by Argo CD [1] | Same | Aligned |
-| Subscription namespace | Subscription in `openshift-operators` (AllNamespaces); "Do not place the Subscription in the `openshift-devspaces` namespace" [1] | Subscription in `openshift-devspaces` with an AllNamespaces OperatorGroup | Gap: works (CSV Succeeded) but differs from the documented layout |
-| Channel and approval | `stable`, `Automatic` in the example [1] | `stable`, `Manual` plus exact `startingCSV` and a reviewed-CSV approver | Deviation (justified: reviewed, pinned upgrades) |
+| Subscription namespace | Subscription in `openshift-operators` (AllNamespaces); "Do not place the Subscription in the `openshift-devspaces` namespace" [1] | Same | Aligned |
+| Channel and approval | `stable`, `Automatic` in the example [1] | Same; the operator policy check holds the qualified minimum | Aligned |
 | PVC strategy | Default `per-user`; `per-workspace` gives one PVC per workspace [3] | `per-workspace`, 20 Gi, `gp3-csi` | Deviation (justified: concurrent factory workspaces) |
 | Home persistence | `persistUserHome` requires `per-user` or `per-workspace` [3] | Enabled with `per-workspace` | Aligned |
 | Idling | Default 1800 s; `-1` disables [3] | `-1` | Deviation (justified: unattended agent runs) |

@@ -9,7 +9,6 @@ resources:
 - signing
 - build/persona-rbac.yaml
 - build/tektonconfig-affinity.yaml
-- build/tekton-triggers-core-config.yaml
 - build/task-provision-migration-run.yaml
 - build/pipeline-provision-migration-run.yaml
 - gitlab/reconciler.yaml
@@ -20,5 +19,6 @@ resources:
 - gitlab/application-policy-binding.yaml
 - gitlab/bootstrap-secret-policy.yaml
 - gitlab/bootstrap-secret-policy-binding.yaml
+- gitlab/workspace-secret-policy.yaml
 - gitlab/provisioning-policy.yaml
 - gitlab/provisioning-policy-binding.yaml

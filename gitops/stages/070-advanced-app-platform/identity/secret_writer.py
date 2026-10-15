@@ -22,11 +22,19 @@ def write_secret(document, call=oc):
         raise ValueError('An explicitly named, namespaced Secret is required')
     annotations = meta.setdefault('annotations', {})
     annotations.pop(LAST_APPLIED, None)
+    # Read first when allowed (writers scoped by resourceNames). A writer that may not read Secrets (create and patch
+    # only, so it cannot see the namespace's other Secrets) creates and merge-patches on AlreadyExists instead.
+    exists = None
     try:
         call('get', 'secret', meta['name'], '-n', meta['namespace'], '-o', 'json')
+        exists = True
     except subprocess.CalledProcessError as error:
-        if '(NotFound)' not in (error.stderr or ''):
+        stderr = error.stderr or ''
+        if '(NotFound)' in stderr:
+            exists = False
+        elif '(Forbidden)' not in stderr:
             raise RuntimeError('Secret lookup refused; payload redacted') from None
+    if not exists:
         try:
             return call('create', '-f', '-', '-o', 'json', document=doc)
         except subprocess.CalledProcessError as error:

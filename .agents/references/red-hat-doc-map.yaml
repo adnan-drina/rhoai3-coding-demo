@@ -1042,9 +1042,11 @@ products:
     docs_version: "3.30"
     deployed: true
     pin:
-      file: gitops/stages/070-advanced-app-platform/devspaces/subscription.yaml
-      field: spec.startingCSV
-      pattern: 'v(\d+\.\d+)\.'
+      # The Subscription follows the unversioned `stable` channel (Dev Spaces GitOps guide); the operator policy
+      # holds the qualified minor line.
+      file: scripts/platform/check-operator-policy.py
+      field: minimum['devspaces']
+      pattern: "'devspaces':'(\\d+\\.\\d+)\\.\\d+'"
     categories:
       discover:
         description: Product overview, architecture, DevWorkspace operator, supported IDEs, and workspace lifecycle.
