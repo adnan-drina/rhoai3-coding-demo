@@ -37,9 +37,9 @@ spec:
     - autoSelect: true
       name: vLLM
 ---
-# Qwen 3.8 27B INT4, the candidate to replace the production coding model (Qwen 3.6 in MaaS). Same
-# model revision and serving arguments as its MaaS profile (Stage 040), so a passing qualification
-# carries over unchanged on promotion. Token authentication is on; evaluation jobs authenticate with
+# Qwen 3.8 27B INT4, the qualification candidate on one L40S. Production MaaS serves Qwen 3.8 as
+# NVFP4 on RTX PRO 6000 (Stage 040 qwen3-8-27b in internal-models), so this INT4 deployment is not
+# the MaaS serving profile. Token authentication is on; evaluation jobs authenticate with
 # their ServiceAccount token (implicit authentication, bindings below).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -51,8 +51,8 @@ metadata:
     kueue.x-k8s.io/queue-name: lq-gpu-reserved-demo
   annotations:
     openshift.io/display-name: Qwen3.8 27B INT4 (candidate)
-    # Dashboard Stop/Start control. Runs while Qwen 3.8 is stopped in internal-models (two L40S nodes:
-    # Qwen 3.6 production + this candidate); set to "true" to hand the GPU back.
+    # Dashboard Stop/Start control. Runs on the L40S pool (gpu-reserved-demo), apart from the RTX PRO
+    # 6000 GPU of production Qwen 3.8 in internal-models; set to "true" to hand the GPU back.
     # Stopped after the 2026-10-13 tuning runs to free the GPU (GPU nodes scaled to zero); set "false" to
     # start the candidate again.
     serving.kserve.io/stop: "true"
