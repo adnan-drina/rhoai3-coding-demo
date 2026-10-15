@@ -15,60 +15,58 @@ STAGE_APPS="$ROOT_DIR/scripts/shared/stage_apps.py"
 revision=$(python3 "$STAGE_APPS" select 030 --ref "$ref" --repo-url "$GIT_REPO_URL" \
   --extra scripts/platform/require-node-sizing.sh --extra scripts/platform/validate-serving-update.py)
 # Read-only prerequisites precede even sizing and the first Application write.
-export GIT_REPO_URL
-python3 - "$ROOT_DIR" <<'PY_PREREQUISITE'
-import json,os,subprocess,sys
-from pathlib import Path
-appname='030-private-model-serving'
-registry={('Namespace','rhoai-model-registries',''),('ModelRegistry','demo-registry','rhoai-model-registries'),('RoleBinding','demo-registry-rhods-admins','rhoai-model-registries'),('RoleBinding','demo-registry-rhoai-developers','rhoai-model-registries')}
-def get(kind,name,ns=None,optional=False):
- args=['oc','--request-timeout=10s','get',kind,name,'-o','json']
- if ns:args+=['-n',ns]
- if optional:args+=['--ignore-not-found']
- p=subprocess.run(args,capture_output=True,text=True,timeout=15)
- assert p.returncode==0,'Prerequisite API read failed'
- return json.loads(p.stdout) if p.stdout.strip() else None
-sys.path.insert(0,sys.argv[1]+'/scripts/shared');import stage_apps
-problems=stage_apps.stage_problems('010')
-assert not problems,'Stage 010 must be reconciled: '+'; '.join(problems)
-registry_crd=get('customresourcedefinition','modelregistries.modelregistry.opendatahub.io',optional=True)
-assert {'/spec/components/kserve','/spec/components/modelregistry'}<=stage_apps.delegated('010','DataScienceCluster','default-dsc',group='datasciencecluster.opendatahub.io'),'Foundation has not delegated serving/discovery'
-assert {'/spec/dashboardConfig/'+field for field in ['agentsCatalog','disableModelCatalog','disableModelRegistry','toolCalling','mcpCatalog','mcpRegistry']}<=stage_apps.delegated('010','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications','opendatahub.io'),'Foundation discovery visibility is not delegated'
-for kind,name,ns in registry:
- lookup={'Namespace':'namespace','ModelRegistry':'modelregistries.modelregistry.opendatahub.io','RoleBinding':'rolebinding'}[kind]
- obj=None if kind=='ModelRegistry' and not registry_crd else get(lookup,name,ns or None,True)
- if not obj:
-  continue
- tracking=obj['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','')
- assert tracking.startswith(appname+':'),'Registry is not owned by Stage 030'
- assert not obj['metadata'].get('deletionTimestamp'),'Retained registry resource is terminating'
-# Existing deployments must retain their native database contract on every rerun.
-mr=get('modelregistries.modelregistry.opendatahub.io','demo-registry','rhoai-model-registries',True) if registry_crd else None
-claim=get('pvc','demo-registry-postgres-storage','rhoai-model-registries',True)
-credential=subprocess.run(['oc','--request-timeout=10s','get','secret','demo-registry-postgres-credentials','-n','rhoai-model-registries','--ignore-not-found','-o','jsonpath={.metadata.uid} {.metadata.ownerReferences}'],capture_output=True,text=True,timeout=15)
-assert credential.returncode==0,'Registry credential metadata read failed'
-if mr:
- expected=subprocess.run(['ruby','-ryaml','-rjson','-e','puts JSON.generate(YAML.load_file(ARGV[0])["spec"])',str(Path(sys.argv[1])/'gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/registry/modelregistry-demo.yaml')],capture_output=True,text=True,check=True)
- assert mr['spec']==json.loads(expected.stdout),'Existing registry native spec differs from reviewed source'
- assert claim and not claim['metadata'].get('deletionTimestamp') and claim['status']['phase']=='Bound' and any(o.get('uid')==mr['metadata']['uid'] and o.get('controller') for o in claim['metadata'].get('ownerReferences',[])),'Existing registry database missing or foreign'
- uid,owners=credential.stdout.strip().split(' ',1)
- assert uid and any(o.get('uid')==mr['metadata']['uid'] and o.get('controller') for o in json.loads(owners)),'Existing registry credential missing or foreign'
-else:
- assert not claim and not credential.stdout.strip(),'Partial retained registry database forbids clean recreation'
-existing=get('application',appname,'openshift-gitops',True)
-if existing:
- e=existing['spec'];assert not existing['metadata'].get('ownerReferences') and not e.get('sources'),'Foreign Application ownership'
- assert e['project']=='rhoai-demo' and e['source']['repoURL']==os.environ['GIT_REPO_URL'] and e['source']['path']=='gitops/stages/030-private-model-serving/030-private-model-serving','Unexpected Stage 030 source'
- assert e['destination']=={'namespace':'openshift-gitops','server':'https://kubernetes.default.svc'},'Unexpected Stage 030 destination'
-for ns,name in [('openshift-monitoring','cluster-monitoring-config'),('openshift-user-workload-monitoring','user-workload-monitoring-config')]:
- cm=get('configmap',name,ns,True)
- # Platform monitoring configuration is owned by Stage 010 (observability-operators/cluster-monitoring).
- if cm:assert cm['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id','').startswith('010-observability-operators:'),'Platform monitoring configuration must be owned by 010-observability-operators'
-sc=get('storageclass','gp3-csi');assert sc['provisioner']=='ebs.csi.aws.com','Reviewed native monitoring storage class unavailable'
-for namespace in ['redhat-ods-applications','openshift-gitops']:get('namespace',namespace)
-print('PASS Read-only foundation ownership/delegation and native storage prerequisites')
-PY_PREREQUISITE
-python3 "$SCRIPT_DIR/preflight-agent-catalog.py"
+fail() { echo "ERROR: $*" >&2; exit 1; }
+read_optional() { oc --request-timeout=10s get "$@" --ignore-not-found -o json; }
+REG_NS=rhoai-model-registries
+python3 "$STAGE_APPS" status 010 >/dev/null || fail "Stage 010 must be reconciled first"
+delegated_dsc=$(python3 "$STAGE_APPS" delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io)
+for field in kserve modelregistry; do
+  grep -qx "/spec/components/$field" <<<"$delegated_dsc" || fail "Foundation has not delegated /spec/components/$field"
+done
+delegated_dashboard=$(python3 "$STAGE_APPS" delegated 010 OdhDashboardConfig odh-dashboard-config redhat-ods-applications \
+  --group opendatahub.io)
+for field in agentsCatalog disableModelCatalog disableModelRegistry toolCalling mcpCatalog mcpRegistry; do
+  grep -qx "/spec/dashboardConfig/$field" <<<"$delegated_dashboard" || fail "Foundation has not delegated dashboardConfig.$field"
+done
+# Existing Application identity and rendered objects (an existing registry namespace must also be tracked).
+python3 "$STAGE_APPS" preflight 030 --repo-url "$GIT_REPO_URL"
+registry_ns=$(read_optional namespace "$REG_NS")
+if [[ -n "$registry_ns" ]]; then
+  jq -e '(.metadata.annotations["argocd.argoproj.io/tracking-id"] // "" | startswith("030-private-model-serving:"))
+    and .metadata.deletionTimestamp == null' <<<"$registry_ns" >/dev/null || fail "Registry namespace is not owned by Stage 030"
+fi
+# Existing deployments keep their native registry database; a partial leftover forbids a clean recreation.
+registry_crd=$(read_optional customresourcedefinition modelregistries.modelregistry.opendatahub.io)
+registry=""
+[[ -n "$registry_crd" ]] && registry=$(read_optional modelregistries.modelregistry.opendatahub.io demo-registry -n "$REG_NS")
+claim=$(read_optional pvc demo-registry-postgres-storage -n "$REG_NS")
+credential=$(read_optional secret demo-registry-postgres-credentials -n "$REG_NS" | jq -c '{metadata}' 2>/dev/null || true)
+if [[ -n "$registry" ]]; then
+  expected_spec=$(ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV[0])["spec"])' \
+    "$ROOT_DIR/gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/registry/modelregistry-demo.yaml")
+  jq -e --argjson spec "$expected_spec" '.spec == $spec' <<<"$registry" >/dev/null ||
+    fail "Existing registry native spec differs from reviewed source"
+  uid=$(jq -r '.metadata.uid' <<<"$registry")
+  controlled='any(.metadata.ownerReferences[]?; .uid == $uid and .controller == true)'
+  [[ -n "$claim" ]] && jq -e --arg uid "$uid" ".metadata.deletionTimestamp == null and .status.phase == \"Bound\" and $controlled" \
+    <<<"$claim" >/dev/null || fail "Existing registry database missing or foreign"
+  [[ -n "$credential" ]] && jq -e --arg uid "$uid" "$controlled" <<<"$credential" >/dev/null ||
+    fail "Existing registry credential missing or foreign"
+elif [[ -n "$claim" || -n "$credential" ]]; then
+  fail "Partial retained registry database forbids clean recreation"
+fi
+# Platform monitoring configuration belongs to 010-observability-operators.
+for config in openshift-monitoring/cluster-monitoring-config openshift-user-workload-monitoring/user-workload-monitoring-config; do
+  cm=$(read_optional configmap "${config#*/}" -n "${config%%/*}")
+  [[ -z "$cm" ]] || jq -e '.metadata.annotations["argocd.argoproj.io/tracking-id"] // ""
+    | startswith("010-observability-operators:")' <<<"$cm" >/dev/null ||
+    fail "Platform monitoring configuration must be owned by 010-observability-operators"
+done
+oc --request-timeout=10s get storageclass gp3-csi -o jsonpath='{.provisioner}' | grep -qx ebs.csi.aws.com ||
+  fail "Reviewed native monitoring storage class unavailable"
+oc --request-timeout=10s get namespace redhat-ods-applications openshift-gitops >/dev/null
+echo "PASS Read-only foundation ownership/delegation and native storage prerequisites"
+"$SCRIPT_DIR/preflight-agent-catalog.sh"
 if [[ -n "$(oc --request-timeout=10s get application 030-private-model-serving -n openshift-gitops --ignore-not-found -o jsonpath='{.metadata.uid}')" ]]; then
   # An existing discovery update must not start deliberately parked GPU capacity.
   python3 "$ROOT_DIR/scripts/platform/validate-serving-update.py" 030

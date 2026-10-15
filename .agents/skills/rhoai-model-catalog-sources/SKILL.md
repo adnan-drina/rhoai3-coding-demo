@@ -38,7 +38,7 @@ OpenShift AI 3.5 sections. Detailed record:
 | Catalog and registry are enabled by a Sync-hook Job: `modelregistry` Managed with `registriesNamespace: rhoai-model-registries`; `disableModelCatalog: false`, `agentsCatalog: true` on delegated Stage 010 fields | `gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/enable-job.yaml` | [Manage sources in the dashboard][dashboard] |
 | Stage 010 ships the catalog hidden (`disableModelCatalog: true`) so the base platform validates alone | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml` | [Manage sources in the dashboard][dashboard] |
 | Agent Catalog (Developer Preview) source `governed-coding-agents` with two metadata-only cards pointing at Stage 060; schema pinned to an upstream model-registry commit because 3.5 documents custom sources only for the Model Catalog | `gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/agent-catalog-sources.yaml` | [Configure sources in OpenShift][cm] (Model Catalog only) |
-| `preflight-agent-catalog.py` adopts only an empty `agent-catalog-sources` ConfigMap | `stages/030-private-model-serving/preflight-agent-catalog.py` | not documented |
+| `preflight-agent-catalog.sh` adopts only an empty `agent-catalog-sources` ConfigMap | `stages/030-private-model-serving/preflight-agent-catalog.sh` | not documented |
 | Safety-insights tab needs EvalHub `get evaluations` in `rhoai-model-registries` for both groups | `gitops/stages/050-model-evaluation/050-evalhub/tenant/catalog-insights-role.yaml` | see `rhoai-evaluation` |
 
 ## Procedure

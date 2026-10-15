@@ -1,46 +1,71 @@
 #!/usr/bin/env bash
-# Native serving/discovery infrastructure; no model deployment or metadata seed.
+# Read-only Stage 030 checks: the Application is reconciled at its pinned revision, the native DSC and KServe
+# component are ready with current owned serving workloads, platform and user-workload monitoring are persistent,
+# and model discovery works (validate-model-discovery.sh). No models are deployed; persona and browser UI
+# acceptance are separate.
+# Usage: stages/030-private-model-serving/validate.sh
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$ROOT_DIR/scripts/shared/lib.sh"
-load_env
-check_oc_logged_in
-python3 - <<'PY'
-import json,subprocess
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$REPO_ROOT/scripts/shared/validate-lib.sh"
 
-def get(kind,name,ns=None):
- args=['oc','--request-timeout=10s','get',kind,name,'-o','json']
- if ns:args+=['-n',ns]
- p=subprocess.run(args,capture_output=True,text=True,timeout=15)
- assert p.returncode==0,'Native prerequisite read failed'
- return json.loads(p.stdout)
-app=get('application','030-private-model-serving','openshift-gitops');s=app['status'];revision=app['spec']['source']['targetRevision']
-assert len(revision)==40 and s['sync']['revision']==revision and s['sync']['status']=='Synced' and s['health']['status']=='Healthy','Stage 030 exact revision is not Synced/Healthy'
-operation=s.get('operationState',{});result=operation.get('syncResult',{})
-assert operation.get('phase')=='Succeeded' and result.get('revision')==revision and result.get('source',{}).get('path')==app['spec']['source']['path'],'Stage 030 operation source/path is stale'
-dsc=get('datasciencecluster','default-dsc');g=dsc['metadata']['generation'];status=dsc['status'];conditions={c['type']:c for c in status.get('conditions',[])}
-assert status.get('observedGeneration')==g,'DSC generation is stale'
-for t in ['Ready','KserveReady']:
- assert conditions.get(t,{}).get('status')=='True','Native DSC condition not ready: '+t
-assert dsc['spec']['components']['kserve']['managementState']=='Managed','KServe is not Managed'
-assert dsc['spec']['components']['modelregistry']['managementState']=='Managed','Model Registry is not Managed'
-component=get('kserves.components.platform.opendatahub.io','default-kserve');cs=component['status'];cc={c['type']:c for c in cs.get('conditions',[])}
-assert cs.get('observedGeneration')==component['metadata']['generation'],'Native KServe generation is stale'
-for t in ['Ready','KServeReady','ModelControllerReady']:assert cc.get(t,{}).get('status')=='True','Native KServe condition not ready: '+t
-p=subprocess.run(['oc','--request-timeout=10s','get','deployments','-n','redhat-ods-applications','-o','json'],capture_output=True,text=True,timeout=15);assert p.returncode==0,'Native serving workload read failed'
-owned=[d for d in json.loads(p.stdout)['items'] if any(o.get('uid')==component['metadata']['uid'] and o.get('controller') for o in d['metadata'].get('ownerReferences',[]))]
-assert owned,'Native KServe-owned deployments missing'
-for d in owned:
- st=d['status'];n=d['spec'].get('replicas',1);assert st.get('observedGeneration')==d['metadata']['generation'] and st.get('readyReplicas',0)>=n and st.get('updatedReplicas',0)>=n,'Native serving workload is not current'
-print('PASS Native DSC/KServe conditions and current owned serving workloads')
-for ns,name,size in [('openshift-monitoring','k8s','40Gi'),('openshift-user-workload-monitoring','user-workload','20Gi')]:
- p=get('prometheus.monitoring.coreos.com',name,ns);spec=p['spec'];claim=spec['storage']['volumeClaimTemplate']['spec']
- assert claim['storageClassName']=='gp3-csi' and claim['resources']['requests']['storage']==size,'Native monitoring persistence differs from reviewed intent'
- sts=get('statefulset','prometheus-'+name,ns);n=sts['spec'].get('replicas',1);st=sts['status']
- assert st.get('observedGeneration')==sts['metadata']['generation'] and st.get('readyReplicas',0)==n and st.get('updatedReplicas',0)==n and st.get('currentRevision')==st.get('updateRevision'),'Native Prometheus rollout is not current'
- for i in range(n):assert get('pvc','prometheus-'+name+'-db-prometheus-'+name+'-'+str(i),ns)['status']['phase']=='Bound','Monitoring PVC not Bound'
-print('PASS Native persistent platform and user-workload monitoring')
-PY
-"$SCRIPT_DIR/validate-model-discovery.sh"
-echo 'Infrastructure/API acceptance only. No models are deployed; actual persona/browser UI acceptance remains separate.'
+read_json() { oc --request-timeout=10s get "$@" -o json; }
+# Condition $t is True on the object.
+COND='def cond($t): any(.status.conditions[]?; .type == $t and .status == "True");'
+
+reconciled() {
+    read_json application 030-private-model-serving -n openshift-gitops | jq -e '.spec.source as $src | .status as $s
+        | ($src.targetRevision | length) == 40 and $s.sync.revision == $src.targetRevision
+        and $s.sync.status == "Synced" and $s.health.status == "Healthy"
+        and $s.operationState.phase == "Succeeded" and $s.operationState.syncResult.revision == $src.targetRevision
+        and $s.operationState.syncResult.source.path == $src.path' >/dev/null && echo yes || echo no
+}
+dsc_ready() {
+    read_json datasciencecluster default-dsc | jq -e "$COND"' .status.observedGeneration == .metadata.generation
+        and cond("Ready") and cond("KserveReady")
+        and .spec.components.kserve.managementState == "Managed"
+        and .spec.components.modelregistry.managementState == "Managed"' >/dev/null && echo yes || echo no
+}
+# The KServe component is current and Ready, and every Deployment it controls is current and ready.
+kserve_ready() {
+    local component uid
+    component=$(read_json kserves.components.platform.opendatahub.io default-kserve)
+    jq -e "$COND"' .status.observedGeneration == .metadata.generation
+        and cond("Ready") and cond("KServeReady") and cond("ModelControllerReady")' <<<"$component" >/dev/null ||
+        { echo "component not current/ready"; return; }
+    uid=$(jq -r '.metadata.uid' <<<"$component")
+    read_json deployments -n redhat-ods-applications | jq -e --arg uid "$uid" '[.items[]
+        | select(any(.metadata.ownerReferences[]?; .uid == $uid and .controller == true))]
+        | length > 0 and all(.[]; (.spec.replicas // 1) as $n | .status.observedGeneration == .metadata.generation
+            and (.status.readyReplicas // 0) >= $n and (.status.updatedReplicas // 0) >= $n)' >/dev/null && echo yes || echo no
+}
+# Prometheus keeps its reviewed gp3-csi claim size, its StatefulSet is fully rolled out, and every claim is Bound.
+monitoring_persistent() {
+    local ns=$1 name=$2 size=$3 replicas i
+    read_json prometheus.monitoring.coreos.com "$name" -n "$ns" | jq -e --arg size "$size" \
+        '.spec.storage.volumeClaimTemplate.spec | .storageClassName == "gp3-csi" and .resources.requests.storage == $size' \
+        >/dev/null || { echo "storage intent differs"; return; }
+    replicas=$(read_json statefulset "prometheus-$name" -n "$ns" | jq -r '(.spec.replicas // 1) as $n | .status as $s
+        | if $s.observedGeneration == .metadata.generation and ($s.readyReplicas // 0) == $n
+            and ($s.updatedReplicas // 0) == $n and $s.currentRevision == $s.updateRevision then $n else -1 end')
+    [[ "$replicas" -ge 0 ]] || { echo "rollout not current"; return; }
+    for ((i = 0; i < replicas; i++)); do
+        [[ $(oc --request-timeout=10s get pvc "prometheus-$name-db-prometheus-$name-$i" -n "$ns" -o jsonpath='{.status.phase}') == Bound ]] ||
+            { echo "PVC $i not Bound"; return; }
+    done
+    echo yes
+}
+
+check "030-private-model-serving Synced, Healthy and last synced at its pinned revision" reconciled yes
+check "DataScienceCluster current, Ready and KServe Ready; KServe and Model Registry Managed" dsc_ready yes
+check "Native KServe component current and ready with current owned serving workloads" kserve_ready yes
+check "Platform monitoring persistent (gp3-csi 40Gi) and rolled out" \
+    "monitoring_persistent openshift-monitoring k8s 40Gi" yes
+check "User-workload monitoring persistent (gp3-csi 20Gi) and rolled out" \
+    "monitoring_persistent openshift-user-workload-monitoring user-workload 20Gi" yes
+summary_status=0
+validation_summary || summary_status=$?
+discovery_status=0
+"$SCRIPT_DIR/validate-model-discovery.sh" || discovery_status=$?
+echo "Infrastructure/API acceptance only. No models are deployed; persona and browser UI acceptance are separate."
+(( summary_status == 0 && discovery_status == 0 )) || exit 1

@@ -78,7 +78,7 @@ proceed before the CRD exists [12]. Argo CD applies hooks and resources wave by 
 **Deploy script.** `deploy.sh` refuses to run unless the published branch equals the reviewed local commit, Stage 010 is
 reconciled, Stage 010 delegates the fields below, any existing registry objects are already tracked by this Application,
 any existing `demo-registry` spec equals Git and owns its database PVC and Secret, and the monitoring ConfigMaps, where present, are
-owned by `010-observability-operators`. It runs `preflight-agent-catalog.py`, which only adopts an empty
+owned by `010-observability-operators`. It runs `preflight-agent-catalog.sh`, which only adopts an empty
 `agent-catalog-sources` ConfigMap. It then applies the Application with `targetRevision` set to the commit SHA, waits for
 `Synced`/`Healthy`/`Succeeded` at that SHA, and runs `validate.sh`. On a first install it runs the Stage 020 readiness
 check; on an update it runs `validate-serving-update.py` so parked GPU capacity is not started.
