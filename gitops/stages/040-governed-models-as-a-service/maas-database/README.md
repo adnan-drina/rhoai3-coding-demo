@@ -27,7 +27,7 @@ The `models-as-a-service` namespace sits here for the same reason. It is the Maa
 |---|---|---|---|
 | Namespace | `models-as-a-service` | (cluster) | MaaS tenant namespace. Labels `maas-gateway-access=true`, `opendatahub.io/dashboard=true`, `demo.rhoai.io/maas-route-access=true`, `kueue.openshift.io/managed=true`, Pod Security `restricted` audit/warn. Wave 1, `Prune=false,Delete=false` |
 | Namespace | `models-as-a-service-db` | (cluster) | Database namespace, Pod Security `restricted` audit/warn. Wave 1, `Prune=false,Delete=false` |
-| NetworkPolicy | `maas-postgres` | `models-as-a-service-db` | Ingress to PostgreSQL TCP 5432 only from `redhat-ai-gateway-infra` and `redhat-ods-applications` (wave 7) |
+| NetworkPolicy | `maas-postgres` | `models-as-a-service-db` | Ingress to PostgreSQL TCP 5432 only from `redhat-ai-gateway-infra` (wave 7) |
 | Service | `maas-postgres` | `models-as-a-service-db` | ClusterIP on 5432 (wave 8) |
 | StatefulSet | `maas-postgres` | `models-as-a-service-db` | One replica, `registry.redhat.io/rhel9/postgresql-16` pinned by digest, credentials from `envFrom` Secret `maas-postgres-credentials`, `pg_isready` probes, 100m/256Mi requests, 500m/1Gi limits, 5Gi `gp3-csi` RWO volume claim template. Wave 8, `Prune=false,Delete=false` |
 
@@ -80,7 +80,7 @@ oc get secret maas-postgres-credentials -n models-as-a-service-db -o jsonpath='{
 | Secrets outside Git | Secrets are not stored in the manifests [1] | Runtime Secrets only. Git holds no credential values | Aligned |
 | Data retention under GitOps | `Prune=false` and `Delete=false` keep resources [6] | Set on both namespaces and the StatefulSet | Aligned |
 | Availability | Not specified for MaaS | One replica, no backup job | Gap: no backup or high availability for API key state (acceptable for a demo; not production) |
-| Network isolation | Not specified for MaaS | NetworkPolicy also admits `redhat-ods-applications` (the pre-3.5 location of `maas-db-config`) | Gap: the second namespace has no current consumer on this cluster |
+| Network isolation | Not specified for MaaS | NetworkPolicy admits only `redhat-ai-gateway-infra`, where `maas-db-config` lives in 3.5 | Aligned |
 
 ## References
 

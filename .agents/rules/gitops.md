@@ -119,7 +119,7 @@ Every Application MUST use `destination: {server: https://kubernetes.default.svc
 
 - Argo CD uses the destination namespace only as the default for objects that omit one, and as the namespace in a cluster-scoped object's tracking id (`<app>:<group>/<Kind>:<destination>/<name>`). One fixed value keeps tracking ids predictable for scripts and the move tool; it is not where the workload runs.
 - Changing an existing Application's destination re-keys the tracking ids of its cluster-scoped objects: do it with `scripts/platform/move-applications.py`, never by editing the live Application.
-- `validate-stage-flow.sh` enforces both rules for component Applications (`stage_apps.CLUSTER_SCOPED` lists the cluster-scoped kinds that may omit a namespace). Stage 070's legacy Application is not yet covered.
+- `validate-stage-flow.sh` enforces both rules for component Applications (`stage_apps.CLUSTER_SCOPED` lists the cluster-scoped kinds that may omit a namespace). All 39 component Applications, Stage 070's eight included, are covered.
 
 ### No Destructive Finalizers
 **NEVER** add `resources-finalizer.argocd.argoproj.io` to Application metadata.

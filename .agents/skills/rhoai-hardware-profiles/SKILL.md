@@ -76,9 +76,9 @@ The `default-profile` HardwareProfile is created by OpenShift AI and is not in G
 - Selecting a global profile in a project without its LocalQueue fails
   admission ("local_queue provided does not exist", see
   [Kueue troubleshooting][kueue-lq-missing]).
-- `gpu-reserved-demo` allows 8 CPU / 64Gi on an 8 vCPU / 64 GiB L40S
-  instance, so its maximum request cannot schedule (recorded Gap in
-  `gpu-quotas/README.md`). Its display name still says "NVIDIA L40S (48 GB)";
+- Profile maximums stay below one worker's allocatable capacity:
+  `gpu-reserved-demo` allows at most 7 CPU / 56Gi on an 8 vCPU / 64 GiB L40S
+  instance, like the RTX profile. `gpu-reserved-demo`'s display name still says "NVIDIA L40S (48 GB)";
   the L40S pool is parked at zero and used only by the Stage 050 candidate.
 - Profiles appear in the dashboard only while `disableKueue: false`
   (`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml`).

@@ -62,7 +62,7 @@ KServe provides model-serving orchestration. Model Registry records models, vers
 ## Deploy And Validate
 
 ```bash
-./stages/030-private-model-serving/deploy.sh "$GIT_REPO_BRANCH"
+./stages/030-private-model-serving/deploy.sh --revision "$GIT_REPO_BRANCH"
 ./stages/030-private-model-serving/validate.sh
 ```
 

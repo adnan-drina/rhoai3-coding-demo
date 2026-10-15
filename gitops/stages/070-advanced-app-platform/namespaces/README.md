@@ -25,7 +25,7 @@ Every namespace carries `Prune=false,Delete=false`: removing it from Git never d
 
 | Namespace | Used by | Notes |
 |---|---|---|
-| `openshift-devspaces` | `070-devspaces` | Dev Spaces operator and CheCluster |
+| `openshift-devspaces` | `070-devspaces` | CheCluster (the Dev Spaces operator runs in `openshift-operators`) |
 | `wksp-ai-admin`, `wksp-ai-developer`, `wksp-kubeadmin` | `070-devspaces` | Persona workspace namespaces; labels `app.kubernetes.io/part-of: che.eclipse.org`, `app.kubernetes.io/component: workspaces-namespace`, annotation `che.eclipse.org/username` |
 | `app-platform-build` | `070-pipelines` | Build namespace, project enrollment, webhook dispatcher |
 | `trusted-artifact-signer` | `070-pipelines` | Trusted Artifact Signer instance |

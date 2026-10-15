@@ -60,7 +60,7 @@ Serving runtimes configuration ready for custom runtime definitions in later sta
 
 ### Hardware Profiles
 
-CPU Default, GPU Priority, GPU Reserved, and GPU Shared profiles. These are deployed by Stage 020 and visible here once that stage is applied.
+CPU Default, NVIDIA L40S (48 GB) - Demo Team and NVIDIA RTX PRO 6000 Blackwell (96 GB) profiles. These are deployed by Stage 020 and visible here once that stage is applied.
 
 ![Hardware Profiles](images/04-hardware-profiles.png)
 

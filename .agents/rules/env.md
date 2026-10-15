@@ -44,7 +44,7 @@ Before live cluster work, load the repo-local environment, verify the expected A
 - ArgoCD `resourceTrackingMethod` MUST be `annotation` (not `label` or `annotation+label`)
 - The `rhoai-demo` AppProject MUST exist; all Applications use `project: rhoai-demo`
 - The ArgoCD application controller has `cluster-admin` via ClusterRoleBinding (acceptable for demo)
-- Custom health checks are configured for PVC (WaitForFirstConsumer), InferenceService, and TrustyAIService
+- Custom health checks (`gitops/bootstrap/overlays/demo/argocd-instance.yaml`) cover PersistentVolumeClaim (every Pending claim reads Healthy; storage failures show on the consuming workload), OLM Subscription and MLflow
 
 ## Self-Signed Certificates
 

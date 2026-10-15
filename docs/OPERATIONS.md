@@ -416,7 +416,7 @@ Before deploying the workshop, confirm:
 - Stage 020 requires AWS capacity for at least one `g7e.2xlarge` RTX PRO 6000 worker (the default pool, one MachineSet per zone); the L40S (`g6e.2xlarge`) pool is optional. Generate and review the pool MachineSets before publishing them; all start at 0 replicas. The stage never scales CPU pools; the observed four CPU workers are distributed 2/1/1 across three pools. Confirm AMI architecture, region/AZ, instance quota and scoped Machine API credentials separately from API dry-run admission.
 - `oc`, `git`, `bash`, `curl`, `jq` and `kustomize` are available locally (`validate-stage-flow.sh` uses `kustomize`; scripts use `oc kustomize`).
 - `python3` (3.9 or later) and `ruby` (its standard YAML library parses rendered manifests in several scripts) are
-  available. Stage 070 static checks and chart rendering also need PyYAML (`pip install pyyaml`).
+  available. Stage 070 static checks and chart rendering also need PyYAML, jsonschema and Jinja2 (`pip install pyyaml jsonschema jinja2`); `validate-stage-flow.sh` runs that offline suite when `PYTHON` (default `python3`) has them, and warns that it did not run otherwise.
 - No `argocd` CLI is needed to deploy or validate: stage scripts use `scripts/shared/stage_apps.py`. The cleanup
   commands below use it, or the OpenShift GitOps UI.
 - You are using the intended branch and remote for the GitOps source.
@@ -1438,7 +1438,7 @@ The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
 | Seat | Model | Why selected | Serving notes |
 |---|---|---|---|
 | Hermes main / Kanban workers | `qwen3-8-27b` via named provider `qwen38` (`api_mode: chat_completions`) | AD-008 primary; default of `model-profiles.json` and the Stage 130 golden `run-defaults.json` since 2026-10-13. MaaS gateway; declared context 220,000 under the served 262,144 window; output cap 8,192. | NVFP4 on one RTX PRO 6000 (`g7e.2xlarge`); FP8 prepared as a component. Qwen 3.6 retired. |
-| OpenCode coding worker | `qwen38/qwen3-8-27b` | Same default; the only enabled provider | Common MaaS `/v1`, canonical namespace-qualified model ID, same authorized API key |
+| OpenCode coding worker | `qwen38/publishers/internal-models/models/qwen3-8-27b` | Same default; the only enabled provider | Common MaaS `/v1`, canonical namespace-qualified model ID, same authorized API key |
 
 **How to add another Hermes model:** named `providers.<name>` entry + managed `.env` secret + explicit `models:` map (`discover_models: false`). Change `model.default` only if it is the new main.
 
@@ -1512,7 +1512,7 @@ The agentic coding qualification runs as an AI pipeline in project `evaluated-mo
 
 Candidate models are InferenceServices in the project; their evaluation jobs authenticate with Secret `qualification-model-auth` (hook `provision-candidate-model-auth`). Production models go through MaaS with `evalhub-model-auth-maas`.
 
-- **Start a run:** in the dashboard's **Create run** form, select the latest pipeline version (`agentic-coding-model-qualification v11`) and MLflow experiment `agentic-coding-qualification`, and set `model_name` plus any `skip_*` switches. A script must send the same body to `POST /apis/v2beta1/runs`, including `plugins_input.mlflow.experiment_name`. Without it, every step fails its MLflow update (TROUBLESHOOTING).
+- **Start a run:** in the dashboard's **Create run** form, select the latest pipeline version (`agentic-coding-model-qualification v12`) and MLflow experiment `agentic-coding-qualification`, and set `model_name` plus any `skip_*` switches. A script must send the same body to `POST /apis/v2beta1/runs`, including `plugins_input.mlflow.experiment_name`. Without it, every step fails its MLflow update (TROUBLESHOOTING).
 - **Change the pipeline:** edit `stages/050-model-evaluation/qualification/pipeline.py`, compile a new version with kfp 2.16.1 (`python compile.py v<N>`), commit, and re-pin Stage 050. Argo CD does not prune the previous PipelineVersion; delete it with `oc delete pipelineversion agentic-coding-model-qualification-v<N-1> -n evaluated-models` so the run form offers one version. New criteria go into a new `-v2` collection, never an edited one.
 - **Reset the pipeline server:** this discards all run history. Stop any running run, `oc delete workflows.argoproj.io --all -n evaluated-models`, `oc delete dspa dspa -n evaluated-models`, then sync Stage 050; the hook recreates the server with an empty database. Run metadata (Executions, Artifacts) has no delete API, so a reset is the only way to remove it.
 - **Clean up evaluations:** hard-delete EvalHub jobs per tenant (`DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true` with `X-Tenant`); the leaderboard reads only the remaining jobs. Delete MLflow runs per workspace. Delete a whole experiment only if nothing writes to it again: MLflow keeps a deleted experiment's name reserved, so `evaluated-models/AIP-default` keeps its experiment and loses only its runs. Manual evaluations (`submit-evaluation.sh`, `swebench-run.sh`, the CI template) log to `model-evaluations`, pipeline evaluation jobs to `agentic-coding-evaluations`, pipeline runs to `agentic-coding-qualification`.

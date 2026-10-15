@@ -87,7 +87,7 @@ by `max_samples` because the shipped adapter ignores `num_examples`; LiveCodeBen
 16 samples use all 16 sequence slots of the served model.
 
 **SWE-bench agent.** `run-instance.sh` runs inside each SWE-bench instance image. At run time it downloads the `uv`
-installer from `astral.sh`, installs `mini-swe-agent` at the version the Job passes, loads the dataset split from Hugging
+release archive (version 0.12.21, checked against its published SHA-256), installs `mini-swe-agent` at the version the Job passes, loads the dataset split from Hugging
 Face and uploads predictions to the tenant bucket. Instance images come from Docker Hub.
 
 **S3 test data.** EvalHub's init container verifies TLS against system roots only, so the Secret uses the publicly
@@ -123,7 +123,7 @@ oc get configmap -n redhat-ods-applications -l trustyai.opendatahub.io/evalhub-p
 | S3 test data | Documented credential Secret for custom S3 data [1] | Composed by a hook | Aligned |
 | SCC | Grant SCCs to specific ServiceAccounts; `anyuid` allows any UID/GID [3] | Two ServiceAccounts | Deviation (justified: SWE-bench images require root; operator approval) |
 | Kueue for evaluation jobs | Route evaluation jobs through Kueue [1][2] | Tenant uses `lq-cpu-default` (in `050-model-qualification`) | Aligned |
-| Reproducible inputs | Pinned versions | Adapter images pinned; `uv` installer and datasets fetched unpinned at run time | Gap (see findings) |
+| Reproducible inputs | Pinned versions | Adapter images and the `uv` archive (version and SHA-256) pinned; the dataset split is fetched by name at run time | Partial (dataset revision not pinned) |
 | Argo CD | Server-Side Diff by annotation [5] | Annotation present | Aligned |
 
 ## References
