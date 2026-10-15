@@ -1,96 +1,78 @@
 ---
 name: rhoai-workbench-image-import
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or performing the Red Hat OpenShift AI
-  dashboard workflow for importing a custom workbench image: support boundary
-  for custom image contents, Workbench images dashboard menu prerequisites,
-  registry reachability, image tag or digest entry, name and description
-  metadata, optional accelerator identifier association, optional software and
-  package metadata, enabling or disabling imported images, and verifying that
-  the image appears for workbench creation. Do NOT use for building custom
-  images, ImageStream GitOps registration, Notebook CR authoring, custom
-  workbench runtime compatibility, or GPU Operator installation; use
-  rhoai-workbenches-custom-images or rhoai-nvidia-gpu-accelerators instead.
+  Use when an administrator imports an existing custom workbench image through
+  the OpenShift AI dashboard (Settings, Environment setup, Workbench images):
+  registry reachability, tag or digest, name, hardware profile identifier, software
+  and package metadata, enabling or disabling the imported image. Not deployed
+  in this demo. Do NOT use for building images or registering them in Git (use
+  rhoai-workbenches-custom-images), NB_PREFIX routing (use
+  rhoai-workbench-gateway-api-migration) or GPU enablement (use
+  rhoai-nvidia-gpu-accelerators).
 ---
 
 # RHOAI Workbench Image Import
 
-Use this skill for the OpenShift AI dashboard workflow that imports an existing
-custom workbench image so users can select it when creating project
-workbenches.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections.
 
-## Source Grounding
+**Not deployed in this demo.** No image has been imported and Git holds no
+workbench `ImageStream`. The dashboard Workbench images menu keeps its default
+(visible): `disableBYONImageStream` is not set in
+`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml`.
 
-Read `references/source-capture.md` before using product behavior details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Managing resources chapter to this repo's demo governance model.
+## When to use
 
-## Scope
+- A one-off trial of a custom workbench image in the live demo.
+- Deciding between a dashboard import and a Git-managed ImageStream.
 
-This skill covers:
+## Repo decisions
 
-- importing a custom workbench image through the OpenShift AI dashboard
-- understanding Red Hat's support boundary for custom image contents
-- verifying the Workbench images dashboard navigation is enabled
-- entering an image registry URL by tag or digest
-- setting image name and description metadata
-- enabling or disabling previously imported images
-- associating an accelerator identifier when GPU support is enabled
-- adding optional software and package metadata for the workbench creation page
-- validating that the imported image appears in the table and workbench flow
+| Decision | Where in Git | Official section |
+|---|---|---|
+| A lasting image belongs in Git as an ImageStream, not a dashboard import; a dashboard import is live state Argo CD does not track | (none yet; see `rhoai-workbenches-custom-images`) | [Import a custom workbench image][import] |
+| A GPU image recommends one of the Stage 020 profiles (`gpu-rtxpro6000`, `gpu-reserved-demo`) through the form's optional "Hardware profile identifier"; do not use the row's Create profile action, profiles live in Git | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/hardware-profiles/` | [Import a custom workbench image][import] |
 
-Use `rhoai-workbenches-custom-images` for custom image build guidance,
-ImageStream resources, Notebook resources, OAuth proxy patterns, PVCs, custom
-CA behavior, and GitOps registration.
+## Procedure
 
-## Demo Policy
+1. Confirm the image is reachable from the cluster and the image owner
+   supports it (Red Hat supports the import, not the contents;
+   [Import a custom workbench image][import]).
+2. Import it in the dashboard; record the image reference and the date in
+   `docs/OPERATIONS.md`.
+3. Check after the OpenShift safety guard in `AGENTS.md`:
 
-For this repo:
-
-- Prefer GitOps-managed `ImageStream` resources for stable demo desired state,
-  but treat dashboard import as an official product workflow and useful
-  operator runbook.
-- Do not claim Red Hat supports the contents of a custom image. Red Hat
-  supports making custom workbench images selectable in OpenShift AI.
-- Avoid digest pinning as a default repeatability mechanism. Use the image
-  reference documented by Red Hat or the image owner, and use a digest only
-  when Red Hat guidance, validated artifact guidance, or an approved
-  non-operator demo-app exception requires it.
-- Do not import images from registries that are unreachable from the OpenShift
-  cluster.
-- Use accelerator metadata only after GPU support and the accelerator
-  identifier are confirmed.
-- Keep private registry credentials out of docs and GitOps examples.
-
-## Workflow
-
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Confirm the operator has OpenShift AI administrator privileges.
-4. Confirm the custom image exists in a registry accessible to OpenShift AI.
-5. Confirm the dashboard path is visible:
-
-   ```text
-   OpenShift AI dashboard -> Settings -> Environment setup -> Workbench images
+   ```bash
+   oc get imagestream -n redhat-ods-applications -l opendatahub.io/notebook-image=true
    ```
 
-6. Use Import new image or Import image.
-7. Enter the image location, name, and optional description.
-8. Optionally set accelerator identifier, software metadata, and package
-   metadata.
-9. Import the image and validate with `references/validation-checklist.md`.
+4. If the image stays, move it to Git (`rhoai-workbenches-custom-images`) and
+   delete the dashboard import so there is one owner.
 
-## References
+## Pitfalls
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/workbench-image-import-patterns.md`
+- An imported image that ignores `NB_PREFIX` starts but does not load in the
+  browser (`rhoai-workbench-gateway-api-migration`).
+- Keep private registry credentials out of Git and docs (`.env` only).
+
+## Official documentation (OpenShift AI 3.5)
+
+| Topic | Section |
+|---|---|
+| Import (administrator) | [Import a custom workbench image][import] |
+| Same task in the custom image chapter | [Import a custom workbench image (custom images)][import-ci] |
+
+## Related skills
+
+`rhoai-workbenches-custom-images`, `rhoai-workbench-gateway-api-migration`,
+`rhoai-hardware-profiles`, `rhoai-nvidia-gpu-accelerators`,
+`rhoai-dashboard-customization`.
+
+[import]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#importing-a-custom-workbench-image_resource-mgmt
+[import-ci]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#importing-a-custom-workbench-image_custom-images

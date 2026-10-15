@@ -1,116 +1,86 @@
 ---
 name: rhoai-kubeflow-spark-operator
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift AI
-  Kubeflow Spark Operator workflows from the official guide: KSO architecture,
-  activating kubeflowsparkoperator in the DataScienceCluster, verifying the
-  operator pod in redhat-ods-applications, building or importing an
-  OpenShift-compatible Spark 4.0.1+ image, authoring SparkApplication
-  resources, handling Spark driver and executor resources, removing
-  runAsGroup/runAsUser from example YAML, copying Spark Operator RBAC into a
-  custom namespace, and classifying sparkoperator.k8s.io/v1beta2 API stability.
-  Do NOT use for general distributed training with Ray/Kueue/PyTorchJob (use
-  rhoai-distributed-workload-workflows), AI Pipelines/KFP workflows (use
-  rhoai-ai-pipelines and rhoai-kfp-pipeline-authoring), generic project
-  lifecycle (use rhoai-project-workflows), generic image build policy (use
-  project-gitops-authoring and project-manifest-review), or live cluster
-  changes without the OpenShift safety guard.
+  Use when someone proposes Spark data processing on OpenShift AI: the
+  Kubeflow Spark Operator, the default-dsc `sparkoperator` component,
+  SparkApplication resources, or Spark Connect from a workbench. Not deployed
+  in this demo (`sparkoperator: Removed`, enforced by Stage 010 validate.sh).
+  Do NOT use for Ray or training jobs (use
+  rhoai-distributed-workload-workflows), AI pipelines (use
+  rhoai-ai-pipelines), or Feature Store compute engines (use
+  rhoai-feature-store).
 ---
 
 # RHOAI Kubeflow Spark Operator
 
-Use this skill for Red Hat OpenShift AI Kubeflow Spark Operator workflows on
-the active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: Spark on OpenShift AI 3.5. **Not deployed in this demo.**
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Kubeflow Spark Operator guide to this repo's GitOps and demo workflow
-model.
+- A stage proposes SparkApplication or Spark Connect workloads.
+- A change touches `sparkoperator` in `default-dsc`.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `sparkoperator.managementState: Removed`; the field is not delegated, so Stage 010 `validate.sh` requires it `Removed` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml`, `stages/010-openshift-ai-platform-foundation/validate.sh` | [Activate the Kubeflow Spark Operator][activate] |
+| The live `Kueue` CR lists `SparkApplication` among its frameworks; that does not install Spark | `gitops/stages/020-gpu-infrastructure-private-ai/kueue/README.md` | see `rhoai-kueue-workload-management` |
 
-- Kubeflow Spark Operator purpose and architecture
-- activation through the OpenShift AI `DataScienceCluster` custom resource
-- verification of the Spark Operator pod in `redhat-ods-applications`
-- Spark 4.0.1+ image requirements and OpenShift `restricted-v2` SCC
-  compatibility notes from the official example
-- `SparkApplication` CR authoring for Spark driver and executor pods
-- key SparkApplication fields: namespace, type, mode, image,
-  mainApplicationFile, sparkVersion, restartPolicy, driver, executor,
-  volumes, volumeMounts, and serviceAccount
-- custom namespace RBAC handoff for `ServiceAccount`, `Role`, and
-  `RoleBinding`
-- API-tier and support posture review for `sparkoperator.k8s.io/v1beta2`
+## If enabled
 
-Use other skills for adjacent work:
+1. Delegate `/spec/components/sparkoperator` in the Stage 010 Application
+   (`ignoreDifferences` plus `RespectIgnoreDifferences`; Stage 010
+   `validate.sh` then stops requiring `Removed`), and set it `Managed` from a Sync hook in the owning stage (pattern:
+   `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/enable-job.yaml`).
+   See `rhoai-distributed-workloads` for the delegation rules.
+2. Put SparkApplications, the namespace RBAC and any Spark Connect server in
+   that stage's GitOps folder; verify fields with `oc explain` against the
+   installed CRD before committing.
+3. Give the namespace a LocalQueue if Spark jobs should be admitted by Kueue.
+4. Read-only check after the OpenShift safety guard in `AGENTS.md`:
 
-- `rhoai-api-tiers` for API tier classification and upgrade-risk review
-- `rhoai-distributed-workloads` and `rhoai-distributed-workload-workflows` for
-  Ray, Kueue, Training Operator, PyTorchJob, and general distributed workload
-  guidance
-- `rhoai-ai-pipelines` and `rhoai-kfp-pipeline-authoring` for AI Pipelines and
-  KFP workflows
-- `rhoai-project-workflows` for project and namespace ownership
-- `rhoai-storage-classes` for PVC storage class and access-mode review
-- `project-gitops-authoring` and `project-manifest-review` for GitOps
-  structure, image provenance, and Kubernetes manifest review
+   ```bash
+   oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.sparkoperator}{"\n"}'
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- Field name: the 3.5 activate chapter uses `kubeflowsparkoperator`, while
+  its workbench chapter and this repo's `datasciencecluster.opendatahub.io/v2`
+  DSC use `sparkoperator`. Unresolved: verify with
+  `oc explain datasciencecluster.spec.components` before use in GitOps.
+- Editing `default-dsc` by hand is reverted by Argo CD while the field is
+  not delegated.
+- Spark images are a runtime dependency of the workload; record their
+  provenance as for any non-operator image.
+- Check the API tier of `sparkoperator.k8s.io` with `rhoai-api-tiers` before
+  presenting it as stable.
 
-- Treat Kubeflow Spark Operator as a specialized distributed data processing
-  capability, not as the default distributed training path.
-- Confirm `rhoai-api-tiers` before treating `sparkoperator.k8s.io/v1beta2` as a
-  stable demo contract. In the active RHOAI API tier table, this API is Alpha.
-- Keep KSO activation in the platform GitOps layer as a
-  `DataScienceCluster.spec.components.kubeflowsparkoperator.managementState`
-  change after schema verification.
-- Do not author unsupported `SparkApplication` fields from memory. Verify the
-  active CRD or official docs before adding fields.
-- Use a Spark image that includes the Spark runtime version declared in
-  `spec.sparkVersion`.
-- If following the official Apache Spark image example, document it as an
-  official-doc-sourced non-Red Hat image exception and review provenance before
-  using it in demo GitOps.
-- Remove `runAsGroup` and `runAsUser` from imported Spark example YAMLs as the
-  official guide warns that they can cause jobs to crash in OpenShift AI.
-- Use the automatically created `spark-operator-spark` service account only in
-  namespaces where the required RBAC exists.
-- For custom namespaces, copy and review the default `ServiceAccount`, `Role`,
-  and `RoleBinding` resources rather than assuming cross-namespace access.
+## Official documentation (OpenShift AI 3.5)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| Overview | [The Kubeflow Spark Operator][overview], [Architecture][arch] |
+| Enable | [Activate the operator][activate] |
+| Use | [Use the operator][use], [Custom namespace][namespace] |
+| Workbenches | [Spark workloads from workbenches][connect], [Spark Connect troubleshooting][connect-ts] |
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - KSO activation in `DataScienceCluster`
-   - operator pod verification
-   - Spark image build/import review
-   - `SparkApplication` manifest authoring
-   - custom namespace RBAC setup
-   - API tier and upgrade-risk review
-4. Use `examples/kubeflow-spark-operator-patterns.md` for focused review
-   patterns.
-5. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-6. Validate with `references/validation-checklist.md`.
+## Related skills
 
-## References
+`rhoai-distributed-workloads`, `rhoai-dsci-dsc-configuration`,
+`rhoai-api-tiers`, `rhoai-kueue-workload-management`, `rhoai-feature-store`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/kubeflow-spark-operator-patterns.md`
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index#overview-of-kubeflow-operator_data-processing
+[arch]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index#kubeflow_spark_operator_kso_architecture
+[activate]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index#activate-the-ks-operator_data-processing
+[use]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index#using-the-ks-operator_data-processing
+[namespace]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index#creating-kubeflow-spark-namespace_data-processing
+[connect]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index#running-spark-workloads-from-rhoai-workbenches_data-processing
+[connect-ts]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index#troubleshooting-spark-connect-workbench-connectivity_running-spark-workloads-from-rhoai-workbenches

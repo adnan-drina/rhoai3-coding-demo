@@ -1,145 +1,98 @@
 ---
 name: rhoai-model-customization-training
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for official RHOAI model customization: Training Hub/SDG Hub/Docling/ITS Hub
-  workflows, SFT/OSFT, dataset preparation and curation, synthetic data,
-  training/evaluation configuration, checkpoints, hardware and model handoff. Do NOT use
-  for distributed-workload component installation, generic Ray/Trainer execution, AutoML,
-  EvalHub/LM-Eval risk assessment, inference serving or chatbot UI changes; use the
-  matching rhoai skills. Live changes require the OpenShift safety guard.
+  Use when someone proposes customizing a model with the OpenShift AI 3.5
+  model customization workflow: the Red Hat Python index, Docling data
+  processing, SDG Hub synthetic data, MCP tool-calling evaluation data,
+  Training Hub fine-tuning (OSFT, SFT, LoRA), Training Hub with MLflow or
+  Kubeflow Trainer, or inference-time scaling. Not deployed in this demo:
+  the served models are used as published. Do NOT use for TrainJob and
+  PyTorchJob mechanics (use rhoai-distributed-workload-workflows), pipeline
+  servers (use rhoai-ai-pipelines), model evaluation (use rhoai-evaluation),
+  or RAG ingestion (use rhoai-enterprise-rag).
 ---
 
-# RHOAI Model Customization And Training
+# RHOAI Model Customization
 
-Use this skill for Red Hat OpenShift AI model customization workflows on the
-active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: model customization in OpenShift AI 3.5. **Not deployed in this
+demo**: no fine-tuned models, no Docling or SDG Hub jobs, no training
+operators. The models in Stages 030 and 040 are served as published and
+qualified in Stage 050.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Customize Models for Gen AI and Agentic AI Applications guide to this
-repo's demo workflow and governance model.
+- A stage proposes fine-tuning a model for coding or tool calling.
+- Someone asks whether the demo can run the customization notebooks.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| No customization stage; `trainer` and `trainingoperator` are `Removed` in `default-dsc` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Model customization workflow][workflow] |
+| A customized model would be qualified like any candidate: served in `evaluated-models` and run through the qualification pipeline before promotion | `gitops/stages/050-model-evaluation/model-qualification/README.md` | see `rhoai-evaluation`, `rhoai-ai-pipelines` |
+| Experiment tracking would use the Stage 050 MLflow server | `gitops/stages/050-model-evaluation/mlflow/` | [Track experiments with MLflow and Training Hub][mlflow] |
 
-- end-to-end model customization workflow framing
-- Red Hat Python index use, package support posture, and disconnected mirroring
-- JupyterLab workbench setup with Red Hat AI package index access
-- example notebook repository selection and clone workflow
-- Docling data preparation for unstructured data
-- Docling-based Kubeflow Pipeline data processing examples
-- SDG Hub synthetic data generation examples and KFP patterns
-- Training Hub fine-tuning examples
-- Training Hub algorithm and model support matrix review
-- memory estimation for SFT and OSFT
-- SFT, OSFT, LoRA, and QLoRA tradeoffs
-- in-workbench Training Hub execution with the Training Jupyter PyTorch CUDA
-  image
-- MLflow tracking handoff for Training Hub
-- distributed fine-tuning with Kubeflow Trainer
-- inference-time scaling with ITS Hub against OpenAI-compatible endpoints
-- end-to-end Knowledge Tuning notebook and pipeline examples
-- Red Hat support philosophy for customization Python packages
+## If enabled
 
-Use other skills for adjacent work:
+1. Decide the scope: data preparation (Docling, SDG Hub) runs in a
+   workbench or an AI pipeline; distributed fine-tuning with the Kubeflow
+   Trainer needs `trainer` enabled (`rhoai-distributed-workloads`) and GPU
+   quota (`rhoai-distributed-workload-operations`).
+2. Install packages from the Red Hat Python index into a supported workbench
+   image; record any other package source as a demo exception.
+3. Pipelines that automate data processing follow
+   `rhoai-kfp-pipeline-authoring` and run on a pipeline server
+   (`rhoai-ai-pipelines`).
+4. Keep source data, synthetic data and checkpoints in project S3
+   connections or PVCs; credentials stay out of Git.
+5. Promote the result only through Stage 050 qualification.
 
-- `rhoai-project-workflows` for project, workbench, connection, storage, and
-  project access lifecycle
-- `rhoai-data-science-ide-workflows` for JupyterLab Git, notebook, and package
-  workflows inside a running workbench
-- `rhoai-workbenches-custom-images` and `rhoai-workbench-image-import` for
-  custom workbench image creation or import
-- `rhoai-ai-pipelines` for AI Pipelines product workflows, server lifecycle,
-  imported pipelines, runs, schedules, logs, and caching
-- `rhoai-kfp-pipeline-authoring` for repo-specific KFP Python pipeline code
-- `rhoai-distributed-workload-workflows` for user workflows using Ray,
-  CodeFlare, Training Operator, Kubeflow Trainer, `PyTorchJob`, or `TrainJob`
-- `rhoai-mlflow` for MLflow platform setup, SDK authentication, experiment
-  tracking, and artifact storage
-- `rhoai-model-serving-platform` for KServe, vLLM, serving runtimes, and
-  OpenAI-compatible model endpoints
-- `rhoai-model-registry-workflows` for registering and deploying trained model
-  versions
-- `rhoai-evaluation` for official EvalHub, LM-Eval, and automated risk
-  assessment workflows after customization
-- `rhoai-guardrails-safety` for runtime guardrails, PII checks, prompt
-  injection checks, and guarded generation around customized models
-- `rhoai-model-evaluation` for legacy repo-specific RAGAS, custom judge, and
-  Step 08 evaluation rebuild details
-- `rhoai-api-tiers` when manifests or APIs from training workflows become
-  durable GitOps contracts
+## Pitfalls
 
-## Demo Policy
+- The guide states which parts Red Hat supports (index packages on
+  supported images versus your own flows); read the support philosophy
+  chapter before presenting a flow as supported.
+- GPU memory for fine-tuning comes from the same two GPUs per ClusterQueue
+  the model servers use; estimate memory first.
+- MCP tool exploration calls real tools; read the safety section before
+  pointing it at a writable MCP server.
 
-For this repo:
+## Official documentation (OpenShift AI 3.5)
 
-- Treat the official guide as the source of truth for Red Hat model
-  customization workflow shape: prepare data, generate synthetic data,
-  fine-tune, track experiments, distribute training when needed, improve
-  inference behavior, then serve and consume the customized model.
-- Prefer Red Hat-provided workbench images and the Red Hat Python index for
-  customization notebooks. Do not mix arbitrary package sources into demo
-  notebooks without a documented exception.
-- For disconnected environments, mirror the versioned Red Hat Python index that
-  matches the active product baseline and runtime.
-- Label model customization Python package support accurately: Red Hat supports
-  installation from the Red Hat Python index on supported OpenShift AI base
-  images and supports the underlying OpenShift AI platform; custom flows and
-  standalone package use are not directly supported as product behavior.
-- Use Docling for source-grounded data processing examples, especially
-  document conversion, chunking, extraction, subset selection, and RAG
-  preparation.
-- Use SDG Hub for synthetic data generation only when synthetic examples are
-  clearly labeled and separated from real enterprise records.
-- Choose Training Hub algorithms intentionally:
-  - SFT for supervised full fine-tuning workflows
-  - OSFT for controlled continual-learning style customization
-  - LoRA or QLoRA for parameter-efficient fine-tuning and lower memory use
-- Use the memory estimator before promising that a model will fit on the demo
-  GPU profile.
-- Use MLflow for training evidence when comparing runs or presenting
-  reproducibility.
-- Use Kubeflow Trainer only when distributed training is required; keep
-  notebook-only training for small interactive experiments.
-- Treat inference-time scaling as inference behavior improvement that does not
-  change model weights and increases compute per query.
-- Do not present upstream GitHub examples as active demo implementation until
-  they are adapted, reviewed, and tied to active project GitOps and validation.
+| Topic | Section |
+|---|---|
+| Workflow | [Model customization workflow][workflow], [End-to-end workflow][e2e], [Support philosophy][support] |
+| Environment | [Set up your work environment][setup], [Red Hat Python index][index] |
+| Data | [Prepare your data (Docling)][data], [Automate with AI pipelines][data-kfp], [Generate synthetic data][sdg] |
+| Tool calling | [Generate evaluation data for tool calling][mcp], [MCP safety][mcp-safety] |
+| Training | [Train the model][train], [Support matrix][matrix], [Estimate memory][memory], [Distribute with Kubeflow Trainer][distribute] |
+| Inference | [Inference-time scaling][scaling] |
 
-## Workflow
+## Related skills
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - README concept authoring for model customization
-   - Red Hat Python index or disconnected package mirror review
-   - workbench and example notebook setup
-   - Docling data preparation
-   - SDG Hub synthetic data generation
-   - Training Hub algorithm or model support review
-   - memory estimation and GPU sizing
-   - MLflow tracking handoff
-   - Kubeflow Trainer distributed fine-tuning
-   - inference-time scaling
-   - end-to-end Knowledge Tuning workflow alignment
-4. Use `examples/model-customization-patterns.md` for focused review patterns.
-5. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-6. Validate with `references/validation-checklist.md`.
+`rhoai-distributed-workload-workflows`, `rhoai-distributed-workloads`,
+`rhoai-ai-pipelines`, `rhoai-kfp-pipeline-authoring`, `rhoai-mlflow`,
+`rhoai-evaluation`, `rhoai-enterprise-rag`.
 
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/model-customization-patterns.md`
+[workflow]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#overview-of-the-model-customization-workflow_custom-models
+[e2e]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#end-to-end-model-customization-workflow_custom-models
+[support]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#support-philosophy_custom-models
+[setup]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#set-up-your-working-environment_custom-models
+[index]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#about-the-python-index_custom-models
+[data]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#prepare-your-data-for-ai-consumption_custom-models
+[data-kfp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#automate_data_processing_steps_by_building_ai_pipelines
+[sdg]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#generate-synthetic-data_custom-models
+[mcp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#generate-evaluation-data-for-tool-calling_custom-models
+[mcp-safety]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#safety-considerations-for-mcp-tool-exploration_custom-models
+[train]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#train-the-model-by-using-your-prepared-data_custom-models
+[matrix]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#training-hub-algorithm-and-model-support-matrix_custom-models
+[memory]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#estimate-memory-usage_custom-models
+[mlflow]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#track-experiments-with-mlflow_custom-models
+[distribute]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#distribute-training-jobs_custom-models
+[scaling]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/customize_models_for_gen_ai_and_agentic_ai_applications/index#improve-model-accuracy_custom-models

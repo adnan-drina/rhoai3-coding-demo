@@ -1,120 +1,101 @@
 ---
 name: rhoai-s3-object-storage-data
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for RHOAI workbench S3 data access: Boto3 clients from connection environment
-  variables, bucket/object listing, uploads/downloads/copies/deletion,
-  MinIO/AWS/S3-compatible endpoint formatting, authentication/network errors and self-
-  signed CA trust. Do NOT use for connection-type templates, storage classes, general
-  certificates, pipeline artifact-store configuration, project/workbench lifecycle or
-  model registry/serving storage; use the matching rhoai skills. Live changes require the
-  OpenShift safety guard.
+  Use when workbench code reads or writes the repo's ODF S3 buckets through an
+  OpenShift AI connection: the Models and Workbench connections in demo-sandbox
+  (rhoai-models, rhoai-workbench), the Models, Workbench and Pipelines
+  connections in evaluated-models, a Boto3 client from the injected AWS_*
+  variables, endpoint format, authentication or certificate errors against
+  s3.openshift-storage.svc. Do NOT use for bucket provisioning and OBCs (use
+  odf-object-bucket-claims), connection type templates (use
+  rhoai-connection-types), attaching connections to workbenches (use
+  rhoai-project-workflows) or the pipeline artifact store (use rhoai-ai-pipelines).
 ---
 
 # RHOAI S3 Object Storage Data
 
-Use this skill for OpenShift AI user workflows that access S3-compatible object
-storage from workbenches on the active product baseline in
-`docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed records:
+`gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/README.md`,
+`gitops/stages/050-model-evaluation/model-qualification/README.md` (`storage/`).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official S3-compatible object storage guide to this repo's demo workflow and
-GitOps review model.
+- A notebook in `demo-sandbox` or `evaluated-models` must list, read or write objects.
+- An S3 call from a workbench fails on endpoint, credentials or TLS.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `demo-sandbox` buckets `rhoai-models` and `rhoai-workbench` are ODF OBCs; connections "Models" and "Workbench" are filled at runtime by Sync hook `sandbox-s3-connections`, no credentials in Git | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/` | [Prerequisites][prereq] |
+| `evaluated-models` has buckets `evaluation-models-{models,workbench,pipelines}` and three connections, filled by hook `evaluated-models-s3-connections` | `gitops/stages/050-model-evaluation/model-qualification/storage/` | [Prerequisites][prereq] |
+| Connections carry `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`, `AWS_S3_BUCKET`, `AWS_DEFAULT_REGION`; region falls back to `us-east-1` | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/connection-job.yaml` | [Create an S3 client][client] |
+| Endpoint is the in-cluster HTTPS service on port 443 (`s3.openshift-storage.svc`), signed by the OpenShift service CA; the Stage 050 Pipelines connection uses the external ODF Route `s3` instead so signed links open in a browser | `sandbox-storage/README.md` (How, Alignment), `gitops/stages/050-model-evaluation/model-qualification/storage/connection-job.yaml` | [Object storage endpoints][endpoints] |
+| The Workbench bucket is for object exchange; files that need a POSIX filesystem stay on the workbench PVC | `stages/010-openshift-ai-platform-foundation/README.md` | [Object storage endpoints][endpoints] |
 
-- workbench prerequisites for using S3-compatible object storage
-- project-scoped S3 credentials and connection handling
-- Boto3 client setup from workbench environment variables
-- bucket operations: list, create, and delete empty buckets
-- object operations: list, download, upload, copy, and delete objects
-- endpoint formatting for on-cluster MinIO, Amazon S3, and other
-  S3-compatible stores
-- connection verification and troubleshooting for endpoint reachability,
-  authentication, and endpoint formatting
-- self-signed certificate trust for in-cluster object stores and databases
+## Procedure
 
-Use other skills for adjacent work:
+1. Attach the project's connection when creating the workbench
+   (`rhoai-project-workflows`); the variables above then appear in the pod.
+2. Build the client from those variables ([Create an S3 client][client]); never
+   paste keys into a notebook committed to Git.
+3. Use the bucket and object sections linked below for each operation;
+   deleting objects or buckets in the shared demo buckets is a recorded step.
+4. Configuration checks after the OpenShift safety guard in `AGENTS.md` (they
+   print no values and make no authenticated S3 call):
 
-- `rhoai-connection-types` for administrator connection type templates and
-  dashboard form design
-- `rhoai-project-workflows` for creating projects, workbenches, project
-  connections, and attaching connections to workbench workflows
-- `rhoai-storage-classes` for OpenShift persistent storage classes and access
-  modes
-- `rhoai-certificate-management` for broader `DSCInitialization` trusted CA
-  bundle policy and GitOps review
-- `rhoai-workbenches-custom-images` and `rhoai-workbench-image-import` for
-  workbench image behavior and package availability
-- `rhoai-ai-pipelines` for AI Pipelines artifact storage, pipeline server
-  object storage, workspaces, and pipeline object-store configuration
-- `rhoai-automl` for AutoML training-data CSV requirements and AutoML
-  S3-backed optimization run handoff
-- `rhoai-autorag` for AutoRAG document source rules, JSON evaluation data, and
-  generated notebook storage handoff
-- `rhoai-mlflow` for MLflow artifact storage, project-specific S3 artifact
-  overrides, and MLflowConfig review
-- `rhoai-evaluation` for EvalHub custom data, LM-Eval S3 support, risk
-  assessment artifacts, and disconnected translation-model cache handoff
-- `rhoai-kfp-pipeline-authoring` for repo-specific KFP pipeline code that
-  consumes object storage
-- `rhoai-distributed-workload-workflows` for S3-compatible checkpoint storage
-  in distributed training
-- `rhoai-model-registry` and `rhoai-model-serving-platform` for model artifact
-  storage consumption by registry or serving workflows
+   ```bash
+   ./stages/010-openshift-ai-platform-foundation/validate-sandbox-storage.sh
+   oc get obc -n demo-sandbox rhoai-models rhoai-workbench
+   oc get obc -n evaluated-models
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- TLS: the repo configures no CA trust for the service-CA endpoint; this is a
+  recorded Gap in `sandbox-storage/README.md`. If a client rejects the
+  certificate, follow [self-signed certificates][selfsigned] and
+  `rhoai-certificate-management`; do not switch to plain HTTP.
+- The service host resolves only inside the cluster; from a laptop use the
+  ODF Route (`oc get route s3 -n openshift-storage`).
+- Connection changes reach a workbench only after it restarts.
+- Each connection names one fixed, OBC-owned bucket (`Prune=false,Delete=false`).
+  A new bucket is a new OBC in Git (`odf-object-bucket-claims`), not a
+  notebook `create_bucket` call; never delete an OBC-owned bucket from a notebook.
+- Authenticated S3 operations are not covered by any validate script.
 
-- Treat S3-compatible object storage credentials as project-scoped secrets.
-  Never share credentials across projects in examples or demo manifests.
-- Do not commit access keys, secret keys, session tokens, endpoint secrets, or
-  bucket-specific credentials.
-- Prefer IAM or bucket policies that grant only the minimum permissions needed
-  for the specific project bucket.
-- Use environment variables injected by OpenShift AI connections when showing
-  Boto3 client setup from a workbench.
-- Keep Boto3 package installation as an explicit notebook/workbench step unless
-  the selected workbench image already includes it.
-- Verify endpoint formatting before blaming application code.
-- Use HTTPS endpoints where the storage provider supports it.
-- For on-cluster object stores or databases with self-signed certificates,
-  route CA trust decisions through `rhoai-certificate-management`.
-- Treat destructive operations, especially object and bucket deletion, as
-  explicit demo steps with verification before and after.
+## Official documentation (OpenShift AI 3.5)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| Setup | [Prerequisites][prereq], [Create an S3 client][client] |
+| Buckets | [List][lsb], [Create][mkb], [Delete][rmb] |
+| Objects | [List][lso], [Download][get], [Upload][put], [Copy][cp], [Delete][rmo] |
+| Endpoints and TLS | [Object storage endpoints][endpoints], [Verification and troubleshooting][verify], [Self-signed certificates][selfsigned] |
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - connection and credential review
-   - Boto3 client setup
-   - bucket listing or creation
-   - object list/download/upload/copy/delete
-   - bucket deletion
-   - endpoint formatting
-   - self-signed CA trust
-   - troubleshooting
-4. Use `examples/s3-object-storage-patterns.md` for focused review patterns.
-5. Validate with `references/validation-checklist.md`.
+## Related skills
 
-## References
+`odf-object-bucket-claims`, `rhoai-connection-types`, `rhoai-project-workflows`,
+`rhoai-data-science-ide-workflows`, `rhoai-certificate-management`,
+`rhoai-ai-pipelines`, `rhoai-mlflow`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/s3-object-storage-patterns.md`
+[prereq]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#s3-prerequisites_s3
+[client]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#creating-an-s3-client_s3
+[lsb]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#listing-available-amazon-buckets_s3
+[mkb]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#creating-an-s3-bucket_s3
+[rmb]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#deleting-a-s3-bucket_s3
+[lso]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#listing-files-in-available-amazon-s3-buckets-using-notebook-cells_s3
+[get]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#downloading-files-from-available-amazon-s3-buckets-using-notebook-cells_s3
+[put]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#uploading-files-to-available-amazon-s3-buckets-using-notebook-cells_s3
+[cp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#copying-files-to-between-buckets_s3
+[rmo]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#deleting-files-on-your-object-store_s3
+[endpoints]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#overview-of-object-storage-endpoints_s3
+[verify]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#verification_and_troubleshooting
+[selfsigned]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_data_in_an_s3-compatible_object_store/index#accessing-s3-compatible-object-storage-with-self-signed-certificates_s3

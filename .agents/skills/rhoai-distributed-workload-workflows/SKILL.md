@@ -1,137 +1,100 @@
 ---
 name: rhoai-distributed-workload-workflows
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for data scientist distributed-workload workflows: workbench/training images,
-  notebook authentication, Ray/CodeFlare, AI Pipeline or disconnected execution,
-  PyTorchJob/Training SDK, Trainer v2 TrainJob/runtimes, OSFT/SFT, PVC/S3 checkpoints,
-  metrics and user-facing failures. Do NOT use for component installation (rhoai-
-  distributed-workloads), Kueue enforcement, administrator queues/RDMA, GPU enablement or
-  SparkApplication resources; use the matching rhoai skills. Live changes require the
-  OpenShift safety guard.
+  Use when a user workflow would run distributed jobs from OpenShift AI: Ray
+  clusters through the CodeFlare SDK, Training Operator PyTorchJobs, Kubeflow
+  Trainer v2 TrainJobs and runtimes, fine-tuning, checkpointing to PVC or S3,
+  workload metrics, or user-facing Ray/Kueue errors. Not deployed in this demo.
+  Do NOT use for enabling the components (use rhoai-distributed-workloads),
+  quota, RDMA or administrator troubleshooting (use
+  rhoai-distributed-workload-operations), Kueue integration (use
+  rhoai-kueue-workload-management), the model customization notebooks (use
+  rhoai-model-customization-training), or Spark (use
+  rhoai-kubeflow-spark-operator).
 ---
 
 # RHOAI Distributed Workload Workflows
 
-Use this skill for OpenShift AI user workflows that run distributed data
-processing, distributed training, and model fine-tuning jobs on the active
-product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: data scientist workflows for distributed workloads in OpenShift AI
+3.5. **Not deployed in this demo**: `ray`, `trainingoperator` and `trainer`
+are `Removed` in `default-dsc`, so no RayCluster, PyTorchJob or TrainJob can
+run here.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Working with distributed workloads guide to this repo's demo workflow
-and GitOps review model.
+- A future stage proposes training or fine-tuning inside the platform.
+- Someone asks whether the demo can run a Ray or TrainJob example.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Distributed training operators not installed (`ray`, `trainingoperator`, `trainer` `Removed`) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Overview of distributed workloads][overview] |
+| Workbenches exist (Stage 010 `workbenches` Managed) and `demo-sandbox` is a Kueue-managed project with GPU LocalQueues | `gitops/stages/010-openshift-ai-platform-foundation/access/namespace-demo-sandbox.yaml`, `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/queues/` | [Create a workbench for distributed training][workbench] |
+| Experiment tracking uses the Stage 050 MLflow server | `gitops/stages/050-model-evaluation/mlflow/` | see `rhoai-mlflow` |
 
-- distributed workload concepts and user-facing benefits
-- CodeFlare SDK, KubeRay, Kueue, Kubeflow Training Operator, Training Operator
-  SDK, and Kubeflow Trainer v2 workflow boundaries
-- preparing a workbench for distributed training
-- OpenShift server/token authentication from notebooks and CLI sessions
-- base training images and custom training image handling
-- Ray-based workloads from Jupyter notebooks, AI pipelines, and disconnected
-  environments
-- Training Operator `PyTorchJob` training scripts and resource patterns
-- Training Operator SDK job configuration, execution, and job API methods
-- Kubeflow Trainer v2 `TrainJob`, training runtimes, suspend/resume/delete
-  workflows, SDK usage, and fine-tuning workflows
-- PVC and S3-compatible checkpointing for Kubeflow Trainer v2
-- distributed workload project metrics, status, and Kueue alerts
-- user troubleshooting for Ray, Kueue webhook, LocalQueue, credentials, and
-  slow image-pull failures
+## If enabled
 
-Use other skills for adjacent work:
+1. Enable the operators and add quota first (`rhoai-distributed-workloads`,
+   `rhoai-distributed-workload-operations`).
+2. Pick one path (Ray, Training Operator `PyTorchJob`, or Trainer v2
+   `TrainJob` with a `ClusterTrainingRuntime`) and confirm its support status
+   for 3.5 (`rhoai-release-and-support-posture`) before demo use.
+3. Keep jobs, runtimes and PVCs in GitOps under the new stage; tokens and S3
+   keys stay in `.env` or cluster Secrets, never in notebooks.
+4. Label every job with its project LocalQueue (`kueue.x-k8s.io/queue-name`).
+5. After the OpenShift safety guard in `AGENTS.md`, read-only:
 
-- `rhoai-distributed-workloads` for installing distributed workload components
-  and setting `DataScienceCluster` component states
-- `rhoai-kueue-workload-management` for Kueue integration, namespace queue
-  enforcement, default queue behavior, dashboard Kueue flags, and hardware
-  profile restrictions
-- `rhoai-distributed-workload-operations` for administrator quota resources,
-  `ResourceFlavor`, `ClusterQueue`, `LocalQueue`, RDMA setup boundaries, and
-  administrator troubleshooting
-- `rhoai-workbench-image-import` and `rhoai-workbenches-custom-images` for
-  custom workbench image handling
-- `rhoai-nvidia-gpu-accelerators` for accelerator enablement and this demo's
-  NVIDIA-first GPU posture
-- `rhoai-storage-classes` and `rhoai-connection-types` for storage and
-  S3-compatible object storage connection context
-- `rhoai-s3-object-storage-data` for workbench Boto3 object storage access,
-  endpoint formatting, and S3-compatible object operations
-- `rhoai-kfp-pipeline-authoring` for AI pipeline implementation details
-- `rhoai-kubeflow-spark-operator` for Spark data processing applications and
-  `SparkApplication` resources
-- `rhoai-model-customization-training` for Training Hub algorithm selection,
-  MLflow tracking handoff, and Kubeflow Trainer fine-tuning context
-- `rhoai-model-evaluation` for evaluation workflows and evidence after
-  training or fine-tuning
+   ```bash
+   oc get trainjobs,pytorchjobs,rayclusters -n <project>
+   oc get workloads -n <project>
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- GPU jobs share the two GPUs per ClusterQueue with model servers and
+  workbenches; a training job can hold them for hours.
+- Running Ray from an AI pipeline (Stage 050 has a pipeline server) still
+  needs the Ray component and quota.
+- Checkpoint storage must fit the local and shared storage needs in the
+  checkpointing chapter before long runs.
 
-- Treat this skill as the user workflow layer. Installation, queue policy, and
-  quota/RDMA resources remain in adjacent install/admin skills.
-- Prefer NVIDIA/CUDA training examples for the active demo unless the user
-  explicitly asks for AMD coverage.
-- Use `nvidia.com/gpu` in demo workload examples unless the active accelerator
-  policy changes.
-- Never store OpenShift tokens, API servers, Hugging Face tokens, S3
-  credentials, or registry credentials in notebooks, Git, or committed
-  manifests.
-- Use workbench/project service accounts only where the official workflow and
-  active RBAC allow them; otherwise use explicit user token authentication.
-- Treat AI pipeline workloads as launch surfaces for distributed data science
-  jobs, not as distributed workloads metrics entries; the official guide says
-  AI pipeline workloads are not managed by the distributed workloads feature
-  and are not included in distributed workload metrics.
-- Use checkpointing for long-running training jobs. Choose PVC for simpler
-  shared storage and S3-compatible object storage when portability and
-  asynchronous upload are needed.
-- For very large models, document local model-cache and checkpoint storage
-  needs before promising a training workflow.
-- Use dashboard workload metrics and Kueue status to explain queueing and
-  resource pressure to demo audiences.
+## Official documentation (OpenShift AI 3.5)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| Concepts | [Overview of distributed workloads][overview] |
+| Environment | [Prepare the training environment][prepare], [Custom training images][images] |
+| Ray | [Run Ray-based workloads][ray], [From AI pipelines][ray-pipelines] |
+| Training Operator | [Run Training Operator workloads][kfto] |
+| Trainer v2 | [Run Trainer v2 workloads][trainer], [Training runtimes][runtimes], [Fine-tune with Trainer v2][finetune] |
+| Checkpointing | [Configure model checkpointing][checkpoint] |
+| Monitoring, errors | [Monitor distributed workloads][monitor], [Troubleshooting for users][ts] |
+| RoCE for LLM serving | [Configure RoCE networking][roce] |
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Confirm prerequisites with:
-   - `rhoai-distributed-workloads`
-   - `rhoai-kueue-workload-management`
-   - `rhoai-distributed-workload-operations`
-   - `rhoai-nvidia-gpu-accelerators`
-4. Decide whether the task is:
-   - workbench or training image preparation
-   - Ray/CodeFlare notebook workflow
-   - AI pipelines distributed workload launch
-   - Training Operator `PyTorchJob`
-   - Training Operator SDK
-   - Kubeflow Trainer v2 `TrainJob`
-   - fine-tuning workflow
-   - checkpointing
-   - monitoring
-   - user troubleshooting
-5. Use `examples/distributed-workload-workflow-patterns.md` for focused review
-   patterns.
-6. Validate with `references/validation-checklist.md`.
+## Related skills
 
-## References
+`rhoai-distributed-workloads`, `rhoai-distributed-workload-operations`,
+`rhoai-kueue-workload-management`, `rhoai-model-customization-training`,
+`rhoai-mlflow`, `rhoai-basic-workbenches`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/distributed-workload-workflow-patterns.md`
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#overview-of-distributed-workloads_distributed-workloads
+[prepare]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#preparing-the-distributed-training-environment_distributed-workloads
+[workbench]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#creating-a-workbench-for-distributed-training_distributed-workloads
+[images]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#managing-custom-training-images_distributed-workloads
+[ray]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#running-ray-based-distributed-workloads_distributed-workloads
+[ray-pipelines]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#running-distributed-data-science-workloads-from-ai-pipelines_distributed-workloads
+[kfto]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#running-kfto-based-distributed-training-workloads_distributed-workloads
+[trainer]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#running-kubeflow-trainerv2_distributed-workloads
+[runtimes]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#understanding-and-using-training-runtimes_distributed-workloads
+[finetune]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#fine-tuning-a-model-by-using-kubeflow-trainerv2_distributed-workloads
+[checkpoint]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#configuring-model-checkpointing-for-distributed-training-with-kubeflow-trainerv2_distributed-workloads
+[monitor]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#monitoring-distributed-workloads_distributed-workloads
+[ts]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#troubleshooting-common-problems-with-distributed-workloads-for-users_distributed-workloads
+[roce]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#configuring-roce-networking-for-distributed-llm-deployments_distributed-llm-roce

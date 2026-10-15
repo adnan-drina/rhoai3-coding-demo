@@ -1,101 +1,91 @@
 ---
 name: rhoai-feature-store
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift AI Feature
-  Store capabilities from the official Feature Store guide: machine learning
-  feature concepts, Feast Operator enablement, DataScienceCluster
-  feastoperator state, FeatureStore custom resources, registry/offline/online
-  stores, UI visibility, Kubernetes or OIDC authorization, workbench client
-  configuration, feature definitions, entities, feature views, historical and
-  online retrieval, Ray and Spark compute engines, monitoring, scaling, and the
-  feast CLI. Do NOT use for model serving, AI Pipelines, MLflow, model registry,
-  or live cluster deployment; use the matching rhoai-* or env-* skill instead.
+  Use when someone proposes the OpenShift AI Feature Store (Feast): the
+  default-dsc `feastoperator` component, a FeatureStore instance in a
+  project, offline/online stores and the registry, feature definitions,
+  workbench connections, or Ray/Spark compute engines. Not deployed in this
+  demo (`feastoperator: Removed`). Do NOT use for Spark itself (use
+  rhoai-kubeflow-spark-operator), Ray jobs (use
+  rhoai-distributed-workload-workflows), or S3 data in notebooks (use
+  rhoai-s3-object-storage-data).
 ---
 
 # RHOAI Feature Store
 
-Use this skill to ground Feature Store work in the active Red Hat OpenShift AI
-baseline recorded in `docs/PLATFORM_BASELINE.md`.
+Thin skill: Feature Store in OpenShift AI 3.5. **Not deployed in this demo**;
+the demo has no tabular feature workloads.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. Upstream Feast material
-linked from the Red Hat guide is supplemental only.
+- A stage proposes Feature Store, or a change touches `feastoperator` in
+  `default-dsc`.
 
-## Scope
+## Repo decisions
 
-This skill covers Feature Store as a RHOAI platform capability:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `feastoperator.managementState: Removed`; the field is not delegated to any stage | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml`, `.../rhoai-platform/README.md` | [Enable the Feature Store component][enable] |
 
-- enabling the `feastoperator` component in the `DataScienceCluster`
-- creating `FeatureStore` resources in data science projects
-- configuring registry, offline store, online store, UI, auth, persistence,
-  scaling, monitoring, and disconnected behavior
-- defining data sources, entities, feature views, and supported data types
-- connecting workbenches to Feature Store client configuration
-- using Ray, Spark, and local compute engines for materialization and
-  historical retrieval
-- using `feast` CLI commands in workbenches or controlled automation
+## If enabled
 
-Use other skills for adjacent areas:
+1. Delegate `/spec/components/feastoperator` in the Stage 010 Application
+   and set it `Managed` from a Sync hook in the owning stage (pattern:
+   `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/enable-job.yaml`;
+   rules in `rhoai-distributed-workloads` and the Stage 010 README).
+2. Declare the `FeatureStore` instance, its storage and RBAC in that
+   stage's GitOps folder; check fields with `oc explain` against the
+   installed CRD. Database and object-store credentials come from cluster
+   Secrets, not Git.
+3. Use a database-backed registry and online store before scaling feature
+   servers beyond one replica (see the single-replica limitations section).
+4. Read-only check after the OpenShift safety guard in `AGENTS.md`:
 
-- `rhoai-workbenches-custom-images` for workbench image and Notebook behavior
-- `rhoai-kueue-workload-management` and
-  `rhoai-distributed-workload-operations` for Ray/Kueue operations
-- `rhoai-kfp-pipeline-authoring` for Kubeflow Pipelines
-- `rhoai-mlflow` for MLflow tracking, SDK authentication, experiments, and
-  artifact storage behavior
-- `env-deploy-and-evaluate` for live cluster deployment flow
+   ```bash
+   oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.feastoperator}{"\n"}'
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- Editing `default-dsc` by hand is reverted by Argo CD while the field is
+  not delegated.
+- The Ray and Spark compute engines need those components, which are also
+  `Removed` here.
 
-- Treat Feature Store as an optional RHOAI capability until a demo step
-  introduces it with docs, GitOps, scripts, and validation together.
-- Use GitOps for `DataScienceCluster` and `FeatureStore` resources once active
-  GitOps folders are recreated.
-- Keep database credentials, OIDC client details, object-storage credentials,
-  and registry connection strings out of Git.
-- Prefer project-scoped `FeatureStore` resources unless a future architecture
-  explicitly introduces a shared registry namespace.
-- Do not scale Feature Store replicas above one while using file-backed
-  SQLite, DuckDB, or local registry storage.
-- Use database-backed persistence before enabling static replicas, HPA, or
-  production-style availability.
-- Validate `FeatureStore` schema on the target cluster before adding fields
-  not already captured from the official guide.
+## Official documentation (OpenShift AI 3.5)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| Overview | [Overview of Feature Store][overview], [Workflow][workflow] |
+| Set up | [Set up Feature Store][setup], [Enable the component][enable], [Create an instance][instance], [RBAC][rbac] |
+| Configuration | [Customize the configuration][custom], [Single-replica limitations][single], [OIDC authentication][oidc] |
+| Features | [Define features][define], [Retrieve features for training][retrieve] |
+| Workbenches | [Integration with workbenches][workbenches] |
+| Compute engines | [Compute engines][compute] |
+| CLI | [Command line reference][cli] |
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Confirm OpenShift AI is installed and the target project exists.
-4. Enable Feature Store by setting
-   `DataScienceCluster.spec.components.feastoperator.managementState` to
-   `Managed`.
-5. Create a project-scoped `FeatureStore` custom resource with
-   `apiVersion: feast.dev/v1`.
-6. Add `feature-store-ui: enabled` only when the OpenShift AI dashboard should
-   expose the Feature Store UI or workbench selection flow.
-7. Configure registry, online store, offline store, auth, and persistence from
-   official examples or verified cluster schema.
-8. Add workbench access and RBAC/OIDC behavior before documenting user access.
-9. Use compute engines only after Ray, Spark, or local execution prerequisites
-   are documented.
-10. Validate with `references/validation-checklist.md`.
+## Related skills
 
-## References
+`rhoai-dsci-dsc-configuration`, `rhoai-distributed-workloads`,
+`rhoai-kubeflow-spark-operator`, `rhoai-basic-workbenches`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/feature-store-patterns.md`
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#overview-of-feature-store_featurestore
+[workflow]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#feature-store-workflow_featurestore
+[setup]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#setting-up-feature-store_featurestore
+[enable]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#enabling-the-feature-store-component_featurestore
+[instance]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#creating-a-feature-store-instance-in-a-project_featurestore
+[rbac]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#configuring-and-managing-role-based-access-control_featurestore
+[custom]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#customizing-your-feature-store-configuration_customizing-your-feature-store-configuration
+[single]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#single_replica_limitations_for_the_feature_store_operator
+[oidc]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#enabling-oidc-authentication-for-feature-store
+[define]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#defining-ml-features_featurestore
+[retrieve]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#retrieving-features-for-model-training_featurestore
+[workbenches]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#feature-store-integration-with-workbenches_featurestore
+[compute]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#understanding-compute-engines-in-feature-store_featurestore
+[cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_machine_learning_features/index#feature-store-command-line-interface-reference_featurestore

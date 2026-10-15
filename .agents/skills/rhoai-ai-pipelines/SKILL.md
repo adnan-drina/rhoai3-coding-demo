@@ -1,150 +1,131 @@
 ---
 name: rhoai-ai-pipelines
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or operating Red Hat OpenShift AI AI
-  Pipelines from the Working with AI pipelines guide: pipeline server
-  configuration, S3-compatible artifact storage, default versus external
-  MySQL/MariaDB metadata databases, Kubernetes API pipeline definition storage,
-  KFP 2.0 SDK compilation, Pipeline/PipelineVersion custom resources,
-  import/version lifecycle, caching, experiments, runs, workspaces, logs,
-  Elyra, DSPA troubleshooting, and reusable component pipeline lifecycle. Do
-  NOT use for repo KFP component code edits (use
-  rhoai-kfp-pipeline-authoring), project/workbench lifecycle, IDE usage outside
-  pipelines, S3 notebook operations, certificate trust outside pipeline
-  context, Spark applications, or live cluster changes without the OpenShift
-  safety guard.
+  Use when changing, reviewing or debugging the OpenShift AI pipeline server
+  and pipeline lifecycle of this demo: DSC `aipipelines` (enabled by the Stage
+  050 MLflow hook), DSPA `dspa` in `evaluated-models` created by the
+  `configure-pipeline-server` hook, Kubernetes pipeline storage (`Pipeline`,
+  `PipelineVersion` in Git), the MLflow plugin `insecureSkipVerify` copy,
+  creating runs with an MLflow experiment, version clean-up and pipeline
+  server resets (gitops/stages/050-model-evaluation/model-qualification/). Do
+  NOT use for editing pipeline Python or components (use
+  rhoai-kfp-pipeline-authoring), the MLflow server (use rhoai-mlflow), EvalHub
+  jobs (use rhoai-evaluation), or Tekton (use ocp-pipelines-cicd).
 ---
 
 # RHOAI AI Pipelines
 
-Use this skill for Red Hat OpenShift AI AI Pipelines product workflows on the
-active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/050-model-evaluation/model-qualification/README.md` and
+`docs/OPERATIONS.md#stage-050-model-qualification-pipeline-2026-10-12`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Working with AI pipelines guide to this repo's GitOps and demo
-workflow model.
+- The pipeline server in `evaluated-models` is not Ready, or the
+  `configure-pipeline-server` hook fails a Stage 050 sync.
+- A qualification run shows no logs, empty inputs, unopenable artifacts or
+  MLflow errors.
+- Publishing a new PipelineVersion, removing an old one, or resetting run history.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `aipipelines` is `Removed` in Stage 010 and set `Managed` by the Stage 050 MLflow enable hook (delegated field) | `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/enable-job.yaml` | [Manage AI pipelines][manage] |
+| One pipeline server, DSPA `dspa` in `evaluated-models`, created by a Sync hook (wave 14) with the dashboard form's values: `dspVersion: v2`, S3 from the Pipelines connection, default database, `pipelineStore: kubernetes`, `cacheEnabled: true`, no sample pipeline. The DSPA is not in Git | `gitops/stages/050-model-evaluation/model-qualification/pipeline-server.yaml` | [Configure a pipeline server][server] |
+| Default on-cluster database accepted for the demo (documented for development and test only) | same | [Configure a pipeline server][server] |
+| The Pipelines connection carries the external ODF S3 Route so signed artifact links open in a browser | `gitops/stages/050-model-evaluation/model-qualification/storage/` | [Data storage with pipelines][storage] |
+| Pipeline definitions stored as Kubernetes `Pipeline` (wave 16) and `PipelineVersion` (wave 17) objects compiled into Git | `gitops/stages/050-model-evaluation/model-qualification/pipeline/` | [Define a pipeline by using the Kubernetes API][k8sapi], [Kubernetes-native manifests][k8scompile] |
+| MLflow plugin `insecureSkipVerify: true` in a copied server config (`ds-pipeline-server-config-custom`, `apiServer.customServerConfigMap`); operator decision 2026-10-12 | `gitops/stages/050-model-evaluation/model-qualification/pipeline-server.yaml` | [Enable MLflow integration for pipeline runs][mlflow-enable] |
+| Pipeline runs tracked in MLflow experiment `agentic-coding-qualification`, chosen in the run form | `stages/050-model-evaluation/README.md` | [MLflow experiment tracking for pipeline runs][mlflow] |
+| `pipeline-runner-dspa` is bound to the EvalHub Role; task containers mount the service CA ConfigMap `pipeline-tasks-service-ca` | `gitops/stages/050-model-evaluation/model-qualification/pipeline-server.yaml` | not product guidance |
 
-- pipeline concepts: pipeline server, pipeline, pipeline version, experiment,
-  artifact, task execution, and run
-- pipeline server configuration with S3-compatible object storage and database
-  choices
-- external MySQL/MariaDB and Amazon RDS certificate trust handoff
-- KFP 2.0 SDK pipeline compilation to IR YAML
-- Kubernetes API storage, `Pipeline`, `PipelineVersion`, and GitOps-aligned
-  pipeline definition management
-- KFP SDK authentication to an OpenShift AI pipeline server
-- pipeline import, delete, version upload/delete/view/download lifecycle
-- caching behavior and cache controls at task, run, compile, and server levels
-- experiments, artifacts, task executions, comparisons, archive/restore/delete
-- active, scheduled, archived, duplicated, stopped, restored, and deleted runs
-- pipeline run workspace support and external artifact copy pattern
-- pipeline step logs and download behavior
-- Elyra JupyterLab pipeline editor runtime configuration, run, and export
-- DSPA component error interpretation and troubleshooting handoff
-- product-side lifecycle for modular pipelines assembled from reusable
-  components, including import, versioning, experiments, runs, logs, and
-  artifact review
+## Procedure
 
-Use other skills for adjacent work:
+1. Change server settings in the hook, not on the live DSPA. Connection
+   settings cannot change in place: the hook fails if `dspa` points at another
+   bucket or host; delete the DSPA and sync to reconfigure.
+2. Deploy and validate all Stage 050 Applications at one SHA:
 
-- `rhoai-kfp-pipeline-authoring` for editing repo KFP Python code, components,
-  runner scripts, and demo-specific pipeline implementation standards
-- `rhoai-project-workflows` for project, workbench, connection, and cluster
-  storage lifecycle
-- `rhoai-data-science-ide-workflows` for non-pipeline JupyterLab and
-  code-server IDE workflows
-- `rhoai-s3-object-storage-data` for notebook object-storage data operations
-- `rhoai-automl` for AutoML optimization runs, leaderboard evaluation,
-  AutoGluon pipeline naming, saved notebooks, and AutoGluon serving handoff
-- `rhoai-autorag` for AutoRAG optimization runs, imported AutoRAG pipeline
-  naming, leaderboard review, and generated indexing/inference notebooks
-- `rhoai-model-customization-training` for Docling, SDG Hub, Training Hub, and
-  end-to-end model customization pipeline patterns
-- `rhoai-enterprise-rag` for deciding whether a RAG stage should use Docling
-  and KFP automation for unstructured corpus ingestion
-- `rhoai-evaluation` for EvalHub risk assessment KFP orchestration and
-  official LM-Eval or EvalHub evaluation workflows
-- `rhoai-certificate-management` for DSCI trusted CA bundle changes
-- `rhoai-storage-classes` for OpenShift AI storage class administration
-- `rhoai-model-evaluation` for evaluation-specific pipeline evidence and
-  metrics patterns
-- `rhoai-kubeflow-spark-operator` for Spark data processing applications that
-  run through `SparkApplication` resources rather than AI Pipelines
+   ```bash
+   ./stages/050-model-evaluation/deploy.sh
+   ./stages/050-model-evaluation/validate.sh
+   ./stages/050-model-evaluation/validate-ai-services.sh
+   ```
 
-## Demo Policy
+3. Inspect read-only after the OpenShift safety guard in `AGENTS.md`:
 
-For this repo:
+   ```bash
+   oc get dspa dspa -n evaluated-models -o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}{"\n"}'
+   oc get pipeline,pipelineversion -n evaluated-models
+   ```
 
-- Prefer Kubernetes API pipeline definition storage when the demo needs
-  reviewed GitOps desired state for pipeline definitions and versions.
-- Keep pipeline server configuration in GitOps only after fields are verified
-  against official docs or active CRD schema.
-- Treat the default on-cluster database as development/test only. For
-  production-positioned pipeline workloads, document the external MySQL or
-  MariaDB requirement and CA trust path.
-- Use S3-compatible object storage for pipeline artifacts and keep credentials
-  project-scoped and out of Git.
-- Do not pass OpenShift access tokens as literal command arguments. Use
-  environment variables or secure prompts.
-- Use exact KFP SDK and Python prerequisites from the active official docs
-  before compiling or authenticating pipelines.
-- Use caching intentionally. Disable it only for tasks or runs that require
-  deterministic re-execution, debugging, or frequently changing inputs.
-- Treat archive as retention and delete as destructive. Require explicit
-  confirmation for deleting pipeline servers, pipelines, versions, archived
-  experiments, and archived runs.
-- Use Elyra only with supported JupyterLab workbench images. Do not claim Elyra
-  support for code-server, RStudio, Minimal Python, or CUDA-based workbenches.
-- If an official example uses placeholder or mutable model artifacts, replace
-  them with verified demo artifacts before committing demo content.
-- For Docling data-processing automation, use the official model customization
-  data-preparation chapter plus `rhoai-model-customization-training` for the
-  example source. This skill governs the pipeline server, runs, artifacts,
-  logs, versions, and dashboard lifecycle once the Docling pipeline exists.
-- When a Red Hat Developer article or component catalog suggests reusable KFP
-  components, treat it as implementation guidance. Verify the pipeline server,
-  storage, run, experiment, artifact, and log behavior through this skill, then
-  route component code selection or authoring to `rhoai-kfp-pipeline-authoring`.
-- Prefer small validation runs before scaling pipeline workloads to full data
-  sets or expensive GPU-backed steps.
+4. Start runs from the dashboard **Create run** form with the MLflow
+   experiment set. A script must `POST /apis/v2beta1/runs` with
+   `plugins_input.mlflow.experiment_name` ([REST API and SDK][rest]).
+5. New pipeline version: compile with `rhoai-kfp-pipeline-authoring`, commit,
+   re-pin Stage 050, then delete the previous `PipelineVersion` by hand
+   (Argo CD does not prune it).
+6. Reset (discards run history): stop runs, delete the Argo `workflows` and
+   the DSPA in `evaluated-models`, then sync Stage 050
+   (`docs/OPERATIONS.md#stage-050-model-qualification-pipeline-2026-10-12`).
 
-## Workflow
+## Pitfalls
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - pipeline server setup or deletion
-   - pipeline definition, import, version, or GitOps/Kubernetes API storage
-   - KFP SDK compilation or authentication
-   - caching configuration
-   - experiment, artifact, or run management
-   - scheduling and duplicate-run workflow
-   - workspace or external artifact use
-   - logs, Elyra, or DSPA troubleshooting
-   - reusable component catalog adoption and pipeline run lifecycle
-4. Use `examples/ai-pipelines-patterns.md` for focused review patterns.
-5. For repo KFP code edits, pair with `rhoai-kfp-pipeline-authoring`.
-6. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-7. Validate with `references/validation-checklist.md`.
+- KFP SDK `create_run_from_pipeline_*` sends no MLflow experiment; every step
+  then fails with `runID is required to update nested MLflow run`.
+- Without the `insecureSkipVerify` copy, step drivers fail with
+  `x509: certificate signed by unknown authority` against the in-cluster
+  MLflow service on 3.5.1.
+- The default MariaDB stores the pipeline spec in a `latin1` column: keep
+  pipeline source ASCII-only.
+- Run metadata (executions, artifacts) has no delete API; only a server reset
+  removes it.
+- Details for the four items above:
+  `docs/TROUBLESHOOTING.md#qualification-pipeline-run-shows-no-logs-empty-inputs-or-unopenable-artifacts`.
+- The DSPA is created by a Job, so Argo CD neither prunes nor self-heals it
+  (gap recorded in the component README).
 
-## References
+## Official documentation (OpenShift AI 3.5)
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/ai-pipelines-patterns.md`
+| Topic | Section |
+|---|---|
+| Pipeline servers and definitions | [Manage AI pipelines][manage], [Configure a pipeline server][server], [Options for defining a pipeline][define] |
+| Kubernetes storage | [Kubernetes API][k8sapi], [Kubernetes-native manifests][k8scompile], [Migrate to Kubernetes API storage][migrate] |
+| Versions and caching | [Pipeline versions][versions], [Pipeline caching][caching] |
+| Experiments and runs | [Manage pipeline experiments][experiments], [Manage pipeline runs][runs], [Data storage][storage] |
+| MLflow | [Track pipeline experiments with MLflow][mlflow-ch], [Enable MLflow][mlflow-enable] |
+| Logs, SDK, Elyra | [Pipeline logs][logs], [REST API and SDK][rest], [Pipelines in JupyterLab][jupyter] |
+| Troubleshooting | [DSPA component troubleshooting][dspa-ts] |
+
+## Related skills
+
+`rhoai-kfp-pipeline-authoring`, `rhoai-mlflow`, `rhoai-evaluation`,
+`rhoai-model-evaluation`, `rhoai-dsci-dsc-configuration`,
+`odf-object-bucket-claims`.
+
+[manage]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#managing-ai-pipelines_ai-pipelines
+[server]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#configuring-a-pipeline-server_ai-pipelines
+[define]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#defining-a-pipeline_ai-pipelines
+[k8sapi]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#defining-a-pipeline-by-using-the-kubernetes-api_ai-pipelines
+[k8scompile]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#compiling-kubernetes-native-manifests-with-kfp-sdk_ai-pipelines
+[migrate]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#migrating-pipelines-from-database-to-kubernetes-api_ai-pipelines
+[versions]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#overview-of-pipeline-versions_ai-pipelines
+[caching]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#overview-of-pipelines-caching_ai-pipelines
+[experiments]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#managing-pipeline-experiments_ai-pipelines
+[runs]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#managing-pipeline-runs_ai-pipelines
+[storage]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#storing-data-with-pipelines_ai-pipelines
+[mlflow-ch]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#tracking-pipeline-experiments-with-mlflow_ai-pipelines
+[mlflow]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#mlflow-pipeline-integration-overview_ai-pipelines
+[mlflow-enable]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#enabling-mlflow-for-pipeline-runs_ai-pipelines
+[logs]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#working-with-pipeline-logs_ai-pipelines
+[rest]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#pipelines-sdk-overview_ai-pipelines
+[jupyter]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#working-with-pipelines-in-jupyterlab_ai-pipelines
+[dspa-ts]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index#troubleshooting-dspa-component-errors_ai-pipelines

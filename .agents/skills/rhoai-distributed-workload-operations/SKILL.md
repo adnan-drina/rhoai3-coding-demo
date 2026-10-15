@@ -1,83 +1,88 @@
 ---
 name: rhoai-distributed-workload-operations
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift AI
-  distributed workload operations from the Administer documentation: Kueue
-  ResourceFlavor, ClusterQueue, and LocalQueue quota resources for distributed
-  workloads; NVIDIA GPU quota examples; RDMA setup boundaries; and
-  administrator troubleshooting for RayCluster, RayJob, PyTorchJob, KubeRay,
-  CodeFlare, and Kueue Workload status. Do NOT use for initial distributed
-  workload component installation; use rhoai-distributed-workloads. Do NOT use
-  for RHOAI/Kueue dashboard integration, embedded Kueue migration, or namespace
-  enforcement setup; use rhoai-kueue-workload-management. Do NOT use for GPU
-  enablement; use rhoai-nvidia-gpu-accelerators. Do NOT use for user workflows
-  that run Ray, PyTorchJob, or TrainJob workloads; use
-  rhoai-distributed-workload-workflows. For live cluster diagnostics, pair with
-  env-troubleshoot and the OpenShift safety guard.
+  Use when an administrator plans quota for Ray, PyTorchJob or TrainJob
+  workloads on top of the Stage 020 Kueue queues, evaluates RDMA for
+  multi-node training, or troubleshoots a user's Ray cluster as an
+  administrator. Not deployed in this demo (ray, trainingoperator and trainer
+  are Removed in default-dsc). Do NOT use for the Kueue integration, existing
+  queues and admission errors of model servers and workbenches (use
+  rhoai-kueue-workload-management), enabling the components (use
+  rhoai-distributed-workloads), or user training jobs (use
+  rhoai-distributed-workload-workflows).
 ---
 
 # RHOAI Distributed Workload Operations
 
-Use this skill to manage distributed workload quotas, RDMA readiness, and
-administrator troubleshooting on the active product baseline in
-`docs/PLATFORM_BASELINE.md`.
+Thin skill: administrator view of distributed workloads in OpenShift AI 3.5.
+**Not deployed in this demo**: no Ray, Training Operator or Trainer workloads,
+no RDMA, no quota reserved for them.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Administer chapter to this repo's GitOps and NVIDIA-first demo model.
+- A future stage proposes distributed training and needs quota, RDMA or Ray
+  administration.
+- Reviewing whether the Stage 020 queues can admit training jobs.
 
-## Demo Policy
+## Repo decisions
 
-For this repo:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `ray`, `trainingoperator`, `trainer` are `Removed` in `default-dsc` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Manage distributed workloads][dw] |
+| The only queues are the Stage 020 ones (`cq-gpu-rtxpro6000`, `cq-gpu-reserved-demo`, `cq-cpu-default`, `kueue.x-k8s.io/v1beta2`), sized for model servers and workbenches; NVIDIA only, no cohorts, no preemption | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/queues/` | [Configure quota management][quota], [NVIDIA GPUs without shared cohort][nvidia] |
+| No RDMA or accelerated networking is configured | — | [Configure a cluster for RDMA][rdma] |
 
-- Use NVIDIA GPU resources by default with `nvidia.com/gpu`.
-- Do not create AMD GPU queue examples unless the user explicitly asks for AMD
-  coverage.
-- Do not use shared cohorts for OpenShift AI 3.4 distributed workload queues.
-- Treat RDMA as optional advanced infrastructure. Do not enable it unless the
-  active environment has supported NVIDIA GPUs, compatible accelerated
-  networking, and an explicit implementation need.
-- Keep Kueue quota resources GitOps-managed once the active implementation
-  introduces them.
-- Use `ocp-ai-workloads` for OCP Kueue API behavior, Leader Worker Set
-  Operator, JobSet Operator, and platform queue/quota references before
-  treating them as RHOAI-specific guidance.
-- Keep user-facing Ray, PyTorchJob, TrainJob, fine-tuning, checkpointing,
-  monitoring, and troubleshooting workflows in
-  `rhoai-distributed-workload-workflows`.
+## If enabled
 
-## Workflow
+1. Enable the components first (`rhoai-distributed-workloads`).
+2. Add quota for training in Git under
+   `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/queues/`
+   (a ClusterQueue or more nominal quota) or in the new stage, and a
+   LocalQueue in each training project. The two GPUs per ClusterQueue are
+   used by model servers today; adding training without new GPU nodes
+   starves them.
+3. Treat RDMA as out of scope unless the nodes and network support it; the
+   official prerequisites decide.
+4. Validate with `./stages/020-gpu-infrastructure-private-ai/validate.sh --readiness`
+   and, after the OpenShift safety guard in `AGENTS.md`, read-only:
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Confirm distributed workload components were installed with
-   `rhoai-distributed-workloads`.
-3. Confirm RHOAI/Kueue integration and namespace enforcement with
-   `rhoai-kueue-workload-management`.
-4. Read `references/official-doc-extraction.md`.
-5. For quota work, define or review:
-   - `ResourceFlavor`
-   - `ClusterQueue`
-   - project `LocalQueue`
-   - requested CPU, memory, and GPU quotas
-6. For RDMA work, verify the environment supports the official prerequisites
-   before authoring MachineConfig, NVIDIA Network Operator, or PyTorchJob
-   changes.
-7. For troubleshooting, inspect `Workload.status.conditions.message`,
-   `RayCluster.status.conditions.message`, KubeRay pod health, and pod events.
-8. Validate with `references/validation-checklist.md`.
+   ```bash
+   oc get clusterqueue,localqueue -A
+   oc get workloads -A
+   ```
 
-## References
+## Pitfalls
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/distributed-workload-operations-patterns.md`
+- The live `Kueue` CR lists RayCluster, RayJob, PyTorchJob and TrainJob
+  frameworks; the operators behind them are not installed.
+- The official quota examples name other GPU models (and AMD); keep this
+  repo's flavors and its one-ClusterQueue-per-GPU-type pattern
+  (`gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/queues/cq-gpu-rtxpro6000.yaml`).
+
+## Official documentation (OpenShift AI 3.5)
+
+| Topic | Section |
+|---|---|
+| Administration | [Manage distributed workloads][dw] |
+| Quota | [Configure quota management][quota], [Example Kueue configurations][examples] |
+| RDMA | [Configure a cluster for RDMA][rdma] |
+| Troubleshooting | [Distributed workloads for administrators][ts] |
+
+## Related skills
+
+`rhoai-distributed-workloads`, `rhoai-kueue-workload-management`,
+`rhoai-distributed-workload-workflows`, `rhoai-nvidia-gpu-accelerators`,
+`ocp-ai-workloads`, `rhoai-troubleshoot`.
+
+[dw]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#managing-distributed-workloads_managing-rhoai
+[quota]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#configuring-quota-management-for-distributed-workloads_managing-rhoai
+[examples]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#ref-example-kueue-resource-configurations_managing-rhoai
+[nvidia]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#nvidia_gpus_without_shared_cohort
+[rdma]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#configuring-a-cluster-for-rdma_managing-rhoai
+[ts]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#troubleshooting-common-problems-with-distributed-workloads-for-administrators_managing-rhoai

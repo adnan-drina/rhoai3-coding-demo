@@ -1,126 +1,79 @@
 ---
 name: rhoai-automl
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for official RHOAI AutoML workflows: Technology Preview posture, S3 CSV data,
-  classification/regression/forecasting, optimization runs, imported pipeline naming,
-  leaderboard metrics, feature importance, confusion matrices, saved notebooks and
-  AutoGluon ServingRuntime handoff. Do NOT use for AI Pipelines administration, generic S3
-  operations, project/workbench lifecycle, general IDE usage, registry administration or
-  serving-platform setup; use the matching rhoai skills. Live changes require the
-  OpenShift safety guard.
+  Use when someone proposes OpenShift AI AutoML (automated model selection
+  for tabular or time-series data): the dashboard `automl` flag, optimization
+  runs, the leaderboard, predictions or deploying an AutoML model. Not
+  deployed in this demo (`automl: false` in odh-dashboard-config; excluded
+  from scope). Do NOT use for AutoRAG (use rhoai-autorag), pipeline servers
+  (use rhoai-ai-pipelines), or serving (use rhoai-model-deployment).
 ---
 
 # RHOAI AutoML
 
-Use this skill for Red Hat OpenShift AI AutoML user workflows on the active
-product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: AutoML in OpenShift AI 3.5. **Not deployed in this demo** and
+excluded from its scope (`docs/OPERATIONS.md`, `BACKLOG.md`).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Working with AutoML guide to this repo's demo workflow and governance
-review model.
+- A request to show AutoML, or a change to `automl` in the dashboard config.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Dashboard flag `automl: false` (its documented default, written down to make the intent visible) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml`, `.../rhoai-platform/README.md` | [Automated model selection with AutoML][overview] |
+| AutoML and AutoRAG excluded from the demo's intended scope | `docs/OPERATIONS.md`, `stages/010-openshift-ai-platform-foundation/README.md` | — |
+| The only pipeline server is in the admin-only `evaluated-models` project | `gitops/stages/050-model-evaluation/model-qualification/pipeline-server.yaml` | see `rhoai-ai-pipelines` |
 
-- AutoML Technology Preview support posture
-- AutoML concept model and workflow
-- supported task types: binary classification, multiclass classification,
-  regression, and time series forecasting
-- CSV training data requirements and size limits
-- S3-compatible object storage and AI Pipelines server prerequisites
-- AutoML optimization run creation and immutable run configuration
-- externally imported AutoML pipeline naming rules
-- leaderboard evaluation, model details, feature importance, and confusion
-  matrix boundaries
-- model registry handoff from the AutoML leaderboard
-- saved notebook prediction workflow from a workbench
-- AutoGluon `ServingRuntime` prerequisite and deployment handoff
-- time series runtime environment variables for non-default column names
-- optimized metrics and configuration parameters by task type
+## If enabled
 
-Use other skills for adjacent work:
+1. Agree the scope change first: the guide has a Technology Preview
+   limitations section ([limitations][tp]); label it that way in demo text.
+2. The flag in `odh-dashboard-config` is owned by Stage 010 and not
+   delegated; either change it there or delegate it to the owning stage
+   (rules in `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`).
+3. Give the target project a pipeline server and an S3 connection
+   (`rhoai-ai-pipelines`), and serve the result through the existing model
+   serving stack (`rhoai-model-deployment`).
+4. Read-only check after the OpenShift safety guard in `AGENTS.md`:
 
-- `rhoai-ai-pipelines` for pipeline server configuration, pipeline run
-  lifecycle, imported pipeline management, caching, logs, and DSPA
-  troubleshooting
-- `rhoai-s3-object-storage-data` for object storage operations from
-  workbenches
-- `rhoai-project-workflows` for projects, workbenches, connections, project
-  access, and cluster storage
-- `rhoai-data-science-ide-workflows` for running saved notebooks and Git or
-  Python package workflows inside a workbench
-- `rhoai-model-registry` for administrator provisioning of model registries
-- `rhoai-model-registry-workflows` for registered model/version metadata,
-  deployment handoff, archive, and restore
-- `rhoai-model-serving-platform` for `ServingRuntime` review and serving
-  platform configuration
-- `rhoai-model-management-monitoring` for day-2 deployed model operations and
-  monitoring
-- `rhoai-api-tiers` for API support posture, including KServe
-  `serving.kserve.io/v1alpha1` resources
+   ```bash
+   oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o jsonpath='{.spec.dashboardConfig.automl}{"\n"}'
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- Editing the live dashboard config is reverted by Argo CD.
+- Read the supported task types and data limits in the guide before
+  promising a data set.
 
-- Label AutoML as Technology Preview in READMEs, runbooks, presentations, and
-  demo scripts. Do not present it as production SLA-backed.
-- Treat AutoML as a rapid model exploration and comparison workflow for
-  tabular CSV data, not as a replacement for governed pipeline engineering.
-- Require a data science project with an AI Pipelines server before any AutoML
-  run is promised.
-- Store training data in S3-compatible object storage and keep object storage
-  credentials in project-scoped connections or Secrets.
-- Keep training CSV files UTF-8 encoded, comma-delimited, and header-bearing.
-- Respect the documented data size limits: 32 MiB for dashboard upload and
-  100 MB when loaded from S3-compatible storage.
-- Do not claim custom algorithm or hyperparameter selection; AutoML chooses
-  algorithms, hyperparameters, train/test split, and optimization metric.
-- Treat an optimization run as immutable after creation. Use AI Pipelines run
-  workflows to stop, archive, or delete the underlying pipeline run.
-- Register selected models to a model registry before deployment when the demo
-  needs a governed handoff.
-- Use saved notebooks for transparent prediction exploration in a workbench.
-- Deploy AutoML models only after the AutoGluon serving runtime is available
-  and its Red Hat registry image and KServe schema are verified.
-- For time series forecasting, set runtime environment variables when the
-  trained data used non-default series ID or timestamp column names.
+## Official documentation (OpenShift AI 3.5)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| Overview | [AutoML][overview], [Workflow][workflow], [Supported task types][tasks], [Technology Preview limitations][tp] |
+| Use | [Create a run][create], [Evaluate results][evaluate], [Run predictions][predict], [Deploy a model][deploy] |
+| Reference | [Evaluation metrics][metrics], [Configuration parameters][params] |
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Confirm Technology Preview posture is acceptable for the requested demo
-   surface.
-4. Decide whether the task is:
-   - AutoML concept or README authoring
-   - prerequisite review for project, AI Pipelines, S3 data, and cluster
-     capacity
-   - optimization run design
-   - external AutoML pipeline import review
-   - leaderboard evaluation and model selection
-   - model registry or saved notebook handoff
-   - AutoGluon serving runtime or deployment review
-   - metric and parameter interpretation
-5. Use `examples/automl-patterns.md` for focused review patterns.
-6. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-7. Validate with `references/validation-checklist.md`.
+## Related skills
 
-## References
+`rhoai-autorag`, `rhoai-ai-pipelines`, `rhoai-model-deployment`,
+`rhoai-dashboard-customization`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/automl-patterns.md`
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_automl/index#automl-overview_automl
+[workflow]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_automl/index#automl-workflow_automl
+[tasks]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_automl/index#supported-task-types_automl
+[tp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_automl/index#technology-preview-limitations_automl
+[create]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_automl/index#creating-automl-optimization-run_automl
+[evaluate]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_automl/index#evaluating-automl-results_automl
+[predict]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_automl/index#running-predictions-automl-model_automl
+[deploy]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_automl/index#deploying-automl-model_automl
+[metrics]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_automl/index#automl-evaluation-metrics_automl
+[params]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_automl/index#automl-configuration-parameters_automl

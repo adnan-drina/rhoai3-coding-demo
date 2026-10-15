@@ -1,109 +1,106 @@
 ---
 name: rhoai-project-workflows
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for official RHOAI project workflows: projects, project-workbench lifecycle,
-  connections and InferenceService/LLMInferenceService annotations, cluster storage,
-  project access and handoff to project-scoped images/hardware/runtimes. Do NOT use for
-  global user access, connection-type administration, notebook S3 access, IDE usage,
-  storage-class administration or project-scoped resource schemas; use the matching rhoai
-  skills. Live changes require the OpenShift safety guard.
+  Use when working with OpenShift AI projects of this demo (demo-sandbox "AI
+  Coding Sandbox", evaluated-models, internal-models and the other
+  dashboard-labelled namespaces): creating or reviewing a project in Git,
+  project workbench create/start/stop/update/delete, attaching connections and
+  the connections API annotations, cluster storage, Kueue scheduling status, and
+  project access (Contributor = edit, Admin = admin RoleBindings). Do NOT use for
+  dashboard group membership (use rhoai-users-groups-access), connection type
+  templates (use rhoai-connection-types), S3 calls from a notebook (use
+  rhoai-s3-object-storage-data), IDE usage (use rhoai-data-science-ide-workflows)
+  or project-scoped images, profiles and runtimes (use rhoai-project-scoped-resources).
 ---
 
 # RHOAI Project Workflows
 
-Use this skill for OpenShift AI user workflows that organize data science work
-inside projects on the active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/010-openshift-ai-platform-foundation/access/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Working on projects guide to this repo's demo workflow and GitOps
-review model.
+- Adding a project, or changing who can use one.
+- A user creates or troubleshoots a project workbench, connection or cluster storage.
+- A model or workbench manifest must reference a connection.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Projects are Namespaces in Git with label `opendatahub.io/dashboard: "true"` and a display name: `demo-sandbox`, `internal-models`, `external-models`, `models-as-a-service`, `evaluated-models`, `ai-curated-prompts`, `mcp-servers`, `ai-agents` | `gitops/stages/010-openshift-ai-platform-foundation/access/namespace-demo-sandbox.yaml`; the other stages' `namespace*.yaml` (Stages 040, 050, 060) | [Use projects][projects] |
+| `demo-sandbox`: `rhoai-developers` get `edit` (Contributor), `rhods-admins` get `admin`; `evaluated-models` is admins only | `gitops/stages/010-openshift-ai-platform-foundation/access/rolebinding-*.yaml`, `gitops/stages/050-model-evaluation/model-qualification/access.yaml` | [Manage access][access], [Default project roles][roles] |
+| No workbench and no custom workbench role in Git; users create workbenches in the dashboard | (not in Git) | [Create a workbench][wb-create] |
+| `demo-sandbox`, `internal-models`, `models-as-a-service` and `evaluated-models` carry `kueue.openshift.io/managed: "true"`; workbenches need a profile whose LocalQueue exists in the project (`lq-cpu-default` in `demo-sandbox` and `evaluated-models`) | `namespace-demo-sandbox.yaml`, `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/queues/` | [Kueue scheduling status][kueue] |
+| Connections are Git-declared Secret skeletons filled by hook Jobs (see `rhoai-s3-object-storage-data`) | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/`, `gitops/stages/050-model-evaluation/model-qualification/storage/` | [Connections API][api] |
+| Models do not use the `opendatahub.io/connections` annotation; the Stage 050 candidate pulls `hf://` directly | `gitops/stages/050-model-evaluation/model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Annotations by workload type][annot] |
+| `evaluated-models` cluster storage: PVC `evaluated-models-storage` (20 Gi `gp3-csi`) created by a hook, not tracked by Argo CD | `gitops/stages/050-model-evaluation/model-qualification/storage/connection-job.yaml` | [Add cluster storage][storage-add] |
 
-- data science project lifecycle: create, update, and delete
-- project workbench lifecycle: create, start, update, and delete
-- workbench image and IDE selection boundaries
-- project connections and connection API workload annotations
-- project cluster storage lifecycle and storage migration workflow
-- project-level access for users and groups
-- handoff to project-scoped resources for project-local workbench images,
-  hardware profiles, and KServe serving runtime templates
+## Procedure
 
-Use other skills for adjacent work:
+1. New project: add a Namespace with the dashboard label in its stage
+   component, RoleBindings like `010-access`, and a LocalQueue per hardware
+   profile it will use (`rhoai-hardware-profiles`). Do not create projects in
+   the dashboard for anything a stage depends on.
+2. Workbench: create, start, stop and delete follow [Use project
+   workbenches][workbenches]; attach the project's S3 connection at creation.
+3. Validate after the OpenShift safety guard in `AGENTS.md`:
 
-- `rhoai-users-groups-access` and `rhoai-access-group-selection` for global
-  OpenShift AI user/admin access
-- `rhoai-connection-types` for administrator-managed connection type templates
-- `rhoai-s3-object-storage-data` for Boto3 and S3-compatible object storage
-  data operations from workbenches
-- `rhoai-data-science-ide-workflows` for JupyterLab, code-server, Git, Python
-  package, extension, and user-facing IDE troubleshooting workflows
-- `rhoai-storage-classes` and `rhoai-cluster-pvc-size` for OpenShift AI
-  storage administration and cluster default PVC size
-- `rhoai-project-scoped-resources` for detailed project-scoped resource
-  manifests and review rules
-- `rhoai-workbenches-custom-images`, `rhoai-workbench-image-import`, and
-  `rhoai-workbench-gateway-api-migration` for custom workbench images
-- `rhoai-model-serving-platform` for KServe and vLLM serving details
-- `rhoai-ai-pipelines` for AI Pipelines server, definition, experiment, run,
-  schedule, log, and Elyra workflows
-- `rhoai-mlflow` for MLflow workspace mapping, SDK authentication, RBAC, and
-  project-specific artifact storage overrides
-- `rhoai-kfp-pipeline-authoring` for repo-specific KFP Python and runner code
+   ```bash
+   ./stages/010-openshift-ai-platform-foundation/validate.sh
+   oc get ns -l opendatahub.io/dashboard=true
+   oc get notebooks.kubeflow.org,pvc -n demo-sandbox
+   oc auth can-i create notebooks.kubeflow.org -n demo-sandbox --as=<developer> --as-group=rhoai-developers
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- Resource names are fixed at creation; only display names and descriptions change.
+- Deleting a project or cluster storage deletes its data; the OBC-backed
+  connections and buckets are `Prune=false,Delete=false` but PVCs are not.
+- Connection changes reach a workbench only after restart ([Connections API][api]).
+- Connections cannot be used across namespaces; a Notebook lists them as
+  `namespace/name`, an InferenceService or LLMInferenceService by plain name
+  ([Annotations by workload type][annot]).
+- Developers have `edit`, so they cannot change RoleBindings; access changes go through Git.
 
-- Treat an OpenShift AI project as the clean boundary for a demo team,
-  persona, or capability stage.
-- Choose stable project and workbench resource names up front. Resource names
-  are immutable after creation; only display names and descriptions can be
-  edited later.
-- Do not hard-code credentials in READMEs, notebooks, scripts, or manifests.
-  Use project connections and Kubernetes secrets with least-privilege scope.
-- Prefer `ReadWriteOnce` cluster storage for individual workbenches. Use
-  `ReadWriteMany` only for explicit collaboration scenarios with documented
-  data integrity, security, and backup expectations.
-- Treat project deletion and cluster-storage deletion as destructive. They
-  remove associated resources and data that cannot be recovered.
-- Keep Technology Preview posture visible when selecting RStudio workbench
-  images or hardware profiles.
-- Do not claim that creating a project alone deploys pipelines, models,
-  workbenches, or storage. Those capabilities require explicit resources.
+## Official documentation (OpenShift AI 3.5)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| Projects | [Use projects][projects], [Create][p-create], [Delete][p-delete] |
+| Workbenches | [Use project workbenches][workbenches], [Create][wb-create], [Env vars][env], [Kueue status][kueue], [Stop (CLI)][wb-stop] |
+| Connections | [Use connections][conn], [Connections API][api], [Annotations][annot] |
+| Storage | [Configure cluster storage][storage], [Add][storage-add] |
+| Access | [Manage access][access], [Default project roles][roles], [Custom workbench roles][custom-roles] |
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - project lifecycle
-   - workbench lifecycle
-   - connection lifecycle or connection API annotations
-   - cluster storage lifecycle or migration
-   - project access management
-   - project-scoped resource handoff
-4. Use `examples/project-workflow-patterns.md` for review and authoring
-   patterns.
-5. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-6. Validate with `references/validation-checklist.md`.
+## Related skills
 
-## References
+`rhoai-users-groups-access`, `rhoai-connection-types`,
+`rhoai-s3-object-storage-data`, `rhoai-data-science-ide-workflows`,
+`rhoai-project-scoped-resources`, `rhoai-hardware-profiles`,
+`rhoai-storage-classes`, `rhoai-cluster-pvc-size`, `rhoai-ai-pipelines`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/project-workflow-patterns.md`
+[projects]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#using-projects_projects
+[p-create]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#creating-a-project_projects
+[p-delete]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#deleting-a-project_projects
+[workbenches]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#using-project-workbenches_projects
+[wb-create]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#creating-a-project-workbench_projects
+[env]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#configure-environment-variables_projects
+[kueue]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#kueue-workbench-scheduling-status_projects
+[wb-stop]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#stopping-a-project-workbench-cli_projects
+[conn]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#using-connections_projects
+[api]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#using-connections-api_projects
+[annot]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#using_connection_annotations_based_on_workload_type
+[storage]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#configuring-cluster-storage_projects
+[storage-add]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#adding-cluster-storage-to-your-project_projects
+[access]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#managing-access-to-projects_projects
+[roles]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#default_project_roles
+[custom-roles]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_on_projects/index#workbench-custom-roles-overview_projects
