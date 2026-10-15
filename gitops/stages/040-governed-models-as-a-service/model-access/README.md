@@ -103,7 +103,7 @@ oc get maassubscription personal-ai-developer -n models-as-a-service -o jsonpath
 | Priority | Highest priority wins for a multi-match owner [1] | Personal 150-170 above service subscriptions | Aligned |
 | Token metering | Subscription token limits apply only to OpenAI Chat Completions [1] | All referenced models use Chat Completions | Aligned |
 | API key lifetime | Default and maximum 90 days, configurable per tenant [1] | Product default | Aligned |
-| Support status | MaaS features are Technology Preview [2] | Demo use | Aligned |
+| Support status | Core MaaS governance (subscriptions, authorization policies, API keys, rate limits) is generally available; external model egress and provider passthrough, the MaaS observability dashboard and Loki showback are Technology Preview (3.4 and 3.5 release notes) [2] | Subscriptions, policies and keys are core MaaS; the external-model subscriptions use Technology Preview egress | Aligned |
 | Readiness validation | Not prescribed | Only Argo CD health; no per-object `Active` phase check | Gap (subscription or auth policy phase not checked by `validate-native.py`) |
 
 ## References

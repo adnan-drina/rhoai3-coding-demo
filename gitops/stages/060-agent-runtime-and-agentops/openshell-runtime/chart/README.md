@@ -13,7 +13,9 @@ source-pins.json is the authoritative record of the chart, image and CLI pins.
 The previously pinned tuple was v0.1.2 (6648bd0c290efbc41ba131ee9831ee45cd431f94).
 Verify the OCI artifact before passing its cached directory/archive to render.sh.
 The source chart stays untouched; post-render.sh applies customer Kustomize
-patches and the two workspace prerequisites. Generated manifests remain private.
+patches and the workspace prerequisites (`workspaces/`: the gateway namespace `openshell` and the three workspace
+namespaces `openshell-admin`, `openshell-developer` and `ai-agents`, each with its ServiceAccount, Role, RoleBinding
+and NetworkPolicy). Generated manifests remain private.
 
 ```
 OPENSHELL_CHART_PATH=/path/to/verified/chart ./render.sh > /private/tmp/openshell.yaml

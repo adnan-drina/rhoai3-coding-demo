@@ -3,7 +3,7 @@
 This Application installs OpenShift Data Foundation (ODF) and creates a standalone Multicloud Object Gateway (MCG,
 NooBaa). The demo gets S3-compatible object storage and the `openshift-storage.noobaa.io` StorageClass for
 ObjectBucketClaims (OBCs). It does not deploy Ceph block or file storage. The sandbox buckets in
-[`010-access`](../access/README.md) and [`010-sandbox-storage`](../sandbox-storage/README.md) consume it, and so do
+[`010-sandbox-storage`](../sandbox-storage/README.md) consume it, and so do
 later stages that need buckets.
 
 | | |
@@ -13,7 +13,7 @@ later stages that need buckets.
 | Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (Application Synced/Healthy; `odf-operator` CSV `Succeeded`; `NooBaa/noobaa` phase `Ready`); `check-operator-policy.py --verify` |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation; no `ignoreDifferences` |
 | Depends on | OpenShift GitOps bootstrap; the `gp3-csi` StorageClass (AWS EBS CSI, provided by the cluster) |
-| Used by | `010-sandbox-storage` (OBCs `rhoai-models`, `rhoai-workbench`), Stage 050 (`mlflow/objectbucketclaim.yaml`, `model-qualification/storage/`), Stage 070 GitLab buckets (`base/gitlab/buckets.yaml`) |
+| Used by | `010-sandbox-storage` (OBCs `rhoai-models`, `rhoai-workbench`), Stage 050 (`mlflow/objectbucketclaim.yaml`, `model-qualification/storage/`), Stage 070 GitLab buckets (`gitops/stages/070-advanced-app-platform/gitlab/buckets.yaml`) |
 
 ## Why
 
@@ -59,7 +59,7 @@ Not in Git (operator-owned):
 - **Capacity.** The default backing store is a `pv-pool` on `gp3-csi`. It has finite capacity and no replication
   across zones. That is enough for the demo, but it is not an HA production design (see the Stage 010 README).
 - **Ordering.** Wave 2 puts the StorageCluster after the Subscription. Argo CD retries until the CRD exists.
-  `010-access` and `010-sandbox-storage` OBCs wait for the StorageClass through their own waves and retries.
+  `010-sandbox-storage` OBCs wait for the StorageClass through their own waves and retries.
 - **Credentials.** None in this component. OBC credentials are generated per claim in the consumer namespace.
 
 ## Validation

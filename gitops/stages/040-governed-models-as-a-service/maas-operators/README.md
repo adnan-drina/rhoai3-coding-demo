@@ -83,7 +83,7 @@ oc get subscription leader-worker-set -n openshift-lws-operator -o jsonpath='{.s
 | Connectivity Link version and namespace | MaaS needs Connectivity Link 1.4.x in `openshift-operators` [1] | `rhcl-operator` 1.4.3 in `openshift-operators` | Aligned |
 | Connectivity Link channel | `stable` channel [2] | `stable` | Aligned |
 | Authorino, Limitador, DNS operators | Present after installation; the guide has you verify them [2] | Explicit Subscriptions on `stable` | Aligned |
-| Gateway API provider | OpenShift Gateway controller is the default. No separate Service Mesh is required for Connectivity Link 1.3+; use 3.4 if installed [2][5] | `servicemeshoperator3` on `stable-3.4`; the Gateway uses the OpenShift controller | Aligned on the version. Gap: no consumer of the separate Service Mesh operator is documented |
+| Gateway API provider | OpenShift Gateway controller is the default. No separate Service Mesh is required for Connectivity Link 1.3+; use 3.4 if installed [2][5] | `servicemeshoperator3` on `stable-3.4`; the Gateway uses the OpenShift controller | Aligned. The operator supplies the Istio API CRDs this platform consumes (`ServiceEntry`, `DestinationRule`, `WasmPlugin`; see Service Mesh above) |
 | LWS for llm-d | Needed only for multi-node llm-d deployments [3] | Installed; all served models are single-node | Deviation (justified: kept ready for a multi-node topology; not used by the current models) |
 | LWS installation | Leader Worker Set Operator chapter, OpenShift 4.22 [4] | `openshift-lws-operator`, own-namespace OperatorGroup, `stable-v1.0`, CR `cluster` | Aligned |
 | Upgrade approval | OLM Automatic or Manual are both supported | Automatic, gated by a channel and minimum-version policy | Aligned (repository policy) |

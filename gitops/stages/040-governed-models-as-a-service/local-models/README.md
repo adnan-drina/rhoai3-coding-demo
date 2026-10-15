@@ -160,7 +160,7 @@ oc get maasmodelref qwen3-8-27b -n internal-models
 | Topic | Official guidance (link) | This repository | Status |
 |---|---|---|---|
 | Serving API | llm-d deployments use `LLMInferenceService` [1] | `serving.kserve.io/v1alpha2` `LLMInferenceService` | Aligned |
-| Support status | The topology selector and Gateway discovery are Technology Preview; MaaS and external models are Technology Preview [1][4] | Demo platform, not production | Aligned |
+| Support status | The topology selector and Gateway discovery are Technology Preview; core MaaS governance is generally available, while external models and vLLM deployment on MaaS are Technology Preview [1][4] | Demo platform, not production | Aligned |
 | Runtime image | Platform-supplied vLLM runtime [1] | No image override | Aligned |
 | vLLM arguments | Tool-calling flags through `VLLM_ADDITIONAL_ARGS`; a custom `args` list overrides the platform default [1, chapters 8-9] | Full `command` and `args` list in the manifest | Deviation (justified: every argument is a measured serving choice; the cost is that new platform default arguments in an upgrade are not picked up) |
 | Request routing | Default profile with queue, KV-cache, prefix-cache and no-hit-LRU scorers; inline config allowed [1, chapter 10] | Inline `queue-scorer` + `max-score-picker` | Deviation (justified: single replica, prefix scoring has no effect) |

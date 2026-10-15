@@ -43,7 +43,7 @@ declared by `050-mlflow` (`prompts/`); MLflow watches the `opendatahub.io/global
 | ServiceAccount | `evalhub-mcp-client` | `evalhub` | Wave 29. Identity the MCP server uses to call the EvalHub API. |
 | Secret (`kubernetes.io/service-account-token`) | `evalhub-mcp-client-token` | `evalhub` | Wave 29. Token for `spec.mcp.authSecret`; filled by Kubernetes. |
 | RoleBinding | `evalhub-mcp-client-access` | `evaluated-models` | Wave 29. `evalhub-evaluator` for `evalhub-mcp-client`. |
-| EvalHub | `evalhub` | `evalhub` | Wave 30, `Prune=false,Delete=false`. One replica, `tenancy: multi`, PostgreSQL, 12 providers, 20 collections, MCP server, MLflow URI from a ConfigMap. |
+| EvalHub | `evalhub` | `evalhub` | Wave 30, `Prune=false,Delete=false`. One replica, `tenancy: multi`, PostgreSQL, 12 providers, 18 collections, MCP server, MLflow URI from a ConfigMap. |
 | RoleBinding | `evalhub-mcp-access` | `evalhub` | Wave 31. Operator Role `evalhub-service-access-role` (`evalhubs/proxy`) for `evaluated-models/evalhub-automation`, so it passes the MCP kube-rbac-proxy. |
 
 ### `tenant/`
@@ -84,7 +84,7 @@ the database Secret the wave-11 hook is waiting for, then publishes the MLflow U
 | `database` | `type: postgresql`, `secret: evalhub-db-credentials` | Documented database configuration; the Secret carries `db-url` [1] |
 | `tenancy` | `multi` | Tenancy by labelled namespaces [1]; the validator requires it |
 | `providers` | nine built-in (`deepeval`, `garak`, `garak-kfp`, `guidellm`, `ibm-clear`, `inspect`, `lighteval`, `lm-evaluation-harness`, `ragas`) plus `swebench`, `inspect-coding`, `garak-coding` | A provider ConfigMap is used only once its id is listed in `spec.providers` [1]; the three custom ones come from `050-evaluation-content` |
-| `collections` | nine built-in plus eleven `agentic-coding-*` | Same rule for collections in `spec.collections` [1] |
+| `collections` | nine built-in plus nine `agentic-coding-*` | Same rule for collections in `spec.collections` [1] |
 | `mcp` | `enabled: true`, `transport: http`, `authSecret: evalhub-mcp-client-token`, env `EVALHUB_TENANT=evaluated-models` | MCP server for remote clients [1]. The guide's procedure sets `port: 3001` and exposes the Service with `oc expose`; the 3.5.1 CRD has no port field and the operator creates the re-encrypt Route itself. Without `authSecret` the MCP server's calls return 401, and 3.5.1 does not forward the client's `x-tenant` header, so the tenant is pinned. |
 | `env.MLFLOW_TRACKING_URI` | from ConfigMap `evalhub-mlflow-connection` | The MLflow HTTPS address is known only after MLflow is `Available` [1] |
 
