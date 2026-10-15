@@ -28,6 +28,13 @@ converted_families:
   - odf
   - rhcl
 
+# Skills that follow the thin-skill contract in a family that is not converted
+# as a whole yet. The checker fails on findings from these skills (and on pin
+# findings of their family) and only reports the family's other skills. Move
+# the family to converted_families and drop its entries here once every skill
+# of the family is converted.
+converted_skills: []
+
 # Backticked names on skill lines that look like skill names but are not skills.
 skill_reference_ignore: [rhcl-operator, ocp-baseline]
 

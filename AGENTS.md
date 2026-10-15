@@ -212,7 +212,7 @@ Skills are invoked workflows. Rules are always-on behavior constraints.
 
 ### Product documentation links
 
-Product skills link to official Red Hat documentation instead of copying it. Each product's single documentation version, the Git pin it must match (Subscription channel, `startingCSV` or operator policy), and the book → skill routes live in `.agents/references/red-hat-doc-map.yaml`. `scripts/shared/check-doc-links.py` checks skill frontmatter (`metadata.product`, `metadata.docs-version`), docs.redhat.com link versions in skills and component READMEs, pins and skill references; it fails only for the map's `converted_families` (currently `odf`, `rhcl`) and reports the rest. Author or convert product skills with `project-red-hat-doc-skill-authoring`.
+Product skills link to official Red Hat documentation instead of copying it. Each product's single documentation version, the Git pin it must match (Subscription channel, `startingCSV` or operator policy), and the book → skill routes live in `.agents/references/red-hat-doc-map.yaml`. `scripts/shared/check-doc-links.py` checks skill frontmatter (`metadata.product`, `metadata.docs-version`), docs.redhat.com link versions in skills and component READMEs, pins and skill references; it fails only for the map's `converted_families` (currently `odf`, `rhcl`) and for skills listed in `converted_skills` (a family converted skill by skill), and reports the rest. Author or convert product skills with `project-red-hat-doc-skill-authoring`.
 
 ## Subagents
 
