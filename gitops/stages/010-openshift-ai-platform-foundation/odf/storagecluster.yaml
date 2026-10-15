@@ -5,7 +5,8 @@ metadata:
   namespace: openshift-storage
   annotations:
     # CRD does not exist until the ODF operator CSV reaches Succeeded.
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    # The object-store backend: kept on prune or a cascade Application delete (decommission is a manual step).
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Prune=false,Delete=false
     argocd.argoproj.io/sync-wave: "2"
 spec:
   # Standalone Multicloud Object Gateway (NooBaa) only — no Ceph block/file.

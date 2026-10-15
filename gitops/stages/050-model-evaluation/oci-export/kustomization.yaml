@@ -2,8 +2,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Repository rule: app.kubernetes.io/name and component on every object (selectors untouched).
 labels:
   - pairs:
+      app.kubernetes.io/name: evalhub-oci-export
+      app.kubernetes.io/component: evaluation-export
       app.kubernetes.io/part-of: rhoai-platform
       app.kubernetes.io/managed-by: argocd
       demo.rhoai.io/stage: "050"
@@ -11,9 +14,3 @@ labels:
 
 resources:
   - oci-export.yaml
-# Repository rule: app.kubernetes.io/name and component on every object (selectors untouched).
-labels:
-  - pairs:
-      app.kubernetes.io/name: evalhub-oci-export
-      app.kubernetes.io/component: evaluation-export
-    includeSelectors: false

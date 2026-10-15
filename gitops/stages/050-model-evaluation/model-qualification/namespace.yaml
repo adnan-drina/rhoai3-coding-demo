@@ -22,3 +22,5 @@ metadata:
     openshift.io/display-name: "Evaluated Models"
     openshift.io/description: "Candidate models under qualification against the production baseline. Platform admins only."
     argocd.argoproj.io/sync-wave: "5"
+    # Holds retained evaluation storage and Secrets: deleting the namespace would delete them.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false

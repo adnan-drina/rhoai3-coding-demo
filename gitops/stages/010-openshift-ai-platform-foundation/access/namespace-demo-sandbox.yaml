@@ -16,3 +16,5 @@ metadata:
     # aligned with the shared rhoai3-demo foundation for diffability.
     openshift.io/display-name: "AI Coding Sandbox"
     openshift.io/description: "Shared project for platform validation and ad-hoc demos."
+    # Holds retained OBCs and Secrets: deleting the namespace would delete them despite their own options.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false

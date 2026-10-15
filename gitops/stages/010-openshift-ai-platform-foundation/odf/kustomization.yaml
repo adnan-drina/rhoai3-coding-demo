@@ -2,8 +2,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-commonAnnotations:
-  argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+# No commonAnnotations sync-options: it would overwrite the per-object retention options below.
+# The Application sets SkipDryRunOnMissingResource.
 
 resources:
   - namespace.yaml

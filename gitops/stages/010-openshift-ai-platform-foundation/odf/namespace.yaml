@@ -3,6 +3,8 @@ kind: Namespace
 metadata:
   annotations:
     openshift.io/display-name: "OpenShift Data Foundation"
+    # Holds the object store every OBC uses: never deleted by a prune or a cascade Application delete.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
     openshift.io/cluster-monitoring: 'true'
   name: openshift-storage
