@@ -11,10 +11,25 @@ from typing import Any, Iterable
 
 
 COMMAND_KEYS = {"cmd", "command", "shellCommand", "shell_command"}
-MUTATING_OC = re.compile(
-    r"\b(?:oc|kubectl)\s+"
-    r"(?:apply|create|delete|patch|replace|scale|adm|annotate|label|rollout|edit|expose|set)\b"
-)
+MUTATING_VERBS = {"apply", "create", "delete", "patch", "replace", "scale", "adm", "annotate", "label", "rollout",
+                  "edit", "expose", "set"}
+CLIENT = re.compile(r"(?:^|[\s;&|(`$])(?:\S*/)?(?:oc|kubectl)(?=\s)")
+# Global options that take a separate value (`-n demo`, `--context x`); `--opt=value` needs no lookahead.
+VALUE_OPTIONS = {"-n", "--namespace", "--context", "--kubeconfig", "--server", "-s", "--as", "--as-group",
+                 "--request-timeout", "--cluster", "--user", "--token", "--certificate-authority", "-v", "--v",
+                 "--loglevel", "--cache-dir", "--tls-server-name"}
+
+
+def mutating_oc(text: str) -> bool:
+    """True when an oc/kubectl invocation's verb (the first word after any global options) modifies the cluster."""
+    for match in CLIENT.finditer(text):
+        words = text[match.end():].split()
+        i = 0
+        while i < len(words) and words[i].startswith("-"):
+            i += 2 if (words[i] in VALUE_OPTIONS and "=" not in words[i]) else 1
+        if i < len(words) and words[i].strip(";&|)'\"") in MUTATING_VERBS:
+            return True
+    return False
 MUTATING_SCRIPT = re.compile(
     r"(?:^|\s)(?:\./)?(?:"
     r"scripts/bootstrap\.sh|"
@@ -112,8 +127,9 @@ def main() -> int:
     if not command_text:
         return 0
 
-    mutating = bool(MUTATING_OC.search(command_text) or MUTATING_SCRIPT.search(command_text))
-    if MUTATING_OC.search(command_text) and DRY_RUN.search(command_text):
+    oc_mutating = mutating_oc(command_text)
+    mutating = oc_mutating or bool(MUTATING_SCRIPT.search(command_text))
+    if oc_mutating and DRY_RUN.search(command_text):
         mutating = False
     if not mutating:
         return 0

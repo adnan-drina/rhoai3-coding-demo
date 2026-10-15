@@ -161,7 +161,7 @@ rhoai3-coding-demo/
 |-- .agents/                         # Tool-neutral shared agent guidance: rules, skills, hooks, references
 |-- gitops/
 |   |-- bootstrap/                   # Declarative OpenShift GitOps bootstrap (stage 010)
-|   |-- argocd/app-of-apps/          # Argo CD Applications: one per component for stages 010–060, one for 070
+|   |-- argocd/app-of-apps/          # Argo CD Applications: one per component, every stage
 |   `-- stages/                      # GitOps source for stage manifests
 |-- stages/                          # Stage READMEs and per-stage deploy/validate scripts
 `-- docs/                            # Operations, troubleshooting, TechDocs, and governance docs
@@ -193,7 +193,7 @@ Stage 120 teaches agentic development with `AGENTS.md` and reusable skills. This
 - [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)
 - [Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)
 - [Red Hat OpenShift AI 3.5 documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/)
-- [Red Hat OpenShift AI 3.4 MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/use-models-as-a-service_maas)
+- [Red Hat OpenShift AI 3.5 MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index)
 - [MaaS code assistant quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
 - [Migration Toolkit for Applications 8.3 documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/)
 - [Red Hat Developer Hub 1.10 documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10)

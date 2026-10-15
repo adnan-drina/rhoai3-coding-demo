@@ -219,9 +219,11 @@ class Checker:
             if path.is_file() and path.suffix in TEXT_SUFFIXES:
                 yield path
         yield from sorted((self.root / "gitops" / "stages").glob("*/*/README.md"))
-        # Stage READMEs and top-level operations docs; docs/migration/ is history.
+        # Stage READMEs, top-level docs and the main README; docs/migration/ is history.
         yield from sorted((self.root / "stages").glob("*/README.md"))
         yield from sorted((self.root / "docs").glob("*.md"))
+        if (self.root / "README.md").is_file():
+            yield self.root / "README.md"
 
     def file_family(self, path: Path) -> str | None:
         parts = path.relative_to(self.root).parts

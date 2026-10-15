@@ -157,9 +157,10 @@ class CheckDocLinksTest(unittest.TestCase):
         old = "https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.20/html/x\n"
         self.fx.write("stages/010-x/README.md", old)
         self.fx.write("docs/OPERATIONS.md", old)
+        self.fx.write("README.md", old)
         findings = [(c, f, w) for c, f, w in self._findings() if c == "LINK-VERSION"]
         self.assertEqual(sorted(w.split(":")[0] for _, _, w in findings),
-                         ["docs/OPERATIONS.md", "stages/010-x/README.md"])
+                         ["README.md", "docs/OPERATIONS.md", "stages/010-x/README.md"])
         self.assertTrue(all(f == "odf" for _, f, _ in findings))
         self.assertEqual(self.fx.run()[0], 1)  # odf is a converted family
 

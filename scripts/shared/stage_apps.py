@@ -16,7 +16,7 @@ Import it from Python (sys.path.insert(0, "<repo>/scripts/shared"); import stage
   stage_apps.py wait STAGE --revision SHA --repo-url URL [--app NAME]
   stage_apps.py apply STAGE --app NAME --revision SHA --repo-url URL  # apply components, no sync
   stage_apps.py sync STAGE [--app NAME] [--resync]                 # start syncs only
-  stage_apps.py names STAGE
+  stage_apps.py names STAGE [--all] [--reverse]                   # --reverse: deletion order
   stage_apps.py applications STAGE --revision SHA --repo-url URL [--kustomize-patches FILE]  # JSON List
   stage_apps.py status STAGE [--revision SHA]                      # exit 1 unless all reconciled
   stage_apps.py owner STAGE KIND NAME [NAMESPACE]                  # component that renders it
@@ -522,7 +522,10 @@ def check_delegations(root=ROOT):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("names").add_argument("stage")
+    p = sub.add_parser("names")
+    p.add_argument("stage")
+    p.add_argument("--all", action="store_true", help="include script-deployed components")
+    p.add_argument("--reverse", action="store_true", help="last-deployed first (deletion order)")
     p = sub.add_parser("select")
     p.add_argument("stage"); p.add_argument("--ref", default="HEAD"); p.add_argument("--repo-url", required=True)
     p.add_argument("--extra", action="append", default=[], help="another path the stage deploys from (repeatable)")
@@ -557,7 +560,8 @@ def main():
     args = parser.parse_args()
     patches = json.loads(args.kustomize_patches.read_text()) if getattr(args, "kustomize_patches", None) else None
     if args.command == "names":
-        print("\n".join(names(args.stage)))
+        listed = names(args.stage, separate=args.all)
+        print("\n".join(reversed(listed) if args.reverse else listed))
     elif args.command == "select":
         print(select_revision(args.stage, args.ref, args.repo_url, extra=args.extra))
     elif args.command == "deploy":

@@ -2,7 +2,8 @@
 # Validate the demo stage layout from the repository tree.
 #
 #   ./scripts/platform/validate-stage-flow.sh
-#       Static: stages/*/ + matching Argo CD apps + kustomize build + skill and doc-link checks. No cluster.
+#       Static (the offline review command): stages/*/ + matching Argo CD apps + kustomize build + shared helper
+#       and hook unit tests + skill and doc-link checks. No cluster.
 #   ./scripts/platform/validate-stage-flow.sh --live
 #       Static, then each stage validate.sh in directory order (needs oc + .env).
 set -euo pipefail
@@ -311,6 +312,12 @@ fi
 
 log_step "Checking Stage 010 delegations against hook Job declarations"
 python3 "$REPO_ROOT/scripts/shared/stage_apps.py" check-delegations
+
+log_step "Running shared helper and hook unit tests (offline)"
+python3 "$REPO_ROOT/scripts/shared/stage_apps.test.py" 2>&1 | tail -1
+python3 "$REPO_ROOT/scripts/shared/check-doc-links.test.py" 2>&1 | tail -1
+bash "$REPO_ROOT/scripts/shared/validate-lib.test.sh" >/dev/null
+python3 "$REPO_ROOT/.agents/hooks/guard-openshift-command.test.py" 2>&1 | tail -1
 
 log_step "Validating shared skills and product documentation links"
 python3 "$REPO_ROOT/.agents/skills/agentskills-authoring/scripts/validate-skills.py" --all

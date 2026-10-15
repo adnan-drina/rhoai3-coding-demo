@@ -23,8 +23,11 @@ VALIDATE_FAIL=0
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 source "$REPO_ROOT/scripts/shared/lib.sh"
-load_env
-check_oc_logged_in
+# Unit tests source the helpers without a cluster: VALIDATE_LIB_OFFLINE=1 skips environment and login.
+if [[ "${VALIDATE_LIB_OFFLINE:-0}" != 1 ]]; then
+    load_env
+    check_oc_logged_in
+fi
 
 check() {
     local label="$1" cmd="$2" expected="$3"
@@ -56,20 +59,26 @@ check_warn() {
 # (or its declared accepted health) and last synced successfully; one line per component. An optional revision
 # requires that exact commit.
 check_stage_applications() {
-    local stage="$1" revision="${2:-}" output line
+    local stage="$1" revision="${2:-}" output line rc=0 failed=0
     local args=(status "$stage")
     [[ -z "${GIT_REPO_URL:-}" ]] || args+=(--repo-url "$GIT_REPO_URL")
     [[ -z "$revision" ]] || args+=(--revision "$revision")
-    output=$(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" "${args[@]}" 2>&1) || true
+    output=$(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" "${args[@]}" 2>&1) || rc=$?
     [[ -n "$output" ]] || output="ERROR no output from stage_apps status $stage"
     while IFS= read -r line; do
         case "$line" in
             "OK   "*) echo -e "${GREEN}[PASS]${NC} Argo CD ${line#OK   } reconciled"; VALIDATE_PASS=$((VALIDATE_PASS + 1)) ;;
-            "FAIL "*) echo -e "${RED}[FAIL]${NC} Argo CD ${line#FAIL } not reconciled"; VALIDATE_FAIL=$((VALIDATE_FAIL + 1)) ;;
-            "ERROR"*) echo -e "${RED}[FAIL]${NC} Stage $stage Applications ($line)"; VALIDATE_FAIL=$((VALIDATE_FAIL + 1)) ;;
+            "FAIL "*) echo -e "${RED}[FAIL]${NC} Argo CD ${line#FAIL } not reconciled"; VALIDATE_FAIL=$((VALIDATE_FAIL + 1)); failed=1 ;;
+            "ERROR"*) echo -e "${RED}[FAIL]${NC} Stage $stage Applications ($line)"; VALIDATE_FAIL=$((VALIDATE_FAIL + 1)); failed=1 ;;
             *) echo "    $line" ;;
         esac
     done <<< "$output"
+    # A stage-wide problem (for example components at different revisions) fails the status command without
+    # marking one component FAIL; never report success when the checker failed.
+    if [[ "$rc" -ne 0 && "$failed" -eq 0 ]]; then
+        echo -e "${RED}[FAIL]${NC} Stage $stage Applications not reconciled at one revision (stage_apps status exit $rc)"
+        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+    fi
 }
 
 check_csv_succeeded() {
