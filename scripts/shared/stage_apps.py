@@ -11,9 +11,13 @@ renders exactly the union of all components, so validators read one desired stat
 Import it from Python (sys.path.insert(0, "<repo>/scripts/shared"); import stage_apps) or use the CLI:
 
   stage_apps.py select STAGE --ref REF --repo-url URL               # reviewed, published commit of the stage source
-  stage_apps.py deploy STAGE --revision SHA --repo-url URL [--resync] # apply, sync and wait for every component
+  stage_apps.py deploy STAGE --revision SHA --repo-url URL [--resync] [--no-wait] [--kustomize-patches FILE]
+                                                                   # apply, sync and wait for every component
+  stage_apps.py wait STAGE --revision SHA --repo-url URL [--app NAME]
+  stage_apps.py apply STAGE --app NAME --revision SHA --repo-url URL  # apply components, no sync
+  stage_apps.py sync STAGE [--app NAME] [--resync]                 # start syncs only
   stage_apps.py names STAGE
-  stage_apps.py applications STAGE --revision SHA --repo-url URL   # JSON List to `oc apply -f -`
+  stage_apps.py applications STAGE --revision SHA --repo-url URL [--kustomize-patches FILE]  # JSON List
   stage_apps.py status STAGE [--revision SHA]                      # exit 1 unless all reconciled
   stage_apps.py owner STAGE KIND NAME [NAMESPACE]                  # component that renders it
   stage_apps.py delegated STAGE KIND NAME [NAMESPACE] [--group G]  # fields the live owner leaves to later stages
@@ -369,24 +373,21 @@ def deploy_groups(apps):
     return [groups[k] for k in sorted(groups)]
 
 
-def deploy(stage, revision, repo_url, timeout=1800, resync=False, root=ROOT, log=print, wait=True):
+def deploy(stage, revision, repo_url, timeout=1800, resync=False, root=ROOT, log=print, wait=True, patches=None):
     """Apply every deploy-order component pinned to revision, start a sync where its current source has not been
     synced (all of them with resync), and wait until each is reconciled; sequential groups wait in between.
 
     wait=False returns after the syncs started, for a stage whose own setup step must run before its components can
-    become healthy (Stage 050 AI services); it then calls wait_for itself. A sequential stage always waits."""
+    become healthy (Stage 050 AI services); it then calls wait_for itself. A sequential stage always waits.
+    patches maps a component name to Kustomize patches for cluster-specific values (Stage 040 Gateway hostnames)."""
     summary = []
-    groups = deploy_groups(stamped(stage, revision, repo_url, root))
+    groups = deploy_groups(stamped(stage, revision, repo_url, root, patches))
     if not wait and len(groups) > 1:
         raise RuntimeError("Stage " + stage + " deploys sequentially and must wait between its groups")
     for group in groups:
         names = [a["metadata"]["name"] for a in group]
         for app in group:
-            out = subprocess.run(["oc", "--request-timeout=15s", "apply", "-f", "-"], input=json.dumps(app),
-                                 capture_output=True, text=True, timeout=60)
-            if out.returncode:
-                raise RuntimeError("Could not apply " + app["metadata"]["name"] + ": " + out.stderr.strip()[:300])
-            summary.append(out.stdout.strip())
+            summary.append(apply_app(app))
         started = start_syncs(stage, root, only=names, force=resync)
         log("applied " + ", ".join(names) + " at " + revision[:12] + ("; started sync of " + ", ".join(started) if started else "; no sync needed"))
         if not wait:
@@ -396,14 +397,37 @@ def deploy(stage, revision, repo_url, timeout=1800, resync=False, root=ROOT, log
     return summary
 
 
-def stamped(stage, revision, repo_url, root=ROOT):
-    """Component Applications pinned to one reviewed revision and repository."""
+def apply_app(app):
+    out = subprocess.run(["oc", "--request-timeout=15s", "apply", "-f", "-"], input=json.dumps(app),
+                         capture_output=True, text=True, timeout=60)
+    if out.returncode:
+        raise RuntimeError("Could not apply " + app["metadata"]["name"] + ": " + out.stderr.strip()[:300])
+    return out.stdout.strip()
+
+
+def apply_components(stage, names_, revision, repo_url, root=ROOT, patches=None):
+    """Apply the named components (script-deployed ones too) pinned to revision, without starting a sync."""
+    apps = {a["metadata"]["name"]: a for a in stamped(stage, revision, repo_url, root, patches, separate=True)}
+    unknown = set(names_) - set(apps)
+    if unknown:
+        raise RuntimeError("Unknown Stage " + stage + " components: " + ", ".join(sorted(unknown)))
+    return [apply_app(apps[name]) for name in names_]
+
+
+def stamped(stage, revision, repo_url, root=ROOT, patches=None, separate=False):
+    """Component Applications pinned to one reviewed revision and repository, with optional per-component Kustomize
+    patches ({name: [patch, ...]}) for values that differ per cluster. separate=True adds script-deployed ones."""
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise RuntimeError("A 40-character commit SHA is required")
-    apps = components(stage, root)
+    apps = components(stage, root, separate)
+    unknown = set(patches or {}) - {a["metadata"]["name"] for a in apps}
+    if unknown:
+        raise RuntimeError("Patches for unknown components: " + ", ".join(sorted(unknown)))
     for app in apps:
         app["spec"]["source"]["repoURL"] = repo_url
         app["spec"]["source"]["targetRevision"] = revision
+        if (patches or {}).get(app["metadata"]["name"]):
+            app["spec"]["source"].setdefault("kustomize", {})["patches"] = patches[app["metadata"]["name"]]
     return apps
 
 
@@ -507,12 +531,18 @@ def main():
     p.add_argument("--timeout", type=int, default=1800, help="seconds per deploy group")
     p.add_argument("--resync", action="store_true", help="sync every component even if this source is already synced (re-runs hooks)")
     p.add_argument("--no-wait", action="store_true", help="return once the syncs started (run the stage's setup, then `wait`)")
+    p.add_argument("--kustomize-patches", type=Path, help="JSON file {component: [Kustomize patch, ...]} for cluster-specific values")
+    p = sub.add_parser("apply")
+    p.add_argument("stage"); p.add_argument("--app", action="append", required=True, help="component to apply (repeatable)")
+    p.add_argument("--revision", required=True); p.add_argument("--repo-url", required=True)
+    p.add_argument("--kustomize-patches", type=Path)
     p = sub.add_parser("wait")
     p.add_argument("stage"); p.add_argument("--revision", required=True); p.add_argument("--repo-url", required=True)
     p.add_argument("--timeout", type=int, default=1800)
     p.add_argument("--app", action="append", help="wait for these components only (also script-deployed ones)")
     p = sub.add_parser("applications")
     p.add_argument("stage"); p.add_argument("--revision", required=True); p.add_argument("--repo-url", required=True)
+    p.add_argument("--kustomize-patches", type=Path)
     p = sub.add_parser("status")
     p.add_argument("stage"); p.add_argument("--revision"); p.add_argument("--repo-url")
     p = sub.add_parser("owner")
@@ -523,20 +553,25 @@ def main():
     sub.add_parser("check-delegations")
     p = sub.add_parser("sync")
     p.add_argument("stage"); p.add_argument("--app", action="append", help="limit to these Applications (also deploy-script ones)")
+    p.add_argument("--resync", action="store_true", help="sync even if this source is already synced (re-runs hooks)")
     args = parser.parse_args()
+    patches = json.loads(args.kustomize_patches.read_text()) if getattr(args, "kustomize_patches", None) else None
     if args.command == "names":
         print("\n".join(names(args.stage)))
     elif args.command == "select":
         print(select_revision(args.stage, args.ref, args.repo_url, extra=args.extra))
     elif args.command == "deploy":
         for line in deploy(args.stage, args.revision, args.repo_url, args.timeout, args.resync,
-                           log=lambda m: print(m, flush=True), wait=not args.no_wait):
+                           log=lambda m: print(m, flush=True), wait=not args.no_wait, patches=patches):
             print("  " + line)
+    elif args.command == "apply":
+        for line in apply_components(args.stage, args.app, args.revision, args.repo_url, patches=patches):
+            print(line)
     elif args.command == "wait":
         wait_for(args.stage, args.app or names(args.stage), args.revision, args.repo_url, args.timeout)
         print("PASS " + (", ".join(args.app) if args.app else "Stage " + args.stage + " components") + " Synced and Healthy at " + args.revision[:12])
     elif args.command == "applications":
-        print(json.dumps({"apiVersion": "v1", "kind": "List", "items": stamped(args.stage, args.revision, args.repo_url)}))
+        print(json.dumps({"apiVersion": "v1", "kind": "List", "items": stamped(args.stage, args.revision, args.repo_url, patches=patches)}))
     elif args.command == "status":
         problems = stage_problems(args.stage, args.revision, args.repo_url, separate=True)
         for name in names(args.stage, separate=True):
@@ -551,7 +586,7 @@ def main():
     elif args.command == "check-delegations":
         print("PASS " + str(check_delegations()) + " Stage 010 delegated fields, each written by exactly one declared hook Job")
     elif args.command == "sync":
-        for name in start_syncs(args.stage, only=args.app):
+        for name in start_syncs(args.stage, only=args.app, force=args.resync):
             print("started sync of " + name)
     elif args.command == "check-static":
         print("PASS Stage " + args.stage + ": " + str(len(names(args.stage, separate=True))) + " components render " + str(check_static(args.stage)) + " objects, disjoint and equal to " + str(aggregate_path(args.stage)))

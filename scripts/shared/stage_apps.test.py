@@ -40,6 +40,16 @@ class DeployGroups(unittest.TestCase):
         self.assertEqual(len(stage_apps.deploy_groups(stage_apps.stamped("050", SHA, REPO))), 1)
 
 
+class Stamped(unittest.TestCase):
+    def test_cluster_patches_go_to_the_named_component_only(self):
+        patch_ = [{"target": {"kind": "Gateway"}, "patch": "[]"}]
+        apps = {a["metadata"]["name"]: a for a in stage_apps.stamped("040", SHA, REPO, patches={"040-gateway-governance": patch_})}
+        self.assertEqual(apps["040-gateway-governance"]["spec"]["source"]["kustomize"]["patches"], patch_)
+        self.assertNotIn("kustomize", apps["040-model-access"]["spec"]["source"])
+        with self.assertRaisesRegex(RuntimeError, "unknown components"):
+            stage_apps.stamped("040", SHA, REPO, patches={"040-gateway": patch_})
+
+
 class SyncOperation(unittest.TestCase):
     def test_carries_own_sync_options_and_automated_prune(self):
         op = stage_apps.sync_operation(application("070-gitlab"), "test")["operation"]["sync"]
