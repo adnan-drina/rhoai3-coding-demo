@@ -55,8 +55,10 @@ Dev Spaces 3.30 topics. Detailed record:
    ```bash
    ./stages/070-advanced-app-platform/validate.sh          # "Existing identity and Dev Spaces"
    ./stages/070-advanced-app-platform/validate.sh --static
-   python3 scripts/demo/check-workspace-creation.py --live  # admission dry runs
    ```
+
+   The former admission dry-run checker `check-workspace-creation.py` is in
+   git history at `82092e01`.
 
 3. Read-only checks:
 

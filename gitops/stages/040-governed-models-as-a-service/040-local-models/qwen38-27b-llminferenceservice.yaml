@@ -14,8 +14,8 @@ metadata:
     opendatahub.io/dashboard: "true"
     opendatahub.io/genai-asset: "true"
     # Deployments tab on the model card. Ids are assigned by demo-registry.
-    # register-model-cards.sh registers the NVFP4 artifact and stamps the ids.
-    # register-model-cards.sh restamps these after a fresh registry, and
+    # stages/040-governed-models-as-a-service/deploy.sh registers the NVFP4 artifact and stamps the ids.
+    # stages/040-governed-models-as-a-service/deploy.sh restamps these after a fresh registry, and
     # Argo CD ignores drift on the three modelregistry labels.
     modelregistry.opendatahub.io/name: demo-registry
   annotations:

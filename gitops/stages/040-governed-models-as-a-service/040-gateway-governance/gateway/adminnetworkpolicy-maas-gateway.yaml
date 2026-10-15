@@ -6,7 +6,7 @@
 # then public HTTPS for the registered external providers, then deny everything else.
 # Traffic that arrives from outside the cluster (LoadBalancer, externalTrafficPolicy Cluster) comes from node addresses,
 # which no ingress rule here can name, so it falls through to the operator's allow-all policy.
-# Destinations come from the gateway's own Envoy clusters and its HTTPRoutes; stages/040-governed-models-as-a-service/validate-gateway-boundary.sh checks them.
+# Destinations come from the gateway's own Envoy clusters and its HTTPRoutes; stages/040-governed-models-as-a-service/validate.sh checks them.
 apiVersion: policy.networking.k8s.io/v1alpha1
 kind: AdminNetworkPolicy
 metadata:

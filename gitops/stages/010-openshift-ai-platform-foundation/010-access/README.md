@@ -9,7 +9,7 @@ deploy workloads into it.
 | | |
 |---|---|
 | Argo CD Application | `010-access` ([manifest](../../../applications/010-access.yaml)) |
-| Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 3). Group membership comes from [`setup-access.sh`](../../../../stages/010-openshift-ai-platform-foundation/setup-access.sh), a separate manual step |
+| Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 3). Group membership comes from [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh), a separate manual step |
 | Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (project label, `rhods-admins-admin` binding, persona group membership, optional persona `can-i` checks) |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation; `ignoreDifferences` on the Group's `/users` and one Namespace label |
 | Depends on | `010-rhoai-platform` (the `Auth` CR names `rhoai-developers` and creates `rhods-admins`) |
@@ -29,7 +29,7 @@ Credentials and membership stay out of Git.
 | Kind | Name | Namespace | Wave | Purpose |
 |---|---|---|---|---|
 | Namespace | `demo-sandbox` | (cluster) | 0 | Label `opendatahub.io/dashboard: "true"` (shown as a project), `kueue.openshift.io/managed: "true"` (Stage 020 queue enforcement); display name "AI Coding Sandbox" |
-| Group | `rhoai-developers` | (cluster) | 0 | Developer group; `users` comes from `setup-access.sh` (ignored by Argo CD) |
+| Group | `rhoai-developers` | (cluster) | 0 | Developer group; `users` comes from `stages/010-openshift-ai-platform-foundation/deploy.sh` (ignored by Argo CD) |
 | RoleBinding | `rhoai-developers-edit` | `demo-sandbox` | 0 | `rhoai-developers` gets ClusterRole `edit` (project Contributor) |
 | RoleBinding | `rhods-admins-admin` | `demo-sandbox` | 0 | `rhods-admins` gets ClusterRole `admin` (project Admin) |
 
@@ -39,9 +39,9 @@ Not in Git:
 
 | Object | Owner |
 |---|---|
-| Group `rhods-admins` | RHOAI operator (from the `Auth` CR); membership from `setup-access.sh` |
-| Group `rhoai-developers` `users` | `setup-access.sh` (`oc adm groups add-users`) |
-| Identity provider and users | The cluster's existing OAuth provider; `setup-access.sh` changes neither |
+| Group `rhods-admins` | RHOAI operator (from the `Auth` CR); membership from `stages/010-openshift-ai-platform-foundation/deploy.sh` |
+| Group `rhoai-developers` `users` | `stages/010-openshift-ai-platform-foundation/deploy.sh` (`oc adm groups add-users`) |
+| Identity provider and users | The cluster's existing OAuth provider; `stages/010-openshift-ai-platform-foundation/deploy.sh` changes neither |
 
 ## How
 
@@ -54,7 +54,7 @@ Not in Git:
   get `admin` on this project only. The dashboard admin role does not give access to individual project namespaces,
   as the RoleBinding comment explains.
 - **Storage.** The project's S3 connections (Models, Workbench) are declared by `010-sandbox-storage`. The earlier
-  `demo-sandbox-bucket` claim and the `demo-sandbox-s3` connection built by `setup-access.sh` were retired on 2026-10-14.
+  `demo-sandbox-bucket` claim and the `demo-sandbox-s3` connection built by `stages/010-openshift-ai-platform-foundation/deploy.sh` were retired on 2026-10-14.
 - **Cluster-specific values.** Persona user names come from the local `.env` (`RHOAI_ADMIN_USER`,
   `RHOAI_DEVELOPER_USER`), never from Git.
 
@@ -80,7 +80,7 @@ oc get group rhods-admins rhoai-developers
 |---|---|---|---|
 | Project roles | Admin manages project and access; Contributor edits workbenches, connections and storage [1] | `admin` for `rhods-admins`, `edit` for `rhoai-developers` | Aligned |
 | OpenShift default roles | `admin`: modify any resource except quota; `edit`: most objects, not roles or bindings [2] | Used as documented | Aligned |
-| User groups | Groups must exist before they are selected; group membership managed in the OpenShift console [3] | Group in Git; membership by `oc adm groups add-users` from `setup-access.sh` | Aligned (CLI equivalent) |
+| User groups | Groups must exist before they are selected; group membership managed in the OpenShift console [3] | Group in Git; membership by `oc adm groups add-users` from `stages/010-openshift-ai-platform-foundation/deploy.sh` | Aligned (CLI equivalent) |
 | Connection lifecycle | Connections are Kubernetes Secrets with standard annotations [5] | Declared by `010-sandbox-storage`; none here | Aligned |
 
 ## References

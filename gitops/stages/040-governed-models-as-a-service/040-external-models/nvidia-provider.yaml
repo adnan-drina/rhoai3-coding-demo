@@ -1,7 +1,7 @@
 ---
 # NVIDIA's hosted inference API is OpenAI-compatible (Chat Completions at /v1/chat/completions),
 # so it is registered as an "openai" provider with NVIDIA's endpoint, like the MaaS guide's
-# third-party examples. The credential Secret is created by setup-provider-secret.sh from
+# third-party examples. The credential Secret is created by stages/040-governed-models-as-a-service/deploy.sh from
 # NVIDIA_API_KEY in the local .env; nothing secret lives in Git.
 apiVersion: inference.opendatahub.io/v1alpha1
 kind: ExternalProvider

@@ -1,6 +1,6 @@
 schema_version: 2
 owner: project-red-hat-doc-skill-authoring
-checker: scripts/shared/check-doc-links.py
+checker: .agents/tools/check-doc-links.py
 purpose: >
   The single registry of Red Hat product documentation versions for this
   repository, and the route from official documentation books to flat repo
@@ -15,7 +15,7 @@ usage:
   - Record provenance here (route `reviewed` and `sections`), not in skill
     reference files.
   - Do not create nested skill folders to match documentation categories.
-  - Run scripts/shared/check-doc-links.py after changing this file, a skill,
+  - Run .agents/tools/check-doc-links.py after changing this file, a skill,
     or a component README.
 
 docs_url_template: "https://docs.redhat.com/en/documentation/{docs_slug}/{docs_version}/"
@@ -1239,9 +1239,9 @@ products:
     pin:
       # OpenShift itself is not installed from Git. The NFD operator ships per OpenShift
       # minor, so its qualified minimum in the operator policy carries the platform minor.
-      file: scripts/platform/check-operator-policy.py
-      field: minimum['nfd']
-      pattern: "'nfd':'(\\d+\\.\\d+)\\.\\d+'"
+      file: scripts/lib.sh
+      field: OPERATOR_POLICY["nfd"]
+      pattern: "\"nfd\": \\[\"[^\"]*\", \"(\\d+\\.\\d+)\\.\\d+"
     # Routes whose book belongs to a separately versioned cited product carry
     # `cited_product`; their links are checked against that product's docs_version.
     categories:
@@ -1514,9 +1514,9 @@ products:
     pin:
       # The Subscription follows the unversioned `stable` channel (Dev Spaces GitOps guide); the operator policy
       # holds the qualified minor line.
-      file: scripts/platform/check-operator-policy.py
-      field: minimum['devspaces']
-      pattern: "'devspaces':'(\\d+\\.\\d+)\\.\\d+'"
+      file: scripts/lib.sh
+      field: OPERATOR_POLICY["devspaces"]
+      pattern: "\"devspaces\": \\[\"[^\"]*\", \"(\\d+\\.\\d+)\\.\\d+"
     categories:
       discover:
         description: Product overview, architecture, DevWorkspace operator, supported IDEs, and workspace lifecycle.
@@ -2697,9 +2697,9 @@ products:
     pin:
       # The Subscription in gitops/stages/040-governed-models-as-a-service/040-maas-operators/rhcl/
       # follows the unversioned `stable` channel; the operator policy holds the qualified minor line.
-      file: scripts/platform/check-operator-policy.py
-      field: minimum['rhcl-operator']
-      pattern: "'rhcl-operator':'(\\d+\\.\\d+)\\.\\d+'"
+      file: scripts/lib.sh
+      field: OPERATOR_POLICY["rhcl-operator"]
+      pattern: "\"rhcl-operator\": \\[\"[^\"]*\", \"(\\d+\\.\\d+)\\.\\d+"
     note: >
       Stage 040 installs Connectivity Link 1.4.x (qualified minimum 1.4.3) as the
       MaaS policy layer. The 1.4 release notes deprecate 1.4.0 and direct users to
@@ -2824,9 +2824,9 @@ cited_products:
     docs_slug: monitoring_stack_for_red_hat_openshift
     docs_version: "4.22"
     pin:
-      file: scripts/platform/check-operator-policy.py
-      field: minimum['nfd']
-      pattern: "'nfd':'(\\d+\\.\\d+)\\.\\d+'"
+      file: scripts/lib.sh
+      field: OPERATOR_POLICY["nfd"]
+      pattern: "\"nfd\": \\[\"[^\"]*\", \"(\\d+\\.\\d+)\\.\\d+"
   cluster_observability_operator:
     name: Red Hat OpenShift Cluster Observability Operator
     docs_slug: red_hat_openshift_cluster_observability_operator
@@ -2882,7 +2882,7 @@ route_update_rules:
   when_upgrading_product:
     - Change the Git pin (Subscription channel, startingCSV or operator policy) first.
     - Set docs_version here to the same minor; the checker fails until both agree.
-    - Run scripts/shared/check-doc-links.py; it lists every skill and README link behind.
+    - Run .agents/tools/check-doc-links.py; it lists every skill and README link behind.
     - Re-read the release notes and each cited section, adjust repo decisions and
       pitfalls, fix renamed book slugs and anchors, then bump each skill's docs-version.
     - Prefer updating existing skills over creating versioned skill names.

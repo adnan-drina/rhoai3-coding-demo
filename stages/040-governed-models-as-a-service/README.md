@@ -6,7 +6,7 @@ A model endpoint alone does not provide a shared enterprise service. Models-as-a
 
 ## Architecture
 
-The private model Qwen 3.8 (`qwen3-8-27b`) is hosted in the Internal Models project on one Stage 020 RTX PRO 6000 (`g7e.2xlarge`) GPU worker with an exclusive GPU. Its replica count is a delegated live field; `scripts/platform/resume-gpu-demo.sh` starts and parks the GPU worker. Native OpenShift AI controllers connect the model to one governed Gateway with two listeners: `api` for the shared API hostname and `qwen3-8` for the model's compatibility hostname. MaaS governance stays in models-as-a-service, and external providers stay in the External Models project. The shared API hostname and `/v1` are the default for body-based model routing. The dedicated `qwen3-8` HTTPS listener remains as a compatibility endpoint; each listener keeps its explicit namespace restriction. Each admitted namespace also requires `maas-gateway-access=true`; the label alone does not grant access to another listener. Native MaaS policies control access across the same Gateway.
+The private model Qwen 3.8 (`qwen3-8-27b`) is hosted in the Internal Models project on one Stage 020 RTX PRO 6000 (`g7e.2xlarge`) GPU worker with an exclusive GPU. Its replica count is a delegated live field; `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus N` starts and parks the GPU worker. Native OpenShift AI controllers connect the model to one governed Gateway with two listeners: `api` for the shared API hostname and `qwen3-8` for the model's compatibility hostname. MaaS governance stays in models-as-a-service, and external providers stay in the External Models project. The shared API hostname and `/v1` are the default for body-based model routing. The dedicated `qwen3-8` HTTPS listener remains as a compatibility endpoint; each listener keeps its explicit namespace restriction. Each admitted namespace also requires `maas-gateway-access=true`; the label alone does not grant access to another listener. Native MaaS policies control access across the same Gateway.
 
 ## What This Stage Adds
 
@@ -48,19 +48,20 @@ Red Hat OpenShift AI 3.5, OpenShift Container Platform 4.22, Red Hat Connectivit
 
 ## Deploy And Validate
 
-`deploy.sh [--revision REF]` deploys the reviewed published commit (default `GIT_REPO_BRANCH`, then `HEAD`) through the shared flow in `scripts/shared/stage_apps.py`. It starts a hook-strategy sync of each component whose current source has not been synced yet, creates the provider and database credentials in the cluster, and waits until every component is Synced and Healthy at that commit. No Argo CD CLI is needed.
+`deploy.sh [--revision REF]` deploys the reviewed published commit (default `GIT_REPO_BRANCH`, then `HEAD`) through the shared flow in `scripts/stage-apps.sh`. It starts a hook-strategy sync of each component whose current source has not been synced yet, creates the provider and database credentials in the cluster, and waits until every component is Synced and Healthy at that commit. No Argo CD CLI is needed.
 
 The stage is deployed as eight Argo CD Applications, one per component, all at the same reviewed revision: `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access` and `040-genai-studio`. Switching a model or changing who may use it syncs only that component.
 
 ```bash
 ./stages/040-governed-models-as-a-service/deploy.sh
 ./stages/040-governed-models-as-a-service/validate.sh --readiness
-./stages/040-governed-models-as-a-service/register-model-cards.sh
 ```
+
+`deploy.sh` ends by registering the deployed model and its prepared format alternates in the model registry (idempotent, never overwriting a record).
 
 Readiness checks do not establish inference, streaming or quota behavior. Bounded functional checks and user playground interaction complete acceptance. In the dashboard, create a playground in your project and select an available governed model endpoint. Do not use the playground to create a replacement serving deployment.
 
-To qualify just one approved external model with one completion, set `RHOAI_STAGE040_MODEL=nemotron-3-ultra-550b-a55b` (or `gpt-6-luna`, `claude-sonnet-5-5`) and `RHOAI_STAGE040_SINGLE_COMPLETION=true` when running `validate-functional.sh`, together with `RHOAI_STAGE040_PERSONA_KUBECONFIG` and the reviewed deployed revision. This scope does not run local models, streaming or tool-call tests. Its temporary key is revoked afterward.
+To qualify just one approved external model with one completion, set `RHOAI_STAGE040_MODEL=nemotron-3-ultra-550b-a55b` (or `gpt-6-luna`, `claude-sonnet-5-5`) and `RHOAI_STAGE040_SINGLE_COMPLETION=true` when running `stages/040-governed-models-as-a-service/validate.sh --functional`, together with `RHOAI_STAGE040_PERSONA_KUBECONFIG` and the reviewed deployed revision. This scope does not run local models, streaming or tool-call tests. Its temporary key is revoked afterward.
 
 ## Optional Studio Tracing
 
@@ -68,21 +69,14 @@ GenAI Studio exposes the Technology Preview tracing capability. Enable tracing e
 
 ## Usage And Showback
 
+
 **Serving tuning (2026-10-13).** Qwen 3.8 runs on one NVIDIA RTX PRO 6000 with the model card's MTP speculative decoding (`mtp` with three draft tokens), `--max-num-batched-tokens=16384`, `--max-num-seqs=16` and `--async-scheduling`. MTP shortens the time between tokens at a small cost in time to first token; the [serving study](../../docs/OPERATIONS.md#model-serving-study-and-default-model-2026-10-13) has the measurements. With one GPU worker running, a serving change restarts through `replicas` 0 then 1, because a rolling update cannot place the new pod while the old one holds the node's only GPU.
 
 The Observability page carries the six 3.5 dashboards (Cluster, Models, Usage, LLM Traffic, LLM Performance, LLM Utilization) plus two custom tabs that this stage adds as `dashboard-*` PersesDashboards in `redhat-ods-monitoring`: **Cost per token** (showback by model from the vLLM token counters and by governed user and subscription from the MaaS counters, priced with editable per-million-token variables) and **Tokenomics · break-even (live)** (infrastructure burn, effective cost per million tokens, and the throughput at which the private models beat a hosted-API reference price). Prices and GPU cost are dashboard variables, so the numbers are showback inputs, not invoices; `gen-cost-dashboards.py` regenerates the manifests. The same directory carries a ServiceMonitor that feeds GPU utilisation from the DCGM exporter into the RHOAI datasource, which the product LLM Utilization tab needs and the generated collector job does not deliver.
 
-As a platform administrator, open **Observe & monitor → Dashboard → Usage** to inspect governed usage by user, subscription and model. Choose a Time period, then use the User, Subscription and Model filters. The native table offers Export as CSV; its format is distinct from the project helper below. These counters measure authorized total tokens and calls; they do not expose a trustworthy input/output token split or an agent's internal tool trajectory.
+As a platform administrator, open **Observe & monitor → Dashboard → Usage** to inspect governed usage by user, subscription and model. Choose a Time period, then use the User, Subscription and Model filters. The native table offers Export as CSV. These counters measure authorized total tokens and calls; they do not expose a trustworthy input/output token split or an agent's internal tool trajectory.
 
-A platform administrator can export existing usage for an explicit UTC window:
-
-```bash
-./stages/040-governed-models-as-a-service/export-maas-usage.sh \
-  --from 2026-10-06T00:00:00Z --to 2026-10-06T12:00:00Z \
-  --output /private/tmp/maas-usage.csv
-```
-
-This original helper queries native RHOAI Thanos; it is not the dashboard's CSV format. The private CSV and coverage receipt contain identities and must stay outside Git. Missing categories remain unknown. If no counter baseline exists at the window start, period usage stays unknown: the observed increase and latest cumulative counter are shown separately, without adding the first sample to the period. Financial columns remain **unpriced**, with no currency, zero-cost assumption or invoice. Actual approved rates are required before any financial allocation. Prometheus sampling, counter resets and the configured 90-day retention limit reporting accuracy. Rows stay scoped to native limiter resources; do not sum overlapping policies. Duplicate underlying semantic-resource series cause a refusal instead of inflated usage. MCP/agent traces and GPU fixed costs are outside these token counters.
+A raw usage export for an explicit UTC window (the retired `export-maas-usage.sh`, git history 82092e01) queried native RHOAI Thanos; it is not the dashboard's CSV format. The private CSV and coverage receipt contain identities and must stay outside Git. Missing categories remain unknown. If no counter baseline exists at the window start, period usage stays unknown: the observed increase and latest cumulative counter are shown separately, without adding the first sample to the period. Financial columns remain **unpriced**, with no currency, zero-cost assumption or invoice. Actual approved rates are required before any financial allocation. Prometheus sampling, counter resets and the configured 90-day retention limit reporting accuracy. Rows stay scoped to native limiter resources; do not sum overlapping policies. Duplicate underlying semantic-resource series cause a refusal instead of inflated usage. MCP/agent traces and GPU fixed costs are outside these token counters.
 
 This workflow is inspired by [demo-chargeback](https://github.com/suhasvkashyap/demo-chargeback); its code and sample prices are not copied.
 
@@ -104,23 +98,13 @@ In **Gen AI studio → Playground → MCP**, select **OpenShift-MCP** (read-only
 
 This follows the [documented MCP connection procedure](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/experimenting_with_models_in_the_gen_ai_playground/index). It is a direct HTTPS connection, not MCP Gateway aggregation or MaaS API-key/quota governance. Gateway qualification is tracked separately.
 
-Both discovery fields are published with `publish-catalog-mcp.sh` (`--key`); exact Argo field delegation preserves them, regular deploy republishes/validates them, validation detects drift, and a reviewed change of a published field needs `--replace`. This is customer-managed field publication, not operator synchronization from the Registry. Retain its private UID-scoped ownership journal for repeated deployment. Stage040 does not require Stage060 on a fresh foundation: publication defers while the catalog runtime is absent, and Stage060 explicitly publishes once ready.
+Both discovery fields are published by `stages/040-governed-models-as-a-service/deploy.sh`; exact Argo field delegation preserves them, every deploy republishes them (a no-op when unchanged), `validate.sh` detects drift, and a reviewed change of a published field needs `deploy.sh --replace-studio-mcp`. This is customer-managed field publication, not operator synchronization from the Registry. Retain its private UID-scoped ownership journal for repeated deployment. Stage040 does not require Stage060 on a fresh foundation: publication defers while the catalog runtime is absent, and Stage060 explicitly publishes once ready.
 
 ### Playground Agent: OpenShift Ops Assistant
 
 A saved playground agent is the 3.5 self-service agent for end users: a project-scoped configuration of model, parameters, prompt, knowledge sources and MCP servers that every project member can load from **AI asset endpoints → Agents** or **Playground → Load agent** ([playground guide, chapter 15](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/experimenting_with_models_in_the_gen_ai_playground/index)). Stage 040 provisions one for **AI Coding Sandbox**: **OpenShift Ops Assistant** audits the model platform with Qwen 3.8 through MaaS and the token-less read-only **OpenShift-MCP** server, limited to the inspection tools `resources_list`, `resources_get`, `pods_list_in_namespace`, `pods_get` and `events_list`. Its reviewed system prompt (`040-genai-studio/openshift-ops-assistant-prompt.yaml`) names the exact API groups and kinds it may audit (LLMInferenceService, MaaSModelRef, ExternalModel, ExternalProvider, MaaSSubscription) and is registered in the project's MLflow prompt registry by the `agent-prompt-provisioner` Sync-hook Job (a new prompt version only when the template changes); the agent references the prompt by name and loads its latest version. Try: *"Which models are available through MaaS and are they healthy?"* or *"Who may use Claude, and with what budget?"*. The read-only MCP ServiceAccount holds `view` in the model projects and get/list on MaaS subscriptions for this; it cannot read Secrets or write. Qualified outside the browser on 2026-10-09 with the registered prompt (version 1), Qwen 3.8 through the gateway and the same tool allow-list: the agent made the nine prescribed inspection calls, read each subscription's details, and reported all five models, every subscription's budgets and no problems in three model turns (about 25K tokens); playground acceptance is user-owned.
 
-Model-free qualification is reproducible without saved acceptance artifacts:
-
-```bash
-./stages/040-governed-models-as-a-service/qualify-catalog-mcp.sh \
-  --bootstrap-kubeconfig "$KUBECONFIG" \
-  --admin-kubeconfig "$AI_ADMIN_KUBECONFIG" \
-  --developer-kubeconfig "$AI_DEVELOPER_KUBECONFIG" \
-  --receipt /private/qualification/studio-mcp.json
-```
-
-Create the receipt's parent directory with private permissions. The helper keeps tokens in memory and records only safe status/count checks. It verifies native session status/tools and bounded caller reads/hosting denial; browser rendering and model-generated tool invocation remain separate.
+`validate.sh` checks the published catalog entries against the live servers and their ownership journals. The former model-free persona qualification of the catalog (`qualify-catalog-mcp.sh`, git history 82092e01) verified native session status/tools and bounded caller reads/hosting denial; browser rendering and model-generated tool invocation remain separate.
 
 For catalog publication or qualification, supply the reviewed immutable deployed revisions as `RHOAI_STAGE040_EXPECTED_REVISION` and `RHOAI_STAGE060_EXPECTED_REVISION` (or the helpers' explicit revision arguments). Helper-only source publication does not require moving either live Application. Metadata connection and tool listing prove bearer-header transport; the server's opaque-token mode validates caller authority when an actual Kubernetes resource is requested. A nonempty invalid bearer must be denied on that resource call, not inferred invalid from metadata discovery.
 
@@ -132,7 +116,7 @@ Claude Sonnet 5.5 uses the documented Anthropic provider with `apiFormat: openai
 
 Use the discovered model endpoint with `/v1/chat/completions`, `"model": "claude-sonnet-5-5"` and your MaaS key in `Authorization: Bearer`. Anthropic documents this endpoint for testing and comparison: `response_format`, `logprobs`, `n > 1`, penalties and `seed` are ignored, prompt caching is unavailable and system messages are hoisted into one system prompt; use the native Messages API outside the gateway when those matter. Claude 5.x accepts only the default temperature (`1`) and rejects `top_p`: in the Gen AI playground set **Temperature to 1** (the default is 0.1); API clients must send `temperature: 1` or omit it, and never `top_p`. This selection also keeps Claude clear of a Connectivity Link 1.4.3 gateway limitation described in the [troubleshooting guide](../../docs/TROUBLESHOOTING.md#maas-gateway-holds-a-response-open-until-the-client-times-out). See [RHOAI 3.5 external-model formats](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service).
 
-To qualify Claude alone, select `RHOAI_STAGE040_MODEL=claude-sonnet-5-5` when running `validate-functional.sh` with your genuine persona; it runs the same completion, streaming and revoked-key checks as the other external models.
+To qualify Claude alone, select `RHOAI_STAGE040_MODEL=claude-sonnet-5-5` when running `stages/040-governed-models-as-a-service/validate.sh --functional` with your genuine persona; it runs the same completion, streaming and revoked-key checks as the other external models.
 
 ### Nemotron 3 Ultra 550B
 
@@ -142,6 +126,6 @@ The model reasons by default: responses carry `reasoning_content` beside `conten
 
 ## Current Routing Qualification
 
-Two small common-host requests passed: Qwen 3.8 native SSE and GPT-6 Luna JSON; MiniMax M2 and its `redhat-models` provider were removed from the governed catalog on 2026-10-09. Nemotron 3 Ultra passed bounded JSON and SSE requests through the gateway on 2026-10-09 with exact token metering (Limitador counted the two requests' 110 tokens against its policy) and a stream that closed with the usage chunk; No `validate-functional.sh` run is recorded for it yet. The local namespace-qualified legacy path returned HTTP 503 on the API hostname but passed native SSE on the retained Qwen 3.8 hostname. Use common `/v1` for current clients; keep the compatibility hostname until that native path limitation is resolved or its retirement is explicitly accepted. The old `models-as-a-service` local paths and publisher IDs are not aliases. Claude Sonnet 5.5 passed bounded JSON and SSE requests with exact token metering on its OpenAI-compatible registration on 2026-10-09. GPT-4.1 passed the same bounded checks and was accepted in the playground on 2026-10-09, then removed the same day as superseded by GPT-6 Luna and Nemotron 3 Ultra.
+Two small common-host requests passed: Qwen 3.8 native SSE and GPT-6 Luna JSON; MiniMax M2 and its `redhat-models` provider were removed from the governed catalog on 2026-10-09. Nemotron 3 Ultra passed bounded JSON and SSE requests through the gateway on 2026-10-09 with exact token metering (Limitador counted the two requests' 110 tokens against its policy) and a stream that closed with the usage chunk; No `stages/040-governed-models-as-a-service/validate.sh --functional` run is recorded for it yet. The local namespace-qualified legacy path returned HTTP 503 on the API hostname but passed native SSE on the retained Qwen 3.8 hostname. Use common `/v1` for current clients; keep the compatibility hostname until that native path limitation is resolved or its retirement is explicitly accepted. The old `models-as-a-service` local paths and publisher IDs are not aliases. Claude Sonnet 5.5 passed bounded JSON and SSE requests with exact token metering on its OpenAI-compatible registration on 2026-10-09. GPT-4.1 passed the same bounded checks and was accepted in the playground on 2026-10-09, then removed the same day as superseded by GPT-6 Luna and Nemotron 3 Ultra.
 
 Studio retained both saved profile UUIDs/settings and its saved response through a consistent private backup and supported OGX PVC mount. Two unreferenced historical model registrations remain cached: the installed native model API exposes no unregister operation. Fresh persistence attachment is source-reviewed and has not been tested end-to-end in a new environment.

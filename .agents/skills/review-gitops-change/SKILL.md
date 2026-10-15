@@ -94,7 +94,7 @@ Flag and describe any changes to:
 ## Validation commands
 
 ```bash
-python3 scripts/shared/stage_apps.py check-static NNN   # components disjoint, union == stage kustomization
+scripts/stage-apps.sh check-static NNN   # components disjoint, union == stage kustomization
 kustomize build gitops/stages/NNN-name/ | oc apply --dry-run=server -f -
 bash -n stages/NNN-name/deploy.sh
 bash -n stages/NNN-name/validate.sh

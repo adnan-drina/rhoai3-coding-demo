@@ -37,7 +37,7 @@ OpenShift AI 3.5 sections. Detailed record:
 |---|---|---|
 | `mlflowoperator`, `trustyai` and `aipipelines` set `Managed` by a Sync hook into fields Stage 010 delegates (one shared DSC) | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/` | [Enable the MLflow Operator component][enable] |
 | One cluster-scoped `MLflow` named `mlflow`; Secret and ConfigMap references resolve in `redhat-ods-applications` | `gitops/stages/050-model-evaluation/050-mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
-| PostgreSQL 16 metadata store via `backendStoreUriFrom` (Secret `mlflow-db-credentials`, created by `setup-ai-services.sh`); no SQLite | `gitops/stages/050-model-evaluation/050-mlflow/postgresql-statefulset.yaml` | [Install and configure MLflow][install], [Storage and database compatibility][storage] |
+| PostgreSQL 16 metadata store via `backendStoreUriFrom` (Secret `mlflow-db-credentials`, created by `stages/050-model-evaluation/deploy.sh`); no SQLite | `gitops/stages/050-model-evaluation/050-mlflow/postgresql-statefulset.yaml` | [Install and configure MLflow][install], [Storage and database compatibility][storage] |
 | Artifacts in ODF bucket `rhoai-mlflow-artifacts` with `serveArtifacts: true`, so clients never hold S3 keys | `gitops/stages/050-model-evaluation/050-mlflow/objectbucketclaim.yaml` | [MLflow configuration parameters][params] |
 | `ai-curated-prompts` is a global prompt workspace (label `opendatahub.io/global-mlflow-workspace: mlflow`) listed in dashboard `globalMLflowNamespaces` | `gitops/stages/050-model-evaluation/050-mlflow/prompts/namespace.yaml` | [Cluster roles for global prompt registry namespaces][globalroles] |
 | One replica and one worker, automatic schema migration: demo sizing | `gitops/stages/050-model-evaluation/050-mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
@@ -49,9 +49,8 @@ OpenShift AI 3.5 sections. Detailed record:
    publish, then deploy all Stage 050 Applications at one SHA:
 
    ```bash
-   ./stages/050-model-evaluation/deploy.sh      # runs setup-ai-services.sh
+   ./stages/050-model-evaluation/deploy.sh
    ./stages/050-model-evaluation/validate.sh
-   ./stages/050-model-evaluation/validate-ai-services.sh
    ```
 
 2. Inspect read-only, after the OpenShift safety guard in `AGENTS.md`:
@@ -68,7 +67,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
 ## Pitfalls
 
-- `setup-ai-services.sh` refuses to regenerate `mlflow-db-credentials` while
+- `stages/050-model-evaluation/deploy.sh` refuses to regenerate `mlflow-db-credentials` while
   the database PVC or StatefulSet exists; a lost Secret means restoring it,
   not re-running the helper.
 - `caBundleConfigMap` (trust for the ODF S3 service) is in the repo CR but was

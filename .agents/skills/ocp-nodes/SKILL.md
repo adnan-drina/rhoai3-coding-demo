@@ -10,7 +10,7 @@ description: >
   Use when reviewing node labels, taints, tolerations and pod placement in this
   repo (GPU node label cluster-api/accelerator, taint nvidia-gpu-only:NoSchedule,
   Kueue ResourceFlavor nodeLabels and tolerations, ClusterPolicy tolerations),
-  node sizing checks in scripts/platform/require-node-sizing.sh, or diagnosing
+  node sizing checks in `require_node_sizing` in `scripts/lib.sh`, or diagnosing
   DiskPressure, KubeNodeEviction and ephemeral-storage evictions on CPU or GPU
   workers. Do NOT use for MachineSet lifecycle and scaling (use
   ocp-machine-management), host OS or kubelet configuration (use
@@ -31,7 +31,7 @@ OpenShift Container Platform 4.22 sections. Detailed records:
 - A change touches a taint, toleration, `nodeSelector` or Kueue flavor
   `nodeLabels`.
 - Nodes report `DiskPressure`, pods are `Evicted`, or a deploy stops in
-  `require-node-sizing.sh`.
+  `require_node_sizing`.
 
 ## Repo decisions
 
@@ -41,7 +41,7 @@ OpenShift Container Platform 4.22 sections. Detailed records:
 | GPU workers are tainted `nvidia-gpu-only:NoSchedule` so non-GPU pods stay off them | `020-gpu-machinesets/` | [Controlling pod placement onto nodes (scheduling)][placement] |
 | Tolerations live with the GPU consumers: NVIDIA `ClusterPolicy`, each Kueue GPU `ResourceFlavor` (which also selects its pool by `nodeLabels`), and the Qwen `LLMInferenceService` | `020-nvidia-gpu-operator/cluster-policy.yaml`, `020-gpu-quotas/queues/gpu-rtxpro6000.yaml`, `020-gpu-quotas/queues/gpu-l40s.yaml`, `gitops/stages/040-governed-models-as-a-service/040-local-models/qwen38-27b-llminferenceservice.yaml` | [Controlling pod placement onto nodes (scheduling)][placement] |
 | Workloads reach a GPU pool through a Kueue flavor, not a hand-written `nodeSelector` | `020-gpu-quotas/queues/` | [Controlling pod placement onto nodes (scheduling)][placement] |
-| Control-plane and CPU workers must be at least 16 vCPU / 60 GiB (GPU nodes exempt); every stage `deploy.sh` checks it first | `scripts/platform/require-node-sizing.sh` | [Working with nodes][nodes] |
+| Control-plane and CPU workers must be at least 16 vCPU / 60 GiB (GPU nodes exempt); every stage `deploy.sh` checks it first | `require_node_sizing` in `scripts/lib.sh` | [Working with nodes][nodes] |
 | Platform and user-workload Prometheus use PVCs instead of `emptyDir`, to keep TSDB growth off node ephemeral storage | `gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/cluster-monitoring/` | [Working with nodes][nodes] |
 | No custom scheduler profile, `PriorityClass`, node tuning or descheduler | (none declared) | [Controlling pod placement onto nodes (scheduling)][placement] |
 
@@ -50,7 +50,7 @@ Paths are relative to `gitops/stages/020-gpu-infrastructure-private-ai/` unless 
 ## Procedure
 
 1. Change labels and taints only in the MachineSet template (regenerate with
-   `generate-gpu-machineset.sh`, see `ocp-machine-management`); add a
+   `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets`, see `ocp-machine-management`); add a
    matching toleration to every GPU consumer in the same change.
 2. Validate: `./stages/020-gpu-infrastructure-private-ai/validate.sh` checks
    that each Ready GPU node allocates one `nvidia.com/gpu`, has its pool's GPU

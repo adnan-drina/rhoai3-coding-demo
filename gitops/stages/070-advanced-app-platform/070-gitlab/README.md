@@ -5,8 +5,8 @@ This Application runs the private source-control service of the developer platfo
 | | |
 |---|---|
 | Argo CD Application | `070-gitlab` ([manifest](../../../applications/070-gitlab.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 7) |
-| Validated by | `stages/070-advanced-app-platform/validate.sh` (GitLab release, readiness, bucket, Route, integration-Secret checks; `security-status.py`); `validate.sh --static` (`chart-gitops.test.py`, `stage070-upgrade.test.py`, `security-boundaries.test.py`) |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage-apps.sh deploy 070` (deploy-order 7) |
+| Validated by | `stages/070-advanced-app-platform/validate.sh` (GitLab release, readiness, bucket, Route, integration-Secret and security-boundary checks); `validate.sh --static` (renders, disjoint components, scripts parse; the former offline tests `tests/*.test.py` are in git history at `82092e01`) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on `/spec/volumeName` of PVCs `gitlab-postgresql-data` and `gitlab-valkey-data` |
 | Depends on | `070-namespaces` (`gitlab-system`, `app-platform-build`, `rhdh` and the other target namespaces); `070-identity` (Secret `stage070-scm-provisioner` in `gitlab-system`, platform realm and persona links); `070-devspaces` (CheCluster `devspaces`, standing DevWorkspaces `agentic-coolstore`); `070-mta` (Route `mta`); existing Keycloak, NooBaa (`openshift-storage.noobaa.io`, Route `s3`), `gp3-csi` and OpenShift GitOps |
 | Used by | `070-rhdh` (catalog and TechDocs from the platform mirror, `rhdh-gitlab`, `gitlab-publisher`, `gitlab-catalog-reader`, `gitlab-platform-config`, `rhdh-local-user` (operator-managed)); `070-pipelines` enrollment (`gitlab-enroller`, `gitlab-platform-config`, `gitlab-import-seeds`); Dev Spaces (GitLab OAuth); Argo CD (`gitlab-platform-reader` repository Secret, `stage070-project-release`); Stages 110–130 |
@@ -15,9 +15,9 @@ This Application runs the private source-control service of the developer platfo
 
 The workshop keeps application source inside the cluster boundary. GitLab CE provides private groups, project-bound webhooks, OAuth for Dev Spaces and an HTTPS Git endpoint that Argo CD and Tekton can read. GitLab is an upstream community component, not a Red Hat product.
 
-GitLab's Helm chart needs external PostgreSQL, Redis or Valkey, and object storage [1]. The chart is rendered offline during authoring by `scripts/platform/render-stage070-charts.py`, from the archive and image digests pinned in `scripts/platform/stage070-charts.lock.json`. Argo CD then applies plain Kustomize resources: there is no Helm release, chart inflation at sync time or GitLab Operator. Every object and image digest is reviewable in Git, and Argo CD remains the single owner. The renderer assigns sync waves so that the chart's own order still holds: secrets, then database, then migrations, then application pods.
+GitLab's Helm chart needs external PostgreSQL, Redis or Valkey, and object storage [1]. The chart was rendered offline during authoring from a pinned archive and image digests; the generated manifests in `generated/` are now the source and are edited directly (the former renderer `render-stage070-charts.py` and `stage070-charts.lock.json` are in git history at `82092e01`). Argo CD then applies plain Kustomize resources: there is no Helm release, chart inflation at sync time or GitLab Operator. Every object and image digest is reviewable in Git, and Argo CD remains the single owner. The generated manifests carry sync waves so that the chart's own order still holds: secrets, then database, then migrations, then application pods.
 
-The integration hub lives in this Application because it is the only step that can see all its inputs at once: GitLab ready, Dev Spaces and MTA Routes present, the platform realm configured. Argo CD orders hooks only inside one Application [9], so `stage_apps.py deploy 070` deploys GitLab after Dev Spaces, Pipelines, SonarQube and MTA, and before Developer Hub, whose catalog hook reads the GitLab mirror.
+The integration hub lives in this Application because it is the only step that can see all its inputs at once: GitLab ready, Dev Spaces and MTA Routes present, the platform realm configured. Argo CD orders hooks only inside one Application [9], so `stage-apps.sh deploy 070` deploys GitLab after Dev Spaces, Pipelines, SonarQube and MTA, and before Developer Hub, whose catalog hook reads the GitLab mirror.
 
 ## What
 
@@ -85,25 +85,15 @@ Not in Git: every generated Secret, the `*-runtime` ConfigMaps, `gitlab-initial-
    - repoints the stopped `agentic-coolstore` workspaces;
    - writes `gitlab-platform-config` (in `rhdh` and `app-platform-build`), `stage070-project-release` and the Argo CD repository Secret `gitlab-platform-reader` (deploy token).
 
-   Existing tokens are reused while valid. One that expires within seven days refuses the sync, and the operator renews it with `rotate-credentials.py` ([lifecycle](../../../../docs/OPERATIONS.md#gitlab-ownership-and-lifecycle)).
+   Existing tokens are reused while valid. One that expires within seven days refuses the sync, and the operator renews it through GitLab's token API ([rotation](../../../../docs/OPERATIONS.md#stage-070-security-review-follow-up); the former helper `rotate-credentials.py` is in git history at `82092e01`).
 6. **Secrets.** Every credential is generated in the cluster and written through `secret_writer.py`, which never stores the payload in `kubectl.kubernetes.io/last-applied-configuration`. Recovery requires the Rails secret to be escrowed separately; see [Operations](../../../../docs/OPERATIONS.md#stage-070-gitlab-release).
 7. **`ignoreDifferences`.** Only the dynamically bound `volumeName` of the two hand-authored PVCs is ignored.
 
 ## Validation
 
-`validate.sh` (live, read-only) checks that `gitlab-gitlab-chart-info` records `19.4.2`; that webservice, Gitaly and sidekiq are ready; that the six OBCs are `Bound` and `/-/readiness` returns 200 through the Route. It checks that the scoped integration Secrets exist (`rhdh/gitlab-publisher`, `rhdh/gitlab-catalog-reader`, `app-platform-build/gitlab-enroller`, `openshift-devspaces/gitlab-oauth-config`, `gitlab-system/gitlab-oidc`). It also checks that both standing workspaces clone from GitLab and that the enrollment CronJob exists. `security-status.py` adds four checks. No credential Secret carries a last-applied annotation. Only named PVC `volumeName` fields are ignored. The idle hub ServiceAccount can neither `exec` nor create Secrets (`idle_bootstrap_cannot_exec`, `idle_bootstrap_cannot_write_credentials`). `platform-ingress` is installed in `gitlab-system`.
+`validate.sh` (live, read-only) checks that `gitlab-gitlab-chart-info` records `19.4.2`; that webservice, Gitaly and sidekiq are ready; that the six OBCs are `Bound` and `/-/readiness` returns 200 through the Route. It checks that the scoped integration Secrets exist (`rhdh/gitlab-publisher`, `rhdh/gitlab-catalog-reader`, `app-platform-build/gitlab-enroller`, `openshift-devspaces/gitlab-oauth-config`, `gitlab-system/gitlab-oidc`). It also checks that both standing workspaces clone from GitLab and that the enrollment CronJob exists. `stages/070-advanced-app-platform/validate.sh` adds four checks. No credential Secret carries a last-applied annotation. Only named PVC `volumeName` fields are ignored. The idle hub ServiceAccount can neither `exec` nor create Secrets (`idle_bootstrap_cannot_exec`, `idle_bootstrap_cannot_write_credentials`). `platform-ingress` is installed in `gitlab-system`.
 
-Static tests:
-
-- `chart-gitops.test.py`: no runtime chart or Operator, waves and hooks, runtime templates, immutable images, no API-token mount, upgrade guard.
-- `stage070-upgrade.test.py`:
-  - `test_noobaa_claims_and_disabled_duplicate_components`
-  - `test_platform_mirror_push_is_normal_and_does_not_expose_credentials`
-  - `test_golden_is_one_normal_commit_and_reconcile_is_noop`
-  - `test_membership_requires_the_same_oidc_subject`
-  - `test_native_git_url_import_enabled_without_local_network_access`
-  - `test_argo_reader_keeps_existing_policy_and_is_idempotent`
-- `security-boundaries.test.py`.
+Static checks: `validate.sh --static`. The former offline tests (`chart-gitops.test.py`, `stage070-upgrade.test.py`, `security-boundaries.test.py`) are in git history at `82092e01`.
 
 ```bash
 oc get deploy,sts,obc,pvc,cronjob -n gitlab-system

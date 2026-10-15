@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# Stage 070: static authoring checks or read-only deployed-state validation.
+# Stage 070 validation (read-only, no inference): the component Applications and selected operators; GitLab, its
+# NooBaa storage and scoped integration Secrets; identity and Dev Spaces; SonarQube and internal-registry delivery;
+# MTA native Agents and Developer Lightspeed; the signing service and Developer Hub; and the corrected security
+# boundaries (no retained credential annotations, server-side diff, scoped identity clients, ingress policies).
+# --static checks only the repository: the stage renders, its components are disjoint, and the scripts parse.
+# Usage: stages/070-advanced-app-platform/validate.sh [--static | --revision <commit>]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-PYTHON="${PYTHON:-python3}"
 if [[ "${1:-}" == --static ]]; then
-  export PYTHONPATH="$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-pipelines/gitlab${PYTHONPATH:+:$PYTHONPATH}"
-  for test in correction-package.test.py internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py security-boundaries.test.py sonarqube-bootstrap.test.py sonarqube-scope.test.py sso-alignment.test.py; do
-    "$PYTHON" "$SCRIPT_DIR/tests/$test"
-  done
-  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-rhdh/jobs/catalog/render_catalog.test.py"
-  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/app-migration-template.test.py"
-  kustomize build "$REPO_ROOT/gitops/stages/070-advanced-app-platform" >/dev/null
+  oc kustomize "$REPO_ROOT/gitops/stages/070-advanced-app-platform" >/dev/null
+  "$REPO_ROOT/scripts/stage-apps.sh" check-static 070
   bash -n "$SCRIPT_DIR/deploy.sh" "$SCRIPT_DIR/validate.sh"
   echo 'PASS: Stage 070 authoring checks. Live deployment and model-dependent checks are separate.'
   exit 0
@@ -20,9 +19,82 @@ EXPECTED_REVISION="${RHOAI_STAGE070_EXPECTED_REVISION:-}"
 if [[ "${1:-}" == --revision && $# -eq 2 ]]; then
   EXPECTED_REVISION="$2"
 elif [[ $# -ne 0 ]]; then
-  echo 'Usage: validate.sh [--static | --revision <commit>]' >&2; exit 1
+  sed -n 's/^# Usage: //p' "$0" >&2; exit 1
 fi
-source "$REPO_ROOT/scripts/shared/validate-lib.sh"
+source "$REPO_ROOT/scripts/lib.sh"
+load_env
+check_oc_logged_in
+
+# ── Corrected security boundaries ─────────────────────────────────────────────
+# Credential values stay inside jq and curl pipes; nothing is printed or passed as an argument.
+LAST_APPLIED=kubectl.kubernetes.io/last-applied-configuration
+denied() { [[ $(oc --request-timeout=15s auth can-i "$1" "$2" -n "$3" --as="$4" 2>/dev/null || true) == no ]] && echo pass || echo "allowed or unavailable"; }
+security_boundaries() {
+  local ns name sa apps components selected base secret target token realm status
+  for pair in rhdh/rhdh-gitlab openshift-gitops/rhdh-local-user gitlab-system/gitlab-oidc openshift-mta/kai-api-keys \
+      app-platform-build/sonarqube-credentials openshift-devspaces/gitlab-oauth-config gitlab-system/stage070-scm-provisioner; do
+    record "No client-apply credential annotation on $pair" "$(oc --request-timeout=15s get secret "${pair#*/}" -n "${pair%%/*}" -o json 2>/dev/null |
+      jq -r --arg a "$LAST_APPLIED" 'if (.metadata.annotations // {} | has($a)) then "annotation retained" else "pass" end' || echo "unreadable")"
+  done
+  # The developer platform estate, beyond the named sample: no Secret retains a client-apply annotation.
+  for ns in $( { printf '%s\n' gitlab-system rhdh openshift-mta openshift-devspaces openshift-gitops app-platform-build sonarqube \
+      trusted-artifact-signer wksp-ai-developer wksp-ai-admin coolstore-dev
+      oc --request-timeout=15s get namespaces -l rhoai3.redhat.com/pipeline-project=true -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; } | sort -u); do
+    record "No retained Secret annotation in $ns" "$(oc --request-timeout=15s get secrets -n "$ns" -o json 2>/dev/null |
+      jq -r --arg a "$LAST_APPLIED" 'if all(.items[]; .metadata.annotations // {} | has($a) | not) then "pass" else "annotation retained" end' || echo "unreadable")"
+  done
+  apps=$(oc --request-timeout=15s get applications.argoproj.io -n openshift-gitops -o json)
+  # Generated project-*/runtime-* Applications carry the stage label too; components are the rhoai-demo ones.
+  record "Server-side diff on Stage 070 and generated Applications" "$(jq -r '[.items[] | select((.metadata.labels["demo.rhoai.io/stage"] == "070"
+      and .spec.project == "rhoai-demo") or .spec.project == "platform-projects" or .spec.project == "runtime-projects")]
+    | if length > 0 and all(.[]; .metadata.annotations["argocd.argoproj.io/compare-options"] // "" | split(",") | index("ServerSideDiff=true"))
+      then "pass" else "missing ServerSideDiff=true" end' <<<"$apps")"
+  components='[.items[] | select(.metadata.labels["demo.rhoai.io/stage"] == "070" and .spec.project == "rhoai-demo")]'
+  record "No client-apply migration for declarative Secrets" "$(jq -r "$components"' | if length > 0
+    and all(.[]; .spec.syncPolicy.syncOptions // [] | index("ClientSideApplyMigration=false")) then "pass" else "missing ClientSideApplyMigration=false" end' <<<"$apps")"
+  record "Only named controller PVC fields ignored" "$(jq -r "$components"' | [.[].spec.ignoreDifferences[]? | select(.kind == "PersistentVolumeClaim")]
+    | if length > 0 and all(.[]; (.name // "") != "" and (.namespace // "") != "" and .jsonPointers == ["/spec/volumeName"]) then "pass" else "broad PVC exceptions" end' <<<"$apps")"
+  sa=system:serviceaccount:gitlab-system:gitlab-integrations-bootstrap
+  record "Idle bootstrap cannot exec" "$(denied create pods/exec gitlab-system "$sa")"
+  for ns in gitlab-system rhdh app-platform-build openshift-devspaces; do
+    record "Idle bootstrap cannot write Secrets in $ns" "$(denied create secrets "$ns" "$sa")"
+  done
+  for pair in rhdh/job-configure-rhdh openshift-mta/job-configure-mta-sso trusted-artifact-signer/configure-signing; do
+    record "No master-realm Secret for ${pair#*/}" "$(denied get secret/keycloak-initial-admin keycloak "system:serviceaccount:${pair%%/*}:${pair#*/}")"
+  done
+  base="https://$(oc --request-timeout=15s get route keycloak -n keycloak -o jsonpath='{.spec.host}')"
+  for row in rhdh/stage070-rhdh-provisioner/rhdh openshift-mta/stage070-mta-provisioner/mta-hub \
+      trusted-artifact-signer/stage070-signing-provisioner/trusted-artifact-signer gitlab-system/stage070-scm-provisioner/gitlab; do
+    IFS=/ read -r ns secret target <<<"$row"
+    token=$(oc --request-timeout=15s get secret "$secret" -n "$ns" -o json |
+      jq -j '.data | "grant_type=client_credentials&client_id=\(.client_id | @base64d | @uri)&client_secret=\(.client_secret | @base64d | @uri)"' |
+      curl -s --max-time 30 --data-binary @- "$base/realms/platform/protocol/openid-connect/token" | jq -r '.access_token // empty')
+    if [[ -z "$token" ]]; then record "Scoped client $secret obtains a token" "token request failed"; continue; fi
+    record "Scoped client $secret reads its platform configuration" "$(curl -s --max-time 30 --config <(printf 'header = "Authorization: Bearer %s"\n' "$token") \
+      "$base/admin/realms/platform/clients?clientId=$target" | jq -r --arg t "$target" 'if length == 1 and .[0].clientId == $t then "pass" else "unexpected answer" end' || echo "request failed")"
+    for realm in sso master; do
+      status=$(curl -s --max-time 30 -o /dev/null -w '%{http_code}' --config <(printf 'header = "Authorization: Bearer %s"\n' "$token") \
+        "$base/admin/realms/$realm" || echo 000)
+      [[ "$status" == 401 || "$status" == 403 ]] && R=pass || R="HTTP $status"
+      record "Scoped client $secret cannot administer realm $realm" "$R"
+    done
+  done
+  # Developer Hub reads Argo CD with the operator-managed rhdh local user; its copy must match (compared in jq).
+  record "Argo CD reader is the operator local user and Developer Hub holds the same token" "$(jq -n -r \
+    --slurpfile reader <(oc --request-timeout=15s get secret rhdh-local-user -n openshift-gitops -o json) \
+    --slurpfile copy <(oc --request-timeout=15s get secret rhdh-secrets -n rhdh -o json) '
+    ($reader[0].data.apiToken | @base64d) as $t | ($copy[0].data.RHDH_ARGOCD_TOKEN // "" | @base64d) as $c
+    | ($t | split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | if length % 4 == 0 then . else . + ("=" * (4 - length % 4)) end | @base64d | fromjson) as $claims
+    | if $claims.sub == "rhdh:apiKey" and $c == $t then "pass" else "reader or copy differs" end' 2>/dev/null || echo "unreadable")"
+  record "Hub bootstrap cannot read the Argo CD admin password" "$(denied get secret/openshift-gitops-cluster openshift-gitops "$sa")"
+  # The pipeline control token belongs to the platform-provisioner technical user, never the SonarQube admin.
+  record "SonarQube control token belongs to the provisioner" "$(oc --request-timeout=15s get secret sonarqube-credentials -n app-platform-build \
+    -o jsonpath='{.metadata.annotations.rhoai3\.io/control-token-owner}' | grep -qx platform-provisioner && echo pass || echo "other owner")"
+  for ns in gitlab-system sonarqube rhdh app-platform-build trusted-artifact-signer; do
+    record "Ingress NetworkPolicy installed in $ns" "$(oc --request-timeout=15s get networkpolicy platform-ingress -n "$ns" -o json 2>/dev/null |
+      jq -r 'if .spec.policyTypes == ["Ingress"] then "pass" else "policy differs" end' || echo missing)"
+  done
+}
 
 log_step 'Stage 070 GitOps and selected operators'
 check_stage_applications 070 "$EXPECTED_REVISION"
@@ -117,7 +189,8 @@ log_step 'Optional MTA Solution Server (deferred; not qualified)'
 check 'MTA Solution Server explicitly deferred' "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_solution_server_enabled}'" 'false'
 check 'Deferred Solution Server is not crash-looping' "operand=\$(oc get deployment kai-api -n openshift-mta --ignore-not-found -o name) && test -z \"\$operand\" && echo ABSENT" 'ABSENT'
 echo '[INFO] Solution Server is disabled pending its vendor dependency fix; this is not a startup or inference PASS.'
-MTA_MAAS_ORIGIN=$(oc get gateway.gateway.networking.k8s.io maas-default-gateway -n openshift-ingress -o json | "$PYTHON" -c 'import json,sys; hosts=[x.get("hostname", "") for x in json.load(sys.stdin)["spec"]["listeners"] if x.get("hostname", "").startswith("maas.")]; print("https://"+hosts[0] if len(hosts)==1 else "UNRESOLVED")' 2>/dev/null || echo UNRESOLVED)
+MTA_MAAS_ORIGIN=$(oc get gateway.gateway.networking.k8s.io maas-default-gateway -n openshift-ingress -o json 2>/dev/null |
+  jq -r '[.spec.listeners[].hostname // "" | select(startswith("maas."))] | if length == 1 then "https://" + .[0] else "UNRESOLVED" end' || echo UNRESOLVED)
 check 'MTA MaaS origin is unambiguous' "printf '%s' '$MTA_MAAS_ORIGIN' | contains -E '^https://maas[.][^/]+$' && echo GOVERNED" 'GOVERNED'
 check 'MTA native Gateway uses MaaS origin' "test \"\$(oc get gateways.konveyor.io maas-qwen -n openshift-mta -o jsonpath='{.spec.endpoint}')\" = '$MTA_MAAS_ORIGIN' && echo EXACT_GATEWAY" 'EXACT_GATEWAY'
 check 'MTA Lightspeed uses versioned MaaS API base' "test \"\$(oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_baseurl}')\" = '$MTA_MAAS_ORIGIN/v1' && echo EXACT_PROXY" 'EXACT_PROXY'
@@ -128,17 +201,13 @@ KEYCLOAK_HOST=$(oc get route keycloak -n keycloak -o jsonpath='{.spec.host}' 2>/
 check 'TAS uses existing platform realm' "oc get securesign platform -n trusted-artifact-signer -o jsonpath='{.spec.fulcio.config.oidcIssuers[0].issuer}'" "https://${KEYCLOAK_HOST}/realms/platform"
 check 'Portal instance exists' "oc get backstage developer-hub -n rhdh -o jsonpath='{.metadata.name}'" 'developer-hub'
 check 'Portal catalog bundle stamped' "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\\.redhat\\.com/catalog-bundle}' | contains -E '^[0-9a-f]{64}$' && echo STAMPED" 'STAMPED'
-check 'Portal catalog has no unresolved placeholders' "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | '$PYTHON' -c 'import sys; s=sys.stdin.read(); assert s and \"__RHOAI3_\" not in s and \"placeholder.example.com\" not in s; print(\"RESOLVED\")'" 'RESOLVED'
+check 'Portal catalog has no unresolved placeholders' "oc get configmap catalog-runtime-rhdh -n rhdh -o json | jq -r '.data[\"all.yaml\"] // \"\" | if . != \"\" and (contains(\"__RHOAI3_\") | not) and (contains(\"placeholder.example.com\") | not) then \"RESOLVED\" else \"UNRESOLVED\" end'" 'RESOLVED'
 check 'Portal templates use private GitLab mirror' "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | contains -E 'target: https://gitlab-gitlab-system\\..*/-/blob/[0-9a-f]{40}/.*template.yaml' && echo GITLAB" 'GITLAB'
 RHDH_HOST=$(oc get route -n rhdh -l app.kubernetes.io/name=backstage --no-headers 2>/dev/null | awk 'NR==1 {print $2}' || true)
 if [[ -n "$RHDH_HOST" ]]; then check_http_code 'Developer Hub reachable' "https://${RHDH_HOST}" '200,302'; fi
 
 log_step 'Credential, identity and ingress correction checks (no inference)'
-if "$PYTHON" "$SCRIPT_DIR/security-status.py"; then
-  check 'Stage 070 corrected security boundaries' 'echo PASS' 'PASS'
-else
-  check 'Stage 070 corrected security boundaries' 'echo FAIL' 'PASS'
-fi
+security_boundaries
 
 # Models are deliberately stopped by the operator. A resource check is not
 # proof of inference, browser login, signed delivery or a migration run.

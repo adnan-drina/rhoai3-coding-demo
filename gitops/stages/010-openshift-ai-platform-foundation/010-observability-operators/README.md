@@ -10,7 +10,7 @@ RHOAI administrators. [`010-rhoai-platform`](../010-rhoai-platform/README.md) (D
 |---|---|
 | Argo CD Application | `010-observability-operators` ([manifest](../../../applications/010-observability-operators.yaml)) |
 | Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 1) |
-| Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (three CSVs `Succeeded`; `check-operator-policy.py --verify`); [`validate-foundation-services.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate-foundation-services.sh) (SubjectAccessReview for the writer role; trace written and read back) |
+| Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (three CSVs `Succeeded`; `check_operator_policy --verify`); [`stages/010-openshift-ai-platform-foundation/validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (SubjectAccessReview for the writer role; trace written and read back) |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation |
 | Depends on | OpenShift GitOps bootstrap and the `redhat-operators` catalog. The writer binding names a service account the RHOAI operator creates later; a binding to a missing subject is valid |
 | Used by | `010-rhoai-platform` (monitoring stack), `010-console-observability` (UIPlugin CRD and Perses), any later stage that creates OpenTelemetry collectors or reads RHOAI traces |
@@ -72,7 +72,7 @@ Operator for the RHOAI-generated collector.
 
 - **Channels and approval.** All three use the rolling `stable` channel with `Automatic` approval, which is what the
   product guides show [4][5][6]. A rolling channel can cross minor versions. The repository bounds this in
-  `scripts/platform/check-operator-policy.py`: it requires `stable` and the qualified minor versions with minimums COO
+  `check_operator_policy` in `scripts/lib.sh`: it requires `stable` and the qualified minor versions with minimums COO
   `1.5.3`, OpenTelemetry `0.158.0-2` and Tempo `0.22.0-2`. A new minor version on the channel makes deployment fail
   closed until it is qualified. `docs/PLATFORM_BASELINE.md` maps OpenTelemetry 0.158 and Tempo 0.22 to product
   release 3.11.
@@ -87,8 +87,8 @@ Operator for the RHOAI-generated collector.
 
 ## Validation
 
-`validate.sh` checks each Subscription's installed CSV for `Succeeded`. It also runs `check-operator-policy.py --verify`,
-which checks the channel and minimum version. `validate-foundation-services.sh` sends a SubjectAccessReview as
+`validate.sh` checks each Subscription's installed CSV for `Succeeded`. It also runs `check_operator_policy --verify`,
+which checks the channel and minimum version. `stages/010-openshift-ai-platform-foundation/validate.sh` sends a SubjectAccessReview as
 `system:serviceaccount:redhat-ods-monitoring:data-science-collector-collector` for `create` on the tenant resource. It
 then pushes a synthetic span through the collector and reads it back from Tempo by its trace ID.
 

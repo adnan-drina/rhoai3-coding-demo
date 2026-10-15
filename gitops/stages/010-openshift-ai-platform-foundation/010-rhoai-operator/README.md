@@ -8,7 +8,7 @@ platform configuration (DSCInitialization, DataScienceCluster, Auth, dashboard c
 |---|---|
 | Argo CD Application | `010-rhoai-operator` ([manifest](../../../applications/010-rhoai-operator.yaml)) |
 | Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 1) |
-| Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (Application Synced/Healthy at the reviewed revision; `rhods-operator` CSV `Succeeded`); `scripts/platform/check-operator-policy.py --verify` (channel and minimum version) |
+| Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (Application Synced/Healthy at the reviewed revision; `rhods-operator` CSV `Succeeded`); `check_operator_policy` in `scripts/lib.sh` --verify` (channel and minimum version) |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via the `compare-options` annotation |
 | Depends on | OpenShift GitOps bootstrap (`deploy.sh` steps 1-3) and the `redhat-operators` catalog source |
 | Used by | `010-rhoai-platform` (needs the RHOAI CRDs) and every later stage that uses OpenShift AI APIs |
@@ -39,7 +39,7 @@ operator Deployment, and the `redhat-ods-applications` namespace the operator cr
 - **Channel and approval.** `stable-3.5` is a version-pinned stable channel. The documentation lists `stable-x.y` as a
   valid channel value [1] and gives it seven months of full support with a release every three months [2].
   Approval is `Automatic`, so z-stream updates within 3.5 install without review. The repository accepts this on
-  purpose: `scripts/platform/check-operator-policy.py` refuses any channel other than `stable-3.5` and any installed
+  purpose: `check_operator_policy` in `scripts/lib.sh` refuses any channel other than `stable-3.5` and any installed
   version below the qualified minimum `3.5.1` or outside the 3.5 minor. No `startingCSV` is set.
 - **`DISABLE_DSC_CONFIG=true`.** This stops the operator from creating the default DSCInitialization, so
   `010-rhoai-platform` can create `default-dsci` from Git with the monitoring stack configured [3]. This environment
@@ -49,13 +49,13 @@ operator Deployment, and the `redhat-ods-applications` namespace the operator cr
 - **Ordering.** `deploy.sh` applies all deploy-order Applications in one `oc apply`. Ordering against
   `010-rhoai-platform` therefore comes from Argo CD retry (limit 10, backoff 5s to 3m) and
   `SkipDryRunOnMissingResource`, not from a wait in the script. Before applying, `deploy.sh` runs
-  `check-operator-policy.py` to check the catalog. After applying, it waits up to 1800 s for the CSV to succeed.
+  `check_operator_policy` to check the catalog. After applying, it waits up to 1800 s for the CSV to succeed.
 - **Credentials.** None.
 - **Cluster-specific values.** None. `deploy.sh` stamps `repoURL` and the reviewed commit SHA on the Application.
 
 ## Validation
 
-`validate.sh` checks that the Subscription's `installedCSV` is in phase `Succeeded`. `stage_apps.py status 010` also
+`validate.sh` checks that the Subscription's `installedCSV` is in phase `Succeeded`. `stage-apps.sh status 010` also
 requires the Application to be Synced and Healthy at the reviewed revision. Check by hand:
 
 ```bash

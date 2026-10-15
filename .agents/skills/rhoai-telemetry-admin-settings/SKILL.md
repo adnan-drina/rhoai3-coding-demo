@@ -11,7 +11,7 @@ description: >
   AI (Settings > General settings, the odh-segment-key-config ConfigMap,
   dashboard disableTracking) or MaaS usage telemetry (spec.telemetry on the
   MaaS tenant default-tenant set by the Stage 040 enable Job, the Usage tab,
-  CSV export, export-maas-usage.sh). Do NOT use for the observability stack
+  CSV export). Do NOT use for the observability stack
   itself (use rhoai-observability), MaaS subscriptions, keys and policies
   (use rhoai-maas-governance), TrustyAI (use rhoai-monitoring-trustyai), or
   cluster telemetry (use ocp-observability).
@@ -38,7 +38,7 @@ showback). Repo decisions here, product behavior in the linked OpenShift AI
 | `disableTracking: false` (the default) is written down, so the Usage data collection section stays visible in the dashboard settings | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml` | [Hide the usage data collection section][hide], [Dashboard configuration options][options] |
 | MaaS telemetry on: the Sync-hook Job patches `spec.telemetry` of `maastenantconfigs.maas.opendatahub.io/default-tenant` in `models-as-a-service` (owner check plus UID and resourceVersion guard) | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml`, `jobs/enable-maas-telemetry-role.yaml`, `jobs/enable-maas-telemetry-binding.yaml` | [Enable telemetry for MaaS][maas-telemetry] |
 | `captureUser: true` (product default `false`), `captureGroup: false`, `captureOrganization` and `captureModelUsage: true`; recorded deviation for per-user showback | same Job; `040-maas-platform/README.md` (Alignment table) | [Enable telemetry for MaaS][maas-telemetry] |
-| Showback beyond the Usage tab: two custom PersesDashboards (cost per token, tokenomics) and a measured-usage CSV script that reads Thanos; unpriced rate card | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/observability/`, `stages/040-governed-models-as-a-service/export-maas-usage.sh` | [Export usage data for cost attribution][maas-export] |
+| Showback beyond the Usage tab: two custom PersesDashboards (cost per token, tokenomics); unpriced rate card; the former Thanos CSV script `export-maas-usage.sh` is in git history at `82092e01` | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/observability/` | [Export usage data for cost attribution][maas-export] |
 
 ## Procedure
 
@@ -59,9 +59,8 @@ showback). Repo decisions here, product behavior in the linked OpenShift AI
    oc get configmap odh-segment-key-config -n redhat-ods-applications -o yaml
    ```
 
-4. Usage export: `./stages/040-governed-models-as-a-service/export-maas-usage.sh
-   --from <UTC> --to <UTC> --output <private path>`; never commit the CSV
-   (it holds user identities).
+4. Usage export: the dashboard Usage page's **Export as CSV**; never commit
+   the CSV (it holds user identities).
 
 ## Pitfalls
 

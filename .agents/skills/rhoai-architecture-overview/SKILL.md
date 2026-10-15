@@ -59,7 +59,7 @@ Workshop architecture lives in `README.md` and the stage list in `AGENTS.md`
 2. Put a new workload in a stage-owned namespace; add
    `opendatahub.io/dashboard: "true"` only when it must appear as a project in
    the OpenShift AI dashboard.
-3. Validate structure statically: `./scripts/platform/validate-stage-flow.sh`.
+3. Validate structure statically: `scripts/validate-stage-flow.sh`.
 4. Live check, after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash
@@ -74,7 +74,7 @@ Workshop architecture lives in `README.md` and the stage list in `AGENTS.md`
   in `010-rhoai-operator/subscription.yaml`); a missing DSCI points to
   `010-rhoai-platform`, not to the operator.
 - `rhods-admins` is created by the operator from the `Auth` CR; its membership
-  comes from `stages/010-openshift-ai-platform-foundation/setup-access.sh`, not Git.
+  comes from `stages/010-openshift-ai-platform-foundation/deploy.sh`, not Git.
 - `llamastackoperator` stays `Removed`; the 3.5 generative AI service layer here
   is `ogx` (enabled by Stage 040). Do not describe Llama Stack as deployed.
 - Do not count catalog entries or dashboard tiles as deployed components

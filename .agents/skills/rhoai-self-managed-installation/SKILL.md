@@ -39,17 +39,17 @@ OpenShift AI 3.5 sections. Detailed record:
 | Operator lifecycle in its own Application (`010-rhoai-operator`); DSCI, DSC, `Auth` and dashboard config in `010-rhoai-platform`, so a channel change never re-syncs the DSC | `gitops/applications/010-rhoai-operator.yaml`, `gitops/applications/010-rhoai-platform.yaml` | [Install and manage components][comp] |
 | `DISABLE_DSC_CONFIG=true` in the Subscription `config.env`, so GitOps creates `default-dsci` (upstream Open Data Hub setting, not in the 3.5 guide) | `010-rhoai-operator/subscription.yaml` | not documented in the 3.5 install guide (recorded as a deviation in the README) |
 | Predefined namespaces (`redhat-ods-operator`, `redhat-ods-applications`, `rhods-notebooks`); no custom namespaces | `010-rhoai-platform/dsc-init.yaml`, `datasciencecluster.yaml` | [Configure custom namespaces][custom-ns] |
-| Catalog and install gated by the operator policy: channel `stable-3.5`, minimum `3.5.1` | `scripts/platform/check-operator-policy.py` (called by `deploy.sh` and `validate.sh`) | [Update channels][channels] |
+| Catalog and install gated by the operator policy: channel `stable-3.5`, minimum `3.5.1` | `check_operator_policy` in `scripts/lib.sh` (called by `deploy.sh` and `validate.sh`) | [Update channels][channels] |
 | Platform runs OCP 4.22; the install guide lists a narrower range, the supported-configurations matrix includes 4.22 | `docs/PLATFORM_BASELINE.md` | [Platform requirements][platform-req] |
 
 ## Procedure
 
 1. Change the operator objects in Git only. Keep the channel and minimum in
-   `check-operator-policy.py` in step with the doc map
-   (`python3 scripts/shared/check-doc-links.py --family rhoai`).
+   `check_operator_policy` in step with the doc map
+   (`python3 .agents/tools/check-doc-links.py --family rhoai`).
 2. Deploy and validate through the stage scripts:
    `./stages/010-openshift-ai-platform-foundation/deploy.sh`, then
-   `./stages/010-openshift-ai-platform-foundation/setup-access.sh` and
+   `./stages/010-openshift-ai-platform-foundation/deploy.sh` and
    `./stages/010-openshift-ai-platform-foundation/validate.sh`.
    `deploy.sh` runs the policy check before applying and waits up to 1800 s
    for the CSV afterwards.

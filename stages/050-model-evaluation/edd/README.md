@@ -37,14 +37,12 @@ saturation run beside a single-session run distorts the single-session latency.
 The qualification pipeline in the **Evaluated Models** project runs all five collections for one model per run
 and ranks the results on a leaderboard (Stage 050 README, "Model qualification pipeline").
 
-Run a model against the per-change set (add `agentic-coding-security-full-v2` nightly or before promotion) (each job: MaaS key, Kueue queue, MLflow experiment with model, collection and
-accelerator tags, OCI export of results and evaluation card):
-
-```bash
-for c in agentic-coding-livecodebench-v2 agentic-coding-python-tasks-v1 agentic-coding-security-quick-v2 agentic-coding-latency-v1 agentic-coding-throughput-v2; do
-  stages/050-model-evaluation/submit-evaluation.sh --model-name publishers/internal-models/models/qwen3-8-27b --collection "$c"
-done
-```
+Run a model against the per-change set (`agentic-coding-livecodebench-v2`, `agentic-coding-python-tasks-v1`,
+`agentic-coding-security-quick-v2`, `agentic-coding-latency-v1`, `agentic-coding-throughput-v2`; add
+`agentic-coding-security-full-v2` nightly or before promotion), one job per collection from **Develop & train →
+Evaluations** or the EvalHub CLI below. Each job carries the MaaS key, Kueue queue, MLflow experiment with model,
+collection and accelerator tags, and OCI export of results and evaluation card. The former loop helper
+`submit-evaluation.sh` is in git history at `82092e01`.
 
 CI gating uses the CLI with a full job body (`evalhub eval run --config <file> --wait` exits non-zero when the
 job fails); `agentic-coding-capability.ci.yaml` is the template. Change criteria in a new `-v2` collection,

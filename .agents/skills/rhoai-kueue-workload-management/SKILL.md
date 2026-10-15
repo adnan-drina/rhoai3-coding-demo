@@ -36,7 +36,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Red Hat build of Kueue Operator, channel `stable-v1.4`, Automatic, in `openshift-kueue-operator` (cluster monitoring label); minimum 1.4.2 enforced | `020-kueue/subscription.yaml`, `020-kueue/namespace.yaml`, `scripts/platform/check-operator-policy.py` | [Kueue workload management][kueue]; OCP side: `ocp-ai-workloads` |
+| Red Hat build of Kueue Operator, channel `stable-v1.4`, Automatic, in `openshift-kueue-operator` (cluster monitoring label); minimum 1.4.2 enforced | `020-kueue/subscription.yaml`, `020-kueue/namespace.yaml`, `check_operator_policy` in `scripts/lib.sh` | [Kueue workload management][kueue]; OCP side: `ocp-ai-workloads` |
 | DSC `kueue.managementState: Unmanaged`, `autoCreateQueues: false`, set by an Argo CD Sync hook Job because Stage 010 owns `default-dsc` and delegates `/spec/components/kueue` | `020-kueue/dsc-enablement/job.yaml`, `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Kueue workload management][kueue] |
 | The `Kueue` CR is left to OpenShift AI (live name `cluster`); not in Git | — | [Kueue workload management][kueue] |
 | cert-manager not declared; `deploy.sh` requires a `cert-manager-operator.v1.20.*` CSV `Succeeded` | `stages/020-gpu-infrastructure-private-ai/deploy.sh` | [Configure workload management][kueue-config] |

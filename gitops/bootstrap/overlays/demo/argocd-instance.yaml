@@ -21,7 +21,7 @@ spec:
   # Developer Hub's read-only Argo CD account. The operator creates it, stores its API token in the Secret
   # rhdh-local-user (key apiToken) and renews it (OpenShift GitOps "Managing local users in Argo CD").
   # Rotate with stages/070-advanced-app-platform/rotate-credentials.py --component argo; after an automatic renewal,
-  # re-run the 070-rhdh hooks (stage_apps.py sync 070 --app 070-rhdh --resync) so Developer Hub copies the new token.
+  # re-run the 070-rhdh hooks (stage-apps.sh sync 070 --app 070-rhdh --resync) so Developer Hub copies the new token.
   localUsers:
     - name: rhdh
       apiKey: true

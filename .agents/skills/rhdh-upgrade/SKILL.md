@@ -46,7 +46,7 @@ Developer Hub 1.10 sections. Detailed record:
    in `approve-installplan.yaml`, the expected CSV in
    `stages/070-advanced-app-platform/validate.sh`, the version text in the
    component README and `stages/070-advanced-app-platform/README.md`, and the
-   map pin (`python3 scripts/shared/check-doc-links.py --family rhdh`).
+   map pin (`python3 .agents/tools/check-doc-links.py --family rhdh`).
 3. After the OpenShift safety guard in `AGENTS.md`, sync and validate:
 
    ```bash

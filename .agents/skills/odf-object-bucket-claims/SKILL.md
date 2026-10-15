@@ -69,7 +69,7 @@ Existing claims to copy from:
 - The ConfigMap may lack `BUCKET_REGION`; the sandbox Job falls back to
   `us-east-1`.
 - Generated Secrets are owned by the OBC; an OBC that already has another
-  owner or tracking id is refused by `deploy-sandbox-storage.sh`.
+  owner or tracking id is refused by `stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-sandbox-storage`.
 
 ## Official documentation (ODF 4.22)
 

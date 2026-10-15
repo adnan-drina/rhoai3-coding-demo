@@ -5,7 +5,7 @@
 # eval-hub/eval-hub-contrib (quay.io/evalhub/community-swebench v0.6.0, pinned by digest). The adapter
 # grades a predictions file: it creates one Job per instance from the public SWE-bench instance
 # images, applies the model's patch, runs the tests and reports resolve_rate. Patch generation is a
-# separate step (stages/050-model-evaluation/swebench-run.sh).
+# separate step (the retired swebench-run.sh; git history, 82092e01).
 apiVersion: v1
 kind: ConfigMap
 metadata:

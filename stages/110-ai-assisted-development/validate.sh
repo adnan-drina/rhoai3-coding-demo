@@ -4,7 +4,31 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$REPO_ROOT/scripts/shared/validate-lib.sh"
+source "$REPO_ROOT/scripts/lib.sh"
+load_env
+check_oc_logged_in
+
+# The Kilo provider SHAPE the Dev Spaces AI-tools init script generates (architect review B3, 2026-10-01: an endpoint
+# string somewhere in the script is weaker than proof that the intended provider is configured and selectable).
+# Reads the script on stdin; prints "provider-ok" or the first failed property.
+kilo_provider() {
+    local provider=$1 model=$2
+    # awk reads its whole input (an early exit would kill the producer with SIGPIPE under pipefail).
+    awk '/cat > "\$\{HOME\}\/\.config\/kilo\/kilo\.jsonc" <<KILOEOF/ && !done { f = 1; next }
+        f && /^[[:space:]]*KILOEOF[[:space:]]*$/ { f = 0; done = 1; next } f' |
+        sed -e 's/\\\$/$/g' -e 's/\${[A-Z0-9_]*}/PLACEHOLDER/g' |
+        jq -r --arg p "$provider" --arg m "publishers/internal-models/models/$model" '(.provider[$p] // null) as $b
+            | if (.enabled_providers // [] | index($p)) == null then "provider \($p) is not in enabled_providers"
+              elif (.disabled_providers // [] | index($p)) != null then "provider \($p) is disabled"
+              elif ($b | type) != "object" then "no provider.\($p) block"
+              elif $b.npm != "@ai-sdk/openai-compatible" then "provider.\($p).npm is not the OpenAI-compatible adapter"
+              elif ($b.options.baseURL // "") != "PLACEHOLDER/v1" then "provider.\($p).options.baseURL is not the common MaaS base"
+              elif ($b.options.apiKey // "") == "" then "provider.\($p).options.apiKey is empty"
+              elif ($b.models // {} | has($m)) | not then "provider.\($p).models has no \($m)"
+              elif . as $c | ($c.model // "" | index("/")) as $i | $i == null or (($c.provider[$c.model[:$i]].models // {}) | has($c.model[$i + 1:]) | not)
+                then "default model selector does not preserve a configured canonical model ID"
+              else "provider-ok" end' 2>/dev/null || echo "no kilo.jsonc heredoc in the init script"
+}
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
 echo "║  Stage 070: Dev Spaces & AI Code Assistant — Validation          ║"
@@ -146,7 +170,7 @@ check "Init script defaults Kilo to qwen3-8-27b" \
     "present"
 # the generated provider's SHAPE (enabled, OpenAI-compatible, MaaS route, key, model), not a string anywhere
 check "Init script configures Kilo provider qwen38 (qwen3-8-27b)" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | python3 \"$REPO_ROOT/scripts/demo/check-kilo-provider.py\" qwen38 qwen3-8-27b qwen3-8-27b" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | kilo_provider qwen38 qwen3-8-27b" \
     "provider-ok"
 check "Init script allow-lists only the MaaS Qwen 3.8 provider for Kilo" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'enabled_providers.: \\[\"qwen38\"\\]' && echo present || echo missing" \

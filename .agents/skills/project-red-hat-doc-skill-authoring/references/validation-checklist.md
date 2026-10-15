@@ -33,9 +33,9 @@ Run before finishing a new, updated, or converted product skill.
 
 ```bash
 python3 .agents/skills/agentskills-authoring/scripts/validate-skills.py --all
-python3 scripts/shared/check-doc-links.py --family <family>
-python3 scripts/shared/check-doc-links.test.py   # when the checker or map schema changed
-./scripts/platform/validate-stage-flow.sh        # static; runs both checks
+python3 .agents/tools/check-doc-links.py --family <family>
+python3 .agents/tools/check-doc-links.test.py   # when the checker or map schema changed
+scripts/validate-stage-flow.sh        # static; runs both checks
 ```
 
 Record any skipped check, and any section that could not be read, in the

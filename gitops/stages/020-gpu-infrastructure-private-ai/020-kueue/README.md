@@ -58,7 +58,7 @@ Objects not in Git:
 ## How
 
 - **Installation.** Channel `stable-v1.4`, Automatic approval, no `startingCSV`.
-  `scripts/platform/check-operator-policy.py` requires the 1.4 release family, at least `1.4.2`. Installed on this
+  `check_operator_policy` in `scripts/lib.sh` requires the 1.4 release family, at least `1.4.2`. Installed on this
   cluster: `kueue-operator.v1.4.3`.
 - **cert-manager.** The component does not declare cert-manager. `deploy.sh` refuses to continue unless a
   `cert-manager-operator.v1.20.*` CSV is `Succeeded`; the `Kueue` status reports `CertManagerAvailable`.

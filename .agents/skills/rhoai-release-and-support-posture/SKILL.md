@@ -37,7 +37,7 @@ official guidance" table.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| The demo follows `stable-3.5` with `Automatic` approval, bounded by a minimum installed version `3.5.1` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Lifecycle][lifecycle]; see `rhoai-update-channels` |
+| The demo follows `stable-3.5` with `Automatic` approval, bounded by a minimum installed version `3.5.1` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/subscription.yaml`, `check_operator_policy` in `scripts/lib.sh` | [Lifecycle][lifecycle]; see `rhoai-update-channels` |
 | TP and DP features may be shown, labelled as such where they are used; posture lives in the component README Alignment table, not in this skill | component READMEs under `gitops/stages/` | [Technology Preview features][tp], [Developer Preview features][dp] |
 | Dashboard flags that enable preview UI: `connectionTest` (TP), `disableKueue: false` (DP), `modelAsService` (TP, Stage 040) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md` (OdhDashboardConfig) | [3.5 GA TP features][tp35] |
 | MaaS and external models are labelled TP | `gitops/stages/040-governed-models-as-a-service/040-local-models/README.md` | [3.5 GA TP features][tp35] |
@@ -63,7 +63,7 @@ official guidance" table.
    ```bash
    oc get subscription rhods-operator -n redhat-ods-operator \
      -o jsonpath='{.spec.channel} {.status.installedCSV}{"\n"}'
-   python3 scripts/shared/check-doc-links.py --versions
+   python3 .agents/tools/check-doc-links.py --versions
    ```
 
 ## Pitfalls

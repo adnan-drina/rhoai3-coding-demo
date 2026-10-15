@@ -1,7 +1,7 @@
 # App-migration delivery path (DEFAULT_EXTENSIONS / `redhat.java`)
 
 The DevWorkspace env is **not** the Stage 080 golden `devfile.yaml` that
-`bootstrap-scaffold-repos.sh` publishes. Attempt-9 live
+the Stage 070 GitLab hook publishes. Attempt-9 live
 `DEFAULT_EXTENSIONS` missed `redhat.java` because recreate applied a
 sanitized prior DevWorkspace CR. Factory inlines **dest git** `devfile.yaml`
 at **create** (Architect `E-20260817T123931Z`).

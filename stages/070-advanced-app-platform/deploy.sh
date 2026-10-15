@@ -1,30 +1,32 @@
 #!/usr/bin/env bash
-# Stage 070: native GitOps developer-platform installation.
+# Stage 070: the developer platform (identity clients, GitLab and its NooBaa storage, Dev Spaces, Pipelines and
+# Trusted Artifact Signer, SonarQube, Developer Hub, MTA 8.3 with its AI components) at one reviewed published
+# revision. Read-only preconditions first; the components deploy sequentially (deploy-mode sequential). Credentials and
+# chart migrations are native sync hooks; models stay at their operator-selected scale and no model call is made.
+# STAGE070_RESYNC=true re-runs every component's hooks; STAGE070_SYNC_TIMEOUT sets the per-component wait (s).
+# Usage: stages/070-advanced-app-platform/deploy.sh [--revision <published ref or commit>]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$REPO_ROOT/scripts/shared/lib.sh"
+source "$REPO_ROOT/scripts/lib.sh"
 STAGE_NAME="070-advanced-app-platform"
 load_env
 check_oc_logged_in
 if [[ "${1:-}" == --revision && $# -eq 2 ]]; then
   GIT_REPO_BRANCH="$2"
 elif [[ $# -ne 0 ]]; then
-  echo "Usage: $0 [--revision <published ref or commit>]" >&2; exit 1
+  sed -n 's/^# Usage: //p' "$0" >&2; exit 1
 fi
 require_env GIT_REPO_URL "reviewed Stage 070 source repository"
 assert_required_env
-STAGE_APPS="$REPO_ROOT/scripts/shared/stage_apps.py"
-REVISION=$(python3 "$STAGE_APPS" select 070 --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" \
-  --extra scripts/platform/require-node-sizing.sh --extra scripts/platform/render-stage070-charts.py \
-  --extra scripts/platform/stage070-charts.lock.json --extra scripts/platform/build-stage070-platform-tools.sh \
-  --extra scripts/platform/check-operator-policy.py \
+STAGE_APPS="$REPO_ROOT/scripts/stage-apps.sh"
+REVISION=$("$STAGE_APPS" select 070 --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" \
   --extra stages/120-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold \
   --extra stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold)
 # The GitLab hub publishes those two goldens from this revision, so they must be the reviewed, published source too.
-"$REPO_ROOT/scripts/platform/require-node-sizing.sh"
+require_node_sizing
 # Read-only: the Automatic Dev Spaces Subscription (openshift-operators) offers the reviewed channel and minimum.
-python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-devspaces"
+check_operator_policy "$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-devspaces"
 
 log_step "Stage 070: GitLab and advanced application platform"
 # Preconditions are read-only. Do not generate shared GitHub credentials or
@@ -37,26 +39,14 @@ if [[ "$REGISTRY_AVAILABLE" != True || "$REGISTRY_MANAGED" != Managed ]]; then
   log_error "Internal registry must be Managed and Available before deployment."
   exit 1
 fi
-oc get configs.imageregistry.operator.openshift.io cluster -o json | python3 -c '
-import json, sys
-storage = json.load(sys.stdin).get("spec", {}).get("storage", {})
-if not isinstance(storage, dict) or not storage or "emptyDir" in storage:
-    sys.exit("Internal registry must declare persistent storage; emptyDir or absent storage is refused.")
-'
-oc get storageclass gp3-csi -o json | python3 -c '
-import json,sys
-annotations=json.load(sys.stdin)["metadata"].get("annotations",{})
-if annotations.get("storageclass.kubernetes.io/is-default-class") != "true":
-    sys.exit("gp3-csi must be the default: MTA 8.3 uses default-class RWO claims; rwo_storage_class is not a supported parameter.")
-'
+oc get configs.imageregistry.operator.openshift.io cluster -o json | jq -e '.spec.storage | type == "object" and length > 0 and (has("emptyDir") | not)' >/dev/null ||
+  { log_error "Internal registry must declare persistent storage; emptyDir or absent storage is refused."; exit 1; }
+oc get storageclass gp3-csi -o json | jq -e '.metadata.annotations["storageclass.kubernetes.io/is-default-class"] == "true"' >/dev/null ||
+  { log_error "gp3-csi must be the default: MTA 8.3 uses default-class RWO claims; rwo_storage_class is not a supported parameter."; exit 1; }
 oc get storageclass openshift-storage.noobaa.io >/dev/null
 oc get route s3 -n openshift-storage >/dev/null
-oc get keycloak keycloak -n keycloak -o json | python3 -c '
-import json,sys
-conditions=json.load(sys.stdin).get("status",{}).get("conditions",[])
-if not any(c.get("type")=="Ready" and c.get("status")=="True" for c in conditions):
-    sys.exit("Existing keycloak/keycloak must be Ready; do not create a second identity service.")
-'
+oc get keycloak keycloak -n keycloak -o json | jq -e 'any(.status.conditions[]?; .type == "Ready" and .status == "True")' >/dev/null ||
+  { log_error "Existing keycloak/keycloak must be Ready; do not create a second identity service."; exit 1; }
 oc get crd sandboxes.agents.x-k8s.io >/dev/null
 
 # This release is for a fresh install. Do not allow an old realm namespace
@@ -78,7 +68,7 @@ fi
 # The components declare deploy-mode sequential: each is applied, synced and waited for before the next, because
 # sync waves order hooks only inside one Application. A component already synced at this commit is not re-synced;
 # pass STAGE070_RESYNC=true to re-run every component's hooks.
-python3 "$STAGE_APPS" deploy 070 --revision "$REVISION" --repo-url "$GIT_REPO_URL" \
+"$STAGE_APPS" deploy 070 --revision "$REVISION" --repo-url "$GIT_REPO_URL" \
   --timeout "${STAGE070_SYNC_TIMEOUT:-3600}" ${STAGE070_RESYNC:+--resync}
 
 log_info "Argo CD installs identity clients, GitLab/NooBaa storage, Dev Spaces,"

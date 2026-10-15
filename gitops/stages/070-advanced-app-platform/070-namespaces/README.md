@@ -5,8 +5,8 @@ This Application owns every namespace Stage 070 uses, and nothing else. It deplo
 | | |
 |---|---|
 | Argo CD Application | `070-namespaces` ([manifest](../../../applications/070-namespaces.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 1) |
-| Validated by | `stages/070-advanced-app-platform/validate.sh` (component Applications Synced and Healthy); `scripts/shared/stage_apps.py check-static 070` |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage-apps.sh deploy 070` (deploy-order 1) |
+| Validated by | `stages/070-advanced-app-platform/validate.sh` (component Applications Synced and Healthy); `scripts/stage-apps.sh check-static 070` |
 | Sync | Automated, `prune: true`, `selfHeal: true`; every Namespace carries `Prune=false`; compare-option `ServerSideDiff=true`; no `ignoreDifferences` |
 | Used by | Every other Stage 070 component |
 
@@ -39,7 +39,7 @@ The `coolstore-dev` namespace is the only object the demo platform declares for 
 
 ## How
 
-- **Order.** `stage_apps.py deploy 070` syncs this Application first and waits until it is Synced and Healthy before `070-identity` starts.
+- **Order.** `stage-apps.sh deploy 070` syncs this Application first and waits until it is Synced and Healthy before `070-identity` starts.
 - **Metadata owned by controllers.** Controllers add their own labels and annotations after creation: pod security label synchronization, SCC range annotations, OLM and the Pipelines operator. Each writes keys Git does not declare, under its own field manager. With `ServerSideDiff=true` Argo CD compares only the fields it applies, so those keys are not drift and need no `ignoreDifferences`. A label or annotation declared here (for example the enrollment label) is enforced, and a change in Git reaches the cluster.
 - **No ignored metadata.** Ignoring `/metadata/annotations` would also hide the `argocd.argoproj.io/tracking-id` annotation: with `RespectIgnoreDifferences` Argo CD then never rewrites it, so an Application could not take a namespace over from another.
 - **Label contract.** The enrollment reconciler and the SonarQube ingress policy select namespaces by `rhoai3.redhat.com/pipeline-project=true`, which `coolstore-dev` carries from creation.
@@ -47,7 +47,7 @@ The `coolstore-dev` namespace is the only object the demo platform declares for 
 ## Validation
 
 - `validate.sh` checks every Stage 070 component Application is Synced and Healthy, this one included.
-- `stage_apps.py check-static 070` checks that the components render disjoint object sets that add up to the stage aggregate.
+- `stage-apps.sh check-static 070` checks that the components render disjoint object sets that add up to the stage aggregate.
 
 ```bash
 oc get namespaces app-platform-build coolstore-dev gitlab-system openshift-devspaces openshift-mta openshift-vertical-pod-autoscaler \
@@ -61,7 +61,7 @@ oc get namespaces app-platform-build coolstore-dev gitlab-system openshift-devsp
 |---|---|---|---|
 | Namespaces from Git | Argo CD manages a declared Namespace like any resource; `CreateNamespace` creates only the destination namespace [1] | All namespaces declared explicitly in one Application, deployed first | Aligned |
 | Protecting stateful namespaces | `Prune=false` keeps a resource when it leaves Git [1] | Every Stage 070 namespace | Aligned |
-| Ordering across Applications | Waves order resources only inside one Application [2] | Cross-component order comes from `demo.rhoai.io/deploy-order` in `stage_apps.py deploy 070` | Aligned |
+| Ordering across Applications | Waves order resources only inside one Application [2] | Cross-component order comes from `demo.rhoai.io/deploy-order` in `stage-apps.sh deploy 070` | Aligned |
 | Diffing controller-owned metadata | Server-side diff compares only the fields Argo CD applies [4] | `ServerSideDiff=true`, no `ignoreDifferences`; declared labels and annotations are enforced | Aligned |
 | Pod security | `warn`/`audit` labels are synchronized from service account SCC permissions [3] | Not set in Git | Aligned |
 

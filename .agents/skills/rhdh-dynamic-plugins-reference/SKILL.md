@@ -41,9 +41,8 @@ plugin tables in the linked Developer Hub 1.10 reference. Detailed record:
 
 All entries live in
 `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`;
-the digest rule is tested by
-`stages/070-advanced-app-platform/tests/stage070-upgrade.test.py`
-(`test_argo_plugins_follow_110_oci_packaging`).
+the digest rule was tested by the former offline test
+`stage070-upgrade.test.py` (in git history at `82092e01`); review it by hand.
 
 ## Procedure
 

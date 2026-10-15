@@ -20,7 +20,7 @@ description: >
 
 # Run GuideLLM Load Test
 
-> **Historical (2026-10-14):** `stages/040-governed-models-as-a-service/run-guidellm-load-test.sh` no longer exists, and the model ids below (`qwen3-6-35b-a3b`, `nemotron-3-nano-30b-a3b`) are retired. Run GuideLLM through the Stage 050 EvalHub `guidellm` provider instead (`stages/050-model-evaluation/submit-evaluation.sh --provider guidellm`, bounded by `max_seconds` or `max_requests`; see the Stage 050 README and docs/TROUBLESHOOTING.md "GuideLLM Load Test Does Not Run"). The steps below describe the former wrapper.
+> **Historical (2026-10-14):** `stages/040-governed-models-as-a-service/run-guidellm-load-test.sh` no longer exists, and the model ids below (`qwen3-6-35b-a3b`, `nemotron-3-nano-30b-a3b`) are retired. Run GuideLLM through the Stage 050 EvalHub `guidellm` provider instead (dashboard **Develop & train → Evaluations** or the EvalHub REST API, bounded by `max_seconds` or `max_requests`; see the Stage 050 README and docs/TROUBLESHOOTING.md "GuideLLM Load Test Does Not Run"). The steps below describe the former wrapper.
 
 Use the Stage 040 wrapper script as the source of truth. Do not recreate the Kubernetes `Job` manually unless the script itself is being debugged.
 

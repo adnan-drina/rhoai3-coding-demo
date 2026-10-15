@@ -9,8 +9,8 @@ private model; requests leave the cluster for the provider.
 | | |
 |---|---|
 | Argo CD Application | `040-external-models` ([manifest](../../../applications/040-external-models.yaml)) |
-| Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 5, together with `040-local-models`); provider Secrets by `setup-provider-secret.sh`, called from `deploy.sh` |
-| Validated by | `stages/040-governed-models-as-a-service/validate.sh --readiness` (`validate-native.sh`: providers and models Ready and equal to Git, provider Secret has a non-placeholder `api-key` and the `inference.llm-d.ai/ipp-managed` label, model route owned by the `ExternalModel` and attached to listener `api`, `MaaSModelRef` Ready with endpoint on the API hostname); `validate-functional.sh` with `RHOAI_STAGE040_MODEL=<model>` for one bounded completion; `scripts/shared/stage_apps.py status` |
+| Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 5, together with `040-local-models`); provider Secrets by `stages/040-governed-models-as-a-service/deploy.sh`, called from `deploy.sh` |
+| Validated by | `stages/040-governed-models-as-a-service/validate.sh --readiness` (`stages/040-governed-models-as-a-service/validate.sh`: providers and models Ready and equal to Git, provider Secret has a non-placeholder `api-key` and the `inference.llm-d.ai/ipp-managed` label, model route owned by the `ExternalModel` and attached to listener `api`, `MaaSModelRef` Ready with endpoint on the API hostname); `stages/040-governed-models-as-a-service/validate.sh --functional` with `RHOAI_STAGE040_MODEL=<model>` for one bounded completion; `scripts/stage-apps.sh status` |
 | Sync | Automated, `prune` and `selfHeal`. Sync options `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences` (and a `ServerSideDiff=true` sync option that has no effect). Compare option `ServerSideDiff=true` (annotation). No `ignoreDifferences` |
 | Depends on | `040-maas-platform` (MaaS and the external-model controller enabled; `externalModels` dashboard flag), `040-gateway-governance` (Gateway `maas-default-gateway`, listener `api` admits `external-models`), Stage 010 (`rhods-admins` group); provider API keys in the private `.env` |
 | Used by | `040-model-access` (personal, qualification and playground subscriptions), `040-genai-studio` (GPT-6 Luna playground endpoint), Stage 050 evaluations (models under test and judges), Gen AI playground and OpenAI-compatible IDE clients |
@@ -56,19 +56,19 @@ catalog changes more often than the platform; adding or removing a model syncs o
 
 | Object | Owner |
 |---|---|
-| Secrets `openai-provider-api-key`, `anthropic-provider-api-key`, `nvidia-provider-api-key` (key `api-key`, label `inference.llm-d.ai/ipp-managed=true`) | `stages/040-governed-models-as-a-service/setup-provider-secret.sh`, from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` and `NVIDIA_API_KEY` in the private `.env`. Not tracked by Argo CD |
+| Secrets `openai-provider-api-key`, `anthropic-provider-api-key`, `nvidia-provider-api-key` (key `api-key`, label `inference.llm-d.ai/ipp-managed=true`) | `stages/040-governed-models-as-a-service/deploy.sh`, from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` and `NVIDIA_API_KEY` in the private `.env`. Not tracked by Argo CD |
 | HTTPRoutes `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` (owner reference to the `ExternalModel`) | External-model controller |
 | Auth and token-rate-limit policies for the models | MaaS and Connectivity Link controllers |
 
 ## How
 
 **Ordering.** Application wave 4, deploy-order 5. Inside it: namespace (1), RoleBinding (3), providers (15), models
-(16), references (17). `deploy.sh` applies the Applications first and then runs `setup-provider-secret.sh` three times
+(16), references (17). `deploy.sh` applies the Applications first and then runs `stages/040-governed-models-as-a-service/deploy.sh` three times
 (OpenAI, then `RHOAI_STAGE040_PROVIDER_SECRET=anthropic-provider-api-key`, then `nvidia-provider-api-key`). Until a
 Secret exists, its provider is not Ready.
 
 **Provider credentials.** The procedure in the MaaS guide creates a Secret with key `api-key` and labels it
-`inference.llm-d.ai/ipp-managed=true` [1]. `setup-provider-secret.sh` does the same without putting the value in Git or on
+`inference.llm-d.ai/ipp-managed=true` [1]. `stages/040-governed-models-as-a-service/deploy.sh` does the same without putting the value in Git or on
 a command line: it waits until the namespace carries this Application's tracking id, reuses an existing Secret
 (it checks the label and that no other Application tracks it), copies a Secret left in the former
 `models-as-a-service` location if one exists, and otherwise creates it from the `.env` value through standard input.
@@ -113,7 +113,7 @@ patches into `040-gateway-governance`.
 spec, each provider Secret has a non-empty, non-placeholder `api-key` and the discovery label, each model's route is owned
 by the model and attached to the `api` listener, and each `MaaSModelRef` is Ready with `GovernanceAttached` and
 `RuntimeReady` and reports the API hostname as endpoint. It does not prove provider entitlement or inference;
-`validate-functional.sh` with a persona kubeconfig sends one bounded completion per selected model with a temporary key.
+`stages/040-governed-models-as-a-service/validate.sh --functional` with a persona kubeconfig sends one bounded completion per selected model with a temporary key.
 
 By hand (read-only; never print the Secrets):
 

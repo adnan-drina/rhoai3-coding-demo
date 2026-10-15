@@ -33,7 +33,6 @@ def mutating_oc(text: str) -> bool:
 MUTATING_SCRIPT = re.compile(
     r"(?:^|\s)(?:\./)?(?:"
     r"scripts/bootstrap\.sh|"
-    r"scripts/platform/resume-gpu-demo\.sh|"
     r"[^\s;]*deploy\.sh|"
     r"[^\s;]*upload-to-minio\.sh|"
     r"[^\s;]*run-guidellm-load-test\.sh"

@@ -34,12 +34,12 @@ live unless the user asked for it and confirmed the cluster.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| The repo has no uninstall script; teardown is a cascade delete of Applications in reverse deploy order (070 down to 010, components last-deployed first) | `docs/OPERATIONS.md#cleanup-guidance`, `scripts/shared/stage_apps.py` | [Understanding the uninstallation process][understand] |
+| The repo has no uninstall script; teardown is a cascade delete of Applications in reverse deploy order (070 down to 010, components last-deployed first) | `docs/OPERATIONS.md#cleanup-guidance`, `scripts/stage-apps.sh` | [Understanding the uninstallation process][understand] |
 | Applications have no finalizers: deleting one without cascade orphans its objects; a cascade delete removes namespaces and PVCs too (`Prune=false` does not protect against Application deletion) | `docs/OPERATIONS.md#cleanup-guidance` | — (repo GitOps rule) |
 | `010-rhoai-operator` owns the `redhat-ods-operator` namespace, OperatorGroup and Subscription; `010-rhoai-platform` owns DSCI, DSC and `Auth` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/`, `.../rhoai-platform/` | [Uninstall by CLI][cli] |
 | To switch off one component, turn it off through its owning stage first; removing its `ignoreDifferences` pointer restores `Removed` from Git and uninstalls it | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md` (Rules for changes) | [Install components by CLI][comp-cli] |
 | Data to back up first: MLflow PostgreSQL PVC and the `rhoai-mlflow-artifacts` bucket (preserve by policy), the MaaS PostgreSQL database | `docs/OPERATIONS.md` (Object storage purposes and preservation), `gitops/stages/050-model-evaluation/050-mlflow/`, `gitops/stages/040-governed-models-as-a-service/040-maas-database/` | [Back up storage data][backup] |
-| Cost shutdown is not uninstall: GPU MachineSets scale to zero and resume | `scripts/platform/resume-gpu-demo.sh`, `docs/OPERATIONS.md` (Resuming GPU-Backed Stages After Shutdown) | — |
+| Cost shutdown is not uninstall: GPU MachineSets scale to zero and resume | `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus N`, `docs/OPERATIONS.md` (Resuming GPU-Backed Stages After Shutdown) | — |
 
 ## Procedure
 
@@ -47,7 +47,7 @@ live unless the user asked for it and confirmed the cluster.
    OpenShift safety guard in `AGENTS.md`.
 2. Back up the data in the table above ([Back up storage data][backup]).
 3. Delete Stages 070 to 020 per `docs/OPERATIONS.md#cleanup-guidance`
-   (`python3 scripts/shared/stage_apps.py names <stage> --all --reverse`).
+   (`scripts/stage-apps.sh names <stage> --all --reverse`).
 4. For Stage 010, delete the RHOAI Applications without cascade so Argo CD
    stops reconciling but the operator stays to run its own removal:
 

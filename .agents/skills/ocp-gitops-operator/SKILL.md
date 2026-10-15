@@ -37,7 +37,7 @@ in `.agents/rules/gitops.md`; the bootstrap is run by
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Operator from `redhat-operators`, `installPlanApproval: Automatic`, channel `gitops-1.21` set by an overlay patch (the base holds a placeholder channel and is never applied alone); minimum `1.21.5` in the operator policy | `gitops/bootstrap/base/subscription.yaml`, `gitops/bootstrap/overlays/operator/patch-channel.yaml`, `scripts/platform/check-operator-policy.py` | [Installing the GitOps Operator using CLI][install-cli] |
+| Operator from `redhat-operators`, `installPlanApproval: Automatic`, channel `gitops-1.21` set by an overlay patch (the base holds a placeholder channel and is never applied alone); minimum `1.21.5` in the operator policy | `gitops/bootstrap/base/subscription.yaml`, `gitops/bootstrap/overlays/operator/patch-channel.yaml`, `check_operator_policy` in `scripts/lib.sh` | [Installing the GitOps Operator using CLI][install-cli] |
 | Two-phase bootstrap: overlay `operator`, wait for the CSV, then overlay `demo` (needs the Argo CD CRDs) | `stages/010-openshift-ai-platform-foundation/deploy.sh`, `gitops/bootstrap/overlays/demo/kustomization.yaml` | [Installing OLM Operators using GitOps][olm] |
 | Default `openshift-gitops` instance reused; `resourceTrackingMethod: annotation` | `gitops/bootstrap/overlays/demo/argocd-instance.yaml` | [Annotation-based resource tracking][tracking] |
 | Controller sized 4Gi request / 8Gi limit after a Stage 070 OOMKill | `gitops/bootstrap/overlays/demo/argocd-instance.yaml` | [Argo CD CR properties][cr-props] |
@@ -46,19 +46,19 @@ in `.agents/rules/gitops.md`; the bootstrap is run by
 | SSO through Dex with OpenShift OAuth, `scopes: '[groups]'`; `system:cluster-admins`, `cluster-admins` and `rhoai-gitops-admins` map to `role:admin`; read-only local account `rhdh` (apiKey) for Developer Hub | `gitops/bootstrap/overlays/demo/argocd-instance.yaml`, `gitops/bootstrap/overlays/demo/argocd-admin-group.yaml` | [Dex role mappings][dex-roles], [Argo CD RBAC][rbac] |
 | One AppProject `rhoai-demo` for every Application | `gitops/bootstrap/overlays/demo/argocd-project.yaml` | [Setting up an Argo CD instance][instance] |
 | One Application per component, destination namespace `openshift-gitops`, Server-Side Diff by annotation; the Stage 060 Applications have no automated sync | `gitops/applications/`, `.agents/rules/gitops.md` | [Synchronizing your application][sync] |
-| Stage deploy scripts select, apply, sync and wait through `stage_apps.py` (no `argocd` CLI) | `scripts/shared/stage_apps.py` | [Creating an application by using the oc tool][app-oc] |
+| Stage deploy scripts select, apply, sync and wait through `stage-apps.sh` (no `argocd` CLI) | `scripts/stage-apps.sh` | [Creating an application by using the oc tool][app-oc] |
 
 ## Procedure
 
 1. Change the channel only together with the `channels` and `minimum` entries
-   in `scripts/platform/check-operator-policy.py` and the `openshift_gitops`
+   in `check_operator_policy` in `scripts/lib.sh` and the `openshift_gitops`
    pin in `.agents/references/red-hat-doc-map.yaml`.
 2. Change the ArgoCD CR in Git, never the generated `argocd-cm` or
    `argocd-rbac-cm`; the operator reconciles them.
 3. Validate statically, then live after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash
-   ./scripts/platform/validate-stage-flow.sh
+   scripts/validate-stage-flow.sh
    oc get subscription openshift-gitops-operator -n openshift-operators -o jsonpath='{.spec.channel} {.status.installedCSV}{"\n"}'
    oc get argocd openshift-gitops -n openshift-gitops -o jsonpath='{.spec.resourceTrackingMethod}{"\n"}'
    oc get applications.argoproj.io -n openshift-gitops
@@ -68,8 +68,8 @@ in `.agents/rules/gitops.md`; the bootstrap is run by
 
 - Never `oc apply -k gitops/bootstrap/base`: its channel is a placeholder.
 - An `oc apply` of a whole Application can drop annotations and delegated
-  fields; edit live Applications by patch and move them with
-  `scripts/platform/move-applications.py`.
+  fields; edit live Applications by patch and move them with the
+  `gitops-move-applications` procedure.
 - After a group membership change, sign out of Argo CD and in again to refresh
   the Dex token (`docs/TROUBLESHOOTING.md#argo-cd-applications-missing-after-openshift-sso-login`).
 - Synced at a new revision can still apply stale manifests; hard refresh

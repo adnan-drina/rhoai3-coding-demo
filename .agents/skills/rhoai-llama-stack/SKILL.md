@@ -43,7 +43,7 @@ its old name. Detailed record:
 | `llamastackoperator` stays `Removed` and is not delegated, so Argo CD enforces it; the live 3.5 CRD marks it deprecated in favour of `ogx` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Llama Stack to OGX migration][migration] |
 | `ogx` set `Managed` by the `job-enable-dsc-maas` Sync hook (delegated Stage 010 field); the Job waits for `default-ogx` Ready | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [Activate the OGX Operator][activate] |
 | No OGX server in Git: the only server is the playground `lsd-genai-playground`, created from the dashboard with its pgvector database | not in Git (dashboard-owned) | [Resources created with a playground][playres] |
-| `studio-api.sh --install-model` attaches the retained PVC `genai-playground-state` to a freshly created playground through `spec.workload.overrides` | `stages/040-governed-models-as-a-service/studio-api.sh`, `gitops/stages/040-governed-models-as-a-service/040-genai-studio/` | [Deploy an OGX server][deploy] |
+| The retained PVC `genai-playground-state` is attached to a freshly created playground through `spec.workload.overrides` (the former `studio-api.sh --install-model` that did this is in git history at `82092e01`) | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/` | [Deploy an OGX server][deploy] |
 | Models reach OGX only through MaaS endpoints, never through provider keys in an OGX configuration | `gitops/stages/040-governed-models-as-a-service/` | [OGX API provider support][providers] |
 
 ## Procedure
@@ -75,8 +75,8 @@ its old name. Detailed record:
 - Do not pre-author or patch the playground's generated pgvector resources;
   they are service-owned (`docs/OPERATIONS.md`, Stage 040 GenAI Studio).
 - Moving existing playground state needs the backup and restore procedure in
-  `docs/OPERATIONS.md`; `studio-api.sh` attaches the PVC only to a new
-  playground and refuses an existing one.
+  `docs/OPERATIONS.md`; attach the PVC only to a new playground, never to an
+  existing one.
 - Playground answer or tool failures:
   `docs/TROUBLESHOOTING.md#gen-ai-playground-gets-no-answer-from-external-models`,
   `docs/TROUBLESHOOTING.md#gen-ai-playground-mcp-tools-fail-or-return-no-tools`.

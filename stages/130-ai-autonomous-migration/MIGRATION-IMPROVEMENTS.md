@@ -153,12 +153,12 @@ refused; that establishes the retrieval path, not that model looping is solved.
 
 | Component | Source identity | Required step | Owner |
 |---|---|---|---|
-| Harness (golden `.hermes`) | `5280670b` (scaffold content) | fast-forward the platform `main` (never force-pushed); then the distinct golden-export publication `scripts/demo/bootstrap-scaffold-repos.sh`; record the returned golden commit and compare its scaffold content | release agent |
+| Harness (golden `.hermes`) | `5280670b` (scaffold content) | fast-forward the platform `main` (never force-pushed); then the distinct golden-export publication (then `bootstrap-scaffold-repos.sh`, now the Stage 070 GitLab hook); record the returned golden commit and compare its scaffold content | release agent |
 | Hermes runtime | tree `37b147ba` unchanged (patches 0001–0016) | none | — |
 | ws-080 image | new: adds typed-repair jar `66d1b6f4…` (17,684,782 bytes) | `build-130-runtime-image.sh 37b147baef0c2678507c52e59e3b9231ab6ab64f --push`; re-pin the new digest in `.hermes/pins.json`, `run-defaults.json`, scaffold `devfile.yaml`, Stage 050 `app-migration/skeleton/devfile.yaml` and `hermes-runtime/RELEASE.md`; confirm the `/opt/rhoai3/080.pins` stamp and `java -jar /opt/rhoai3/typed-repair/typed-repair.jar` as the worker | release agent |
 | Stage 040 MaaS gateway | `maas-gateway-resources` (ee7bc6d6): istio-proxy 1 GiB request / 2 GiB limit | apply first through GitOps; read back resources, readiness, restarts and memory under ordinary traffic; headroom is mitigation, not proof that growth is fixed | release agent |
 | Platform (Stage 050) | skeleton devfile digest | Argo CD sync at the intended commit; read back the served template and catalog re-stamp | release agent |
-| Launch preflight | `run-preflight.sh` (ee7bc6d6) | **no isolation receipt or campaign**; live checks against the actual pod, the golden's pinned database/provisioner images and published pins | release agent |
+| Launch preflight | `stages/130-ai-autonomous-migration/validate.sh --run` (ee7bc6d6) | **no isolation receipt or campaign**; live checks against the actual pod, the golden's pinned database/provisioner images and published pins | release agent |
 
 ### Remaining live validation (not claimed)
 
@@ -516,8 +516,8 @@ rule ids and locations; `--build-fresh SOURCE` builds both fresh M1 → M2 roots
 with `rehearse-legacy.sh` and the offline corpus derivations, then compares
 plans and MTA findings; `--patches A B` compares the typed-repair patch digests
 of two independent applications. Source captures are reported NOT-RUN, as is
-MTA when no CLI resolves. `stages/130-ai-autonomous-migration/qualify-release.sh`
-runs the scaffold suites and this driver, then writes `verdict.json`. Each claim
+MTA when no CLI resolves. `qualify-release.sh` (retired; in git history at
+`82092e01`) ran the scaffold suites and this driver, then wrote `verdict.json`. Each claim
 in the table above is graded MEASURED, PARTIAL, NOT-MEASURED or FAILED, and the
 verdict lists what each claim is missing. Repeatable migration stays
 NOT-MEASURED until the two full runs exist.

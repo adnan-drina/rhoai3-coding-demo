@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# deploy.sh — Stage 010: RHOAI Base Platform
-# Bootstraps OpenShift GitOps, then hands off ODF + RHOAI to Argo CD.
+# Stage 010: bootstraps OpenShift GitOps, deploys the foundation components (ODF, RHOAI, observability, access) at one
+# reviewed published revision, then the two script-deployed components (sandbox storage, console observability) and
+# the demo group membership of the existing provider identities.
+# --component deploys only one script-deployed component, at its own revision, after its read-only adoption preflight.
+# Usage: stages/010-openshift-ai-platform-foundation/deploy.sh [--revision REF] [--component 010-sandbox-storage|010-console-observability]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,24 +11,48 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Shared fail-closed environment and cluster identity guard.
 REPO_ROOT="$ROOT_DIR"
-# shellcheck source=../../scripts/shared/lib.sh
-source "$ROOT_DIR/scripts/shared/lib.sh"
+# shellcheck source=../../scripts/lib.sh
+source "$ROOT_DIR/scripts/lib.sh"
 load_env
 check_oc_logged_in
-python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation"
-python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/bootstrap/overlays/operator"
 # Use a reviewed published revision; never silently deploy old main content.
-if [[ "${1:-}" == --revision && $# -eq 2 ]]; then
-  GIT_REPO_BRANCH="$2"
-elif [[ $# -ne 0 ]]; then
-  echo "Usage: $0 [--revision <published commit or ref>]" >&2; exit 1
-fi
+COMPONENT=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --revision) GIT_REPO_BRANCH="${2:?}"; shift 2 ;;
+    --component) COMPONENT="${2:?}"; shift 2 ;;
+    *) sed -n 's/^# Usage: //p' "$0" >&2; exit 1 ;;
+  esac
+done
 require_env GIT_REPO_URL "repository URL containing the reviewed Stage 010 source"
 assert_required_env
-STAGE_APPS="$ROOT_DIR/scripts/shared/stage_apps.py"
+STAGE_APPS="$ROOT_DIR/scripts/stage-apps.sh"
 # The reviewed, published commit; Applications are pinned to it even when the input was a branch.
-selected_commit=$(python3 "$STAGE_APPS" select 010 --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" \
-  --extra gitops/bootstrap --extra scripts/platform/require-node-sizing.sh --extra scripts/platform/check-operator-policy.py)
+selected_commit=$("$STAGE_APPS" select 010 --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" \
+  --extra gitops/bootstrap)
+
+# One script-deployed component: read-only adoption preflight, apply, sync (an unchanged render gets no automatic
+# sync operation), wait, then that component's validation (console readiness follows Argo CD health by minutes).
+deploy_component() {
+  local app="$1" deadline
+  "$STAGE_APPS" preflight 010 --repo-url "$GIT_REPO_URL" --app "$app"
+  "$STAGE_APPS" apply 010 --app "$app" --revision "$selected_commit" --repo-url "$GIT_REPO_URL"
+  "$STAGE_APPS" sync 010 --app "$app"
+  "$STAGE_APPS" wait 010 --app "$app" --revision "$selected_commit" --repo-url "$GIT_REPO_URL" --timeout 720
+  deadline=$((SECONDS + 600))
+  until "$SCRIPT_DIR/validate.sh" --component "$app" >/dev/null 2>&1; do
+    if (( SECONDS >= deadline )); then "$SCRIPT_DIR/validate.sh" --component "$app"; return 1; fi
+    sleep 10
+  done
+  log_success "$app deployed and validated at ${selected_commit:0:12}"
+}
+case "$COMPONENT" in
+  "") ;;
+  010-sandbox-storage|010-console-observability) deploy_component "$COMPONENT"; exit 0 ;;
+  *) echo "Unknown script-deployed component $COMPONENT" >&2; exit 1 ;;
+esac
+check_operator_policy "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation"
+check_operator_policy "$ROOT_DIR/gitops/bootstrap/overlays/operator"
 # Read-only preflight runs before the first bootstrap/Application write.
 # The model registry namespace belongs to Stage 030; never let a foundation component take it back.
 registry_ns=$(oc --request-timeout=10s get namespace rhoai-model-registries --ignore-not-found -o json)
@@ -37,7 +64,7 @@ if [[ -n "$registry_ns" ]] && ! jq -e \
 fi
 
 # Fail fast if the nodes are too small for the demo stack, before any changes.
-"$ROOT_DIR/scripts/platform/require-node-sizing.sh"
+require_node_sizing
 
 # ── Portable wait helper (no GNU `timeout` dependency; macOS lacks it) ─────────
 # wait_for <timeout-seconds> <label> <command...>
@@ -71,7 +98,7 @@ echo "── Step 1: Installing OpenShift GitOps operator ──"
 oc apply -k "$ROOT_DIR/gitops/bootstrap/overlays/operator" --insecure-skip-tls-verify=true
 
 echo "   Waiting for openshift-gitops-operator CSV to reach Succeeded …"
-python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/bootstrap/overlays/operator" --wait 900
+check_operator_policy "$ROOT_DIR/gitops/bootstrap/overlays/operator" --wait 900
 
 echo "✓ OpenShift GitOps operator ready"
 
@@ -93,14 +120,26 @@ echo "✓ AppProject rhoai-demo created"
 echo ""
 echo "── Step 4: Applying Stage 010 component Argo CD Applications ──"
 echo "  Argo CD syncs ODF and RHOAI; this takes 10–20 minutes."
-python3 "$STAGE_APPS" deploy 010 --revision "$selected_commit" --repo-url "$GIT_REPO_URL"
-python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation" --wait 1800
+"$STAGE_APPS" deploy 010 --revision "$selected_commit" --repo-url "$GIT_REPO_URL"
+check_operator_policy "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundation" --wait 1800
 
-"$SCRIPT_DIR/deploy-sandbox-storage.sh" --revision "$selected_commit"
+deploy_component 010-sandbox-storage
+deploy_component 010-console-observability
 
-"$SCRIPT_DIR/deploy-console-observability.sh" --revision "$selected_commit"
+# ── Step 5: Demo group membership ───────────────────────────────────────────
+# Existing provider identities join the demo groups (rhods-admins is operator-owned, so membership is not in GitOps).
+# OAuth, passwords and the provider's realm are not changed here.
+if [[ -n "${RHOAI_ADMIN_USER:-}" && -n "${RHOAI_DEVELOPER_USER:-}" ]]; then
+  for persona in "$RHOAI_ADMIN_USER" "$RHOAI_DEVELOPER_USER"; do
+    oc get user "$persona" >/dev/null 2>&1 || log_warn "$persona has not completed a first provider login yet"
+  done
+  oc adm groups add-users rhods-admins "$RHOAI_ADMIN_USER"
+  oc adm groups add-users rhoai-developers "$RHOAI_DEVELOPER_USER"
+else
+  log_warn "RHOAI_ADMIN_USER/RHOAI_DEVELOPER_USER not set: demo group membership not assigned"
+fi
 
-# ── Step 5: Report Argo CD console URL ───────────────────────────────────────
+# ── Step 6: Report Argo CD console URL ───────────────────────────────────────
 ARGOCD_URL=$(oc get route openshift-gitops-server -n openshift-gitops \
   -o jsonpath='{.spec.host}' 2>/dev/null || true)
 if [[ -n "$ARGOCD_URL" ]]; then

@@ -10,12 +10,12 @@ description: >
   Use when reviewing or changing OpenShift BuildConfig builds in this repo: the
   Stage 060 binary Docker builds opencode-runtime and hermes-runtime-api in
   ai-agents (and the older opencode-runtime in openshell), their ImageStream
-  outputs, image-pull Roles, and the build-opencode.sh / build-hermes.sh
-  scripts that start them; or when choosing between BuildConfig, Shipwright and
+  outputs and image-pull Roles (the build-opencode.sh / build-hermes.sh
+  scripts that started them are retired); or when choosing between BuildConfig, Shipwright and
   Tekton for a new image build. Do NOT use for Tekton pipelines, buildah Tasks
   or Stage 070 project pipelines (use ocp-pipelines-cicd), for registry
   exposure and image streams in general (use ocp-image-registry-and-mirroring),
-  or for workspace images (scripts/platform/build-stage070-workspace-image.sh).
+  or for workspace images (stages/070-advanced-app-platform/workspace-image/).
 ---
 
 # OpenShift builds (BuildConfig)
@@ -29,8 +29,7 @@ OpenShift Container Platform 4.22 sections. Detailed record:
 
 - A change touches a `buildconfig.yaml` or `imagestream.yaml` under
   `gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/`.
-- `stages/060-agent-runtime-and-agentops/build-opencode.sh` or `build-hermes.sh`
-  fails, or a sandbox cannot pull the built image.
+- A sandbox cannot pull the built image.
 - A new in-cluster image build is proposed.
 
 ## Repo decisions
@@ -41,7 +40,7 @@ OpenShift Container Platform 4.22 sections. Detailed record:
 | Output to a versioned ImageStreamTag (`opencode-runtime:1.18.16`, `hermes-runtime-api:0.20.5-api`); the tag is an output handle, consumers pin the build digest | same files, `.../images/imagestream.yaml` | [Managing build output][output] |
 | ImageStreams carry `Delete=false,Prune=false` so a sync never removes built images; `referencePolicy: Local` | `.../images/imagestream.yaml`, `.../hermes-images/imagestream.yaml` | [Managing image streams][imagestreams] |
 | Sandbox ServiceAccount `openshell-sandbox` gets `get` on `imagestreams/layers` for one named stream only | `.../images/image-pull-role.yaml`, `.../images/image-pull-rolebinding.yaml` | [Using RBAC][rbac] |
-| Builds are started by scripts, not by triggers: they check the Application is Synced at the expected revision, fetch the release asset, verify its SHA-256, `oc start-build --from-dir`, wait, and print the output digest | `stages/060-agent-runtime-and-agentops/build-opencode.sh`, `stages/060-agent-runtime-and-agentops/build-hermes.sh` | [Basic build operations][basic-ops] |
+| Builds are started by hand, not by triggers: check the Application is Synced at the expected revision, fetch the release asset, verify its SHA-256, `oc start-build --from-dir`, wait, and read back the output digest. The former build scripts `build-opencode.sh` and `build-hermes.sh` and their `images/` and `hermes/` build contexts were retired with the optional OpenCode/Hermes sandbox flow; restore them from git history at `82092e01` if needed | — | [Basic build operations][basic-ops] |
 | Earlier build location `opencode-runtime` in `openshell` kept for `openshell-developer` sandboxes | `.../compatibility-images/` | [Understanding BuildConfigs][buildconfigs] |
 | Application images in Stage 070 are built by Tekton into the internal registry, not by BuildConfig; Shipwright is not used | `gitops/stages/070-advanced-app-platform/070-pipelines/` | [CI/CD overview][cicd] |
 
@@ -49,12 +48,13 @@ Paths starting with `...` are under `gitops/stages/060-agent-runtime-and-agentop
 
 ## Procedure
 
-1. Change Dockerfile or release inputs under
-   `stages/060-agent-runtime-and-agentops/images/` or `stages/060-agent-runtime-and-agentops/hermes/`,
-   and the BuildConfig output tag in Git; commit and push first (the scripts
-   refuse an unpublished revision or a dirty build context).
-2. Sync the `060-openshell-runtime` Application at that revision through the
-   Stage 060 scripts (it has no automated sync), then run the build script.
+1. Restore the build context (Dockerfile and release inputs) from git history
+   at `82092e01` if needed, change it and the BuildConfig output tag in Git;
+   commit and push first.
+2. Sync the `060-openshell-runtime` Application at that revision with
+   `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-openshell-runtime`
+   (it has no automated sync), then start the build with
+   `oc start-build --from-dir` and wait for it.
 3. Validate after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash
@@ -66,8 +66,8 @@ Paths starting with `...` are under `gitops/stages/060-agent-runtime-and-agentop
 ## Pitfalls
 
 - A Binary build has no source to rebuild from: a re-sync or `oc start-build`
-  without `--from-dir` does not reproduce the image. Always use the script.
-- The tag can move; the scripts read back the build's `imageDigest` and require
+  without `--from-dir` does not reproduce the image.
+- The tag can move; read back the build's `imageDigest` and require
   the ImageStreamTag to point at it. Pin consumers to the digest.
 - Builds need the internal registry Managed with persistent storage (Stage 070
   `deploy.sh` checks this); see `ocp-image-registry-and-mirroring`.

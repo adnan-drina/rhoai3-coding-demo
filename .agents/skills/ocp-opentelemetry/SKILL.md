@@ -10,9 +10,9 @@ description: >
   Use when reviewing or changing the Red Hat build of OpenTelemetry in this
   repo: the opentelemetry-product Subscription in Stage 010
   observability-operators/opentelemetry/, its channel bound in
-  check-operator-policy.py, the RHOAI-generated data-science-collector in
+  check_operator_policy, the RHOAI-generated data-science-collector in
   redhat-ods-monitoring, or the OTLP round trip in
-  validate-foundation-services.sh. Do NOT use for Tempo storage and trace
+  stages/010-openshift-ai-platform-foundation/validate.sh. Do NOT use for Tempo storage and trace
   read/write RBAC (use ocp-distributed-tracing) or the DSCI monitoring block
   (use rhoai-observability).
 ---
@@ -26,17 +26,17 @@ Red Hat build of OpenTelemetry 3.11 sections. Detailed record:
 ## When to use
 
 - A change touches `010-observability-operators/opentelemetry/` or the
-  `opentelemetry-product` entries in `scripts/platform/check-operator-policy.py`.
+  `opentelemetry-product` entries in `check_operator_policy` in `scripts/lib.sh`.
 - Someone proposes an own `OpenTelemetryCollector`, `Instrumentation` or
   auto-instrumentation annotation.
-- The collector rejects spans or `validate-foundation-services.sh` fails.
+- The collector rejects spans or `stages/010-openshift-ai-platform-foundation/validate.sh` fails.
 
 ## Repo decisions
 
 | Decision | Where in Git | Official section |
 |---|---|---|
 | Operator only: namespace `openshift-opentelemetry-operator` (cluster-monitoring label), AllNamespaces OperatorGroup `opentelemetry-product`, Subscription `opentelemetry-product`, `stable`, Automatic | `010-observability-operators/opentelemetry/` | [Installing (CLI)][install] |
-| Rolling `stable` bounded fail-closed: minimum `0.158.0-2` (operator 0.158 = product 3.11) | `scripts/platform/check-operator-policy.py` | [Installing (CLI)][install] |
+| Rolling `stable` bounded fail-closed: minimum `0.158.0-2` (operator 0.158 = product 3.11) | `check_operator_policy` in `scripts/lib.sh` | [Installing (CLI)][install] |
 | No collector or `Instrumentation` in Git: RHOAI generates `OpenTelemetryCollector` `data-science-collector` in `redhat-ods-monitoring` from the DSCI | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/dsc-init.yaml` | [Installing (CLI)][install] |
 | Collector SA gets Tempo write access from a repo ClusterRole (not in the generated RBAC) | `010-observability-operators/trace-roles/` | see `ocp-distributed-tracing` |
 | No external telemetry sinks or exporters | — | — |
@@ -50,8 +50,8 @@ Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unle
 2. Deploy and validate:
    `./stages/010-openshift-ai-platform-foundation/deploy.sh`,
    `./stages/010-openshift-ai-platform-foundation/validate.sh` (CSV
-   `Succeeded`, `check-operator-policy.py --verify`) and
-   `./stages/010-openshift-ai-platform-foundation/validate-foundation-services.sh`
+   `Succeeded`, `check_operator_policy --verify`) and
+   `./stages/010-openshift-ai-platform-foundation/validate.sh`
    (writer SubjectAccessReview, one OTLP span read back from Tempo).
 3. By hand, after the OpenShift safety guard in `AGENTS.md`:
 

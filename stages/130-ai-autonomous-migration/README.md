@@ -301,7 +301,7 @@ actually shipped.
 |------|---------|
 | [SOLUTION-ARCHITECTURE.md](SOLUTION-ARCHITECTURE.md) | Stage architecture and proof boundaries |
 | [OUTCOME-BOARD-CONTRACT.md](OUTCOME-BOARD-CONTRACT.md) | Outcome-board contract and qualification status |
-| [run-preflight.sh](run-preflight.sh), [validate.sh](validate.sh) | Current launch and stage validation entrypoints |
+| [validate.sh](validate.sh) (`--run` for one run) | Current launch and stage validation entrypoint |
 | [hermes-runtime/](hermes-runtime/) | Workspace runtime patches and authority packaging helper |
 
 Previously tracked run records remain in Git history. Assisted v10 reached M4
@@ -329,7 +329,7 @@ initial commit is the declaring event and its time is the declaration time.
 `planner/run_declaration.py` refuses a missing, foreign, stale or rewritten
 declaration, and autostart does not mint M1 without a valid one; reopening or
 restarting the workspace re-reads the same committed bytes. After creation, run
-the read-only `run-preflight.sh` with `WORKSPACE` set to the project name (see
+the read-only `validate.sh --run` with `WORKSPACE` set to the project name (see
 [OPERATIONS](../../docs/OPERATIONS.md#stage-080-run-declaration-and-launch-preflight)).
 Repeated isolation campaigns are retired; the preflight still checks the new
 workspace against the released image pins, identity and source protections.

@@ -5,7 +5,7 @@ This Application installs Red Hat Developer Hub 1.10 as the developer portal of 
 | | |
 |---|---|
 | Argo CD Application | `070-rhdh` ([manifest](../../../applications/070-rhdh.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 8, last) |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage-apps.sh deploy 070` (deploy-order 8, last) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (operator, portal, catalog and security checks); `validate.sh --static` (catalog renderer and template tests) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on OperatorGroup annotation `olm.providedAPIs` (OLM-owned), Subscription `startingCSV`, Secret `rhdh-secrets` `/data`, ConsoleLink `rhdh` `href`/`imageURL` |
 | Depends on | `070-namespaces` (`rhdh-operator`, `rhdh`); `070-identity` (Secret `stage070-rhdh-provisioner`, a `platform`-realm client that may manage clients); `070-gitlab` (GitLab mirror of the platform repository at the synced commit, Secrets `rhdh-gitlab` and `gitlab-catalog-reader`, ConfigMap `gitlab-platform-config`, Argo CD reader token `rhdh-local-user`, from Stage 010); `070-devspaces`, `070-sonarqube` and the Coolstore enrollment in `coolstore-dev` (Routes used for links); Stage 040 (`maas-default-gateway` and `maas-gateway-internal` for migration workspaces); Stage 010 (Keycloak) |
@@ -17,7 +17,7 @@ The platform needs one self-service entry point where a developer finds approved
 
 The portal is installed by its Operator and configured only through the `Backstage` custom resource, ConfigMaps and Secrets. This is the documented Operator path [1][5]. The catalog is generated at sync time from a bundle that Kustomize builds from the same checkout. The bundle name carries a content hash, so a catalog or template change is a manifest change Argo CD applies. The generator publishes only when every bundled file is byte-identical to the file in the GitLab mirror at the synced commit. Template links, skeletons and TechDocs therefore always point to one immutable revision.
 
-Developer Hub is the last component in the deploy order. Its catalog hook needs the GitLab mirror and the scoped GitLab credentials that `070-gitlab` creates at wave 14 of its own sync. Sync waves only order resources inside one Application [8], so `stage_apps.py deploy 070` provides the cross-component order.
+Developer Hub is the last component in the deploy order. Its catalog hook needs the GitLab mirror and the scoped GitLab credentials that `070-gitlab` creates at wave 14 of its own sync. Sync waves only order resources inside one Application [8], so `stage-apps.sh deploy 070` provides the cross-component order.
 
 ## What
 
@@ -83,9 +83,9 @@ Not in Git: the Deployment `backstage-developer-hub`, StatefulSet `backstage-psq
 - `rhdh installed revision` and `rhdh-operator.v1.10.5 succeeded`.
 - `Portal instance exists`, `Portal catalog bundle stamped`, `Portal catalog has no unresolved placeholders`, `Portal templates use private GitLab mirror`, `Developer Hub reachable`.
 - `Scoped integration Secret rhdh/gitlab-publisher exists` and `rhdh/gitlab-catalog-reader exists`.
-- `Stage 070 corrected security boundaries` (`security-status.py`): no apply annotation on `rhdh-gitlab`, `rhdh-local-user` or any Secret in `rhdh`; Developer Hub's Argo CD token equals the operator's `rhdh-local-user` token; `job-configure-rhdh` cannot read the master admin Secret; `stage070-rhdh-provisioner` can read only its `platform` client and cannot administer `sso` or `master`; `platform-ingress` is installed in `rhdh`.
+- `Stage 070 corrected security boundaries` (`stages/070-advanced-app-platform/validate.sh`): no apply annotation on `rhdh-gitlab`, `rhdh-local-user` or any Secret in `rhdh`; Developer Hub's Argo CD token equals the operator's `rhdh-local-user` token; `job-configure-rhdh` cannot read the master admin Secret; `stage070-rhdh-provisioner` can read only its `platform` client and cannot administer `sso` or `master`; `platform-ingress` is installed in `rhdh`.
 
-`validate.sh --static` runs `jobs/catalog/render_catalog.test.py` (bundle coverage, hash rename, mismatch refusal, Python 3.6 compatibility, wave order), `templates/app-migration/app-migration-template.test.py`, and the stage tests `security-boundaries.test.py` (`test_only_admins_register_and_discovery_does_not_ingest_templates`, `test_developer_can_view_delivery_without_proxy_or_catalog_writes`), `stage070-upgrade.test.py` (`test_argo_plugins_follow_110_oci_packaging`, `test_tekton_frontend_is_wired_and_migration_requires_hub`), `product-schemas.test.py` (`test_template_gitlab_inputs_match_installed_action_schemas`), `sso-alignment.test.py` (`test_runtime_secret_cannot_overwrite_ignored_data_through_string_data`) and `correction-package.test.py` (deploy order and ingress contract).
+`validate.sh --static` checks renders, disjoint components and script syntax. `jobs/catalog/render_catalog.test.py` (bundle coverage, hash rename, mismatch refusal, Python 3.6 compatibility, wave order) and `templates/app-migration/app-migration-template.test.py` stay beside their sources and run by hand; the former stage tests (`security-boundaries.test.py` and others) are in git history at `82092e01`.
 
 By hand (read-only):
 

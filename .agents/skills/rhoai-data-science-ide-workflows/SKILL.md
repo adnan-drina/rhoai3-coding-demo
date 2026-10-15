@@ -70,7 +70,7 @@ OpenShift AI 3.5 sections. Detailed record:
   ([Working in code-server][codeserver]).
 - 403 on login, workbench not starting, no space left: the user-side list is
   [Troubleshooting for users][ts]; group membership comes from
-  `stages/010-openshift-ai-platform-foundation/setup-access.sh`.
+  `stages/010-openshift-ai-platform-foundation/deploy.sh`.
 - Never commit Git tokens, S3 credentials or MaaS keys from notebook output.
 
 ## Official documentation (OpenShift AI 3.5)

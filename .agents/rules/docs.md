@@ -149,7 +149,7 @@ Tag version-sensitive information explicitly. When official documentation confli
   section (with its anchor) at the product's `docs_version` in
   `.agents/references/red-hat-doc-map.yaml`; do not paste documentation text
   into READMEs or skills.
-- `scripts/shared/check-doc-links.py` checks docs.redhat.com link versions in
+- `.agents/tools/check-doc-links.py` checks docs.redhat.com link versions in
   component READMEs (`gitops/stages/*/*/README.md`) and skills.
 - Prefer upstream project documentation only for open source internals not covered by Red Hat docs.
 

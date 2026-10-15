@@ -36,7 +36,7 @@ around it. Command list: `references/diagnostic-commands.md`; symptom index:
   file, or an official section of the versions in
   `.agents/references/red-hat-doc-map.yaml`.
 - Before any `oc` command: `load_env` and `check_oc_logged_in` from
-  `scripts/shared/lib.sh` (OpenShift safety guard in `AGENTS.md`). Diagnosis
+  `scripts/lib.sh` (OpenShift safety guard in `AGENTS.md`). Diagnosis
   is read-only.
 - Fix in Git and redeploy with the stage `deploy.sh`; do not patch live
   objects that Argo CD owns, and never edit a delegated field (DSC,
@@ -50,10 +50,10 @@ around it. Command list: `references/diagnostic-commands.md`; symptom index:
 
    ```bash
    ./stages/<NNN-name>/validate.sh
-   ./scripts/platform/validate-stage-flow.sh --live
+   scripts/validate-stage-flow.sh --live
    ```
 
-2. Find the owning component: `python3 scripts/shared/stage_apps.py names <NNN>`,
+2. Find the owning component: `scripts/stage-apps.sh names <NNN>`,
    then read its README under `gitops/stages/<stage>/<application name>/README.md`
    (Validation, Alignment with official guidance).
 3. Gather state with `references/diagnostic-commands.md` for that component.

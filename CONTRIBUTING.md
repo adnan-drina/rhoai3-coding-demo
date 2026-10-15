@@ -39,7 +39,7 @@ Use the most specific validation available.
 
 ```bash
 for script in scripts/{platform,demo,shared}/*.sh stages/*/*.sh; do bash -n "$script" || exit; done
-./scripts/platform/validate-stage-flow.sh
+scripts/validate-stage-flow.sh
 ```
 
 For stage changes with a live cluster:

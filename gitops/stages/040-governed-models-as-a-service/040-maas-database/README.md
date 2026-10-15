@@ -1,12 +1,12 @@
 # MaaS database (`040-maas-database`)
 
-This Application runs the PostgreSQL database that OpenShift AI Models-as-a-Service (MaaS) uses for API key lifecycle data. It also creates the `models-as-a-service` tenant namespace. Both are data, so neither is pruned or deleted with the Application. The MaaS API (`maas-api` in `redhat-ai-gateway-infra`) is the only consumer. It reads the connection string from a runtime Secret that `setup-database.sh` creates.
+This Application runs the PostgreSQL database that OpenShift AI Models-as-a-Service (MaaS) uses for API key lifecycle data. It also creates the `models-as-a-service` tenant namespace. Both are data, so neither is pruned or deleted with the Application. The MaaS API (`maas-api` in `redhat-ai-gateway-infra`) is the only consumer. It reads the connection string from a runtime Secret that `stages/040-governed-models-as-a-service/deploy.sh` creates.
 
 | | |
 |---|---|
 | Argo CD Application | `040-maas-database` ([manifest](../../../applications/040-maas-database.yaml)) |
-| Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 2); credentials from `setup-database.sh`, which `deploy.sh` calls |
-| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.sh` ("Current durable MaaS PostgreSQL and runtime credential presence"); `preflight.sh` (retained-data and ownership checks before deploy) |
+| Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 2); credentials from `stages/040-governed-models-as-a-service/deploy.sh`, which `deploy.sh` calls |
+| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `stages/040-governed-models-as-a-service/validate.sh` ("Current durable MaaS PostgreSQL and runtime credential presence"); `preflight.sh` (retained-data and ownership checks before deploy) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `ServerSideDiff`, `RespectIgnoreDifferences` [6]; compare-option `ServerSideDiff=true` [5]; `ignoreDifferences` on `/data` of two runtime Secrets |
 | Depends on | Stage 010 (OpenShift AI with `aigateway` delegated, which creates `redhat-ai-gateway-infra`); the `gp3-csi` StorageClass |
 | Used by | `maas-api` (via `maas-db-config`); `040-maas-platform` (RoleBindings in `models-as-a-service`); the MaaS controller (tenant resources in `models-as-a-service`) |
@@ -44,15 +44,15 @@ The `models-as-a-service` namespace sits here for the same reason. It is the Maa
 
 | Object | Owner |
 |---|---|
-| Secret `maas-postgres-credentials` (`POSTGRESQL_USER`, `POSTGRESQL_PASSWORD`, `POSTGRESQL_DATABASE`) in `models-as-a-service-db` | `setup-database.sh`, label `app.kubernetes.io/managed-by=stage040-runtime`, no Argo CD tracking |
-| Secret `maas-db-config` (`DB_CONNECTION_URL`) in `redhat-ai-gateway-infra` | `setup-database.sh`, same label |
+| Secret `maas-postgres-credentials` (`POSTGRESQL_USER`, `POSTGRESQL_PASSWORD`, `POSTGRESQL_DATABASE`) in `models-as-a-service-db` | `stages/040-governed-models-as-a-service/deploy.sh`, label `app.kubernetes.io/managed-by=stage040-runtime`, no Argo CD tracking |
+| Secret `maas-db-config` (`DB_CONNECTION_URL`) in `redhat-ai-gateway-infra` | `stages/040-governed-models-as-a-service/deploy.sh`, same label |
 | PVC `data-maas-postgres-0` | StatefulSet controller (volume claim template) |
 | Namespace `redhat-ai-gateway-infra` | OpenShift AI AIGateway controller |
 
 ## How
 
-- **Ordering.** Namespaces (wave 1), barrier RBAC (wave 6), barrier Job and NetworkPolicy (wave 7), Service and StatefulSet (wave 8). `deploy.sh` applies the Application first and then runs `setup-database.sh`, so the barrier Job, a `Sync` hook that runs inside wave 7 [3], waits for the script. If `preflight.sh` reports a clean cluster, `deploy.sh` passes `--fresh-database`.
-- **Credentials.** `setup-database.sh` never rotates an existing password. On a fresh install it generates a random 48-hex-character password for user and database `maas` and creates `maas-postgres-credentials`. It then waits for `redhat-ai-gateway-infra` and creates `maas-db-config` with `postgresql://maas:<password>@maas-postgres.models-as-a-service-db.svc.cluster.local:5432/maas?sslmode=disable`. Both Secrets are created through standard input and contain no values from Git. If storage or a StatefulSet exists without credentials, the script refuses to continue: restore the original Secret instead. If an existing `maas-db-config` differs from the URI that the credentials imply, it also refuses. The MaaS guide names the Secret, namespace and key [1].
+- **Ordering.** Namespaces (wave 1), barrier RBAC (wave 6), barrier Job and NetworkPolicy (wave 7), Service and StatefulSet (wave 8). `deploy.sh` applies the Application first and then runs `stages/040-governed-models-as-a-service/deploy.sh`, so the barrier Job, a `Sync` hook that runs inside wave 7 [3], waits for the script. If `preflight.sh` reports a clean cluster, `deploy.sh` passes `--fresh-database`.
+- **Credentials.** `stages/040-governed-models-as-a-service/deploy.sh` never rotates an existing password. On a fresh install it generates a random 48-hex-character password for user and database `maas` and creates `maas-postgres-credentials`. It then waits for `redhat-ai-gateway-infra` and creates `maas-db-config` with `postgresql://maas:<password>@maas-postgres.models-as-a-service-db.svc.cluster.local:5432/maas?sslmode=disable`. Both Secrets are created through standard input and contain no values from Git. If storage or a StatefulSet exists without credentials, the script refuses to continue: restore the original Secret instead. If an existing `maas-db-config` differs from the URI that the credentials imply, it also refuses. The MaaS guide names the Secret, namespace and key [1].
 - **Transport.** The connection string uses `sslmode=disable`. The guide's example uses `sslmode=require` [1]. The demo limits plaintext to in-cluster traffic and constrains it with the `maas-postgres` NetworkPolicy. The pod has no other policy selecting it, so this policy alone defines its ingress [2].
 - **`ignoreDifferences`.** The Application ignores `/data` on `maas-postgres-credentials` and `maas-db-config`. Neither Secret is rendered from Git, so these entries [4] only matter if Argo CD ever tracks them. `preflight.sh` accepts the Secrets only when they are untracked or tracked by a Stage 040 component.
 - **Tenant namespace label.** The kustomization's `replacements` set `app.kubernetes.io/part-of=modelsasservice` on `models-as-a-service`, which is the value the native AITenant controller writes, so Argo CD and the controller do not fight over it. The other `part-of` labels in the component stay `rhoai3-coding-demo`.
@@ -61,7 +61,7 @@ The `models-as-a-service` namespace sits here for the same reason. It is the Maa
 
 ## Validation
 
-`validate-native.sh` requires the StatefulSet to be available, PVC `data-maas-postgres-0` to be Bound on `gp3-csi`, and both runtime Secrets to have their keys. It reads key names only. `preflight.sh` checks retained database state and ownership before every deploy.
+`stages/040-governed-models-as-a-service/validate.sh` requires the StatefulSet to be available, PVC `data-maas-postgres-0` to be Bound on `gp3-csi`, and both runtime Secrets to have their keys. It reads key names only. `preflight.sh` checks retained database state and ownership before every deploy.
 
 By hand:
 
@@ -75,7 +75,7 @@ oc get secret maas-postgres-credentials -n models-as-a-service-db -o jsonpath='{
 | Topic | Official guidance (link) | This repository | Status |
 |---|---|---|---|
 | Database engine | Customer-provided PostgreSQL 14 or later [1] | PostgreSQL 16, `rhel9/postgresql-16`, pinned by digest | Aligned |
-| Connection Secret | `maas-db-config` with key `DB_CONNECTION_URL` in the infrastructure namespace (default `redhat-ai-gateway-infra`) [1] | Created by `setup-database.sh` in `redhat-ai-gateway-infra` | Aligned |
+| Connection Secret | `maas-db-config` with key `DB_CONNECTION_URL` in the infrastructure namespace (default `redhat-ai-gateway-infra`) [1] | Created by `stages/040-governed-models-as-a-service/deploy.sh` in `redhat-ai-gateway-infra` | Aligned |
 | Connection TLS | The example connection string uses `sslmode=require` [1] | `sslmode=disable`, with ingress restricted by NetworkPolicy | Deviation (justified: in-cluster demo database without a server certificate; plaintext stays in the pod network and the policy admits only two namespaces) |
 | Secrets outside Git | Secrets are not stored in the manifests [1] | Runtime Secrets only. Git holds no credential values | Aligned |
 | Data retention under GitOps | `Prune=false` and `Delete=false` keep resources [6] | Set on both namespaces and the StatefulSet | Aligned |

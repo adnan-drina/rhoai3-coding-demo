@@ -11,8 +11,7 @@ description: >
   `EvalHub` CR in namespace `evalhub`, the single tenant `evaluated-models`,
   the MaaS key Secret `evalhub-model-auth-maas`, Kueue queue `lq-cpu-default`,
   custom `agentic-coding-*` collections and `inspect-coding`/`garak-coding`/
-  `swebench` providers, the EvalHub MCP server, OCI result export, or the
-  helpers submit-evaluation.sh, record-evaluation.sh and swebench-run.sh
+  `swebench` providers, the EvalHub MCP server, or OCI result export
   (gitops/stages/050-model-evaluation/). Do NOT use for the MLflow server (use
   rhoai-mlflow), the qualification pipeline server (use rhoai-ai-pipelines),
   or TrustyAI bias and drift monitoring (use rhoai-monitoring-trustyai).
@@ -35,7 +34,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `EvalHub` CR in dedicated namespace `evalhub`, PostgreSQL 16 StatefulSet, Secret `evalhub-db-credentials` with `db-url` (from `setup-ai-services.sh`) | `gitops/stages/050-model-evaluation/050-evalhub/evalhub.yaml` | [Deploy EvalHub][deploy], [Database configuration][dbconf] |
+| `EvalHub` CR in dedicated namespace `evalhub`, PostgreSQL 16 StatefulSet, Secret `evalhub-db-credentials` with `db-url` (from `stages/050-model-evaluation/deploy.sh`) | `gitops/stages/050-model-evaluation/050-evalhub/evalhub.yaml` | [Deploy EvalHub][deploy], [Database configuration][dbconf] |
 | One admin-only tenant `evaluated-models`; Role `evalhub-evaluator` holds the documented virtual-resource and MLflow `experiments` rules | `gitops/stages/050-model-evaluation/050-model-qualification/access.yaml` | [Set up a tenant][tenant], [Roles][roles] |
 | Models reached through MaaS with subscription `model-qualification`; hook mints Secret `evalhub-model-auth-maas` (`api-key`) for `model.auth.secret_ref` | `gitops/stages/050-model-evaluation/050-model-qualification/maas-key-provisioner.yaml` | [API key authentication][apikey] |
 | Jobs routed through LocalQueue `lq-cpu-default` (Technology Preview) | `gitops/stages/050-model-evaluation/050-model-qualification/local-queues.yaml` | [Route jobs through Kueue][kueue] |
@@ -52,15 +51,17 @@ OpenShift AI 3.5 sections. Detailed record:
    ```bash
    ./stages/050-model-evaluation/deploy.sh
    ./stages/050-model-evaluation/validate.sh
-   ./stages/050-model-evaluation/validate-ai-services.sh
    ```
 
-2. Submit and record, after the OpenShift safety guard in `AGENTS.md`:
+2. Submit from the dashboard **Develop & train → Evaluations** (or the
+   documented EvalHub REST API, [Submit][submit]) in tenant `evaluated-models`,
+   and record the result as custom properties on the model version in the
+   dashboard model version **Properties**. The former helpers
+   `submit-evaluation.sh`, `record-evaluation.sh` and `swebench-run.sh` are in
+   git history at `82092e01`. Check the service after the OpenShift safety
+   guard in `AGENTS.md`:
 
    ```bash
-   ./stages/050-model-evaluation/submit-evaluation.sh --model-name <maas model id> --num-examples <N>
-   ./stages/050-model-evaluation/submit-evaluation.sh --status <job id> --wait
-   ./stages/050-model-evaluation/record-evaluation.sh --job <job id> --model-version <version id>
    oc get evalhub evalhub -n evalhub -o jsonpath='{.status.phase} {.status.ready}{"\n"}'
    ```
 
@@ -72,7 +73,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
 - The evaluation sidecar aborts each model request after 30 s and the
   lighteval adapter stops after one hour: keep the code-only prompt and
-  512-token cap, bound with `--num-examples`, and serve 16 concurrent
+  512-token cap, bound the number of examples, and serve 16 concurrent
   sequences. Per-provider parameters (`tokenizer`, `max_seconds`,
   `max_samples`, `/v1` URLs):
   `docs/TROUBLESHOOTING.md#evalhub-provider-jobs-fail-or-never-finish-against-maas-models`.

@@ -9,8 +9,8 @@ workspace all write to this MLflow instance; EvalHub logs each benchmark as an M
 | | |
 |---|---|
 | Argo CD Application | `050-mlflow` ([manifest](../../../applications/050-mlflow.yaml)) |
-| Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 1, all Stage 050 components at one commit SHA), followed by [`setup-ai-services.sh`](../../../../stages/050-model-evaluation/setup-ai-services.sh) for runtime credentials |
-| Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Application Synced/Healthy at the stage revision) and [`validate-ai-services.sh`](../../../../stages/050-model-evaluation/validate-ai-services.sh) (dashboard settings, PostgreSQL, bucket, CA bundle, MLflow `Available`, workload Secret and TLS wiring) |
+| Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 1, all Stage 050 components at one commit SHA), followed by [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) for runtime credentials |
+| Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Application Synced/Healthy at the stage revision) and [`stages/050-model-evaluation/validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (dashboard settings, PostgreSQL, bucket, CA bundle, MLflow `Available`, workload Secret and TLS wiring) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`. `ignoreDifferences` on `ConfigMap/mlflow-service-ca` `/data/service-ca.crt` (injected by the service CA operator). |
 | Depends on | `010-rhoai-platform` (delegated DSC and dashboard fields); `030-private-model-serving` (the hook requires KServe `Managed`); ODF Multicloud Object Gateway (`openshift-storage.noobaa.io`); `gp3-csi`. |
 | Used by | `050-evalhub` (tracking URI), `050-model-qualification` (pipeline-run tracking, AI Pipelines component), EvalHub TrustyAI component, Stage 040 GenAI Studio tracing. |
@@ -59,10 +59,10 @@ Application with `Prune=false,Delete=false` on every data object.
 
 | Object | Created by |
 |---|---|
-| Secret `mlflow-db-credentials` (`database-user`, `database-password`, `database-name`, `backend-store-uri`) | `setup-ai-services.sh`, once, with a random password; it refuses to regenerate it when a database PVC or StatefulSet already exists |
+| Secret `mlflow-db-credentials` (`database-user`, `database-password`, `database-name`, `backend-store-uri`) | `stages/050-model-evaluation/deploy.sh`, once, with a random password; it refuses to regenerate it when a database PVC or StatefulSet already exists |
 | Secret and ConfigMap `rhoai-mlflow-artifacts` (S3 keys, `BUCKET_HOST`, `BUCKET_PORT`) | ODF from the ObjectBucketClaim [5] |
 | ServiceAccount `mlflow-sa`, the MLflow Deployment, Service and dashboard integration | MLflow operator, owned by the `MLflow` CR |
-| ConfigMap `evalhub/evalhub-mlflow-connection` (`tracking-uri`) | `setup-ai-services.sh` after MLflow is `Available` |
+| ConfigMap `evalhub/evalhub-mlflow-connection` (`tracking-uri`) | `stages/050-model-evaluation/deploy.sh` after MLflow is `Available` |
 | Experiments, runs, artifacts | MLflow clients (EvalHub, pipelines, helpers) |
 
 ## How
@@ -70,11 +70,11 @@ Application with `Prune=false,Delete=false` on every data object.
 **Ordering.** RBAC (wave 1) and the hook Job (wave 2) run first, so the TrustyAI, MLflow and pipeline CRDs exist before
 any component syncs objects of those kinds. Data objects follow at wave 12 and the `MLflow` CR at wave 20 [6]. The
 Application is applied by `deploy.sh` with the four other Stage 050 components at the same commit SHA; `deploy.sh` then
-runs `setup-ai-services.sh`, which creates the database Secret, waits for the bound bucket and the injected CA, waits for
+runs `stages/050-model-evaluation/deploy.sh`, which creates the database Secret, waits for the bound bucket and the injected CA, waits for
 MLflow `Available` at the current generation, and publishes the MLflow HTTPS address for EvalHub.
 
 **Delegated fields.** `010-rhoai-platform` owns `default-dsc` and `odh-dashboard-config` and delegates these fields through
-`ignoreDifferences` with `RespectIgnoreDifferences=true` [7] (`scripts/shared/stage_apps.py delegated 010 ...`):
+`ignoreDifferences` with `RespectIgnoreDifferences=true` [7] (`scripts/stage-apps.sh delegated 010 ...`):
 
 | Object | Field | Value set by the hook | Consumer | Default |
 |---|---|---|---|---|
@@ -100,15 +100,15 @@ without Stage 030. The dashboard patch refuses to merge with a foreign `globalML
 - `migration.mode: Automatic` upgrades the database schema when the image changes.
 - One replica and one worker: demo sizing.
 
-**Database transport.** The URI uses `sslmode=disable` (written by `setup-ai-services.sh`). The NetworkPolicy keeps the
+**Database transport.** The URI uses `sslmode=disable` (written by `stages/050-model-evaluation/deploy.sh`). The NetworkPolicy keeps the
 port inside `redhat-ods-applications`, but every pod in that namespace may connect.
 
-**Secrets.** No value is in Git. The database Secret is generated by `setup-ai-services.sh`; the S3 credentials are
+**Secrets.** No value is in Git. The database Secret is generated by `stages/050-model-evaluation/deploy.sh`; the S3 credentials are
 generated by ODF.
 
 ## Validation
 
-`validate.sh` requires all Stage 050 Applications at one revision, `Synced` and `Healthy`. `validate-ai-services.sh`
+`validate.sh` requires all Stage 050 Applications at one revision, `Synced` and `Healthy`. `stages/050-model-evaluation/validate.sh`
 checks for this component: `disableLMEval: false`, `globalProjectPrompts: true`, `globalMLflowNamespaces:
 [ai-curated-prompts]`; the PostgreSQL StatefulSet current and ready with a Bound `gp3-csi` PVC; the database Secret keys;
 the bucket Bound to `rhoai-mlflow-artifacts` with S3 keys and an internal HTTPS endpoint on 443; the injected CA; MLflow

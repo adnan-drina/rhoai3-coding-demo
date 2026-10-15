@@ -6,12 +6,14 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$REPO_ROOT/scripts/shared/validate-lib.sh"
-STAGE_APPS="$REPO_ROOT/scripts/shared/stage_apps.py"
+source "$REPO_ROOT/scripts/lib.sh"
+load_env
+check_oc_logged_in
+STAGE_APPS="$REPO_ROOT/scripts/stage-apps.sh"
 
 mode="${1:---readiness}"
 [[ "$mode" == --readiness || "$mode" == --functional ]] || { echo "Use --readiness or --functional (both read-only)." >&2; exit 1; }
-python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/020-gpu-infrastructure-private-ai" --verify
+check_operator_policy "$REPO_ROOT/gitops/stages/020-gpu-infrastructure-private-ai" --verify
 
 read_json() { oc --request-timeout=10s get "$@" -o json; }
 yes_no() { jq -e "$@" >/dev/null && echo yes || echo no; }
@@ -30,7 +32,7 @@ POOLS='{"nvidia-gpu": ["g6e.2xlarge", "NVIDIA-L40S", "gpu-l40s"],
 
 applications() {
     local out
-    out=$(python3 "$STAGE_APPS" status 020 2>&1) && echo yes || grep -v "^OK" <<<"$out" | tr "\n" ";"
+    out=$("$STAGE_APPS" status 020 2>&1) && echo yes || grep -v "^OK" <<<"$out" | tr "\n" ";"
 }
 metrics_access() {
     local binding role
@@ -46,7 +48,7 @@ metrics_access() {
 console_dashboard() {
     local cm owner
     cm=$(read_json configmap nvidia-dcgm-exporter-dashboard -n openshift-config-managed)
-    owner=$(python3 "$STAGE_APPS" owner 020 ConfigMap nvidia-dcgm-exporter-dashboard openshift-config-managed)
+    owner=$("$STAGE_APPS" owner 020 ConfigMap nvidia-dcgm-exporter-dashboard openshift-config-managed)
     # Hash the exact bytes (jq -j; a $(...) capture would drop the trailing newline).
     local digest
     digest=$(jq -j '.data["dcgm-exporter-dashboard.json"]' <<<"$cm" | shasum -a 256 | cut -d' ' -f1)

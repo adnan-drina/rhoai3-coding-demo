@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for check-doc-links.py. Run: python3 scripts/shared/check-doc-links.test.py"""
+"""Unit tests for check-doc-links.py. Run: python3 .agents/tools/check-doc-links.test.py"""
 from __future__ import annotations
 
 import contextlib

@@ -9,11 +9,11 @@ through the OpenShell CLI; the AgentOps console (`060-agent-console`) only reads
 | | |
 |---|---|
 | Argo CD Application | `060-openshell-runtime` ([manifest](../../../applications/060-openshell-runtime.yaml)) |
-| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-runtime.sh`](../../../../stages/060-agent-runtime-and-agentops/deploy-runtime.sh) (own deploy script; also called at the end of `deploy.sh`) |
-| Validated by | No component validator. `deploy-runtime.sh` gates on `setup-runtime.py`, `check-operator-policy.py` and `stage_apps.py wait` (Synced and Healthy at the SHA); opt-in qualifiers `qualify-host.sh`, `qualify-opencode.py`, `qualify-hermes.py`, `owner-client.py --check`. [`validate.sh`](../../../../stages/060-agent-runtime-and-agentops/validate.sh) reports the stage as pending (exit 2). |
-| Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/shared/stage_apps.py`. Annotation `compare-options: ServerSideDiff=true`. Sync option `RespectIgnoreDifferences=true`; `ignoreDifferences` on `/data` of three runtime-owned objects. |
+| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy.sh`](../../../../stages/060-agent-runtime-and-agentops/deploy.sh) `--component 060-openshell-runtime` (also part of a full `deploy.sh` run) |
+| Validated by | No component validator. `deploy.sh --component 060-openshell-runtime` gates on its runtime setup step, `check_operator_policy` and `stage-apps.sh wait` (Synced and Healthy at the SHA). The former opt-in qualifiers (`qualify-host.sh`, `qualify-opencode.py`, `qualify-hermes.py`, `owner-client.py --check`) are in git history at `82092e01`. [`validate.sh`](../../../../stages/060-agent-runtime-and-agentops/validate.sh) reports the stage as pending (exit 2). |
+| Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/stage-apps.sh`. Annotation `compare-options: ServerSideDiff=true`. Sync option `RespectIgnoreDifferences=true`; `ignoreDifferences` on `/data` of three runtime-owned objects. |
 | Depends on | `060-openshell-identity` (realm `openshell` must exist for the issuer check). Stage 040 MaaS (`MaaSSubscription` API, model `internal-models/qwen3-8-27b`). Stage 050 MLflow (`mlflow.kubeflow.org` authorization). Group `rhods-admins` (Stage 010). The `redhat-operators` catalog with package `agent-sandbox-operator`. |
-| Used by | `060-agent-console` (needs this Application Healthy and the Sandbox CRD). OpenCode and Hermes sandboxes in `ai-agents`, created through the gateway by `setup-opencode.py` / `setup-hermes.py`. `owner-client.py` and `selected_task_trace.py` (MLflow experiment `agent-runtime-traces`). |
+| Used by | `060-agent-console` (needs this Application Healthy and the Sandbox CRD). OpenCode and Hermes sandboxes in `ai-agents`, created through the gateway by the optional OpenCode/Hermes flow, which was retired from the repository (restore from git history at `82092e01` if needed), and its trace clients (MLflow experiment `agent-runtime-traces`). |
 
 ## Why
 
@@ -29,7 +29,7 @@ This repository diverges from the upstream getting-started guide [6] on purpose:
 |---|---|---|
 | Chart 0.0.116, `odh-openshell-*` images | NVIDIA chart and images pinned by digest at commit `12cec59bf` [4] (dev build `0.1.3-dev.99`, merge of upstream PR 4150) | The earlier v0.1.2 tuple returned no bytes on the OpenCode HTTP path; the pinned commit passed qualification (stage plan). Not a tagged or supported release. |
 | `allowUnauthenticatedUsers=true` | OIDC required, issuer from `060-openshell-identity` | Shared cluster. |
-| `privileged` SCC for the sandbox service account | No SCC grant; workloads admitted under `restricted-v2` | `restricted-v2` drops all capabilities, sets RuntimeDefault seccomp and uses a namespace UID range [9]; the pinned build confines sockets on loopback without extra privilege (qualified by `qualify-host.sh`). |
+| `privileged` SCC for the sandbox service account | No SCC grant; workloads admitted under `restricted-v2` | `restricted-v2` drops all capabilities, sets RuntimeDefault seccomp and uses a namespace UID range [9]; the pinned build confines sockets on loopback without extra privilege (qualified by the former `qualify-host.sh`). |
 | Sandboxes in `openshell` | Operator workspace mode: one namespace per workspace, allowlisted by label | Per-owner isolation. |
 | Passthrough Route | ClusterIP only; clients port-forward | No public gateway endpoint. |
 
@@ -71,9 +71,9 @@ one lifecycle and one readiness gate. Helm is not run by Argo CD: the chart is r
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| Secret | `openshell-credentials` | `openshell` | Empty placeholder (wave -25). `setup-runtime.py` adds `key-encryption-key`. |
-| ConfigMap | `openshell-identity` | `openshell` | Empty placeholder (wave -25). `setup-runtime.py` adds `issuer`. |
-| ConfigMap | `openshell-runtime-ready` | `openshell` | Empty placeholder (wave -25). `setup-runtime.py` adds `controller-ready`, `source-revision`, `controller-csv-uid`. |
+| Secret | `openshell-credentials` | `openshell` | Empty placeholder (wave -25). The runtime setup step of `stages/060-agent-runtime-and-agentops/deploy.sh` adds `key-encryption-key`. |
+| ConfigMap | `openshell-identity` | `openshell` | Empty placeholder (wave -25). The runtime setup step adds `issuer`. |
+| ConfigMap | `openshell-runtime-ready` | `openshell` | Empty placeholder (wave -25). The runtime setup step adds `controller-ready`, `source-revision`, `controller-csv-uid`. |
 | ServiceAccount, Role, RoleBinding | `openshell-runtime-init` | `openshell` | Get on exactly those three objects. Wave -25. |
 | Role, RoleBinding | `openshell-runtime-app-reader` | `openshift-gitops` | Get on Application `060-openshell-runtime` only. Wave -25. |
 | Job | `openshell-runtime-prerequisites` | `openshell` | Sync hook, wave -5, `BeforeHookCreation,HookSucceeded`, deadline 360 s. The startup gate (see How). |
@@ -84,8 +84,8 @@ one lifecycle and one readiness gate. Helm is not run by Argo CD: the chart is r
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | ImageStream | `opencode-runtime` | `ai-agents` | Tag `1.18.16` from the qualified digest in `openshell/opencode-runtime`, `referencePolicy: Local`. `Delete=false,Prune=false`. |
-| BuildConfig | `opencode-runtime` | `ai-agents` | Binary Docker build [14] to `opencode-runtime:1.18.16`; run by `build-opencode.sh`. |
-| ImageStream, BuildConfig | `hermes-runtime-api` | `ai-agents` | Binary Docker build to `hermes-runtime-api:0.20.5-api`; run by `build-hermes.sh`. ImageStream `Delete=false,Prune=false`. |
+| BuildConfig | `opencode-runtime` | `ai-agents` | Binary Docker build [14] to `opencode-runtime:1.18.16`; formerly run by `build-opencode.sh` (in git history at `82092e01`). |
+| ImageStream, BuildConfig | `hermes-runtime-api` | `ai-agents` | Binary Docker build to `hermes-runtime-api:0.20.5-api`; formerly run by `build-hermes.sh` (in git history at `82092e01`). ImageStream `Delete=false,Prune=false`. |
 | ImageStream, BuildConfig | `opencode-runtime` | `openshell` | Earlier build location, kept for sandboxes in `openshell-developer`. |
 | Role, RoleBinding | `opencode-runtime-pull`, `hermes-runtime-api-pull` | `ai-agents`, `openshell` | `imagestreams/layers` get for the workspace `openshell-sandbox` account. |
 
@@ -108,11 +108,11 @@ All at wave 10.
 
 | Object | Owner |
 |---|---|
-| KEK value in `openshell-credentials`, issuer value, ready stamp | `setup-runtime.py` (delegated by `ignoreDifferences`) |
+| KEK value in `openshell-credentials`, issuer value, ready stamp | The runtime setup step of `stages/060-agent-runtime-and-agentops/deploy.sh` (delegated by `ignoreDifferences`) |
 | Secrets `openshell-server-tls`, `openshell-client-tls`, `openshell-jwt-keys` | Certgen Job; no owner reference, not pruned |
 | PVC `openshell-data-openshell-0` | StatefulSet claim template (retained) |
 | Operator CSV, `agent-sandbox-controller` and `sandbox-router-deployment`, Sandbox CRDs | OLM / Agent Sandbox bundle |
-| Gateway store: workspaces, members, global policy, providers, sandbox templates | Gateway SQLite; written by `setup-ai-agents.py`, `setup-opencode.py`, `setup-hermes.py` through the gateway API (policy source: `stages/060-agent-runtime-and-agentops/runtime/global-policy.yaml`) |
+| Gateway store: workspaces, members, global policy, providers, sandbox templates | Gateway SQLite; written through the gateway API by `stages/060-agent-runtime-and-agentops/deploy.sh` (workspace and members) and by the retired OpenCode/Hermes setup helpers (providers, templates, global policy; in git history at `82092e01`) |
 | Sandboxes `opencode`, `hermes` and their pods/claims in `ai-agents` | Gateway and Agent Sandbox controller |
 | MaaS API keys bound to the two subscriptions | Setup helpers; stored only in the gateway provider credential |
 | Recovery set `openshell-data-pre-pr4150` (PVC, snapshot, Secret copies) | Manual, from the 2026-10-06 upgrade |
@@ -123,20 +123,20 @@ All at wave 10.
   RBAC and workspace RBAC -20; certgen Job -10; prerequisites Job -5; gateway 0; image objects 10; subscriptions and
   contracts 18. Hooks run in the Sync phase in wave order [13].
 - **The startup gate.** The gateway Pod needs the issuer, the KEK and a ready Sandbox API, and none of these can be in
-  Git. `deploy-runtime.sh` therefore starts the sync and works alongside it:
+  Git. `deploy.sh --component 060-openshell-runtime` therefore starts the sync and works alongside it:
   1. applies the Application pinned to the published SHA and starts the sync;
-  2. waits for the three placeholders, then runs `setup-runtime.py --prepare-only`, which writes `issuer` (derived
+  2. waits for the three placeholders, then runs the prepare part of its runtime setup, which writes `issuer` (derived
      from the `keycloak` Route and checked against the realm's OIDC discovery) and a 32-byte KEK. It reuses an existing
      KEK and refuses to create a new one while a gateway claim exists, because the KEK encrypts the stored credentials;
-  3. waits for the operator CSV (`check-operator-policy.py --wait 900`), then runs `setup-runtime.py`, which checks
+  3. waits for the operator CSV (`check_operator_policy --wait 900`), then runs the rest of the runtime setup, which checks
      the Subscription, the Succeeded CSV, the controller Deployments and the established Sandbox CRD, and stamps
      `openshell-runtime-ready` with `controller-ready=true`, `source-revision=<SHA>` and the CSV UID.
 
   Meanwhile the `openshell-runtime-prerequisites` hook (wave -5) polls for up to 300 s until `controller-ready` is
   `true`, `source-revision` equals the Application's `spec.source.targetRevision`, the issuer starts with `https://`
   and the KEK is present. Only then does the sync reach the gateway wave. Because the stamp must match the revision
-  being synced, a sync of a new revision cannot pass on an old stamp; each revision needs a fresh `setup-runtime.py`.
-  `deploy-runtime.sh --finish` re-runs the stamp and waits, for a sync that timed out.
+  being synced, a sync of a new revision cannot pass on an old stamp; each revision needs a fresh runtime setup.
+  For a sync that timed out, re-run `deploy.sh --component 060-openshell-runtime`; it stamps again and waits.
 - **Delegated data.** `ignoreDifferences` covers all of `/data` on `openshell-credentials`, `openshell-identity` and
   `openshell-runtime-ready`, with `RespectIgnoreDifferences=true` so a sync does not write Git's empty map over the
   runtime values [7], [8]. Metadata, Secret type and every other object stay compared. Adding authored data to these
@@ -146,25 +146,25 @@ All at wave 10.
   a769444a widened the ignores to whole maps: Synced, no resource out of sync. The annotation is `true` again,
   like every other Application.
 - **Operator install.** Channel `preview-0.9`, `Automatic` approval, no `startingCSV`, checked by
-  `check-operator-policy.py` before the first write. The first install (2026-10-06) used a manually approved
+  `check_operator_policy` before the first write. The first install (2026-10-06) used a manually approved
   InstallPlan for `agent-sandbox-operator.v0.9.0`; that InstallPlan is still listed as `Manual`, approved.
 - **Gateway configuration.** Non-default values are in [`chart/values.yaml`](chart/values.yaml) and the post-render
   patches: StatefulSet with SQLite, `fsGroup`/`runAsUser` removed so `restricted-v2` assigns them, telemetry off,
   OIDC audience `openshell-gateway`, roles claim `realm_access.roles`, admin role `openshell-platform-admin`, user role
   `openshell-user`, unauthenticated users off, JWT Secret mode `0440`, `workspaceMode: operator` with the namespace
-  label allowlist, chart preflight off (Helm cannot discover APIs offline; `setup-runtime.py` checks them instead),
+  label allowlist, chart preflight off (Helm cannot discover APIs offline; the runtime setup step checks them instead),
   Route and GRPCRoute off. Details and the PKI lifecycle: [`chart/README.md`](chart/README.md).
 - **MaaS subscriptions.** Each agent has its own Qwen 3.8-only subscription. Priority is higher than the personal
   defaults; the setup helpers name the subscription when they create a key, which bypasses priority selection [11].
-- **Secrets.** No credential is in Git. KEK and issuer come from `setup-runtime.py`; PKI from certgen; MaaS keys and
-  agent listener credentials from the setup helpers, held as gateway provider credentials.
+- **Secrets.** No credential is in Git. KEK and issuer come from the runtime setup step of `stages/060-agent-runtime-and-agentops/deploy.sh`; PKI from certgen; MaaS keys and
+  agent listener credentials from the retired OpenCode/Hermes setup helpers, held as gateway provider credentials.
 - **Cluster-specific values.** Issuer host (from the Keycloak Route) and the MaaS host in the sandbox policy are
   rendered at run time; no hostname is committed.
 
 ## Validation
 
 There is no read-only validator for this component; `validate.sh` deliberately reports the stage as pending.
-`deploy-runtime.sh` ends with `stage_apps.py wait` (Synced and Healthy at the SHA), `setup-ai-agents.py` checks the `ai-agents`
+`deploy.sh --component 060-openshell-runtime` ends with `stage-apps.sh wait` (Synced and Healthy at the SHA) and then checks the `ai-agents`
 workspace and its `ai-admin` membership. By hand:
 
 ```bash

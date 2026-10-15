@@ -13,7 +13,7 @@ Git comments do not hold. Product behavior: the links in `SKILL.md`.
 | Enablement | `default-dsc` `aigateway` + `aigateway.modelsAsAService` Managed, `ogx` Managed, `batchGateway` Removed | `040-maas-platform/jobs/enable-maas-job.yaml` (fields delegated by Stage 010) |
 | Tenant | Default tenant only; controller-owned `MaaSTenantConfig` `default-tenant` in `models-as-a-service`, telemetry patched by the Job | `040-maas-platform/jobs/` |
 | MaaS API | `maas-api` in `redhat-ai-gateway-infra` (operator-owned) | not in Git |
-| Database | PostgreSQL 16 StatefulSet `maas-postgres` in `models-as-a-service-db` (not Kueue-managed); Secret `maas-db-config` key `DB_CONNECTION_URL` in `redhat-ai-gateway-infra` | `040-maas-database/`, `stages/040-governed-models-as-a-service/setup-database.sh` |
+| Database | PostgreSQL 16 StatefulSet `maas-postgres` in `models-as-a-service-db` (not Kueue-managed); Secret `maas-db-config` key `DB_CONNECTION_URL` in `redhat-ai-gateway-infra` | `040-maas-database/`, `stages/040-governed-models-as-a-service/deploy.sh` |
 | Gateway | `maas-default-gateway` in `openshift-ingress`, listeners `api` (`maas.<domain>`) and `qwen3-8` (`qwen3-8-maas.<domain>`), certificate `cert-manager-ingress-cert`, in-cluster ClusterIP `maas-gateway-internal` 172.30.250.250 | `040-gateway-governance/gateway/` |
 | Kuadrant and Authorino | `kuadrant` and `authorino` in `kuadrant-system`, Authorino TLS via service CA | `040-gateway-governance/governance/`, `040-gateway-governance/jobs/` |
 | Private model | `LLMInferenceService` + `MaaSModelRef` `qwen3-8-27b` (Qwen 3.8 27B NVFP4, one RTX PRO 6000) in `internal-models` | `040-local-models/` |
@@ -35,7 +35,7 @@ Paths in the table are relative to `gitops/stages/040-governed-models-as-a-servi
 - **OpenShift tokens are not the inference credential in this demo.** Clients
   call `/v1/chat/completions` with a MaaS API key minted against a
   subscription; every service consumer has its own key-minting ServiceAccount.
-- **Change `maas-db-config` only with the script.** `setup-database.sh`
+- **Change `maas-db-config` only with the script.** `stages/040-governed-models-as-a-service/deploy.sh`
   refuses a Secret that does not match the stored credentials and never
   rotates a password. If the Secret is ever changed by hand, restart
   `maas-api` in `redhat-ai-gateway-infra` and re-run the functional check;
@@ -52,7 +52,7 @@ Paths in the table are relative to `gitops/stages/040-governed-models-as-a-servi
   (`spec.infrastructure.annotations`); exact-60 s failures are the tell.
 - **Validate operator upgrades end to end.** A Connectivity Link update can
   change generated Wasm or AuthConfig schemas; rerun functional validation before
-  raising the minimum in `scripts/platform/check-operator-policy.py`
+  raising the minimum in `check_operator_policy` in `scripts/lib.sh`
   (`rhcl-update`).
 - **Re-run schema checks after RHOAI or Connectivity Link upgrades**
   (`oc explain maassubscriptions.spec`, `oc api-resources | grep -i maas`).

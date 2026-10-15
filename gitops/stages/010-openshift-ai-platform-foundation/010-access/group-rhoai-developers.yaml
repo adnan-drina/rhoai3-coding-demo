@@ -1,4 +1,4 @@
-# Membership is configured from existing provider identities by setup-access.sh.
+# Membership is configured from existing provider identities by stages/010-openshift-ai-platform-foundation/deploy.sh.
 apiVersion: user.openshift.io/v1
 kind: Group
 metadata:

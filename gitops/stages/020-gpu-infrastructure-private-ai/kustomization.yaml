@@ -1,5 +1,5 @@
 # Stage 020 desired state: the union of its Applications (gitops/applications/020-*.yaml), one folder each.
-# gpu-machinesets/ is generated per cluster by stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh.
+# gpu-machinesets/ is generated per cluster by stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

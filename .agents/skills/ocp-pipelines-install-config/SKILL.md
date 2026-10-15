@@ -45,7 +45,7 @@ OpenShift Pipelines 1.24 sections. Detailed record:
 ## Procedure
 
 1. Change Subscriptions and hooks in Git only; keep the channel equal to the
-   doc map pin (`python3 scripts/shared/check-doc-links.py --family ocp_pipelines`).
+   doc map pin (`python3 .agents/tools/check-doc-links.py --family ocp_pipelines`).
 2. Deploy and validate through the stage scripts:
    `./stages/070-advanced-app-platform/deploy.sh`, then
    `./stages/070-advanced-app-platform/validate.sh` (checks

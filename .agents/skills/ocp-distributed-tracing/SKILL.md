@@ -12,7 +12,7 @@ description: >
   observability-operators/tempo/, the trace reader/writer ClusterRoles in
   trace-roles/, the RHOAI-generated TempoMonolithic tenant
   redhat-ods-monitoring, or trace read-back failures in
-  validate-foundation-services.sh. Do NOT use for the collector and
+  stages/010-openshift-ai-platform-foundation/validate.sh. Do NOT use for the collector and
   instrumentation (use ocp-opentelemetry) or the DSCI traces block (use
   rhoai-observability).
 ---
@@ -35,7 +35,7 @@ Red Hat OpenShift distributed tracing platform 3.11 sections. Detailed record:
 | Decision | Where in Git | Official section |
 |---|---|---|
 | Operator only: namespace `openshift-tempo-operator` (cluster-monitoring label), AllNamespaces OperatorGroup, Subscription `tempo-product`, `stable`, Automatic | `010-observability-operators/tempo/` | [Installing the Tempo Operator][install] |
-| Rolling `stable` bounded fail-closed: minimum `0.22.0-2` (operator 0.22 = product 3.11) | `scripts/platform/check-operator-policy.py` | [Installing the Tempo Operator][install] |
+| Rolling `stable` bounded fail-closed: minimum `0.22.0-2` (operator 0.22 = product 3.11) | `check_operator_policy` in `scripts/lib.sh` | [Installing the Tempo Operator][install] |
 | No `TempoStack`/`TempoMonolithic` in Git: RHOAI generates a `TempoMonolithic` in `redhat-ods-monitoring` (multitenancy `openshift`, tenant `redhat-ods-monitoring`), PV storage, retention `2160h0m0s` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/dsc-init.yaml` | [Configuring Tempo][configure] |
 | Read access: ClusterRole `rhoai-monitoring-traces-reader` (`get` on `tempo.grafana.com` / tenant / `traces`) bound to group `rhods-admins` only | `trace-roles/tempo-traces-reader-*.yaml` | [Configuring query RBAC][query-rbac] |
 | Write access: ClusterRole `rhoai-monitoring-traces-writer` (`create`) bound to SA `redhat-ods-monitoring/data-science-collector-collector`; not in the 3.11 docs (upstream-backed deviation, recorded in the README) | `trace-roles/tempo-traces-writer-*.yaml` | [Configuring Tempo][configure] |
@@ -50,7 +50,7 @@ Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/010-ob
 2. Deploy and validate:
    `./stages/010-openshift-ai-platform-foundation/deploy.sh`,
    `./stages/010-openshift-ai-platform-foundation/validate.sh` and
-   `./stages/010-openshift-ai-platform-foundation/validate-foundation-services.sh`
+   `./stages/010-openshift-ai-platform-foundation/validate.sh`
    (SubjectAccessReview for `create` as the collector SA, then one span
    written and read back by trace ID through the `tempo-datasource`).
 3. By hand, after the OpenShift safety guard in `AGENTS.md`:

@@ -31,7 +31,7 @@ oc get applications -n openshift-gitops \
   -o custom-columns='APP:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status'
 
 # Components of one stage
-python3 scripts/shared/stage_apps.py names 040
+scripts/stage-apps.sh names 040
 
 # Sync errors and non-healthy resources of one Application
 oc get application <app-name> -n openshift-gitops -o jsonpath='{.status.conditions[*].message}'
@@ -41,7 +41,7 @@ oc get application <app-name> -n openshift-gitops -o jsonpath='{range .status.re
 oc get application <app-name> -n openshift-gitops -o jsonpath='{.status.sync.revision}{"\n"}'
 
 # Delegated fields of a shared object (Stage 010 DSC)
-python3 scripts/shared/stage_apps.py delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io
+scripts/stage-apps.sh delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io
 
 # Project and tracking method (expected: rhoai-demo, annotation)
 oc get applications -n openshift-gitops -o custom-columns=NAME:.metadata.name,PROJECT:.spec.project

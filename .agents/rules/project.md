@@ -32,7 +32,7 @@ The demo evolves across Red Hat product releases and early-access features. Do n
 
 Product documentation versions and the Git pins they match live in
 `.agents/references/red-hat-doc-map.yaml` (see `docs/PLATFORM_BASELINE.md`;
-`scripts/shared/check-doc-links.py --versions` prints them). The stage
+`.agents/tools/check-doc-links.py --versions` prints them). The stage
 manifests hold the exact deployment pins. Keep observed live versions,
 unpublished upgrade selections and documentation baselines distinct. Do not
 reuse the legacy OCP 4.20/RHOAI 3.4/MTA 8.1/RHDH 1.9 posture as current.
@@ -42,7 +42,7 @@ If changing a version, update the manifests, validation logic, README narrative,
 Documentation versions for links are written once per product in
 `.agents/references/red-hat-doc-map.yaml` (`docs_version`, checked against
 its Git pin). When a pin moves, update that entry in the same change and run
-`python3 scripts/shared/check-doc-links.py`; its findings are the list of
+`python3 .agents/tools/check-doc-links.py`; its findings are the list of
 skills and component READMEs to re-check.
 
 ## Absolute Priority: Official Documentation Alignment

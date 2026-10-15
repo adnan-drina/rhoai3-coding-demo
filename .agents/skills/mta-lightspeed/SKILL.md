@@ -42,13 +42,13 @@ Preview. Detailed record: `gitops/stages/070-advanced-app-platform/070-mta/READM
 | MaaS access: `MaaSSubscription` + `MaaSAuthPolicy` `mta-migration-ai` for that ServiceAccount, `qwen3-8-27b`, 5,000,000 tokens/h | `070-mta/jobs/configure-ai.yaml` | see `rhoai-maas-governance` |
 | Solution Server disabled (`kai_solution_server_enabled: false`); proxy kept so `kai-db` and its PVC survive | `070-mta/mta-instance/tackle.yaml` | [About the Solution Server][ss] |
 | Private model hosting is the IP-protection posture: all traffic goes to the governed MaaS gateway | Stage 040, `070-mta/jobs/configure-ai.yaml` | [Self-managed hosting][selfhost], [LLM on OpenShift AI][rhoai] |
-| Key rotation keeps the same ServiceAccount (`rotate-credentials.py`) | `stages/070-advanced-app-platform/rotate-credentials.py` | — |
+| Key rotation keeps the same ServiceAccount (the former `rotate-credentials.py`, in git history at `82092e01`) | — | — |
 
 ## Procedure
 
 1. Change Tackle AI fields or the provisioning Job in Git only; keep the
-   model id equal to the MaaS canonical id
-   (`stage070-upgrade.test.py::test_mta_consumers_use_the_governed_model_id`).
+   model id equal to the MaaS canonical id (Stage 070 `validate.sh` checks the
+   deployed Gateway and Tackle values).
 2. Validate after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash

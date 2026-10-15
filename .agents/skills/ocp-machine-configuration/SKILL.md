@@ -40,7 +40,7 @@ the cluster provisioner (`docs/OPERATIONS.md`, ownership table).
 | No MCO resources in Git: no `MachineConfig`, `KubeletConfig`, `ContainerRuntimeConfig`, `PinnedImageSet`, custom pool or image mode | (none declared; checked by search on 2026-10-15) | [Machine configuration overview][overview] |
 | Control plane, workers and machine lifecycle are provisioner-owned; stages must not adopt or remove them without evidence | `docs/OPERATIONS.md` (ownership and stage boundaries) | [Machine configuration overview][overview] |
 | Baseline core health requires master and worker MachineConfigPools `Updated` and not `Degraded` | `docs/OPERATIONS.md` (core health) | [Machine configuration overview][overview] |
-| Node disk sizing is solved in the MachineSet (200 GB `gp3` GPU root volume), not by kubelet image-GC tuning | `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets/`, `stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh` | [Pinning images to nodes][pin] |
+| Node disk sizing is solved in the MachineSet (200 GB `gp3` GPU root volume), not by kubelet image-GC tuning | `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets/`, `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets` | [Pinning images to nodes][pin] |
 | GPU drivers come from the NVIDIA GPU Operator `ClusterPolicy`, not from host extensions or layered images | `gitops/stages/020-gpu-infrastructure-private-ai/020-nvidia-gpu-operator/cluster-policy.yaml` | [Image mode for OpenShift][layering] |
 
 ## Procedure

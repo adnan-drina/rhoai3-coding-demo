@@ -49,7 +49,7 @@ OpenShift Pipelines 1.24 sections. Detailed record:
 2. Static and live checks:
 
    ```bash
-   ./stages/070-advanced-app-platform/validate.sh --static   # security-boundaries.test.py: builder SCC, cross-namespace reads
+   ./stages/070-advanced-app-platform/validate.sh --static   # renders, disjoint components, scripts parse
    ./stages/070-advanced-app-platform/validate.sh            # "Pipeline may push its own images", "... cannot push another project image"
    ```
 

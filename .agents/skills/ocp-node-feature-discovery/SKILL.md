@@ -11,7 +11,7 @@ description: >
   in gitops/stages/020-gpu-infrastructure-private-ai/020-node-feature-discovery/
   (nfd Subscription on stable, NodeFeatureDiscovery nfd-instance, PCI worker
   config, pinned operand image), the nfd minimum in
-  scripts/platform/check-operator-policy.py, or diagnosing missing
+  `check_operator_policy` in `scripts/lib.sh`, or diagnosing missing
   feature.node.kubernetes.io labels that the NVIDIA GPU Operator and
   validate.sh depend on. Do NOT use for the GPU Operator, ClusterPolicy and
   accelerator profiles (use rhoai-nvidia-gpu-accelerators) or node taints and
@@ -39,7 +39,7 @@ OpenShift Container Platform 4.22 sections. Detailed record:
 |---|---|---|
 | NFD installed before the NVIDIA GPU Operator, as its own Application (deploy-order 1) | `gitops/applications/020-node-feature-discovery.yaml` | [Node Feature Discovery Operator][nfd] |
 | Namespace `openshift-nfd`, OperatorGroup targeting it, Subscription `nfd` on `stable` from `redhat-operators`, Automatic approval, no `startingCSV` | `020-node-feature-discovery/namespace.yaml`, `operatorgroup.yaml`, `subscription.yaml` | [Node Feature Discovery Operator][nfd] |
-| Release family bounded by policy: offered version must stay on 4.22 and be at least `4.22.0` | `scripts/platform/check-operator-policy.py` (`minimum['nfd']`) | [About specialized hardware and driver enablement][about] |
+| Release family bounded by policy: offered version must stay on 4.22 and be at least `4.22.0` | `check_operator_policy` in `scripts/lib.sh` (`minimum['nfd']`) | [About specialized hardware and driver enablement][about] |
 | One `NodeFeatureDiscovery` `nfd-instance`; Subscription and instance both sync-wave 1, carried by `SkipDryRunOnMissingResource` and retry until OLM installs the CRD | `020-node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
 | `spec.operand.image` pinned by digest (`ose-node-feature-discovery-rhel9`); recorded deviation: Automatic operator updates no longer move the operand | `020-node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
 | Worker config: `sleepInterval: 60s`, PCI `deviceClassWhitelist: ["0200", "03", "12"]`, `deviceLabelFields: [vendor]` (vendor-only labels such as `pci-10de.present`) | `020-node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
@@ -53,7 +53,7 @@ Paths are relative to `gitops/stages/020-gpu-infrastructure-private-ai/` unless 
 1. Edit the manifests in Git; `stages/020-gpu-infrastructure-private-ai/deploy.sh`
    runs the operator policy check before it applies the Applications.
 2. When a new NFD minor ships with a new OpenShift minor, update
-   `minimum['nfd']` in `scripts/platform/check-operator-policy.py` together
+   `minimum['nfd']` in `check_operator_policy` in `scripts/lib.sh` together
    with the `ocp` docs_version in `.agents/references/red-hat-doc-map.yaml`
    (the checker reports `PIN-MISMATCH` until both agree), and re-pin the
    operand digest from the installed CSV.

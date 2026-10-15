@@ -121,7 +121,7 @@ For skills backed by official Red Hat documentation (every product family in
 4. Frontmatter carries `metadata.product` and `metadata.docs-version`; the
    version itself lives once, in the map, checked against its Git pin
 5. Do not create nested skill folders that mirror Red Hat documentation categories
-6. Run `python3 scripts/shared/check-doc-links.py --family <family>`
+6. Run `python3 .agents/tools/check-doc-links.py --family <family>`
 
 ### Creating a Subagent
 
@@ -148,7 +148,7 @@ Run this audit periodically or after major changes:
 3. Check for stale references (removed steps, renamed files)
 4. Verify skill `name` fields match folder names
 5. Verify always-apply budget hasn't crept up
-6. Run `python3 scripts/shared/check-doc-links.py --report` (static) and,
+6. Run `python3 .agents/tools/check-doc-links.py --report` (static) and,
    from an egress docs.redhat.com accepts, `--live --family <family>`
 7. Update `AGENTS.md`, `.agents/rules/*.md`, and this skill when inventory or taxonomy changes
 

@@ -84,7 +84,7 @@ Conventions:
 - Folder prefix must match `metadata.skill-group`.
 - Product skills carry `product` and `docs-version`; the version is written
   once in `.agents/references/red-hat-doc-map.yaml` and checked against its
-  Git pin by `scripts/shared/check-doc-links.py`. Older skills still carry
+  Git pin by `.agents/tools/check-doc-links.py`. Older skills still carry
   `platform-family`, `platform-baseline: "repo"` and `ocp-baseline: "repo"`;
   drop them when the skill is converted.
 - Descriptions should enumerate concrete trigger scenarios and negative
@@ -153,7 +153,7 @@ Subagent bodies should be minimal — instruct the subagent to read and follow t
 Every rule or skill that references Red Hat product features should:
 - Link official sections on `docs.redhat.com` at the doc map's `docs_version`
 - Link instead of copying documentation text (CC BY-SA 3.0; copies go stale)
-- Run `python3 scripts/shared/check-doc-links.py` after changing links
+- Run `python3 .agents/tools/check-doc-links.py` after changing links
 
 ## Anti-Patterns
 

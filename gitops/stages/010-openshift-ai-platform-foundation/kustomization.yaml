@@ -1,5 +1,5 @@
 # Stage 010 desired state: the union of its Applications (gitops/applications/010-*.yaml), one folder each.
-# Validators and scripts/shared/stage_apps.py check-static read this aggregate.
+# Validators and scripts/stage-apps.sh check-static read this aggregate.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

@@ -40,7 +40,7 @@ OpenShift AI 3.5 sections. Detailed record:
 | Workbenches component `Managed`, `workbenchNamespace: rhods-notebooks`; the operator creates that namespace | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Manage basic workbenches][basic] |
 | No basic workbench, idle timeout or culler ConfigMap in Git; the timeout is whatever an administrator sets in the dashboard | (not in Git) | [Stop idle workbenches][idle] |
 | No workbench tolerations: in 3.5 tolerations come from hardware profiles, and the repo's Queue-type profiles carry none (Kueue ResourceFlavors place pods) | `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/hardware-profiles/` | [Workbench pod tolerations][tol] |
-| Dashboard groups `rhods-admins` (admin) and `rhoai-developers` (user) in the `Auth` CR; membership from `setup-access.sh`, not Git | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/auth.yaml`, `stages/010-openshift-ai-platform-foundation/setup-access.sh` | [Jupyter 404][t404] |
+| Dashboard groups `rhods-admins` (admin) and `rhoai-developers` (user) in the `Auth` CR; membership from `stages/010-openshift-ai-platform-foundation/deploy.sh`, not Git | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/auth.yaml`, `stages/010-openshift-ai-platform-foundation/deploy.sh` | [Jupyter 404][t404] |
 | Demo work uses project workbenches (`demo-sandbox`) and Dev Spaces (Stage 070); basic workbenches are a support path only | `gitops/stages/010-openshift-ai-platform-foundation/010-access/README.md` | [Manage basic workbenches][basic] |
 
 ## Procedure
@@ -62,7 +62,7 @@ OpenShift AI 3.5 sections. Detailed record:
 ## Pitfalls
 
 - A Jupyter 404 is usually missing group membership; fix it with
-  `setup-access.sh` (persona names from `.env`), not by widening the `Auth`
+  `stages/010-openshift-ai-platform-foundation/deploy.sh` (persona names from `.env`), not by widening the `Auth`
   groups ([Jupyter 404][t404]).
 - The `cpu-default` profile names LocalQueue `lq-cpu-default`, which Git
   declares only in `demo-sandbox` and `evaluated-models`, not in

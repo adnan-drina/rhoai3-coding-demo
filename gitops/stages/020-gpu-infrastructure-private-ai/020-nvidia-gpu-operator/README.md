@@ -13,7 +13,7 @@ consumes the GPUs; administrators consume the dashboard.
 | Validated by | [`stages/020-gpu-infrastructure-private-ai/validate.sh`](../../../../stages/020-gpu-infrastructure-private-ai/validate.sh) (metrics Role binding, pinned dashboard, CSV, `ClusterPolicy` ready, validator/DCGM DaemonSets, per-node driver; `--functional` adds CUDA vectorAdd and DCGM metrics) |
 | Sync | Automated, prune and self-heal; `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff by compare-options annotation; retry 10, 5s to 3m |
 | Depends on | `020-node-feature-discovery` (GPU node labels); `certified-operators` catalog; group `rhods-admins` and Role `cluster-monitoring-metrics-api` (platform monitoring) |
-| Used by | `020-gpu-quotas` (GPU capacity behind the queues); Stage 030/040/050 model servers; `scripts/platform/resume-gpu-demo.sh` (waits for allocatable GPUs) |
+| Used by | `020-gpu-quotas` (GPU capacity behind the queues); Stage 030/040/050 model servers; `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus N` (waits for allocatable GPUs) |
 
 ## Why
 
@@ -70,7 +70,7 @@ zero replicas, the operand DaemonSets schedule no pods and the `ClusterPolicy` s
 ## How
 
 - **Installation.** Channel `v26.7`, Automatic approval, no `startingCSV`.
-  `scripts/platform/check-operator-policy.py` requires the offered version to stay on 26.7 and at least `26.7.1`.
+  `check_operator_policy` in `scripts/lib.sh` requires the offered version to stay on 26.7 and at least `26.7.1`.
   Installed on this cluster: `gpu-operator-certified.v26.7.2`. NVIDIA's CLI example uses Manual approval [2];
   this repository uses Automatic approval within a reviewed channel (see Fresh operator deployment in `docs/OPERATIONS.md`).
 - **Ordering.** Subscription at wave 1, `ClusterPolicy` at wave 2 with `SkipDryRunOnMissingResource`, because its
@@ -116,7 +116,7 @@ oc get ds -n nvidia-gpu-operator
 |---|---|---|---|
 | Prerequisite order | NFD Operator and instance before the NVIDIA GPU Operator [1] | NFD is deploy-order 1, this Application deploy-order 2 | Aligned |
 | Install source | `gpu-operator-certified` from `certified-operators`, namespace `nvidia-gpu-operator`, OperatorGroup targeting it (upstream) [2] | Same | Aligned |
-| Approval | NVIDIA CLI example uses Manual approval (upstream) [2] | Automatic within channel `v26.7`, release family checked by `check-operator-policy.py` | Deviation (justified: repository operator policy; channel pins the major release) |
+| Approval | NVIDIA CLI example uses Manual approval (upstream) [2] | Automatic within channel `v26.7`, release family checked by `check_operator_policy` | Deviation (justified: repository operator policy; channel pins the major release) |
 | `ClusterPolicy` content | Create from defaults; an empty spec fails (upstream) [2] | Default example plus GPU taint toleration | Aligned |
 | Driver build | Driver Toolkit DaemonSet `nvidia-driver-daemonset-<RHCOS-version>` (upstream) [2] | `use_ocp_driver_toolkit: true` | Aligned |
 | OpenShift AI dashboard refresh | After installing, delete `migration-gpu-status` ConfigMap and restart `rhods-dashboard` [1] | Not done by GitOps; the ConfigMap does not exist on this cluster | Gap (the one-time step is not documented in the stage runbook) |

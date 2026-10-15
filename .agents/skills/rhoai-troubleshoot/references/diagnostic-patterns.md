@@ -12,7 +12,7 @@ Detailed entries (symptom, cause, commands, recovery) live in
 | Synced at the new SHA but manifests are old | Stale repo-server render | `docs/TROUBLESHOOTING.md#argo-cd-reports-synced-but-new-manifests-are-missing` |
 | Operation stuck on a hook Job | Hook Job failing or waiting | `docs/TROUBLESHOOTING.md#argo-cd-operation-stuck-on-a-hook-job` |
 | Manual sync finishes in seconds, hooks did not run | Sync without hooks | `docs/TROUBLESHOOTING.md#manually-triggered-sync-finishes-in-seconds-and-skips-hooks` |
-| A stage's DSC or dashboard setting reverts | Field not delegated in `010-rhoai-platform` `ignoreDifferences` | `python3 scripts/shared/stage_apps.py delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io` |
+| A stage's DSC or dashboard setting reverts | Field not delegated in `010-rhoai-platform` `ignoreDifferences` | `scripts/stage-apps.sh delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io` |
 | Application uses `project: default` | Bootstrap not applied | `oc get appproject rhoai-demo -n openshift-gitops` |
 
 ## Operators

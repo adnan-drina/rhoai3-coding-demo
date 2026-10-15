@@ -24,9 +24,9 @@ description: >
 Scale MachineSets and model-serving resources without conflicting with Argo CD. For the Stage 020/030 private model-serving path, prefer the first-class resume script:
 
 ```bash
-./scripts/platform/resume-gpu-demo.sh status
-./scripts/platform/resume-gpu-demo.sh down
-./scripts/platform/resume-gpu-demo.sh resume
+stages/020-gpu-infrastructure-private-ai/validate.sh
+stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 0
+stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1
 ```
 
 Manual scaling should remain operational and temporary. Git remains the desired state for the demo.
@@ -45,7 +45,7 @@ Discover the current state before making changes:
 oc get llminferenceservice -n internal-models -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status'
 
 # GPU-backed demo path
-./scripts/platform/resume-gpu-demo.sh status
+stages/020-gpu-infrastructure-private-ai/validate.sh
 
 # ArgoCD sync status (all apps)
 oc get applications -n openshift-gitops -o custom-columns='APP:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status'
@@ -65,7 +65,7 @@ oc patch llminferenceservice <MODEL_NAME> -n internal-models --type merge \
 Scale the MachineSet to 0 replicas. The GPU node drains and terminates. Pods on that node are evicted (models become unavailable).
 
 ```bash
-./scripts/platform/resume-gpu-demo.sh down
+stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 0
 ```
 
 **Dependency chain — scale down in this order:**
@@ -78,7 +78,7 @@ Scale the MachineSet to 0 replicas. The GPU node drains and terminates. Pods on 
 Reverse order — start the MachineSet first, wait for the node, then start models.
 
 ```bash
-./scripts/platform/resume-gpu-demo.sh resume
+stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1
 ```
 
 ## Restore Full Git State

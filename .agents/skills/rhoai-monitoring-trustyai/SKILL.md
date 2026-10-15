@@ -53,7 +53,7 @@ OpenShift AI 3.5 sections. Detailed record:
    oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.trustyai.managementState}{"\n"}'
    oc get trustyai default-trustyai -o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}{"\n"}'
    oc get trustyaiservice -A
-   ./stages/050-model-evaluation/validate-ai-services.sh
+   ./stages/050-model-evaluation/validate.sh
    ```
 
 ## Pitfalls
@@ -64,7 +64,7 @@ OpenShift AI 3.5 sections. Detailed record:
 - Database storage: MySQL is not supported, and TLS does not work with
   MariaDB operator 0.29 or later ([database setup][db]).
 - Setting `trustyai` to `Removed` also removes EvalHub; the Stage 050 hook and
-  `validate-ai-services.sh` expect it `Managed`.
+  `stages/050-model-evaluation/validate.sh` expect it `Managed`.
 - One metric is not a fairness or drift verdict: record the metric, threshold,
   data window and limitation with any claim ([bias metrics][usebias],
   [drift metrics][usedrift]).

@@ -54,7 +54,6 @@ in the linked Dev Spaces 3.30 topics. Detailed record:
 
    ```bash
    ./stages/070-advanced-app-platform/validate.sh --static
-   python3 scripts/demo/check-workspace-creation.py --live
    ```
 
 3. Inspect a workspace read-only:

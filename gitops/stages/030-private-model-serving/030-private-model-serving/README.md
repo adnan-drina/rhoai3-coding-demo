@@ -9,7 +9,7 @@ reads the registry and catalog, and Stage 060 is the subject of the agent catalo
 |---|---|
 | Argo CD Application | `030-private-model-serving` ([manifest](../../../applications/030-private-model-serving.yaml)) |
 | Deployed by | [`stages/030-private-model-serving/deploy.sh`](../../../../stages/030-private-model-serving/deploy.sh) (own deploy script, `demo.rhoai.io/deploy-script`; pins the Application to the published commit SHA) |
-| Validated by | [`validate.sh`](../../../../stages/030-private-model-serving/validate.sh) (Application at its exact revision, DSC/KServe conditions, KServe-owned workloads, both Prometheus PVCs) and [`validate-model-discovery.sh`](../../../../stages/030-private-model-serving/validate-model-discovery.sh) (registry and catalog workloads, authenticated registry, Model Catalog and Agent Catalog APIs, dashboard flags) |
+| Validated by | [`validate.sh`](../../../../stages/030-private-model-serving/validate.sh) (Application at its exact revision, DSC/KServe conditions, KServe-owned workloads, both Prometheus PVCs) and [`stages/030-private-model-serving/validate.sh`](../../../../stages/030-private-model-serving/validate.sh) (registry and catalog workloads, authenticated registry, Model Catalog and Agent Catalog APIs, dashboard flags) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff through the `compare-options` annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`, `CreateNamespace=true`. Retry 10 times, 5 s to 3 min backoff. |
 | Depends on | `010-rhoai-platform` (the `default-dsc` and `odh-dashboard-config` objects and their delegated fields); Stage 020 readiness (checked by `deploy.sh` on first install); the `gp3-csi` StorageClass (AWS EBS CSI). |
 | Used by | Stage 040 (KServe, registry records), `050-evalhub` (catalog safety-insights Role in `rhoai-model-registries`), Stage 060 (MCP catalog/registry dashboard flags, Agent Catalog cards). |
@@ -78,14 +78,14 @@ proceed before the CRD exists [12]. Argo CD applies hooks and resources wave by 
 **Deploy script.** `deploy.sh` refuses to run unless the published branch equals the reviewed local commit, Stage 010 is
 reconciled, Stage 010 delegates the fields below, any existing registry objects are already tracked by this Application,
 any existing `demo-registry` spec equals Git and owns its database PVC and Secret, and the monitoring ConfigMaps, where present, are
-owned by `010-observability-operators`. It runs `preflight-agent-catalog.sh`, which only adopts an empty
+owned by `010-observability-operators`. It runs `stages/030-private-model-serving/deploy.sh`, which only adopts an empty
 `agent-catalog-sources` ConfigMap. It then applies the Application with `targetRevision` set to the commit SHA, waits for
 `Synced`/`Healthy`/`Succeeded` at that SHA, and runs `validate.sh`. On a first install it runs the Stage 020 readiness
-check; on an update it runs `validate-serving-update.py` so parked GPU capacity is not started.
+check; on an update it runs `check_serving_prerequisites` so parked GPU capacity is not started.
 
 **Delegated fields.** Stage 010's `010-rhoai-platform` Application owns `default-dsc` and `odh-dashboard-config` and lists
 the fields later stages own in its `ignoreDifferences` with `RespectIgnoreDifferences=true`, so Argo CD neither reports nor
-reverts them [12]. `scripts/shared/stage_apps.py delegated 010 ...` reads that list, and `deploy.sh` asserts it. This
+reverts them [12]. `scripts/stage-apps.sh delegated 010 ...` reads that list, and `deploy.sh` asserts it. This
 component writes:
 
 | Object | Field | Value | Written by | Doc default |
@@ -123,7 +123,7 @@ published commit SHA.
 `validate.sh` requires the Application `Synced` and `Healthy` with a `Succeeded` operation at its 40-character revision;
 DSC `Ready` and `KserveReady`; `kserve` and `modelregistry` `Managed`; the `default-kserve` component `Ready`,
 `KServeReady` and `ModelControllerReady` with current owned Deployments; and both Prometheus resources using `gp3-csi` at
-40 Gi / 20 Gi with Bound PVCs. `validate-model-discovery.sh` checks the `ModelRegistry` `Available` and
+40 Gi / 20 Gi with Bound PVCs. `stages/030-private-model-serving/validate.sh` checks the `ModelRegistry` `Available` and
 `KubeRBACProxyAvailable` conditions, its API and PostgreSQL Deployments and Bound PVC, an authenticated list call on the
 registry route, the catalog component `Ready`, the dashboard flags, and that the Model Catalog and Agent Catalog APIs return
 items, including exactly one `opencode` and one `hermes` card from `governed-coding-agents`.

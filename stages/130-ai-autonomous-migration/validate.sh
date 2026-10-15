@@ -1,10 +1,449 @@
 #!/usr/bin/env bash
-# Stage 130: MTA — Validation Script
+# Stage 130 validation: MTA 8.3 and its AI components, the migration platform the Stage 070 factory provisions, and
+# the golden migration scaffold (its contracts, pins and self-tests; the scaffold's own Python tests run as the
+# content they test). Read-only; models stay stopped.
+# --run checks one migration run before launch (see the run section below; needs WORKSPACE, POD, GOLDEN_CHECKOUT,
+# GOLDEN_SHA and PLATFORM_SHA).
+# Usage: stages/130-ai-autonomous-migration/validate.sh [--run]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$REPO_ROOT/scripts/shared/validate-lib.sh"
+source "$REPO_ROOT/scripts/lib.sh"
+case "${1:-}" in
+  --run|"") ;;
+  *) sed -n 's/^# Usage: //p' "$0" >&2; exit 1 ;;
+esac
+load_env
+check_oc_logged_in
+
+# ── Launch check of one migration run (--run) ────────────────────────────────────────────────────────────────────
+# Read-only launch check for ANY run created by the app-migration factory after 2026-09-24 (run-budget.json schema
+# v2). Does not reset data, mint cards, or install a harness. Required: WORKSPACE (the run: the full project name, never
+# a suffix), POD, GOLDEN_CHECKOUT (verified published checkout), GOLDEN_SHA, PLATFORM_SHA (the merged platform
+# revision); optional NS (wksp-ai-developer), CONTAINER (development-tooling), EXPECTED_MODEL. The expected model and
+# wall budget are read from the golden's run-defaults.json, so a pin change is made once, in the golden.
+# The checks inside the workspace import the installed harness (planner.run_identity, run_declaration,
+# outcome_protocol, maas_route), so they run as one Python program in the workspace container.
+run_fail() { echo "FAIL: $*" >&2; exit 1; }
+# jq: the run-stop pins (v32): the selected model profile's run_input_token_budget (and, with loop escalation,
+# retry_start_turns) and the golden's run-level budget.run_input_token_budget and no_accepted_checkpoint_minutes.
+RUN_STOP_GAPS='def positive: type == "number" and . > 0 and . == floor;
+  def run_stop_gaps($doc; $model; $defaults):
+    (if ($doc | type) == "object" then ($doc.profiles // {})[$model] else null end) as $p
+    | if ($p | type) != "object" then ["RUN_TOKEN_BUDGET: no model profile for \($model)"]
+      else [ (if ($p.run_input_token_budget | positive) then empty
+               else "RUN_TOKEN_BUDGET: the profile for \($model) pins no positive run_input_token_budget" end),
+             (if ($p.loop_escalation | type) == "object" and $p.loop_escalation.enabled == true and (($p.loop_escalation.retry_start_turns | positive) | not)
+               then "RUN_TOKEN_BUDGET: the profile for \($model) enables loop_escalation without a positive retry_start_turns" else empty end),
+             (($defaults // {}).budget // {}) as $b | ("run_input_token_budget", "no_accepted_checkpoint_minutes")
+               | select(($b[.] | positive) | not) | "RUN_STOPS: run-defaults.json budget.\(.) is not a positive integer" ] end;'
+# jq: the provisioning receipt binds the golden's pinned database and provisioner images.
+IMAGE_BINDINGS='def image_binding_gaps($defaults; $receipt): ($defaults.configuration.images // {}) as $i
+  | [("databaseImage", "provisionerImage") as $k
+     | if (($i[$k] | type) != "string") or (($i[$k] | test(".+@sha256:[0-9a-f]{64}$")) | not) then "golden lacks a pinned \($k)"
+       elif $receipt[$k] != $i[$k] then "provisioning receipt differs from golden: \($k)" else empty end];'
+# jq: the worker runs as the per-run ServiceAccount, bound to devworkspace-default-role by no subject.
+WORKER_IDENTITY='def worker_identity_gaps($pod; $receipt; $binding; $ns; $ws): ($ws + "-worker") as $sa
+  | [ (if $receipt.workerServiceAccount != $sa then "provisioning receipt does not bind the per-run worker identity" else empty end),
+      (if $pod.spec.serviceAccountName != $sa then "workspace pod still uses a generated or foreign ServiceAccount" else empty end),
+      (($binding.subjects // [])[] | select((.kind == "ServiceAccount" and .name == $sa and (.namespace // $ns) == $ns)
+          or (.kind == "Group" and (.name | IN("system:authenticated", "system:serviceaccounts", "system:serviceaccounts:" + $ns)))
+          or (.kind == "User" and .name == "system:serviceaccount:\($ns):\($sa)")) | "worker is bound to devworkspace-default-role") ] | unique;'
+# jq: the worker container's kubeconfig directory is an ephemeral emptyDir; the legacy source is mounted read-only
+# from a claim no container mounts writable at, above or below the same path.
+POD_MOUNTS='def worker($p; $c): $p.spec.containers[] | select(.name == $c);
+  def kubeconfig_mount_ok($p; $c): worker($p; $c) as $w
+    | (([$w.env[]? | {key: .name, value: .value}] | from_entries).KUBECONFIG == "/home/user/.kube/config")
+      and ([$w.volumeMounts[]? | select(.mountPath == "/home/user/.kube")] as $m
+           | ($m | length) == 1 and ([$p.spec.volumes[]? | select(.name == $m[0].name)][0] // {} | has("emptyDir")));
+  def source_mount_ok($p; $c): worker($p; $c) as $w
+    | [$w.volumeMounts[]? | select(.mountPath == "/projects/legacy")] as $m
+    | if ($m | length) != 1 or ($m[0].readOnly | not) then false else
+        ([$p.spec.volumes[] | {key: .name, value: (.persistentVolumeClaim.claimName // null)}] | from_entries) as $claims
+        | $claims[$m[0].name] as $claim | ($m[0].subPath // "" | ltrimstr("/") | rtrimstr("/")) as $src
+        | if $claim == null or $src == "" or $m[0].subPathExpr != null then false else
+            all($p.spec.containers[].volumeMounts[]? | select($claims[.name] == $claim and (.readOnly | not));
+              (.subPath // "" | ltrimstr("/") | rtrimstr("/")) as $parent
+              | (.subPathExpr == null) and $parent != "" and $src != $parent
+                and (($src | startswith($parent + "/")) | not) and (($parent | startswith($src + "/")) | not)) end end;'
+IN_WORKSPACE_CHECKS=$(cat <<'PY'
+def require(condition, message):
+    if not condition:
+        raise AssertionError(message)
+import hashlib, json, os, sys, subprocess
+from pathlib import Path
+root = Path('/projects/modernized')
+# Check the CLI credential as well as the admitted pod identity. Do not print
+# kubeconfig contents or token values. The replacement Config has one user.
+kube = json.loads(subprocess.check_output(['oc', 'config', 'view', '-o', 'json'], text=True))
+users = kube.get('users', [])
+require(len(users) == 1 and users[0].get('name') == 'current-pod'
+        and users[0].get('user') == {'tokenFile': '/var/run/secrets/kubernetes.io/serviceaccount/token'},
+        'CLI kubeconfig retains a different credential')
+require(subprocess.check_output(['oc', 'whoami'], text=True).strip() == WORKER_IDENTITY,
+        'CLI credential is not the per-run worker')
+sys.path.insert(0, str(root / '.hermes/lib'))
+from planner import run_identity
+from planner.yamlite import load_yaml
+expected = json.loads(EXPECTED)
+require(all(((root / k).is_file() and hashlib.sha256((root / k).read_bytes()).hexdigest() == v for k, v in expected.items())), 'installed harness differs from golden')
+v = run_identity.check(root)
+require(v.code == run_identity.OK, str(v))
+require(not run_identity.fixture_gaps(root), 'fixture variables missing')
+import socket
+with socket.create_connection((v.observed['host'], v.observed['port']), timeout=5):
+    pass
+issued = root / 'verification/loop/issued.json'
+require(not issued.exists() or not json.loads(issued.read_text()).get('task_id'), 'card already issued')
+require(not (root / 'evidence/producers/bootstrap.json').exists(), 'preflight requires a fresh destination before bootstrap')
+require(not (root / 'src/main/java').exists(), 'product sources present before bootstrap')
+d = load_yaml(root / 'decisions.yaml')
+require(d.get('loop', {}).get('unit_formation') == 'v1' and d.get('loop', {}).get('runtime_feedback') == 'v1' and d.get('loop', {}).get('plan_semantics') == 'v1', 'loop flags (unit_formation, runtime_feedback, plan_semantics v1)')
+r = d['decided_repairs']
+require(hashlib.sha256((root / r['manifest']).read_bytes()).hexdigest() == r['manifest_sha256'], 'repair manifest mismatch')
+config = next((p for p in (Path('/etc/hermes/config.yaml'), Path('/projects/.platform/hermes/config.yaml')) if p.is_file()), None)
+require(config, 'managed Hermes config missing')
+c = load_yaml(config)
+# The effective hook registrations (Stage 050 producer): K2 fail-closed with the
+# complete terminator in its matcher and a 5 s timeout; the terminal
+# post_tool_call observer the harness ships (V17-6b), never fail-closed.
+hooks = c.get('hooks') or {}
+k2 = [h for h in hooks.get('pre_tool_call') or [] if str(h.get('command', '')).endswith('pre_tool_call.sh')]
+require(len(k2) == 1 and k2[0].get('fail_closed') is True and k2[0].get('timeout') == 5
+        and 'kanban_complete' in str(k2[0].get('matcher', '')).split('|'),
+        'the K2 pre_tool_call hook is not registered fail-closed with a 5 s timeout')
+require((root / '.hermes/kernel/post_tool_call.py').is_file()
+        and any(h.get('matcher') == 'terminal' and str(h.get('command', '')).endswith('post_tool_call.py')
+                and not h.get('fail_closed') for h in hooks.get('post_tool_call') or []),
+        'the terminal post_tool_call observer is not shipped or not registered')
+# v32: the in-workspace stops (kernel/run_budget.py): the per-run token budget before every tool call
+# (fail-open, never fail-closed) and the run-level stops on the dispatcher tick; the launch shim
+# (kernel/worker_launch.py) is the dispatcher's HERMES_BIN.
+if (root / '.hermes/kernel/run_budget.py').is_file():
+    require(any(h.get('matcher') == '.*' and str(h.get('command', '')).endswith('run_budget.py pre-tool')
+                and not h.get('fail_closed') for h in hooks.get('pre_tool_call') or []),
+            'RUN_TOKEN_BUDGET: the per-run budget hook is not registered (pre_tool_call .* run_budget.py pre-tool)')
+    require(any(' tick --root ' in str(h.get('command', '')) and 'run_budget.py' in str(h.get('command', ''))
+                for h in hooks.get('on_kanban_dispatch_tick') or []),
+            'RUN_STOPS: the run-level stops are not registered on the dispatcher tick (run_budget.py tick)')
+if (root / '.hermes/kernel/worker_launch.py').is_file():
+    _shim = config.parent / 'bin' / 'hermes-worker-launch'
+    _envt = (config.parent / '.env').read_text() if (config.parent / '.env').is_file() else ''
+    require(('HERMES_BIN=%s' % _shim) in _envt.splitlines() and _shim.is_file(),
+            'RETRY_ESCALATION: the managed .env does not route worker spawns through the launch shim (HERMES_BIN)')
+require(c.get('model', {}).get('default') == 'publishers/internal-models/models/' + MODEL, 'worker model mismatch')
+import socket
+from urllib.parse import urlsplit
+require(urlsplit(os.environ.get('MAAS_API_BASE_URL', '')).hostname == MAASHOSTVAL, 'worker MaaS endpoint is not the platform gateway host')
+addrs = {a[4][0] for a in socket.getaddrinfo(MAASHOSTVAL, 443, proto=socket.IPPROTO_TCP)}
+require(addrs == {MAASIPVAL}, 'MaaS host resolves to %s, not the in-cluster gateway %s: the workspace is on the public ELB path' % (sorted(addrs), MAASIPVAL))
+# B3 / R2: the run's ENFORCED allowance (the Hermes pacer, patch 0007, paces
+# every model request of the run -- main, each retry, auxiliary, reviewer --
+# to max_requests_per_window) at the largest request the SERVER admits (the
+# pacer counts requests, not input tokens, so the bound is the served window,
+# prompt plus output: vLLM --max-model-len) plus the declared reserve for
+# every other consumer, fits the subscription's limit. The profile is the one
+# PINNED for this run.
+def rate_budget_gap(q, served, runs, limit):
+    reserve = int(q['reserve_tokens_per_window'])
+    if q.get('accounting_mode') == 'token':
+        # V15-1: reserved-and-settled tokens (runtime 0010). Each request
+        # reserves reservation_tokens (at least the served window) and is
+        # admitted while settled + open + reservation <= the run allowance, so
+        # the run can never exceed its allowance; admission sums allowances.
+        allowance, reservation = int(q['token_allowance_per_window']), int(q['reservation_tokens'])
+        if 'max_requests_per_window' in q:
+            return 'a token-mode profile also declares a request ceiling (max_requests_per_window)'
+        if reservation < served:
+            return 'the profile reserves %d tokens per request and the model serves %d' % (reservation, served)
+        if not 0 < reservation <= allowance:
+            return 'the reservation %d does not fit the allowance %d' % (reservation, allowance)
+        if not 0 < int(q['max_output_tokens']) < reservation:
+            return 'the output cap %s does not fit a %d-token request' % (q['max_output_tokens'], reservation)
+        total = runs * allowance + reserve
+        if total > limit:
+            return 'effective %d, declared %d (%d run(s) x %d token allowance + reserve %d)' % (limit, total, runs, allowance, reserve)
+        return ''
+    per_request = int(q['max_request_tokens'])
+    if per_request < served:
+        return 'the profile sizes a request at %d tokens and the model serves %d' % (per_request, served)
+    if not 0 < int(q['max_output_tokens']) < per_request:
+        return 'the output cap %s does not fit a %d-token request' % (q['max_output_tokens'], per_request)
+    total = runs * int(q['max_requests_per_window']) * per_request + reserve
+    if total > limit:
+        return 'effective %d, declared %d (%d run(s) x %d requests x %d tokens + reserve %d)' % (
+            limit, total, runs, int(q['max_requests_per_window']), per_request, reserve)
+    return ''
+prof_path = Path('/etc/rhoai3/run-control/profile.json')
+if not prof_path.is_file():
+    prof_path = Path('/projects/.platform/hermes/model-profile.json')
+prof_doc = json.loads(prof_path.read_text())
+prof = prof_doc['profiles'][prof_doc['default_model']]
+q = prof['quota']
+runs = 1 + QOTHERSVAL
+win = '%dh' % (int(q['window_seconds']) // 3600) if int(q['window_seconds']) % 3600 == 0 else '%ds' % int(q['window_seconds'])
+require(win == QWINVAL, 'the profile paces per %s and the subscription limits per %s' % (win, QWINVAL))
+budget_gap = rate_budget_gap(q, WINDOW, runs, QLIMITVAL)
+require(not budget_gap, 'MOD' + 'EL_RATE_BUDGET: %s, quota devspaces-coding-models/%s: %s; profile %s'
+        % (prof_doc['default_model'], QWINVAL, budget_gap, prof_path))
+env_text = Path('/projects/.platform/hermes/.env').read_text() if Path('/projects/.platform/hermes/.env').is_file() else ''
+require(((q.get('accounting_mode') == 'token'
+          and 'RHOAI3_ACCOUNTING_MODE=token' in env_text
+          and 'RHOAI3_TOKEN_BUDGET=%d/%d' % (int(q.get('token_allowance_per_window') or 0), int(q['window_seconds'])) in env_text
+          and 'RHOAI3_TOKEN_RESERVATION=%d' % int(q.get('reservation_tokens') or 0) in env_text
+          and 'RHOAI3_REQUEST_BUDGET=' not in env_text)
+         or (q.get('accounting_mode') != 'token'
+             and 'RHOAI3_REQUEST_BUDGET=%d/%d' % (int(q.get('max_requests_per_window') or 0), int(q['window_seconds'])) in env_text))
+        and 'RHOAI3_REQUEST_LEDGER=' in env_text,
+        'the worker runtime is not configured to pace this allowance (RHOAI3_REQUEST_BUDGET/LEDGER in the managed .env)')
+# B1: the workspace's own startup gate (planner.maas_route) must agree with
+# the cluster truth read above: the platform values stamped into this
+# workspace name that gateway and address, and TLS verifies through it.
+if (root / '.hermes/lib/planner/maas_route.py').is_file():
+    require(os.environ.get('RHOAI3_MAAS_HOST') == MAASHOSTVAL and os.environ.get('RHOAI3_MAAS_INTERNAL_IP') == MAASIPVAL,
+            'the workspace was stamped with MaaS route %s -> %s, the cluster gateway is %s -> %s: refresh the factory routing input'
+            % (os.environ.get('RHOAI3_MAAS_HOST'), os.environ.get('RHOAI3_MAAS_INTERNAL_IP'), MAASHOSTVAL, MAASIPVAL))
+    sys.path.insert(0, str(root / '.hermes/lib'))
+    from planner.maas_route import route_gaps
+    gaps, _rec = route_gaps(dict(os.environ))
+    require(not gaps, 'STARTUP_MAAS_ROUTE: %s' % (gaps[0] if gaps else ''))
+
+def leaves(x):
+    if isinstance(x, dict):
+        for k, v in x.items():
+            if k == 'context_length':
+                yield int(v)
+            elif isinstance(v, (dict, list)):
+                yield from leaves(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from leaves(v)
+# the SELECTED model's limits against the selected model's served window (E-1 v31, 2026-10-01: with
+# qwen3-6-27b selected, the still-configured qwen38 provider's 220000 -- below ITS 262144 window --
+# was compared with qwen3-6-27b's 131072 and refused a correct config)
+_m = c.get('model') or {}
+_sel = ((c.get('providers') or {}).get(_m.get('provider')) or {}).get('models', {}).get(_m.get('default'))
+windows = list(leaves({'model': _m, 'selected': _sel or {}}))
+require(_sel is not None, 'the selected model has no provider entry')
+require(windows and all((0 < v < WINDOW for v in windows)), 'context limit must be below served window')
+require(c.get('terminal', {}).get('timeout', 0) >= 600, 'terminal timeout')
+require(c.get('compression', {}).get('threshold', 0) >= 0.8, 'compression threshold')
+# E-1 v31: the pinned profile's compression (absolute trigger, tool-result prune, protected tail) is what the worker runs
+_pp = Path('/etc/rhoai3/run-control/profile.json')
+if _pp.is_file():
+    _pd = json.loads(_pp.read_text())
+    _want = ((_pd.get('profiles') or {}).get(_pd.get('default_model')) or {}).get('compression') or {}
+    for _k, _v in _want.items():
+        require(c.get('compression', {}).get(_k) == _v, 'compression %s is %r, the pinned profile says %r' % (_k, c.get('compression', {}).get(_k), _v))
+    # patch 0017: the selected profile's loop escalation and reasoning echo reach the worker config exactly
+    _prof = ((_pd.get('profiles') or {}).get(_pd.get('default_model')) or {})
+    if _prof.get('loop_escalation'):
+        require((_sel or {}).get('loop_escalation') == _prof['loop_escalation'],
+                'the selected model entry does not carry the pinned loop_escalation')
+    if _prof.get('reasoning_echo'):
+        require(_m.get('reasoning_echo') is True, 'model.reasoning_echo is not set for a profile that requires it')
+source = Path('/projects/legacy')
+require(bool(os.statvfs(source).f_flag & os.ST_RDONLY), 'legacy checkout is writable; require a read-only mount')
+source_receipt = source / '.git/rhoai3-source.json'
+require(source_receipt.is_file(), 'source clone receipt missing')
+origin = json.loads(source_receipt.read_text())
+require(origin.get('schema') == 'rhoai3.source-volume/v1' and origin.get('commit') == subprocess.check_output(['git', '-c', 'safe.directory=' + str(source), '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip(), 'source clone receipt mismatch')
+# The factory declared this run's budget in the destination's initial commit;
+# the loader refuses a missing, foreign, stale or rewritten declaration, and a
+# history that does not begin at the platform receipt's scaffolding commit.
+from planner import run_declaration
+d = run_declaration.load(root, expected_run=WORKSPACE_NAME)
+require(d.code == run_declaration.OK, str(d))
+require(d.budget.get('max_wall_hours') == EXPECTED_HOURS, 'declared wall budget differs from the golden defaults')
+# The board protocol: the run request in its initial commit, agreed by the
+# read-only run control (outcome_protocol.launch_gaps). A request the installed
+# harness cannot honour, a disagreement, a missing selection or a disabled
+# outcome board refuses here; the serial loop is never launched instead.
+initial = subprocess.check_output(['git', '-C', str(root), 'rev-list', '--max-parents=0', 'HEAD'], text=True).split()
+declared = json.loads(subprocess.check_output(['git', '-C', str(root), 'show', initial[0] + ':run-budget.json'], text=True))
+try:
+    from planner import outcome_protocol
+    launch = getattr(outcome_protocol, 'launch_gaps', None)
+except ImportError:
+    launch = None
+if launch is None:
+    require(declared.get('board_protocol') in (None, 'serial-loop/v1'),
+            'BOARD_PROTOCOL: the run requests %s and the installed harness cannot select it' % declared.get('board_protocol'))
+    protocol = 'serial-loop/v1'
+else:
+    sel, gaps = launch(root)
+    require(not gaps, 'BOARD_PROTOCOL: %s' % (outcome_protocol.describe(gaps).splitlines()[0] if gaps else ''))
+    protocol = sel.protocol
+    if protocol == 'outcome-board/v2':
+        # native control: the producer extended the K2 matcher from the same selection and
+        # registered NO reconciler (the one native dispatcher promotes dependents itself)
+        hk = c.get('hooks') or {}
+        m = str((hk.get('pre_tool_call') or [{}])[0].get('matcher', '')).split('|')
+        require(all(t in m for t in ('kanban_block', 'kanban_request_review', 'request_review', 'kanban_comment',
+                                     'kanban_attach', 'kanban_create', 'kanban_link'))
+                and not any('outcome_reconcile.py' in str(h.get('command', '')) for h in hk.get('on_kanban_dispatch_tick') or []),
+                'BOARD_PROTOCOL: the managed config lacks the outcome-board/v2 hooks (review/block terminators, '
+                'kanban record/graph tools) or registers a reconciler')
+    if protocol == 'outcome-board/v1':
+        # the producer registered the outcome hooks from the same selection
+        hk = c.get('hooks') or {}
+        require(any('outcome_reconcile.py' in str(h.get('command', '')) for h in hk.get('on_kanban_dispatch_tick') or [])
+                and all(t in str((hk.get('pre_tool_call') or [{}])[0].get('matcher', '')).split('|')
+                        for t in ('kanban_block', 'kanban_request_review', 'request_review')),
+                'BOARD_PROTOCOL: the managed config lacks the outcome-board hooks (reconciler tick, review/block terminators)')
+print('PASS: board protocol %s (requested %s)' % (protocol, declared.get('board_protocol', 'nothing')))
+print('PASS: fresh workspace, golden, ownership, credentials, decisions, model, source protection and budget')
+PY
+)
+run_launch_check() {
+  local ns=${NS:-wksp-ai-developer} container=${CONTAINER:-development-tooling} golden defaults model doc pod receipt maas_host maas_ip
+  local sub limits quota_limit quota_window quota_others llmi windows expected run d
+  : "${POD:?set POD}" "${GOLDEN_CHECKOUT:?set GOLDEN_CHECKOUT}" "${GOLDEN_SHA:?set the full published golden commit}"
+  : "${PLATFORM_SHA:?set the merged platform commit}" "${WORKSPACE:?set the run: the full project name the factory was given}"
+  golden=$GOLDEN_CHECKOUT
+  [[ "$GOLDEN_SHA" =~ ^[0-9a-f]{40}$ && "$PLATFORM_SHA" =~ ^[0-9a-f]{40}$ ]] || run_fail "full golden/platform commits required"
+  [[ $(git -C "$golden" rev-parse HEAD) == "$GOLDEN_SHA" ]] || run_fail "golden checkout is not the pin"
+  [[ -z "$(git -C "$golden" status --porcelain)" ]] || run_fail "golden checkout is dirty"
+  defaults=$(cat "$golden/run-defaults.json")
+  jq -e '.schema == "rhoai3.run-defaults/v1"' <<<"$defaults" >/dev/null || run_fail "golden predates run-defaults.json; use the preflight of that run"
+  # The model this run requested at creation is the one the provisioner pinned in its run control (template parameter
+  # "model", 2026-10-02); the golden's run-defaults model is only the fallback for a run created before that.
+  model=${EXPECTED_MODEL:-$(oc --request-timeout=30s get configmap "$WORKSPACE-run-control" -n "$ns" -o json 2>/dev/null |
+    jq -r '.data["profile.json"] | fromjson | .default_model // ""' 2>/dev/null || true)}
+  [[ -n "$model" ]] || model=$(jq -r '.configuration.model.id' <<<"$defaults")
+  # v32: the selected profile's per-run token budget (the run's pinned run-control copy, else the platform table)
+  # and the golden's run-level stops are pinned before anything starts.
+  doc=$(oc --request-timeout=30s get configmap "$WORKSPACE-run-control" -n "$ns" -o json 2>/dev/null | jq -c '.data["profile.json"] | fromjson' 2>/dev/null ||
+        oc --request-timeout=30s get configmap migration-model-profiles -n "$ns" -o json 2>/dev/null | jq -c '.data["model-profiles.json"] | fromjson' 2>/dev/null || echo null)
+  gaps=$(jq -n -r --argjson doc "$doc" --arg m "$model" --argjson d "$defaults" "$RUN_STOP_GAPS"' run_stop_gaps($doc; $m; $d) | join("; ")')
+  [[ -z "$gaps" ]] || run_fail "$gaps"
+  # Validate this workspace against the released defaults and the live platform; old receipts are not promoted.
+  oc --request-timeout=30s get applications.argoproj.io -n openshift-gitops -l demo.rhoai.io/stage=070 -o json | jq -e --arg rev "$PLATFORM_SHA" '
+    [.items[] | select(.spec.project == "rhoai-demo")] | length > 0 and all(.[]; .status.sync.revision == $rev
+      and .status.sync.status == "Synced" and .status.health.status == "Healthy")' >/dev/null || run_fail "Stage 070 is not healthy at the selected revision"
+  oc --request-timeout=30s get tektonconfig config -o json | jq -e 'any(.status.conditions[]?; .type == "Ready" and .status == "True")' >/dev/null ||
+    run_fail "TektonConfig is not Ready"
+  oc --request-timeout=30s get deployment el-app-platform-listener -n app-platform-build -o json | jq -e '(.status.readyReplicas // 0) >= 1
+    and (.status.observedGeneration // 0) >= .metadata.generation' >/dev/null || run_fail "webhook dispatcher is not ready"
+  pod=$(oc --request-timeout=30s get pod "$POD" -n "$ns" -o json)
+  jq -n -e --argjson p "$pod" --arg c "$container" "$POD_MOUNTS"' source_mount_ok($p; $c)' >/dev/null ||
+    run_fail "source mount is writable or has a writable runtime alias"
+  jq -e --arg ws "$WORKSPACE" '.metadata.labels["controller.devfile.io/devworkspace_name"] == $ws' <<<"$pod" >/dev/null || run_fail "actual workspace name mismatch"
+  # v32 (2026-10-02): every ws-080 container runs exactly the golden's pinned image (a factory once wrote the previous one).
+  jq -n -e --argjson p "$pod" --arg want "$(jq -r '.pins.workspace_overlay.ws_080.digest' "$golden/.hermes/pins.json")" '[$p.status.containerStatuses[]?
+    | (.imageID // .image // "") as $i | select(((.image // "") + (.imageID // "")) | contains("rhoai3-ws-080")) | $i]
+    | length > 0 and all(.[]; endswith($want))' >/dev/null || run_fail "the workspace does not run the golden's pinned ws-080 image"
+  receipt=$(oc --request-timeout=30s get configmap "migration-run-$WORKSPACE" -n "$ns" -o json | jq -c '.data')
+  jq -e --arg ws "$WORKSPACE" --arg ns "$ns" '.phase == "provisioned" and .workspace == $ws and .namespace == $ns' <<<"$receipt" >/dev/null ||
+    run_fail "provisioning receipt is not ready for this workspace"
+  gaps=$(jq -n -r --argjson p "$pod" --argjson r "$receipt" --argjson b "$(oc --request-timeout=30s get rolebinding devworkspace-default-rolebinding -n "$ns" -o json)" \
+    --arg ns "$ns" --arg ws "$WORKSPACE" "$WORKER_IDENTITY"' worker_identity_gaps($p; $r; $b; $ns; $ws) | join("; ")')
+  [[ -z "$gaps" ]] || run_fail "$gaps"
+  jq -n -e --argjson p "$pod" --arg c "$container" "$POD_MOUNTS"' kubeconfig_mount_ok($p; $c)' >/dev/null ||
+    run_fail "worker kubeconfig directory lacks its ephemeral mount; late Dashboard token injection is possible"
+  gaps=$(jq -n -r --argjson d "$defaults" --argjson r "$receipt" "$IMAGE_BINDINGS"' image_binding_gaps($d; $r) | join("; ")')
+  [[ -z "$gaps" ]] || run_fail "$gaps"
+  oc --request-timeout=30s get deployment "$(jq -r '.host' <<<"$receipt")" -n "$ns" -o json | jq -e --arg img "$(jq -r '.databaseImage' <<<"$receipt")" '
+    (.status.availableReplicas // 0) == 1 and .spec.template.spec.containers[0].image == $img' >/dev/null ||
+    run_fail "assigned database is not available on the pinned image"
+  for secret in $(jq -r '.workspaceSecret, .fixtureSecret' <<<"$receipt"); do
+    # Metadata only: the label/annotation contract and the pod's consumption; no Secret value is read.
+    oc --request-timeout=30s get secret "$secret" -n "$ns" -o jsonpath='{.metadata}' | jq -e --arg ws "$WORKSPACE" '
+      (.labels // {}) as $l | (.annotations // {}) as $a
+      | $l["controller.devfile.io/watch-secret"] == "true" and $l["controller.devfile.io/mount-to-devworkspace"] == "true"
+      and $a["controller.devfile.io/mount-to-devworkspace-include"] == $ws and $a["controller.devfile.io/mount-on-start"] == "true"
+      and $a["controller.devfile.io/mount-as"] == "env"' >/dev/null || run_fail "incorrect secret targeting: $secret"
+    jq -n -e --argjson p "$pod" --arg c "$container" --arg s "$secret" '[$p.spec.containers[] | select(.name == $c)][0] as $w
+      | ([$w.env[]?.valueFrom.secretKeyRef.name] + [$w.envFrom[]?.secretRef.name]) | index($s) != null' >/dev/null ||
+      run_fail "pod does not consume its assigned secret: $secret"
+  done
+  # The worker reaches MaaS through the gateway's in-cluster Service, not the public ELB, which drops silent
+  # tool-call streams; the factory stamps a pod hostAlias at creation.
+  maas_host=$(oc --request-timeout=30s get gateway maas-default-gateway -n openshift-ingress -o json |
+    jq -r '[.spec.listeners[].hostname // "" | select(startswith("maas."))] | if length == 1 then .[0] else "" end')
+  [[ -n "$maas_host" ]] || run_fail "Expected exactly one maas. API listener"
+  maas_ip=$(oc --request-timeout=30s get service maas-gateway-internal -n openshift-ingress -o jsonpath='{.spec.clusterIP}')
+  [[ "$maas_host" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$ && "$maas_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+    run_fail "MaaS gateway host or internal IP unavailable"
+  # B3: per-model token limits live on the MaaSSubscription every workspace key is minted under, so concurrent runs
+  # of the same model share one bucket; only migration runs (their devfile names MIGRATION_RUN_NAME) of that model
+  # draw the per-run demand, a run whose pin cannot be read still counts, every other consumer is the reserve.
+  sub=$(oc --request-timeout=30s get maassubscription devspaces-coding-models -n models-as-a-service -o json)
+  limits=$(jq -c --arg m "$model" '[.spec.modelRefs[]? | select(.name == $m) | (.tokenRateLimits // [])[]]' <<<"$sub")
+  [[ $(jq length <<<"$limits") == 1 ]] || run_fail "devspaces-coding-models declares $(jq length <<<"$limits") token limits for $model; exactly one is admitted"
+  quota_limit=$(jq -r '.[0].limit | tonumber' <<<"$limits") quota_window=$(jq -r '.[0].window | tostring' <<<"$limits")
+  quota_others=0
+  while IFS= read -r run; do
+    d=$(oc --request-timeout=30s get configmap "$run-run-control" -n "$ns" -o json 2>/dev/null | jq -r '.data["profile.json"] | fromjson | .default_model // ""' 2>/dev/null || true)
+    [[ -z "$d" || "$d" == "$model" ]] && quota_others=$((quota_others + 1))
+  done < <(oc --request-timeout=30s get devworkspace -n "$ns" -o json | jq -r --arg ws "$WORKSPACE" '.items[]
+    | select(.metadata.name != $ws and (.status.phase == "Running" or .status.phase == "Starting")
+      and any((.spec.template.components // [])[]; any((.container.env // [])[]; .name == "MIGRATION_RUN_NAME")))
+    | .metadata.name')
+  llmi=$(oc --request-timeout=30s get llminferenceservice "$model" -n internal-models -o json)
+  jq -e 'any(.status.conditions[]?; .type == "Ready" and .status == "True")' <<<"$llmi" >/dev/null || run_fail "Qwen model is not Ready"
+  windows=$(jq -r '[.spec | .. | objects | .args? // empty | arrays | . as $a | range(length) as $i
+      | if ($a[$i] | startswith("--max-model-len=")) then ($a[$i] | split("=")[1] | tonumber)
+        elif $a[$i] == "--max-model-len" then ($a[$i + 1] | tonumber) else empty end] | unique | if length == 1 then .[0] else "" end' <<<"$llmi")
+  [[ -n "$windows" ]] || run_fail "served model window absent or ambiguous"
+  # The installed harness and the shared defaults the run's declaration binds must be the golden's, byte for byte.
+  for dir in .hermes/kernel .hermes/lib .hermes/skills .hermes/planning/schemas .hermes/planning/catalogs decided-repairs; do
+    [[ -d "$golden/$dir" ]] || run_fail "golden missing $dir"
+  done
+  expected=$(cd "$golden" && { find .hermes/kernel .hermes/lib .hermes/skills .hermes/planning/schemas .hermes/planning/catalogs decided-repairs \
+      -type f ! -path '*/__pycache__/*' ! -name '._*' -exec shasum -a 256 {} +; shasum -a 256 run-defaults.json; } |
+    jq -R -s -c 'split("\n") | map(select(. != "") | capture("^(?<v>[0-9a-f]{64})  (?<k>.+)$") | {key: .k, value: .v}) | from_entries')
+  # The in-workspace checks print assertions only, never environment or configuration values.
+  { printf 'EXPECTED_HOURS = %s\nEXPECTED = %s\nMODEL = %s\nWINDOW = %s\nWORKER_IDENTITY = %s\nWORKSPACE_NAME = %s\n' \
+      "$(jq '.budget.max_wall_hours' <<<"$defaults")" "$(jq -n --arg e "$expected" '$e')" "$(jq -n --arg m "$model" '$m')" "$windows" \
+      "$(jq -n --arg s "system:serviceaccount:$ns:$WORKSPACE-worker" '$s')" "$(jq -n --arg w "$WORKSPACE" '$w')"
+    printf 'MAASHOSTVAL = %s\nMAASIPVAL = %s\nQLIMITVAL = %s\nQWINVAL = %s\nQOTHERSVAL = %s\n' \
+      "$(jq -n --arg h "$maas_host" '$h')" "$(jq -n --arg i "$maas_ip" '$i')" "$quota_limit" "$(jq -n --arg w "$quota_window" '$w')" "$quota_others"
+    printf '%s\n' "$IN_WORKSPACE_CHECKS"
+  } | oc --request-timeout=60s exec -i -n "$ns" "$POD" -c "$container" -- python3 - || run_fail "in-workspace launch checks failed"
+  echo "PASS: launch preflight for $WORKSPACE; no reset or dispatch performed"
+}
+# The run-mode gap functions on the cases they must refuse (no cluster): pinned images, worker identity, run stops.
+run_launch_selftest() {
+  local images defaults pod receipt table rd q fails=0 sa
+  images='{"databaseImage":"registry/db@sha256:'"$(printf 'a%.0s' {1..64})"'","provisionerImage":"registry/cli@sha256:'"$(printf 'b%.0s' {1..64})"'"}'
+  defaults=$(jq -c '{configuration: {images: .}}' <<<"$images")
+  img() { jq -n -r --argjson d "$1" --argjson r "$2" "$IMAGE_BINDINGS"' image_binding_gaps($d; $r) | length'; }
+  [[ $(img "$defaults" "$images") == 0 ]] || fails=$((fails + 1))
+  for key in databaseImage provisionerImage; do
+    for value in null '"registry/foreign@sha256:'"$(printf 'c%.0s' {1..64})"'"' '"registry/tag:latest"'; do
+      [[ $(img "$defaults" "$(jq -c --arg k "$key" --argjson v "$value" '.[$k] = $v' <<<"$images")") -gt 0 ]] || fails=$((fails + 1))
+    done
+    for value in null '"registry/tag:latest"'; do
+      [[ $(img "$(jq -c --arg k "$key" --argjson v "$value" '.configuration.images[$k] = $v' <<<"$defaults")" "$images") -gt 0 ]] || fails=$((fails + 1))
+    done
+  done
+  sa=orders-migration-worker
+  wid() { jq -n -r --argjson p "$1" --argjson r "{\"workerServiceAccount\":\"$sa\"}" --argjson b "$2" "$WORKER_IDENTITY"' worker_identity_gaps($p; $r; $b; "wksp-test"; "orders-migration") | length'; }
+  [[ $(wid "{\"spec\":{\"serviceAccountName\":\"$sa\"}}" '{}') == 0 ]] || fails=$((fails + 1))
+  [[ $(wid '{"spec":{"serviceAccountName":"workspace-legacy-sa"}}' '{}') -gt 0 ]] || fails=$((fails + 1))
+  for subject in "{\"kind\":\"ServiceAccount\",\"name\":\"$sa\",\"namespace\":\"wksp-test\"}" '{"kind":"Group","name":"system:serviceaccounts:wksp-test"}' \
+      "{\"kind\":\"User\",\"name\":\"system:serviceaccount:wksp-test:$sa\"}"; do
+    [[ $(wid "{\"spec\":{\"serviceAccountName\":\"$sa\"}}" "{\"subjects\":[$subject]}") -gt 0 ]] || fails=$((fails + 1))
+  done
+  table=$(cat "$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-devspaces/model-profiles.json")
+  rd=$(cat "$SCRIPT_DIR/scaffold-repo/quarkus-migration-scaffold/run-defaults.json")
+  rsg() { jq -n -r --argjson t "$1" --arg m "$2" --argjson d "$3" "$RUN_STOP_GAPS"' run_stop_gaps($t; $m; $d) | join("|")'; }
+  for model in $(jq -r '.profiles | keys[]' <<<"$table"); do [[ -z $(rsg "$table" "$model" "$rd") ]] || fails=$((fails + 1)); done
+  q=$(jq -c '.profiles["other-model"] = (.profiles["qwen3-8-27b"] | del(.run_input_token_budget))' <<<"$table")
+  [[ -z $(rsg "$q" qwen3-8-27b "$rd") && $(rsg "$q" other-model "$rd") == RUN_TOKEN_BUDGET* ]] || fails=$((fails + 1))
+  for bad in 0 -1 true '"12000000"' null; do
+    [[ -n $(rsg "$(jq -c --argjson b "$bad" '.profiles["qwen3-8-27b"].run_input_token_budget = $b' <<<"$table")" qwen3-8-27b "$rd") ]] || fails=$((fails + 1))
+  done
+  [[ $(rsg "$(jq -c 'del(.profiles["qwen3-8-27b"].loop_escalation.retry_start_turns)' <<<"$table")" qwen3-8-27b "$rd") == *retry_start_turns* ]] || fails=$((fails + 1))
+  [[ $(rsg "$table" unserved-model "$rd") == RUN_TOKEN_BUDGET* && $(rsg null qwen3-8-27b "$rd") == RUN_TOKEN_BUDGET* ]] || fails=$((fails + 1))
+  for key in run_input_token_budget no_accepted_checkpoint_minutes; do
+    [[ $(rsg "$table" qwen3-8-27b "$(jq -c --arg k "$key" 'del(.budget[$k])' <<<"$rd")") == "RUN_STOPS: run-defaults.json budget.$key is not a positive integer" ]] || fails=$((fails + 1))
+  done
+  [[ $fails == 0 ]] && echo RUN_PREFLIGHT_TEST_OK || echo "RUN_PREFLIGHT_TEST_FAILED ($fails)"
+}
+if [[ "${1:-}" == --run ]]; then run_launch_check; exit; fi
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
 echo "║  Stage 130: Autonomous Application Migration (MTA 8.3)     ║"
@@ -106,7 +545,7 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
         echo -e "${GREEN}[PASS]${NC} quarkus-migration-scaffold-v2 golden repo exists (${GOLDEN_SHA:0:12})"
         VALIDATE_PASS=$((VALIDATE_PASS + 1))
     else
-        echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold-v2 golden repo missing (run scripts/demo/bootstrap-scaffold-repos.sh)"
+        echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold-v2 golden repo missing (the Stage 070 GitLab hook publishes it: stages/070-advanced-app-platform/deploy.sh)"
         VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
     fi
 else
@@ -131,9 +570,9 @@ check "live init ConfigMap does not curl-install Hermes" \
 # name the script still carries.
 # The run model is a pinned input chosen once, in the golden's run-defaults.json (v30 E-1: Qwen 3.6 vs 3.8);
 # the platform's declared default and its provider must equal it, or the preflight refuses "worker model mismatch".
-RUN_MODEL="$(python3 -c 'import json,sys; m=json.load(open(sys.argv[1]))["configuration"]["model"]; print(m["id"], m["provider"])' "${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/run-defaults.json" 2>/dev/null || echo "missing missing")"
+RUN_MODEL="$(jq -r '.configuration.model | "\(.id) \(.provider)"' "${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/run-defaults.json" 2>/dev/null || echo "missing missing")"
 check "declared model profile default equals the golden run model (${RUN_MODEL})" \
-  "oc get cm migration-model-profiles -n wksp-ai-developer -o go-template='{{index .data \"model-profiles.json\"}}' | python3 -c 'import json,sys; d=json.load(sys.stdin); p=d[\"profiles\"][d[\"default_model\"]]; print(d[\"default_model\"]+\" \"+p[\"provider\"])' 2>/dev/null || echo none" \
+  "oc get cm migration-model-profiles -n wksp-ai-developer -o go-template='{{index .data \"model-profiles.json\"}}' | jq -r '\"\\(.default_model) \\(.profiles[.default_model].provider)\"' 2>/dev/null || echo none" \
   "${RUN_MODEL}"
 # E-1 (2026-10-01): the enforce-on-start model gate compared against the literal qwen3-8-27b and
 # fail-closed every start of the first run provisioned with qwen3-6-27b; it must check the declared profile
@@ -251,19 +690,26 @@ SKELETON_080="$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-rhdh/templa
 # One runtime image everywhere it is named (v26 audit: run-defaults.json and the golden
 # devfile still named sha256:6a8a69a3 while pins.json and the template named sha256:9147834b)
 GOLDEN_080="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold"
-WS080_PIN="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['pins']['workspace_overlay']['ws_080']['digest'])" "${GOLDEN_080}/.hermes/pins.json" 2>/dev/null || echo missing)"
+
+# A file without its comment lines (the content a reader acts on).
+uncommented() { sed -E 's/^[[:space:]]*#.*$//' "$1"; }
+# One top-level Python function's source: from "def NAME" up to the next top-level def.
+py_function() { awk -v name="$2" '$0 ~ "^def " name "\\(" { f = 1; print; next } f && /^def / { exit } f' "$1"; }
+# Every rhoai3-ws-080 image reference in the factory skeleton, the golden devfile and run-defaults equals the pin.
+ws080_pins_match() {
+    local pin=$1 seen; shift
+    seen=$( { grep -ohE 'rhoai3-ws-080@sha256:[0-9a-f]{64}' "$@" | sed 's/^rhoai3-ws-080@//'
+              jq -r '.configuration.workspace_overlay.digest' "${@: -1}"; } | sort -u)
+    [[ -n "$seen" && "$pin" == sha256:* && "$seen" == "$pin" ]] && echo match || echo "mismatch $(paste -sd, - <<<"$seen")"
+}
+# Apostrophes inside the K2 hook's single-quoted python body (from the line after "exec python3 -c '" to the closing
+# quote line); one would end the shell string and the hook would fail open.
+hook_body_apostrophes() {
+    awk 'found && /^'"'"'/ { exit } found { print } /exec python3 -c / && /'"'"'$/ { found = 1 }' "$1" | tr -cd "'" | wc -c | tr -d ' '
+}
+WS080_PIN="$(jq -r '.pins.workspace_overlay.ws_080.digest' "${GOLDEN_080}/.hermes/pins.json" 2>/dev/null || echo missing)"
 check "every ws-080 image reference equals the golden pin (${WS080_PIN:0:19}…)" \
-  "python3 - '${WS080_PIN}' '${SKELETON_080}' '${GOLDEN_080}/devfile.yaml' '${GOLDEN_080}/run-defaults.json' <<'PY'
-import json, re, sys
-pin, files = sys.argv[1], sys.argv[2:]
-seen = []
-for f in files:
-    text = open(f, encoding='utf-8').read()
-    seen += re.findall(r'rhoai3-ws-080@(sha256:[0-9a-f]{64})', text)
-    if f.endswith('run-defaults.json'):
-        seen.append(json.loads(text)['configuration']['workspace_overlay']['digest'])
-print('match' if seen and pin.startswith('sha256:') and set(seen) == {pin} else 'mismatch %s' % sorted(set(seen)))
-PY" \
+  "ws080_pins_match '${WS080_PIN}' '${SKELETON_080}' '${GOLDEN_080}/devfile.yaml' '${GOLDEN_080}/run-defaults.json'" \
   "match"
 GOLDEN_DEVFILE="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/devfile.yaml"
 check_factory_mta_destfile() {
@@ -576,7 +1022,7 @@ check "080 K2 implementer complete is request_review" \
 # including a comment, ends the shell string and the hook silently fails OPEN
 # (measured 2026-09-10: "v6's" in a comment made every call allow).
 check "080 K2 hook python body carries no apostrophe (single-quoted shell string)" \
-  "python3 -c \"import pathlib; s=pathlib.Path('${SCAFFOLD_KERNEL}/pre_tool_call.sh').read_text(); i=s.index(chr(39)+chr(10), s.index('exec python3 -c '))+1; j=s.rindex(chr(10)+chr(39)); print(s[i:j].count(chr(39)))\"" \
+  "hook_body_apostrophes '${SCAFFOLD_KERNEL}/pre_tool_call.sh'" \
   "0"
 check "080 K2 hook refuses reviewer exploration after a green paved-road audit" \
   "grep -v '^[[:space:]]*#' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | grep -c 'already exited 0' || echo 0" \
@@ -611,7 +1057,7 @@ check "080 K2 lets the implementer complete a loop card on the recorded verdict 
 # pom registering src/main/java, Maven failing at default-compile while the
 # checker reported zero errors).
 check "080 the OpenAPI generator writes to the registered compile source root" \
-  "python3 -c \"import json; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); print(c['plugin_config']['org.openapitools:openapi-generator-maven-plugin']['configOptions']['sourceFolder'])\"" \
+  "jq -r '.plugin_config[\"org.openapitools:openapi-generator-maven-plugin\"].configOptions.sourceFolder' '${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json'" \
   "src/main/java"
 check "080 run-verify records whether Maven itself could compile" \
   "grep -c 'MVN_COMPILE_FAILED' '${SCAFFOLD_080}/.hermes/skills/migration/fix-until-green/scripts/run-verify.sh' || echo 0" \
@@ -629,7 +1075,7 @@ check "080 the M4 card pins the paved-road index only (not a checklist of gate s
   "python3 -c \"import sys; sys.path.insert(0, '${SCAFFOLD_LIB}'); from planner.cards import CARD_SKILLS; print(','.join(CARD_SKILLS['close']))\"" \
   "paved-road-m4"
 check "080 every implemented phase has a paved road (including M5 when shipped)" \
-  "python3 -c \"from pathlib import Path; p=Path('${SCAFFOLD_PAVED}'); phases=range(1, 6 if Path('${SCAFFOLD_LIB}/m5_delivery.py').is_file() else 5); print(int(all((p/('paved-road-m'+str(i))/'steps.json').is_file() for i in phases)))\"" \
+  "last=4; [[ -f '${SCAFFOLD_LIB}/m5_delivery.py' ]] && last=5; ok=1; for i in \$(seq 1 \$last); do [[ -f '${SCAFFOLD_PAVED}'/paved-road-m\$i/steps.json ]] || ok=0; done; echo \$ok" \
   "1"
 check "080 paved-road coverage lint passes" \
   "python3 '${SCAFFOLD_LIB}/paved_road.py' coverage >/dev/null && echo 1 || echo 0" \
@@ -651,7 +1097,7 @@ check "080 only a platform-recorded authorization may be bound (never a worker-a
   "python3 -c \"import sys; sys.path.insert(0, '${SCAFFOLD_LIB}'); from planner.pins import pilot_bind_gaps as g; ok={'planner':{'activation':'pilot','pilot':{'run_id':'r','authorized_by':'u','evidence_bundle_sha256':'','authorization':{'source':'devworkspace','creator':'c'}}}}; bad={'planner':{'activation':'pilot','pilot':{'run_id':'r','authorized_by':'u','evidence_bundle_sha256':'','authorization':{'source':'worker','creator':'c'}}}}; print(1 if not g(ok) and g(bad) else 0)\"" \
   "1"
 check "080 paved-road-m1 ends by dispatching the next phase" \
-  "python3 -c \"import json; d=json.load(open('${SCAFFOLD_PAVED}/paved-road-m1/steps.json')); print(d['steps'][-1]['native'])\"" \
+  "jq -r '.steps[-1].native' '${SCAFFOLD_PAVED}/paved-road-m1/steps.json'" \
   "autostart-migration.sh"
 check "080 autostart pins paved-road-m1 only on M1" \
   "grep -c -- '--skill paved-road-m1' '${SCAFFOLD_AUTOSTART}/autostart-migration.sh' || echo 0" \
@@ -681,11 +1127,11 @@ check "080 the golden carries shared run defaults only (no run identity, timesta
 check "080 run_declaration refuses missing, foreign, stale and rewritten declarations" \
   "python3 '${SCAFFOLD_LIB}/planner/run_declaration.test.py' >/dev/null 2>&1 && echo DECLARATION_SELFTEST_OK || echo DECLARATION_SELFTEST_FAILED" \
   "DECLARATION_SELFTEST_OK"
-check "080 launch preflight shell syntax is valid" \
-  "bash -n '${SCRIPT_DIR}/run-preflight.sh' && echo RUN_PREFLIGHT_SYNTAX_OK || echo RUN_PREFLIGHT_SYNTAX_FAILED" \
+check "080 launch check's in-workspace program compiles" \
+  "printf '%s\\n' \"\$IN_WORKSPACE_CHECKS\" | python3 -c 'import sys; compile(sys.stdin.read(), \"in-workspace\", \"exec\")' && echo RUN_PREFLIGHT_SYNTAX_OK || echo RUN_PREFLIGHT_SYNTAX_FAILED" \
   "RUN_PREFLIGHT_SYNTAX_OK"
 check "080 launch preflight preserves pinned images and worker identity without historical campaign receipts" \
-  "python3 '${SCRIPT_DIR}/run-preflight.test.py' >/dev/null 2>&1 && echo RUN_PREFLIGHT_TEST_OK || echo RUN_PREFLIGHT_TEST_FAILED" \
+  "run_launch_selftest" \
   "RUN_PREFLIGHT_TEST_OK"
 check "080 the factory stamps run-budget.json from the full project name and its scaffolder task" \
   "T='${REPO_ROOT}/gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration'; grep -qF '\"run_id\": \"\${{ values.name }}\"' \"\$T/skeleton/run-budget.json\" && grep -qF '\"scaffolder_task\": \"\${{ values.scaffolderTaskId }}\"' \"\$T/skeleton/run-budget.json\" && grep -v '^[[:space:]]*#' \"\$T/template.yaml\" | grep -qF 'scaffolderTaskId: \${{ context.task.id }}' && echo FACTORY_DECLARES_RUN || echo FACTORY_DOES_NOT_DECLARE" \
@@ -820,12 +1266,7 @@ check "080 GitOps K2 matcher includes skill_manage" \
   "grep -c 'delegate_task|skill_manage' '${GITOPS_INIT}' || echo 0" \
   "1"
 check "080 GitOps pre_tool_call matcher includes native complete" \
-  "python3 -c \"
-import pathlib, re
-t = pathlib.Path('${GITOPS_INIT}').read_text(encoding='utf-8')
-ms = re.findall(r'\\\"matcher\\\": \\\"([^\\\"]+)\\\"', t)
-print(sum(1 for m in ms if 'kanban_complete' in m and 'complete_task' in m))
-\"" \
+  "grep -oE '\"matcher\": \"[^\"]+\"' '${GITOPS_INIT}' | grep -F kanban_complete | grep -cF complete_task" \
   "2"
 check "080 GitOps no longer forbids the K2 instrumentation land" \
   "grep -c 'Do not mkdir kernel/. Do not land K2' '${GITOPS_INIT}' || echo 0" \
@@ -859,10 +1300,10 @@ check "080 Spec Kit residue scan is clean (skills, kernel, lib, planning)" \
   "{ grep -rIl -E 'speckit|/speckit\\.|specify init|\\.specify/|spec\\.md|tasks\\.md|check-spec-readiness|plan-migration-partition|partition\\.json' '${SCAFFOLD_SKILLS}' '${SCAFFOLD_KERNEL}' '${SCAFFOLD_LIB}' '${SCAFFOLD_080}/.hermes/planning' --exclude-dir=__pycache__ || true; } | { grep -v -E 'paved_road(\\.test)?\\.py$|k4_(convert|schema|selftest|mint|mint_selftest)\\.py$|paved-road-m2/(SKILL\\.md|scripts/selftest\\.py)$|derive-story-oracles/|k2_selftest\\.py$|dispatch-phase/scripts/autostart-migration\\.(sh|selftest\\.py)$' || true; } | wc -l | tr -d ' '" \
   "0"
 check "080 pins.json planner activation is not-activated on golden" \
-  "python3 -c \"import json,pathlib; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']; print(p.get('planner',{}).get('activation'))\"" \
+  "jq -r '.pins.planner.activation' '${SCAFFOLD_080}/.hermes/pins.json'" \
   "not-activated"
 check "080 pins.json: structure_extractor pinned to the toolchain JDK, mta_cli pinned 8.3 with a measured 64-hex artifact digest and named artifact, no retired optional producers" \
-  "python3 -c \"import json,pathlib,re; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']; m=p.get('mta_cli',{}); print('ok' if p.get('structure_extractor',{}).get('version')=='jdk-21' and m.get('version')=='8.3' and re.fullmatch(r'[0-9a-f]{64}', str(m.get('artifact_sha256') or '')) and str(m.get('artifact') or '').strip() and 'spoon' not in p and 'jqassistant' not in p and 'context_probe' not in p else 'bad')\"" \
+  "jq -r '.pins as \$p | (\$p.mta_cli // {}) as \$m | if (\$p.structure_extractor.version == \"jdk-21\") and \$m.version == \"8.3\" and (\$m.artifact_sha256 // \"\" | tostring | test(\"^[0-9a-f]{64}$\")) and (\$m.artifact // \"\" | tostring | gsub(\"\\\\s\"; \"\") | length > 0) and (\$p | has(\"spoon\") or has(\"jqassistant\") or has(\"context_probe\") | not) then \"ok\" else \"bad\" end' '${SCAFFOLD_080}/.hermes/pins.json'" \
   "ok"
 check "080 K2 hook vetoes worker graph mutation (kanban_create/link/swarm/decompose)" \
   "grep -c 'GRAPH_MUTATION_TOOLS' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \
@@ -877,7 +1318,7 @@ check "080 K4 re-derives the activation/pilot verdict from pins.json" \
   "grep -c 'activation_gaps(' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
   "1"
 check "080 golden pins.json carries no pilot seal" \
-  "python3 -c \"import json,pathlib; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']['planner']; print('none' if not p.get('pilot') else 'present')\"" \
+  "jq -r 'if (.pins.planner.pilot // null) | (. == null or . == false or . == {} or . == [] or . == \"\" or . == 0) then \"none\" else \"present\" end' '${SCAFFOLD_080}/.hermes/pins.json'" \
   "none"
 check "080 planning contracts present (schemas, catalogs, canary, decisions example)" \
   "test -f '${SCAFFOLD_080}/.hermes/planning/schemas/admission-receipt.schema.json' && test -f '${SCAFFOLD_080}/.hermes/planning/catalogs/destination-platforms.json' && test -f '${SCAFFOLD_080}/.hermes/planning/mta-rules/rhoai3-canary.yaml' && test -f '${SCAFFOLD_080}/.hermes/planning/decisions.example.yaml' && echo present || echo missing" \
@@ -1024,7 +1465,7 @@ check "080 a cleared deferral raises the attempt budget and never deletes the at
   "grep -q -F 'def attempt_budget' '${SCAFFOLD_LIB}/planner/budget.py' && grep -q -F 'from planner.budget import attempt_budget' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/_loop_common.py' && grep -q -F 'deferral_clearances' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/operator-step.py' && echo 1 || echo 0" \
   "1"
 check "080 the coverage plugin is pinned to a version that can read the pinned toolchain's class files (JaCoCo >= 0.8.11 for Java 21)" \
-  "python3 -c \"import json; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); v=c['plugin_config']['org.jacoco:jacoco-maven-plugin']['version']; print('ok' if tuple(int(x) for x in v.split('.')) >= (0,8,11) else v)\"" \
+  "jq -r '.plugin_config[\"org.jacoco:jacoco-maven-plugin\"].version as \$v | if (\$v | split(\".\") | map(tonumber)) >= [0, 8, 11] then \"ok\" else \$v end' '${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json'" \
   "ok"
 check "080 the boot gate binds to the whole packaged application, a free port, the process it started and a datasource that came up (verify-runtime selftest)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/verify-runtime.test.py' >/dev/null && echo 1 || echo 0" \
@@ -1083,16 +1524,16 @@ check "080 trusted platform code renders a run's resources, not the destination 
   "test -f '${PIPELINES_BUILD}/task-provision-migration-run.yaml' && test -f '${PIPELINES_BUILD}/pipeline-provision-migration-run.yaml' && ! test -e '${APP_MIGRATION_TMPL}/skeleton/k8s-run' && ! test -e '${PIPELINES_BUILD}/appproject-migration-run.yaml' && echo 1 || echo 0" \
   "1"
 check "080 no Argo CD Application is created over a self-service destination repository" \
-  "python3 -c \"import re,pathlib; f=re.search(r'def provision_migration.*?(?=\\ndef )',pathlib.Path('$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-pipelines/gitlab/reconcile.py').read_text(),re.S).group(0); print('platform' if \\\"resource('PipelineRun'\\\" in f and \\\"'Application'\\\" not in f else 'open')\"" \
+  "f=\$(py_function '$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-pipelines/gitlab/reconcile.py' provision_migration); grep -qF \"resource('PipelineRun'\" <<<\"\$f\" && ! grep -qF \"'Application'\" <<<\"\$f\" && echo platform || echo open" \
   "platform"
 check "080 the provisioner identity cannot be selected by a workload in the workspace namespace" \
-  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-devspaces/migration-run-resources-rbac.yaml').read_text()); m=re.search(r'kind: ServiceAccount.*?namespace: (\S+)', t, re.S); print(m.group(1) if m else 'absent')\"" \
+  "uncommented '$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-devspaces/migration-run-resources-rbac.yaml' | awk '/kind: ServiceAccount/ { f = 1 } f && match(\$0, /namespace: [^[:space:]]+/) { print substr(\$0, RSTART + 11, RLENGTH - 11); found = 1; exit } END { if (!found) print \"absent\" }'" \
   "app-platform-build"
 check "080 provisioning is bound to the scaffolding event, and a retired run cannot be resurrected" \
-  "python3 -c \"import re,pathlib; f=re.search(r'def provision_migration.*?(?=\\ndef )',pathlib.Path('$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-pipelines/gitlab/reconcile.py').read_text(),re.S).group(0); k=re.sub(r'(?m)^\\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/task-provision-migration-run.yaml').read_text()); print(sum(1 for p in [\\\"'provision-' + name\\\",'(AlreadyExists)'] if p in f) + sum(1 for p in ['phase=retired','was retired','was provisioned from'] if p in k))\"" \
+  "f=\$(py_function '$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-pipelines/gitlab/reconcile.py' provision_migration); k=\$(uncommented '${PIPELINES_BUILD}/task-provision-migration-run.yaml'); n=0; for x in \"'provision-' + name\" '(AlreadyExists)'; do grep -qF \"\$x\" <<<\"\$f\" && n=\$((n + 1)); done; for x in phase=retired 'was retired' 'was provisioned from'; do grep -qF \"\$x\" <<<\"\$k\" && n=\$((n + 1)); done; echo \$n" \
   "5"
 check "080 the run's secrets are watched and mounted, so DWO's cache can see them at all" \
-  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${PIPELINES_BUILD}/task-provision-migration-run.yaml').read_text()); print(t.count('controller.devfile.io/watch-secret: \\\"true\\\"'))\"" \
+  "uncommented '${PIPELINES_BUILD}/task-provision-migration-run.yaml' | grep -oF 'controller.devfile.io/watch-secret: \"true\"' | wc -l | tr -d ' '" \
   "2"
 # Three automounted objects bind this workspace: the two per-run Secrets and,
 # since v13, the run-control ConfigMap.
@@ -1105,28 +1546,28 @@ check "080 no include pattern carries a suffix wildcard or a second pattern" \
   "sed 's/^[[:space:]]*#.*//' '${PIPELINES_BUILD}/task-provision-migration-run.yaml' | grep 'mount-to-devworkspace-include:' | grep -cE '[*,]' || true" \
   "0"
 check "080 the platform fixture source is data, never a namespace-wide mount" \
-  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-devspaces/migration-fixture-credentials-source.yaml').read_text()); print('mounted' if 'mount-to-devworkspace' in t else 'source-only')\"" \
+  "uncommented '$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-devspaces/migration-fixture-credentials-source.yaml' | grep -qF mount-to-devworkspace && echo mounted || echo source-only" \
   "source-only"
 # The architect drove reset-parity-db.sh with an UNSTAMPED destination and with
 # another run's URL and reached the Java reset runner. The same ownership
 # check now guards every boundary that connects.
 check "080 reset, fixture mutation, destination startup and parity all establish ownership before connecting" \
-  "python3 -c \"import pathlib; f=['${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/reset-parity-db.sh','${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/verify-runtime.py','${SCAFFOLD_SKILLS}/paved-road/paved-road-m4/scripts/run-parity.py','${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/check-datasource-decision.py']; print(sum(1 for p in f if 'run_identity' in pathlib.Path(p).read_text()))\"" \
+  "grep -lF run_identity '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/reset-parity-db.sh' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/verify-runtime.py' '${SCAFFOLD_SKILLS}/paved-road/paved-road-m4/scripts/run-parity.py' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/check-datasource-decision.py' | wc -l | tr -d ' '" \
   "4"
 check "080 the reset refuses a wrong or missing target before a driver is found or a credential read" \
   "R='${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/reset-parity-db.sh'; O=\$(grep -n 'python3 -m planner.run_identity' \"\$R\" | head -1 | cut -d: -f1); C=\$(grep -n 'URL_ENV:-' \"\$R\" | head -1 | cut -d: -f1); D=\$(grep -n 'javac -d' \"\$R\" | head -1 | cut -d: -f1); { [ -n \"\$O\" ] && [ \"\$O\" -lt \"\$C\" ] && [ \"\$O\" -lt \"\$D\" ] && echo before || echo after; }" \
   "before"
 check "080 a refused ownership verdict stops the workspace autostart instead of warning" \
-  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${APP_MIGRATION_TMPL}/skeleton/devfile.yaml').read_text()); print('blocks' if 'RUN_RESOURCES_RC' in t and 'autostart is NOT started' in t else 'warns')\"" \
+  "t=\$(uncommented '${APP_MIGRATION_TMPL}/skeleton/devfile.yaml'); grep -qF RUN_RESOURCES_RC <<<\"\$t\" && grep -qF 'autostart is NOT started' <<<\"\$t\" && echo blocks || echo warns" \
   "blocks"
 check "080 the skeleton devfile names this run's own secrets and verifies the injection at start" \
-  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${APP_MIGRATION_TMPL}/skeleton/devfile.yaml').read_text()); n=sum(1 for p in ['PARITY_DB_SECRET','PARITY_CREDENTIALS_SECRET','stamp-run-resources.py'] if p in t); print(n)\"" \
+  "t=\$(uncommented '${APP_MIGRATION_TMPL}/skeleton/devfile.yaml'); n=0; for x in PARITY_DB_SECRET PARITY_CREDENTIALS_SECRET stamp-run-resources.py; do grep -qF \"\$x\" <<<\"\$t\" && n=\$((n + 1)); done; echo \$n" \
   "3"
 check "080 the skeleton migration.yaml is the one producer of the run's resource assignment" \
-  "python3 -c \"import re,pathlib; t=re.sub(r'(?m)^\s*#.*$','',pathlib.Path('${APP_MIGRATION_TMPL}/skeleton/migration.yaml').read_text()); n=sum(1 for p in ['parity_database:','fixture_credentials:','workspace_secret:','jdbc_url_env:','receipt_env:'] if p in t); print(n)\"" \
+  "t=\$(uncommented '${APP_MIGRATION_TMPL}/skeleton/migration.yaml'); n=0; for x in parity_database: fixture_credentials: workspace_secret: jdbc_url_env: receipt_env:; do grep -qF \"\$x\" <<<\"\$t\" && n=\$((n + 1)); done; echo \$n" \
   "5"
 check "080 the app-migration template marks its repos for the migration-run dispatcher" \
-  "python3 -c \"import re,pathlib; t=pathlib.Path('${APP_MIGRATION_TMPL}/template.yaml').read_text(); t=re.sub(r'(?m)^\s*#.*\$','',t); print(t.count('rhoai3-migration-run'))\"" \
+  "uncommented '${APP_MIGRATION_TMPL}/template.yaml' | grep -oF rhoai3-migration-run | wc -l | tr -d ' '" \
   "1"
 check "080 the shared namespace-wide parity stack is retired, and nothing reintroduces it" \
   "find '$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-devspaces' -maxdepth 1 \\( -name 'migration-parity-database.yaml' -o -name 'petclinic-parity-credentials.yaml' \\) 2>/dev/null | wc -l | tr -d ' '" \
@@ -1147,7 +1588,7 @@ check "080 the body-less write comparison is gone: a non-idempotent oracle is ro
   "grep -q -F 'not a replay' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/compare-runtime-parity.py' && ! grep -q -F -- '--request-file' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/capture-source-oracles.py' && echo 1 || echo 0" \
   "1"
 check "080 starting the source and capturing scenarios is an M1 producer step, not an Operator rescue" \
-  "python3 -c \"import json; d=json.load(open('${SCAFFOLD_SKILLS}/paved-road/paved-road-m1/steps.json')); ids=[s['id'] for s in d['steps']]; print('ok' if ids.index('capture-source-scenarios') > ids.index('assemble-evidence-bundle') else 'bad')\"" \
+  "jq -r '[.steps[].id] as \$ids | if (\$ids | index(\"capture-source-scenarios\")) > (\$ids | index(\"assemble-evidence-bundle\")) then \"ok\" else \"bad\" end' '${SCAFFOLD_SKILLS}/paved-road/paved-road-m1/steps.json'" \
   "ok"
 check "080 the scenario corpus ships an example a run can start from, and it obeys its own rules" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import json,sys; sys.path.insert(0,'.hermes/skills/gates/capture-source-oracles/scripts'); d=json.load(open('.hermes/planning/scenarios.example.json')); sc=d['scenarios'][0]; ok=d['schema']=='rhoai3.scenario-corpus/v1' and d.get('approved_by') and sc.get('body_file') and sc.get('effects') and '{' not in sc['path']; print('ok' if ok else 'bad')\"" \
@@ -1159,10 +1600,10 @@ check "080 a templated entry-point path is not captured as an oracle without a r
   "python3 '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/capture-source-oracles.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 the generator writes where the mojo registers a compile source root (openapi-generator configOptions.sourceFolder)" \
-  "python3 -c \"import json,sys; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); print(c['plugin_config']['org.openapitools:openapi-generator-maven-plugin']['configOptions']['sourceFolder'])\"" \
+  "jq -r '.plugin_config[\"org.openapitools:openapi-generator-maven-plugin\"].configOptions.sourceFolder' '${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json'" \
   "src/main/java"
 check "080 the mapping restores the assertion library the Spring test starter provided, in test scope, with its group id" \
-  "python3 -c \"import json; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); st=c['starters']['org.springframework.boot:spring-boot-starter-test']; ok='assertj-core' in st and c['starter_group_ids'].get('assertj-core')=='org.assertj' and 'assertj-core' in c['test_scoped']['artifacts']; print('ok' if ok else 'bad')\"" \
+  "jq -r 'if (.starters[\"org.springframework.boot:spring-boot-starter-test\"] | index(\"assertj-core\")) != null and .starter_group_ids[\"assertj-core\"] == \"org.assertj\" and (.test_scoped.artifacts | index(\"assertj-core\")) != null then \"ok\" else \"bad\" end' '${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json'" \
   "ok"
 check "080 the Jakarta namespace rename covers test sources (a test that cannot compile makes the measure unknown)" \
   "grep -q -F 'src/main/java,src/test/java' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.py' && echo 1 || echo 0" \
@@ -1186,7 +1627,7 @@ check "080 the M4 verdict must carry the coverage account (schema + reference in
   "python3 '${SCAFFOLD_SKILLS}/gates/compose-m4-verdict/scripts/assert-m4-verdict-schema-sync.py' >/dev/null && grep -q -F 'coverage_account' '${SCAFFOLD_SKILLS}/gates/compose-m4-verdict/scripts/assert-m4-verdict-schema.py' && echo 1 || echo 0" \
   "1"
 check "080 paved-road-m4 KEEPs the coverage account beside the verdict" \
-  "python3 -c \"import json; d=json.load(open('${SCAFFOLD_SKILLS}/paved-road/paved-road-m4/steps.json')); k=[s for s in d['steps'] if s.get('producer')][0]['keep']; print('ok' if 'evidence/verdicts/coverage-account.json' in k else 'bad')\"" \
+  "jq -r '[.steps[] | select(.producer)][0].keep | if index(\"evidence/verdicts/coverage-account.json\") != null then \"ok\" else \"bad\" end' '${SCAFFOLD_SKILLS}/paved-road/paved-road-m4/steps.json'" \
   "ok"
 check "080 golden decisions.yaml has no proposed ADR left open (a proposal is not a decision)" \
   "python3 -c \"import sys; sys.path.insert(0,'${SCAFFOLD_080}/.hermes/lib'); from pathlib import Path; from planner.decisions import load_decisions; d=load_decisions(Path('${SCAFFOLD_080}')); print(len([a for a in d['adrs'] if a.get('status')!='accepted']))\"" \
@@ -1279,7 +1720,7 @@ check "080 live dest-init does not run specify init" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'dest-init specify init' || true" \
   "0"
 check "080 pins.json has no spec_kit pin" \
-  "python3 -c \"import json,pathlib; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text()); print('present' if 'spec_kit' in (p.get('pins') or {}) else 'absent')\"" \
+  "jq -r 'if (.pins // {} | has(\"spec_kit\")) then \"present\" else \"absent\" end' '${SCAFFOLD_080}/.hermes/pins.json'" \
   "absent"
 check "080 inventory SKILL runs the JDK compiler-API extractor (no third-party dependency, no regex)" \
   "grep -c 'run-jdk-model-extract.sh' '${SCAFFOLD_SKILLS}/analysis/inventory-legacy-surface/SKILL.md' || echo 0" \
@@ -1288,7 +1729,7 @@ check "080 no Spoon, JavaParser, JDT, or regex extractor in the scaffold" \
   "{ grep -rIl -E 'import spoon|spoon-core|com.github.javaparser|org.eclipse.jdt|oracle-regex' '${SCAFFOLD_080}/.hermes' --exclude-dir=__pycache__ || true; } | wc -l | tr -d ' '" \
   "0"
 check "080 M1 paved road freezes the original source first (derive-legacy-boot3 never first)" \
-  "python3 -c \"import json,pathlib; d=json.load(open('${SCAFFOLD_SKILLS}/paved-road/paved-road-m1/steps.json')); s=d['steps'][0]; print(s.get('skill') or s.get('native') or s.get('kernel'))\"" \
+  "jq -r '.steps[0] | .skill // .native // .kernel' '${SCAFFOLD_SKILLS}/paved-road/paved-road-m1/steps.json'" \
   "freeze-migration-input"
 check "080 K4 mints one card per step and M4 VERIFY only on an empty list" \
   "grep -c 'CLOSE_ID = \"M4_VERIFY\"' '${SCAFFOLD_LIB}/planner/cards.py' || echo 0" \

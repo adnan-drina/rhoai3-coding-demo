@@ -73,7 +73,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
 5. Switch to FP8: add `components: [components/qwen38-fp8]` to
    `040-local-models/kustomization.yaml`, publish, redeploy, then run
-   `stages/040-governed-models-as-a-service/register-model-cards.sh`.
+   `stages/040-governed-models-as-a-service/deploy.sh`.
 
 ## Pitfalls
 

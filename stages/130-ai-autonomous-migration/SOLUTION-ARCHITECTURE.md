@@ -226,7 +226,7 @@ initial (scaffolding) commit carried -- every earlier run was created without
 the key and stays off -- and admission refuses a later edit that flips it
 (`PLAN_SEMANTICS_REPINNED`, `decisions.plan_semantics_pin_gap`), so the
 selection is immutable per run and never an environment fallback.
-`run-preflight.sh` requires it for a new run. `PLAN_RECIPE_MISSING` applies
+`stages/130-ai-autonomous-migration/validate.sh --run` requires it for a new run. `PLAN_RECIPE_MISSING` applies
 to repair requirements only (`source_requirements.RECIPE_RULES`); behaviour
 verification and decided configuration are judged by their checks.
 

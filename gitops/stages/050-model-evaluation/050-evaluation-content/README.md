@@ -3,8 +3,8 @@
 This Application holds the evaluation definitions EvalHub serves: nine versioned `agentic-coding-*` collections (the
 evaluation-driven development criteria for coding models), two bounded custom providers (`inspect-coding`,
 `garak-coding`), and the staged SWE-bench provider with the RBAC, agent configuration and S3 test-data Secret its runs
-need. The qualification pipeline (`050-model-qualification`), `submit-evaluation.sh` and `swebench-run.sh` consume it
-through `050-evalhub`. Criteria change more often than the service, so they are a separate Application.
+need. The qualification pipeline (`050-model-qualification`) and jobs submitted from the dashboard or the EvalHub REST
+API consume it through `050-evalhub`. Criteria change more often than the service, so they are a separate Application.
 
 | | |
 |---|---|
@@ -13,7 +13,7 @@ through `050-evalhub`. Criteria change more often than the service, so they are 
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced and Healthy at the stage revision); EvalHub start-up validates the ids (see How). No content-specific check. |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. |
 | Depends on | `050-evalhub` (lists every id in its CR); `050-model-qualification` (namespace `evaluated-models`, OBC `evaluation-models-workbench`, tenant job ServiceAccount); ODF Route `s3`; Stage 040 MaaS (models under test). |
-| Used by | `050-evalhub`; the qualification pipeline (`latency-v1`, `throughput-v2`, `livecodebench-v2`, `python-tasks-v1`, `security-quick-v2`, `security-full-v2`); [`swebench-run.sh`](../../../../stages/050-model-evaluation/swebench-run.sh); [`submit-evaluation.sh`](../../../../stages/050-model-evaluation/submit-evaluation.sh). |
+| Used by | `050-evalhub`; the qualification pipeline (`latency-v1`, `throughput-v2`, `livecodebench-v2`, `python-tasks-v1`, `security-quick-v2`, `security-full-v2`); jobs submitted from **Develop & train → Evaluations** or the EvalHub REST API (the former helpers `swebench-run.sh` and `submit-evaluation.sh` are in git history at `82092e01`). |
 
 ## Why
 
@@ -69,7 +69,7 @@ All objects are ConfigMaps in `redhat-ods-applications`, wave 10.
 | Object | Created by |
 |---|---|
 | Secret `evaluated-models/evalhub-s3-test-data` | `provision-evalhub-s3-test-data` hook |
-| Patch-generation Jobs, grading Jobs, predictions in the workbench bucket | `swebench-run.sh` and the SWE-bench adapter at run time |
+| Patch-generation Jobs, grading Jobs, predictions in the workbench bucket | The SWE-bench adapter at run time (formerly driven by `swebench-run.sh`, in git history at `82092e01`) |
 | Built-in provider ConfigMaps | TrustyAI operator |
 
 ## How
@@ -102,7 +102,7 @@ those two ServiceAccounts in the admin-only tenant.
 ## Validation
 
 `validate.sh` requires the Application Synced and Healthy at the stage revision. There is no check that each collection
-loads; a failed load shows as an EvalHub pod that does not become ready, which `validate-ai-services.sh` catches through
+loads; a failed load shows as an EvalHub pod that does not become ready, which `stages/050-model-evaluation/validate.sh` catches through
 the EvalHub Deployment check.
 
 By hand:

@@ -51,7 +51,7 @@ Paths are under `gitops/stages/070-advanced-app-platform/`.
 3. Validate:
 
    ```bash
-   ./stages/070-advanced-app-platform/validate.sh --static   # security-boundaries.test.py RBAC tests
+   ./stages/070-advanced-app-platform/validate.sh --static   # renders, disjoint components, scripts parse
    ./stages/070-advanced-app-platform/validate.sh
    oc get configmap rhdh-rbac-policies -n rhdh -o jsonpath='{.data.rbac-policies\.csv}'
    ```
@@ -65,10 +65,9 @@ Paths are under `gitops/stages/070-advanced-app-platform/`.
   can disappear for `ai-developer`.
 - `ai-admin` is a policy administrator by config; giving it a CSV role as
   well is unnecessary.
-- The tests `test_only_admins_register_and_discovery_does_not_ingest_templates`
-  and `test_developer_can_view_delivery_without_proxy_or_catalog_writes` in
-  `stages/070-advanced-app-platform/tests/security-boundaries.test.py` encode
-  this policy; update them with any intentional change.
+- The offline tests that encoded this policy (`tests/security-boundaries.test.py`)
+  were retired; they are in git history at `82092e01`. Review any intentional
+  change against the RBAC policy file directly.
 
 ## Official documentation (Developer Hub 1.10)
 

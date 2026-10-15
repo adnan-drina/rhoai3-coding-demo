@@ -19,7 +19,7 @@
     "beforeShellExecution": [
       {
         "command": "python3 .agents/hooks/guard-openshift-command.py",
-        "matcher": "\\b(oc|kubectl)\\s|scripts/platform/resume-gpu-demo\\.sh|deploy\\.sh"
+        "matcher": "\\b(oc|kubectl)\\s|deploy\\.sh"
       }
     ]
   }

@@ -37,22 +37,22 @@ OpenShift AI 3.5 sections. Detailed record:
 | Decision | Where in Git | Official section |
 |---|---|---|
 | NVIDIA only; NFD Operator and `NodeFeatureDiscovery` instance first (deploy-order 1), then the GPU Operator (deploy-order 2) | `020-node-feature-discovery/`, `020-nvidia-gpu-operator/` | [Enable NVIDIA GPUs][nvidia] |
-| `gpu-operator-certified` from `certified-operators`, channel `v26.7`, Automatic, no `startingCSV`; minimum 26.7.1 enforced | `020-nvidia-gpu-operator/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Enable NVIDIA GPUs][nvidia] (operator is a prerequisite) |
+| `gpu-operator-certified` from `certified-operators`, channel `v26.7`, Automatic, no `startingCSV`; minimum 26.7.1 enforced | `020-nvidia-gpu-operator/subscription.yaml`, `check_operator_policy` in `scripts/lib.sh` | [Enable NVIDIA GPUs][nvidia] (operator is a prerequisite) |
 | `ClusterPolicy` `gpu-cluster-policy` from the operator's default example plus a `nvidia-gpu-only` toleration; Driver Toolkit build; DCGM ServiceMonitor on; sandbox workloads off | `020-nvidia-gpu-operator/cluster-policy.yaml` | [Enable NVIDIA GPUs][nvidia]; field detail is NVIDIA's (upstream, see component README) |
 | No time-slicing or MIG partitioning: `mig.strategy: single`, no device-plugin config, one card = one `nvidia.com/gpu` (one model per card) | `020-nvidia-gpu-operator/cluster-policy.yaml` | [GPU time slicing][timeslice] (not used) |
 | Default pool `g7e.2xlarge` (one RTX PRO 6000 Blackwell, 96 GB), one MachineSet per `us-east-2` zone; L40S pool `g6e.2xlarge` kept at zero; all 0 replicas in Git, 200 GB gp3 root disk | `020-gpu-machinesets/machineset-rtxpro6000.yaml`, `020-gpu-machinesets/machineset-gpu.yaml` | OCP: see `ocp-machine-management` |
-| Pool shape: label `cluster-api/accelerator` (`nvidia-rtxpro6000` / `nvidia-gpu`), `node-role.kubernetes.io/gpu`, taint `nvidia-gpu-only:NoSchedule`; generated from the active CPU worker pool | `stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh` | OCP: see `ocp-machine-management` |
+| Pool shape: label `cluster-api/accelerator` (`nvidia-rtxpro6000` / `nvidia-gpu`), `node-role.kubernetes.io/gpu`, taint `nvidia-gpu-only:NoSchedule`; generated from the active CPU worker pool | `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets` | OCP: see `ocp-machine-management` |
 | `migration-gpu-status` delete + dashboard restart is not automated (ConfigMap absent on this cluster, checked 2026-10-14) | `docs/OPERATIONS.md#stage-020` | [Enable NVIDIA GPUs][nvidia] |
 | GPU utilization for the OpenShift AI dashboards via ServiceMonitor `accelerator-gpu-utilization` (workaround for a 3.5.1 gap); `rhods-admins` bound to `cluster-monitoring-metrics-api` | `020-nvidia-gpu-operator/rhoai-monitoring/`, `020-nvidia-gpu-operator/rolebinding-gpu-metrics-admins.yaml` | see `rhoai-observability` |
 
 ## Procedure
 
 1. On a new cluster regenerate the pools, review, publish:
-   `./stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh --source <cpu-machineset> --write`.
+   `./stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets <cpu-machineset> --write`.
 2. Deploy: `./stages/020-gpu-infrastructure-private-ai/deploy.sh`.
-3. Scale a pool for a session with `scripts/platform/resume-gpu-demo.sh up`
-   (`GPU_POOL=l40s` for the L40S pool, `down` parks all pools); `scripts/platform/gpu-capacity-probe.sh`
-   tries one zone at a time.
+3. Scale a pool for a session with `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1`
+   (`GPU_POOL=l40s` for the L40S pool, `--gpus 0` parks all pools); probe
+   capacity one zone at a time by hand (`ocp-machine-management`).
 4. Validate: `./stages/020-gpu-infrastructure-private-ai/validate.sh --readiness`
    (operator CSV, `ClusterPolicy` ready, per-node driver DaemonSet, one GPU and
    the taint per Ready GPU node; node checks fail by design at zero replicas),

@@ -47,7 +47,7 @@ OpenShift AI 3.5 sections. Detailed record:
 1. Check discovery is up (after the OpenShift safety guard in `AGENTS.md`):
 
    ```bash
-   ./stages/030-private-model-serving/validate-model-discovery.sh
+   ./stages/030-private-model-serving/validate.sh
    oc get modelregistry demo-registry -n rhoai-model-registries
    ```
 

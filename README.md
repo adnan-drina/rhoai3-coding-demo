@@ -103,7 +103,7 @@ The READMEs explain the architecture. Use the commands below only in a prepared 
 
 The workshop uses an AWS multinode OpenShift Container Platform 4.22 foundation with OpenShift AI 3.5. See the [Operations Guide](docs/OPERATIONS.md) for environment requirements and deployment preparation.
 
-**Environment sizing (required).** The full stack (RHOAI + ODF + GPU + MaaS + model serving) puts heavy, sustained load on the control plane. Provision `m6a.4xlarge`-class nodes (16 vCPU / 64 GiB) for the control plane *and* the CPU workers. The `m6a.xlarge` (4 vCPU / 16 GiB) control plane is **not** sufficient: kube-apiserver exhausts the node's CPU/memory and masters fail one after another. GPU nodes are sized by accelerator (the default pool is `g7e.2xlarge`) and are exempt. Every stage's `deploy.sh` runs `scripts/platform/require-node-sizing.sh` first and refuses to start on undersized nodes.
+**Environment sizing (required).** The full stack (RHOAI + ODF + GPU + MaaS + model serving) puts heavy, sustained load on the control plane. Provision `m6a.4xlarge`-class nodes (16 vCPU / 64 GiB) for the control plane *and* the CPU workers. The `m6a.xlarge` (4 vCPU / 16 GiB) control plane is **not** sufficient: kube-apiserver exhausts the node's CPU/memory and masters fail one after another. GPU nodes are sized by accelerator (the default pool is `g7e.2xlarge`) and are exempt. Every stage's `deploy.sh` runs `require_node_sizing` in `scripts/lib.sh` first and refuses to start on undersized nodes.
 
 ```bash
 git clone https://github.com/adnan-drina/rhoai3-coding-demo.git
@@ -116,7 +116,7 @@ cd rhoai3-coding-demo
 cp env.example .env
 # Edit .env — fill in RHOAI_EXPECTED_API_SERVER, credentials, and API keys
 oc login --token=<token> --server=<api>
-./scripts/platform/validate-stage-flow.sh
+scripts/validate-stage-flow.sh
 ```
 
 **Deploy the platform stages in order.** Stage 010 bootstraps OpenShift GitOps itself (declarative overlays in `gitops/bootstrap/`) before handing the platform to Argo CD.
@@ -131,7 +131,7 @@ oc login --token=<token> --server=<api>
 ./stages/070-advanced-app-platform/deploy.sh --revision <reviewed-published-commit>
 ```
 
-Stage 060 `deploy.sh` deploys the OpenShell identity and runtime. Its MCP platform, agent tools and console components have their own deploy scripts; see the [Stage 060 README](stages/060-agent-runtime-and-agentops/README.md#deploy-and-validate).
+Each stage has one `deploy.sh` and one `validate.sh`; stage capabilities are options of those two (for example Stage 020 `deploy.sh --gpus 1` starts a GPU worker, `--gpus 0` parks them all; Stage 060 `deploy.sh --component NAME` deploys one of its five components). See each stage README.
 
 **Validate the developer workflow stages.** Stages 110–130 are workflow-only: their developer tooling and infrastructure (workspaces, pipelines, quality gates, the MTA stack) are supplied by Stage 070; standalone agent hosting belongs to Stage 060. Each keeps a read-only `validate.sh` for its demo prerequisites:
 
@@ -157,13 +157,13 @@ rhoai3-coding-demo/
 |-- BACKLOG.md                       # Workarounds, limitations, and deferred work
 |-- CONTRIBUTING.md
 |-- env.example
-|-- scripts/                        # platform/, demo/ (stages 110–130), shared/
+|-- scripts/                         # lib.sh, stage-apps.sh, validate-stage-flow.sh (shared by every stage)
 |-- .agents/                         # Tool-neutral shared agent guidance: rules, skills, hooks, references
 |-- gitops/
 |   |-- bootstrap/                   # Declarative OpenShift GitOps bootstrap (stage 010)
 |   |-- applications/                # Argo CD Applications: one file per component, named after it
 |   `-- stages/                      # GitOps source for stage manifests
-|-- stages/                          # Stage READMEs and per-stage deploy/validate scripts
+|-- stages/                          # Stage READMEs and one deploy.sh + one validate.sh per stage
 `-- docs/                            # Operations, troubleshooting, TechDocs, and governance docs
 ```
 

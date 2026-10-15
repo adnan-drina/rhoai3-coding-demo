@@ -57,7 +57,6 @@ OpenShift AI 3.5 sections. Detailed record:
    ```bash
    ./stages/050-model-evaluation/deploy.sh
    ./stages/050-model-evaluation/validate.sh
-   ./stages/050-model-evaluation/validate-ai-services.sh
    ```
 
 3. Inspect read-only after the OpenShift safety guard in `AGENTS.md`:

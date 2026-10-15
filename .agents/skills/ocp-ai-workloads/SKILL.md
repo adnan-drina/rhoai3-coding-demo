@@ -30,7 +30,7 @@ OpenShift Container Platform 4.22 sections. Detailed records:
 ## When to use
 
 - A change touches the Kueue or LWS operator installation, their channel or
-  the minimums in `scripts/platform/check-operator-policy.py`.
+  the minimums in `check_operator_policy` in `scripts/lib.sh`.
 - Stage 020 sync hangs on `job-enable-dsc-kueue`, or the `Kueue` CR is not
   `Available`.
 - Someone proposes multi-node serving (LWS) or JobSet.
@@ -39,7 +39,7 @@ OpenShift Container Platform 4.22 sections. Detailed records:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Red Hat build of Kueue Operator: namespace `openshift-kueue-operator` with cluster-monitoring label, all-namespaces OperatorGroup, Subscription `kueue-operator` on `stable-v1.4`, Automatic; policy minimum `1.4.2` | `020-kueue/namespace.yaml`, `020-kueue/operatorgroup.yaml`, `020-kueue/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Red Hat build of Kueue][kueue] |
+| Red Hat build of Kueue Operator: namespace `openshift-kueue-operator` with cluster-monitoring label, all-namespaces OperatorGroup, Subscription `kueue-operator` on `stable-v1.4`, Automatic; policy minimum `1.4.2` | `020-kueue/namespace.yaml`, `020-kueue/operatorgroup.yaml`, `020-kueue/subscription.yaml`, `check_operator_policy` in `scripts/lib.sh` | [Red Hat build of Kueue][kueue] |
 | cert-manager Operator is a prerequisite but not declared here; `deploy.sh` refuses to continue without a `Succeeded` `cert-manager-operator.v1.20.*` CSV | `stages/020-gpu-infrastructure-private-ai/deploy.sh` | [Red Hat build of Kueue][kueue] |
 | `Kueue` CR (`cluster`) is not in Git: OpenShift AI creates it when the DSC sets kueue `Unmanaged` | (operator-created) | [Red Hat build of Kueue][kueue] |
 | DSC kueue subtree set to `Unmanaged`, `autoCreateQueues: false` by an Argo CD Sync hook Job with scoped RBAC, because Stage 010 owns `default-dsc` and delegates `/spec/components/kueue` | `020-kueue/dsc-enablement/` | [Red Hat build of Kueue][kueue] |
@@ -52,7 +52,7 @@ Paths are relative to `gitops/stages/020-gpu-infrastructure-private-ai/` unless 
 ## Procedure
 
 1. Change channels in Git and the matching entries in
-   `scripts/platform/check-operator-policy.py` (`channels` and `minimum`) in
+   `check_operator_policy` in `scripts/lib.sh` (`channels` and `minimum`) in
    the same commit; `deploy.sh` refuses an unreviewed channel.
 2. Deploy and validate Kueue with
    `./stages/020-gpu-infrastructure-private-ai/deploy.sh` and `validate.sh`

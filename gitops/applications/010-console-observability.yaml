@@ -12,7 +12,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     argocd.argoproj.io/manifest-generate-paths: /gitops/stages/010-openshift-ai-platform-foundation/010-console-observability
-    demo.rhoai.io/deploy-script: stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh
+    demo.rhoai.io/deploy-script: stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-console-observability
     argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   project: rhoai-demo

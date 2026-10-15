@@ -5,7 +5,7 @@ This Application installs Red Hat OpenShift Dev Spaces 3.30 and the workspace si
 | | |
 |---|---|
 | Argo CD Application | `070-devspaces` ([manifest](../../../applications/070-devspaces.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 3) |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage-apps.sh deploy 070` (deploy-order 3) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (operator, "Existing identity and Dev Spaces" and credential checks); `validate.sh --static` (authoring tests) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; retry 10 times with backoff |
 | Depends on | `070-namespaces` (deploy-order 1), `070-identity` (deploy-order 2); Stage 040 (`maas-default-gateway` and the `devspaces-coding-models` subscription); `gp3-csi` storage class |
@@ -72,7 +72,7 @@ Not in Git: the GitLab OAuth Secret `gitlab-oauth-config`, the CheCluster `gitSe
 
 ## How
 
-**Installation.** The Subscription lives in `openshift-operators` (AllNamespaces) with `Automatic` approval on `stable`, as the 3.30 GitOps guide shows [1]. `scripts/platform/check-operator-policy.py` (run by Stage 070 `deploy.sh`) refuses another channel or an offered version outside the qualified 3.30 line (minimum 3.30.2). The webhook-wait hook then holds the CheCluster until the operator, which runs in `openshift-operators`, answers admission calls; its Role there reads only the `devspaces-operator` Deployment and Service. Until 2026-10-15 the Subscription lived in `openshift-devspaces` with Manual approval and its own approver hook; `docs/OPERATIONS.md` records the move.
+**Installation.** The Subscription lives in `openshift-operators` (AllNamespaces) with `Automatic` approval on `stable`, as the 3.30 GitOps guide shows [1]. `check_operator_policy` in `scripts/lib.sh` (run by Stage 070 `deploy.sh`) refuses another channel or an offered version outside the qualified 3.30 line (minimum 3.30.2). The webhook-wait hook then holds the CheCluster until the operator, which runs in `openshift-operators`, answers admission calls; its Role there reads only the `devspaces-operator` Deployment and Service. Until 2026-10-15 the Subscription lived in `openshift-devspaces` with Manual approval and its own approver hook; `docs/OPERATIONS.md` records the move.
 
 **CheCluster choices** (field reference [3]):
 
@@ -102,9 +102,9 @@ Operations: [Stage 070 Dev Spaces](../../../../docs/OPERATIONS.md#stage-070--dev
 - `Dev Spaces Active`, `Dev Spaces per-workspace storage`, `Dev Spaces GitLab OAuth configured`.
 - `wksp-ai-developer standing workspace uses GitLab` and the same for `wksp-ai-admin`.
 - `Scoped integration Secret openshift-devspaces/gitlab-oauth-config exists`.
-- `security-status.py`: `no_retained_secret_annotation` for `openshift-devspaces`, `wksp-ai-developer` and `wksp-ai-admin`; `idle_bootstrap_cannot_write_credentials` includes `openshift-devspaces`; `no_credential_annotation:openshift-devspaces/gitlab-oauth-config`.
+- `stages/070-advanced-app-platform/validate.sh`: `no_retained_secret_annotation` for `openshift-devspaces`, `wksp-ai-developer` and `wksp-ai-admin`; `idle_bootstrap_cannot_write_credentials` includes `openshift-devspaces`; `no_credential_annotation:openshift-devspaces/gitlab-oauth-config`.
 
-`validate.sh --static`: `correction-package.test.py` (`test_all_shell_commands_parse` parses `maas-api-key-provisioning.yaml`; `secret_writer` tests), `sonarqube-scope.test.py` (`test_workspace_mount_is_for_one_persona_and_exact_workspace`), `stage070-upgrade.test.py` (`test_no_old_shared_push_or_direct_apply_path`), and `kustomize build`. `scripts/demo/check-workspace-creation.py --live` dry-runs the admission policy.
+`validate.sh --static`: the stage renders, its components are disjoint, and the scripts parse. The former offline tests (`tests/*.test.py`) and the admission dry-run checker `check-workspace-creation.py` are in git history at `82092e01`.
 
 By hand:
 

@@ -8,9 +8,9 @@ metadata:
   skill-group: "RHOAI Platform"
 description: >
   Use when registering or reading records in `demo-registry`: the Stage 040
-  register-model-cards.sh entries for the private Qwen 3.8 checkpoints and
+  deploy.sh registry entries for the private Qwen 3.8 checkpoints and
   their `modelregistry.opendatahub.io/*` labels on the LLMInferenceService,
-  the Stage 050 record-evaluation.sh `evalhub.*` custom properties on a model
+  the Stage 050 `evalhub.*` evaluation custom properties on a model
   version, registry API calls through the authenticated route, or dashboard
   registry tasks (versions, metadata, transfer jobs, archive, restore). Do NOT
   use for the registry service, database or permissions (use
@@ -37,11 +37,11 @@ records).
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Records are written by scripts through the registry API (`/api/model_registry/v1alpha3`, caller's token, CA-verified route `demo-registry-https`), not the dashboard | `stages/040-governed-models-as-a-service/register-model-cards.sh` | [Register a model][register] |
+| Records are written by scripts through the registry API (`/api/model_registry/v1alpha3`, caller's token, CA-verified route `demo-registry-https`), not the dashboard | `stages/040-governed-models-as-a-service/deploy.sh` | [Register a model][register] |
 | One registered model per checkpoint (name = repository, e.g. `Qwen3.8-27B-NVFP4`), one version per immutable revision (`source-<sha>`), one artifact with the pinned `hf://` URI; idempotent, never overwrites a differing artifact | same script | [Register a model version][version] |
 | Prepared format alternates (`040-local-models/components/qwen38-fp8`) are registered without deployment linkage | `gitops/stages/040-governed-models-as-a-service/040-local-models/components/` | [View registered models][view] |
 | Deployment linkage via labels `modelregistry.opendatahub.io/registered-model-id` and `model-version-id` stamped on the LLMInferenceService; Git sets only `modelregistry.opendatahub.io/name: demo-registry` and delegates the id labels | `gitops/stages/040-governed-models-as-a-service/040-local-models/qwen38-27b-llminferenceservice.yaml` | not product guidance |
-| Evaluation evidence lands as `evalhub.*` custom properties on the model version, because the dashboard renders version properties | `stages/050-model-evaluation/record-evaluation.sh` | [Edit model version metadata][editversion] |
+| Evaluation evidence lands as `evalhub.*` custom properties on the model version, entered in the dashboard model version **Properties**, because the dashboard renders version properties (the former `record-evaluation.sh` is in git history at `82092e01`) | — | [Edit model version metadata][editversion] |
 | Models are deployed from GitOps, not from the registry's Deploy action | `gitops/stages/040-governed-models-as-a-service/040-local-models/` | [Deploy a model version][deploy] (not used) |
 
 ## Procedure
@@ -50,9 +50,11 @@ records).
    `AGENTS.md`):
 
    ```bash
-   ./stages/040-governed-models-as-a-service/register-model-cards.sh
-   ./stages/050-model-evaluation/record-evaluation.sh --job <job id> --model-version <version id>
+   ./stages/040-governed-models-as-a-service/deploy.sh
    ```
+
+   Add evaluation results as `evalhub.*` custom properties in the dashboard
+   model version **Properties**.
 
 2. Inspect read-only:
 

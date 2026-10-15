@@ -47,7 +47,7 @@ otherwise). `enabled` needs `measurement_trust: cooperative-receipts`
 (`MEASUREMENT_TRUST_UNDECIDED` otherwise) and nothing else: there is no
 authority service to answer. A v1 authority store or serial-loop records in a
 v2 run refuse `PROTOCOL_MIXED`. The launch (`autostart-migration.sh`,
-`run-preflight.sh`) refuses every gap; `run-preflight.sh` also requires the
+`stages/130-ai-autonomous-migration/validate.sh --run`) refuses every gap; `stages/130-ai-autonomous-migration/validate.sh --run` also requires the
 producer's v2 hook registration and refuses a registered reconciler.
 
 ## A3. Where the state lives
@@ -307,7 +307,7 @@ through 2026-09-27. They govern only a run that selected `outcome-board/v1`
 
 One rule, `outcome_protocol.select_protocol`, is used by every reader: the K2
 hook, K4 (`k4_mint.py` / `k4_graph.py`), the reconciler, the Stage 050 hook
-producer, `autostart-migration.sh` and `run-preflight.sh`
+producer, `autostart-migration.sh` and `stages/130-ai-autonomous-migration/validate.sh --run`
 (`outcome_protocol.launch_gaps`).
 
 | Question | Answer | Where |
@@ -321,7 +321,7 @@ producer, `autostart-migration.sh` and `run-preflight.sh`
 | `qualification` | Honoured only without a factory declaration and run control: a disposable local fixture. Such a fixture may name a local authority socket (`authority_socket`) to exercise the service path | same |
 | `enabled` | Requires the protected authority service (section 3) — `authority_protected()` true — AND the platform's measurement-trust decision (`MEASUREMENT_TRUST_UNDECIDED` otherwise, section 8b) | same |
 | Mixed state | Outcome protocol with serial-loop records, serial protocol with an outcome store, or a cooperative in-tree store beside the service, refuses `PROTOCOL_MIXED` on every path | `outcome_protocol.mixed_state` |
-| Launch | `autostart-migration.sh` and `run-preflight.sh` refuse any selection refusal, a mixed state, or a closed outcome execution gate (`python3 -m planner.outcome_protocol --root R launch-check`) | `outcome_protocol.launch_gaps` |
+| Launch | `autostart-migration.sh` and `stages/130-ai-autonomous-migration/validate.sh --run` refuse any selection refusal, a mixed state, or a closed outcome execution gate (`python3 -m planner.outcome_protocol --root R launch-check`) | `outcome_protocol.launch_gaps` |
 
 (Superseded 2026-09-27: the template now defaults to `outcome-board/v2` and
 renders no sidecar; Part A.) The golden ships no `board_protocol`; the template defaulted to `outcome-board/v1`

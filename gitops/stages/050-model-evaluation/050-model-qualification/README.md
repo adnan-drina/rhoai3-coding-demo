@@ -10,10 +10,10 @@ access. The Application reports **Suspended** by design while the candidate mode
 |---|---|
 | Argo CD Application | `050-model-qualification` ([manifest](../../../applications/050-model-qualification.yaml)) |
 | Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 2, all Stage 050 components at one commit SHA) |
-| Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced, and Healthy or Suspended only by a stopped InferenceService) and [`validate-ai-services.sh`](../../../../stages/050-model-evaluation/validate-ai-services.sh) (tenant label, tenant discovery, job ServiceAccount, admin access, developer denial) |
+| Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced, and Healthy or Suspended only by a stopped InferenceService) and [`stages/050-model-evaluation/validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (tenant label, tenant discovery, job ServiceAccount, admin access, developer denial) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. Annotation `demo.rhoai.io/accepted-health: Suspended`. |
 | Depends on | `050-mlflow` (AI Pipelines and TrustyAI components enabled by its hook; MLflow for run tracking); `050-evalhub` (EvalHub instance that reconciles the tenant); Stage 040 (MaaS Gateway `maas-default-gateway`, subscription `model-qualification`); Stage 020 (ClusterQueues `cq-cpu-default`, `cq-gpu-reserved-demo`, `cq-gpu-rtxpro6000`; hardware profile `gpu-reserved-demo`); ODF (buckets, Route `s3`). |
-| Used by | `050-evalhub` (Role `evalhub-evaluator` bound to its MCP and automation principals), `050-evaluation-content` and `050-oci-export` (objects in `evaluated-models`), `submit-evaluation.sh`, `record-evaluation.sh`, `swebench-run.sh`. |
+| Used by | `050-evalhub` (Role `evalhub-evaluator` bound to its MCP and automation principals), `050-evaluation-content` and `050-oci-export` (objects in `evaluated-models`); evaluation jobs submitted from the dashboard or the EvalHub REST API. |
 
 ## Why
 
@@ -33,7 +33,7 @@ project. Model evaluation jobs reach production models through MaaS with an API 
 The candidate InferenceService carries `serving.kserve.io/stop: "true"` in Git, so KServe stops it and sets its `Stopped`
 condition. Argo CD's built-in InferenceService health check maps `Stopped=True` to `Suspended` [8], and the Application
 aggregates that to `Suspended`. Stopping frees the GPU between qualification runs. The candidate is in the last sync wave
-(40) so that no other wave waits on it [7]. `demo.rhoai.io/accepted-health: Suspended` lets `stage_apps.py status` accept
+(40) so that no other wave waits on it [7]. `demo.rhoai.io/accepted-health: Suspended` lets `stage-apps.sh status` accept
 the state, and `validate.sh` accepts it only when every non-Healthy resource is an InferenceService whose stop annotation is
 `true`. Set the annotation to `"false"` in Git to start the candidate; the Application then reports Healthy once it is
 ready.
@@ -154,7 +154,7 @@ Git.
 ## Validation
 
 `validate.sh` requires `050-model-qualification` Synced at the stage revision and, if Suspended, that only stopped
-InferenceServices cause it. `validate-ai-services.sh` checks that `evaluated-models` is the only EvalHub tenant, that
+InferenceServices cause it. `stages/050-model-evaluation/validate.sh` checks that `evaluated-models` is the only EvalHub tenant, that
 tenant discovery (`evalhub-discovery`) and the service CA were reconciled, that `evalhub-evalhub-job` exists and may write
 MLflow experiments, that `rhods-admins` may create and read evaluations, providers, collections and experiments, and that
 `rhoai-developers` may not create evaluations.

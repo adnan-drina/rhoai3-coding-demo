@@ -9,8 +9,8 @@ workbenches or deploy models from the sandbox.
 | | |
 |---|---|
 | Argo CD Application | `010-sandbox-storage` ([manifest](../../../applications/010-sandbox-storage.yaml)) |
-| Deployed by | Its own script, [`stages/010-openshift-ai-platform-foundation/deploy-sandbox-storage.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy-sandbox-storage.sh) (annotation `demo.rhoai.io/deploy-script`). Stage 010 `deploy.sh` calls it after the deploy-order components |
-| Validated by | [`validate-sandbox-storage.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate-sandbox-storage.sh) (called by `validate.sh` and by the deploy script) |
+| Deployed by | Its own script, [`stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-sandbox-storage`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-sandbox-storage) (annotation `demo.rhoai.io/deploy-script`). Stage 010 `deploy.sh` calls it after the deploy-order components |
+| Validated by | [`stages/010-openshift-ai-platform-foundation/validate.sh --component 010-sandbox-storage`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh --component 010-sandbox-storage) (called by `validate.sh` and by the deploy script) |
 | Sync | Automated, prune and self-heal; `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; Server-Side Diff via annotation; `ignoreDifferences` on `/data` of both connection Secrets |
 | Depends on | `010-access` (namespace `demo-sandbox`); `010-odf` (StorageClass `openshift-storage.noobaa.io`); `010-rhoai-platform` (dashboard S3 connection type) |
 | Used by | Workbenches and model deployments in `demo-sandbox` (Stages 030-130 and ad-hoc demos) |
@@ -67,9 +67,9 @@ The hook Job stays after a successful run as evidence. Argo CD deletes it before
   resource-level server-side apply, so Argo CD owns only labels and annotations. `ClientSideApplyMigration=false`
   stops Argo CD from moving client-side field ownership, which could replay the credential fields [6]. Data objects
   carry `Prune=false,Delete=false` [6].
-- **Own deploy script.** Before its first write, `deploy-sandbox-storage.sh` refuses to continue if any of the
+- **Own deploy script.** Before its first write, `stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-sandbox-storage` refuses to continue if any of the
   following is true:
-  - the Stage 010 source differs from the selected, published commit (`stage_apps.py select`);
+  - the Stage 010 source differs from the selected, published commit (`stage-apps.sh select`);
   - an existing OBC or connection Secret has an owner, is being deleted, or has another tracking id;
   - the existing Application's identity differs.
 
@@ -79,7 +79,7 @@ The hook Job stays after a successful run as evidence. Argo CD deletes it before
 
 ## Validation
 
-`validate-sandbox-storage.sh` checks each claim and connection:
+`stages/010-openshift-ai-platform-foundation/validate.sh --component 010-sandbox-storage` checks each claim and connection:
 
 - the OBC is `Bound` and tracked by this Application;
 - the generated Secret and ConfigMap are owned by the OBC;

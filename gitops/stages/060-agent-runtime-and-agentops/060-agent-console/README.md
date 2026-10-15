@@ -7,9 +7,9 @@ deleted through the authenticated OpenShell CLI (`060-openshell-runtime`), never
 | | |
 |---|---|
 | Argo CD Application | `060-agent-console` ([manifest](../../../applications/060-agent-console.yaml)) |
-| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-console.sh [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy-console.sh) (own deploy script) |
-| Validated by | [`stages/060-agent-runtime-and-agentops/validate-console.sh`](../../../../stages/060-agent-runtime-and-agentops/validate-console.sh) (Application Synced and Healthy at its pinned revision; `agentOps` is `true`; `ai-admin` and `ai-developer` can get/list Sandboxes and Services in their own workspace, cannot create or delete Sandboxes there, and cannot list Sandboxes in the other workspace) |
-| Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/shared/stage_apps.py`. Sync option `RespectIgnoreDifferences=true`. |
+| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy.sh --component 060-agent-console [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy.sh --component 060-agent-console) (own deploy script) |
+| Validated by | [`stages/060-agent-runtime-and-agentops/validate.sh --component 060-agent-console`](../../../../stages/060-agent-runtime-and-agentops/validate.sh --component 060-agent-console) (Application Synced and Healthy at its pinned revision; `agentOps` is `true`; `ai-admin` and `ai-developer` can get/list Sandboxes and Services in their own workspace, cannot create or delete Sandboxes there, and cannot list Sandboxes in the other workspace) |
+| Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/stage-apps.sh`. Sync option `RespectIgnoreDifferences=true`. |
 | Depends on | `060-openshell-runtime` Synced and Healthy, with the `sandboxes.agents.x-k8s.io` CRD established and namespaces `openshell-admin` and `openshell-developer` present. `010-rhoai-platform` delegating `/spec/dashboardConfig/agentOps` of `odh-dashboard-config`. |
 | Used by | Dashboard users `ai-admin` and `ai-developer` (AgentOps / agent deployments view). |
 
@@ -48,9 +48,9 @@ the `admin` binding for group `rhods-admins` in `060-openshell-runtime`; `ai-dev
 
 ## How
 
-- **Delegation.** Stage 010 lists `/spec/dashboardConfig/agentOps` in its `ignoreDifferences`. `deploy-console.sh`
+- **Delegation.** Stage 010 lists `/spec/dashboardConfig/agentOps` in its `ignoreDifferences`. `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-agent-console`
   checks this with `stage_apps.delegated` before any write.
-- **Guards.** The script selects the reviewed commit (`stage_apps.py select`: the stage source is clean and the
+- **Guards.** The script selects the reviewed commit (`stage-apps.sh select`: the stage source is clean and the
   repository advertises the commit), requires the runtime Application to be
   Healthy and Synced and the Sandbox CRD to be established, and refuses foreign-owned objects with the same names.
 - **Hook lifecycle.** `BeforeHookCreation` only, so the completed Job stays until the next sync [3].
@@ -61,7 +61,7 @@ the `admin` binding for group `rhods-admins` in `060-openshell-runtime`; `ai-dev
 
 ## Validation
 
-`validate-console.sh` (read-only; uses `oc auth can-i --as`). By hand:
+`stages/060-agent-runtime-and-agentops/validate.sh --component 060-agent-console` (read-only; uses `oc auth can-i --as`). By hand:
 
 ```bash
 oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o jsonpath='{.spec.dashboardConfig.agentOps}{"\n"}'

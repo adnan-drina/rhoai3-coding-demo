@@ -23,7 +23,7 @@ Product skills in this repo are thin. They hold what an agent cannot get from
 Red Hat documentation — this repo's decisions, procedures and pitfalls — and
 link to the official sections for everything else. The single version and
 routing registry is `.agents/references/red-hat-doc-map.yaml`; the checker is
-`scripts/shared/check-doc-links.py`.
+`.agents/tools/check-doc-links.py`.
 
 ## Contract (binding for new or updated product skills)
 
@@ -76,8 +76,8 @@ make a version bump a checkable worklist. Not legal advice.
 
    ```bash
    python3 .agents/skills/agentskills-authoring/scripts/validate-skills.py --all
-   python3 scripts/shared/check-doc-links.py --family <family>
-   python3 scripts/shared/check-doc-links.py --live --family <family>   # optional, rate limited
+   python3 .agents/tools/check-doc-links.py --family <family>
+   python3 .agents/tools/check-doc-links.py --live --family <family>   # optional, rate limited
    ```
 
 8. Add each converted skill to `converted_skills` in the map so the checker

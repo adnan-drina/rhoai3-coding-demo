@@ -52,7 +52,7 @@ OpenShift AI 3.5 sections. Detailed records:
    print no values and make no authenticated S3 call):
 
    ```bash
-   ./stages/010-openshift-ai-platform-foundation/validate-sandbox-storage.sh
+   ./stages/010-openshift-ai-platform-foundation/validate.sh --component 010-sandbox-storage
    oc get obc -n demo-sandbox rhoai-models rhoai-workbench
    oc get obc -n evaluated-models
    ```

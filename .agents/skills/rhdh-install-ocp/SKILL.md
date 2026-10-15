@@ -49,7 +49,7 @@ Paths are relative to `gitops/stages/070-advanced-app-platform/` unless absolute
    reviewed change in `subscription.yaml`, `approve-installplan.yaml` and
    `stages/070-advanced-app-platform/validate.sh` (it expects exactly
    `rhdh-operator.v1.10.5`). Keep the map pin consistent
-   (`python3 scripts/shared/check-doc-links.py --family rhdh`).
+   (`python3 .agents/tools/check-doc-links.py --family rhdh`).
 2. Deploy and validate through the stage scripts after the OpenShift safety
    guard in `AGENTS.md`:
 

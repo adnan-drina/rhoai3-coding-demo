@@ -8,9 +8,8 @@ metadata:
   skill-group: "RHOAI Platform"
 description: >
   Use when changing or reviewing runtime guardrails in this repo: the Stage 040
-  dashboard flag `guardrails`, the optional `studio-api.sh
-  --initialize-guardrails` helper that asks the dashboard to create the
-  `NemoGuardrails` resource `nemoguardrails` in `demo-sandbox`, the TrustyAI
+  dashboard flag `guardrails`, the optional dashboard initialization that
+  creates the `NemoGuardrails` resource `nemoguardrails` in `demo-sandbox`, the TrustyAI
   component it depends on (Stage 050), or a proposal to add NeMo or FMS
   Guardrails, detectors, PII masking or prompt-injection rails. Do NOT use for
   playground guardrail toggles (use rhoai-gen-ai-playground), Garak risk scans
@@ -35,9 +34,9 @@ dashboard creates one on request. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Dashboard flag `guardrails: true` set by the `job-enable-dsc-maas` Sync hook on a delegated Stage 010 field; `validate-native.sh` requires it | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [NeMo Guardrails][nemo] |
+| Dashboard flag `guardrails: true` set by the `job-enable-dsc-maas` Sync hook on a delegated Stage 010 field; `stages/040-governed-models-as-a-service/validate.sh` requires it | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [NeMo Guardrails][nemo] |
 | TrustyAI component `Managed` from Stage 050 (the `NemoGuardrails` API group is `trustyai.opendatahub.io`) | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/` | [Basic deployment][basic] |
-| No guardrail CR in Git; `studio-api.sh --initialize-guardrails` calls the dashboard's own initialization, refuses unless the flag is on, and refuses any guardrail resource other than one named `nemoguardrails` | `stages/040-governed-models-as-a-service/studio-api.sh` | [CR configuration reference][crref] |
+| No guardrail CR in Git; the dashboard's own initialization creates it once the flag is on (the former wrapper `studio-api.sh --initialize-guardrails`, which accepted only a resource named `nemoguardrails`, is in git history at `82092e01`) | — | [CR configuration reference][crref] |
 | NeMo Guardrails only; no FMS `GuardrailsOrchestrator` (3.5 documents migrating from FMS to NeMo) | not in Git | [Migrate from FMS to NeMo][migrate] |
 | Guarded models are reached through MaaS; no detector or self-check model is deployed | `gitops/stages/040-governed-models-as-a-service/040-local-models/` | [Separate self-check model][selfcheck] |
 
@@ -50,11 +49,10 @@ dashboard creates one on request. Detailed record:
    ./stages/040-governed-models-as-a-service/validate.sh
    ```
 
-2. Optional initialization (no model calls), after the OpenShift safety guard
-   in `AGENTS.md`; `<sha>` is the deployed Stage 040 revision:
+2. Optional initialization (no model calls) runs from the dashboard; check
+   the result after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash
-   ./stages/040-governed-models-as-a-service/studio-api.sh --expected-revision <sha> --initialize-guardrails
    oc get nemoguardrails.trustyai.opendatahub.io -n demo-sandbox
    ```
 

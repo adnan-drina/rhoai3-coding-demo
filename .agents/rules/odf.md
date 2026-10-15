@@ -23,7 +23,7 @@ books to those skills and holds the one ODF documentation version
 ## Source Rules
 
 - Link ODF documentation of the map's `docs_version` only; run
-  `python3 scripts/shared/check-doc-links.py` after changing links or versions.
+  `python3 .agents/tools/check-doc-links.py` after changing links or versions.
 - Use Red Hat articles and rh-brain only for narrative context and examples;
   official ODF docs remain the product configuration authority.
 - Do not invent StorageCluster, NooBaa, BackingStore, BucketClass, OBC,

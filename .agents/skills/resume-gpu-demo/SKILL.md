@@ -2,7 +2,7 @@
 name: resume-gpu-demo
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
+  version: 1.2.0
   platform-family: "rhoai"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -19,60 +19,54 @@ description: >
 
 # Resume GPU Demo
 
-This skill makes "resume from zero GPU nodes" a first-class workflow for the demo. Prefer the repo script over hand-running many `oc` commands.
+This skill makes "resume from zero GPU nodes" a first-class workflow for the demo. GPU lifecycle is part of the Stage 020 `deploy.sh`; prefer it over hand-running `oc scale`. The former `resume-gpu-demo.sh` wrapper was folded into it.
 
 ## When To Use
 
-- GPU MachineSet was scaled to `0` to save cost.
+- GPU MachineSets were scaled to `0` to save cost.
 - The demo environment was stopped and later started again.
-- Stage 030 private model pods are `Pending`, `SchedulingGated`, or not ready after GPU capacity returns.
+- Private model pods are `Pending`, `SchedulingGated`, or not ready after GPU capacity returns.
 - The user asks whether Kueue, GPU nodes, or private model serving survived a restart.
 
-## Primary Command
+## Primary Commands
 
-Run the scripted recovery path:
+Run these after the OpenShift safety guard in `AGENTS.md`. After a full shutdown, reconcile Stage 020 first, then start GPU capacity:
 
 ```bash
-./scripts/platform/resume-gpu-demo.sh resume
+stages/020-gpu-infrastructure-private-ai/deploy.sh             # re-applies the Stage 020 components at the reviewed revision
+stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1    # start one GPU worker in the default pool
+stages/020-gpu-infrastructure-private-ai/validate.sh
+stages/040-governed-models-as-a-service/validate.sh
 ```
 
-What it does:
+What `deploy.sh --gpus N` does:
 
-1. Requests an Argo CD sync for Stage 020.
-2. Scales the discovered GPU MachineSet to the desired replica count.
+1. Selects the one reviewed GPU MachineSet of the pool (`GPU_POOL=rtxpro6000`, the default, in `GPU_ZONE`, default `us-east-2a`; or `GPU_POOL=l40s`) and checks Stage 020 owns it.
+2. Scales it to `N` (1 or 2); Argo CD ignores the live replica count.
 3. Waits for GPU nodes with allocatable `nvidia.com/gpu`.
-4. Repairs expected GPU node labels and taints if needed.
-5. Waits for NVIDIA `ClusterPolicy` to return to `ready`.
-6. Validates Stage 020.
-7. Requests an Argo CD sync for Stage 030.
-8. Scales stale old model ReplicaSets to zero if they are still holding Kueue quota.
-9. Waits for both private `LLMInferenceService` resources to become ready.
-10. Validates Stage 030.
+4. Waits for the NVIDIA `ClusterPolicy` to return to `ready`.
+
+`--gpus 0` parks every GPU pool, so no forgotten pool keeps billing; private model pods become unavailable.
 
 ## Useful Variants
 
 Check state without changing anything:
 
 ```bash
-./scripts/platform/resume-gpu-demo.sh status
-```
-
-Bring GPU capacity up only:
-
-```bash
-./scripts/platform/resume-gpu-demo.sh up
+stages/020-gpu-infrastructure-private-ai/validate.sh
 ```
 
 Scale GPU capacity down to save cost:
 
 ```bash
-./scripts/platform/resume-gpu-demo.sh down
+stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 0
 ```
 
-Use a non-default GPU node count:
+Two workers, or the L40S pool (Stage 050 candidate queue `lq-gpu-reserved-demo`):
 
 ```bash
-./scripts/platform/resume-gpu-demo.sh resume 2
+stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 2
+GPU_POOL=l40s stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1
 ```
 
 ## Expected Evidence
@@ -80,35 +74,20 @@ Use a non-default GPU node count:
 After a successful resume:
 
 - GPU MachineSet desired replicas match ready replicas.
-- GPU nodes are `Ready`.
-- GPU nodes advertise allocatable `nvidia.com/gpu`.
+- GPU nodes are `Ready` and advertise allocatable `nvidia.com/gpu`.
 - `ResourceFlavor`, `ClusterQueue`, and `LocalQueue` exist.
-- Kueue `Workload` objects exist for private models.
-- `qwen3-6-35b-a3b` and `nemotron-3-nano-30b-a3b` are `Ready=True`.
-- Stage 020 and Stage 030 validation pass, or only known metric warnings remain.
+- Kueue `Workload` objects exist for the private models.
+- The served private model (`qwen3-8-27b` in `internal-models`) is `Ready=True`.
+- Stage 020 and Stage 040 validation pass, or only known metric warnings remain.
 
-## Key Functions
+## Recovery Notes
 
-### `recreate_stopped_gpu_machines`
-
-Handles stuck Machine objects that remain in Stopped state after cloud provider shutdown/start cycles. The function:
-1. Scales the GPU MachineSet to 0
-2. Deletes stopped Machine objects that will never recover
-3. Rescales the MachineSet to the desired replica count so new Machines are provisioned
-
-### `repair_gpu_node_labels`
-
-Reapplies expected GPU node metadata after node replacement or reprovisioning:
-- Adds `node-role.kubernetes.io/gpu=""` label
-- Applies `nvidia.com/gpu=:NoSchedule` taint
-
-These are required for pod scheduling and NVIDIA operator DaemonSet targeting.
+- Machines stuck `Stopped` after a cloud shutdown/start cycle never recover: scale the GPU MachineSet to 0, delete the stopped Machines, then run `deploy.sh --gpus N` again so new Machines are provisioned.
+- Node labels and taints come from the MachineSet template; a replaced node gets them on creation (`docs/TROUBLESHOOTING.md#gpu-nodes-do-not-appear`).
 
 ## Notes
 
 - Kueue persists across restarts, but it does not create cloud GPU nodes by itself.
-- The script treats GPU capacity as a platform lifecycle action and Kueue as the admission/quota control plane.
-- Kueue resource names: ClusterQueue `cq-gpu-reserved-demo`, LocalQueue `lq-gpu-reserved-demo`, ResourceFlavor `gpu-l40s`.
-- The stale ReplicaSet cleanup is demo-specific. It handles the known two-GPU quota rollout case where old model ReplicaSets can keep admitted Kueue reservations while new model pods wait.
+- GPU capacity is a platform lifecycle action; Kueue is the admission and quota control plane.
 - Do not scale GPU nodes down unless the user asks for cost-saving or shutdown.
 - Models are served in the `internal-models` namespace.

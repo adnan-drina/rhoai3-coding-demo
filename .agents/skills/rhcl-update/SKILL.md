@@ -31,7 +31,7 @@ Connectivity Link 1.4 sections.
 | Decision | Where in Git | Official section |
 |---|---|---|
 | Channel `stable`, Automatic approval, no `startingCSV`: z-streams arrive without a Git change | `gitops/stages/040-governed-models-as-a-service/040-maas-operators/rhcl/rhcl-operator-subscription.yaml` | [Update with the web console][update-console] |
-| The qualified minor line and minimum (rhcl 1.4.3) live in the operator policy, which refuses other channels and older or other-minor releases | `scripts/platform/check-operator-policy.py` (`minimum`, `channels`) | [Release notes][relnotes] |
+| The qualified minor line and minimum (rhcl 1.4.3) live in the operator policy, which refuses other channels and older or other-minor releases | `check_operator_policy` in `scripts/lib.sh` (`minimum`, `channels`) | [Release notes][relnotes] |
 | The doc map's `products.rhcl.docs_version` must equal that minor; the checker enforces it | `.agents/references/red-hat-doc-map.yaml` | — |
 | The 1.3.4 pin with Manual approval (2026-07) is retired; its rollback is historical only | `docs/TROUBLESHOOTING.md#maas-gateway-times-out-on-every-path-rhcl-14x-drift` | [Release notes][relnotes] (1.4.0 deprecated; install or upgrade to 1.4.1+) |
 
@@ -40,9 +40,9 @@ Connectivity Link 1.4 sections.
 1. Read the target [release notes][relnotes] and [supported
    configurations][configs]; confirm OpenShift, Service Mesh (3.3/3.4 for 1.4)
    and cert-manager versions match the cluster.
-2. In one change: update `minimum`/`channels` in `check-operator-policy.py`
+2. In one change: update `minimum`/`channels` in `check_operator_policy`
    for rhcl, authorino, limitador and dns; set `docs_version` in the doc map;
-   run `python3 scripts/shared/check-doc-links.py` and fix every `rhcl`
+   run `python3 .agents/tools/check-doc-links.py` and fix every `rhcl`
    finding (skills, READMEs, book slugs and anchors — they changed between
    1.3 and 1.4).
 3. Re-test the MaaS paths that depend on wasm-shim behavior (metering,

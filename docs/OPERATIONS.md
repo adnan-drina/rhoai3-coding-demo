@@ -11,7 +11,7 @@ The executable source of truth remains the scripts:
 
 - `stages/NNN-*/deploy.sh`
 - `stages/NNN-*/validate.sh`
-- `scripts/demo/bootstrap-scaffold-repos.sh` (read-only report of Stage 120/130 GitLab goldens)
+- `scripts/lib.sh`, `scripts/stage-apps.sh` and `scripts/validate-stage-flow.sh` (shared helpers, the Argo CD component engine and the offline repository gate)
 
 Use this guide to understand when to run those scripts, what they do, and how to interpret the results.
 
@@ -40,7 +40,7 @@ Native registry API/database readiness, metrics and Perses backend queries passe
 | OpenShift Lightspeed | Enabled | Owning Subscription/CSV, OLSConfig and operand health; selection alone is not installation evidence |
 | Create users / OPEN Environment | Both unchecked | Inventory actual authentication configuration; do not infer that these settings remove ordinary provider add-ons |
 
-The project guard in [require-node-sizing.sh](../scripts/platform/require-node-sizing.sh) requires at least 16 vCPU and 60 GiB **capacity** for every non-GPU control-plane and CPU worker node. It exempts accelerator nodes. This is a project rule for the complete demo, not a Red Hat minimum or a measured workload guarantee. Allocatable resources must also be recorded.
+The project guard in [`require_node_sizing`](../scripts/lib.sh) requires at least 16 vCPU and 60 GiB **capacity** for every non-GPU control-plane and CPU worker node. It exempts accelerator nodes. This is a project rule for the complete demo, not a Red Hat minimum or a measured workload guarantee. Allocatable resources must also be recorded.
 
 The [RHOAI 3.5 installation requirements](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install) separately require at least two workers with 8 CPUs / 32 GiB each, default dynamically provisioned storage and an identity provider. RHOAI installation and administrative setup require an appropriately privileged non-`kubeadmin` account; ordinary user access is governed separately by project/group permissions. Discovery using a provisioning administrator does not establish that application access is ready.
 
@@ -83,7 +83,7 @@ These add-ons predate project deployment in this environment. Their provisioning
 
 ### Stage 010 readiness and deferred cleanup
 
-The initial pre-install inventory established cluster prerequisites. Stage 010 has since been published and deployed as recorded above; full qualification still requires native component/functionality and real persona acceptance. Existing provider identity is preserved: `setup-access.sh` assigns the confirmed OpenID names to groups and creates the S3 connection without adding an identity provider.
+The initial pre-install inventory established cluster prerequisites. Stage 010 has since been published and deployed as recorded above; full qualification still requires native component/functionality and real persona acceptance. Existing provider identity is preserved: `stages/010-openshift-ai-platform-foundation/deploy.sh` assigns the confirmed OpenID names to groups and creates the S3 connection without adding an identity provider.
 
 Cleanup remains scoped to replacement evidence. The former 3.4/4.20 channels and AutoRAG enablement are superseded by reviewed Stage 010 source. Native metrics and Perses transport evidence permit retirement of their old transport workarounds; persona-dependent dashboard RBAC remains pending. Stage 020 Kueue and Stages 030–050 require their own version/ownership review. Historical validation logs remain historical.
 
@@ -98,7 +98,7 @@ Cleanup remains scoped to replacement evidence. The former 3.4/4.20 channels and
 | RHOAI / DSCI / DSC / model registry | Project Stage 010 [`rhoai-operator`](../gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/kustomization.yaml) and [`rhoai-platform`](../gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/kustomization.yaml) components; RHOAI owns generated components | Selected `stable-3.5`; Dashboard and Workbenches are foundation-owned; MLflow is deferred in fresh source and preserved on live f38; revised source delegates the modelregistry component and both catalogs to Stage 030, while the live f38 registry remains preserved; KServe remains Stage 030-owned, while TrustyAI/evaluation belongs to a later stage |
 | COO / OpenTelemetry / Tempo | Project [Stage 010 `observability-operators` component](../gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/kustomization.yaml) | Automatic approval within the selected channels; native operators own operands, with narrow project tenant access grants |
 | Keycloak `keycloak/keycloak` (`sso` realm, OAuth provider `rhbk`) | Provided by the demo environment (created at provisioning); not owned by GitOps | Prerequisite: Stage 010 `validate.sh` checks it is Ready and that OpenShift login uses the `rhbk` OpenID provider. Stages 060 and 070 own only their realm imports |
-| Demo identity | Project [setup-access.sh](../stages/010-openshift-ai-platform-foundation/setup-access.sh) plus GitOps groups/RBAC; S3 connections from `010-sandbox-storage` | Separate mutating step after deployment; `deploy.sh` does not call it. Private authenticated persona kubeconfigs remain outside Git |
+| Demo identity | Project [stages/010-openshift-ai-platform-foundation/deploy.sh](../stages/010-openshift-ai-platform-foundation/deploy.sh) plus GitOps groups/RBAC; S3 connections from `010-sandbox-storage` | `deploy.sh` assigns the demo group membership. Private authenticated persona kubeconfigs remain outside Git |
 | GPUs / NFD / Kueue | Stage 020 desired state unless provisioner installation is observed | Stage 020 source selects NFD `stable`, NVIDIA `v26.7` and Kueue `stable-v1.4` with Automatic approval (installed 2026-10-14: NVIDIA v26.7.2, Kueue 1.4.3); no GPU capacity is implied by CPU worker settings |
 | Model serving / MaaS / developer services | Stages 030 / 040 / 050 | Inventory any existing installations without promoting catalog entries into installed/compatible evidence |
 
@@ -122,13 +122,14 @@ Collect ClusterVersion/ClusterOperators, nodes/Machines/MachineSets/autoscalers,
 
 ## Script groups
 
-| Directory | Purpose | Entry points |
-|---|---|---|
-| `scripts/platform/` | Platform sizing, GPU lifecycle and workshop layout validation | `require-node-sizing.sh`, `resume-gpu-demo.sh`, `validate-stage-flow.sh` |
-| `scripts/demo/` | Stages 110–130 golden publishing, demo reset/cleanup and consumer checks | `bootstrap-scaffold-repos.sh`, `reset-coolstore-demo.sh`, `delete-scaffolded-project.sh`, `check-kilo-provider.py`, `check-workspace-creation.py` |
-| `scripts/shared/` | Helpers used by both platform and developer workflow stages | `lib.sh`, `validate-lib.sh` |
+| Path | Purpose |
+|---|---|
+| `stages/NNN-*/deploy.sh`, `stages/NNN-*/validate.sh` | One deploy and one validate script per stage; GPU lifecycle is `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus N` |
+| `scripts/lib.sh` | Sourced helpers: `load_env`, `check_oc_logged_in`, `check_operator_policy`, `require_node_sizing`, `check_serving_prerequisites` |
+| `scripts/stage-apps.sh` | Argo CD component engine used by the stage scripts (`select`, `deploy`, `apply`, `sync`, `wait`, `status`, `owner`, `preflight`, `check-static`) |
+| `scripts/validate-stage-flow.sh` | Offline repository gate, including rendered-manifest checks; `--live` runs every stage `validate.sh` |
 
-Tests remain beside their helpers. Run scripts from the repository root using their full grouped paths; source common helpers from `scripts/shared/`. Publishing, reset, cleanup and GPU lifecycle actions retain their existing effects and guards. Stage-local deploy/validate scripts remain in their stage directories.
+Run scripts from the repository root. Other operator helpers (golden reporting, demo reset and cleanup, workspace-creation checks, GPU capacity probe, application moves) were retired; their last versions are in git history at `82092e01`.
 
 The obsolete manual workspace MaaS route repair helper `patch-workspace-maas-route.sh` and its companion test were removed: the current catalog/template validates and stamps routing at creation, and preflight/planner checks refuse missing or incorrect routes. The supported recovery path is to preserve work/evidence, refresh routing inputs and create a new workspace through the current template. Factory route injection and its acceptance tests remain active; historical workspaces are not patched by this cleanup.
 
@@ -153,9 +154,8 @@ in-cluster GitLab (`rhoai-platform/quarkus-migration-scaffold-v2`). The
 `070-gitlab` integration hub publishes both goldens as one ordinary commit from
 the Application's reviewed platform revision on every sync; the GitHub copies
 only seed the first import and need no push. To publish a golden change, merge
-it to `main` and deploy Stage 070. `scripts/demo/bootstrap-scaffold-repos.sh`
-prints the published golden URLs (`SCAFFOLD_REPOS=migration` or `agentic` for
-one). Do not GitHub-rename historical `quarkus-migration-scaffold`. Do not dest-complete
+it to `main` and deploy Stage 070; the Stage 120 and Stage 130 `validate.sh`
+check the published goldens. Do not GitHub-rename historical `quarkus-migration-scaffold`. Do not dest-complete
 Operator ack gates or run `kanban daemon --force`. Factory isolation: Stage 080
 [SOLUTION-ARCHITECTURE.md](../stages/130-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
 §8.
@@ -266,7 +266,7 @@ run-agnostic; the expected model and wall budget come from the golden checkout:
 ```bash
 WORKSPACE=<project-name> POD=<workspace-pod> GOLDEN_CHECKOUT=<clean golden clone> \
 GOLDEN_SHA=<full sha> PLATFORM_SHA=<full sha> \
-  bash stages/130-ai-autonomous-migration/run-preflight.sh
+  bash stages/130-ai-autonomous-migration/validate.sh --run
 ```
 
 The version-specific v10/v11 preflight scripts are retired; their original
@@ -329,7 +329,7 @@ a database client outside the harness.
 
 ### Stage 130: after creating a migration workspace
 
-The current app-migration factory stamps the MaaS hostAlias at creation using the Gateway hostname and internal Service IP validated by the catalog generator. Confirm the workspace resolves the MaaS hostname to that internal address; `run-preflight.sh` refuses the public load-balancer path. If routing inputs are stale, refresh the catalog, preserve existing work and run evidence, and create a new workspace through the current template. Do not manually repair the old workspace route.
+The current app-migration factory stamps the MaaS hostAlias at creation using the Gateway hostname and internal Service IP validated by the catalog generator. Confirm the workspace resolves the MaaS hostname to that internal address; `stages/130-ai-autonomous-migration/validate.sh --run` refuses the public load-balancer path. If routing inputs are stale, refresh the catalog, preserve existing work and run evidence, and create a new workspace through the current template. Do not manually repair the old workspace route.
 
 ### Stage 130: authorizing a run (the pilot seal)
 
@@ -387,7 +387,7 @@ does is repair mechanisms, never edit product code or evidence by hand:
 | A gate fails with a message that names no file of the tree (the work list says `unlocatable`) | `fix-until-green/scripts/diagnose.py --root . --list` names the failure and what has been spent on it; `--open` starts one of two ten-minute attempts, `--close --conclusion LOCATED\|ENVIRONMENT\|DECISION_REQUIRED\|INCONCLUSIVE --investigated … --finding … --proposed-action …` records it under `evidence/diagnosis/`. The tool grants no write authority — a product change while it runs refuses the close — and closing **discharges nothing**: the blocker stays blocking, and what changes is that the run now carries a conclusion someone can act on. A third attempt refuses: that is the finding that the failure needs a decision, not more looking. |
 | A card ended `blocked` although the loop record names its verdict | `hermes kanban complete <id> --summary "…"` from the workspace CLI (the daemon promotes the child only when every parent is done). |
 | A card sits in `triage` | Dashboard "→ ready" (the CLI has no triage verb). |
-| The worker stalls for minutes then reconnects | Check `providers.custom.stale_timeout_seconds` and `HERMES_STREAM_STALE_TIMEOUT` (900) in the managed config; exact-180 s `DC` lines in the gateway access log mean the default is back. `DC` lines at 400–500 s with the pod socket still established mean the workspace is on the public path: `getent hosts maas.apps.<domain>` must print the internal ClusterIP 172.30.250.250. Since 2026-09-24 the app-migration factory stamps that hostAlias at creation (from the platform entity's validated `rhoai3.redhat.com/maas-host`/`maas-internal-ip`) and `run-preflight.sh` refuses a workspace without it; for a stale workspace, refresh the routing inputs, preserve its work and evidence, and create a new workspace through the current template. |
+| The worker stalls for minutes then reconnects | Check `providers.custom.stale_timeout_seconds` and `HERMES_STREAM_STALE_TIMEOUT` (900) in the managed config; exact-180 s `DC` lines in the gateway access log mean the default is back. `DC` lines at 400–500 s with the pod socket still established mean the workspace is on the public path: `getent hosts maas.apps.<domain>` must print the internal ClusterIP 172.30.250.250. Since 2026-09-24 the app-migration factory stamps that hostAlias at creation (from the platform entity's validated `rhoai3.redhat.com/maas-host`/`maas-internal-ip`) and `stages/130-ai-autonomous-migration/validate.sh --run` refuses a workspace without it; for a stale workspace, refresh the routing inputs, preserve its work and evidence, and create a new workspace through the current template. |
 | The loop refuses `RUN_CONTROL_MISSING`, `HARNESS_RELEASE_MISMATCH` or `MODEL_PROFILE_MISMATCH` (exit 2 from `run-verify.sh`, `advance.py` or `k4_mint.py`) | A v13+ run is governed by the platform's `<run>-run-control` ConfigMap (the migration-run provisioner writes it once from the scaffolding push, mounted read-only at `/etc/rhoai3/run-control`): the contract, the pinned model profile, and the harness release = the scaffolding commit. MISSING: the ConfigMap or its mount is absent; re-run provisioning for the run and restart the workspace. A mid-run harness change is an assisted continuation: commit it, then record `release-rebase.json` (`{"commit": "<sha>", "reason": "..."}`) in the ConfigMap with `oc` (platform authority, not the workspace); it applies at the next workspace start (mount-on-start). A profile change is a new run. |
 | `LOOP_ADMISSION` / `LOOP_NO_SUCCESSOR` after an ACCEPTED step (the card is blocked, not done) | `verification/loop/continuation.json` names the stage (`admission-refused`, `mint-failed`, `no-successor`) and the reason. Restore the named prerequisite, then unblock the card; its worker re-runs `advance.py` with the same arguments, which finishes admission and the mint without a second step. K2 refuses `kanban_complete` until the continuation is `minted`. |
 | Admission names `RUN_ACTIVATION_FOREIGN`, or the M1 binding is missing | The activation is the platform record plus the write-once M1 binding (`/projects/.platform/run-control-state/binding.json`, never `.hermes/pins.json`). FOREIGN: the record names another run or scaffolding commit; create the run again. A lost binding: re-run the M1 continuation (`autostart-migration.sh --after-m1`), which writes it once. |
@@ -414,10 +414,9 @@ Before deploying the workshop, confirm:
 
 - You are logged into the target OpenShift cluster with sufficient privileges.
 - Stage 020 requires AWS capacity for at least one `g7e.2xlarge` RTX PRO 6000 worker (the default pool, one MachineSet per zone); the L40S (`g6e.2xlarge`) pool is optional. Generate and review the pool MachineSets before publishing them; all start at 0 replicas. The stage never scales CPU pools; the observed four CPU workers are distributed 2/1/1 across three pools. Confirm AMI architecture, region/AZ, instance quota and scoped Machine API credentials separately from API dry-run admission.
-- `oc`, `git`, `bash`, `curl`, `jq` and `kustomize` are available locally (`validate-stage-flow.sh` uses `kustomize`; scripts use `oc kustomize`).
-- `python3` (3.9 or later) and `ruby` (its standard YAML library parses rendered manifests in several scripts) are
-  available. Stage 070 static checks and chart rendering also need PyYAML, jsonschema and Jinja2 (`pip install pyyaml jsonschema jinja2`); `validate-stage-flow.sh` runs that offline suite when `PYTHON` (default `python3`) has them, and warns that it did not run otherwise.
-- No `argocd` CLI is needed to deploy or validate: stage scripts use `scripts/shared/stage_apps.py`. The cleanup
+- `oc`, `git`, `bash`, `curl` and `jq` are available locally (scripts render with `oc kustomize`).
+- `ruby` (its standard YAML library parses rendered manifests in the scripts) is available; `python3` (3.9 or later) is needed only for the Stage 050 KFP pipeline compile and the Stage 130 run check.
+- No `argocd` CLI is needed to deploy or validate: stage scripts use `scripts/stage-apps.sh`. The cleanup
   commands below use it, or the OpenShift GitOps UI.
 - You are using the intended branch and remote for the GitOps source.
 - `env.example` has been copied to `.env` and configured with required credentials.
@@ -432,7 +431,7 @@ git remote -v
 git status --short
 ```
 
-MCP servers are native Stage 060 components (MCP Lifecycle Operator, project `mcp-servers`): the read-only `openshift-mcp-server` is token-less and in-cluster (bounded ServiceAccount scope; caller tokens honored), the read-write `openshift-mcp-server-rw` requires the caller's OpenShift token. Stage 040 publishes both playground discovery entries with `publish-catalog-mcp.sh`; no MCP credentials live in `.env`. Stage 040 also provisions the saved playground agent **OpenShift Ops Assistant** in `demo-sandbox`: the `agent-prompt-provisioner` Sync-hook Job registers the reviewed system prompt `openshift-ops-assistant` in the project's MLflow prompt registry (datascience runtime image, `kubernetes-namespaced` auth, new version only on template change) and the agent ConfigMap references it by name, so a prompt edit in Git becomes a new version on the next sync; check the Job (`oc get job agent-prompt-provisioner -n demo-sandbox`) and **Gen AI studio → Prompts** if the agent warns that its prompt is missing.
+MCP servers are native Stage 060 components (MCP Lifecycle Operator, project `mcp-servers`): the read-only `openshift-mcp-server` is token-less and in-cluster (bounded ServiceAccount scope; caller tokens honored), the read-write `openshift-mcp-server-rw` requires the caller's OpenShift token. Stage 040 publishes both playground discovery entries with `stages/040-governed-models-as-a-service/deploy.sh`; no MCP credentials live in `.env`. Stage 040 also provisions the saved playground agent **OpenShift Ops Assistant** in `demo-sandbox`: the `agent-prompt-provisioner` Sync-hook Job registers the reviewed system prompt `openshift-ops-assistant` in the project's MLflow prompt registry (datascience runtime image, `kubernetes-namespaced` auth, new version only on template change) and the agent ConfigMap references it by name, so a prompt edit in Git becomes a new version on the next sync; check the Job (`oc get job agent-prompt-provisioner -n demo-sandbox`) and **Gen AI studio → Prompts** if the agent warns that its prompt is missing.
 
 ## Bootstrap
 
@@ -488,7 +487,7 @@ Deploy stages in order:
 ./stages/070-advanced-app-platform/deploy.sh
 ```
 
-Stage 060 `deploy.sh` covers `060-openshell-identity` and `060-openshell-runtime`; its other three components use `deploy-mcp-platform.sh`, `deploy-native-mcp.sh` and `deploy-console.sh` (see the Stage 060 README).
+Stage 060 `deploy.sh` covers `060-openshell-identity` and `060-openshell-runtime`; its other three components use `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-mcp-platform`, `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-agent-tools` and `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-agent-console` (see the Stage 060 README).
 
 Stages 110–130 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 070 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 070's deploy script creates no secrets from `.env`; it checks read-only preconditions (node sizing, a Managed and Available internal registry) and Sync hooks create the scoped GitLab, SonarQube and integration identities.
 
@@ -512,13 +511,13 @@ Each script applies its stage's Applications from `gitops/applications/` (`<NNN>
 Run static stage-layout validation before cluster work:
 
 ```bash
-./scripts/platform/validate-stage-flow.sh
+scripts/validate-stage-flow.sh
 ```
 
 After stages are deployed, run every stage `validate.sh` in directory order:
 
 ```bash
-./scripts/platform/validate-stage-flow.sh --live
+scripts/validate-stage-flow.sh --live
 ```
 
 Run the matching validation script after each stage:
@@ -553,7 +552,7 @@ Inspect an application, or every component Application of a stage:
 ```bash
 oc get application 040-local-models -n openshift-gitops -o yaml
 oc get applications -n openshift-gitops -l demo.rhoai.io/stage=040
-python3 scripts/shared/stage_apps.py status 040
+scripts/stage-apps.sh status 040
 ```
 
 List resources managed by an application:
@@ -566,13 +565,13 @@ oc get application 040-local-models -n openshift-gitops -o json \
 Find which component Application owns an object:
 
 ```bash
-python3 scripts/shared/stage_apps.py owner 040 ConfigMap gen-ai-aa-mcp-servers redhat-ods-applications
+scripts/stage-apps.sh owner 040 ConfigMap gen-ai-aa-mcp-servers redhat-ods-applications
 ```
 
 Force a sync (re-runs its hooks) if needed:
 
 ```bash
-python3 scripts/shared/stage_apps.py sync 040 --app 040-local-models --resync
+scripts/stage-apps.sh sync 040 --app 040-local-models --resync
 ```
 
 If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for automated sync. Most applications have automated sync enabled.
@@ -583,14 +582,7 @@ Stages 010 to 060 are deployed as component Applications instead of one large on
 
 ### Moving objects between Applications
 
-Splitting, renaming or re-pointing (new `source.path`) an Application must never delete and recreate its objects. The Applications have no `resources-finalizer`, so deleting one leaves its objects in place, and an Application takes an object over by rewriting its `argocd.argoproj.io/tracking-id`. `scripts/platform/move-applications.py` does this in a safe order:
-
-```bash
-python3 scripts/platform/move-applications.py --stage NNN --revision <pushed sha> [--app NAME ...] [--from OLD ...] --dry-run
-python3 scripts/platform/move-applications.py --stage NNN --revision <pushed sha> [--app NAME ...] [--from OLD ...]
-```
-
-It records the objects and their UIDs, stops automated sync on the `--from` Applications, applies the new Applications at the revision, starts one sync (with the Application's own `syncOptions`) for Applications without automated sync, runs any sync gate (`060-openshell-runtime` needs `setup-runtime.py` after its sync applied `openshell-runtime-ready`), waits for each Application Synced and Healthy, checks every object's tracking id and UID, and then deletes the old Applications without cascade. Without `--from` it only re-points existing Applications. It is safe to re-run after a failure. Run the stage `validate.sh` afterwards. The procedure, its reasons and rollback are in the `gitops-move-applications` skill.
+Splitting, renaming or re-pointing (new `source.path`) an Application must never delete and recreate its objects. The Applications have no `resources-finalizer`, so deleting one leaves its objects in place, and an Application takes an object over by rewriting its `argocd.argoproj.io/tracking-id`. The safe order is: record the objects and their UIDs (`scripts/stage-apps.sh preflight` lists the ones the new Applications will take over), stop automated sync on the old Applications, apply the new Applications at the revision (`scripts/stage-apps.sh apply`), start one sync each with the Application's own `syncOptions` (`scripts/stage-apps.sh sync`), run any sync gate (`060-openshell-runtime` needs `stages/060-agent-runtime-and-agentops/deploy.sh` after its sync applied `openshell-runtime-ready`), wait for each Application Synced and Healthy (`scripts/stage-apps.sh wait`), check every object's tracking id and UID, and then delete the old Applications without cascade. A re-point (same names, new path) skips the first and last Application steps. Run the stage `validate.sh` afterwards. The commands, reasons and rollback are in the `gitops-move-applications` skill; the former helper `move-applications.py` is in git history at `82092e01`.
 
 To roll back, re-create the previous Application at its last revision with automated sync off, sync it so it takes the objects back, delete the new Applications (no cascade), then turn automated sync on again.
 
@@ -598,21 +590,14 @@ To roll back, re-create the previous Application at its last revision with autom
 
 Component folders are named exactly like their Application (`gitops/stages/010-openshift-ai-platform-foundation/010-access/` for `010-access`), and the Application files live flat in `gitops/applications/`. A cluster deployed before this layout still points each Application at the old `source.path`; move it with the same names (a re-point, no `--from`), one stage at a time from 010 to 070, at one reviewed, pushed revision:
 
-```bash
-R=$(git rev-parse <reviewed ref>)        # full SHA, on origin
-for S in 010 020 030 040 050 060 070; do
-  python3 scripts/platform/move-applications.py --stage "$S" --revision "$R" --dry-run   # read-only; review its output
-  python3 scripts/platform/move-applications.py --stage "$S" --revision "$R" $([[ $S == 070 ]] && echo --sequential)
-  ./stages/*"$S"*/validate.sh
-done
-```
+Use the re-point procedure from the `gitops-move-applications` skill for each stage in turn, then run `./stages/*"$S"*/validate.sh`. Stage 070 moves one Application at a time in deploy order.
 
-- **Read the dry run first.** It records every object and its UID, and prints per Application `path <old> -> <new>; render ...`. Renders are identical for Stages 010 to 060. Stage 070 differs only where paths are embedded in content: the `stage070-project-applications` policy and the `gitlab-project-reconciler` script name the new `070-pipelines/project-enrollment` path, and the RHDH catalog bundle names the new `070-rhdh/templates/...` URLs, so those two content-hashed ConfigMaps get new names and the CronJobs and Job that mount them follow. Stop on any other difference.
-- **Cluster-specific settings carry over.** The helper copies each live Application's `source.kustomize` (Stage 040 Gateway hostnames) and the Stage 020 MachineSet replica delegation onto its replacement.
-- **Expect restarts.** Each sync re-runs the Application's Sync hooks (their Jobs are recreated) and can roll workloads whose pod template changed (Stage 070 catalog and reconciler mounts). The helper fails unless every recorded object keeps its tracking id and UID afterwards; hook Jobs are the expected exception.
-- **Stage 060** has no automated sync: the helper starts one sync per Application and runs the `060-openshell-runtime` gate (`setup-runtime.py`).
+- **Compare the renders first.** Renders are identical for Stages 010 to 060. Stage 070 differs only where paths are embedded in content: the `stage070-project-applications` policy and the `gitlab-project-reconciler` script name the new `070-pipelines/project-enrollment` path, and the RHDH catalog bundle names the new `070-rhdh/templates/...` URLs, so those two content-hashed ConfigMaps get new names and the CronJobs and Job that mount them follow. Stop on any other difference.
+- **Carry cluster-specific settings over.** Each live Application's `source.kustomize` (Stage 040 Gateway hostnames) and the Stage 020 MachineSet replica delegation must reach its replacement.
+- **Expect restarts.** Each sync re-runs the Application's Sync hooks (their Jobs are recreated) and can roll workloads whose pod template changed (Stage 070 catalog and reconciler mounts). Every recorded object must keep its UID afterwards; hook Jobs are the expected exception.
+- **Stage 060** has no automated sync: start one sync per Application with `scripts/stage-apps.sh sync` and run the `060-openshell-runtime` gate (`stages/060-agent-runtime-and-agentops/deploy.sh`).
 - **Stage 070 delivery projects** keep reconciling at their pinned revision; the project provisioner moves each `project-*` Application to the new enrollment path and revision on its next run, which the updated policy allows. Check the Developer Hub catalog lists both golden-path templates after `070-rhdh` syncs.
-- **Rollback.** Before the move, discard the branch. After it, run the same helper with the previous revision (the old layout) for each moved stage, 070 down to 010, and validate again; a Git revert alone does not move live Applications back.
+- **Rollback.** Before the move, discard the branch. After it, re-point again to the previous revision (the old layout) for each moved stage, 070 down to 010, and validate again; a Git revert alone does not move live Applications back.
 
 ## Developer Workflow Branch Validation
 
@@ -629,7 +614,7 @@ oc annotate application 070-devspaces -n openshift-gitops argocd.argoproj.io/ref
 Rollback to the stable platform branch:
 
 ```bash
-# Re-pin every Stage 070 component to the reviewed commit (stage_apps.py deploy 070 pins and orders them).
+# Re-pin every Stage 070 component to the reviewed commit (stage-apps.sh deploy 070 pins and orders them).
 ./stages/070-advanced-app-platform/deploy.sh
 ```
 
@@ -643,7 +628,7 @@ Stage 010 installs OpenShift AI and platform dependencies. Operator reconciliati
 
 The new source uses GitOps `gitops-1.21`, RHOAI `stable-3.5`, ODF `stable-4.22` and observability operator subscriptions, all with Automatic approval within their channels. Deployment requires an explicit published revision matching local Stage 010 manifests and scripts; `deploy.sh --revision <reviewed-published-sha>` pins the component Applications to that immutable commit. Do not point Argo at older `main` content. Exact InstallPlan owner and sole-CSV checks precede approval.
 
-Use the existing OpenID accounts `ai-admin` and `ai-developer`; authenticate each through the provider for final acceptance. `scripts/platform/refresh-persona-logins.sh` signs each persona in through the browser into its own kubeconfig (`RHOAI_ADMIN_KUBECONFIG`, `RHOAI_DEVELOPER_KUBECONFIG`), never the default one; Stage 010 `validate.sh` reports a missing or expired persona session as a warning (exit 2) and a wrong user or cluster as a failure. Group membership can be configured before first login; missing User objects remain unverified identities. Set `RHOAI_ADMIN_USER` and `RHOAI_DEVELOPER_USER`, then run `setup-access.sh` after platform/OBC readiness. It assigns groups and the S3 connection without changing OAuth, passwords or provider Keycloak. Group membership remains external to GitOps self-heal. Supply separate private `RHOAI_ADMIN_KUBECONFIG` and `RHOAI_DEVELOPER_KUBECONFIG` files for actual persona checks; impersonated groups are not acceptance evidence.
+Use the existing OpenID accounts `ai-admin` and `ai-developer`; authenticate each through the provider for final acceptance. `stages/010-openshift-ai-platform-foundation/validate.sh --login-personas` signs each persona in through the browser into its own kubeconfig (`RHOAI_ADMIN_KUBECONFIG`, `RHOAI_DEVELOPER_KUBECONFIG`), never the default one; Stage 010 `validate.sh` reports a missing or expired persona session as a warning (exit 2) and a wrong user or cluster as a failure. Group membership can be configured before first login; missing User objects remain unverified identities. Set `RHOAI_ADMIN_USER` and `RHOAI_DEVELOPER_USER`, then run `stages/010-openshift-ai-platform-foundation/deploy.sh` after platform/OBC readiness. It assigns groups and the S3 connection without changing OAuth, passwords or provider Keycloak. Group membership remains external to GitOps self-heal. Supply separate private `RHOAI_ADMIN_KUBECONFIG` and `RHOAI_DEVELOPER_KUBECONFIG` files for actual persona checks; impersonated groups are not acceptance evidence.
 
 MLflow uses a dedicated single-instance PostgreSQL 16 workload with a retained gp3 PVC and namespace NetworkPolicy. Database connections are plaintext within its namespace (`sslmode=disable`); this is a durable demo setup without HA or a production database claim. Provider Keycloak storage is not reused. The historical runtime helpers create missing credentials, reuse existing secrets without rotation and use NooBaa-generated S3 inputs with service CA trust.
 
@@ -664,7 +649,7 @@ Point-in-time validation logs from 2026-05 and 2026-07 remain in Git history. Th
 
 ### Stage 010 console observability component
 
-The permanent `010-console-observability` Application manages `UIPlugin/monitoring` and the console plugin list (`Console/cluster` `spec.plugins`, from `console-plugins.yaml`); COO manages the generated monitoring plugin and console Perses server. Stage 010 `deploy.sh` deploys it after the foundation components; redeploy it alone with `./stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh --revision <published ref>` and validate with `validate-console-observability.sh`. These commands do not touch the foundation components or deploy held Lightspeed/storage drafts.
+The permanent `010-console-observability` Application manages `UIPlugin/monitoring` and the console plugin list (`Console/cluster` `spec.plugins`, from `console-plugins.yaml`); COO manages the generated monitoring plugin and console Perses server. Stage 010 `deploy.sh` deploys it after the foundation components; redeploy it alone with `./stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-console-observability --revision <published ref>` and validate with `stages/010-openshift-ai-platform-foundation/validate.sh --component 010-console-observability`. These commands do not touch the foundation components or deploy held Lightspeed/storage drafts.
 
 The native Perses operator synchronizes the existing RHOAI dashboards/datasources into the console instance. No privileged global datasource or new metrics permission is configured. Native readiness passed. The console Perses accelerator datasource is restricted to platform administrators: installation-administrator proxy queries returned nonempty HTTP 200; genuine `ai-admin` and `ai-developer` returned HTTP 403. The RHOAI `ai-admin` Infrastructure metrics access remains enabled. No additional RBAC is granted; browser checks are user-owned. In the console, reload, open **Observe → Dashboards (Perses)** and select `redhat-ods-monitoring`; then open **Observe → Dashboards → NVIDIA DCGM Exporter Dashboard** for GPU metrics. Model-serving dashboards require later models/traffic. The existing trace dashboard backend error remains a separate issue.
 
@@ -672,7 +657,7 @@ The native Perses operator synchronizes the existing RHOAI dashboards/datasource
 
 Stage 020 source installs native NFD, NVIDIA GPU Operator and Red Hat build of Kueue, plus the CPU queue and one GPU queue and hardware profile per GPU type. The three Subscriptions use Automatic approval within their channels, `stable` (NFD), `v26.7` (NVIDIA) and `stable-v1.4` (Kueue), with no `startingCSV`. Installed on 2026-10-14: `nfd.4.22.0-202609291750`, `gpu-operator-certified.v26.7.2` and `kueue-operator.v1.4.3`. No fixed Red Hat-tested RHOAI/operator tuple is claimed. The RHOAI 3.5 "Enabling NVIDIA GPUs" step that deletes the `migration-gpu-status` ConfigMap and restarts the dashboard is not automated. On this cluster the ConfigMap does not exist (checked 2026-10-14), so there is nothing to delete; check for it after an upgrade from an earlier release.
 
-Generate the GPU pool files from one explicitly selected active AWS CPU worker MachineSet with `generate-gpu-machineset.sh --source <machineset> --write`. It writes both pools (RTX PRO 6000 `g7e.2xlarge` per zone as the default, and L40S `g6e.2xlarge`) at 0 replicas with 200 GB encrypted gp3 disks. Review the provider references, then publish the files. The deploy preflight checks published source, existing ownership, provider cert-manager and the healthy Stage 010 Kueue delegation before applying only the Stage 020 component Applications. It never repoints Stage 010 or changes CPU capacity. NFD, driver, validator and DCGM operands remain operator-owned.
+Generate the GPU pool files from one explicitly selected active AWS CPU worker MachineSet with `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets <machineset> --write`. It writes both pools (RTX PRO 6000 `g7e.2xlarge` per zone as the default, and L40S `g6e.2xlarge`) at 0 replicas with 200 GB encrypted gp3 disks. Review the provider references, then publish the files. The deploy preflight checks published source, existing ownership, provider cert-manager and the healthy Stage 010 Kueue delegation before applying only the Stage 020 component Applications. It never repoints Stage 010 or changes CPU capacity. NFD, driver, validator and DCGM operands remain operator-owned.
 
 Stage 020 patches only `default-dsc.spec.components.kueue` to `Unmanaged` with `autoCreateQueues: false`. The native integration creates the Kueue singleton; GitOps owns ClusterQueues, LocalQueues and profiles. The CPU queue and the two GPU queues (`cq-gpu-rtxpro6000` and the L40S `cq-gpu-reserved-demo`, two units each) are the supported topology; unused zero-quota shared/priority resources and the unconsumed priority class are removed. Global profiles require matching LocalQueues in every consuming project; this stage provisions them only in `demo-sandbox`.
 
@@ -681,7 +666,7 @@ Stage 020 patches only `default-dsc.spec.components.kueue` to `Unmanaged` with `
 For a one-time reserved queue test, use the native **Pod** integration: the RHOAI-created Kueue configuration does not enable BatchJob. Derive the image and `vectorAdd` command from the successful native CUDA probe, request one GPU, and use the project-allocated nonroot UID with `restricted-v2`, `hostUsers: true`, dropped capabilities, disabled privilege escalation and RuntimeDefault seccomp. Do not add SCC grants or `NVIDIA_VISIBLE_DEVICES=all` to an ordinary allocated-GPU consumer. NVIDIA 26.7 documents that `hostUsers: false` is unsupported with CDI and can cause a sync-socket container-creation failure. [NVIDIA CDI known issues](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/26.7/cdi.html#known-issues).
 
 ```bash
-source scripts/shared/lib.sh
+source scripts/lib.sh
 REPO_ROOT="$PWD"
 load_env
 check_oc_logged_in
@@ -755,14 +740,14 @@ The one Gateway has two HTTPS listeners: `api` (shared API hostname, also used b
 
 The durable PostgreSQL database remains in `models-as-a-service-db`. Runtime credentials are reused, never rotated by deployment. A metadata-only wave-7 credential barrier blocks database/storage wave 8 until the private setup helper supplies them. Native AIGateway creates `redhat-ai-gateway-infra`, where the runtime helper creates or reuses `maas-db-config`. Missing credentials with retained storage/configuration stop deployment. PostgreSQL plaintext transport is constrained by a namespace-scoped NetworkPolicy.
 
-The project-owned `external-models` namespace contains the native ExternalProvider, ExternalModel and MaaSModelRef. `setup-provider-secret.sh` reuses the approved OpenAI credential or supplies approved local input through stdin. Git contains no provider key; the native Secret uses `inference.llm-d.ai/ipp-managed=true`. GPT-6 Luna uses `openai-chat`; function calls require `reasoning_effort=none`, and Responses built-in tools are outside this protocol. Red Hat-hosted MiniMax M2 and its `redhat-models` provider were removed from the governed catalog on 2026-10-09; Claude Sonnet 5.5 uses `openai-chat` against Anthropic's OpenAI-compatible endpoint.
+The project-owned `external-models` namespace contains the native ExternalProvider, ExternalModel and MaaSModelRef. `stages/040-governed-models-as-a-service/deploy.sh` reuses the approved OpenAI credential or supplies approved local input through stdin. Git contains no provider key; the native Secret uses `inference.llm-d.ai/ipp-managed=true`. GPT-6 Luna uses `openai-chat`; function calls require `reasoning_effort=none`, and Responses built-in tools are outside this protocol. Red Hat-hosted MiniMax M2 and its `redhat-models` provider were removed from the governed catalog on 2026-10-09; Claude Sonnet 5.5 uses `openai-chat` against Anthropic's OpenAI-compatible endpoint.
 
 ```bash
 ./stages/040-governed-models-as-a-service/deploy.sh
 ./stages/040-governed-models-as-a-service/validate.sh --readiness
 RHOAI_STAGE040_PERSONA_KUBECONFIG=/private/path/persona-kubeconfig \
 ./stages/040-governed-models-as-a-service/validate.sh --functional
-./stages/040-governed-models-as-a-service/register-model-cards.sh
+./stages/040-governed-models-as-a-service/deploy.sh
 ```
 
 Functional validation creates and revokes only its own expiring synthetic key, with bounded chat/stream/tool-call/authorization/traffic checks. Quota enforcement, per-request EPP proof and user Studio interaction are recorded separately; an API response does not establish all stage acceptance. No GuideLLM benchmark runs implicitly.
@@ -818,10 +803,9 @@ or non-migration projects. It does not make Dashboard's separate workspace and
 editor creation requests atomic. An interrupted creation must be recovered
 under the original name; see the duplicate-workspace entry in troubleshooting.
 
-Run `python3 scripts/demo/check-workspace-creation.py --live` after GitOps sync. It
-checks generated links and uses server dry runs to exercise canonical,
-suffixed, generated-name, missing/empty/conflicting-run and non-migration
-requests without creating any workspace. Existing catalog entries retain
+The former checker `check-workspace-creation.py`, which exercised these
+requests with server dry runs, was retired; its last version is in git history
+at `82092e01`. Existing catalog entries retain
 their originally published links; use their exact workspace dashboard link
 until their catalog link is deliberately updated.
 
@@ -921,8 +905,8 @@ For documentation changes:
 Stage 020 supplies the GPU-capacity resume workflow consumed by Stage 040 models. Use this after the GPU MachineSet was scaled to zero for cost saving, or after the demo environment has been stopped and started again.
 
 ```bash
-./scripts/platform/resume-gpu-demo.sh status
-./scripts/platform/resume-gpu-demo.sh resume
+stages/020-gpu-infrastructure-private-ai/validate.sh
+stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1
 ```
 
 The `resume` command requests a sync of the existing Stage 020 revision, scales the selected pool's verified MachineSet up (default: one RTX PRO 6000 `g7e.2xlarge` in `us-east-2a`; `GPU_POOL=l40s` selects the L40S pool, `GPU_ZONE` another zone, and an explicit replica count up to two), waits for native GPU/operator readiness and runs readiness validation. It does not delete Machines, patch node labels, sync model stages or repair generated ReplicaSets. Model and functional acceptance remain separate; scale-to-zero is intentional cost control, not a passing GPU-capacity check.
@@ -930,7 +914,7 @@ The `resume` command requests a sync of the existing Stage 020 revision, scales 
 To scale GPU capacity down for shutdown (every reviewed GPU pool goes to zero, so no forgotten pool keeps billing):
 
 ```bash
-./scripts/platform/resume-gpu-demo.sh down
+stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 0
 ```
 
 Kueue queue resources survive normal cluster restarts because they are Kubernetes API objects. Kueue does not create cloud GPU nodes by itself; GPU node lifecycle remains a platform capacity action through the MachineSet.
@@ -939,9 +923,9 @@ After any cluster suspend/resume, also restart the Stage 070 Developer Hub deplo
 
 ## Coolstore Demo Reset
 
-For the registered GitLab project, set `GITLAB_OPERATOR_TOKEN_FILE` to your uncommitted scoped operator token file and run `./scripts/demo/reset-coolstore-demo.sh --yes`. It restores the immutable registered baseline with a normal commit, stops only matching workspaces and retains their PVCs and local changes. No force push or workspace recreation is performed. The commit triggers the project’s main-branch pipeline and immutable image promotion.
+For the registered GitLab project, restore the immutable registered baseline with a normal commit in GitLab and stop only the matching workspaces; their PVCs and local changes are retained. No force push or workspace recreation is needed. The commit triggers the project’s main-branch pipeline and immutable image promotion. The former reset helper `reset-coolstore-demo.sh` was retired; its last version is in git history at `82092e01`.
 
-Legacy GitHub projects have no GitLab registration. Do not use the GitLab lifecycle helper for them or fabricate a registration. Their cleanup remains a separately reviewed operation: inventory exact repository, webhook, Argo app, DevWorkspace, PipelineRun, Secret and PVC identities; archive local/evidence data; stop the matching workspace and disable the obsolete writer/webhook; remove only confirmed retired runtime resources. Keep repositories, PVCs and evidence until their owners explicitly authorize deletion. No broad namespace or historical cleanup is part of this release.
+Legacy GitHub projects have no GitLab registration. Do not fabricate a registration for them. Their cleanup remains a separately reviewed operation: inventory exact repository, webhook, Argo app, DevWorkspace, PipelineRun, Secret and PVC identities; archive local/evidence data; stop the matching workspace and disable the obsolete writer/webhook; remove only confirmed retired runtime resources. Keep repositories, PVCs and evidence until their owners explicitly authorize deletion. No broad namespace or historical cleanup is part of this release.
 
 ## Qwen 3.8 INT4 alongside Qwen 3.6
 
@@ -977,7 +961,7 @@ An update of either single-replica model uses RollingUpdate `maxSurge: 25%`, whi
 The Argo CD Applications intentionally do not include finalizers. Deleting an Application by itself orphans the resources that it created.
 
 For a full cleanup, cascade-delete the Applications in reverse deployment order: stages from 070 down to 010, and
-inside each stage its components last-deployed first (`stage_apps.py names NNN --all --reverse`). A cascade delete
+inside each stage its components last-deployed first (`stage-apps.sh names NNN --all --reverse`). A cascade delete
 removes every resource of the Application, including databases and PVCs: `Prune=false` only protects a
 resource from pruning during sync, not from Application deletion. The Stage 070 namespaces also carry `Delete=false`,
 so they survive the cascade and are deleted by hand. To keep data (GitLab, SonarQube and catalog
@@ -985,11 +969,11 @@ databases, workspace PVCs), back it up first, or delete the Application without 
 selectively.
 
 ```bash
-for app in $(python3 scripts/shared/stage_apps.py names 070 --all --reverse); do argocd app delete "$app" --cascade; done
+for app in $(scripts/stage-apps.sh names 070 --all --reverse); do argocd app delete "$app" --cascade; done
 # Stage 060 components are script-deployed (no deploy order): delete dependents first.
 for app in 060-agent-console 060-agent-tools 060-mcp-platform 060-openshell-runtime 060-openshell-identity; do argocd app delete "$app" --cascade; done
 for stage in 050 040 030 020 010; do
-  for app in $(python3 scripts/shared/stage_apps.py names "$stage" --all --reverse); do argocd app delete "$app" --cascade; done
+  for app in $(scripts/stage-apps.sh names "$stage" --all --reverse); do argocd app delete "$app" --cascade; done
 done
 ```
 
@@ -1017,7 +1001,7 @@ If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for auto
 
 **Decision.** The default private coding model is `qwen3-8-27b`: `RedHatAI/Qwen3.8-27B-NVFP4` (pinned `2889ddee`) on one NVIDIA RTX PRO 6000 Blackwell Server Edition (`g7e.2xlarge`, Stage 020 profile `gpu-rtxpro6000`, queue `lq-gpu-rtxpro6000`). The model id is format-neutral. `Qwen/Qwen3.8-27B-FP8` (pinned `017b9c7a`) is prepared as a one-line alternative; the final choice follows the next Hermes migration run, because the open question there is agent looping behaviour, which benchmarks do not measure. Qwen 3.6 is removed (its LLMInferenceService, MaaSModelRef, subscriptions and gateway listener); its registry entry remains as history.
 
-**Identifying the deployed quantization.** The display name (`Qwen3.8 27B NVFP4`), the `openshift.io/description` (`Model id: qwen3-8-27b, quantization: NVFP4, context 262,144-token`, fixed configuration only) and the label `demo.rhoai.io/quantization` on the LLMInferenceService and MaaSModelRef; the FP8 component switches all three. `register-model-cards.sh` registers the deployed checkpoint with deployment linkage and every prepared format component's checkpoint without it, so the registry shows `Qwen3.8-27B-NVFP4` and `Qwen3.8-27B-FP8`, each description stating its quantization.
+**Identifying the deployed quantization.** The display name (`Qwen3.8 27B NVFP4`), the `openshift.io/description` (`Model id: qwen3-8-27b, quantization: NVFP4, context 262,144-token`, fixed configuration only) and the label `demo.rhoai.io/quantization` on the LLMInferenceService and MaaSModelRef; the FP8 component switches all three. `stages/040-governed-models-as-a-service/deploy.sh` registers the deployed checkpoint with deployment linkage and every prepared format component's checkpoint without it, so the registry shows `Qwen3.8-27B-NVFP4` and `Qwen3.8-27B-FP8`, each description stating its quantization.
 
 **Method.** Same qualification pipeline (v11) for every arm: latency (8K-token prompt, 8 concurrent agents), throughput (64 requests), LiveCodeBench v6 and the python-tasks collection (MBPP, HumanEval). Serving args identical to production (MTP speculative decoding with 3 tokens, batched tokens 16384, async scheduling, FP8 KV cache, 262,144-token window). A long-context check hid a fact in a 26K/130K/248K-token prompt and asked for it. Cost per million output tokens is the On-Demand price divided by measured throughput. Single runs; LiveCodeBench varies about plus or minus 0.03 run to run.
 
@@ -1040,9 +1024,9 @@ components:
   - components/qwen38-fp8
 ```
 
-It swaps the checkpoint and sets `VLLM_USE_DEEP_GEMM=0` (required on this GPU, see TROUBLESHOOTING). Publish, re-pin Stage 040, then run `register-model-cards.sh`; the registry entry takes the checkpoint name (`Qwen3.8-27B-FP8`). Clients keep the same `qwen3-8-27b` id.
+It swaps the checkpoint and sets `VLLM_USE_DEEP_GEMM=0` (required on this GPU, see TROUBLESHOOTING). Publish, re-pin Stage 040, then run `stages/040-governed-models-as-a-service/deploy.sh`; the registry entry takes the checkpoint name (`Qwen3.8-27B-FP8`). Clients keep the same `qwen3-8-27b` id.
 
-**Capacity probe.** `scripts/platform/gpu-capacity-probe.sh --pool rtxpro6000 [--zones "a b c"] [--gpu]` scales one zone's zero-replica MachineSet to one, records AWS's answer under `tmp/`, and always returns to zero.
+**Capacity probe.** To probe capacity, scale one zone's zero-replica MachineSet to one, read AWS's answer on the Machine, and scale it back to zero. The former helper `gpu-capacity-probe.sh` that did this per zone was retired; its last version is in git history at `82092e01`.
 
 **Study records.** `tmp/model-study/STUDY.md` (gitignored) holds the per-run log, `results.jsonl`, the ISVC generator and the long-context test.
 
@@ -1095,7 +1079,7 @@ BF16 output on Ada/sm89), MTP speculative decoding (`qwen3_next_mtp`),
 
 Stage 070 provisions `<run>-worker` with only the init ConfigMap GET and named `container-build` SCC use. The factory pod-overrides selects that ServiceAccount. The DevWorkspace Operator's leftover generated account keeps its default Role and must not be mounted by new workers. Existing workspace identities are not revoked. Effective permissions also include the existing group GET grants for `maas-devspace-api-keys` and `workspace-maas-credentials`; no other-run parity Secret access is allowed.
 
-Qualify isolation on a fresh disposable workspace with migration auto-start disabled, using `run-preflight.sh` and a receipt for the golden and platform under test. A standalone Job or a passing fixture is not that qualification.
+Qualify isolation on a fresh disposable workspace with migration auto-start disabled, using `stages/130-ai-autonomous-migration/validate.sh --run` and a receipt for the golden and platform under test. A standalone Job or a passing fixture is not that qualification.
 
 The factory sets the route at creation. For stale routing, preserve work and run evidence, refresh the catalog inputs, and create a new workspace through the current template.
 
@@ -1117,13 +1101,13 @@ Independent acceptance passed unchanged seven-resource ownership/UID/specs, runt
 
 ### Stage 040 cost dashboards (2026-10-09)
 
-The Observability page's **Cost per token** and **Tokenomics · break-even (live)** tabs are Stage 040 PersesDashboards (`gitops/stages/040-governed-models-as-a-service/040-maas-platform/observability/`, generated by `gen-cost-dashboards.py`). Prices (`price_prompt`, `price_completion`, `price_blended`, `api_price_*`) and `gpu_hourly_cost`/`gpu_count` are dashboard variables: change them in the tab for a what-if, change the generator defaults for a durable value. Validate a dashboard change with `oc apply --dry-run=server -k …/observability` (schema `perses.dev/v1alpha2`) and by running its PromQL against the RHOAI datasource (`svc/thanos-querier-data-science-thanos-querier:10902`). The observability stack review of 2026-10-09 (all Monitoring conditions True, six product dashboards present, scrape labels per the guide) and its product-level gaps are in TROUBLESHOOTING and BACKLOG.
+The Observability page's **Cost per token** and **Tokenomics · break-even (live)** tabs are Stage 040 PersesDashboards (`gitops/stages/040-governed-models-as-a-service/040-maas-platform/observability/`, edited directly; the former generator `gen-cost-dashboards.py` is in git history at `82092e01`). Prices (`price_prompt`, `price_completion`, `price_blended`, `api_price_*`) and `gpu_hourly_cost`/`gpu_count` are dashboard variables: change them in the tab for a what-if, edit the variable defaults in the dashboard YAML for a durable value. Validate a dashboard change with `oc apply --dry-run=server -k …/observability` (schema `perses.dev/v1alpha2`) and by running its PromQL against the RHOAI datasource (`svc/thanos-querier-data-science-thanos-querier:10902`). The observability stack review of 2026-10-09 (all Monitoring conditions True, six product dashboards present, scrape labels per the guide) and its product-level gaps are in TROUBLESHOOTING and BACKLOG.
 
 ### Stage 050 governed evaluations (2026-10-09)
 
 Since 2026-10-12 every evaluation runs in the Evaluated Models tenant (`evaluated-models`); AI Coding Sandbox is no longer an EvalHub tenant. Stage 040 carries the `model-qualification` MaaS subscription and auth policy for both private Qwen models (5,000,000 tokens per hour) and the external judge models, owner `evaluated-models/evalhub-maas-key-provisioner`. Stage 050's `provision-evalhub-model-auth` Sync hook mints the key and keeps it in the tenant Secret `evalhub-model-auth-maas` (`api-key`, plus `key_id`, `expires_at`, `subscription`); the hook re-uses the key while the MaaS API reports it active and re-mints it after expiry (first key expires 2027-01-07) or revocation on the next Stage 050 sync. The tenant evaluator Role now carries the documented MLflow experiment rule.
 
-Run an evaluation with `stages/050-model-evaluation/submit-evaluation.sh --model-name <maas model id> [--num-examples N]` (the caller's token, tenant `evaluated-models`, experiment `model-evaluations`); follow with `--status <job id> --wait` or in **Develop & train → Evaluations**. Coding v1 (`lcb:codegeneration_v6`) is sized by three limits in 3.5.1: 16 samples per request from lighteval, a 30-second sidecar model-request timeout, and the adapter's one-hour benchmark limit; the helper's code-only system prompt and 512-token cap keep requests short, and the evaluated model must admit at least 16 concurrent sequences. The 2026-10-09 probe (one problem) proved key resolution, dataset download, scoring and the FINISHED MLflow run on the two-sequence Qwen 3.8 profile, but its model calls timed out at 30 seconds (see TROUBLESHOOTING), so the probe was hard-deleted and no score is claimed. Both Qwen profiles were then raised to 16 concurrent sequences (`d3a32e31`), the second GPU worker resumed with `resume-gpu-demo.sh up 2`, and Qwen 3.6 unparked with a replica patch; a 16-sample request now takes about 14 s (3.8) and 16 s (3.6). Record a completed job on its registry model version with `record-evaluation.sh`. SWE-bench pieces are staged under `gitops/stages/050-model-evaluation/050-evaluation-content/swebench/` and driven by `swebench-run.sh`; enabling them needs the EvalHub CR providers entry, the anyuid SCC binding and Docker Hub pull capacity (Stage 050 README). Provider qualification on Qwen 3.8 (2026-10-12): LightEval Coding v1 passes with the helper defaults; lm-evaluation-harness log-likelihood tasks pass with a `tokenizer` parameter naming the model's Hugging Face repository, while its generative tasks fail at the sidecar's 30 s limit; GuideLLM passes when bounded by `max_seconds` or `max_requests`. SWE-bench is enabled (CR provider entry, `anyuid` binding) and generates patches, but its EvalHub grading step cannot run on 3.5.1 because adapters get no Kubernetes credentials. Delete probe jobs with `DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true` and their MLflow runs. Programmatic access (2026-10-12): ServiceAccount `evaluated-models/evalhub-automation` is the documented ServiceAccount principal for the CLI/SDK (verified `evalhub health` and `providers list` with eval-hub-sdk 1.0.5) and MCP clients; the MCP server is enabled in the EvalHub CR (Route `evalhub-mcp`), calls EvalHub as `evalhub/evalhub-mcp-client` and is pinned to tenant `evaluated-models` (verified `discover_providers` and `evalhub://jobs`). Tokens from `oc create token` expire; re-issue on 401. OCI export (2026-10-12, operator decision: internal registry): Stage 050 `050-oci-export/` exposes the registry default route (`configs.imageregistry` `defaultRoute: true`; the evaluation sidecar trusts only public roots, and the route serves the ingress certificate), creates pusher ServiceAccount `evaluated-models/evalhub-oci-pusher` with `system:image-builder`, and a Sync hook composes the `kubernetes.io/dockerconfigjson` Secret `evalhub-oci-registry` from its token; the pusher token is long-lived, so rotate by deleting `evalhub-oci-pusher-token` and re-syncing Stage 050. Verified with a one-problem job: results artifact `evalhub-<hash>` and `evaluation-card-<job id>` in ImageStream `evaluated-models/evaluation-results`. Jobs are routed through the tenant LocalQueue `lq-cpu-default` (ClusterQueue `cq-cpu-default`) per section 2.8 of the 3.5 guide (Technology Preview): EvalHub labels the Job and pod with `kueue.x-k8s.io/queue-name`, and Kueue's `Pod` integration creates and admits the Workload (verified 2026-10-12); `submit-evaluation.sh --queue ''` submits without a queue.
+Run an evaluation from **Develop & train → Evaluations** or the documented EvalHub REST API (tenant `evaluated-models`, experiment `model-evaluations`); the former helper `submit-evaluation.sh` was retired (git history at `82092e01`). Coding v1 (`lcb:codegeneration_v6`) is sized by three limits in 3.5.1: 16 samples per request from lighteval, a 30-second sidecar model-request timeout, and the adapter's one-hour benchmark limit; a code-only system prompt and a 512-token cap keep requests short, and the evaluated model must admit at least 16 concurrent sequences. The 2026-10-09 probe (one problem) proved key resolution, dataset download, scoring and the FINISHED MLflow run on the two-sequence Qwen 3.8 profile, but its model calls timed out at 30 seconds (see TROUBLESHOOTING), so the probe was hard-deleted and no score is claimed. Both Qwen profiles were then raised to 16 concurrent sequences (`d3a32e31`), the second GPU worker resumed with `deploy.sh --gpus 2`, and Qwen 3.6 unparked with a replica patch; a 16-sample request now takes about 14 s (3.8) and 16 s (3.6). Record a completed job on its registry model version as custom properties in the dashboard model version **Properties**. SWE-bench pieces are staged under `gitops/stages/050-model-evaluation/050-evaluation-content/swebench/` (the former driver `swebench-run.sh` is in git history at `82092e01`); enabling them needs the EvalHub CR providers entry, the anyuid SCC binding and Docker Hub pull capacity (Stage 050 README). Provider qualification on Qwen 3.8 (2026-10-12): LightEval Coding v1 passes with the code-only prompt and 512-token cap; lm-evaluation-harness log-likelihood tasks pass with a `tokenizer` parameter naming the model's Hugging Face repository, while its generative tasks fail at the sidecar's 30 s limit; GuideLLM passes when bounded by `max_seconds` or `max_requests`. SWE-bench is enabled (CR provider entry, `anyuid` binding) and generates patches, but its EvalHub grading step cannot run on 3.5.1 because adapters get no Kubernetes credentials. Delete probe jobs with `DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true` and their MLflow runs. Programmatic access (2026-10-12): ServiceAccount `evaluated-models/evalhub-automation` is the documented ServiceAccount principal for the CLI/SDK (verified `evalhub health` and `providers list` with eval-hub-sdk 1.0.5) and MCP clients; the MCP server is enabled in the EvalHub CR (Route `evalhub-mcp`), calls EvalHub as `evalhub/evalhub-mcp-client` and is pinned to tenant `evaluated-models` (verified `discover_providers` and `evalhub://jobs`). Tokens from `oc create token` expire; re-issue on 401. OCI export (2026-10-12, operator decision: internal registry): Stage 050 `050-oci-export/` exposes the registry default route (`configs.imageregistry` `defaultRoute: true`; the evaluation sidecar trusts only public roots, and the route serves the ingress certificate), creates pusher ServiceAccount `evaluated-models/evalhub-oci-pusher` with `system:image-builder`, and a Sync hook composes the `kubernetes.io/dockerconfigjson` Secret `evalhub-oci-registry` from its token; the pusher token is long-lived, so rotate by deleting `evalhub-oci-pusher-token` and re-syncing Stage 050. Verified with a one-problem job: results artifact `evalhub-<hash>` and `evaluation-card-<job id>` in ImageStream `evaluated-models/evaluation-results`. Jobs are routed through the tenant LocalQueue `lq-cpu-default` (ClusterQueue `cq-cpu-default`) per section 2.8 of the 3.5 guide (Technology Preview): EvalHub labels the Job and pod with `kueue.x-k8s.io/queue-name`, and Kueue's `Pod` integration creates and admits the Workload (verified 2026-10-12); a job submitted without a queue name bypasses Kueue.
 
 ### Stage 050 model qualification pipeline (2026-10-12)
 
@@ -1138,18 +1122,18 @@ Candidate models are InferenceServices in the project; their evaluation jobs aut
 - **Start a run:** in the dashboard's **Create run** form, select the latest pipeline version (`agentic-coding-model-qualification v12`) and MLflow experiment `agentic-coding-qualification`, and set `model_name` plus any `skip_*` switches. A script must send the same body to `POST /apis/v2beta1/runs`, including `plugins_input.mlflow.experiment_name`. Without it, every step fails its MLflow update (TROUBLESHOOTING).
 - **Change the pipeline:** edit `stages/050-model-evaluation/qualification/pipeline.py`, compile a new version with kfp 2.16.1 (`python compile.py v<N>`), commit, and re-pin Stage 050. Argo CD does not prune the previous PipelineVersion; delete it with `oc delete pipelineversion agentic-coding-model-qualification-v<N-1> -n evaluated-models` so the run form offers one version. New criteria go into a new `-v2` collection, never an edited one.
 - **Reset the pipeline server:** this discards all run history. Stop any running run, `oc delete workflows.argoproj.io --all -n evaluated-models`, `oc delete dspa dspa -n evaluated-models`, then sync Stage 050; the hook recreates the server with an empty database. Run metadata (Executions, Artifacts) has no delete API, so a reset is the only way to remove it.
-- **Clean up evaluations:** hard-delete EvalHub jobs per tenant (`DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true` with `X-Tenant`); the leaderboard reads only the remaining jobs. Delete MLflow runs per workspace. Delete a whole experiment only if nothing writes to it again: MLflow keeps a deleted experiment's name reserved, so `evaluated-models/AIP-default` keeps its experiment and loses only its runs. Manual evaluations (`submit-evaluation.sh`, `swebench-run.sh`, the CI template) log to `model-evaluations`, pipeline evaluation jobs to `agentic-coding-evaluations`, pipeline runs to `agentic-coding-qualification`.
+- **Clean up evaluations:** hard-delete EvalHub jobs per tenant (`DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true` with `X-Tenant`); the leaderboard reads only the remaining jobs. Delete MLflow runs per workspace. Delete a whole experiment only if nothing writes to it again: MLflow keeps a deleted experiment's name reserved, so `evaluated-models/AIP-default` keeps its experiment and loses only its runs. Manual evaluations (dashboard, REST API, the CI template) log to `model-evaluations`, pipeline evaluation jobs to `agentic-coding-evaluations`, pipeline runs to `agentic-coding-qualification`.
 - **Moving the tenant (2026-10-12):** Stage 050's enable hook removes the EvalHub tenant label from `demo-sandbox`; Argo CD prunes the retired sandbox Roles, RoleBindings and ServiceAccounts, and the operator removes its tenant objects. The Secrets created by the old hooks (`evalhub-model-auth-maas`, `evalhub-oci-registry`, `evalhub-s3-test-data`) and the MLflow experiment `agentic-coding-qualification` were deleted once by hand; Stage 040 no longer carries `evaluation-sandbox`, and its MaaS key was revoked.
 - **Collections and step times (pipeline v11, tuned serving, 2026-10-13):** latency-v1 (3 min), throughput-v2 (64 requests, 4 min), livecodebench-v2 (alone; about 20 min with MTP, 42 min without), python-tasks-v1 (MBPP + HumanEval on the bounded `inspect-coding` provider, 7 min), security-quick-v2 (`garak-coding`, about 13 min); security-full-v2 is skipped (`skip_security_full`) until the models are fully tuned. End to end without the full scan: Qwen 3.6 43 min, Qwen 3.8 32 min, about 100 and 75 min before tuning. Qwen 3.6 was retired on 2026-10-13.
 - **Serving tuning (2026-10-13):** the production `qwen3-8-27b` uses the model card's MTP speculative decoding, `--max-num-batched-tokens=16384` and `--async-scheduling` (Stage 040 README). With one GPU worker running, restart it after a serving change through `replicas` 0 then 1 (TROUBLESHOOTING). The tuning log with every probe is in the overnight report (`tmp/overnight-eval-2026-10-12.md`, local).
-- **Shutdown state:** the candidate `qwen3-8-27b-int4` has `serving.kserve.io/stop: "true"` in Git (sync wave 40 so a stopped candidate does not block later waves), and every GPU MachineSet is at 0. The production model runs on the RTX PRO 6000 pool (`scripts/platform/resume-gpu-demo.sh up`); the candidate uses the L40S queue `lq-gpu-reserved-demo`, so a candidate run also needs `GPU_POOL=l40s scripts/platform/resume-gpu-demo.sh up` and stop `"false"` for the candidate.
+- **Shutdown state:** the candidate `qwen3-8-27b-int4` has `serving.kserve.io/stop: "true"` in Git (sync wave 40 so a stopped candidate does not block later waves), and every GPU MachineSet is at 0. The production model runs on the RTX PRO 6000 pool (`stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1`); the candidate uses the L40S queue `lq-gpu-reserved-demo`, so a candidate run also needs `GPU_POOL=l40s stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1` and stop `"false"` for the candidate.
 - **Results (2026-10-12, Qwen 3.6, since retired):** every production baseline attempt (`qwen3-6-27b`) missed both serving gates through MaaS: TTFT 2,068 to 2,131 ms against 2,000 ms, and 52.5 to 55.2 output tokens/s against 60. Read these with the MaaS path in mind; the criteria are unchanged.
 
 ### Stage 060 — Agent Runtime and AgentOps workspace foundation
 
 The shared OpenShell control plane is in `openshell`; `ai-agents` (AI Agents) is its separate administrator-managed agent-hosting workspace/project. Native operator mode maps the workspace name to the same allowlisted Namespace. GitOps provisions the namespace-scoped gateway Role/RoleBinding, sandbox ServiceAccount with token automount disabled, SSH NetworkPolicy, and the existing `rhods-admins` project-admin binding. Existing owner workspaces and core resources remain in place.
 
-`deploy-runtime.sh` invokes the guarded, idempotent `setup-ai-agents.py` after the selected runtime revision is Synced/Healthy. Set `RHOAI_STAGE060_OPENSHELL_CLI` to the pinned CLI identified by `gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/chart/source-pins.json`. Obtain it from the OpenShell release named there (`cliRelease`, asset `cliArchive`): `gh release download v0.1.3 -R NVIDIA/OpenShell -p openshell-aarch64-apple-darwin.tar.gz -p openshell-checksums-sha256.txt`, check the archive against `cliArchiveSha256` and the release checksums, extract, and point the variable at the binary (`cliBinarySha256` is enforced). The earlier dev-build CLI artifact was deleted upstream; v0.1.3 is the first tagged release after the gateway's `sourceCommit`. The helper uses the existing native bootstrap administrator, verifies the managed `ai-admin` broker identity and immutable OpenShift UID, creates the native workspace if absent, and adds only that subject as workspace admin if absent. It never rewrites existing memberships, changes identity credentials, or launches sandboxes. Run the same helper with `--revision <deployed-SHA> --check` for read-only configuration validation. Private CLI credentials and the owned local forward are removed on exit. Native workspace membership is separate from OpenShift project RBAC; adding developer membership to this shared workspace would also grant workspace-wide agent lifecycle access and is not configured.
+`stages/060-agent-runtime-and-agentops/deploy.sh --component 060-openshell-runtime` invokes the guarded, idempotent `stages/060-agent-runtime-and-agentops/deploy.sh` after the selected runtime revision is Synced/Healthy. Set `RHOAI_STAGE060_OPENSHELL_CLI` to the pinned CLI identified by `gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/chart/source-pins.json`. Obtain it from the OpenShell release named there (`cliRelease`, asset `cliArchive`): `gh release download v0.1.3 -R NVIDIA/OpenShell -p openshell-aarch64-apple-darwin.tar.gz -p openshell-checksums-sha256.txt`, check the archive against `cliArchiveSha256` and the release checksums, extract, and point the variable at the binary (`cliBinarySha256` is enforced). The earlier dev-build CLI artifact was deleted upstream; v0.1.3 is the first tagged release after the gateway's `sourceCommit`. The helper uses the existing native bootstrap administrator, verifies the managed `ai-admin` broker identity and immutable OpenShift UID, creates the native workspace if absent, and adds only that subject as workspace admin if absent. It never rewrites existing memberships, changes identity credentials, or launches sandboxes. Run the same helper with `--revision <deployed-SHA> --check` for read-only configuration validation. Private CLI credentials and the owned local forward are removed on exit. Native workspace membership is separate from OpenShift project RBAC; adding developer membership to this shared workspace would also grant workspace-wide agent lifecycle access and is not configured.
 
 All five Stage 060 Applications are deployed. Owner-client access and selected-call MLflow tracing passed on 2026-10-09 (Stage 060 README). Full-stage acceptance remains pending (`validate.sh` reports it by design).
 
@@ -1174,12 +1158,9 @@ Studio uses the retained genai-playground-state PVC at `/opt/app-root/src/.llama
 
 ### Persistent OpenCode in AI Agents (Stage060)
 
-Use the pinned native CLI and a Python interpreter with the existing PyYAML dependency. Set `RHOAI_ENV_ROOT` to the authoritative environment root, private `RHOAI_STAGE060_ADMIN_KUBECONFIG` to ai-admin's OpenShift session, and `RHOAI_STAGE060_ADMIN_CLI_HOME` to its verified native login. Provision only after the reviewed immutable runtime revision is Synced/Healthy and the exact image/subscription operands are ready:
+> The optional OpenCode/Hermes sandbox provisioning and qualification flow (`setup-opencode.py`, `setup-hermes.py`, `qualify-hermes.py`, `owner-client.py` and their image builds) was retired from the repository; restore it from git history at `82092e01` if needed. This section records the 2026-10 qualified deployment.
 
-```bash
-python3 stages/060-agent-runtime-and-agentops/setup-opencode.py --revision "$RHOAI_STAGE060_EXPECTED_REVISION" --apply --expected-policy-hash "$RHOAI_STAGE060_EXPECTED_POLICY_HASH"
-python3 stages/060-agent-runtime-and-agentops/setup-opencode.py --revision "$RHOAI_STAGE060_EXPECTED_REVISION"
-```
+Use the pinned native CLI and a Python interpreter with the existing PyYAML dependency. Set `RHOAI_ENV_ROOT` to the authoritative environment root, private `RHOAI_STAGE060_ADMIN_KUBECONFIG` to ai-admin's OpenShift session, and `RHOAI_STAGE060_ADMIN_CLI_HOME` to its verified native login. Provisioning ran only after the reviewed immutable runtime revision was Synced/Healthy and the exact image/subscription operands were ready.
 
 The default owner-only recovery directory is `/private/tmp/060-opencode-state`. Keep its journal and independent listener-password file privately; never commit or print them. The real MaaS key is retained only by the native encrypted provider. Configuration check does not qualify inference or tool execution. A temporary inference helper refuses any active retained fleet before restoring a global policy.
 
@@ -1196,13 +1177,7 @@ For user-owned visual acceptance, open **AI hub → Agents → Deployments**, se
 
 ### Persistent Hermes in AI Agents (Stage060)
 
-Hermes is deployed as native `ai-agents/hermes` with separate retained storage, loopback port 8642 and a private Bearer listener key. Use the same guarded environment, pinned CLI, verified ai-admin login and immutable runtime revision as OpenCode:
-
-```bash
-python3 stages/060-agent-runtime-and-agentops/setup-hermes.py --revision "$RHOAI_STAGE060_EXPECTED_REVISION"
-# Initial provisioning only after reviewed GitOps/image/subscription/policy acceptance:
-python3 stages/060-agent-runtime-and-agentops/setup-hermes.py --revision "$RHOAI_STAGE060_EXPECTED_REVISION" --apply
-```
+Hermes is deployed as native `ai-agents/hermes` with separate retained storage, loopback port 8642 and a private Bearer listener key. It used the same guarded environment, pinned CLI, verified ai-admin login and immutable runtime revision as OpenCode (retired flow, see the note above).
 
 Keep `/private/tmp/060-hermes-state` owner-only, including its journal and listener-key file. The real MaaS key stays in the native encrypted provider; the agent receives its opaque placeholder. The separate local API key is readable by the same runtime UID. For native owner access, forward `hermes` with target host `127.0.0.1` and port 8642 through the authenticated TLS/OIDC gateway; supply the separate Bearer key privately to the client, never in command arguments, source, catalog or logs. No developer workspace membership is granted solely for API consumption.
 
@@ -1213,15 +1188,9 @@ Both setup helpers use one complete gateway-global policy. The exact private ELF
 The native Hermes protocol receipt `/private/tmp/060-hermes-final.json` has 13 passing gates; this is a bounded standalone qualification, not migration or full Stage060 completion. The owner confirmed both `opencode` and `hermes` Sandboxed/Ready under **AI hub → Agents → Deployments → AI Agents**. Client consumption and required selected-call tracing remain separate unfinished milestones.
 
 
-The separate no-model confinement supplement passed all 10 gates and preserves the existing agent/session. Repeat it only when validating a changed runtime boundary:
+The separate no-model confinement supplement passed all 10 gates and preserved the existing agent/session. The consolidated receipt separates the 13 protocol gates from these negative checks; timeout, missing files and generic HTTP errors are not accepted as policy-denial proof.
 
-```bash
-python3 stages/060-agent-runtime-and-agentops/qualify-hermes.py --confinement-only --revision "$RHOAI_STAGE060_EXPECTED_REVISION"
-```
-
-Set `RHOAI_STAGE060_OPENSHELL_CLI` to the reviewed pinned CLI path. The consolidated receipt separates the 13 protocol gates from these negative checks; timeout, missing files and generic HTTP errors are not accepted as policy-denial proof.
-
-The owner-only client (`owner-client.py --check` / `--trace`) runs from the source worktree with the guarded bootstrap kubeconfig, the pinned CLI, the genuine `ai-admin` persona inputs and the private SDK environment pinned by `client-requirements.txt`; `--revision` must be the published isolated live tree the runtime Application is pinned to (`07a29a29…` on 2026-10-09). If `--check` fails `placeholderNotRealKey` for one agent while its exec placeholder is valid, the long-running agent process holds a superseded credential placeholder revision: natively stop and start that retained Sandbox (identity compared before and after) rather than deleting or re-minting anything. Traces land in MLflow experiment `agent-runtime-traces` in workspace `ai-agents`; receipts stay owner-only under `/private/tmp/060-client-receipts/`.
+The retired owner-only client (`owner-client.py --check` / `--trace`) ran from the source worktree with the guarded bootstrap kubeconfig, the pinned CLI, the genuine `ai-admin` persona inputs and the private SDK environment pinned by `client-requirements.txt`; `--revision` must be the published isolated live tree the runtime Application is pinned to (`07a29a29…` on 2026-10-09). If `--check` fails `placeholderNotRealKey` for one agent while its exec placeholder is valid, the long-running agent process holds a superseded credential placeholder revision: natively stop and start that retained Sandbox (identity compared before and after) rather than deleting or re-minting anything. Traces land in MLflow experiment `agent-runtime-traces` in workspace `ai-agents`; receipts stay owner-only under `/private/tmp/060-client-receipts/`.
 
 ## Stage 070 GitLab release
 
@@ -1237,7 +1206,7 @@ The portal's bootstrap Secret uses non-secret base64 placeholders under `data`, 
 
 TAS keeps the same public OIDC client and PKCE S256. Its native callback is restricted to `http://localhost/auth/callback` and the explicit default-port spelling `http://localhost:80/auth/callback`; Keycloak handles dynamic loopback ports through normalization. A wildcard inside the port is invalid. Other hosts and callback paths must remain refused. Routing success alone does not prove artifact signing.
 
-Deployment uses the normal Stage 070 Argo sync. First validate authoring with `./stages/070-advanced-app-platform/validate.sh --static`; set `PYTHON` to the test environment containing `tests/requirements.txt` dependencies when necessary. Then validate fresh browser logins, including the same GitLab user IDs/private-project membership, the same portal catalog identity, MTA role visibility, Dev Spaces private-source access and SonarQube's Platform SSO button. Record denied access as well as successful sign-in. A configuration or redirect check alone is not completed login validation. Keep models stopped throughout.
+Deployment uses the normal Stage 070 Argo sync. First validate authoring with `./stages/070-advanced-app-platform/validate.sh --static`; then validate fresh browser logins, including the same GitLab user IDs/private-project membership, the same portal catalog identity, MTA role visibility, Dev Spaces private-source access and SonarQube's Platform SSO button. Record denied access as well as successful sign-in. A configuration or redirect check alone is not completed login validation. Keep models stopped throughout.
 
 Live read-back on 2026-10-14 passed at SSO code `78a14254` plus correction `1c4afd87`. Fresh browser sign-in passed for SonarQube, Developer Hub, GitLab, MTA and Argo CD as `ai-developer`; native Dev Spaces and OpenShift AI access also passed. Argo CD received only the explicitly approved `user:info` consent and retained the developer's groups. Its application list remained empty; no role was granted. The corrected full sync kept all seven checked credential fingerprints unchanged. TAS routing accepts two native loopback ports and refuses an unrelated host/path. Stage resource validation: 72 PASS / 0 FAIL / 1 WARN. The warning separates resource readiness from login, inference, signing and restore. Evidence and the original credential-rotation incident are retained in `tmp/stage070-live-20261013/sso-alignment/LIVE-REPORT.md`; no model was called or resumed. The later non-model qualification below adds second-persona sign-in and validation-artifact signing; this original preservation snapshot is retained separately.
 
@@ -1270,14 +1239,11 @@ The native Agent Sandbox controller remains Stage 060-owned. MTA 8.3 uses the ex
 ### Source reproduction
 
 ```bash
-python3 -m venv tmp/stage070-tests
-./tmp/stage070-tests/bin/pip install -r stages/070-advanced-app-platform/tests/requirements.txt
-PYTHON=./tmp/stage070-tests/bin/python ./stages/070-advanced-app-platform/validate.sh --static
-./tmp/stage070-tests/bin/python scripts/platform/render-stage070-charts.py --check
-./scripts/platform/validate-stage-flow.sh
+./stages/070-advanced-app-platform/validate.sh --static
+scripts/validate-stage-flow.sh
 ```
 
-GitLab and SonarQube are ordinary Kustomize resources under `070-gitlab/generated/` and `070-sonarqube/generated/`. Their upstream archives, versions, authoring Helm version, images and licenses are locked in `scripts/platform/stage070-charts.lock.json`. To update them, edit values/lock, regenerate with `render-stage070-charts.py`, and review the full generated diff. Deployment does not run Helm, chart inflation or a GitLab chart operator.
+GitLab and SonarQube are ordinary Kustomize resources under `070-gitlab/generated/` and `070-sonarqube/generated/`; the generated manifests in GitOps are the source. Edit them directly and review the full diff. The chart regeneration tool (`render-stage070-charts.py` and `stage070-charts.lock.json`) was retired; its last version is in git history at `82092e01`. Deployment does not run Helm, chart inflation or a GitLab chart operator.
 
 A wave-0 hook configures the canonical Argo `rhdh` read account while preserving existing RBAC. The GitLab sequence is: version precondition (wave 4), persistent shared secrets (5), scoped OBC connection/configuration (6), database/cache (7), Gitaly (8), migrations (9), services (10), successful-version receipt (12), integrations (14), then catalog and portal. Identity federation precedes these. RHDH credentials use a Sync hook in the operand's wave. MTA's Sync hook runs at wave11 after Tackle/Gateway apply at10, so its runtime endpoint write follows the Gateway apply. These hooks run before PostSync. The project reconciler waits for pipeline/scanner readiness before seeding a build.
 
@@ -1285,7 +1251,7 @@ A wave-0 hook configures the canonical Argo `rhdh` read account while preserving
 
 The checked-in Dockerfile extends the immutable published Hermes parent and replaces only MTA tools/extensions. `stages/070-advanced-app-platform/workspace-image/artifacts.lock.json` binds the official Linux amd64 MTA archive/binary and all four VSIX packages. Downloads stay outside Git. The current candidate digest is `sha256:e4ac365b3818773ea1d8f67202200011a95089d05ee53ca2652efa353de968e0` in `quay.io/rhoai3-coding-demo/rhoai3-ws-080`.
 
-Start the selected Podman machine, then use `scripts/platform/build-stage070-workspace-image.sh <Linux-amd64-MTA-ZIP> <reviewed-tag>`. This stages verified artifacts, builds for amd64 and checks hashes, Java 21, Node and the preserved Hermes stamp. Adding `--push` explicitly publishes the shared candidate to Quay. Read back its digest and review pin changes before deployment. The script selects the rootless connection and never prunes or repairs a store. Ordinary application builds always target the internal registry.
+Build it for amd64 from `stages/070-advanced-app-platform/workspace-image/Dockerfile` with the artifacts named in its lock file, publish the candidate to Quay explicitly, then read back its digest and review pin changes before deployment. The former build and verification helpers (`build-stage070-workspace-image.sh`, `verify-image.py`) were retired; their last versions are in git history at `82092e01`. Ordinary application builds always target the internal registry.
 
 The candidate ran a bounded MTA 8.3.0/Java 21 custom-rule canary on OpenShift; the CLI and Java-field incidents passed. The first fixture used `VARIABLE_DECLARATION` for a field and failed; corrected `FIELD_DECLARATION` evidence is retained in `tmp/stage070-implementation/live/`. The temporary namespace was retired. This proves tool usability on a small source fixture, not full migration or AI behavior.
 
@@ -1295,9 +1261,9 @@ GitLab integration bootstrap creates scoped publisher, enrollment, catalog and r
 
 The platform mirror retains reviewed Git history. A missing current revision can be fast-forwarded from the declared public upstream using an ephemeral bootstrap credential; divergent history refuses. Owned goldens are published from the exact platform revision as one ordinary atomic commit, with complete-tree checks and no force push. Catalog, templates and TechDocs use that private mirror revision. Platform root cutover is not implicit.
 
-`bootstrap-scaffold-repos.sh` reports the current GitLab golden URLs. `check-gitlab-golden.py` compares private goldens against authoring files without printing the reader token. There is no GitHub-reset or force-push fallback.
+`stages/120-ai-agentic-development/validate.sh` compares private goldens against authoring files without printing the reader token. There is no GitHub-reset or force-push fallback.
 
-For lifecycle helpers, set `GITLAB_OPERATOR_TOKEN_FILE` to an uncommitted scoped token file. `reset-coolstore-demo.sh --yes` stops only matching workspaces, restores the registered repository baseline through a normal commit and retains PVC/local changes. `delete-scaffolded-project.sh <project> --yes` checks registration ID/URL/group before archiving the repository and retiring its project resources. Migration resource retirement uses the platform pipeline. Workspace PVCs and delivery history remain. The helper refuses Stage-owned imports such as Coolstore; those are managed through the stage's GitOps source.
+The GitLab lifecycle helpers (`reset-coolstore-demo.sh`, `delete-scaffolded-project.sh`) were retired; their last versions are in git history at `82092e01`. A reset restores the registered repository baseline through a normal commit and retains PVC/local changes. Migration resource retirement uses the platform pipeline. Workspace PVCs and delivery history remain. Stage-owned imports such as Coolstore are managed through the stage's GitOps source.
 
 Retain GitLab database/Gitaly/object-store data, encryption Secrets and the successful-version receipt during recovery. An existing database without a trustworthy prior version refuses migration. A database downgrade is a supported restore operation, not a reverted image pin. Do not delete earlier live GitHub/Quay resources solely because this source no longer consumes them; retire old writers during the separately reviewed cutover.
 
@@ -1315,13 +1281,14 @@ After approved publication, load the project environment and verify the target A
 
 ```bash
 ./stages/070-advanced-app-platform/validate.sh --revision <reviewed-published-commit>
-python3 stages/070-advanced-app-platform/security-status.py --models-stopped --output <private-evidence-directory>/security.json
 ```
 
-Rotation is operator-only, never part of a routine sync. The external Sonar maintenance command uses the existing HTTPS Route; it does not replace the pipeline Secret’s cluster-local `host` value. Run `rotate-credentials.py` once per component with the exact deployed `--revision`, configured `--repo-url`, `--execute` and a new `--report` path. Rotation components are `gitlab_oidc`, `scm_client`, `publisher`, `devspaces_oauth`, `sonar`, `sonar_projects`, `delivery_writers`, `argo` and `mta`.
+It includes the security-boundary checks and assumes the models are stopped.
+
+Rotation is operator-only, never part of a routine sync. The external Sonar maintenance command uses the existing HTTPS Route; it does not replace the pipeline Secret’s cluster-local `host` value. The rotation helper `rotate-credentials.py` was retired; its last version is in git history at `82092e01`. It ran once per component with the exact deployed revision and a new report path. Rotation components are `gitlab_oidc`, `scm_client`, `publisher`, `devspaces_oauth`, `sonar`, `sonar_projects`, `delivery_writers`, `argo` and `mta`.
 - `sonar` mints a new control token for the `platform-provisioner` technical user (global Create Projects and Execute Analysis only) and revokes the previous one; `sonar_projects` re-mints any project analysis token the SonarQube administrator still owns under `platform-provisioner`, updates the project Secret and its workspace mirrors, and revokes the administrator's copy.
 - `delivery_writers` renews each project's `gitlab-delivery-writer` (90 days) through GitLab's project access token self-rotation, so no administrator token is involved. Renew before the 90 days run out.
-- `argo` deletes `openshift-gitops/rhdh-local-user`; the OpenShift GitOps operator issues a new token for the `rhdh` local user (declared in Stage 010 `argocd-instance.yaml`, 2160h, auto-renew), which the script copies to `rhdh-secrets`. The operator also renews the token itself; after a renewal, re-run the RHDH hooks so they copy it: `python3 scripts/shared/stage_apps.py sync 070 --app 070-rhdh --resync`. `security-status.py` fails when Developer Hub's copy differs from the operator's token. The separate `annotation_copy` action requires `--secret <namespace/name>` and only removes metadata while checking unchanged UID, data and type. Use that exact-object action for the additional inventory, including Rails; it neither replaces encryption keys nor claims provider revocation. The report contains results only, not credentials. Reusing a report path refuses. Keep old human identities, client IDs, permissions and project memberships. The script uses supported provider APIs and checks replacement credentials and predecessor invalidation; a partial result requires diagnosis before any rerun. Preserve the previous reports. Browser-only Keycloak client checks require a fresh browser login in addition to server secret read-back.
+- `argo` deletes `openshift-gitops/rhdh-local-user`; the OpenShift GitOps operator issues a new token for the `rhdh` local user (declared in Stage 010 `argocd-instance.yaml`, 2160h, auto-renew), which the rotation step copies to `rhdh-secrets`. The operator also renews the token itself; after a renewal, re-run the RHDH hooks so they copy it: `scripts/stage-apps.sh sync 070 --app 070-rhdh --resync`. `stages/070-advanced-app-platform/validate.sh` fails when Developer Hub's copy differs from the operator's token. The separate `annotation_copy` action requires `--secret <namespace/name>` and only removes metadata while checking unchanged UID, data and type. Use that exact-object action for the additional inventory, including Rails; it neither replaces encryption keys nor claims provider revocation. The report contains results only, not credentials. Reusing a report path refuses. Keep old human identities, client IDs, permissions and project memberships. The helper used supported provider APIs and checks replacement credentials and predecessor invalidation; a partial result requires diagnosis before any rerun. Preserve the previous reports. Browser-only Keycloak client checks require a fresh browser login in addition to server secret read-back.
 
 The GitLab webservice is reloaded by its rotation step. After both portal token copies are updated, restart only the discovered Developer Hub Deployment through its normal rollout and wait for readiness; its environment must consume the new publisher and Argo reader tokens. The Dev Spaces server caches the OAuth client: verify that its server pod actually changes when reloading the rotated Secret; the operator can cancel a plain Deployment restart annotation. Replace only the exact server pod through its normal owner if needed, and verify its mounted credential matches the Secret. This leaves workspace pods and PVCs intact. Renew the same user grant through native OAuth and check the actual Git helper. The running workspace’s separate Git carrier can retain an expired token after successful native reauthorization. The validated recovery is a normal dashboard Stop then Open of that exact workspace, after checking for active user/build work and taking identity/storage/source snapshots. This refreshes the carrier and preserves the CR/PVC/UID, images, complete specification and clean source; verify a temporary private clone and final running state afterward. Uninterrupted hot refresh is not qualified. Do not copy tokens into the workspace, extend expiry or replace them with a shared PAT. MTA key status checks make no inference request.
 

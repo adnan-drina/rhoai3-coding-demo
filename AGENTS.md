@@ -35,11 +35,11 @@ Important paths:
 - `README.md` — main workshop overview and architecture narrative.
 - `BACKLOG.md` — known workarounds, limitations, planned work, and validated status.
 - `env.example` — non-secret environment variable template.
-- `scripts/` — `platform/` for platform setup/lifecycle and validation, `demo/` for Stage 110–130 use-case helpers, and `shared/` for common libraries.
+- `scripts/` — the three files every stage shares: `lib.sh` (environment, cluster guard, logging, validation checks, shared read-only prerequisites), `stage-apps.sh` (the Argo CD component engine) and `validate-stage-flow.sh` (the offline repository gate).
 - `gitops/` — desired state for Argo CD and OpenShift resources.
 - `gitops/applications/` — one Argo CD Application per component, flat; each file is named after its Application.
 - `gitops/stages/` — desired state for stage-specific OpenShift resources.
-- `stages/` — ordered workshop path: stage READMEs and per-stage deploy/validate scripts. `validate.sh` is required; missing `deploy.sh` means workflow-only (no Argo CD app). Stage 130 keeps its own solution architecture in that stage directory (not workshop architecture; not dest execution).
+- `stages/` — ordered workshop path: stage READMEs and exactly one `deploy.sh` and one `validate.sh` per stage (stage capabilities are modes of those two). `validate.sh` is required; missing `deploy.sh` means workflow-only (no Argo CD app). Stage 130 keeps its own solution architecture in that stage directory (not workshop architecture; not dest execution).
 - `docs/` — operations, troubleshooting, architecture, and supporting documentation.
 - `.agents/` — shared tool-neutral agent guidance (rules, skills, hooks, references).
 
@@ -99,7 +99,7 @@ For Stage 130 native Kanban review/attach vs custom M4 receipts and K4 mint tran
 
 For GitOps authoring, manifests, labels, and schema validation, read `.agents/rules/gitops.md`.
 
-For operator scripts (self-contained, shell first, Python only when shell cannot do it; only `lib.sh` and `stage_apps.py` shared), read `.agents/rules/scripts.md`.
+For operator scripts (one `deploy.sh` and one `validate.sh` per stage, shell only except the Stage 050 KFP pipeline, `scripts/` limited to `lib.sh`, `stage-apps.sh` and `validate-stage-flow.sh`), read `.agents/rules/scripts.md`.
 
 For documentation standards, README structure, and operations docs, read `.agents/rules/docs.md`.
 
@@ -112,7 +112,7 @@ For OpenShift Data Foundation storage, object storage, NooBaa, and ODF storage c
 ## OpenShift Safety Guard
 
 - Open this repository as its own project; do not open `/Users/adrina/Sandbox` as the active project for live cluster work.
-- Before running live `oc`/`kubectl` commands, call `load_env` and `check_oc_logged_in` from `scripts/shared/lib.sh`.
+- Before running live `oc`/`kubectl` commands, call `load_env` and `check_oc_logged_in` from `scripts/lib.sh`.
 - Set `RHOAI_EXPECTED_API_SERVER` in the local `.env` to a unique target API-server substring before deploy, validate, bootstrap, or resource-management scripts run.
 - Do not bypass the guard with `RHOAI_ALLOW_UNGUARDED_CLUSTER=true` unless the user explicitly confirms the current cluster and the command is low risk.
 
@@ -214,7 +214,7 @@ Skills are invoked workflows. Rules are always-on behavior constraints.
 
 ### Product documentation links
 
-Product skills link to official Red Hat documentation instead of copying it. Each product's single documentation version, the Git pin it must match (Subscription channel, `startingCSV` or operator policy), and the book → skill routes live in `.agents/references/red-hat-doc-map.yaml`. `scripts/shared/check-doc-links.py` checks skill frontmatter (`metadata.product`, `metadata.docs-version`), docs.redhat.com link versions in skills, component READMEs, stage READMEs (`stages/*/README.md`) and top-level docs (`docs/*.md`), pins and skill references; it fails only for the map's `converted_families` (currently `mta`, `ocp`, `ocp_devspaces`, `ocp_lightspeed`, `ocp_pipelines`, `odf`, `rhcl`, `rhdh`, `rhoai`) and for skills listed in `converted_skills` (a family converted skill by skill; empty now), and reports the rest. Author or convert product skills with `project-red-hat-doc-skill-authoring`. A product with a reviewed `pin.none` reason (no Git pin) is reported, never failing.
+Product skills link to official Red Hat documentation instead of copying it. Each product's single documentation version, the Git pin it must match (Subscription channel, `startingCSV` or operator policy), and the book → skill routes live in `.agents/references/red-hat-doc-map.yaml`. `.agents/tools/check-doc-links.py` checks skill frontmatter (`metadata.product`, `metadata.docs-version`), docs.redhat.com link versions in skills, component READMEs, stage READMEs (`stages/*/README.md`) and top-level docs (`docs/*.md`), pins and skill references; it fails only for the map's `converted_families` (currently `mta`, `ocp`, `ocp_devspaces`, `ocp_lightspeed`, `ocp_pipelines`, `odf`, `rhcl`, `rhdh`, `rhoai`) and for skills listed in `converted_skills` (a family converted skill by skill; empty now), and reports the rest. Author or convert product skills with `project-red-hat-doc-skill-authoring`. A product with a reviewed `pin.none` reason (no Git pin) is reported, never failing.
 
 ## Subagents
 
@@ -245,21 +245,23 @@ Use the most specific validation possible.
 Examples:
 
 ```bash
-for script in scripts/{platform,demo,shared}/*.sh stages/*/*.sh; do bash -n "$script" || exit; done
-./scripts/platform/validate-stage-flow.sh
-./scripts/platform/validate-stage-flow.sh --live
+for script in scripts/*.sh stages/*/deploy.sh stages/*/validate.sh; do bash -n "$script" || exit; done
+scripts/validate-stage-flow.sh
+scripts/validate-stage-flow.sh --live
 
 ./stages/010-openshift-ai-platform-foundation/validate.sh
 ./stages/020-gpu-infrastructure-private-ai/validate.sh
 ./stages/030-private-model-serving/validate.sh
 ./stages/040-governed-models-as-a-service/validate.sh
+./stages/050-model-evaluation/validate.sh
+./stages/060-agent-runtime-and-agentops/validate.sh
 ./stages/070-advanced-app-platform/validate.sh
 ./stages/110-ai-assisted-development/validate.sh
 ./stages/120-ai-agentic-development/validate.sh
 ./stages/130-ai-autonomous-migration/validate.sh
 ```
 
-Stage 120 consumes the Stage 070 Dev Spaces platform and Stage 070 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `./scripts/platform/validate-stage-flow.sh` and any specific commands documented in the Stage 120 README when a live workspace and cluster are available.
+Stage 120 consumes the Stage 070 Dev Spaces platform and Stage 070 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `scripts/validate-stage-flow.sh` and any specific commands documented in the Stage 120 README when a live workspace and cluster are available.
 
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:
 

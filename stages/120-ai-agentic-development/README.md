@@ -320,13 +320,7 @@ For presenters with time: [`demo-assets/003-catalog-ai-search.md`](demo-assets/0
 
 ### Resetting the demo
 
-Teardown is an operator action from the platform repository:
-
-```
-./scripts/demo/delete-scaffolded-project.sh coolstore-catalog --yes
-```
-
-It removes the workspace, catalog entries, Argo app and namespace, SonarQube history, and the GitHub and Quay repositories (see the script header for credential requirements). Scaffold again anytime; the template recreates everything in seconds.
+Teardown is an operator action on the platform: retire the registered GitLab project and its generated Applications, workspace and namespace. The former helper (`scripts/demo/delete-scaffolded-project.sh`, retired 2026-10-16) is in git history at 82092e01. Scaffold again anytime; the template recreates everything in seconds.
 
 ## Red Hat Products Used
 

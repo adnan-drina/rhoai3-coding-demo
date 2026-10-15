@@ -5,17 +5,17 @@ This Application runs SonarQube Community Build with its own PostgreSQL database
 | | |
 |---|---|
 | Argo CD Application | `070-sonarqube` ([manifest](../../../applications/070-sonarqube.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 5) |
-| Validated by | `stages/070-advanced-app-platform/validate.sh` (live checks "SonarQube ready" and "SonarQube reachable", plus `security-status.py`); `validate.sh --static` (`sonarqube-bootstrap.test.py`, `sso-alignment.test.py`, `chart-gitops.test.py`, `correction-package.test.py`) |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage-apps.sh deploy 070` (deploy-order 5) |
+| Validated by | `stages/070-advanced-app-platform/validate.sh` (live checks "SonarQube ready" and "SonarQube reachable", plus its security-boundary checks); `validate.sh --static` (renders, disjoint components, scripts parse; the former offline tests `tests/*.test.py` are in git history at `82092e01`) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on `/spec/volumeName` of PVCs `sonardb-data` and `sonarqube` |
 | Depends on | `070-namespaces` (the `sonarqube` and `app-platform-build` namespaces); `070-identity` (SAML client `sonarqube` in the base `sso` realm); Stage 010 (the existing Keycloak `rhbk` OpenID provider in the cluster OAuth config) |
-| Used by | `070-pipelines` (the GitLab reconciler mints per-project analysis tokens from `app-platform-build/sonarqube-credentials`; the `sonar-scan` task); `070-devspaces` (workspace Sonar credential mirror); `stages/070-advanced-app-platform/rotate-credentials.py` |
+| Used by | `070-pipelines` (the GitLab reconciler mints per-project analysis tokens from `app-platform-build/sonarqube-credentials`; the `sonar-scan` task); `070-devspaces` (workspace Sonar credential mirror) |
 
 ## Why
 
 The delivery contract needs a quality gate that a pipeline can enforce and an operator can audit. SonarQube's Community Build is the analysis engine. It is an upstream component, not a Red Hat product, as the [stage README](../../../../stages/070-advanced-app-platform/README.md#trust-boundaries) states. SonarSource ships it as a Helm chart that needs an external database [1].
 
-The chart is rendered at authoring time into plain manifests under `generated/`, so Argo CD applies ordinary Kustomize output and no Helm runtime runs in the cluster. `scripts/platform/render-stage070-charts.py` renders it from the chart and the image digest pinned in `scripts/platform/stage070-charts.lock.json`. SonarQube, its database, its bootstrap and its ingress boundary are one Application because they share one namespace and one lifecycle. Pipelines and workspaces consume only the token Secret and the in-cluster Service.
+The chart was rendered at authoring time into plain manifests under `generated/`, so Argo CD applies ordinary Kustomize output and no Helm runtime runs in the cluster. The generated manifests are now the source and are edited directly (the former renderer `render-stage070-charts.py` and its lock file are in git history at `82092e01`). SonarQube, its database, its bootstrap and its ingress boundary are one Application because they share one namespace and one lifecycle. Pipelines and workspaces consume only the token Secret and the in-cluster Service.
 
 ## What
 
@@ -62,9 +62,9 @@ Not in Git: Secrets `sonardb`, `sonarqube-monitoring` and `sonarqube-admin` (cre
 
 ## How
 
-- **Order.** The database Secret Job (wave 4) runs before PostgreSQL (waves 5–6). The SonarQube StatefulSet (wave 10) must be ready before the configuration Job (wave 11) runs. Inside one Application the waves give this order. Across Applications, `stage_apps.py deploy 070` deploys `070-sonarqube` fifth, after `070-namespaces` has created `sonarqube` and `app-platform-build`.
+- **Order.** The database Secret Job (wave 4) runs before PostgreSQL (waves 5–6). The SonarQube StatefulSet (wave 10) must be ready before the configuration Job (wave 11) runs. Inside one Application the waves give this order. Across Applications, `stage-apps.sh deploy 070` deploys `070-sonarqube` fifth, after `070-namespaces` has created `sonarqube` and `app-platform-build`.
 - **Admin credential.** `bootstrap-admin.py` stores a random password in `sonarqube-admin` with the annotation `rhoai3.redhat.com/password-bootstrap: pending` before it changes the default `admin` password. It marks the Secret `ready` only after it verifies the new password. A rerun therefore resumes an interrupted rotation and never resets an unknown credential.
-- **Control token.** The pipeline reconciler creates projects and mints per-project analysis tokens with the control credential in `app-platform-build/sonarqube-credentials`. `ensure-provisioner.py` makes it the token of the local technical user `platform-provisioner`, which holds only the global Create Projects and Execute Analysis permissions. A user token carries all of its user's permissions, and a project analysis token needs Execute Analysis from the user who creates it [7], so the administrator's token is no longer used. It reuses that user's token while it still authenticates; otherwise it mints a new `platform-pipeline-<suffix>` token and revokes the previous one (owner and name are in the Secret's `rhoai3.io/control-token-owner` and `rhoai3.io/control-token-name` annotations). `secret_writer.py` writes the Secret with keys `host` and `token`, and writes no `last-applied-configuration` annotation. The host is the in-cluster Service address that scanners use. `rotate-credentials.py --component sonar` rotates this token through the HTTPS Route; `--component sonar_projects` re-mints project analysis tokens that the administrator still owns under `platform-provisioner`.
+- **Control token.** The pipeline reconciler creates projects and mints per-project analysis tokens with the control credential in `app-platform-build/sonarqube-credentials`. `ensure-provisioner.py` makes it the token of the local technical user `platform-provisioner`, which holds only the global Create Projects and Execute Analysis permissions. A user token carries all of its user's permissions, and a project analysis token needs Execute Analysis from the user who creates it [7], so the administrator's token is no longer used. It reuses that user's token while it still authenticates; otherwise it mints a new `platform-pipeline-<suffix>` token and revokes the previous one (owner and name are in the Secret's `rhoai3.io/control-token-owner` and `rhoai3.io/control-token-name` annotations). `secret_writer.py` writes the Secret with keys `host` and `token`, and writes no `last-applied-configuration` annotation. The host is the in-cluster Service address that scanners use. The former helper `rotate-credentials.py` (in git history at `82092e01`) rotated this token through the HTTPS Route (`--component sonar`) and re-minted project analysis tokens the administrator still owned (`--component sonar_projects`).
 - **Quality gate.** The Job creates `AI Platform Gate` with the condition `new_violations > 0` and makes it the default gate.
 - **SSO.** `configure-sso.py` reads the issuer of the `rhbk` OpenID provider from the cluster OAuth config. It requires that issuer to be the base `sso` realm. It fetches the realm's SAML descriptor and checks the entity ID, the signing certificate and the login endpoint. It then sets `sonar.core.serverBaseURL` and the SAML application ID, provider ID, login URL, certificate and the `login`/`name`/`email` attributes [2]. SAML is enabled last. Local users, tokens, groups and permissions are kept. The matching SAML client is created by `070-identity`.
 - **Storage.** Both PVCs name `gp3-csi`, as the deploy contract requires. Argo CD ignores the controller-written `/spec/volumeName`. The SonarQube data PVC carries `Prune=false`.
@@ -74,13 +74,8 @@ Failure handling, password recovery and the coverage-gate diagnosis are in [Trou
 
 ## Validation
 
-- `validate.sh` (live): "SonarQube ready" (StatefulSet `readyReplicas` = 1) and "SonarQube reachable" (`/api/system/status` returns 200 through the Route). `security-status.py` checks `ingress_policy_installed:sonarqube`, `no_retained_secret_annotation:sonarqube`, `no_credential_annotation:app-platform-build/sonarqube-credentials` and `only_named_controller_pvc_fields_ignored`.
-- `validate.sh --static`:
-  - `sonarqube-bootstrap.test.py`: password persisted before rotation, resume after interruption, no reset of an unknown credential.
-  - `sso-alignment.test.py`: `test_correct_issuer_and_certificate_and_no_group_reset`, `test_wrong_issuer_missing_or_malformed_certificate_refused`, `test_foreign_login_endpoint_refused`, `test_sonar_does_not_receive_keycloak_administrator_credentials`.
-  - `chart-gitops.test.py`: `test_sonarqube_version_label_is_not_the_image_digest`.
-  - `correction-package.test.py`: `test_operator_sonar_uses_route_and_preserves_pipeline_host`, `test_ingress_contract_preserves_only_declared_cross_namespace_path`.
-  - `sonarqube-scope.test.py`: the project-token logic in `070-pipelines` that consumes this component.
+- `validate.sh` (live): "SonarQube ready" (StatefulSet `readyReplicas` = 1) and "SonarQube reachable" (`/api/system/status` returns 200 through the Route). `stages/070-advanced-app-platform/validate.sh` checks `ingress_policy_installed:sonarqube`, `no_retained_secret_annotation:sonarqube`, `no_credential_annotation:app-platform-build/sonarqube-credentials` and `only_named_controller_pvc_fields_ignored`.
+- `validate.sh --static`: renders, disjoint components, scripts parse. The former offline tests (`sonarqube-bootstrap.test.py`, `sso-alignment.test.py`, `chart-gitops.test.py`, `correction-package.test.py`, `sonarqube-scope.test.py`) are in git history at `82092e01`.
 - `deploy.sh` refuses to deploy over a PostgreSQL 15 SonarQube database.
 
 By hand (read-only):
@@ -113,4 +108,4 @@ oc get job -n sonarqube   # completed hooks are deleted; a remaining Job means a
 6. Sync phases and waves, hook deletion policies, Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
 7. Managing your tokens, SonarQube Community Build (upstream). https://docs.sonarsource.com/sonarqube-community-build/user-guide/managing-tokens/
 
-Repository: [Stage 070 README](../../../../stages/070-advanced-app-platform/README.md), [Operations: Stage 070 GitLab release](../../../../docs/OPERATIONS.md#stage-070-gitlab-release), [chart lock](../../../../scripts/platform/stage070-charts.lock.json).
+Repository: [Stage 070 README](../../../../stages/070-advanced-app-platform/README.md), [Operations: Stage 070 GitLab release](../../../../docs/OPERATIONS.md#stage-070-gitlab-release).

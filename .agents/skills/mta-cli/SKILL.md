@@ -36,7 +36,7 @@ and the Stage 130 scaffold skill
 | Decision | Where in Git | Official section |
 |---|---|---|
 | `mta-cli` 8.3.0 at `/opt/mta-cli` (symlinked to `/usr/local/bin`), archive and binary SHA-256 locked; `MTA_CLI_HOME=/opt/mta-cli` | `stages/070-advanced-app-platform/workspace-image/Dockerfile`, `artifacts.lock.json` | [Install the CLI from a .zip][zip] |
-| Image check proves hashes, the Java external provider, the analyzer bundle, `mta-cli version` and Java 21 | `stages/070-advanced-app-platform/workspace-image/verify-image.py` | — |
+| Image check proves hashes, the Java external provider, the analyzer bundle, `mta-cli version` and Java 21 | `stages/070-advanced-app-platform/workspace-image/Dockerfile` (the former checker `verify-image.py` is in git history at `82092e01`) | — |
 | Containerless Java analysis on Java 21 (the analyzer bundle wedges on 17) | `.../scan-with-mta/scripts/mta-analyze-legacy.sh` | [Containerless mode][containerless] |
 | Migration workspaces set `JVM_MAX_MEM=8G` (below the 12Gi container limit), `HUB_URL` from the template, `HUB_INSECURE=false` | `gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/skeleton/devfile.yaml` | [Containerless mode][containerless] |
 | Invocation: `analyze --input <frozen copy> --output … --target <each> --rules <custom ruleset> --json-output --overwrite`; never `--source` | `.../scan-with-mta/scripts/mta-analyze-legacy.sh` | [analyze options][flags] |
@@ -56,7 +56,8 @@ and the Stage 130 scaffold skill
    readlink -f "$(command -v mta-cli)"   # expect /opt/mta-cli/mta-cli
    ```
 
-   Image builds prove the full contract with `verify-image.py`.
+   The former image checker `verify-image.py` that proved the full contract
+   at build time was retired; its last version is in git history at `82092e01`.
 
 3. Stage 130 analysis runs through the scaffold scripts, never by hand-built
    argv; check the receipt in `evidence/producers/mta.json`

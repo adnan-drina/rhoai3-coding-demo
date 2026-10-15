@@ -10,7 +10,7 @@ later stages that need buckets.
 |---|---|
 | Argo CD Application | `010-odf` ([manifest](../../../applications/010-odf.yaml)) |
 | Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 1) |
-| Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (Application Synced/Healthy; `odf-operator` CSV `Succeeded`; `NooBaa/noobaa` phase `Ready`); `check-operator-policy.py --verify` |
+| Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (Application Synced/Healthy; `odf-operator` CSV `Succeeded`; `NooBaa/noobaa` phase `Ready`); `check_operator_policy --verify` |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation; no `ignoreDifferences` |
 | Depends on | OpenShift GitOps bootstrap; the `gp3-csi` StorageClass (AWS EBS CSI, provided by the cluster) |
 | Used by | `010-sandbox-storage` (OBCs `rhoai-models`, `rhoai-workbench`), Stage 050 (`050-mlflow/objectbucketclaim.yaml`, `050-model-qualification/storage/`), Stage 070 GitLab buckets (`gitops/stages/070-advanced-app-platform/070-gitlab/buckets.yaml`) |
@@ -48,7 +48,7 @@ Not in Git (operator-owned):
 ## How
 
 - **Channel and approval.** The channel is `stable-4.22`, matching the OpenShift 4.22 minor. Approval is `Automatic`.
-  `check-operator-policy.py` refuses other channels and versions below the qualified `4.22.5`.
+  `check_operator_policy` refuses other channels and versions below the qualified `4.22.5`.
 - **Standalone MCG.** The documented procedure picks "Setup Multicloud Object Gateway" in the console [1]. The GitOps
   equivalent is a `StorageCluster` with `spec.multiCloudGateway.reconcileStrategy: standalone` and no device sets. On
   this cluster there is no `odf.openshift.io` StorageSystem API, so the StorageCluster is the top-level object. The

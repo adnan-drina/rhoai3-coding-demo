@@ -36,7 +36,7 @@ ODF 4.22 sections. The component README is the detailed record:
 | Standalone Multicloud Object Gateway only; no Ceph, no `storageDeviceSets` | `010-odf/storagecluster.yaml` (`spec.multiCloudGateway.reconcileStrategy: standalone`) | [Deploy standalone MCG][aws-mcg] |
 | No StorageSystem object; the StorageCluster is the top-level resource (no `odf.openshift.io` StorageSystem API on this cluster) | `010-odf/storagecluster.yaml` | [Creating a standalone MCG][aws-mcg-create] |
 | MCG database on `gp3-csi` (AWS EBS CSI, RWOP) — a cluster-specific value | `010-odf/storagecluster.yaml` (`dbStorageClassName`) | [Deploy standalone MCG][aws-mcg] (RWOP prerequisite) |
-| Channel `stable-4.22` matching the OpenShift minor, approval `Automatic` | `010-odf/subscription.yaml`; minimum `4.22.5` in `scripts/platform/check-operator-policy.py` | [Updating ODF][update] |
+| Channel `stable-4.22` matching the OpenShift minor, approval `Automatic` | `010-odf/subscription.yaml`; minimum `4.22.5` in `check_operator_policy` in `scripts/lib.sh` | [Updating ODF][update] |
 | OwnNamespace OperatorGroup in `openshift-storage` | `010-odf/operator-group.yaml` | [Installing the ODF Operator][aws-install] |
 | `OCSInitialization/ocsinit`, NooBaa, BackingStore, BucketClass and the `openshift-storage.noobaa.io` StorageClass stay operator-owned (not in Git) | comment in `010-odf/kustomization.yaml` | [Architecture][arch] |
 | `SkipDryRunOnMissingResource` on every object; StorageCluster at wave 2 | `010-odf/kustomization.yaml` | — (Argo CD behavior) |
@@ -53,8 +53,8 @@ Subscription channel.
    decision in the component README, and the [AWS dynamic-device
    procedure][aws-dynamic].
 2. Upgrade: change the channel in `010-odf/subscription.yaml` to the new OpenShift
-   minor, the minimum in `check-operator-policy.py`, and `docs_version` in the
-   doc map together; run `python3 scripts/shared/check-doc-links.py`; re-read
+   minor, the minimum in `check_operator_policy`, and `docs_version` in the
+   doc map together; run `python3 .agents/tools/check-doc-links.py`; re-read
    the [release notes][relnotes] and [Updating ODF][update].
 3. Validate (after the OpenShift safety guard in `AGENTS.md`):
    `./stages/010-openshift-ai-platform-foundation/validate.sh`, or by hand:

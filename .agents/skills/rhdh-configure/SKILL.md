@@ -75,8 +75,7 @@ Paths are under `gitops/stages/070-advanced-app-platform/070-rhdh/`.
   must come from `kube-root-ca.crt` via `extraFiles`:
   `docs/TROUBLESHOOTING.md#developer-hub-topologycikubernetes-tabs-show-problem-retrieving-kubernetes-objects`.
 - Argo CD ignores `rhdh-secrets` `/data` so syncs keep the runtime values;
-  never add `stringData` to the Git placeholder (it would overwrite them;
-  guarded by `stages/070-advanced-app-platform/tests/sso-alignment.test.py`).
+  never add `stringData` to the Git placeholder (it would overwrite them).
 - Catalog load and generator failures:
   `docs/TROUBLESHOOTING.md#red-hat-developer-hub-catalog-does-not-load-coolstore`,
   `docs/TROUBLESHOOTING.md#rhdh-catalog-generator-refuses-factory_bundle_mismatch`.

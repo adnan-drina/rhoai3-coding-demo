@@ -28,7 +28,7 @@ Dev Spaces 3.30 topics. Detailed record:
 
 - A change touches `070-devspaces/subscription.yaml` or
   `wait-for-operator-webhook.yaml`, or the `devspaces` entries in
-  `scripts/platform/check-operator-policy.py`.
+  `check_operator_policy` in `scripts/lib.sh`.
 - `070-devspaces` stalls before the CheCluster, or a Dev Spaces z-stream is
   reviewed.
 
@@ -38,7 +38,7 @@ Dev Spaces 3.30 topics. Detailed record:
 |---|---|---|
 | GitOps install: Subscription, `CheCluster` (`org.eclipse.che/v2`) and Kustomization in Git, reconciled by Argo CD Application `070-devspaces` | `gitops/stages/070-advanced-app-platform/070-devspaces/kustomization.yaml` | [Deploy using GitOps and Argo CD][gitops] |
 | Subscription `devspaces` in `openshift-operators` (AllNamespaces), as the guide shows; OLM adds the DevWorkspace operator there | `070-devspaces/subscription.yaml` | [Deploy using GitOps and Argo CD][gitops] |
-| Channel `stable`, `installPlanApproval: Automatic`; the operator policy refuses another channel or a version outside 3.30 (minimum 3.30.2) | `070-devspaces/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Update approval strategy][approval], [How the upgrade works][upgrade] |
+| Channel `stable`, `installPlanApproval: Automatic`; the operator policy refuses another channel or a version outside 3.30 (minimum 3.30.2) | `070-devspaces/subscription.yaml`, `check_operator_policy` in `scripts/lib.sh` | [Update approval strategy][approval], [How the upgrade works][upgrade] |
 | Webhook-wait hook (wave 9) holds the CheCluster (wave 10) until operator endpoints answer admission | `070-devspaces/wait-for-operator-webhook.yaml` | [How the installation works][overview] |
 | Namespaces from `070-namespaces`; no OperatorGroup or Subscription ignore rules | `gitops/stages/070-advanced-app-platform/070-namespaces/`, `gitops/applications/070-devspaces.yaml` | — |
 

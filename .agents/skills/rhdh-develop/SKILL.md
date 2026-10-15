@@ -48,9 +48,11 @@ sections. Detailed record: `gitops/stages/070-advanced-app-platform/070-rhdh/REA
 
 1. Edit the catalog or a template in Git; keep placeholders in the
    `__RHOAI3_*__` form the renderer resolves.
-2. Static checks: `./stages/070-advanced-app-platform/validate.sh --static`
-   (`render_catalog.test.py`, `app-migration-template.test.py`,
-   `security-boundaries.test.py`, `product-schemas.test.py`).
+2. Static checks: `./stages/070-advanced-app-platform/validate.sh --static`,
+   plus `render_catalog.test.py` and `app-migration-template.test.py` beside
+   their sources (run by hand). The Stage 070 offline suite
+   (`security-boundaries.test.py`, `product-schemas.test.py`) was retired; it
+   is in git history at `82092e01`.
 3. After the OpenShift safety guard in `AGENTS.md`, deploy with
    `./stages/070-advanced-app-platform/deploy.sh` and run `validate.sh`
    ("Portal catalog bundle stamped", "Portal catalog has no unresolved
@@ -72,7 +74,7 @@ sections. Detailed record: `gitops/stages/070-advanced-app-platform/070-rhdh/REA
 - `app-migration` refuses without the MaaS route annotations on the platform
   entity: `docs/TROUBLESHOOTING.md#migration-workspace-creation-fails-with-factory_maas_route_missing`.
 - Template GitLab inputs must match the installed scaffolder action schemas
-  (`product-schemas.test.py`); the GitLab scaffolder module is Technology
+  (check the action list in Developer Hub); the GitLab scaffolder module is Technology
   Preview in 1.10 (`rhdh-dynamic-plugins-reference`).
 - Do not "fix" a missing entity by registering it in the UI: developers are
   denied and admin registrations bypass the pinned bundle.

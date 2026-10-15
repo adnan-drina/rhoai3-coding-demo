@@ -36,7 +36,7 @@ OpenShift Container Platform 4.22 sections. Detailed record:
 |---|---|---|
 | Complete `spec.plugins` list declared in Git (`monitoring-plugin`, `networking-console-plugin`, `monitoring-console-plugin`, `gitops-plugin`, `odf-console`, `kuadrant-console-plugin`, `lightspeed-console-plugin`, `pipelines-console-plugin`), owned by server-side apply on this one object, restored by self-heal; deviation from the documented append patch | `gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/console-plugins.yaml` | [Dynamic plugins][plugins] |
 | `Console/cluster` carries `ServerSideApply=true,Prune=false,Delete=false`: Git owns only `spec.plugins`, never deletes the singleton | same file | — |
-| Own deploy and validate scripts for the plugin list and UIPlugin | `stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh`, `stages/010-openshift-ai-platform-foundation/validate-console-observability.sh` | — |
+| Own deploy and validate scripts for the plugin list and UIPlugin | `stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-console-observability`, `stages/010-openshift-ai-platform-foundation/validate.sh --component 010-console-observability` | — |
 | Perses dashboards in Observe through the COO `UIPlugin` `monitoring` | `gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/monitoring-uiplugin.yaml` | [COO UI plugins][coo-ui] |
 | Application-menu links `rhdh` and `mta`: placeholder `href` in Git, patched to the live Route by Sync hooks; `ignoreDifferences` on `href`/`imageURL` | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/consolelink.yaml`, `gitops/stages/070-advanced-app-platform/070-mta/mta-instance/consolelink.yaml` | [Customizing the web console][customize] |
 | GPU dashboard as a console dashboard ConfigMap in `openshift-config-managed` | `gitops/stages/020-gpu-infrastructure-private-ai/020-nvidia-gpu-operator/console-dashboard/` | [About OpenShift monitoring][monitoring] |
@@ -47,9 +47,9 @@ OpenShift Container Platform 4.22 sections. Detailed record:
 1. Add a plugin by adding its name to `console-plugins.yaml` and publishing;
    a listed plugin whose `ConsolePlugin` is not installed yet is skipped.
 2. Deploy and validate:
-   `./stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh`
+   `./stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-console-observability`
    (also run by Stage 010 `deploy.sh`), then
-   `./stages/010-openshift-ai-platform-foundation/validate-console-observability.sh`.
+   `./stages/010-openshift-ai-platform-foundation/validate.sh --component 010-console-observability`.
 3. By hand, after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash
@@ -62,7 +62,7 @@ OpenShift Container Platform 4.22 sections. Detailed record:
 - `spec.plugins` is replaced whole by any writer; never `oc patch` it, self-heal
   reverts the patch and a rewrite elsewhere drops entries
   (`docs/TROUBLESHOOTING.md#console-plugins-disappear-from-the-web-console`).
-- `validate-console-observability.sh` fails when an installed `ConsolePlugin`
+- `stages/010-openshift-ai-platform-foundation/validate.sh --component 010-console-observability` fails when an installed `ConsolePlugin`
   is missing from Git, so a new operator plugin needs a Git change.
 - ConsoleLink `href` drift is expected (hook-patched); do not "fix" it in Git.
 - `ServerSideApply=true` is allowed on the `Console` resource only;

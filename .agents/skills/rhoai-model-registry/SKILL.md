@@ -27,7 +27,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
 ## When to use
 
-- `validate-model-discovery.sh` reports the registry, its database or its
+- `stages/030-private-model-serving/validate.sh` reports the registry, its database or its
   authenticated route unhealthy.
 - Granting registry access to a new group or ServiceAccount.
 - Considering an external database, a second registry, or deleting one.
@@ -52,7 +52,6 @@ OpenShift AI 3.5 sections. Detailed record:
    ```bash
    ./stages/030-private-model-serving/deploy.sh
    ./stages/030-private-model-serving/validate.sh
-   ./stages/030-private-model-serving/validate-model-discovery.sh
    ```
 
 2. Inspect read-only, after the OpenShift safety guard in `AGENTS.md`:

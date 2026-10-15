@@ -12,7 +12,7 @@ description: >
   default-dsc in gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/,
   component managementState values, the delegation model where Stages
   020-060 enable components through Sync hook Jobs and ignoreDifferences
-  pointers (scripts/shared/stage_apps.py delegated), or a DSC/DSCI not Ready.
+  pointers (scripts/stage-apps.sh delegated), or a DSC/DSCI not Ready.
   Do NOT use for the operator Subscription (use rhoai-update-channels or
   rhoai-self-managed-installation), DSCI monitoring fields (use
   rhoai-observability), or the trusted CA bundle (use
@@ -38,7 +38,7 @@ OpenShift AI 3.5 sections. Detailed record:
 | `default-dsci` created by GitOps (operator auto-creation disabled by `DISABLE_DSC_CONFIG`); `applicationsNamespace: redhat-ods-applications`; `trustedCABundle` Managed, empty custom bundle | `010-rhoai-platform/dsc-init.yaml`, `010-rhoai-operator/subscription.yaml` | [Install and manage components by using the CLI][comp-cli] |
 | DSC on `datasciencecluster.opendatahub.io/v2`; Stage 010 manages only `dashboard` and `workbenches` (`workbenchNamespace: rhods-notebooks`); every other component `Removed` in Git | `010-rhoai-platform/datasciencecluster.yaml` | [Install and manage components by using the CLI][comp-cli] |
 | One owner for the singletons: Application `010-rhoai-platform`; later stages patch the live DSC from a `Sync` hook Job; `ignoreDifferences` plus `RespectIgnoreDifferences=true` keep the patch | `gitops/applications/010-rhoai-platform.yaml` | n/a (Argo CD behaviour, see README) |
-| Delegated owners: `kueue` (020, `Unmanaged`), `kserve` and `modelregistry` (030), `aigateway` and `ogx` (040), `trustyai`, `mlflowoperator`, `aipipelines` (050), `mcplifecycleoperator` (060) | component README "Delegation model" table; `scripts/shared/stage_apps.py` | [Install and manage components by using the CLI][comp-cli]; Kueue: [Install the distributed workloads components][dw] |
+| Delegated owners: `kueue` (020, `Unmanaged`), `kserve` and `modelregistry` (030), `aigateway` and `ogx` (040), `trustyai`, `mlflowoperator`, `aipipelines` (050), `mcplifecycleoperator` (060) | component README "Delegation model" table; `scripts/stage-apps.sh` | [Install and manage components by using the CLI][comp-cli]; Kueue: [Install the distributed workloads components][dw] |
 | `llamastackoperator` kept `Removed` (live 3.5 CRD marks it deprecated in favour of `ogx`; the 3.5 CLI example lists `ogx` and omits it) | `010-rhoai-platform/datasciencecluster.yaml` | [Install and manage components by using the CLI][comp-cli] |
 | No custom namespaces | `010-rhoai-platform/dsc-init.yaml` | [Configure custom namespaces][custom-ns] |
 
@@ -60,7 +60,7 @@ OpenShift AI 3.5 sections. Detailed record:
    ```bash
    oc get dsci default-dsci -o jsonpath='{.status.phase}{"\n"}'
    oc get dsc default-dsc -o jsonpath='{.status.phase}{"\n"}{.status.installedComponents}{"\n"}'
-   python3 scripts/shared/stage_apps.py delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io
+   scripts/stage-apps.sh delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io
    ```
 
 ## Pitfalls
@@ -69,7 +69,7 @@ OpenShift AI 3.5 sections. Detailed record:
   (`Removed`) on the next sync and uninstalls that component. Turn the
   component off through its stage first.
 - Without `RespectIgnoreDifferences=true`, a sync re-applies the Git value and
-  `stage_apps.py delegated` returns nothing; Stage 020 and 030 `deploy.sh`
+  `stage-apps.sh delegated` returns nothing; Stage 020 and 030 `deploy.sh`
   then refuse to deploy.
 - Kueue is `Unmanaged`, not `Managed`: the Red Hat build of Kueue Operator owns
   Kueue ([Install the distributed workloads components][dw]).

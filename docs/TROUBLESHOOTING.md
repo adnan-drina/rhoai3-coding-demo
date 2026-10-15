@@ -65,7 +65,7 @@ oc get applications -n openshift-gitops \
 For a specific app:
 
 ```bash
-APP=040-local-models   # python3 scripts/shared/stage_apps.py names 040 lists the Stage 040 components
+APP=040-local-models   # scripts/stage-apps.sh names 040 lists the Stage 040 components
 oc get application "$APP" -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | select(.status != "Synced" or .health.status != "Healthy") | [.kind,.namespace,.name,.status,.health.status,.message] | @tsv'
 ```
@@ -99,7 +99,7 @@ prove recurring Jobs or future Tekton steps can pull their images.
 **Diagnose:**
 
 ```bash
-for APP in $(python3 scripts/shared/stage_apps.py names 070); do
+for APP in $(scripts/stage-apps.sh names 070); do
   oc get application "$APP" -n openshift-gitops -o json \
     | jq -r --arg app "$APP" '.status.resources[]? | select(.status != "Synced") | [$app,.kind,.namespace,.name,.status,.message] | @tsv'
 done
@@ -168,7 +168,7 @@ oc get llminferenceservice qwen3-6-27b -n models-as-a-service \
 
 **Affected stage:** Stage 040 (first pull of a large modelcar)
 
-**Likely cause:** kubelet DiskPressure mid-pull. Modelcar images are large (~30-36GB); on a 100GB root volume the pull plus cached base images crosses the image-GC threshold and garbage collection thrashes the very layers being pulled. Fixed by the 200GB gp3 default in generate-gpu-machineset.sh; note that MachineSet template changes only apply to newly created machines.
+**Likely cause:** kubelet DiskPressure mid-pull. Modelcar images are large (~30-36GB); on a 100GB root volume the pull plus cached base images crosses the image-GC threshold and garbage collection thrashes the very layers being pulled. Fixed by the 200GB gp3 default in `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets`; note that MachineSet template changes only apply to newly created machines.
 
 **Diagnose:**
 
@@ -180,7 +180,7 @@ oc debug node/<gpu-node> -- chroot /host df -h /var  # watch used% growth
 
 **Recover:**
 
-- If the volume is undersized, recreate the GPU machines: scale the GPU MachineSet to 0, regenerate with `generate-gpu-machineset.sh --source <worker-machineset> --write` (200GB gp3 for every pool), sync Stage 020, scale back up with `resume-gpu-demo.sh`.
+- If the volume is undersized, recreate the GPU machines: scale the GPU MachineSet to 0, regenerate with `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets <worker-machineset> --write` (200GB gp3 for every pool), sync Stage 020, scale back up with `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus N`.
 - If pressure already cleared, the pull resumes on its own; disk usage growth in /var confirms progress.
 
 ## InstallPlan Approval Carries Hidden Passenger CSVs
@@ -330,7 +330,7 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
 **Recover:**
 
 - Wait for the Kueue CSV to reach `Succeeded`.
-- Confirm the `stable-v1.4` channel and an installed CSV of at least `kueue-operator.v1.4.2` (the minimum `scripts/platform/check-operator-policy.py` enforces) for the OpenShift 4.22 baseline. Stage 020 uses native `v1beta2` queue APIs and delegates DSC Kueue integration as `Unmanaged` with `autoCreateQueues=false`.
+- Confirm the `stable-v1.4` channel and an installed CSV of at least `kueue-operator.v1.4.2` (the minimum `check_operator_policy` in `scripts/lib.sh` enforces) for the OpenShift 4.22 baseline. Stage 020 uses native `v1beta2` queue APIs and delegates DSC Kueue integration as `Unmanaged` with `autoCreateQueues=false`.
 - If `demo-sandbox` or its reviewed LocalQueues are missing, reconcile the existing Stage 020 Application and confirm `lq-cpu-default` and `lq-gpu-reserved-demo` before running workloads.
 - Re-run `./stages/020-gpu-infrastructure-private-ai/validate.sh`.
 
@@ -343,13 +343,13 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
 **Diagnose:**
 
 ```bash
-./scripts/platform/resume-gpu-demo.sh status
+stages/020-gpu-infrastructure-private-ai/validate.sh
 ```
 
 **Recover:**
 
 ```bash
-./scripts/platform/resume-gpu-demo.sh resume
+stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1
 ```
 
 The recovery script syncs the existing Stage 020 revision, restores its verified GPU MachineSet to two replicas, waits for allocatable GPUs and native ClusterPolicy readiness, and runs Stage 020 validation. It leaves model resources unchanged and does not sync Stage 030 or repair ReplicaSets. Functional CUDA/DCGM, admission, dashboard and Stage 040 model acceptance remain separate.
@@ -460,7 +460,7 @@ oc rollout status deployment/maas-api -n redhat-ai-gateway-infra
 Then re-run:
 
 ```bash
-python3 scripts/shared/stage_apps.py sync 040 --app 040-maas-platform --resync
+scripts/stage-apps.sh sync 040 --app 040-maas-platform --resync
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
@@ -536,7 +536,7 @@ oc auth can-i create prometheuses/k8s --subresource=api \
 
 ```bash
 # Re-sync the component that owns the MaaS PersesDashboards and their enablement Jobs.
-python3 scripts/shared/stage_apps.py sync 040 --app 040-maas-platform --resync
+scripts/stage-apps.sh sync 040 --app 040-maas-platform --resync
 
 ts="$(date -u +%Y%m%d%H%M%S)"
 oc get persesdashboard -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' \
@@ -597,7 +597,7 @@ oc get secret prometheus-web-tls-ca -n redhat-ods-monitoring
 Re-sync Stage 010 so the GitOps hook creates the Secret from the injected ConfigMap:
 
 ```bash
-python3 scripts/shared/stage_apps.py sync 010 --app 010-rhoai-platform --resync
+scripts/stage-apps.sh sync 010 --app 010-rhoai-platform --resync
 ./stages/010-openshift-ai-platform-foundation/validate.sh
 ```
 
@@ -688,7 +688,7 @@ curl -sS -H "Authorization: Bearer $(oc whoami -t)" -H 'Content-Type: applicatio
 
 - Read-write entry: in the playground's MCP tab click the Auth icon, paste `oc whoami -t`, **Authorize**; repeat after closing the browser, and use it only for actions you intend to run, because the server acts with your permissions. Read-only entry: no token needed; authorize with your token only when you need to read beyond the demo projects.
 - Use Qwen 3.8, Claude Sonnet 5.5 or Nemotron 3 Ultra for tool use; GPT-6 Luna returns `400 Function tools with reasoning_effort are not supported` and the gateway holds that error body until the client times out (wasm-shim #425).
-- If a server is missing from the MCP tab, check the `gen-ai-aa-mcp-servers` ConfigMap in `redhat-ods-applications` (both keys are published by `publish-catalog-mcp.sh`) and the Route in `mcp-servers`.
+- If a server is missing from the MCP tab, check the `gen-ai-aa-mcp-servers` ConfigMap in `redhat-ods-applications` (both keys are published by `stages/040-governed-models-as-a-service/deploy.sh`) and the Route in `mcp-servers`.
 
 ## Gen AI Playground External Model Works But Local Models Fail
 
@@ -746,7 +746,7 @@ The logs must show successful key creation, but must not print full API keys. On
 - Generate a new one-time key.
 
 ```bash
-python3 scripts/shared/stage_apps.py sync 040 --app 040-maas-platform --resync
+scripts/stage-apps.sh sync 040 --app 040-maas-platform --resync
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
@@ -888,10 +888,9 @@ sleep 60
 ```bash
 oc get secret evalhub-model-auth-maas -n evaluated-models
 oc get llminferenceservice -n internal-models
-./stages/050-model-evaluation/submit-evaluation.sh --help
 ```
 
-**Recover:** Resume the model if it is parked (`scripts/platform/resume-gpu-demo.sh up`). Submit a bounded run with `submit-evaluation.sh --provider guidellm` and a benchmark bounded by `max_seconds` or `max_requests`, or run the qualification pipeline with only the latency and throughput steps. The parameters are in the Stage 050 README provider table.
+**Recover:** Resume the model if it is parked (`stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1`). Submit a bounded run from **Develop & train → Evaluations** (or the EvalHub REST API) with the `guidellm` provider and a benchmark bounded by `max_seconds` or `max_requests`, or run the qualification pipeline with only the latency and throughput steps. The parameters are in the Stage 050 README provider table.
 
 **Related docs:** [Stage 050 README](../stages/050-model-evaluation/README.md), [operations: Stage 050 governed evaluations](OPERATIONS.md#stage-050-governed-evaluations-2026-10-09)
 
@@ -1217,8 +1216,9 @@ before migration dispatch; changing their display name does not change the
 Kubernetes identity. The separate-request interruption remains an upstream
 Dashboard limitation; this fix prevents it from producing a second run seat.
 
-Validation: `python3 scripts/demo/check-workspace-creation.py --live` checks the
-installed policy using server dry runs. Roll back the two policy manifests
+Validation: check the installed policy with a server dry run of a workspace
+creation request (`oc create --dry-run=server`); the former checker
+`check-workspace-creation.py` is in git history at `82092e01`. Roll back the two policy manifests
 and their Kustomize entries through GitOps if creation is unexpectedly blocked;
 that removes duplicate protection without changing existing workspaces.
 
@@ -1226,7 +1226,7 @@ that removes duplicate protection without changing existing workspaces.
 
 **Symptom:** inside a migration workspace, `getent hosts maas.apps.<domain>`
 prints public addresses instead of `172.30.250.250`; long tool calls stall and
-reconnect; `run-preflight.sh` fails with "the workspace is on the public ELB
+reconnect; `stages/130-ai-autonomous-migration/validate.sh --run` fails with "the workspace is on the public ELB
 path".
 
 **Cause (fixed 2026-09-24):** from v7 to v12 the in-cluster route was a manual
@@ -1247,7 +1247,7 @@ internal Service is missing). For a stale workspace, preserve its work and run e
 
 **Symptom:** a new migration workspace starts, but `.hermes/AUTOSTART-STATUS`
 records `"state": "failed"` with a `RUN_DECLARATION_<CODE>` reason and no M1
-card exists. `run-preflight.sh` fails with the same code.
+card exists. `stages/130-ai-autonomous-migration/validate.sh --run` fails with the same code.
 
 **Cause:** until 2026-09-24 the golden carried `run-budget.json` and
 `run-configuration.json` naming run v11, and the factory copied them into every
@@ -1470,7 +1470,7 @@ python3 -c 'from pathlib import Path; import sys; sys.path.insert(0,"/projects/m
 **Recover:**
 
 - Confirm golden yamlite parses `idFields: [id]` and quoted `valueMap` keys (`"9966": "8080"`) via `yamlite.test.py`, and the template skeleton uses block-form `idFields`.
-- Do not `pip install pyyaml` into the dest as the golden path. Do not hand-edit dest `migration.yaml` mid-run unless recreating from the template. Republish golden yamlite (`bootstrap-scaffold-repos.sh`); dest clones still carry the old parser until that lands.
+- Do not `pip install pyyaml` into the dest as the golden path. Do not hand-edit dest `migration.yaml` mid-run unless recreating from the template. Republish golden yamlite (merge to `main` and deploy Stage 070; the GitLab hook publishes the golden); dest clones still carry the old parser until that lands.
 
 **Related docs:** `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib/planner/yamlite.py`
 
@@ -2295,7 +2295,7 @@ For browser access failures, verify the platform realm's GitLab client, the subj
 
 **Cause:** `spec.plugins` on `consoles.operator.openshift.io/cluster` is an atomic list. Any writer replaces it whole, and operators that register a plugin only append their own name, so a rewrite drops the others. Append-only Sync hooks did not prevent this (2026-10-12, 2026-10-13).
 
-**Fix:** Application `010-console-observability` owns the list by server-side apply (`gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/console-plugins.yaml`), and self-heal restores it. To add a plugin, add it to that file and publish; do not `oc patch` the list. `validate-console-observability.sh` fails when an installed ConsolePlugin is disabled or missing from Git.
+**Fix:** Application `010-console-observability` owns the list by server-side apply (`gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/console-plugins.yaml`), and self-heal restores it. To add a plugin, add it to that file and publish; do not `oc patch` the list. `stages/010-openshift-ai-platform-foundation/validate.sh --component 010-console-observability` fails when an installed ConsolePlugin is disabled or missing from Git.
 
 ## References
 
@@ -2599,7 +2599,7 @@ curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
                 "generation_parameters": {"temperature": 0.7, "top_p": 0.8, "max_new_tokens": 512}}}
 ```
 
-`stages/050-model-evaluation/submit-evaluation.sh` submits the same job from the terminal. The `inspect/swe-bench` card cannot run on 3.5.1 regardless of the model (see the SWE-bench notes in the Stage 050 README).
+The EvalHub REST API accepts the same job body; the former terminal helper `submit-evaluation.sh` is in git history at `82092e01`. The `inspect/swe-bench` card cannot run on 3.5.1 regardless of the model (see the SWE-bench notes in the Stage 050 README).
 
 ## EvalHub Provider Jobs Fail Or Never Finish Against MaaS Models
 
@@ -2731,7 +2731,7 @@ The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` a
 
 **Likely cause:** `InsufficientInstanceCapacity` is an AWS 5xx answer, so the Machine API keeps retrying the same subnet. The zone suggestion is generic text: each zone names the others, and on 2026-10-13 all three refused `p5.4xlarge` at once. A Machine always launches into one subnet, so "no zone" is not an option from OpenShift. The Spot denial comes from the AWS organization that owns this account, not from the cluster.
 
-**Recover:** Scale the zero-replica MachineSet of another zone (`scripts/platform/gpu-capacity-probe.sh` tries zones one at a time and always returns to zero), or wait and retry. For Spot, ask the account owner; nothing in the cluster can lift the policy. Scale the stuck MachineSet back to zero so it stops retrying.
+**Recover:** Scale the zero-replica MachineSet of another zone to one, one zone at a time, returning each to zero if it fails, or wait and retry. For Spot, ask the account owner; nothing in the cluster can lift the policy. Scale the stuck MachineSet back to zero so it stops retrying.
 
 ## Stage 020 Sync Hangs On job-enable-dsc-kueue After An Operator Update
 
@@ -2754,12 +2754,12 @@ The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` a
 - An explicit sync started by patching `operation.sync` (for example `{"operation":{"sync":{"revision":"<sha>"}}}`) does not carry the Application's `syncPolicy.syncOptions`, so `RespectIgnoreDifferences=true` is not applied: the sync writes Git's empty `data` over the delegated ConfigMap fields and the playground loses its MCP entries. Automatic syncs keep the option.
 - The Application lost its `argocd.argoproj.io/compare-options: ServerSideDiff=true` annotation (and the other annotations in its Git manifest) after `oc apply` of a JSON copy with bare metadata, so the delegated `data` fields show as a diff.
 
-**Recover:** Restore the annotations from the Application file in `gitops/applications/` (`oc annotate application ... --overwrite`, one key at a time) and hard-refresh. Republish the playground entries with Stage 040's own publisher, as `deploy.sh` does:
+**Recover:** Restore the annotations from the Application file in `gitops/applications/` (`oc annotate application ... --overwrite`, one key at a time) and hard-refresh. Republish both playground entries by re-running Stage 040 `deploy.sh`, which publishes them after its sync:
 
 ```bash
-RHOAI_STAGE040_EXPECTED_REVISION=<Stage 040 revision> RHOAI_STAGE060_EXPECTED_REVISION=<060-agent-tools revision> \
-  ./stages/040-governed-models-as-a-service/publish-catalog-mcp.sh --key OpenShift-MCP --defer-if-absent
-# repeat with --key OpenShift-MCP-ReadWrite
+RHOAI_STAGE060_EXPECTED_REVISION=<060-agent-tools revision> \
+  ./stages/040-governed-models-as-a-service/deploy.sh --revision <Stage 040 revision>
+# add --replace-studio-mcp only for a reviewed change of an already published entry
 ```
 
 Change an Application's revision with `oc patch` on `spec.source.targetRevision` (and `spec.ignoreDifferences` when needed), not by re-applying the whole object. When an explicit operation is needed, pass the Application's options with it: `{"operation":{"sync":{"revision":"<sha>","syncOptions":["RespectIgnoreDifferences=true","ServerSideDiff=true", ...]}}}`, or use `argocd --core app sync`.
@@ -2783,11 +2783,11 @@ oc patch gateway maas-default-gateway -n openshift-ingress --type json \
 
 **Affected stage:** Stage 060 `060-openshell-runtime`
 
-**Symptom:** The `openshell-runtime-prerequisites` hook fails (`index of untyped nil` on `key-encryption-key`, or `Runtime prerequisites did not qualify`), or `setup-runtime.py` stops with `Missing key with retained storage; rotation refused` or `Missing narrow runtime field delegation`.
+**Symptom:** The `openshell-runtime-prerequisites` hook fails (`index of untyped nil` on `key-encryption-key`, or `Runtime prerequisites did not qualify`), or `stages/060-agent-runtime-and-agentops/deploy.sh` stops with `Missing key with retained storage; rotation refused` or `Missing narrow runtime field delegation`.
 
-**Likely cause:** `openshell/openshell-credentials` lost its `key-encryption-key` while PVC `openshell-data-openshell-0` still holds data encrypted with it, so the script correctly refuses to generate a new key. Separately, `a769444a` widened the Application's delegation to `/data` before `c26d900c` taught `setup-runtime.py` to accept it.
+**Likely cause:** `openshell/openshell-credentials` lost its `key-encryption-key` while PVC `openshell-data-openshell-0` still holds data encrypted with it, so the script correctly refuses to generate a new key. Separately, `a769444a` widened the Application's delegation to `/data` before `c26d900c` taught `stages/060-agent-runtime-and-agentops/deploy.sh` to accept it.
 
-**Recover:** Do not rotate. The running gateway was started with the key (a required `secretKeyRef`), so its container runtime spec still carries it; restore it into the Secret without printing it (`tmp/stage060-restore-runtime-key.sh` reads `crictl inspect` `info.runtimeSpec.process.env` through `oc debug node/...` and patches only an empty, unchanged Secret). Writing key material is an operator action. Then run the runtime procedure; on a cluster installed before the Automatic-approval change, let the sync update the `agent-sandbox-operator` Subscription before `check-operator-policy.py` runs, and finish `setup-runtime.py` within the hook's 300-second window.
+**Recover:** Do not rotate. The running gateway was started with the key (a required `secretKeyRef`), so its container runtime spec still carries it; restore it into the Secret without printing it (`tmp/stage060-restore-runtime-key.sh` reads `crictl inspect` `info.runtimeSpec.process.env` through `oc debug node/...` and patches only an empty, unchanged Secret). Writing key material is an operator action. Then run the runtime procedure; on a cluster installed before the Automatic-approval change, let the sync update the `agent-sandbox-operator` Subscription before `check_operator_policy` runs, and finish `stages/060-agent-runtime-and-agentops/deploy.sh` within the hook's 300-second window.
 
 ## Stage 070 internal-registry build refuses
 
@@ -2828,7 +2828,7 @@ The reused RHBK 26.4 operator serves `KeycloakRealmImport` at `k8s.keycloak.org/
 
 **Symptom:** the base-SSO identity hook (`070-identity/jobs/configure-base-sso.py`) fails with `Existing application identity has no verified OpenShift link: <user>` or `Conflicting base SSO identity: <user>`.
 
-The hook validates the whole linking plan before it changes any user or client, and it never deletes a federated-identity link. An existing `platform` realm user is linked to `base-sso` only when its OpenShift identity and user UID agree and its single `openshift` link carries that UID, or when it already has a `base-sso` link to the same base user. A missing, stale or foreign link refuses the run instead of being repaired. Inspect the user's federated identities in the `platform` realm and the OpenShift `User`/`Identity` objects, correct the conflicting record, then resync. `stages/070-advanced-app-platform/tests/sso-alignment.test.py` covers the unbound, stale and foreign cases.
+The hook validates the whole linking plan before it changes any user or client, and it never deletes a federated-identity link. An existing `platform` realm user is linked to `base-sso` only when its OpenShift identity and user UID agree and its single `openshift` link carries that UID, or when it already has a `base-sso` link to the same base user. A missing, stale or foreign link refuses the run instead of being repaired. Inspect the user's federated identities in the `platform` realm and the OpenShift `User`/`Identity` objects, correct the conflicting record, then resync.
 
 ## Stage 070 shared-namespace upgrades or MaaS discovery refuse
 

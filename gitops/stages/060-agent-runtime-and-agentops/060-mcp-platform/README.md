@@ -8,9 +8,9 @@ API to run the OpenShift MCP servers.
 | | |
 |---|---|
 | Argo CD Application | `060-mcp-platform` ([manifest](../../../applications/060-mcp-platform.yaml)) |
-| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh) (own deploy script) |
-| Validated by | [`stages/060-agent-runtime-and-agentops/validate-mcp-platform.sh`](../../../../stages/060-agent-runtime-and-agentops/validate-mcp-platform.sh) (Application at its pinned revision; DSC component `Managed`; `MCPLifecycleOperatorReady`; component CR owned by the DSC and Ready; one operator Deployment owned by the component, ready, running the image in `operator-source.json`; CRD `mcpservers.mcp.x-k8s.io` established and serving `v1alpha1`) |
-| Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/shared/stage_apps.py`. Sync option `RespectIgnoreDifferences=true`. |
+| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy.sh --component 060-mcp-platform [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy.sh --component 060-mcp-platform) (own deploy script) |
+| Validated by | [`stages/060-agent-runtime-and-agentops/validate.sh --component 060-mcp-platform`](../../../../stages/060-agent-runtime-and-agentops/validate.sh --component 060-mcp-platform) (Application at its pinned revision; DSC component `Managed`; `MCPLifecycleOperatorReady`; component CR owned by the DSC and Ready; one operator Deployment owned by the component, ready, running the image in `operator-source.json`; CRD `mcpservers.mcp.x-k8s.io` established and serving `v1alpha1`) |
+| Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/stage-apps.sh`. Sync option `RespectIgnoreDifferences=true`. |
 | Depends on | `010-rhoai-platform`: owns DSC `default-dsc` and delegates `/spec/components/mcplifecycleoperator` through `ignoreDifferences`; dashboard flag `mcpCatalog` must already be `true`, set by the Stage 030 model-discovery hook (the deploy script refuses otherwise). |
 | Used by | `060-agent-tools` (`MCPServer` resources in `mcp-servers`); the dashboard MCP Catalog deploy action. |
 
@@ -37,7 +37,7 @@ enabled, validated and disabled independently of the agent runtime and of the MC
 | Job | `enable-mcp-platform` | `redhat-ods-applications` | Sync hook, wave 5, `BeforeHookCreation`. Merge-patches `mcplifecycleoperator.managementState: Managed` and reads it back. Pinned `ose-cli` image by digest, restricted security context, 120 s deadline, `backoffLimit: 1`. |
 
 `operator-source.json` is not rendered. It records the expected operator image, its amd64 digest and the source
-revision `cc66894b` [4]; `validate-mcp-platform.sh` compares the running image with it.
+revision `cc66894b` [4]; `stages/060-agent-runtime-and-agentops/validate.sh --component 060-mcp-platform` compares the running image with it.
 
 Objects not in Git, created by the RHOAI operator: the `MCPLifecycleOperator` component CR `default`, the
 `mcp-lifecycle-operator` Deployment in `redhat-ods-applications`, and the `mcpservers.mcp.x-k8s.io` CRD.
@@ -45,9 +45,9 @@ Objects not in Git, created by the RHOAI operator: the `MCPLifecycleOperator` co
 ## How
 
 - **Delegation.** Stage 010 writes `mcplifecycleoperator: Removed` in Git and lists the field in its
-  `ignoreDifferences`. This Job sets the live value to `Managed`. `deploy-mcp-platform.sh` asserts that the
+  `ignoreDifferences`. This Job sets the live value to `Managed`. `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-mcp-platform` asserts that the
   delegation exists (`stage_apps.delegated`) before it writes anything.
-- **Guards.** The script selects the reviewed commit (`stage_apps.py select`: the stage source is clean and the
+- **Guards.** The script selects the reviewed commit (`stage-apps.sh select`: the stage source is clean and the
   repository advertises the commit), refuses
   a foreign or busy Application and foreign-owned prerequisite objects, and checks the RBAC rules match exactly.
 - **Hook lifecycle.** Only `BeforeHookCreation`, so the completed Job and its pod stay until the next sync [6].
@@ -59,7 +59,7 @@ Objects not in Git, created by the RHOAI operator: the `MCPLifecycleOperator` co
 
 ## Validation
 
-`validate-mcp-platform.sh` (read-only; waits up to 180 s for readiness). By hand:
+`stages/060-agent-runtime-and-agentops/validate.sh --component 060-mcp-platform` (read-only; waits up to 180 s for readiness). By hand:
 
 ```bash
 oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.mcplifecycleoperator.managementState}{"\n"}'

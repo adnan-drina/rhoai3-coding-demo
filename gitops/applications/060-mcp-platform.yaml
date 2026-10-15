@@ -8,7 +8,7 @@ metadata:
     demo.rhoai.io/stage: "060"
   annotations:
     argocd.argoproj.io/manifest-generate-paths: /gitops/stages/060-agent-runtime-and-agentops/060-mcp-platform
-    demo.rhoai.io/deploy-script: stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh
+    demo.rhoai.io/deploy-script: stages/060-agent-runtime-and-agentops/deploy.sh --component 060-mcp-platform
 spec:
   project: rhoai-demo
   source:

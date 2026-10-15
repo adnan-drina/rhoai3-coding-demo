@@ -13,7 +13,7 @@ metadata:
     argocd.argoproj.io/compare-options: ServerSideDiff=true
     argocd.argoproj.io/sync-wave: "1"
     argocd.argoproj.io/manifest-generate-paths: /gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage
-    demo.rhoai.io/deploy-script: stages/010-openshift-ai-platform-foundation/deploy-sandbox-storage.sh
+    demo.rhoai.io/deploy-script: stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-sandbox-storage
 spec:
   project: rhoai-demo
   source:

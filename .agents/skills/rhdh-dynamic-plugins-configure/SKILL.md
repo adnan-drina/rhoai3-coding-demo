@@ -50,9 +50,8 @@ Developer Hub 1.10 sections. Detailed record:
 1. Change plugin config only in the two ConfigMaps above; keep the Tekton and
    Argo CD packages as digest-pinned OCI references (`rhdh-dynamic-plugins-install`).
 2. Static checks: `./stages/070-advanced-app-platform/validate.sh --static`
-   (`stage070-upgrade.test.py`: `test_argo_plugins_follow_110_oci_packaging`,
-   `test_tekton_frontend_is_wired_and_migration_requires_hub`;
-   `security-boundaries.test.py`).
+   (the former offline tests `stage070-upgrade.test.py` and
+   `security-boundaries.test.py` are in git history at `82092e01`).
 3. After the OpenShift safety guard in `AGENTS.md`, sync `070-rhdh` through
    `./stages/070-advanced-app-platform/deploy.sh` and run `validate.sh`.
 4. Read-only checks:

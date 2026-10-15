@@ -12,7 +12,7 @@ description: >
   Automatic on the rhods-operator Subscription in
   gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/, the
   channel and minimum version enforced by
-  scripts/platform/check-operator-policy.py, the doc map RHOAI version, and
+  `check_operator_policy` in `scripts/lib.sh`, the doc map RHOAI version, and
   planning a minor upgrade (for example 3.5 to 3.6). Do NOT use for the
   install objects themselves (use rhoai-self-managed-installation), DSC
   component changes (use rhoai-dsci-dsc-configuration), or support posture of
@@ -29,7 +29,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
 - A change touches `spec.channel` or `installPlanApproval` in
   `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/subscription.yaml`.
-- A change touches the `rhods-operator` entries in `scripts/platform/check-operator-policy.py`.
+- A change touches the `rhods-operator` entries in `check_operator_policy` in `scripts/lib.sh`.
 - The next RHOAI minor is planned, or `deploy.sh` refuses the catalog.
 
 ## Repo decisions
@@ -38,7 +38,7 @@ OpenShift AI 3.5 sections. Detailed record:
 |---|---|---|
 | Version-pinned `stable-3.5` channel (not rolling `stable` or `fast`), so a minor upgrade is a reviewed Git change | `010-rhoai-operator/subscription.yaml` | [Update channels][channels] |
 | `installPlanApproval: Automatic`: z-streams within 3.5 install without review; the CLI example sets no approval mode (recorded as a justified deviation) | `010-rhoai-operator/subscription.yaml` | [Install the Operator by using the CLI][op-cli] |
-| Fail-closed policy: channel must be `stable-3.5`, installed version at least `3.5.1` and inside the 3.5 minor; no `startingCSV` | `scripts/platform/check-operator-policy.py` (`channels`, `minimum`) | [Update channels][channels] |
+| Fail-closed policy: channel must be `stable-3.5`, installed version at least `3.5.1` and inside the 3.5 minor; no `startingCSV` | `check_operator_policy` in `scripts/lib.sh` (`channels`, `minimum`) | [Update channels][channels] |
 | Product docs version for every `rhoai-*` skill follows the channel's minor | `.agents/references/red-hat-doc-map.yaml` (`products.rhoai.docs_version`) | n/a (repo convention) |
 
 ## Procedure
@@ -46,7 +46,7 @@ OpenShift AI 3.5 sections. Detailed record:
 1. Read the [Update channels][channels] table for the target channel's support
    window and cadence; check the target minor's release notes.
 2. Change the channel in `subscription.yaml`, the `rhods-operator` channel and
-   minimum in `check-operator-policy.py`, and the doc map `docs_version` in
+   minimum in `check_operator_policy`, and the doc map `docs_version` in
    one change; then re-point the `rhoai-*` skills
    (`project-rhoai-doc-chapter-skill-authoring`).
 3. Deploy and validate:
@@ -58,7 +58,7 @@ OpenShift AI 3.5 sections. Detailed record:
    ```bash
    oc get packagemanifest rhods-operator -n openshift-marketplace \
      -o jsonpath='{range .status.channels[*]}{.name}{" "}{.currentCSV}{"\n"}{end}'
-   python3 scripts/platform/check-operator-policy.py gitops/stages/010-openshift-ai-platform-foundation --verify
+   (source scripts/lib.sh && load_env && check_oc_logged_in && check_operator_policy gitops/stages/010-openshift-ai-platform-foundation --verify)
    ```
 
 ## Pitfalls

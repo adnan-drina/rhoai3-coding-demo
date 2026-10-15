@@ -5,11 +5,11 @@ This Application connects the Stage 070 developer services to the Keycloak servi
 | | |
 |---|---|
 | Argo CD Application | `070-identity` ([manifest](../../../applications/070-identity.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 2) |
-| Validated by | `stages/070-advanced-app-platform/validate.sh` (Keycloak and realm checks, `security-status.py`); `validate.sh --static` (`sso-alignment.test.py`, `correction-package.test.py`, `stage070-upgrade.test.py`) |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage-apps.sh deploy 070` (deploy-order 2) |
+| Validated by | `stages/070-advanced-app-platform/validate.sh` (Keycloak, realm and security-boundary checks); `validate.sh --static` (renders, disjoint components, scripts parse; the former offline tests `tests/*.test.py` are in git history at `82092e01`) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on OAuthClient `platform-keycloak` (`/secret`, `/redirectURIs`) and on `/data` of the four provisioner Secrets |
 | Depends on | The environment's Keycloak `keycloak/keycloak` (Ready, with the `sso` realm), OpenShift `OAuth/cluster` with the OpenID provider `rhbk` pointing at `sso`, users `ai-admin` and `ai-developer` in `sso`; the target namespaces `gitlab-system`, `rhdh`, `openshift-mta` and `trusted-artifact-signer` (from `070-namespaces`) |
-| Used by | `070-gitlab` (OIDC client and integrations), `070-rhdh`, `070-mta` (platform SSO jobs), `070-pipelines` (TAS signing bootstrap), `070-sonarqube` (SAML client in `sso`); `rotate-credentials.py` |
+| Used by | `070-gitlab` (OIDC client and integrations), `070-rhdh`, `070-mta` (platform SSO jobs), `070-pipelines` (TAS signing bootstrap), `070-sonarqube` (SAML client in `sso`) |
 
 ## Why
 
@@ -54,7 +54,7 @@ Not in Git: the base Keycloak, the `sso` realm and its users, the broker and SAM
 
 ## How
 
-1. **Order.** `stage_apps.py deploy 070` syncs this Application after `070-namespaces` and waits for Succeeded, Synced and Healthy before `070-devspaces`. Inside the Application, wave 0 creates the realm, the OAuth client and the Secret placeholders. Wave 1 creates the RBAC, then the Sync hook runs (Argo CD orders by wave, then kind [5]).
+1. **Order.** `stage-apps.sh deploy 070` syncs this Application after `070-namespaces` and waits for Succeeded, Synced and Healthy before `070-devspaces`. Inside the Application, wave 0 creates the realm, the OAuth client and the Secret placeholders. Wave 1 creates the RBAC, then the Sync hook runs (Argo CD orders by wave, then kind [5]).
 2. **Preconditions (refuse before writing).** The hook reads the `keycloak` Route and `OAuth/cluster`. It requires exactly one OpenID provider `rhbk` [8] whose issuer is `https://<keycloak-host>/realms/sso`. It reads at most 1000 users from each realm. Every non-service user in `platform`, plus `ai-admin` and `ai-developer`, must match exactly one enabled `sso` user. An existing user is linked only after its OpenShift `Identity` (`rhbk:<subject>`) and stored OpenShift link agree. A username match alone never links an account. Existing `base-sso` providers, broker clients and the SonarQube client must carry the owner attribute `rhoai3.owner`, or the hook stops.
 3. **Base realm (`sso`).** It creates or updates the confidential client `stage070-platform-broker` with the authorization-code flow only: an exact broker callback, an exact post-logout callback, `fullScopeAllowed: false` and no service account. It also creates or updates the SAML client `sonarqube`, which signs responses and assertions with RSA-SHA256, uses persistent NameID and maps `login`, `name` and `email`. Before the SonarQube Route exists, the callback uses the default Route host `sonarqube-sonarqube.<apps-domain>`. Any other lookup failure stops the hook.
 4. **Application realm (`platform`).** It sets the OIDC provider `base-sso` with signature validation through JWKS, `trustEmail: false`, `syncMode: IMPORT` and the base realm's endpoints. It creates missing users and adds `base-sso` links. It sets the browser-flow Identity Provider Redirector default to `base-sso` [2]. It disables the old `openshift` provider but keeps its links for rollback.
@@ -68,7 +68,7 @@ Not in Git: the base Keycloak, the `sso` realm and its users, the broker and SAM
    | `stage070-signing-provisioner` | `manage-clients` |
 
    It refuses if a client has unexpected `realm-management` roles. It writes `client_id` and `client_secret` to the Secret of the same name through `secret_writer.py`. That helper creates or merge-patches the Secret and never leaves a `last-applied-configuration` copy.
-6. **Credentials.** The master token is minted inside the Job from `keycloak-initial-admin` and passed only to the child script's environment. Generated secrets exist only in Keycloak and in the Secrets above. `/data` is ignored, so Argo CD keeps the placeholder and never overwrites the generated values (`RespectIgnoreDifferences` [4]). Rotation of the SCM client is in `stages/070-advanced-app-platform/rotate-credentials.py`.
+6. **Credentials.** The master token is minted inside the Job from `keycloak-initial-admin` and passed only to the child script's environment. Generated secrets exist only in Keycloak and in the Secrets above. `/data` is ignored, so Argo CD keeps the placeholder and never overwrites the generated values (`RespectIgnoreDifferences` [4]). Rotation of the SCM client was done by the former `rotate-credentials.py` (in git history at `82092e01`).
 
 Rollback, refusals and recovery are in [OPERATIONS: shared base-platform SSO](../../../../docs/OPERATIONS.md#shared-base-platform-sso) and [TROUBLESHOOTING: shared SSO refuses a user or SonarQube login](../../../../docs/TROUBLESHOOTING.md#stage-070-shared-sso-refuses-a-user-or-sonarqube-login).
 
@@ -77,17 +77,12 @@ Rollback, refusals and recovery are in [OPERATIONS: shared base-platform SSO](..
 `validate.sh` (live):
 
 - `Reused Keycloak Ready` and `Platform realm imported` (`KeycloakRealmImport` condition `Done=True`).
-- `Stage 070 corrected security boundaries` runs `security-status.py`. For this component it checks the following:
+- `Stage 070 corrected security boundaries` runs `stages/070-advanced-app-platform/validate.sh`. For this component it checks the following:
   - `no_credential_annotation:gitlab-system/stage070-scm-provisioner` and `no_retained_secret_annotation:<ns>`.
   - `no_master_secret:<ns>/<sa>`: the RHDH, MTA and signing job accounts cannot read `keycloak-initial-admin`.
   - `scoped_client_can_read_its_platform_configuration:<secret>` and `scoped_client_cannot_administer:<secret>/{sso,master}` for the RHDH, MTA and signing provisioner clients.
 
-`validate.sh --static`:
-
-- `sso-alignment.test.py`, `IdentityPreservation`: subject preservation and refusal of unbound, stale, conflicting, duplicate or disabled identities and of a foreign issuer. `test_broker_has_no_base_realm_management_authority`, `test_broker_logout_allows_only_its_exact_response_endpoint`, `test_cluster_identity_configuration_is_read_only`.
-- `sso-alignment.test.py`, `test_keycloak_signs_assertions_and_uses_exact_callback` (SonarQube client).
-- `correction-package.test.py`: `test_client_roles_stay_in_platform_and_keep_secret`, `test_downstream_jobs_have_no_master_secret_access`, `SecretLifecycle` (`secret_writer.py`).
-- `stage070-upgrade.test.py`, `test_reused_keycloak_served_import_api`.
+`validate.sh --static` checks renders, disjoint components and script syntax. The former offline tests (`sso-alignment.test.py`, `correction-package.test.py`, `stage070-upgrade.test.py`) that covered identity preservation and refusal cases are in git history at `82092e01`.
 
 By hand (read-only):
 

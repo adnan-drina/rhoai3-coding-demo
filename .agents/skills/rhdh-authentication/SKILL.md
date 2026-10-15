@@ -50,11 +50,12 @@ Paths are under `gitops/stages/070-advanced-app-platform/`.
    `070-rhdh/catalog/all.yaml` (the generator republishes the runtime catalog).
 2. Never put a client or session secret in Git; the hook keeps existing
    values and generates only missing or placeholder ones on the next sync
-   (`rotate-credentials.py` rotates the GitLab and Argo CD tokens, not these).
+   (the retired `rotate-credentials.py`, in git history at `82092e01`, rotated
+   the GitLab and Argo CD tokens, not these).
 3. Validate after the safety guard in `AGENTS.md`:
 
    ```bash
-   ./stages/070-advanced-app-platform/validate.sh   # includes security-status.py client checks
+   ./stages/070-advanced-app-platform/validate.sh   # includes the identity client checks
    oc logs deployment/backstage-developer-hub -n rhdh -c backstage-backend --tail=200 | grep -i 'auth\|OPError'
    ```
 
@@ -70,7 +71,7 @@ Paths are under `gitops/stages/070-advanced-app-platform/`.
   resolve user identity" ([Login failed][loginfail]); add the entity to
   `catalog/all.yaml`, not a resolver workaround.
 - `job-configure-rhdh` must never read the master admin Secret
-  (`security-status.py` `no_master_secret`).
+  (`stages/070-advanced-app-platform/validate.sh` `no_master_secret`).
 
 ## Official documentation (Developer Hub 1.10)
 

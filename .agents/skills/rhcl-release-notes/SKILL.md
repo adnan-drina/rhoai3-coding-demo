@@ -24,7 +24,7 @@ Re-read the notes themselves before acting; they are updated per z-stream.
 ## When to use
 
 - Deciding whether to raise the qualified minimum in
-  `scripts/platform/check-operator-policy.py`.
+  `check_operator_policy` in `scripts/lib.sh`.
 - A MaaS Gateway symptom might match a fixed or known issue.
 
 ## Relevant to this demo

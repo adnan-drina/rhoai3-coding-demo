@@ -3,16 +3,16 @@
 This Application seeds the `openshell` realm in the existing Red Hat build of Keycloak instance. The realm is the OIDC
 issuer that the OpenShell gateway (`060-openshell-runtime`) trusts for every API call. It defines the two OpenShell
 roles and a first-login flow that refuses any OpenShift identity that was not enrolled in advance. Clients, the
-OpenShift identity broker and the enrolled personas are added afterwards by `setup-identity.py`.
+OpenShift identity broker and the enrolled personas are added afterwards by `stages/060-agent-runtime-and-agentops/deploy.sh`.
 
 | | |
 |---|---|
 | Argo CD Application | `060-openshell-identity` ([manifest](../../../applications/060-openshell-identity.yaml)) |
-| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy.sh`](../../../../stages/060-agent-runtime-and-agentops/deploy.sh) (own deploy script, `demo.rhoai.io/deploy-script`); it then calls `deploy-runtime.sh` |
-| Validated by | No dedicated validator. `deploy.sh` waits for the import condition `Done` and `setup-identity.py` asserts the realm, clients, broker and personas. [`validate.sh`](../../../../stages/060-agent-runtime-and-agentops/validate.sh) reports the whole stage as pending (exit 2). |
-| Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/shared/stage_apps.py`. Annotation `compare-options: ServerSideDiff=true`. Sync options `CreateNamespace=true`, `SkipDryRunOnMissingResource=true`, `RespectIgnoreDifferences=true` (and a `ServerSideDiff=true` entry, which Argo CD ignores as a sync option). |
+| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy.sh`](../../../../stages/060-agent-runtime-and-agentops/deploy.sh) (own deploy script, `demo.rhoai.io/deploy-script`); a full run then deploys `060-openshell-runtime` |
+| Validated by | No dedicated validator. `deploy.sh` waits for the import condition `Done`, and its identity setup step asserts the realm, clients, broker and personas. [`validate.sh`](../../../../stages/060-agent-runtime-and-agentops/validate.sh) reports the whole stage as pending (exit 2). |
+| Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/stage-apps.sh`. Annotation `compare-options: ServerSideDiff=true`. Sync options `CreateNamespace=true`, `SkipDryRunOnMissingResource=true`, `RespectIgnoreDifferences=true` (and a `ServerSideDiff=true` entry, which Argo CD ignores as a sync option). |
 | Depends on | The `keycloak` Keycloak CR in namespace `keycloak` and its re-encrypt Route `keycloak` (not in this repository's Git; no Argo CD tracking). The Red Hat build of Keycloak operator 26.4. OpenShift Users `ai-admin` and `ai-developer` (cluster identity provider; Stage 010 adds them to the RHOAI groups). |
-| Used by | `060-openshell-runtime`: `setup-runtime.py` derives the issuer `https://<keycloak-host>/realms/openshell` and writes it to ConfigMap `openshell/openshell-identity`; the gateway reads it as `OPENSHELL_OIDC_ISSUER`. The OpenShell CLI logs in through client `openshell-cli`. |
+| Used by | `060-openshell-runtime`: the runtime setup step of `stages/060-agent-runtime-and-agentops/deploy.sh` derives the issuer `https://<keycloak-host>/realms/openshell` and writes it to ConfigMap `openshell/openshell-identity`; the gateway reads it as `OPENSHELL_OIDC_ISSUER`. The OpenShell CLI logs in through client `openshell-cli`. |
 
 ## Why
 
@@ -36,7 +36,7 @@ sandboxing is a Developer Preview feature in OpenShift AI 3.5 [3].
 |---|---|---|---|
 | KeycloakRealmImport | `openshell-realm` | `keycloak` | Wave 1, `Prune=false`. Creates realm `openshell` (display name "Agent Runtime") with `sslRequired: all`, registration, password reset, email login and username edit disabled; realm roles `openshell-user` and `openshell-platform-admin`; top-level flow `openshell-prelinked-only` whose only step is `deny-access-authenticator`; realm attribute `openshell-managed: rhoai3-coding-demo` (ownership marker checked by the helpers). |
 
-Objects deliberately not in Git, created by [`setup-identity.py`](../../../../stages/060-agent-runtime-and-agentops/setup-identity.py) after the import:
+Objects deliberately not in Git, created by [`stages/060-agent-runtime-and-agentops/deploy.sh`](../../../../stages/060-agent-runtime-and-agentops/deploy.sh) after the import:
 
 | Object | Where | Owner and purpose |
 |---|---|---|
@@ -50,18 +50,18 @@ Objects deliberately not in Git, created by [`setup-identity.py`](../../../../st
 ## How
 
 - **Ordering.** `deploy.sh` checks that the published branch head equals the local revision and that the scoped
-  files have no local diff, refuses a foreign or busy Application, runs `setup-identity.py --preflight`, applies the
+  files have no local diff, refuses a foreign or busy Application, runs its identity preflight and `scripts/stage-apps.sh preflight`, applies the
   Application pinned to the SHA, syncs and waits, waits for `keycloakrealmimport/openshell-realm` condition `Done`,
-  then runs `setup-identity.py` and finally `deploy-runtime.sh`.
+  then runs its identity setup step and, in a full run, deploys `060-openshell-runtime`.
 - **Pre-linked enrollment only.** The first-login flow denies every broker login that is not already linked. Keycloak's
   default first-login flow creates a user automatically [2]; replacing it with a deny step means only the two users
   the helper pre-creates and links (by OpenShift User UID, not by username) can sign in.
 - **Import is create-only.** The Keycloak operator imports a realm only if it does not exist; it never updates or
   deletes it [1]. Changing `realm-openshell.yaml` therefore has no effect on an existing realm. Configuration after the
-  first import is owned by `setup-identity.py`, which is idempotent and refuses to adopt objects without the
+  first import is owned by the identity setup step of `stages/060-agent-runtime-and-agentops/deploy.sh`, which is idempotent and refuses to adopt objects without the
   `openshell-managed` marker.
 - **The import CR is kept.** The operator guide recommends deleting the CR after import [1]. This repository keeps it
-  (`Prune=false`) because `setup-identity.py` uses its UID as the ownership anchor for the generated Secret and
+  (`Prune=false`) because the identity setup step uses its UID as the ownership anchor for the generated Secret and
   OAuthClient.
 - **Secrets.** Broker and bootstrap client secrets are generated in memory and stored only in `keycloak/openshell-auth`
   and the OAuthClient. The helper signs in to the Keycloak admin API with the operator-generated `keycloak-initial-admin` Secret (owner-checked against the Keycloak CR).
@@ -71,7 +71,7 @@ Objects deliberately not in Git, created by [`setup-identity.py`](../../../../st
 
 ## Validation
 
-`deploy.sh` and `setup-identity.py` are the checks. By hand (read-only):
+`deploy.sh` and its identity setup step are the checks. By hand (read-only):
 
 ```bash
 oc get keycloakrealmimport openshell-realm -n keycloak -o jsonpath='{.status.conditions}'

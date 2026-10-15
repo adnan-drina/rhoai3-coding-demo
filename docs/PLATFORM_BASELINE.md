@@ -9,10 +9,10 @@ Each product has one documentation version, tied to the Git pin that selects it 
 [`.agents/references/red-hat-doc-map.yaml`](../.agents/references/red-hat-doc-map.yaml). Print them with:
 
 ```bash
-python3 scripts/shared/check-doc-links.py --versions
+python3 .agents/tools/check-doc-links.py --versions
 ```
 
-`scripts/shared/check-doc-links.py` fails when a pin and the map disagree, and when a converted skill or a
+`.agents/tools/check-doc-links.py` fails when a pin and the map disagree, and when a converted skill or a
 component README links to another documentation version. Upgrade a product by changing its pin, its
 `docs_version` and its skills in one change, then run the checker. Products with no Git pin (for example
 OpenShift itself, which is installed outside Git) carry the reason in the map.
@@ -29,7 +29,7 @@ version. The exception is a product Red Hat publishes only unversioned (the map 
 ## Lifecycle policy
 
 - Operators follow the Subscription channel and approval set in Git. The operator policy check
-  (`scripts/platform/check-operator-policy.py`) holds the minimum installed versions.
+  (`check_operator_policy` in `scripts/lib.sh`) holds the minimum installed versions.
 - ODF follows the OpenShift minor version (`stable-4.22` on OpenShift 4.22), as the ODF update guidance requires.
 - The baseline pins product documentation and operator lifecycle policy only. It does not pin generated operand
   images, copied CSV content or operator-created Deployments. If an operand is incompatible with the installed

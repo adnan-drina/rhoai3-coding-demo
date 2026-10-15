@@ -5,8 +5,8 @@ This Application installs Red Hat OpenShift Pipelines 1.24 and Red Hat Trusted A
 | | |
 |---|---|
 | Argo CD Application | `070-pipelines` ([manifest](../../../applications/070-pipelines.yaml)) |
-| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 4) |
-| Validated by | `stages/070-advanced-app-platform/validate.sh` (operator, TektonConfig, enrollment, Coolstore delivery, TAS checks), `security-status.py`, `validate.sh --static` tests |
+| Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage-apps.sh deploy 070` (deploy-order 4) |
+| Validated by | `stages/070-advanced-app-platform/validate.sh` (operator, TektonConfig, enrollment, Coolstore delivery, TAS checks), `stages/070-advanced-app-platform/validate.sh`, `validate.sh --static` tests |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on Subscription `startingCSV`, and Securesign `platform` `/spec/fulcio/config/oidcIssuers` |
 | Depends on | `070-namespaces` (`app-platform-build`, `trusted-artifact-signer`); existing Keycloak `keycloak/keycloak` and its Route; `070-identity` (Secret `stage070-signing-provisioner` and the `platform` realm); internal image registry; `gp3-csi` storage class |
 | Used by | `070-gitlab` (integration hub writes `gitlab-enroller`, `gitlab-platform-config`, `gitlab-import-seeds` and `stage070-project-release` for this coordinator); `070-sonarqube` (writes the control credential `sonarqube-credentials`); `070-devspaces` (migration-run provisioner identity and workspace Secret writer bindings); `070-rhdh` (templates file enrollment issues) |
@@ -80,7 +80,7 @@ The coordinator creates `project-<name>` Applications that render `project-enrol
 
 ## How
 
-- **Order.** `stage_apps.py deploy 070` syncs this Application fourth, after `070-namespaces`, `070-identity` and `070-devspaces`. Inside it: Subscriptions (wave 2), signing RBAC (3), Securesign and signing hook (10), TektonConfig and Triggers settings (11), admission policies, AppProjects, provisioning Pipeline and pruner hook (12), coordinator (13).
+- **Order.** `stage-apps.sh deploy 070` syncs this Application fourth, after `070-namespaces`, `070-identity` and `070-devspaces`. Inside it: Subscriptions (wave 2), signing RBAC (3), Securesign and signing hook (10), TektonConfig and Triggers settings (11), admission policies, AppProjects, provisioning Pipeline and pruner hook (12), coordinator (13).
 - **Operator installation.** Pipelines and TAS share `openshift-operators`, so they keep Automatic approval on versioned channels; `startingCSV` is an installation floor (1.24.1 is installed live). Dev Spaces moved to `openshift-operators` on 2026-10-15 and uses Automatic approval like them; RHDH and MTA use Manual approval, and each of those components approves its own reviewed InstallPlan.
 - **TektonConfig.** The operator owns the singleton, so Sync hooks patch single fields instead of declaring the CR. `coschedule: pipelineruns` replaces the removed `disable-affinity-assistant` flag [3] and lets the source and Maven cache PVCs bind to one run. `createRbacResource=false` disables the operator's per-namespace pipeline ServiceAccount grants and `pipelines-scc-rolebinding` [1]. Only the `image-builder` ServiceAccount receives `nested-container` through `pipeline-userns-builder`.
 - **Image builds.** `build-internal-image` runs Buildah as UID 1000 in a pod user namespace (`hostUsers: false`, SCC `nested-container` [6]), refuses a non-mapped namespace, pushes only to its own project's internal registry path with a full commit tag, and returns the digest. Registry login uses the TaskRun's projected token.
@@ -99,9 +99,9 @@ Day-2 procedures: [Operations: Stage 070 GitLab release](../../../../docs/OPERAT
 - `TektonConfig ready`, `Internal registry available`, `GitLab enrollment reconciler installed`, `Scoped integration Secret app-platform-build/gitlab-enroller exists`.
 - Coolstore delivery: `Coolstore pipeline installed`, `Coolstore initial-build receipt bound`, `Coolstore uses digest from internal registry`, `Runtime is reconciled from delivery Git`, `Webhook listener ready`, `Pipeline may push its own images`, `Pipeline cannot push another project image`.
 - `TAS service Ready`, `TAS uses existing platform realm`.
-- `security-status.py`: `ingress_policy_installed:app-platform-build` and `:trusted-artifact-signer`, `no_master_secret:trusted-artifact-signer/configure-signing`, scoped-client checks for `stage070-signing-provisioner`, no credential annotations in project namespaces, `ServerSideDiff=true` on generated Applications.
+- `stages/070-advanced-app-platform/validate.sh`: `ingress_policy_installed:app-platform-build` and `:trusted-artifact-signer`, `no_master_secret:trusted-artifact-signer/configure-signing`, scoped-client checks for `stage070-signing-provisioner`, no credential annotations in project namespaces, `ServerSideDiff=true` on generated Applications.
 
-`validate.sh --static` tests: `security-boundaries.test.py` (builder SCC, cross-namespace reads, runtime AppProject, coordinator RBAC, admission parameters, promotion workspace), `internal-registry.test.py`, `delivery-integration.test.py`, `stage070-upgrade.test.py` (webhook scope, Automatic shared-namespace subscriptions, Task waves), `product-schemas.test.py` (`test_tas_configured_fields_use_the_actual_15_spelling_and_types`), `sso-alignment.test.py` (`test_signer_uses_exact_loopback_paths_with_pkce_and_no_password_grant`).
+`validate.sh --static` checks renders, disjoint components and script syntax; the former offline tests (`security-boundaries.test.py`, `internal-registry.test.py`, `delivery-integration.test.py`, `stage070-upgrade.test.py`, `product-schemas.test.py`) are in git history at `82092e01`.
 
 By hand:
 

@@ -10,8 +10,8 @@ security insights** tab read from it.
 | | |
 |---|---|
 | Argo CD Application | `050-evalhub` ([manifest](../../../applications/050-evalhub.yaml)) |
-| Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 3), followed by [`setup-ai-services.sh`](../../../../stages/050-model-evaluation/setup-ai-services.sh) for the database Secret and MLflow address |
-| Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh), [`validate-ai-services.sh`](../../../../stages/050-model-evaluation/validate-ai-services.sh) (database, EvalHub `Ready`, multi-tenant PostgreSQL, MLflow wiring, service RBAC) and [`service-api.py`](../../../../stages/050-model-evaluation/service-api.py) (authenticated API discovery) |
+| Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 3), followed by [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) for the database Secret and MLflow address |
+| Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh), [`stages/050-model-evaluation/validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (database, EvalHub `Ready`, multi-tenant PostgreSQL, MLflow wiring, service RBAC) and [`stages/050-model-evaluation/validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (authenticated API discovery) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. |
 | Depends on | `050-mlflow` (TrustyAI component, MLflow, dashboard `disableLMEval: false` and `globalMLflowNamespaces`); `050-model-qualification` (namespace `evaluated-models`, Role `evalhub-evaluator`); `050-evaluation-content` (ConfigMaps for the custom providers and collections the CR lists); `030-private-model-serving` (namespace `rhoai-model-registries`). |
 | Used by | `050-model-qualification` (pipeline steps call EvalHub), `050-evaluation-content` (SWE-bench grading runs through EvalHub), `050-oci-export`, the RHOAI dashboard, MCP clients. |
@@ -35,7 +35,7 @@ declared by `050-mlflow` (`prompts/`); MLflow watches the `opendatahub.io/global
 |---|---|---|---|
 | Namespace | `evalhub` | cluster | Wave 0, `Prune=false,Delete=false`. Dedicated service namespace (not a tenant). |
 | ServiceAccount, Role, RoleBinding | `evalhub-credentials-ready` | `evalhub` | Wave 10. `get` on Secret `evalhub-db-credentials` only. |
-| Job | `evalhub-credentials-ready` | `evalhub` | `Sync` hook, wave 11, `BeforeHookCreation,HookSucceeded`, 600 s deadline. Waits until `setup-ai-services.sh` has created the database Secret. |
+| Job | `evalhub-credentials-ready` | `evalhub` | `Sync` hook, wave 11, `BeforeHookCreation,HookSucceeded`, 600 s deadline. Waits until `stages/050-model-evaluation/deploy.sh` has created the database Secret. |
 | PersistentVolumeClaim | `evalhub-postgresql` | `evalhub` | Wave 12, `Prune=false,Delete=false`. 10 Gi `gp3-csi`. |
 | Service | `evalhub-postgresql` | `evalhub` | Wave 12. Port 5432. |
 | StatefulSet | `evalhub-postgresql` | `evalhub` | Wave 12. One replica, `rhel9/postgresql-16` pinned by digest, no service-account token, `RuntimeDefault` seccomp, all capabilities dropped. |
@@ -63,8 +63,8 @@ Moved on 2026-10-14 to `050-mlflow` (`prompts/`): `ai-curated-prompts` is an MLf
 
 | Object | Created by |
 |---|---|
-| Secret `evalhub-db-credentials` (`database-user`, `database-password`, `database-name`, `db-url`) | `setup-ai-services.sh`, once, with a random password |
-| ConfigMap `evalhub-mlflow-connection` (`tracking-uri`) | `setup-ai-services.sh` after MLflow is `Available` |
+| Secret `evalhub-db-credentials` (`database-user`, `database-password`, `database-name`, `db-url`) | `stages/050-model-evaluation/deploy.sh`, once, with a random password |
+| ConfigMap `evalhub-mlflow-connection` (`tracking-uri`) | `stages/050-model-evaluation/deploy.sh` after MLflow is `Available` |
 | Deployments `evalhub`, `evalhub-mcp`; Services `evalhub`, `evalhub-mcp`, `evalhub-metrics`; Route `evalhub-mcp` (re-encrypt); Role `evalhub-service-access-role`; ConfigMap `evalhub-service-ca` | TrustyAI operator, owned by the `EvalHub` CR |
 | Built-in provider ConfigMaps `trustyai-service-operator-evalhub-provider-*` in `redhat-ods-applications` | TrustyAI operator |
 | Tenant objects in `evaluated-models` (`evalhub-evalhub-job`, `evalhub-discovery`, `evalhub-service-ca`) | TrustyAI operator |
@@ -73,7 +73,7 @@ Moved on 2026-10-14 to `050-mlflow` (`prompts/`): `ai-curated-prompts` is an MLf
 ## How
 
 **Ordering.** Namespace (0); credential wait (10, 11); database (12); MCP identity (29); EvalHub
-(30); MCP access (31) [5]. `deploy.sh` applies the Application first and then runs `setup-ai-services.sh`, which creates
+(30); MCP access (31) [5]. `deploy.sh` applies the Application first and then runs `stages/050-model-evaluation/deploy.sh`, which creates
 the database Secret the wave-11 hook is waiting for, then publishes the MLflow URI. `deploy.sh` waits for
 `status.ready: True` on the `EvalHub` CR.
 
@@ -91,7 +91,7 @@ the database Secret the wave-11 hook is waiting for, then publishes the MLflow U
 **Collection and provider id length.** EvalHub 1.0 validates ids (36 characters or fewer) at start-up; one invalid id stops
 the new pod from starting while the old pod keeps serving.
 
-**Database transport.** The `db-url` written by `setup-ai-services.sh` uses `sslmode=disable`; the NetworkPolicy limits the
+**Database transport.** The `db-url` written by `stages/050-model-evaluation/deploy.sh` uses `sslmode=disable`; the NetworkPolicy limits the
 port to the EvalHub API pods.
 
 **Access.** The catalog-insights Role grants a single verb on a virtual resource in the catalog namespace; the dashboard's
@@ -99,17 +99,17 @@ Eval Hub BFF performs a SubjectAccessReview for it before returning pre-computed
 ServiceAccount has the same tenant Role as administrators. The MCP client token is a long-lived ServiceAccount token
 Secret; rotate it by deleting the Secret and syncing.
 
-**Secrets.** No value in Git. The database Secret is generated by `setup-ai-services.sh`; the MCP token is filled by
+**Secrets.** No value in Git. The database Secret is generated by `stages/050-model-evaluation/deploy.sh`; the MCP token is filled by
 Kubernetes.
 
 ## Validation
 
-`validate-ai-services.sh` checks: the EvalHub PostgreSQL StatefulSet current and ready, its Bound `gp3-csi` PVC and Secret
+`stages/050-model-evaluation/validate.sh` checks: the EvalHub PostgreSQL StatefulSet current and ready, its Bound `gp3-csi` PVC and Secret
 keys; the `EvalHub` CR `Ready` with `tenancy: multi`, PostgreSQL and default connection pool; one current operator-owned
 `evalhub` Deployment; `MLFLOW_TRACKING_URI` from `evalhub-mlflow-connection` equal to the MLflow address; the database
 Secret mount; the MLflow CA, projected token (at most one hour) and workspace `evalhub`, with TLS verification on; the
 EvalHub ServiceAccount may write MLflow experiments in `evalhub` and create Jobs in `evaluated-models`; the curated prompt
-namespace label and dashboard settings. `service-api.py` performs authenticated, read-only API discovery.
+namespace label and dashboard settings. `stages/050-model-evaluation/validate.sh` performs authenticated, read-only API discovery.
 
 By hand:
 

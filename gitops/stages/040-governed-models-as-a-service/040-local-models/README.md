@@ -10,10 +10,10 @@ gateway, never through the pod.
 |---|---|
 | Argo CD Application | `040-local-models` ([manifest](../../../applications/040-local-models.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 5, together with `040-external-models`) |
-| Validated by | `stages/040-governed-models-as-a-service/validate.sh --readiness` (runs `validate-native.sh`: model spec equals Git except delegated `replicas`, Ready condition unless parked, owned workloads, route listener set and canonical model header, `MaaSModelRef` Ready/GovernanceAttached/RuntimeReady, template spec and labels); `scripts/shared/stage_apps.py status` (Synced and Healthy at the deployed revision) |
+| Validated by | `stages/040-governed-models-as-a-service/validate.sh --readiness` (runs `stages/040-governed-models-as-a-service/validate.sh`: model spec equals Git except delegated `replicas`, Ready condition unless parked, owned workloads, route listener set and canonical model header, `MaaSModelRef` Ready/GovernanceAttached/RuntimeReady, template spec and labels); `scripts/stage-apps.sh status` (Synced and Healthy at the deployed revision) |
 | Sync | Automated, `prune` and `selfHeal`. Sync options `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences` (and a `ServerSideDiff=true` sync option that has no effect). Compare option `ServerSideDiff=true` (annotation). `ignoreDifferences` on the `LLMInferenceService`: `/spec/replicas` and the three `modelregistry.opendatahub.io/*` id labels |
 | Depends on | Stage 010 (OpenShift AI with KServe and the `rhods-admins` group), Stage 020 (`gpu-rtxpro6000` hardware profile, `cq-gpu-rtxpro6000` and `cq-gpu-reserved-demo` ClusterQueues, GPU MachineSet), `040-maas-platform` (MaaS enabled), `040-gateway-governance` (Gateway `maas-default-gateway` with listeners `api` and `qwen3-8`) |
-| Used by | `040-model-access` (every subscription lists `qwen3-8-27b`), `040-genai-studio` (OpenShift Ops Assistant agent), Stage 050 evaluations, Stage 060 agent runtime subscriptions, Stage 070 Dev Spaces and MTA, `register-model-cards.sh` (Model Registry entries) |
+| Used by | `040-model-access` (every subscription lists `qwen3-8-27b`), `040-genai-studio` (OpenShift Ops Assistant agent), Stage 050 evaluations, Stage 060 agent runtime subscriptions, Stage 070 Dev Spaces and MTA, `stages/040-governed-models-as-a-service/deploy.sh` (Model Registry entries) |
 
 ## Why
 
@@ -77,8 +77,8 @@ arguments stay the same, so clients and subscriptions do not change.
 |---|---|
 | Deployments `qwen3-8-27b-kserve` (vLLM, owner of the GPU) and `qwen3-8-27b-kserve-router-scheduler` (endpoint picker), Services, `InferencePool`, HTTPRoute `qwen3-8-27b-kserve-route` | OpenShift AI KServe controller, from the `LLMInferenceService` |
 | Auth and rate-limit policies on the model route | MaaS and Connectivity Link controllers, from `MaaSModelRef`, subscriptions and auth policies |
-| Labels `modelregistry.opendatahub.io/registered-model-id` and `model-version-id` on the `LLMInferenceService` | `stages/040-governed-models-as-a-service/register-model-cards.sh` (links the deployment to its Model Registry entry) |
-| `spec.replicas` at runtime | Operators (`oc scale`/patch, `scripts/platform/resume-gpu-demo.sh`); Argo CD ignores it |
+| Labels `modelregistry.opendatahub.io/registered-model-id` and `model-version-id` on the `LLMInferenceService` | `stages/040-governed-models-as-a-service/deploy.sh` (links the deployment to its Model Registry entry) |
+| `spec.replicas` at runtime | Operators (`oc scale`/patch, `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus N`); Argo CD ignores it |
 
 ## How
 
@@ -125,12 +125,12 @@ compatibility hostname) and `api` (the shared `/v1` hostname with body-based mod
 - `/spec/replicas`: the model is parked at 0 to save GPU cost and resumed by an operator. Git says 1. Because the
   rollout uses `maxSurge`, a serving change with both GPUs busy needs the old workload pod deleted first (comment in the
   manifest).
-- The three `modelregistry.opendatahub.io/*` id labels: `register-model-cards.sh` stamps them after it registers the
+- The three `modelregistry.opendatahub.io/*` id labels: `stages/040-governed-models-as-a-service/deploy.sh` stamps them after it registers the
   checkpoint. Git only sets `modelregistry.opendatahub.io/name: demo-registry`.
 
 **Switching to FP8.** Add `components: [components/qwen38-fp8]` to `kustomization.yaml`, publish, re-pin Stage 040 and
-run `register-model-cards.sh` [7]. The component sets `VLLM_USE_DEEP_GEMM=0` because vLLM's DeepGEMM warm-up has no FP8
-recipe for this GPU (sm120) and aborts startup. `register-model-cards.sh` also registers every prepared component's
+run `stages/040-governed-models-as-a-service/deploy.sh` [7]. The component sets `VLLM_USE_DEEP_GEMM=0` because vLLM's DeepGEMM warm-up has no FP8
+recipe for this GPU (sm120) and aborts startup. `stages/040-governed-models-as-a-service/deploy.sh` also registers every prepared component's
 checkpoint without deployment linkage, so the registry lists both builds.
 
 **Secrets.** None. The Hugging Face checkpoints are public and are fetched by the KServe storage initializer.

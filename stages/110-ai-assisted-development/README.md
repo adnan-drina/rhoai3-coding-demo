@@ -342,14 +342,7 @@ pass.
 
 ### Resetting the demo
 
-Resetting is an **operator action**, not a workspace action: the script lives in the platform repository (`rhoai3-coding-demo`) and needs the operator credentials from `.env`, which never enter a developer workspace. From your local clone of the platform repo:
-
-```bash
-cd rhoai3-coding-demo
-./scripts/demo/reset-coolstore-demo.sh
-```
-
-The script rewinds `main` to the `golden` branch baseline via the GitHub API, recreates the `agentic-coolstore` DevWorkspace, and clears the SonarQube project so the rewound code becomes the fresh quality baseline. The force-push fires one expected pipeline run in `coolstore-dev` that re-validates the chain and re-tags `:latest`. The next workspace start clones pristine `main`.
+Resetting is an **operator action**, not a workspace action: it needs operator credentials, which never enter a developer workspace. It restores the registered GitLab baseline of `coolstore-inventory-service` with a normal commit (history is kept), recreates the `agentic-coolstore` DevWorkspace and clears the SonarQube project so the restored code becomes the fresh quality baseline; the commit fires one expected pipeline run in `coolstore-dev`. The former helper (`scripts/demo/reset-coolstore-demo.sh`, retired 2026-10-16) is in git history at 82092e01.
 
 Add `--yes` to skip the confirmation prompt. See `docs/OPERATIONS.md` (Coolstore Demo Reset) for advancing the baseline when the demo app legitimately evolves.
 

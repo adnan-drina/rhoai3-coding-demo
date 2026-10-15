@@ -5,8 +5,8 @@ This Application creates the governed entry point for every model request: the `
 | | |
 |---|---|
 | Argo CD Application | `040-gateway-governance` ([manifest](../../../applications/040-gateway-governance.yaml)) |
-| Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 3). `deploy.sh` passes the listener hostnames for this cluster's ingress domain as a `source.kustomize` patch (`stage_apps.py deploy --kustomize-patches`) |
-| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.sh` (Authorino TLS and CA checks; Gateway, listener, namespace-isolation and route checks); `preflight.sh` (adoption checks) |
+| Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 3). `deploy.sh` passes the listener hostnames for this cluster's ingress domain as a `source.kustomize` patch (`stage-apps.sh deploy --kustomize-patches`) |
+| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `stages/040-governed-models-as-a-service/validate.sh` (Authorino TLS and CA checks; Gateway, listener, namespace-isolation and route checks); `preflight.sh` (adoption checks) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `ServerSideDiff`, `RespectIgnoreDifferences`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on ConfigMap `authorino-service-ca` `/data/service-ca.crt` |
 | Depends on | `040-maas-operators` (Kuadrant and Authorino CRDs); Stage 010 (OpenShift AI `data-science-gateway-class`, cert-manager ingress certificate `cert-manager-ingress-cert`) |
 | Used by | The MaaS controller (AuthPolicy `maas-gateway-auth`, TokenRateLimitPolicies), `040-local-models` and `040-external-models` (routes on the listeners), `040-maas-platform` (namespace admission labels), Dev Spaces workspaces and the RHDH catalog generator (read the Gateway hostname and the `maas-gateway-internal` ClusterIP) |
@@ -71,7 +71,7 @@ Gateway, TLS and governance instances form one Application because MaaS authenti
                    {"op":"replace","path":"/spec/listeners/1/hostname","value":"qwen3-8-maas.<cluster-domain>"}]'
   ```
 
-  The patch addresses the listeners by index, so `api` must stay first and `qwen3-8` second. The domain is checked against `^[a-z0-9.-]+$`. `validate-native.sh` fails if a listener hostname still contains `placeholder` or a wildcard. Re-running `deploy.sh` re-applies the Applications and the patch.
+  The patch addresses the listeners by index, so `api` must stay first and `qwen3-8` second. The domain is checked against `^[a-z0-9.-]+$`. `stages/040-governed-models-as-a-service/validate.sh` fails if a listener hostname still contains `placeholder` or a wildcard. Re-running `deploy.sh` re-applies the Applications and the patch.
 - **Listeners and admission.** `api` (`maas.<cluster-domain>`) is the shared `/v1` endpoint. Routes may attach from namespaces labelled `maas-gateway-access=true` and named `redhat-ai-gateway-infra`, `external-models`, `internal-models` or `redhat-ods-applications`. `qwen3-8` (`qwen3-8-maas.<cluster-domain>`) is a compatibility listener for `internal-models` only. Both conditions must hold. The label alone does not admit a namespace.
 - **Gateway TLS.** The MaaS guide requires TLS but does not prescribe the certificate source [1]. Both listeners reference the cluster's cert-manager wildcard ingress certificate, Secret `cert-manager-ingress-cert` in `openshift-ingress`, the same namespace as the Gateway, so no ReferenceGrant is needed [4]. Istio watches referenced Secrets, so a renewal reaches the gateway without a sync. `preflight.sh` requires that IngressController `default` uses this certificate [3] and that the Secret holds `tls.crt` and `tls.key`. An earlier hook Job copied the Secret into `maas-gateway-tls`; the copy was never refreshed on renewal and was removed.
 - **Authorino TLS.** The guide's procedure annotates Service `authorino-authorino-authorization` with `service.beta.openshift.io/serving-cert-secret-name=authorino-server-cert`, enables the TLS listener, sets `SSL_CERT_FILE` and `REQUESTS_CA_BUNDLE` on the Authorino Deployment, and annotates the Gateway [1]. This repository does step 1 with the `authorino-serving-cert` Job, because the Authorino operator owns that Service. The Job checks that the operator owns the Service, then patches it. Step 2 is the declarative `spec.listener.tls` on the Authorino CR. For step 3 it mounts the service CA bundle through the Authorino CR's `spec.volumes` at `/etc/pki/tls/certs/openshift-service-ca.crt` instead of `oc set env` on the operator-managed Deployment. The service CA operator fills `authorino-service-ca` [3], and Argo CD ignores that key. Step 4 is the Gateway annotation in Git.
@@ -83,9 +83,9 @@ Gateway, TLS and governance instances form one Application because MaaS authenti
 
 ## Validation
 
-`validate-gateway-boundary.sh` (run by `validate.sh`) opens a TCP connection from each gateway pod, without any HTTP request, to every destination the gateway needs (all must connect) and to the kube-apiserver and kubelet on a node, unneeded Authorino and Limitador ports, and public port 80 (all must be refused).
+`stages/040-governed-models-as-a-service/validate.sh` (run by `validate.sh`) opens a TCP connection from each gateway pod, without any HTTP request, to every destination the gateway needs (all must connect) and to the kube-apiserver and kubelet on a node, unneeded Authorino and Limitador ports, and public port 80 (all must be refused).
 
-`validate-native.sh` checks:
+`stages/040-governed-models-as-a-service/validate.sh` checks:
 
 - Authorino is `Ready` and has the TLS listener and CA mount.
 - `authorino-service-ca` holds a certificate, and `authorino-server-cert` has `tls.crt` and `tls.key`.

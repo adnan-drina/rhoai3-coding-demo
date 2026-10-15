@@ -57,7 +57,7 @@ OpenShift AI 3.5 "View logs and audit records" sections.
 3. Audit review (cluster-admin): collect and filter the kube-apiserver audit
    records for DSC and DSCI changes with the procedure in [View audit
    records][audit]. Map each user to Argo CD or a stage Job ServiceAccount
-   (`python3 scripts/shared/stage_apps.py delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io`
+   (`scripts/stage-apps.sh delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io`
    lists the delegated fields).
 4. Keep extracts in a private scratch location.
 

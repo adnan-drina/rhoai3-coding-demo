@@ -51,29 +51,28 @@ Paths are under `gitops/stages/070-advanced-app-platform/`.
 
 1. Token values never enter Git; `070-gitlab` mints 90-day tokens and reuses
    them while valid. Rotate before expiry (a token expiring within seven days
-   refuses the GitLab sync) with
-   `stages/070-advanced-app-platform/rotate-credentials.py --component publisher`
-   (dry run unless `--execute`; it also needs `--revision`, `--repo-url`,
-   `--report`; procedure in `docs/OPERATIONS.md#gitlab-ownership-and-lifecycle`).
+   refuses the GitLab sync) through GitLab's token API; the former helper
+   `rotate-credentials.py --component publisher` is in git history at
+   `82092e01` (component list in `docs/OPERATIONS.md#stage-070-security-review-follow-up`).
 
 2. Validate after the safety guard in `AGENTS.md`:
 
    ```bash
-   ./stages/070-advanced-app-platform/validate.sh --static   # template input vs GitLab action schemas
+   ./stages/070-advanced-app-platform/validate.sh --static   # renders, disjoint components, scripts parse
    ./stages/070-advanced-app-platform/validate.sh            # gitlab-publisher, gitlab-catalog-reader, private mirror checks
    oc get secret rhdh-gitlab gitlab-publisher gitlab-catalog-reader -n rhdh -o name
    ```
 
 ## Pitfalls
 
-- Template inputs must match the installed GitLab action schemas
-  (`stages/070-advanced-app-platform/tests/product-schemas.test.py`).
+- Template inputs must match the installed GitLab action schemas (the offline
+  schema test was retired; it is in git history at `82092e01`).
 - Do not let discovery ingest templates; a second Location for a template
   causes 200/404 flapping:
   `docs/TROUBLESHOOTING.md#rhdh-template-entity-returns-200-then-404-after-a-catalog-re-stamp`.
 - A mirror that is behind the synced revision makes the generator refuse:
   `docs/TROUBLESHOOTING.md#rhdh-catalog-generator-refuses-factory_bundle_mismatch`.
-- No apply annotation may hold GitLab credentials (`security-status.py`).
+- No apply annotation may hold GitLab credentials (`stages/070-advanced-app-platform/validate.sh`).
 - GitLab API rate limits on the catalog provider: [Catalog provider errors][ratelimit].
 - Token lifecycle: `docs/OPERATIONS.md#gitlab-ownership-and-lifecycle`.
 

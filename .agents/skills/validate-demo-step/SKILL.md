@@ -41,10 +41,10 @@ Use this skill after changing a demo stage to verify the change is correct and c
 # Script syntax check
 bash -n stages/NNN-name/deploy.sh
 bash -n stages/NNN-name/validate.sh
-./scripts/platform/validate-stage-flow.sh
+scripts/validate-stage-flow.sh
 
 # Kustomize render check (components disjoint, union == stage kustomization)
-python3 scripts/shared/stage_apps.py check-static NNN
+scripts/stage-apps.sh check-static NNN
 
 # Dry-run against cluster (requires oc login)
 kustomize build gitops/stages/NNN-name/ | oc apply --dry-run=server -f -

@@ -65,7 +65,8 @@ Paths are under `gitops/stages/070-advanced-app-platform/`.
   `GlobalHeader` entry removes the whole top header. The 1.10 guide says only
   to copy the default configuration and modify it.
 - Template input names must match the installed GitLab action schemas
-  (`stages/070-advanced-app-platform/tests/product-schemas.test.py`).
+  (check them against the action list in Developer Hub; the offline schema
+  test was retired and is in git history at `82092e01`).
 - Template flaps 200/404 after a re-stamp:
   `docs/TROUBLESHOOTING.md#rhdh-template-entity-returns-200-then-404-after-a-catalog-re-stamp`.
 - `FACTORY_MAAS_ROUTE_MISSING` from `app-migration`:

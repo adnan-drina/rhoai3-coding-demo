@@ -8,8 +8,8 @@ stage that installs a console plugin (GitOps, ODF, Connectivity Link, Lightspeed
 | | |
 |---|---|
 | Argo CD Application | `010-console-observability` ([manifest](../../../applications/010-console-observability.yaml)) |
-| Deployed by | Its own script, [`stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh) (annotation `demo.rhoai.io/deploy-script`). Stage 010 `deploy.sh` calls it after the deploy-order components |
-| Validated by | [`validate-console-observability.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate-console-observability.sh) (called by `validate.sh` and by the deploy script) |
+| Deployed by | Its own script, [`stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-console-observability`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-console-observability) (annotation `demo.rhoai.io/deploy-script`). Stage 010 `deploy.sh` calls it after the deploy-order components |
+| Validated by | [`stages/010-openshift-ai-platform-foundation/validate.sh --component 010-console-observability`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh --component 010-console-observability) (called by `validate.sh` and by the deploy script) |
 | Sync | Automated, prune and self-heal; `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation. The `Console` object uses resource-level `ServerSideApply=true,Prune=false,Delete=false` |
 | Depends on | `010-observability-operators` (COO provides the `UIPlugin` CRD and the Perses operator); `010-rhoai-platform` (RHOAI generates the dashboards and datasources Perses shows) |
 | Used by | Console users and personas; every component that installs a `ConsolePlugin` listed here |
@@ -48,8 +48,8 @@ Pipelines).
 
 ## How
 
-- **Own deploy script.** `deploy-console-observability.sh` checks the following before its first write:
-  - the Stage 010 source matches the selected, published commit (`stage_apps.py select`);
+- **Own deploy script.** `stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-console-observability` checks the following before its first write:
+  - the Stage 010 source matches the selected, published commit (`stage-apps.sh select`);
   - an existing Application has the expected identity;
   - an existing `UIPlugin/monitoring` has no owner, is not being deleted, has no foreign tracking id, and has exactly
     the reviewed spec.
@@ -67,7 +67,7 @@ Pipelines).
 
 ## Validation
 
-`validate-console-observability.sh` checks the following:
+`stages/010-openshift-ai-platform-foundation/validate.sh --component 010-console-observability` checks the following:
 
 - The Application is Synced and Healthy, and its last operation succeeded at its 40-character `targetRevision`.
 - The `UIPlugin` has Perses enabled and carries this Application's tracking id.

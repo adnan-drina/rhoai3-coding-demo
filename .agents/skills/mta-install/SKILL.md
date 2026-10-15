@@ -46,9 +46,9 @@ MTA 8.3 sections. Detailed record:
 ## Procedure
 
 1. Change Git only. A z-stream update edits the Subscription `startingCSV`,
-   the approver allowlist and the validator expectation together
-   (`stages/070-advanced-app-platform/tests/correction-package.test.py`
-   checks they agree).
+   the approver allowlist and the validator expectation together (the
+   offline test that checked they agree was retired; it is in git history
+   at `82092e01`).
 2. Deploy and validate after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash
@@ -68,9 +68,9 @@ MTA 8.3 sections. Detailed record:
 ## Pitfalls
 
 - The Tackle schema preserves unknown fields: a dry run accepts a misspelled
-  or guessed parameter. `product-schemas.test.py`
-  (`test_tackle_parameters_are_implemented_by_the_downstream_operator`) checks
-  fields against the downstream operator.
+  or guessed parameter. Check fields against the downstream operator by hand
+  (the former offline test `product-schemas.test.py` is in git history at
+  `82092e01`).
 - MTA 8.3 has no supported RWO storage-class parameter; a non-default class
   leaves Hub claims Pending.
 - The operator hardcodes the `agentic-controller` 128Mi limit; removing the

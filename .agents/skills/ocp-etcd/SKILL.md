@@ -9,7 +9,7 @@ metadata:
 description: >
   Use when a question touches OpenShift etcd on the demo cluster: control-plane
   health or quorum risk, etcd backup, restore, member replacement, encryption,
-  or the node-size gate in scripts/platform/require-node-sizing.sh that exists
+  or the node-size gate in `require_node_sizing` in `scripts/lib.sh` that exists
   to protect the control plane. Read-only by default; every etcd change needs
   explicit user approval. Do NOT use for worker sizing or MachineSets (use
   ocp-machine-management) or node scheduling (use ocp-nodes).
@@ -25,7 +25,7 @@ etcd book for everything else.
 
 - A deploy or validate run reports API-server timeouts, control-plane nodes
   `NotReady`, or etcd alerts.
-- `scripts/platform/require-node-sizing.sh` refuses a deploy.
+- `require_node_sizing` in `scripts/lib.sh` refuses a deploy.
 - Someone asks for an etcd backup, restore, member replacement, defragmentation
   or encryption change.
 
@@ -34,7 +34,7 @@ etcd book for everything else.
 | Decision | Where in Git | Official section |
 |---|---|---|
 | No etcd configuration, backup schedule or encryption setting is kept in Git; etcd stays as installed by the cluster provisioner | none (absence checked with a repository search) | [Overview of etcd][overview] |
-| Every stage `deploy.sh` first refuses control-plane and CPU-worker nodes below 16 vCPU / 60 GiB (m6a.4xlarge class), because an undersized control plane put etcd quorum at risk on 2026-07-20; GPU nodes are exempt | `scripts/platform/require-node-sizing.sh` | [Recommended etcd practices][practices], [Reliable etcd performance and scalability][performance] |
+| Every stage `deploy.sh` first refuses control-plane and CPU-worker nodes below 16 vCPU / 60 GiB (m6a.4xlarge class), because an undersized control plane put etcd quorum at risk on 2026-07-20; GPU nodes are exempt | `require_node_sizing` in `scripts/lib.sh` | [Recommended etcd practices][practices], [Reliable etcd performance and scalability][performance] |
 | Backup, restore, member replacement and encryption are cluster-administrator operations outside the demo flow: no script in `scripts/` or `stages/` performs them | none | [Backing up and restoring etcd data][backup] |
 
 ## Procedure
@@ -47,7 +47,7 @@ etcd book for everything else.
    oc get nodes -l node-role.kubernetes.io/control-plane -o wide
    ```
 
-2. For an undersized control plane, run `scripts/platform/require-node-sizing.sh`
+2. For an undersized control plane, run `require_node_sizing` in `scripts/lib.sh`
    and resize the nodes through the provisioner; do not lower
    `REQUIRED_NODE_VCPU` / `REQUIRED_NODE_MEM_GIB` to get a deploy through.
 3. Any backup, restore, member replacement, defragmentation or encryption change:
@@ -59,7 +59,7 @@ etcd book for everything else.
 
 - Control-plane exhaustion presents first as API timeouts and kubelet status
   loss, not as etcd errors; check node capacity before suspecting etcd
-  (`scripts/platform/require-node-sizing.sh` header records the incident).
+  (`require_node_sizing` in `scripts/lib.sh` header records the incident).
 - A restore to a previous cluster state is a disaster-recovery path, not a way
   to undo a bad sync; GitOps re-sync is the repo's recovery path
   ([Disaster recovery][dr]).

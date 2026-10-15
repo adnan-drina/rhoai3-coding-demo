@@ -67,7 +67,7 @@ The GPU-as-a-Service layer on top of the Stage 010 base platform.
 
 - **One model per card** — this project uses exclusive cards to leave memory available for its selected model weights and inference runtime; it does not demonstrate GPU time-slicing
 - **CPU queue sizing** — `cq-cpu-default` provides cpu: 40, memory: 128Gi, sized for the CPU model plane (reranker, embedding InferenceServices, workbenches)
-- **MachineSet is cluster-specific** — carries AMI, subnet, and cluster labels; must be regenerated from the cluster's own worker pool on each new environment via `generate-gpu-machineset.sh`
+- **MachineSet is cluster-specific** — carries AMI, subnet, and cluster labels; must be regenerated from the cluster's own worker pool on each new environment via `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets`
 - **DSC patch mechanism** — Stage 020 does not own a second DataScienceCluster; it patches the Stage 010 shared owner through a dedicated ServiceAccount and ClusterRole
 
 ## How Red Hat And Open Source Make It Work
@@ -81,7 +81,7 @@ OpenShift Machine API creates GPU worker capacity from a declarative MachineSet.
 | GPU access | Taint `nvidia-gpu-only:NoSchedule` ensures only workloads with explicit toleration (via Kueue ResourceFlavor) land on GPU nodes |
 | Quota enforcement | Kueue ClusterQueues bound by nominal quota — workloads exceeding quota are queued, not rejected silently |
 | Isolation | `cq-gpu-reserved-demo` has no cohort; its GPU allocation cannot be borrowed by other queues |
-| Cost control | MachineSet replicas can be scaled to zero manually; GitOps ignores the drift |
+| Cost control | `deploy.sh --gpus 0` parks every GPU pool; GitOps ignores the live replica count |
 | DSC patch authority | Hook Job uses a scoped ServiceAccount and ClusterRole in `redhat-ods-applications` |
 
 ## Red Hat Products Used
@@ -105,14 +105,18 @@ OpenShift Machine API creates GPU worker capacity from a declarative MachineSet.
 
 ## Deploy And Validate
 
-The stage is deployed as five Argo CD Applications at one reviewed revision: `020-node-feature-discovery`, `020-nvidia-gpu-operator`, `020-kueue`, `020-gpu-machinesets` (the generated pools in `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets/`, with replicas left to the resume and park scripts) and `020-gpu-quotas` (Kueue queues and hardware profiles). Changing a pool or a quota syncs only that component.
+The stage is deployed as five Argo CD Applications at one reviewed revision: `020-node-feature-discovery`, `020-nvidia-gpu-operator`, `020-kueue`, `020-gpu-machinesets` (the generated pools in `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets/`, with replicas left to `deploy.sh --gpus N`) and `020-gpu-quotas` (Kueue queues and hardware profiles). Changing a pool or a quota syncs only that component.
 
 ```bash
 # Generate the cluster-specific GPU pools (required on each new environment; all start at 0 replicas)
-./stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh --source "$RHOAI_SOURCE_WORKER_MACHINESET" --write
+./stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets "$RHOAI_SOURCE_WORKER_MACHINESET" --write
 
 # Review and publish the generated pool files, then deploy their exact revision
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
+
+# Start one GPU worker in the default pool (GPU_POOL=rtxpro6000, or l40s), or park every pool
+./stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1
+./stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 0
 
 # Native readiness (requires every scaled GPU pool Ready, one exclusive GPU per worker)
 ./stages/020-gpu-infrastructure-private-ai/validate.sh --readiness

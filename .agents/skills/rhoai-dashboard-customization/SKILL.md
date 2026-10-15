@@ -48,8 +48,8 @@ linked OpenShift AI 3.5 sections. Detailed record:
    flag for a later stage goes in that stage's enable Job (declared in its
    `demo.rhoai.io/writes-delegated` annotation), and its pointer goes into the
    `010-rhoai-platform` `ignoreDifferences` list. Static check:
-   `python3 scripts/shared/stage_apps.py check-delegations` (also run by
-   `./scripts/platform/validate-stage-flow.sh`).
+   `scripts/stage-apps.sh check-delegations` (also run by
+   `scripts/validate-stage-flow.sh`).
 2. Look up the option name, default and support status in [Dashboard
    configuration options][options]; record any preview status in the owning
    component README ("Alignment with official guidance").
@@ -61,7 +61,7 @@ linked OpenShift AI 3.5 sections. Detailed record:
    ```bash
    oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
      -o jsonpath='{.spec.dashboardConfig}{"\n"}'
-   python3 scripts/shared/stage_apps.py delegated 010 OdhDashboardConfig \
+   scripts/stage-apps.sh delegated 010 OdhDashboardConfig \
      odh-dashboard-config redhat-ods-applications --group opendatahub.io
    ```
 

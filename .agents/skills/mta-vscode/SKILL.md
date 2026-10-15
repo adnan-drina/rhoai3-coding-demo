@@ -32,7 +32,7 @@ workspaces created from the Developer Hub `app-migration` template.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| VSIX files `mta-vscode-extension`, `mta-core`, `mta-java` 8.3.1 and the Red Hat Java extension are SHA-256 locked and baked to `/opt/rhoai3/extensions/` | `stages/070-advanced-app-platform/workspace-image/artifacts.lock.json`, `Dockerfile`, `verify-image.py` | [Install the extension][install] |
+| VSIX files `mta-vscode-extension`, `mta-core`, `mta-java` 8.3.1 and the Red Hat Java extension are SHA-256 locked and baked to `/opt/rhoai3/extensions/` | `stages/070-advanced-app-platform/workspace-image/artifacts.lock.json`, `Dockerfile` | [Install the extension][install] |
 | Loaded through `DEFAULT_EXTENSIONS` (Java extension before `mta-java`); postStart asserts each VSIX is non-empty | `gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/skeleton/devfile.yaml` | see `ocp-devspaces-user-guide` |
 | Workspace settings: JDT.LS `Standard` launch mode (so `mta-java` registers its provider), `mta-core.genai.enabled: true`, `mta-core.hub.auth.method: oidc` | same devfile (postStart) | [IDE settings][ide], [Hub OIDC][oidc] |
 | Hub connection: `HUB_URL` from the template, `HUB_INSECURE=false`, `HUB_PROFILE_SYNC_ENABLED=true` | same devfile | [Hub OIDC][oidc], [Hub profile analysis][profile] |
@@ -40,8 +40,9 @@ workspaces created from the Developer Hub `app-migration` template.
 
 ## Procedure
 
-1. Change VSIX versions only through `artifacts.lock.json` + `Dockerfile` +
-   `verify-image.py`, then publish a new workspace image digest (outside
+1. Change VSIX versions only through `artifacts.lock.json` + `Dockerfile`
+   (the former checker `verify-image.py` is in git history at `82092e01`),
+   then publish a new workspace image digest (outside
    this repo, see `docs/OPERATIONS.md#workspace-overlay-images`).
 2. A template change publishes through the Stage 070 catalog
    (`rhdh` component); existing workspaces keep the devfile they were

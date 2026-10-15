@@ -51,7 +51,7 @@ or tightly related component.
 4. Existing `references/working-configuration.md` or pattern files in an
    rhoai skill are repo-owned: keep them, but correct stale facts (GPU type,
    models, versions) in the same change.
-5. Validate with `python3 scripts/shared/check-doc-links.py --family rhoai`
+5. Validate with `python3 .agents/tools/check-doc-links.py --family rhoai`
    plus the shared checklist.
 
 ## Hard rules

@@ -5,7 +5,7 @@ resources:
   - rbac.yaml
   - s3-test-data-provisioner.yaml
 # Agent configuration and per-instance driver mounted by the patch-generation Jobs
-# (stages/050-model-evaluation/swebench-run.sh).
+# (driven by the retired swebench-run.sh; git history, 82092e01).
 configMapGenerator:
   - name: swebench-agent
     namespace: evaluated-models

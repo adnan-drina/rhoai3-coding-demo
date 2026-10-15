@@ -140,17 +140,15 @@ OpenShift GitOps provides declarative reconciliation through Argo CD. OpenShift 
 **Prerequisite:** the demo environment provides Red Hat build of Keycloak (`keycloak/keycloak`, realm `sso`) and configures it as the OpenShift login provider `rhbk`. GitOps does not own it; `validate.sh` checks that it is Ready and in use.
 
 ```bash
-# Bootstrap GitOps and deploy stage
+# Bootstrap GitOps, deploy the stage and assign the demo group membership
 ./stages/010-openshift-ai-platform-foundation/deploy.sh
 
-# Configure identity group membership and S3 connection secrets
-./stages/010-openshift-ai-platform-foundation/setup-access.sh
-
-# Validate
+# Validate (persona sessions expire: refresh them with --login-personas)
 ./stages/010-openshift-ai-platform-foundation/validate.sh
+./stages/010-openshift-ai-platform-foundation/validate.sh --login-personas
 ```
 
-The deploy script bootstraps OpenShift GitOps, then applies five component Argo CD Applications that reconcile the Stage 010 resources: `010-rhoai-operator`, `010-odf`, `010-observability-operators`, `010-rhoai-platform` and `010-access`. It then deploys the separate `010-sandbox-storage` and `010-console-observability` Applications. Platform access (identity group membership and S3 connection secret) is configured imperatively by `setup-access.sh` to keep credentials out of Git.
+The deploy script bootstraps OpenShift GitOps, then applies five component Argo CD Applications that reconcile the Stage 010 resources: `010-rhoai-operator`, `010-odf`, `010-observability-operators`, `010-rhoai-platform` and `010-access`. It then deploys the separate `010-sandbox-storage` and `010-console-observability` Applications (each alone with `deploy.sh --component NAME`, checked with `validate.sh --component NAME`) and adds the existing provider identities `RHOAI_ADMIN_USER` and `RHOAI_DEVELOPER_USER` to their demo groups (`rhods-admins` is operator-owned, so membership stays out of Git).
 
 ## References
 

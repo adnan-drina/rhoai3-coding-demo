@@ -13,7 +13,7 @@ description: >
   gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/,
   the observabilityDashboard flag, the monitoring.opendatahub.io/scrape label,
   redhat-ods-monitoring Prometheus, Alertmanager and Tempo, or
-  validate-foundation-services.sh failures. Do NOT use for operator logs and
+  stages/010-openshift-ai-platform-foundation/validate.sh failures. Do NOT use for operator logs and
   audit records (use rhoai-logs-and-audit-records), per-model metrics (use
   rhoai-model-management-monitoring), or the console Perses plugin (use
   ocp-observability).
@@ -39,7 +39,7 @@ and the DSCInitialization part of
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Prerequisite operators installed first: COO, Red Hat build of OpenTelemetry, Tempo; rolling `stable`, Automatic, bounded by the operator policy (minimums 1.5.3, 0.158.0-2, 0.22.0-2) | `010-observability-operators/*/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Enable the observability stack][enable] |
+| Prerequisite operators installed first: COO, Red Hat build of OpenTelemetry, Tempo; rolling `stable`, Automatic, bounded by the operator policy (minimums 1.5.3, 0.158.0-2, 0.22.0-2) | `010-observability-operators/*/subscription.yaml`, `check_operator_policy` in `scripts/lib.sh` | [Enable the observability stack][enable] |
 | Stack enabled in the DSCI: `managementState: Managed`, namespace `redhat-ods-monitoring` (pre-created with the cluster-monitoring label), 1 Prometheus replica, `5Gi`/`90d`, traces `pv`/`2160h0m0s`, `sampleRatio: '0.1'`, default `alerting` | `010-rhoai-platform/dsc-init.yaml`, `010-rhoai-platform/monitoring-namespace.yaml` | [Enable the observability stack][enable] |
 | `observabilityDashboard: true` written down (product default) so `validate.sh` can check it | `010-rhoai-platform/odhdashboardconfig.yaml` | [Enable the observability dashboards][enable-dash] |
 | Trace tenant RBAC added by the repo: writer role for the generated collector SA, reader role for `rhods-admins` only | `010-observability-operators/trace-roles/` | [View traces in external tracing platforms][traces] (write grant not documented; README records the deviation) |
@@ -58,7 +58,7 @@ Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unle
    `./stages/010-openshift-ai-platform-foundation/deploy.sh`, then
    `./stages/010-openshift-ai-platform-foundation/validate.sh` (operator CSVs,
    DSCI monitoring fields, `observabilityDashboard`) and
-   `./stages/010-openshift-ai-platform-foundation/validate-foundation-services.sh`
+   `./stages/010-openshift-ai-platform-foundation/validate.sh`
    (Prometheus `up` query, collector SubjectAccessReview, one OTLP span read
    back from Tempo).
 3. By hand, after the OpenShift safety guard in `AGENTS.md`:
@@ -75,7 +75,7 @@ Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unle
   the Models dashboard for namespaces they can access ([Dashboards overview][dash-overview]).
 - Alertmanager has no route by default ([Access built-in alerts][alerts]).
 - A new minor on a rolling `stable` channel makes `deploy.sh` fail closed
-  until `check-operator-policy.py` is updated.
+  until `check_operator_policy` is updated.
 - Support posture of the stack at 3.5 (Technology Preview or GA) could not be
   verified: the 3.5 release notes did not load on 2026-10-15. Check them before
   presenting it as supported.

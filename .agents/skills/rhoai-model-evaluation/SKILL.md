@@ -64,8 +64,8 @@ skill are not in this repo and are not used (LM-Eval is deprecated in 3.5).
 3. Qualify: start a pipeline run with `model_name` and MLflow experiment
    `agentic-coding-qualification` (`docs/OPERATIONS.md#stage-050-model-qualification-pipeline-2026-10-12`);
    a candidate on the L40S queue needs that GPU pool up (`resume-gpu-demo`).
-4. Record results on the model's registry version with
-   `stages/050-model-evaluation/record-evaluation.sh` and in
+4. Record results on the model's registry version (dashboard model version
+   **Properties**) and in
    `docs/OPERATIONS.md`; a promotion is a Stage 040 change, not an evaluation
    change.
 
