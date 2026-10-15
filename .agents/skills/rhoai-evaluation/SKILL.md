@@ -1,148 +1,142 @@
 ---
 name: rhoai-evaluation
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for official RHOAI evaluation: TrustyAI EvalHub API/SDK/CLI, tenants/RBAC,
-  providers/benchmarks/collections, pass criteria, adapters, MLflow, OCI results, LM-
-  Eval/LMEvalJob/dashboard workflows, external access/remote code, PVC/S3 data,
-  KServe/vLLM evaluation and Garak/KFP/SDG/judge risk assessments with custom harms and
-  disconnected caches. Do NOT use for legacy repo evaluation glue or RAGAS (rhoai-model-
-  evaluation), AutoRAG optimization, MLflow installation, AI Pipelines administration or
-  guardrails control planes. Live changes require the OpenShift safety guard.
+  Use when running, changing or debugging Stage 050 EvalHub evaluations: the
+  `EvalHub` CR in namespace `evalhub`, the single tenant `evaluated-models`,
+  the MaaS key Secret `evalhub-model-auth-maas`, Kueue queue `lq-cpu-default`,
+  custom `agentic-coding-*` collections and `inspect-coding`/`garak-coding`/
+  `swebench` providers, the EvalHub MCP server, OCI result export, or the
+  helpers submit-evaluation.sh, record-evaluation.sh and swebench-run.sh
+  (gitops/stages/050-model-evaluation/). Do NOT use for the MLflow server (use
+  rhoai-mlflow), the qualification pipeline server (use rhoai-ai-pipelines),
+  or TrustyAI bias and drift monitoring (use rhoai-monitoring-trustyai).
 ---
 
-# RHOAI Evaluation
+# RHOAI Evaluation (EvalHub)
 
-Use this skill for official Red Hat OpenShift AI evaluation product workflows
-on the active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/050-model-evaluation/evalhub/README.md` (also
+`model-qualification/`, `evaluation-content/` and `oci-export/` READMEs).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Evaluating AI systems guide to this repo's demo workflow and GitOps
-review model.
+- An evaluation job fails, scores 0, or never finishes against a MaaS model.
+- Adding a provider, collection or qualification gate.
+- Granting evaluation access to a user, ServiceAccount or MCP client.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `EvalHub` CR in dedicated namespace `evalhub`, PostgreSQL 16 StatefulSet, Secret `evalhub-db-credentials` with `db-url` (from `setup-ai-services.sh`) | `gitops/stages/050-model-evaluation/evalhub/evalhub.yaml` | [Deploy EvalHub][deploy], [Database configuration][dbconf] |
+| One admin-only tenant `evaluated-models`; Role `evalhub-evaluator` holds the documented virtual-resource and MLflow `experiments` rules | `gitops/stages/050-model-evaluation/model-qualification/access.yaml` | [Set up a tenant][tenant], [Roles][roles] |
+| Models reached through MaaS with subscription `model-qualification`; hook mints Secret `evalhub-model-auth-maas` (`api-key`) for `model.auth.secret_ref` | `gitops/stages/050-model-evaluation/model-qualification/maas-key-provisioner.yaml` | [API key authentication][apikey] |
+| Jobs routed through LocalQueue `lq-cpu-default` (Technology Preview) | `gitops/stages/050-model-evaluation/model-qualification/local-queues.yaml` | [Route jobs through Kueue][kueue] |
+| Qualification gates are versioned `agentic-coding-*-vN` collections; a new gate is a new `-vN`, never an edit; every id is listed in `spec.providers`/`spec.collections` | `gitops/stages/050-model-evaluation/evaluation-content/edd/` | [Collection by ConfigMap][collcm], [Provider by ConfigMap][provcm] |
+| MCP server on, with `spec.mcp.authSecret` and `EVALHUB_TENANT=evaluated-models` (not in the guide's procedure); clients use ServiceAccount `evaluated-models/evalhub-automation` | `gitops/stages/050-model-evaluation/evalhub/mcp-client-identity.yaml` | [Deploy the MCP server][mcp] |
+| OCI export to the internal registry default route, Secret `evalhub-oci-registry` (`kubernetes.io/dockerconfigjson`) | `gitops/stages/050-model-evaluation/oci-export/oci-export.yaml` | [Export results to OCI][oci] |
+| Catalog safety-insights tab: `get` on `evaluations` in `rhoai-model-registries` for `rhods-admins`, `rhoai-developers`; not a tenant | `gitops/stages/050-model-evaluation/evalhub/tenant/` | [Grant access][grant] |
+| No LMEvalJob use; LM-Eval is deprecated in 3.5 | none | [Evaluation of AI systems][overview] |
 
-- evaluation overview with TrustyAI EvalHub and LM-Eval
-- EvalHub concepts: providers, benchmarks, collections, pass criteria,
-  thresholds, jobs, and adapters
-- EvalHub architecture, deployment through the TrustyAI Operator, and
-  PostgreSQL storage
-- EvalHub SDK and CLI installation and configuration
-- EvalHub tenant header behavior and namespace-scoped resources
-- provider and benchmark listing, evaluation job submission, result tracking,
-  cancellation, and deletion
-- built-in collections and custom collections
-- API key and ServiceAccount token authentication for model endpoints
-- S3 custom data for EvalHub jobs
-- OCI result export and MLflow experiment tracking
-- custom providers through API or ConfigMap
-- custom evaluation adapters with the Python SDK
-- EvalHub API endpoints, configuration, multi-tenancy, RBAC, tenant namespace
-  setup, and roles
-- LM-Eval setup with `LMEvalJob`
-- LM-Eval online access, remote code execution, dashboard evaluations, custom
-  Unitxt cards/templates/prompts, PVC, S3, KServe/vLLM endpoint evaluation, and
-  LLM-as-a-judge metrics
-- automated risk assessment with Garak/KFP/EvalHub, disconnected translation
-  model cache, KFP SDK execution, result interpretation, custom harm
-  categories, and configuration parameters
+## Procedure
 
-Use other skills for adjacent work:
+1. Deploy and validate Stage 050 at one SHA:
 
-- `rhoai-model-evaluation` for legacy repo-specific RAGAS, EvalHub, LM-Eval,
-  custom judge prompts, and Step 08 rebuild details
-- `rhoai-autorag` for product AutoRAG optimization runs, leaderboard review,
-  and generated notebooks
-- `rhoai-mlflow` for MLflow platform deployment, SDK authentication,
-  workspaces, and artifact storage
-- `rhoai-ai-pipelines` for AI Pipelines server lifecycle, KFP runs, logs,
-  workspaces, and artifact storage
-- `rhoai-kfp-pipeline-authoring` for repo-specific KFP Python implementation
-- `rhoai-s3-object-storage-data` for S3-compatible object operations and
-  credential handling outside evaluation-specific manifests
-- `rhoai-model-serving-platform` for KServe, vLLM, serving runtimes, and
-  OpenAI-compatible endpoint behavior
-- `rhoai-model-customization-training` for Training Hub, SDG Hub, Docling, and
-  model customization workflows
-- `rhoai-guardrails-safety` for NeMo Guardrails, FMS Guardrails, detector
-  services, and runtime safety controls that evaluation may test
-- `rhoai-monitoring-trustyai` for TrustyAI bias and data-drift monitoring of
-  supported OVMS model deployments
-- `rhoai-api-tiers` for TrustyAI, EvalHub, and `LMEvalJob` API support posture
+   ```bash
+   ./stages/050-model-evaluation/deploy.sh
+   ./stages/050-model-evaluation/validate.sh
+   ./stages/050-model-evaluation/validate-ai-services.sh
+   ```
 
-## Demo Policy
+2. Submit and record, after the OpenShift safety guard in `AGENTS.md`:
 
-For this repo:
+   ```bash
+   ./stages/050-model-evaluation/submit-evaluation.sh --model-name <maas model id> --num-examples <N>
+   ./stages/050-model-evaluation/submit-evaluation.sh --status <job id> --wait
+   ./stages/050-model-evaluation/record-evaluation.sh --job <job id> --model-version <version id>
+   oc get evalhub evalhub -n evalhub -o jsonpath='{.status.phase} {.status.ready}{"\n"}'
+   ```
 
-- Treat this skill as product authority for official RHOAI evaluation
-  workflows. Use `rhoai-model-evaluation` only for legacy demo-specific
-  evaluation assets and the future Step 08 rebuild.
-- Use EvalHub when the demo needs standardized, multi-tenant evaluation job
-  orchestration, benchmark collections, provider management, result tracking,
-  MLflow integration, or OCI result export.
-- Use LM-Eval when the demo needs a direct `LMEvalJob` benchmark workflow or
-  dashboard-driven model evaluation.
-- Use automated risk assessment when the demo needs adversarial safety testing
-  with Garak, generated prompts, judge models, and risk reports.
-- Use guardrails as runtime safety controls and evaluation as measurement.
-  Do not treat the presence of guardrails as evaluation evidence by itself.
-- Keep tenant namespace, ServiceAccount, and model endpoint authorization
-  explicit. Do not disable EvalHub authentication for shared environments.
-- Store model API keys, S3 credentials, OCI credentials, and service account
-  tokens in Kubernetes Secrets. Never commit secret values.
-- Enable online access and remote code execution for `LMEvalJob` only when the
-  evaluation task requires it and the README/runbook records the risk.
-- For disconnected clusters, pre-download translation models for risk
-  assessment or disable the translation attack strategy.
-- Use MLflow and OCI export only after storage, credentials, and retention
-  ownership are documented.
-- Treat custom providers, adapters, collections, Unitxt cards, and harm
-  categories as code artifacts requiring source review and validation.
+3. Collections, step times, cleanup and the pipeline flow:
+   `docs/OPERATIONS.md#stage-050-governed-evaluations-2026-10-09` and
+   `docs/OPERATIONS.md#stage-050-model-qualification-pipeline-2026-10-12`.
 
-## Project Defaults (verified on RHOAI 3.5.1)
+## Pitfalls
 
-- Evaluations reach models through the MaaS gateway with the documented API-key Secret (`model.auth.secret_ref: evalhub-model-auth-maas`, section 2.15) and the `model-qualification` subscription, routed through the tenant LocalQueue `lq-cpu-default` (section 2.8).
-- The dashboard **Start evaluation run** lists only `InferenceService` objects of the project; LLMInferenceService and MaaS models are entered through **Other (External endpoint)**.
-- Every model request passes the evaluation sidecar, which aborts after 30 s; size generation so one request finishes inside it.
-- `lighteval`: code-only system prompt and `max_new_tokens: 512`; models must admit 16 concurrent sequences for LiveCodeBench.
-- `lm_evaluation_harness`: always pass `tokenizer` (Hugging Face repository of the served model); only log-likelihood tasks fit the sidecar limit.
-- `guidellm`: always bound with `max_seconds` or `max_requests`.
-- SWE-bench: patch generation works; EvalHub grading does not on 3.5.1 (adapters get no Kubernetes token).
-- OCI export goes to the internal registry through its default route (`evalhub-oci-registry` Secret, repository `evaluated-models/evaluation-results`); the sidecar rejects the registry's service-CA certificate.
-- CLI/SDK/MCP clients authenticate as `evaluated-models/evalhub-automation`; the MCP server needs `spec.mcp.authSecret`, an `evalhubs/proxy` grant for clients and `EVALHUB_TENANT` pinned to the tenant, none of which section 4.3 states.
+- The evaluation sidecar aborts each model request after 30 s and the
+  lighteval adapter stops after one hour: keep the code-only prompt and
+  512-token cap, bound with `--num-examples`, and serve 16 concurrent
+  sequences. Per-provider parameters (`tokenizer`, `max_seconds`,
+  `max_samples`, `/v1` URLs):
+  `docs/TROUBLESHOOTING.md#evalhub-provider-jobs-fail-or-never-finish-against-maas-models`.
+- **Start evaluation run** lists only project `InferenceService` objects; MaaS
+  models go through **Other (External endpoint)**:
+  `docs/TROUBLESHOOTING.md#start-evaluation-run-offers-no-model-to-choose`.
+- An id longer than 36 characters stops the new EvalHub pod while the old pod
+  keeps serving.
+- SWE-bench grading cannot run inside EvalHub on 3.5.1 (adapters get no
+  Kubernetes token):
+  `docs/TROUBLESHOOTING.md#swe-bench-grading-job-fails-with-invalid-kube-config-file`.
+- MCP 401/403: `docs/TROUBLESHOOTING.md#evalhub-mcp-server-returns-403-401-or-forbidden-from-its-tools`.
+- The 3.5 dashboard chapter names the flag `disableEvalHub`, but the installed
+  3.5.1 `OdhDashboardConfig` schema has only `disableLMEval` (checked with
+  `oc explain odhdashboardconfig.spec.dashboardConfig`, 2026-10-15); the repo
+  hook sets `disableLMEval: false`. Re-check on each z-stream
+  ([dashboard prerequisites][dashprereq]).
 
-## Workflow
+## Official documentation (RHOAI 3.5)
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - EvalHub deployment or configuration
-   - EvalHub job, provider, benchmark, collection, adapter, tenant, or RBAC
-     workflow
-   - LM-Eval `LMEvalJob` or dashboard evaluation workflow
-   - LM-Eval custom Unitxt, PVC, S3, KServe, or LLM-as-a-judge scenario
-   - automated risk assessment through EvalHub or KFP SDK
-   - disconnected risk-assessment preparation
-   - MLflow tracking or OCI result export handoff
-4. Use `examples/evaluation-patterns.md` for focused review patterns.
-5. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-6. Validate with `references/validation-checklist.md`.
+| Topic | Section |
+|---|---|
+| Overview, architecture | [EvalHub][evalhub], [Architecture][arch] |
+| SDK and CLI | [Install the SDK and CLI][sdk] |
+| Jobs | [Submit][submit], [Track][track], [Cancel and delete][cancel], [Job fields][jobfields] |
+| Built-in collections | [Built-in collections][builtin] |
+| Data | [S3 data][s3], [PVC data][pvc] |
+| MLflow tracking | [MLflow experiment tracking][mlflow] |
+| Multi-tenancy | [Multi-tenancy and RBAC][rbac] |
+| Dashboard | [Evaluate with the dashboard][dashboard] |
+| Evaluation cards | [Evaluation cards][cards] |
+| Risk assessment (Garak) | [Automated risk assessment][risk] |
 
-## References
+## Related skills
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/evaluation-patterns.md`
+`rhoai-mlflow`, `rhoai-ai-pipelines`, `rhoai-maas-governance`,
+`rhoai-kueue-workload-management`, `rhoai-model-registry-workflows`,
+`rhoai-model-evaluation`, `rhoai-guardrails-safety`.
+
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#overview-evaluating-ai-systems_evaluate
+[evalhub]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-overview_evaluate
+[arch]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-architecture-overview_evaluate
+[deploy]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-deploy-with-the-trustyai-operator_evaluate
+[sdk]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-install-the-evalhub-sdk-and-cli_evaluate
+[kueue]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-route-evaluation-jobs-through-kueue_evaluate
+[submit]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-submit-an-evaluation-job_evaluate
+[track]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-track-evaluation-jobs-and-results_evaluate
+[cancel]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-cancel-and-delete-jobs_evaluate
+[builtin]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-built-in-collections_evaluate
+[apikey]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-configure-api-key-authentication_evaluate
+[s3]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-use-custom-data-from-s3_evaluate
+[pvc]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-provide-evaluation-test-data-from-pvc_evaluate
+[oci]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-export-evaluation-results-to-oci-registry_evaluate
+[mlflow]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-configure-mlflow-experiment-tracking_evaluate
+[provcm]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-add-a-custom-provider-configmap_evaluate
+[collcm]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-add-a-collection-configmap_evaluate
+[jobfields]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#job_submission_fields
+[dbconf]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#database_configuration
+[rbac]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-multi-tenancy-and-rbac_evaluate
+[tenant]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-set-up-a-tenant-namespace_evaluate
+[grant]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-grant-access-to-evalhub_evaluate
+[roles]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-roles-reference_evaluate
+[dashboard]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-use-the-dashboard-to-evaluate-your-system_evaluate
+[dashprereq]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#prerequisites
+[mcp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-deploy-mcp-server_evaluate
+[cards]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-evaluation-cards_evaluate
+[risk]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#test-model-safety-with-automated-risk-assessment_evaluate

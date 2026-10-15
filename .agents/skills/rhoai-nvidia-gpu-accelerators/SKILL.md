@@ -1,154 +1,102 @@
 ---
 name: rhoai-nvidia-gpu-accelerators
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when installing, documenting, reviewing, or rebuilding NVIDIA GPU
-  accelerator support for the rhoai3-demo OpenShift AI environment: accelerator
-  prerequisites, Node Feature Discovery, Kernel Module Management, NVIDIA GPU
-  Operator, NVIDIA ClusterPolicy, GPU detection through nvidia.com/gpu, NVIDIA
-  RDMA support boundaries, AWS demo.redhat.com GPU MachineSet curation, and
-  OpenShift AI dashboard restart requirements. Pair with
-  rhoai-hardware-profiles for HardwareProfile lifecycle, profile schema,
-  recommended accelerator tags, Kueue local queue handoff, and GitOps
-  promotion. Do NOT use for AMD, Intel Gaudi, IBM Spyre, generic RHOAI
-  installation, queue design, or live troubleshooting; use the relevant
-  rhoai-* or env-* skill instead.
+  Use when reviewing or changing Stage 020 NVIDIA GPU enablement for OpenShift
+  AI: the gpu-operator-certified Subscription (channel v26.7) and
+  gpu-cluster-policy ClusterPolicy, the NFD prerequisite, the GPU MachineSet
+  pools (default g7e.2xlarge with one RTX PRO 6000, parked g6e.2xlarge L40S),
+  the nvidia-gpu-only taint, one nvidia.com/gpu per card without time-slicing,
+  the migration-gpu-status dashboard step, and GPU metrics for OpenShift AI.
+  Do NOT use for HardwareProfile objects (use rhoai-hardware-profiles), Kueue
+  queues (use rhoai-kueue-workload-management), MachineSet mechanics (use
+  ocp-machine-management), or scaling GPUs for a session (use resume-gpu-demo).
 ---
 
 # RHOAI NVIDIA GPU Accelerators
 
-Use this skill to enable and review NVIDIA GPU accelerator support for the
-active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/020-gpu-infrastructure-private-ai/nvidia-gpu-operator/README.md`
+(also `.../gpu-machinesets/README.md` and `.../node-feature-discovery/README.md`).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. This skill adapts the
-official accelerator and hardware profile guidance to this repo's GitOps
-operating model and NVIDIA-only demo policy.
+- A change touches `gitops/stages/020-gpu-infrastructure-private-ai/nvidia-gpu-operator/`,
+  `.../gpu-machinesets/` or `.../node-feature-discovery/`.
+- GPU nodes do not advertise `nvidia.com/gpu`, or OpenShift AI does not offer GPUs.
+- Planning a new GPU type or pool.
 
-## Demo Policy
+## Repo decisions
 
-The rhoai3-demo environment uses NVIDIA GPUs only. Do not add AMD, Intel Gaudi,
-or IBM Spyre accelerator paths unless the project baseline changes.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| NVIDIA only; NFD Operator and `NodeFeatureDiscovery` instance first (deploy-order 1), then the GPU Operator (deploy-order 2) | `node-feature-discovery/`, `nvidia-gpu-operator/` | [Enable NVIDIA GPUs][nvidia] |
+| `gpu-operator-certified` from `certified-operators`, channel `v26.7`, Automatic, no `startingCSV`; minimum 26.7.1 enforced | `nvidia-gpu-operator/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Enable NVIDIA GPUs][nvidia] (operator is a prerequisite) |
+| `ClusterPolicy` `gpu-cluster-policy` from the operator's default example plus a `nvidia-gpu-only` toleration; Driver Toolkit build; DCGM ServiceMonitor on; sandbox workloads off | `nvidia-gpu-operator/cluster-policy.yaml` | [Enable NVIDIA GPUs][nvidia]; field detail is NVIDIA's (upstream, see component README) |
+| No time-slicing or MIG partitioning: `mig.strategy: single`, no device-plugin config, one card = one `nvidia.com/gpu` (one model per card) | `nvidia-gpu-operator/cluster-policy.yaml` | [GPU time slicing][timeslice] (not used) |
+| Default pool `g7e.2xlarge` (one RTX PRO 6000 Blackwell, 96 GB), one MachineSet per `us-east-2` zone; L40S pool `g6e.2xlarge` kept at zero; all 0 replicas in Git, 200 GB gp3 root disk | `gpu-machinesets/machineset-rtxpro6000.yaml`, `gpu-machinesets/machineset-gpu.yaml` | OCP: see `ocp-machine-management` |
+| Pool shape: label `cluster-api/accelerator` (`nvidia-rtxpro6000` / `nvidia-gpu`), `node-role.kubernetes.io/gpu`, taint `nvidia-gpu-only:NoSchedule`; generated from the active CPU worker pool | `stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh` | OCP: see `ocp-machine-management` |
+| `migration-gpu-status` delete + dashboard restart is not automated (ConfigMap absent on this cluster, checked 2026-10-14) | `docs/OPERATIONS.md#stage-020` | [Enable NVIDIA GPUs][nvidia] |
+| GPU utilization for the OpenShift AI dashboards via ServiceMonitor `accelerator-gpu-utilization` (workaround for a 3.5.1 gap); `rhods-admins` bound to `cluster-monitoring-metrics-api` | `nvidia-gpu-operator/rhoai-monitoring/`, `nvidia-gpu-operator/rolebinding-gpu-metrics-admins.yaml` | see `rhoai-observability` |
 
-The demo hardware intent is:
+## Procedure
 
-- AWS GPU instance type: `g6e.2xlarge`.
-- GPU capacity pattern: one NVIDIA L40S GPU per node, exposed to Kubernetes
-  as one `nvidia.com/gpu` unit; this repo does NOT time-slice (divergence
-  from the rhoai3-demo foundation) because both cards are exclusively claimed
-  by vLLM model servers that need full-card VRAM (see stages/020 README).
-- Default node count: two GPU worker nodes — one per private model
-  (nemotron-3-nano-30b-a3b, qwen3-6-35b-a3b) — regenerated per environment
-  with generate-gpu-machineset.sh --write (every pool at 0 replicas in Git,
-  scaled by resume-gpu-demo.sh; 200GB gp3 root volume sized for modelcar image pulls).
-- Default AWS environment source: demo.redhat.com OpenShift on AWS.
-- Default GPU worker scheduling handoff:
-  - MachineSet template label `node-role.kubernetes.io/gpu`
-  - MachineSet and template label `cluster-api/accelerator=nvidia-gpu`
-  - taint `nvidia-gpu-only:NoSchedule`
-  - matching NVIDIA `ClusterPolicy` daemonset toleration
-- Primary private GenAI model:
-  `nemotron-3-nano-30b-a3b`.
-- Primary model source:
-  `oci://registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0`.
-- Serving path: Stage 210 validates RHOAI model serving with vLLM; Stage 220
-  publishes governed model access through the Model-as-a-Service layer.
-- Use `rhoai-distributed-inference-llmd` when reviewing
-  `LLMInferenceService`, Gateway, scheduler, autoscaling, auth, or
-  flow-control details for the private model serving path.
-- Use `rhoai-model-serving-platform` when reviewing KServe
-  `ServingRuntime`, `InferenceService`, vLLM runtime parameters, or model
-  serving platform dashboard behavior.
-- Approved external model path: OpenAI `gpt-5.4-mini` registered in MaaS
-  through the DNS-safe `gpt-5-4-mini` resource alias for governed external use
-  cases where provider-side processing is allowed. External OpenAI models do
-  not consume cluster GPU capacity.
+1. On a new cluster regenerate the pools, review, publish:
+   `./stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh --source <cpu-machineset> --write`.
+2. Deploy: `./stages/020-gpu-infrastructure-private-ai/deploy.sh`.
+3. Scale a pool for a session with `scripts/platform/resume-gpu-demo.sh up`
+   (`GPU_POOL=l40s` for the L40S pool, `down` parks all pools); `scripts/platform/gpu-capacity-probe.sh`
+   tries one zone at a time.
+4. Validate: `./stages/020-gpu-infrastructure-private-ai/validate.sh --readiness`
+   (operator CSV, `ClusterPolicy` ready, per-node driver DaemonSet, one GPU and
+   the taint per Ready GPU node; node checks fail by design at zero replicas),
+   then `--functional` (CUDA vectorAdd validator, DCGM scrape).
+5. By hand, after the OpenShift safety guard in `AGENTS.md`:
 
-Use active node labels and observed GPU resources as the scheduling authority.
-Do not rely on AWS instance-family assumptions alone when naming hardware
-profiles or ResourceFlavors.
+   ```bash
+   oc get clusterpolicy gpu-cluster-policy -o jsonpath='{.status.state}{"\n"}'
+   oc get machinesets -n openshift-machine-api -L cluster-api/accelerator
+   oc get nodes -l node-role.kubernetes.io/gpu -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu
+   oc get configmap -A --field-selector metadata.name=migration-gpu-status   # after an upgrade from an older release
+   ```
 
-## Installation Model
+## Pitfalls
 
-NVIDIA GPU enablement has four gates:
+- Changing the taint key means changing the `ClusterPolicy` tolerations, both
+  GPU ResourceFlavors and the generator together.
+- KMM is not a prerequisite; it only appears in the verification list of
+  [Enable accelerators][accel-install].
+- A 100 GB root disk hit `DiskPressure` pulling a ~36 GB model image; keep 200 GB.
+- AWS capacity: `docs/TROUBLESHOOTING.md#gpu-machine-stays-provisioning-or-fails-capacity-or-spot-policy`;
+  no nodes: `docs/TROUBLESHOOTING.md#gpu-nodes-do-not-appear`.
+- With pools at zero the `ClusterPolicy` still reports `ready`; check nodes.
 
-1. GPU-capable worker nodes exist and the accelerator is detected by the
-   OpenShift environment.
-2. Node Feature Discovery (NFD) Operator is installed and a
-   `NodeFeatureDiscovery` instance exists.
-3. NVIDIA GPU Operator is installed and an NVIDIA `ClusterPolicy` exists with
-   defaults appropriate for the active cluster.
-4. OpenShift AI hardware profiles expose the GPU resource to users and serving
-   workflows.
+## Official documentation (OpenShift AI 3.5)
 
-The RHOAI docs also list Kernel Module Management (KMM) as part of accelerator
-verification. Validate it with the installed Operators before declaring GPU
-support complete.
+| Topic | Section |
+|---|---|
+| Accelerator overview | [Enable accelerator devices][overview], [Enable accelerators][accel] |
+| NVIDIA enablement | [Enable NVIDIA GPUs][nvidia] |
+| Install-guide view | [Enable accelerators (install guide)][accel-install] |
+| Time slicing (not used) | [Enable GPU time slicing][timeslice] |
 
-## GitOps Policy
+Validated-models routing: the map's `red_hat_ai_validated_models` book returned
+404 at 3.5 (2026-10-15), so model/hardware validation claims are not made here.
 
-For this repo:
+## Related skills
 
-- Install prerequisite Operators and runtime instances through ArgoCD/GitOps.
-- Keep GPU node provisioning and scale management in GitOps-aware environment
-  workflows.
-- Use the Red Hat CoP GPU Operator catalog as a local curation pattern only.
-  Reuse its operator/channel layout, instance component composition, and AWS
-  MachineSet transformation logic; do not commit remote Kustomize references.
-- Prefer a reviewed, Git-tracked AWS GPU MachineSet and MachineAutoscaler in
-  the environment overlay. Use an Argo CD hook generator only as a deliberate
-  demo.redhat.com bootstrap exception, because generated MachineSets are not
-  normal declarative GitOps state unless captured back into Git.
-- Derive AWS GPU MachineSet provider details from an existing worker MachineSet
-  in the target cluster, then change only reviewed fields such as instance
-  type, replicas, labels, taints, and autoscaler bounds.
-- Hand hardware profile design, schema verification, and GitOps promotion to
-  `rhoai-hardware-profiles` after the GPU Operator and NFD have reconciled and
-  nodes report `nvidia.com/gpu` capacity and allocatable values.
-- Do not handwrite unverified `NodeFeatureDiscovery`, NVIDIA `ClusterPolicy`,
-  or `HardwareProfile` fields from memory.
+`rhoai-hardware-profiles`, `rhoai-kueue-workload-management`,
+`ocp-node-feature-discovery`, `ocp-machine-management`, `ocp-nodes`,
+`resume-gpu-demo`, `rhoai-observability`, `rhoai-platform-planning`.
 
-## Workflow
-
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Confirm the active OpenShift cluster has the expected AWS GPU worker shape.
-3. Read `references/official-doc-extraction.md`.
-4. Read `references/gitops-catalog-gpu-pattern.md` when rebuilding the GPU
-   Operator, AWS GPU MachineSet, or GPU instance overlay.
-5. Install or review NFD, KMM, and NVIDIA GPU Operator prerequisites.
-6. Confirm `NodeFeatureDiscovery` and NVIDIA `ClusterPolicy` exist.
-7. Delete the OpenShift AI `migration-gpu-status` ConfigMap when required by
-   the NVIDIA GPU enablement procedure.
-8. Restart the OpenShift AI dashboard deployment after NVIDIA GPU enablement.
-9. Validate GPU capacity and allocatable values on GPU worker nodes.
-10. Create or review NVIDIA hardware profiles with
-   `rhoai-hardware-profiles`.
-11. Validate with `references/validation-checklist.md`.
-
-## Related Skills
-
-- Use `ocp-node-feature-discovery` for NFD Operator installation,
-  `NodeFeatureDiscovery`, `NodeFeatureRule`, NFD feature labels, and topology
-  updater behavior.
-- Use `ocp-machine-management` for AWS GPU worker MachineSets and node count.
-- Use `ocp-nodes` for scheduling mechanics after GPU and NFD labels exist.
-- Use `rhoai-hardware-profiles` for RHOAI `HardwareProfile` lifecycle,
-  profile schema verification, recommended accelerator tags, and GitOps
-  promotion.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/gitops-catalog-gpu-pattern.md`
-- `references/validation-checklist.md`
-- `examples/demo-nvidia-l40s-hardware-profile-contract.md`
-- `examples/aws-gpu-machineset-gitops-pattern.md`
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_accelerators/index#overview-of-accelerators_accelerators
+[accel]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_accelerators/index#enabling-accelerators_accelerators
+[nvidia]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_accelerators/index#enabling-nvidia-gpus_accelerators
+[timeslice]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_accelerators/index#about-gpu-time-slicing_accelerators
+[accel-install]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#enabling-accelerators_install

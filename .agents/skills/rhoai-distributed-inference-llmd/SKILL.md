@@ -1,118 +1,139 @@
 ---
 name: rhoai-distributed-inference-llmd
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for RHOAI llm-d deployment: LLMInferenceService, Gateway API/controller selection,
-  LeaderWorkerSet prerequisites, Connectivity Link/Kuadrant/Authorino authentication, JWT
-  access, vLLM arguments, Endpoint Picker scheduling, scheduler ConfigMaps, Workload
-  Variant Autoscaler, VariantAutoscaling, saturation scaling, flow control,
-  InferenceObjective queues and observability. Do NOT use for ordinary KServe deployment,
-  serving-platform setup, MaaS governance or Kueue/Ray/training workloads; use the
-  matching rhoai skills. Live changes require the OpenShift safety guard.
+  Use when reviewing, changing, or debugging the private model qwen3-8-27b
+  served as an LLMInferenceService (llm-d) in internal-models: its vLLM args
+  list, endpoint-picker scheduler config, gateway refs to maas-default-gateway
+  listeners qwen3-8 and api, the enable-auth annotation, delegated replicas,
+  the qwen38-fp8 component, and the LLMInferenceServiceConfig topology
+  templates in gitops/stages/040-governed-models-as-a-service/local-models/.
+  Also for deciding whether to adopt llm-d autoscaling, flow control, or
+  prefill/decode disaggregation. Do NOT use for KServe InferenceService or
+  ServingRuntime work (use rhoai-model-serving-platform or
+  rhoai-model-deployment) or MaaS subscriptions and API keys (use
+  rhoai-maas-governance).
 ---
 
-# RHOAI Distributed Inference With llm-d
+# Distributed Inference with llm-d
 
-Use this skill for Red Hat OpenShift AI Distributed Inference with llm-d on the
-active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/040-governed-models-as-a-service/local-models/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior details.
-Official Red Hat documentation is product authority. This skill adapts the
-official llm-d deployment guide to this repo's GitOps, README, and live-demo
-review model.
+- A change touches `local-models/qwen38-27b-llminferenceservice.yaml`, the
+  templates `single-node-topology.yaml` / `single-node-router.yaml`, or
+  `components/qwen38-fp8/`.
+- The model is not Ready, does not roll out, or shows "Starting" in the console.
+- Someone proposes llm-d autoscaling, priority queuing, disaggregation or a
+  second replica.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Private model `qwen3-8-27b` is an `LLMInferenceService` (`serving.kserve.io/v1alpha2`) in `internal-models`: `RedHatAI/Qwen3.8-27B-NVFP4` at a pinned Hugging Face revision on one RTX PRO 6000 GPU | `local-models/qwen38-27b-llminferenceservice.yaml` | [Deploy with llm-d][deploy] |
+| LeaderWorkerSet Operator is installed although the model is single-GPU; the docs need it only for multi-node (more than 8 accelerators) | `gitops/stages/040-governed-models-as-a-service/maas-operators/` | [Enable distributed inference][enable] |
+| Gateway chosen in YAML: `router.gateway.refs` to `maas-default-gateway` (`openshift-ingress`) listeners `qwen3-8` and `api` | same manifest; `gateway-governance/gateway/gateway.yaml` | [Select a Gateway in YAML][gw-yaml], [Gateway on OpenShift][gw-ocp] |
+| Authentication on: `security.opendatahub.io/enable-auth: "true"` set explicitly (the default is on); Kuadrant and Authorino TLS live in `040-gateway-governance` | same manifest; `gateway-governance/governance/` | [Enable authentication][auth], [Connectivity Link auth][auth-rhcl] |
+| Manifest owns `command` and the full `args` list (TLS args repeated; tool-calling flags in `args`, not `VLLM_ADDITIONAL_ARGS`); each non-default arg has a reason in the README | same manifest | [Configure vLLM args][vllm-args], [Configure tool calling][tools] |
+| Inline `EndpointPickerConfig`: `queue-scorer` (weight 2) + `max-score-picker`, `failureMode: FailOpen`; prefix and KV scorers dropped for one replica | same manifest | [Inline scheduler config][sched-inline], [Scheduler plugins][sched-plugins] |
+| Two dashboard templates in `redhat-ods-applications`: `single-node-exclusive-gpu` (`workload-single-node`) and `single-node-queue-router` (`router`); the Git model does not use them | `local-models/single-node-topology.yaml`, `single-node-router.yaml` | [Config labels][topo-labels], [Router configs][router-configs] |
+| `/spec/replicas` delegated to operators (parked at 0, resumed by hand); Git says 1 | `ignoreDifferences` in `gitops/argocd/app-of-apps/040-governed-models-as-a-service/local-models.yaml` | — (Argo CD behavior) |
+| Kueue placement through hardware profile `gpu-rtxpro6000` and queue label `lq-gpu-rtxpro6000` | same manifest; `local-models/local-queue.yaml` | see `rhoai-kueue-workload-management` |
+| Serving health alerts are a repo `PrometheusRule`, not the product llm-d dashboards | `local-models/monitoring/prometheusrule-vllm-serving-health.yaml` | [Monitor llm-d deployments][monitor] |
+| Not used: Workload Variant Autoscaler, priority queuing, prefill/decode disaggregation, controlled (canary) deployment, batch inference, WideEP, tracing | — | [WVA][wva], [Priority queuing][flow], [P/D][pd], [Controlled deployment][canary] |
 
-- when to use `LLMInferenceService` instead of standard `InferenceService`
-- Gateway API prerequisites, Gateway discovery, and YAML Gateway references
-- OpenShift Gateway Controller preference and third-party Gateway risk
-- LeaderWorkerSet Operator prerequisite
-- Red Hat Connectivity Link, `Kuadrant`, and Authorino TLS setup for auth
-- default authentication behavior and
-  `security.opendatahub.io/enable-auth: "true"`
-- authenticated requests with ServiceAccount JWTs or OIDC tokens
-- vLLM argument patterns for llm-d deployments
-- Endpoint Picker scheduler configuration, plugin selection, and ConfigMap
-  references
-- Workload Variant Autoscaler enablement and `VariantAutoscaling` resources
-- saturation scaling thresholds and HPA behavior defaults
-- mixed-workload flow control and `InferenceObjective` priority queuing
-- llm-d metrics and observability support posture
+## Procedure
 
-Use other skills for adjacent work:
+1. Read the component README and the manifest comments before editing an
+   argument; measured values come from
+   `docs/OPERATIONS.md#model-serving-study-and-default-model-2026-10-13`.
+2. Check any new field against the installed schema (`oc explain
+   llminferenceservice.spec.<field>`); the docs mix `v1alpha1` and `v1alpha2`
+   examples.
+3. Deploy: `./stages/040-governed-models-as-a-service/deploy.sh`. Validate:
+   `./stages/040-governed-models-as-a-service/validate.sh --readiness`
+   (spec equals Git, owned workloads, route listeners, `MaaSModelRef`), then
+   `--functional` for inference through MaaS.
+4. Inspect, after the OpenShift safety guard in `AGENTS.md`:
 
-- `rhoai-model-serving-platform` for KServe, vLLM runtime templates, dashboard
-  model-serving platform enablement, and runtime argument context outside
-  llm-d
-- `rhoai-model-deployment` for direct model deployment workflows, model
-  storage, AI asset endpoints, routes, and token-auth choices outside llm-d
-- `rhoai-maas-governance` when llm-d endpoints are exposed through MaaS
-  subscriptions, auth policies, API keys, and usage governance
-- `rhoai-nvidia-gpu-accelerators` for NVIDIA GPU Operator, GPU hardware
-  profiles, and accelerator identifiers
-- `rhoai-dashboard-customization` for dashboard flags such as llm-d visibility,
-  Gateway discovery, and YAML preview controls
-- `rhoai-model-management-monitoring` for deployed-model operational monitoring
-  that is not specific to llm-d scheduler, WVA, or flow control
-- `rhoai-observability` for platform observability stack configuration
-- `rhoai-api-tiers` for support posture of llm-d APIs, alpha APIs, and preview
-  functionality
+   ```bash
+   oc get llminferenceservice qwen3-8-27b -n internal-models \
+     -o jsonpath='{.spec.replicas}{" "}{range .status.conditions[*]}{.type}={.status} {end}{"\n"}'
+   oc get pods,httproute,inferencepool -n internal-models
+   ```
 
-## Demo Policy
+5. Switch to FP8: add `components: [components/qwen38-fp8]` to
+   `local-models/kustomization.yaml`, publish, redeploy, then run
+   `stages/040-governed-models-as-a-service/register-model-cards.sh`.
 
-For this repo:
+## Pitfalls
 
-- Prefer standard vLLM model serving for the baseline private model path unless
-  a demo step explicitly needs distributed inference characteristics.
-- Use llm-d when the README concept is about serving large LLMs at scale,
-  prefix-cache-aware routing, disaggregated serving, scheduler behavior,
-  autoscaling variants, or priority queuing.
-- Treat Gateway discovery as Technology Preview.
-- Treat llm-d monitoring as Developer Preview.
-- Keep authentication enabled for shared demo endpoints. If it is disabled for
-  a controlled test, document the exception and restore auth.
-- Use OpenShift Gateway Controller-backed Gateways for the active demo unless a
-  verified exception is documented.
-- Do not use shared Gateways across untrusted namespaces.
-- Keep model artifact sources and credentials traceable through official docs,
-  Red Hat registry artifacts, or explicit demo exceptions.
-- Verify installed CRD schemas before committing long-lived GitOps because the
-  official guide includes versioned alpha APIs and examples may evolve across
-  RHOAI releases.
+- 3.5 changed the default scheduler profile to four scorers; services with a
+  custom config keep theirs on upgrade ([3.5 scheduler upgrade][sched-upgrade]).
+  The inline config here gets no new defaults; revisit it before adding a replica.
+- A custom `args` list overrides the platform default list (stated for
+  access-log filtering in [Endpoint log filtering][log-filter]). Upgrade-time
+  default arguments are not picked up, and dropping the TLS args breaks the
+  HTTPS probes.
+- Single-replica rollouts with `maxSurge` deadlock on a full GPU queue:
+  `docs/TROUBLESHOOTING.md#qwen-serving-change-never-finishes-rolling-out`.
+- Console shows "Starting" with a Ready pod: Gateway preconditions, not the
+  model (`docs/TROUBLESHOOTING.md#model-shows-starting-in-the-rhoai-console-but-its-pod-is-ready`).
+- FP8 on RTX PRO 6000 needs `VLLM_USE_DEEP_GEMM=0`
+  (`docs/TROUBLESHOOTING.md#qwen-38-fp8-crashes-at-startup-on-rtx-pro-6000-unknown-recipe`).
+- The topology selector and Gateway discovery are Technology Preview; WideEP is
+  Developer Preview ([Topology patterns][topo-patterns], [Gateway discovery][gw-disc]).
+- The checkpoint is not a Red Hat validated model; a successful load is
+  compatibility only (`BACKLOG.md`).
 
-## Workflow
+## Official documentation (RHOAI 3.5)
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - base `LLMInferenceService` deployment
-   - Gateway discovery or YAML Gateway selection
-   - Connectivity Link, Kuadrant, Authorino, or auth enablement
-   - authenticated inference request setup
-   - vLLM argument review
-   - scheduler/Endpoint Picker configuration
-   - Workload Variant Autoscaler setup
-   - flow control and `InferenceObjective` priority queuing
-   - llm-d metrics or observability review
-4. Use `examples/llmd-distributed-inference-patterns.md` for compact manifest
-   and review patterns.
-5. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-6. Validate with `references/validation-checklist.md`.
+| Topic | Section |
+|---|---|
+| Deploy and enable | [Deploy with llm-d][deploy], [Enable distributed inference][enable] |
+| Topology selector (TP) | [Topology patterns][topo-patterns], [Config labels][topo-labels], [Router configs][router-configs] |
+| Gateway | [Gateway discovery][gw-disc], [Select a Gateway in YAML][gw-yaml], [Gateway on OpenShift][gw-ocp] |
+| Authentication | [Connectivity Link auth][auth-rhcl], [Enable authentication][auth] |
+| vLLM and tool calling | [Configure vLLM args][vllm-args], [Configure tool calling][tools] |
+| Request routing | [Inline config][sched-inline], [Plugins][sched-plugins], [3.5 upgrade][sched-upgrade] |
+| Not used | [Priority queuing][flow], [WVA][wva], [P/D disaggregation][pd], [Controlled deployment][canary] |
+| Operations | [Monitor llm-d][monitor], [Troubleshooting][ts] |
 
-## References
+## Related skills
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/llmd-distributed-inference-patterns.md`
+`rhoai-model-serving-platform`, `rhoai-model-deployment`,
+`rhoai-maas-governance`, `rhoai-kueue-workload-management`,
+`rhoai-hardware-profiles`, `rhoai-nvidia-gpu-accelerators`, `rhcl-configure`,
+`ocp-ingress-gateway-routes`, `resume-gpu-demo`.
+
+[deploy]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#deploying-models-using-distributed-inference_distributed-inference
+[enable]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#enabling-distributed-inference_distributed-inference
+[topo-patterns]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#llm-deployment-topology-patterns_topology-selector
+[topo-labels]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#llmd-configuration-labels-and-topology-mapping_topology-selector
+[router-configs]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#router-configs-and-supported-topologies_topology-selector
+[gw-disc]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#gateway-discovery-for-llmd-overview_gateway-discovery
+[gw-yaml]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#select-gateway-yaml_gateway-discovery
+[gw-ocp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#configuring-gateway-for-llmd-on-openshift_gateway-discovery
+[auth-rhcl]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#configuring-authentication-for-llmd_distributed-inference
+[auth]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#enabling-authentication-and-authorization-for-llm-inference-service_distributed-inference
+[canary]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#controlled-deployment_distributed-inference
+[vllm-args]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#configuring-vllm-args-llm-d_distributed-inference
+[log-filter]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#configure-vllm-endpoint-log-filtering_distributed-inference
+[tools]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#configuring-tool-calling-for-llmd_distributed-inference
+[sched-inline]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#configuring-scheduler-inline_configuring-llm-scheduler
+[sched-plugins]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#scheduler-plugins_configuring-llm-scheduler
+[sched-upgrade]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#upgrading-epp-scheduler-configuration-rhoai-3-5_configuring-llm-scheduler
+[flow]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#managing-mixed-workloads-with-priority-queuing
+[wva]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#autoscaling-llmd-model-deployments
+[pd]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#llmd-configuring-pd-disaggregation_distributed-inference
+[monitor]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#monitoring-llmd-deployments
+[ts]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#troubleshooting-llm-d-deployment-issues_distributed-inference

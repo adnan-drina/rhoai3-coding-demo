@@ -80,8 +80,10 @@ make a version bump a checkable worklist. Not legal advice.
    python3 scripts/shared/check-doc-links.py --live --family <family>   # optional, rate limited
    ```
 
-8. When a family has no findings left, add it to `converted_families` in the
-   map so the checker fails on regressions.
+8. Add each converted skill to `converted_skills` in the map so the checker
+   fails on its regressions while the rest of the family is pending. When a
+   family has no findings left, add it to `converted_families` and drop its
+   `converted_skills` entries.
 
 ## Upgrading a product version
 

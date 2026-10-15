@@ -1,89 +1,107 @@
 ---
 name: rhoai-self-managed-installation
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when installing, documenting, reviewing, or rebuilding Red Hat OpenShift
-  AI Self-Managed on an existing OpenShift cluster for this demo. Covers
-  AWS-hosted OpenShift assumptions, exact OpenShift version checks,
-  subscription and cluster-admin prerequisites, CLI-derived Operator
-  installation manifests, DataScienceCluster component management, ArgoCD/GitOps
-  application flow, default/custom namespace handling, and post-install
-  validation. Do NOT use for disconnected installs, managed cloud-service
-  add-on installs, uninstall, or individual component tuning; use the relevant
-  RHOAI component skill and env-* skills.
+  Use when reviewing or changing how Stage 010 installs Red Hat OpenShift AI
+  Self-Managed: the 010-rhoai-operator Application (Namespace
+  redhat-ods-operator, OperatorGroup rhods-operator-group, Subscription
+  rhods-operator), the hand-off to 010-rhoai-platform, deploy ordering in
+  stages/010-openshift-ai-platform-foundation/deploy.sh, platform
+  prerequisites (OpenShift version, cluster-admin, no Open Data Hub), and
+  post-install verification. Do NOT use for channel choice (use
+  rhoai-update-channels), DSCI/DSC fields (use rhoai-dsci-dsc-configuration),
+  or uninstall (use rhoai-uninstallation).
 ---
 
-# RHOAI Self-Managed Installation
+# RHOAI Self-Managed installation
 
-Use this skill to rebuild and review the demo installation flow for Red Hat
-OpenShift AI Self-Managed on an existing AWS-hosted OpenShift environment.
+Thin skill: repo decisions and pitfalls here, product procedure in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. This skill adapts the
-official CLI installation flow to this repo's GitOps operating model.
+- A change touches `gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/`
+  or `gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/rhoai-operator.yaml`.
+- Stage 010 deploy stops before the `rhods-operator` CSV succeeds.
+- A fresh cluster is being prepared for Stage 010.
 
-## Demo Installation Policy
+## Repo decisions
 
-For this project:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| CLI install method in GitOps: Namespace `redhat-ods-operator`, OperatorGroup with no `targetNamespaces`, Subscription `rhods-operator` from `redhat-operators` | `rhoai-operator/namespace.yaml`, `operator-group.yaml`, `subscription.yaml` | [Install the Operator by using the CLI][op-cli] |
+| Operator lifecycle in its own Application (`010-rhoai-operator`); DSCI, DSC, `Auth` and dashboard config in `010-rhoai-platform`, so a channel change never re-syncs the DSC | `gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/` | [Install and manage components][comp] |
+| `DISABLE_DSC_CONFIG=true` in the Subscription `config.env`, so GitOps creates `default-dsci` (upstream Open Data Hub setting, not in the 3.5 guide) | `rhoai-operator/subscription.yaml` | not documented in the 3.5 install guide (recorded as a deviation in the README) |
+| Predefined namespaces (`redhat-ods-operator`, `redhat-ods-applications`, `rhods-notebooks`); no custom namespaces | `rhoai-platform/dsc-init.yaml`, `datasciencecluster.yaml` | [Configure custom namespaces][custom-ns] |
+| Catalog and install gated by the operator policy: channel `stable-3.5`, minimum `3.5.1` | `scripts/platform/check-operator-policy.py` (called by `deploy.sh` and `validate.sh`) | [Update channels][channels] |
+| Platform runs OCP 4.22; the install guide lists a narrower range, the supported-configurations matrix includes 4.22 | `docs/PLATFORM_BASELINE.md` | [Platform requirements][platform-req] |
 
-- Install Red Hat OpenShift AI Self-Managed into an existing OpenShift cluster
-  running on AWS infrastructure.
-- Assume the underlying OpenShift environment already has the required Red Hat
-  subscriptions for the demo, but verify this before installation.
-- Assume a cluster-admin user is provided; do not use `kubeadmin` for the
-  installation workflow.
-- Always verify the exact OpenShift version before installing or upgrading
-  RHOAI.
-- Install the latest available RHOAI version in the selected, verified update
-  channel. Use `rhoai-update-channels` for channel policy.
-- Derive manifests from official CLI guidance, then apply them through ArgoCD
-  Applications and GitOps. Do not make direct `oc create`/`oc apply` mutations
-  for ArgoCD-managed resources except during explicit investigation.
+## Procedure
 
-## Required Install Sequence
+1. Change the operator objects in Git only. Keep the channel and minimum in
+   `check-operator-policy.py` in step with the doc map
+   (`python3 scripts/shared/check-doc-links.py --family rhoai`).
+2. Deploy and validate through the stage scripts:
+   `./stages/010-openshift-ai-platform-foundation/deploy.sh`, then
+   `./stages/010-openshift-ai-platform-foundation/setup-access.sh` and
+   `./stages/010-openshift-ai-platform-foundation/validate.sh`.
+   `deploy.sh` runs the policy check before applying and waits up to 1800 s
+   for the CSV afterwards.
+3. By hand, after the OpenShift safety guard in `AGENTS.md`:
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Verify OpenShift version, cluster-admin access, default storage class,
-   identity provider posture, internet/registry access, and absence of Open
-   Data Hub.
-3. Verify component prerequisites for the capabilities that the demo will
-   enable, including object storage, cert-manager, Kueue, GPU, Llama Stack, and
-   model registry dependencies as applicable.
-4. Decide whether predefined namespaces are sufficient. Use predefined
-   namespaces by default unless the reimplementation explicitly needs custom
-   namespace control.
-5. Create GitOps manifests for the RHOAI Operator namespace, `OperatorGroup`,
-   and `Subscription`.
-6. Create GitOps manifests for `DataScienceCluster` component management.
-7. Create or update ArgoCD Application manifests so ArgoCD applies the install
-   content.
-8. Validate Operator readiness, `DataScienceCluster` phase, installed component
-   status, application namespace pods, and dashboard component versions.
+   ```bash
+   oc get subscription rhods-operator -n redhat-ods-operator \
+     -o jsonpath='{.spec.channel} {.status.installedCSV}{"\n"}'
+   oc get csv -n redhat-ods-operator -l operators.coreos.com/rhods-operator.redhat-ods-operator
+   oc get dsc default-dsc -o jsonpath='{.status.installedComponents}{"\n"}'
+   ```
 
-## GitOps Adaptation
+## Pitfalls
 
-The official chapter uses direct CLI creation commands. In this repo, those
-commands define manifest shape only. The active implementation should commit
-the equivalent manifests under `gitops/` and sync them through ArgoCD.
+- `deploy.sh` applies all deploy-order Applications in one batch; ordering
+  against `010-rhoai-platform` comes from Argo CD retry and
+  `SkipDryRunOnMissingResource`, not from a script wait.
+- Removing `DISABLE_DSC_CONFIG` lets the operator create its own DSCI that
+  GitOps must then adopt. Keep it while `010-rhoai-platform` owns the DSCI.
+- The guide requires cluster-admin, forbids `kubeadmin`, and forbids Open Data
+  Hub on the same cluster ([Platform requirements][platform-req]).
+- CSV stuck or vanished: `docs/TROUBLESHOOTING.md#operator-csv-not-succeeded`,
+  `docs/TROUBLESHOOTING.md#operator-subscription-claims-a-csv-that-no-longer-exists`.
 
-Keep install manifests and docs atomic:
+## Official documentation (RHOAI 3.5)
 
-- README explains Why/What and official-doc source mapping.
-- GitOps manifests implement the official CLI-derived resources.
-- scripts validate state but do not own long-lived declarative resources.
-- operations docs explain bootstrap and day-2 behavior.
+| Topic | Section |
+|---|---|
+| Architecture | [Architecture of OpenShift AI Self-Managed][arch] |
+| Requirements | [Requirements][req], [Platform requirements][platform-req], [Component requirements][comp-req] |
+| Custom namespaces (not used) | [Configure custom namespaces][custom-ns] |
+| Operator install | [Install the Operator][op], [by using the CLI][op-cli], [by using the web console][op-web] |
+| Components and status | [Install and manage components][comp], [View installed components][view] |
+| Dashboard access | [Access the dashboard][dash] |
+| Install troubleshooting | [Troubleshooting reference: Installation][troubleshoot] |
 
-## References
+## Related skills
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/gitops-install-skeleton.md`
+`rhoai-update-channels`, `rhoai-dsci-dsc-configuration`, `rhoai-users-groups-access`,
+`rhoai-observability`, `rhoai-installation-troubleshooting`, `rhoai-uninstallation`,
+`ocp-gitops-operator`.
+
+[arch]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#architecture-of-openshift-ai-self-managed_install
+[channels]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#understanding-update-channels_install
+[req]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#requirements-for-openshift-ai-self-managed_install
+[platform-req]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#platform_requirements
+[comp-req]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#component_requirements
+[custom-ns]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#configuring-custom-namespaces
+[op]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#installing-the-openshift-ai-operator_operator-install
+[op-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#installing-openshift-ai-operator-using-cli_operator-install
+[op-web]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#installing-openshift-ai-operator-using-web-console_operator-install
+[comp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#installing-and-managing-openshift-ai-components_component-install
+[view]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#viewing-installed-components_component-install
+[dash]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#accessing-the-dashboard_install
+[troubleshoot]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#troubleshooting-common-installation-problems_install

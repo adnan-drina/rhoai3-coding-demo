@@ -1,84 +1,92 @@
 ---
 name: rhoai-update-channels
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when selecting, documenting, reviewing, or changing Red Hat OpenShift AI
-  Operator update channels and update strategy for the demo. Covers fast,
-  fast-x.y, stable, stable-x.y, eus-x.y, and alpha channel intent; choosing a
-  feature-forward channel for latest product capabilities and technology
-  previews; validating channel availability through OLM; and avoiding legacy
-  embedded/beta channels. Do NOT use for specific component CR fields,
-  installation manifests beyond Subscription channel policy, or live cluster
-  troubleshooting; use the relevant RHOAI component skill and env-* skills.
+  Use when reviewing or changing the Red Hat OpenShift AI Operator update
+  channel or approval mode: spec.channel stable-3.5 and installPlanApproval
+  Automatic on the rhods-operator Subscription in
+  gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/, the
+  channel and minimum version enforced by
+  scripts/platform/check-operator-policy.py, the doc map RHOAI version, and
+  planning a minor upgrade (for example 3.5 to 3.6). Do NOT use for the
+  install objects themselves (use rhoai-self-managed-installation), DSC
+  component changes (use rhoai-dsci-dsc-configuration), or support posture of
+  features (use rhoai-release-and-support-posture).
 ---
 
-# RHOAI Update Channels
+# RHOAI update channels
 
-Use this skill to choose and review Red Hat OpenShift AI Operator update
-channels for the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behaviour in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. Lifecycle and support-scope
-pages are supporting sources for channel availability, lifecycle posture, and
-preview support boundaries.
+- A change touches `spec.channel` or `installPlanApproval` in
+  `gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/subscription.yaml`.
+- A change touches the `rhods-operator` entries in `scripts/platform/check-operator-policy.py`.
+- The next RHOAI minor is planned, or `deploy.sh` refuses the catalog.
 
-## Demo Channel Policy
+## Repo decisions
 
-This demo intentionally prioritizes latest product features and selected
-technology-preview capabilities over long-lived channel stability.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Version-pinned `stable-3.5` channel (not rolling `stable` or `fast`), so a minor upgrade is a reviewed Git change | `rhoai-operator/subscription.yaml` | [Update channels][channels] |
+| `installPlanApproval: Automatic`: z-streams within 3.5 install without review; the CLI example sets no approval mode (recorded as a justified deviation) | `rhoai-operator/subscription.yaml` | [Install the Operator by using the CLI][op-cli] |
+| Fail-closed policy: channel must be `stable-3.5`, installed version at least `3.5.1` and inside the 3.5 minor; no `startingCSV` | `scripts/platform/check-operator-policy.py` (`channels`, `minimum`) | [Update channels][channels] |
+| Product docs version for every `rhoai-*` skill follows the channel's minor | `.agents/references/red-hat-doc-map.yaml` (`products.rhoai.docs_version`) | n/a (repo convention) |
 
-Default policy:
+## Procedure
 
-- Prefer `fast-3.x` or the active `fast-x.y` channel family when the active OLM
-  catalog exposes that channel for the target RHOAI baseline.
-- Use `installPlanApproval: Automatic` with the feature-forward channel when
-  the goal is to receive monthly updates without manual channel maintenance.
-- If `fast-3.x` is not available for the target release, do not invent it.
-  Verify available channels from the catalog and choose the documented latest
-  supported GA channel, usually `stable-3.x` or a numbered stable channel for
-  the active baseline.
-- Treat `alpha` as development or early-access only. Do not use it for
-  production-like demo environments unless the user explicitly wants
-  unsupported early-access behavior.
-- Do not use `embedded` or `beta` for new Operator installations.
-- Represent RHOAI channel and approval strategy in Git through the operator
-  overlay pattern from `project-red-hat-operator-gitops`; do not change the
-  live Subscription as the normal lifecycle path.
+1. Read the [Update channels][channels] table for the target channel's support
+   window and cadence; check the target minor's release notes.
+2. Change the channel in `subscription.yaml`, the `rhods-operator` channel and
+   minimum in `check-operator-policy.py`, and the doc map `docs_version` in
+   one change; then re-point the `rhoai-*` skills
+   (`project-rhoai-doc-chapter-skill-authoring`).
+3. Deploy and validate:
+   `./stages/010-openshift-ai-platform-foundation/deploy.sh`, then
+   `./stages/010-openshift-ai-platform-foundation/validate.sh` and each later
+   stage's `validate.sh`.
+4. By hand, after the OpenShift safety guard in `AGENTS.md`:
 
-Technology Preview note: choosing a faster update channel does not make every
-Technology Preview feature production-supported. Use the relevant release notes
-and component docs to identify preview posture, then label the demo capability
-accordingly.
+   ```bash
+   oc get packagemanifest rhods-operator -n openshift-marketplace \
+     -o jsonpath='{range .status.channels[*]}{.name}{" "}{.currentCSV}{"\n"}{end}'
+   python3 scripts/platform/check-operator-policy.py gitops/stages/010-openshift-ai-platform-foundation --verify
+   ```
 
-## Workflow
+## Pitfalls
 
-1. Read `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Decide the channel intent:
-   - latest supported product features: `fast` or `fast-x.y` when available
-   - latest GA with less churn: `stable`
-   - version-pinned GA planning window: `stable-x.y`
-   - extended update support: `eus-x.y`
-   - early-access development feedback: `alpha`
-4. Verify channel availability in the active OLM catalog before writing GitOps.
-5. When implementing the Subscription, keep channel policy, install-plan
-   approval strategy, and support posture documented together.
-6. For upgrades, update the GitOps channel overlay and sync the operator
-   Application before changing DSC/DSCI component patches that rely on new
-   schema.
-7. Validate with `references/validation-checklist.md`.
+- Do not select the legacy `embedded` or `beta` channels; `alpha` is early
+  access only ([Update channels][channels]).
+- A channel only changes what OLM offers; DSC component patches that need a new
+  schema must wait until the new CSV has succeeded.
+- After an Automatic update, hooks that wait on a fixed CSV name hang:
+  `docs/TROUBLESHOOTING.md#stage-020-sync-hangs-on-job-enable-dsc-kueue-after-an-operator-update`.
+- Vanished CSV after a catalog change:
+  `docs/TROUBLESHOOTING.md#operator-subscription-claims-a-csv-that-no-longer-exists`.
 
-## References
+## Official documentation (RHOAI 3.5)
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/subscription-channel-policy.md`
+| Topic | Section |
+|---|---|
+| Channel types, support windows, legacy channels | [Update channels][channels] |
+| Subscription fields in the CLI install | [Install the Operator by using the CLI][op-cli] |
+| Web console install (channel and approval choice) | [Install the Operator by using the web console][op-web] |
+
+Support lifecycle: <https://access.redhat.com/support/policy/updates/rhoai-sm/lifecycle>.
+
+## Related skills
+
+`rhoai-self-managed-installation`, `rhoai-release-and-support-posture`,
+`rhoai-dsci-dsc-configuration`, `rhoai-uninstallation`, `ocp-gitops-operator`.
+
+[channels]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#understanding-update-channels_install
+[op-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#installing-openshift-ai-operator-using-cli_operator-install
+[op-web]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#installing-openshift-ai-operator-using-web-console_operator-install

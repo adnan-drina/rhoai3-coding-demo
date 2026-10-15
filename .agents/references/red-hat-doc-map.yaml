@@ -28,6 +28,34 @@ converted_families:
   - odf
   - rhcl
 
+# Skills that follow the thin-skill contract in a family that is not converted
+# as a whole yet. The checker fails on findings from these skills (and on pin
+# findings of their family) and only reports the family's other skills. Move
+# the family to converted_families and drop its entries here once every skill
+# of the family is converted.
+converted_skills:
+  - rhoai-data-science-ide-workflows
+  - rhoai-distributed-inference-llmd
+  - rhoai-distributed-workloads
+  - rhoai-dsci-dsc-configuration
+  - rhoai-evaluation
+  - rhoai-gen-ai-playground
+  - rhoai-hardware-profiles
+  - rhoai-kueue-workload-management
+  - rhoai-maas-governance
+  - rhoai-mlflow
+  - rhoai-model-catalog-sources
+  - rhoai-model-deployment
+  - rhoai-model-registry
+  - rhoai-model-registry-workflows
+  - rhoai-model-serving-platform
+  - rhoai-monitoring-trustyai
+  - rhoai-nvidia-gpu-accelerators
+  - rhoai-observability
+  - rhoai-self-managed-installation
+  - rhoai-update-channels
+  - rhoai-users-groups-access
+
 # Backticked names on skill lines that look like skill names but are not skills.
 skill_reference_ignore: [rhcl-operator, ocp-baseline]
 
@@ -98,6 +126,7 @@ products:
           - book: red_hat_ai_validated_models
             status: active
             skill: rhoai-nvidia-gpu-accelerators
+            reviewed: { version: "3.5", date: 2026-10-15, note: "HTTP 404 at 3.5 on 2026-10-15 and the product root answered 503; not cited by the skill; re-route (probably Red Hat AI docs) or retire" }
       install:
         description: Install, upgrade-channel, accelerator, certificate, logs, troubleshooting, and uninstall workflows.
         routes:
@@ -111,11 +140,31 @@ products:
               - update_channels
             status: active
             skill: rhoai-update-channels
+            sections:
+              - understanding-update-channels_install
+              - installing-openshift-ai-operator-using-cli_operator-install
+              - installing-openshift-ai-operator-using-web-console_operator-install
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: installing_and_uninstalling_openshift_ai_self-managed
             topics:
               - installing_and_deploying
             status: active
             skill: rhoai-self-managed-installation
+            sections:
+              - architecture-of-openshift-ai-self-managed_install
+              - understanding-update-channels_install
+              - requirements-for-openshift-ai-self-managed_install
+              - platform_requirements
+              - component_requirements
+              - configuring-custom-namespaces
+              - installing-the-openshift-ai-operator_operator-install
+              - installing-openshift-ai-operator-using-cli_operator-install
+              - installing-openshift-ai-operator-using-web-console_operator-install
+              - installing-and-managing-openshift-ai-components_component-install
+              - viewing-installed-components_component-install
+              - accessing-the-dashboard_install
+              - troubleshooting-common-installation-problems_install
+            reviewed: { version: "3.5", date: 2026-10-15, note: "DISABLE_DSC_CONFIG is not in the 3.5 guide (repo behaviour only); platform requirements list OpenShift 4.19-4.20, 4.22 is covered by the supported-configurations matrix" }
           - book: installing_and_uninstalling_openshift_ai_self-managed
             topics:
               - custom_namespaces
@@ -124,17 +173,34 @@ products:
               - component_management
             status: active
             skill: rhoai-dsci-dsc-configuration
+            sections:
+              - installing-and-managing-openshift-ai-components_component-install
+              - installing-openshift-ai-components-using-cli_component-install
+              - installing-openshift-ai-components-using-web-console_component-install
+              - updating-installation-status-of-openshift-ai-components-using-web-console_component-install
+              - viewing-installed-components_component-install
+              - configuring-custom-namespaces
+              - installing-the-distributed-workloads-components_install
+            reviewed: { version: "3.5", date: 2026-10-15, note: "3.5 guide defines Managed and Removed only (Unmanaged appears for kueue); llamastackoperator deprecation comes from the live CRD, the 3.5 CLI example lists ogx instead" }
           - book: installing_and_uninstalling_openshift_ai_self-managed
             topics:
               - distributed_workloads_components
             status: active
             skill: rhoai-distributed-workloads
+            sections:
+              - installing-the-distributed-workloads-components_install
+              - component_requirements
+              - installing-and-managing-openshift-ai-components_component-install
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: installing_and_uninstalling_openshift_ai_self-managed
             topics:
               - accelerators
               - nvidia_gpus
             status: active
             skill: rhoai-nvidia-gpu-accelerators
+            sections:
+              - enabling-accelerators_install
+            reviewed: { version: "3.5", date: 2026-10-15, note: "no NVIDIA-specific section in the 3.5 install book; NVIDIA enablement lives in working_with_accelerators" }
           - book: installing_and_uninstalling_openshift_ai_self-managed
             topics:
               - certificates
@@ -172,12 +238,40 @@ products:
       administer:
         description: Administrator workflows for RHOAI access, dashboard, resources, workloads, and observability.
         routes:
+          - book: working_with_accelerators
+            status: active
+            skill: rhoai-nvidia-gpu-accelerators
+            sections:
+              - overview-of-accelerators_accelerators
+              - enabling-accelerators_accelerators
+              - enabling-nvidia-gpus_accelerators
+              - about-gpu-time-slicing_accelerators
+            reviewed: { version: "3.5", date: 2026-10-15 }
+          - book: managing_resources
+            status: active
+            skill: rhoai-users-groups-access
+            sections:
+              - ref-dashboard-configuration-options_dashboard
+            reviewed: { version: "3.5", date: 2026-10-15, note: "Auth CR spec.adminGroups/allowedGroups; OdhDashboardConfig groupsConfig is read-only" }
           - book: managing_openshift_ai
             topics:
               - users
               - groups
             status: active
             skill: rhoai-users-groups-access
+            sections:
+              - overview-of-user-types-and-permissions_managing-rhoai
+              - platform_user_types
+              - custom_roles_for_project_resources
+              - viewing-data-science-users_managing-rhoai
+              - adding-users-to-user-groups_managing-rhoai
+              - selecting-admin-and-user-groups_managing-rhoai
+              - about-deleting-users-and-resources_managing-rhoai
+              - stopping-basic-workbenches-owned-by-other-users_managing-rhoai
+              - revoking-user-access-to-basic-workbenches_managing-rhoai
+              - backing-up-storage-data_managing-rhoai
+              - cleaning-up-after-deleting-users_managing-rhoai
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: managing_openshift_ai
             topics:
               - custom_workbench_images
@@ -203,6 +297,18 @@ products:
               - kueue
             status: active
             skill: rhoai-kueue-workload-management
+            sections:
+              - overview-of-managing-workloads-with-kueue_kueue
+              - kueue-workflow_kueue
+              - configuring-workload-management-with-kueue_kueue
+              - enabling-kueue-in-the-dashboard_kueue
+              - managing-queues-outside-the-operator_kueue
+              - troubleshooting-common-problems-with-Kueue_kueue
+              - a_user_receives_a_failed_to_call_webhook_error_message_for_kueue
+              - a_user_receives_a_local_queue_provided_does_not_exist_error_message
+              - the_pod_provisioned_by_kueue_is_terminated_before_the_image_is_pulled
+              - migrating-to-the-rhbok-operator_kueue
+            reviewed: { version: "3.5", date: 2026-10-15, note: "chapter URL answered 503; verified through html-single" }
           - book: managing_openshift_ai
             topics:
               - distributed_workloads
@@ -219,6 +325,18 @@ products:
               - observability
             status: active
             skill: rhoai-observability
+            sections:
+              - managing-observability_managing-rhoai
+              - enabling-the-observability-stack_managing-rhoai
+              - observability-dashboards_managing-rhoai
+              - observability-dashboards-overview_observability-dashboards
+              - enable-observability-dashboards_observability-dashboards
+              - accessing-metrics-beyond-built-in-dashboards_observability-dashboards
+              - collecting-metrics-from-user-workloads_managing-rhoai
+              - exporting-metrics-to-external-observability-tools_managing-rhoai
+              - viewing-traces-in-external-tracing-platforms_managing-rhoai
+              - accessing-built-in-alerts_managing-rhoai
+            reviewed: { version: "3.5", date: 2026-10-15, note: "support status (TP or GA) not verified: release_notes answered HTTP 503 twice on review" }
           - book: managing_openshift_ai
             topics:
               - logs
@@ -231,6 +349,15 @@ products:
               - recommended_accelerators
             status: active
             skill: rhoai-hardware-profiles
+            sections:
+              - working-with-hardware-profiles_accelerators
+              - creating-a-hardware-profile_accelerators
+              - updating-a-hardware-profile_accelerators
+              - deleting-a-hardware-profile_accelerators
+              - configuring-a-recommended-accelerator-for-workbench-images_accelerators
+              - configuring-a-recommended-accelerator-for-serving-runtimes_accelerators
+              - about-gpu-time-slicing_accelerators
+            reviewed: { version: "3.5", date: 2026-10-15, note: "the guide names the HardwareProfile kind but not its API group infrastructure.opendatahub.io/v1; the skill defers to oc explain" }
           - book: managing_resources
             topics:
               - admin_groups
@@ -291,12 +418,53 @@ products:
           - book: working_with_model_registries
             status: active
             skill: rhoai-model-registry-workflows
+            sections:
+              - working-with-model-registries_model-registry
+              - registering-a-model_model-registry
+              - registering-a-model-version_model-registry
+              - registering-model-as-oci-image_model-registry
+              - monitoring-model-transfer-jobs_model-registry
+              - retrying-failed-model-transfer-job_model-registry
+              - deleting-model-transfer-job_model-registry
+              - viewing-registered-models_model-registry
+              - viewing-registered-model-versions_model-registry
+              - editing-model-metadata-in-a-model-registry_model-registry
+              - editing-model-version-metadata-in-a-model-registry_model-registry
+              - deploying-a-model-version-from-a-model-registry_model-registry
+              - editing-the-deployment-properties-of-a-model-deployed-by-using-the-model-serving-platform_model-registry
+              - deleting-a-deployed-model-version-from-a-model-registry_model-registry
+              - archiving-a-model_model-registry
+              - archiving-a-model-version_model-registry
+              - restoring-a-model_model-registry
+              - restoring-a-model-version_model-registry
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: working_with_the_model_catalog
             status: active
             skill: rhoai-model-catalog-workflows
           - book: experimenting_with_models_in_the_gen_ai_playground
             status: active
             skill: rhoai-gen-ai-playground
+            sections:
+              - playground-overview_rhoai-user
+              - playground-prerequisites_rhoai-user
+              - configuring-model-context-protocol-servers_rhoai-user
+              - model-and-runtime-requirements-for-the-playground_rhoai-user
+              - About-the-ai-assets-endpoints-page_rhoai-user
+              - configuring-a-playground-for-your-project_rhoai-user
+              - enable-custom-endpoints-for-the-playground_rhoai-user
+              - create-and-use-custom-endpoints-in-the-playground_rhoai-user
+              - testing-your-model-with-rag_rhoai-user
+              - resources-created-when-you-create-a-playground_rhoai-user
+              - configure-guardrails-in-the-playground_rhoai-user
+              - how-tracing-works-in-the-playground_rhoai-user
+              - reusable-system-instructions_rhoai-user
+              - testing-with-model-context-protocol-servers_rhoai-user
+              - saved-agents-in-the-gen-ai-playground_rhoai-user
+              - exporting-your-playground-configuration_rhoai-user
+              - updating-your-playground-configuration_rhoai-user
+              - Deleting-a-playground-from-your-project_rhoai-user
+              - troubleshooting-playground-issues_rhoai-user
+            reviewed: { version: "3.5", date: 2026-10-15, note: "the gen-ai-aa-custom-model-endpoints ConfigMap format is not documented (dashboard backend internal)" }
           - book: working_with_distributed_workloads
             status: active
             skill: rhoai-distributed-workload-workflows
@@ -309,6 +477,18 @@ products:
           - book: working_in_your_data_science_ide
             status: active
             skill: rhoai-data-science-ide-workflows
+            sections:
+              - accessing-your-workbench-ide_ide
+              - working_in_jupyterlab
+              - collaborating-on-jupyter-notebooks-by-using-git_ide
+              - managing-python-packages_ide
+              - troubleshooting-common-problems-in-workbenches-for-users_ide
+              - working_in_code_server
+              - collaborating-on-workbenches-in-code-server-by-using-git_ide
+              - managing-python-packages-in-code-server_ide
+              - installing-extensions-with-code-server_ide
+              - r_language_workflows_after_rstudio_removal
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: working_with_ai_pipelines
             status: active
             skill: rhoai-ai-pipelines
@@ -327,21 +507,86 @@ products:
           - book: working_with_mlflow
             status: active
             skill: rhoai-mlflow
+            sections:
+              - about-mlflow_mlflow
+              - installing-mlflow_mlflow
+              - mlflow-configuration-parameters_mlflow
+              - reference-aggregate-cluster-roles_mlflow
+              - cluster_roles_for_global_prompt_registry_namespaces
+              - rbac-model-api-usage_mlflow
+              - installing-and-authenticating-mlflow-sdk_mlflow
+              - configuring-mlflow-sdk-environment-variables-for-pods_mlflow
+              - troubleshooting-mlflow-sdk_mlflow
+              - mlflow-version-compatibility_mlflow
+              - mlflow-storage-database-compatibility_mlflow
+              - configuring-project-specific-s3-artifact-storage_mlflow
+              - enabling-mlflow-component_mlflow
+              - tracking-experiments-with-mlflow-in-workbenches
+              - mlflow-trace-archival-overview_mlflow
+            reviewed: { version: "3.5", date: 2026-10-15, note: "caBundleConfigMap (used by the repo MLflow CR) not found in the read 3.5 parameter text; last ~5K characters of the book not read" }
       deploy_and_operate_ai:
         description: Model serving, registries, catalog governance, MaaS, Llama Stack, llm-d, monitoring, safety, and evaluation.
         routes:
+          - book: govern_llm_access_with_models-as-a-service
+            status: active
+            skill: rhoai-data-science-ide-workflows
+            sections:
+              - test-maas-models-in-notebook_maas-user
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: configuring_your_model-serving_platform
             status: active
             skill: rhoai-model-serving-platform
+            sections:
+              - configuring-your-model-serving-platform_rhoai-admin
+              - model_serving_platform
+              - nvidia_nim_model_serving_platform
+              - servingruntime
+              - inferenceservice
+              - understanding-vllm-support-levels_rhoai-admin
+              - unsupported-runtime-visibility_rhoai-admin
+              - model-serving-runtimes-for-accelerators_rhoai-admin
+              - supported-model-serving-runtimes_rhoai-admin
+              - tested-verified-runtimes_rhoai-admin
+              - enabling-the-model-serving-platform_rhoai-admin
+              - enabling-speculative-decoding-and-multi-modal-inferencing_rhoai-admin
+              - adding-a-custom-model-serving-runtime_rhoai-admin
+              - enabling-unsupported-serving-runtimes-gitops_rhoai-admin
+              - enabling-the-nvidia-nim-model-serving-platform_rhoai-admin
+              - customizing-parameters-serving-runtime_rhoai-admin
+              - Customizing-the-vllm-runtime_rhoai-admin
+              - setting-a-default-cluster-wide-deployment-strategy_rhoai-admin
+              - model-cache-overview_rhoai-admin
+              - enabling-model-caching_rhoai-admin
+            reviewed: { version: "3.5", date: 2026-10-15, note: "first 100k of 115k characters read on review" }
           - book: managing_and_monitoring_models
             status: active
             skill: rhoai-model-management-monitoring
           - book: manage_and_govern_model_catalog_sources
             status: active
             skill: rhoai-model-catalog-sources
+            sections:
+              - manage-model-catalog-sources-in-dashboard_manage-govern-model-catalog-sources
+              - view_model_catalog_sources
+              - enable_or_disable_catalog_sources
+              - configure_model_visibility_settings_to_allow_and_disallow_models
+              - limitations_for_hugging_face_model_sources
+              - add-model-catalog-source_manage-govern-model-catalog-sources
+              - manage-model-catalog-source_manage-govern-model-catalog-sources
+              - delete-model-catalog-source_manage-govern-model-catalog-sources
+              - configuring-model-catalog-sources-in-openshift_manage-govern-model-catalog-sources
+            reviewed: { version: "3.5", date: 2026-10-15, note: "agent catalog sources are not documented at 3.5; the s390x limitation section was not pinned to an anchor" }
           - book: managing_model_registries
             status: active
             skill: rhoai-model-registry
+            sections:
+              - overview-of-model-registries_managing-model-registries
+              - model_registry
+              - enabling-the-model-registry-component_managing-model-registries
+              - creating-a-model-registry_managing-model-registries
+              - editing-a-model-registry_managing-model-registries
+              - managing-model-registry-permissions_managing-model-registries
+              - deleting-a-model-registry_managing-model-registries
+            reviewed: { version: "3.5", date: 2026-10-15, note: "guide names the Role registry-users-<name>; the live operator created registry-user-demo-registry" }
           - book: working_with_llama_stack
             status: active
             skill: rhoai-llama-stack
@@ -351,18 +596,112 @@ products:
           - book: evaluating_ai_systems
             status: active
             skill: rhoai-evaluation
+            sections:
+              - overview-evaluating-ai-systems_evaluate
+              - evalhub-overview_evaluate
+              - evalhub-architecture-overview_evaluate
+              - evalhub-deploy-with-the-trustyai-operator_evaluate
+              - evalhub-install-the-evalhub-sdk-and-cli_evaluate
+              - evalhub-route-evaluation-jobs-through-kueue_evaluate
+              - evalhub-submit-an-evaluation-job_evaluate
+              - evalhub-track-evaluation-jobs-and-results_evaluate
+              - evalhub-cancel-and-delete-jobs_evaluate
+              - evalhub-built-in-collections_evaluate
+              - evalhub-configure-api-key-authentication_evaluate
+              - evalhub-use-custom-data-from-s3_evaluate
+              - evalhub-provide-evaluation-test-data-from-pvc_evaluate
+              - evalhub-export-evaluation-results-to-oci-registry_evaluate
+              - evalhub-configure-mlflow-experiment-tracking_evaluate
+              - evalhub-add-a-custom-provider-configmap_evaluate
+              - evalhub-add-a-collection-configmap_evaluate
+              - job_submission_fields
+              - database_configuration
+              - evalhub-multi-tenancy-and-rbac_evaluate
+              - evalhub-set-up-a-tenant-namespace_evaluate
+              - evalhub-grant-access-to-evalhub_evaluate
+              - evalhub-roles-reference_evaluate
+              - evalhub-use-the-dashboard-to-evaluate-your-system_evaluate
+              - prerequisites
+              - evalhub-deploy-mcp-server_evaluate
+              - evalhub-evaluation-cards_evaluate
+              - test-model-safety-with-automated-risk-assessment_evaluate
+            reviewed: { version: "3.5", date: 2026-10-15, note: "no GA/TP status stated for EvalHub as a whole (Kueue integration is TP); docs name disableEvalHub but the 3.5.1 CRD has only disableLMEval (live oc explain)" }
           - book: enabling_ai_safety_with_guardrails
             status: active
             skill: rhoai-guardrails-safety
           - book: monitoring_your_ai_systems
             status: active
             skill: rhoai-monitoring-trustyai
+            sections:
+              - overview-of-monitoring-your-ai-systems_monitor
+              - configuring-trustyai_monitor
+              - configuring-monitoring-for-your-model-serving-platform_monitor
+              - enabling-trustyai-component_monitor
+              - configuring-trustyai-with-a-database_monitor
+              - installing-trustyai-service_monitor
+              - installing-trustyai-service-using-cli_monitor
+              - enabling-trustyai-kserve-integration_monitor
+              - setting-up-trustyai-for-your-project_monitor
+              - authenticating-trustyai-service_monitor
+              - uploading-training-data-to-trustyai_monitor
+              - labeling-data-fields_monitor
+              - monitoring-model-bias_bias-monitoring
+              - creating-a-bias-metric_bias-monitoring
+              - viewing-bias-metrics_bias-monitoring
+              - using-bias-metrics_bias-monitoring
+              - monitoring-data-drift_drift-monitoring
+              - creating-a-drift-metric_drift-monitoring
+              - viewing-drift-metrics_drift-monitoring
+              - using-drift-metrics_drift-monitoring
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: deploying_models
             status: active
             skill: rhoai-model-deployment
+            sections:
+              - deploying-models_rhoai-user
+              - using-oci-containers-for-model-storage_rhoai-user
+              - uploading-model-files-to-pvc_rhoai-user
+              - about-kserve-deployment-modes_rhoai-user
+              - automatic-selection-of-serving-runtimes_rhoai-user
+              - hardware_profile_matching
+              - deployment-strategies-for-resource-optimization_rhoai-user
+              - choosing_a_deployment_strategy
+              - canary-rollout-for-rawdeployment-mode_rhoai-user
+              - known-limitations-for-canary-rollout_rhoai-user
+              - deploying-models-on-the-model-serving-platform_rhoai-user
+              - deploying-model-stored-in-oci-image_rhoai-user
+              - deploying-models-on-the-NVIDIA-NIM-model-serving-platform_rhoai-user
+              - deploying-an-llminferenceservice-with-a-cached-model_rhoai-user
+              - accessing-authentication-token-for-deployed-model_rhoai-user
+              - accessing-inference-endpoint-for-model_rhoai-user
+              - inference-endpoints_rhoai-user
+            reviewed: { version: "3.5", date: 2026-10-15, note: "hf:// storage URI not named in the read part of the storage chapter; backed by the repo deployments only" }
           - book: govern_llm_access_with_models-as-a-service
             status: active
             skill: rhoai-maas-governance
+            sections:
+              - maas-prerequisites_maas-deploy
+              - maas-gateway-requirements_maas-deploy
+              - configure-tls-for-maas_maas-deploy
+              - configure-postgresql-secret-for-maas_maas-deploy
+              - maas-configuration_maas-deploy
+              - maas-dashboard-configuration_maas-deploy
+              - deploy-models-using-dashboard-wizard_maas-deploy
+              - maas-subscriptions_maas-deploy
+              - priority_levels
+              - maas-authorization-policies_maas-deploy
+              - managing-admin-api-keys_maas-deploy
+              - configure-api-key-expiration-limit_maas-deploy
+              - access-maas-api_maas-deploy
+              - enable-kuadrant-observability-maas_maas-deploy
+              - enable-maas-telemetry_maas-deploy
+              - export-maas-usage-data_maas-deploy
+              - managing-maas-multi-tenancy
+              - configuring-maas-external-models_maas-deploy
+              - apiformat_field_values
+              - maas-administration-troubleshooting_maas-deploy
+              - maas-user-access-troubleshooting_maas-user
+            reviewed: { version: "3.5", date: 2026-10-15, note: "highest-priority-wins on a multi-match not confirmed by the fetch; the personal-subscription priority decision relies on the model-access README" }
           - book: govern_llm_access_with_models-as-a-service
             topics:
               - maas_telemetry
@@ -373,6 +712,30 @@ products:
           - book: deploy_models_using_distributed_inference_with_llm-d
             status: active
             skill: rhoai-distributed-inference-llmd
+            sections:
+              - deploying-models-using-distributed-inference_distributed-inference
+              - enabling-distributed-inference_distributed-inference
+              - llm-deployment-topology-patterns_topology-selector
+              - llmd-configuration-labels-and-topology-mapping_topology-selector
+              - router-configs-and-supported-topologies_topology-selector
+              - gateway-discovery-for-llmd-overview_gateway-discovery
+              - select-gateway-yaml_gateway-discovery
+              - configuring-gateway-for-llmd-on-openshift_gateway-discovery
+              - configuring-authentication-for-llmd_distributed-inference
+              - enabling-authentication-and-authorization-for-llm-inference-service_distributed-inference
+              - controlled-deployment_distributed-inference
+              - configuring-vllm-args-llm-d_distributed-inference
+              - configure-vllm-endpoint-log-filtering_distributed-inference
+              - configuring-tool-calling-for-llmd_distributed-inference
+              - configuring-scheduler-inline_configuring-llm-scheduler
+              - scheduler-plugins_configuring-llm-scheduler
+              - upgrading-epp-scheduler-configuration-rhoai-3-5_configuring-llm-scheduler
+              - managing-mixed-workloads-with-priority-queuing
+              - autoscaling-llmd-model-deployments
+              - llmd-configuring-pd-disaggregation_distributed-inference
+              - monitoring-llmd-deployments
+              - troubleshooting-llm-d-deployment-issues_distributed-inference
+            reviewed: { version: "3.5", date: 2026-10-15, note: "no support status found for Workload Variant Autoscaler, flow control or llm-d monitoring; the skill claims none" }
       repo_specific_extensions:
         description: Skills grounded in official docs but specialized for this repo implementation.
         routes:

@@ -191,6 +191,45 @@ class CheckDocLinksTest(unittest.TestCase):
         self.assertNotIn("SOURCE-CAPTURE rhcl", out)
         self.assertIn("rhcl (report-only): 1", out)
 
+    def convert_skills(self, *names: str) -> None:
+        self.fx.write(".agents/references/red-hat-doc-map.yaml",
+                      MAP.replace("converted_families: [odf]",
+                                  "converted_families: [odf]\nconverted_skills: [" + ", ".join(names) + "]"))
+        self.fx.write(".agents/skills/rhcl-other/SKILL.md", skill("rhcl-other", "rhcl", "1.4"))
+        self.fx.write(".agents/references/red-hat-doc-map.yaml",
+                      (self.fx.root / ".agents/references/red-hat-doc-map.yaml").read_text().replace(
+                          "            skill: rhcl-about\n",
+                          "            skill: rhcl-about\n          - book: other\n            skill: rhcl-other\n"))
+
+    def test_converted_skill_fails_only_for_listed_skill(self):
+        self.convert_skills("rhcl-about")
+        self.fx.write(".agents/skills/rhcl-other/references/source-capture.md", "x\n")
+        code, out = self.fx.run("--brief")
+        self.assertEqual(code, 0, out)
+        self.assertIn("rhcl (partial, 1 skills converted): 1", out)
+        self.fx.write(".agents/skills/rhcl-about/references/source-capture.md", "x\n")
+        code, out = self.fx.run("--brief")
+        self.assertEqual(code, 1, out)
+        self.assertIn("SOURCE-CAPTURE rhcl .agents/skills/rhcl-about/", out)
+        self.assertNotIn("rhcl-other/references", out)
+
+    def test_converted_skill_link_version_fails(self):
+        self.convert_skills("rhcl-about")
+        self.fx.write(".agents/skills/rhcl-about/SKILL.md", skill(
+            "rhcl-about", "rhcl", "1.4",
+            "https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/x\n"))
+        self.assertEqual(self.fx.run()[0], 1)
+
+    def test_partial_family_pin_mismatch_fails(self):
+        self.convert_skills("rhcl-about")
+        self.fx.write("scripts/policy.py", "minimum={'rhcl-operator':'1.3.4'}\n")
+        self.assertEqual(self.fx.run()[0], 1)
+
+    def test_converted_skill_must_exist(self):
+        self.convert_skills("rhcl-gone")
+        self.assertIn(("MISSING-SKILL", "rhcl"), self.fx.codes())
+        self.assertEqual(self.fx.run()[0], 1)
+
     def test_live_classification(self):
         answers = {
             ODF_URL: (200, '<h2 id="object-bucket-claim">'),

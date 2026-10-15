@@ -1,100 +1,112 @@
 ---
 name: rhoai-observability
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for official RHOAI observability: support posture, DSCInitialization monitoring,
-  monitoring namespace, COO/Tempo/OpenTelemetry, Prometheus/Alertmanager, observability
-  dashboard, scrape labels, external exporters, trace access and alerts. Do NOT use for
-  pod/audit logs (rhoai-logs-and-audit-records), deployed-model runtime dashboards (rhoai-
-  model-management-monitoring), TrustyAI fairness/drift or guardrails-specific telemetry;
-  use the matching rhoai skills. Pair live diagnostics with the environment
-  troubleshooting skill and OpenShift safety guard.
+  Use when reviewing or changing the native OpenShift AI observability stack in
+  Stage 010: DSCInitialization spec.monitoring in rhoai-platform/dsc-init.yaml,
+  the COO, OpenTelemetry and Tempo Subscriptions and trace roles in
+  gitops/stages/010-openshift-ai-platform-foundation/observability-operators/,
+  the observabilityDashboard flag, the monitoring.opendatahub.io/scrape label,
+  redhat-ods-monitoring Prometheus, Alertmanager and Tempo, or
+  validate-foundation-services.sh failures. Do NOT use for operator logs and
+  audit records (use rhoai-logs-and-audit-records), per-model metrics (use
+  rhoai-model-management-monitoring), or the console Perses plugin (use
+  ocp-observability).
 ---
 
-# RHOAI Observability
+# RHOAI observability
 
-Use this skill to manage the OpenShift AI observability stack and dashboard
-visibility for the active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product procedure in the linked
+OpenShift AI 3.5 sections. Detailed records:
+`gitops/stages/010-openshift-ai-platform-foundation/observability-operators/README.md`
+and the DSCInitialization part of
+`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Administer chapter to this repo's GitOps and Technology Preview
-governance model.
+- A change touches `spec.monitoring` in `rhoai-platform/dsc-init.yaml`, the
+  `observability-operators/` folder, or `observabilityDashboard` in
+  `rhoai-platform/odhdashboardconfig.yaml`.
+- A workload should be scraped into the OpenShift AI datasource.
+- Metrics, traces or the dashboard's observability pages are missing.
 
-## Support Posture
+## Repo decisions
 
-For the current baseline, OpenShift AI observability is Technology Preview.
-Document that status whenever enabling, presenting, or reviewing this
-capability. Do not represent it as production-supported SLA functionality.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Prerequisite operators installed first: COO, Red Hat build of OpenTelemetry, Tempo; rolling `stable`, Automatic, bounded by the operator policy (minimums 1.5.3, 0.158.0-2, 0.22.0-2) | `observability-operators/*/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Enable the observability stack][enable] |
+| Stack enabled in the DSCI: `managementState: Managed`, namespace `redhat-ods-monitoring` (pre-created with the cluster-monitoring label), 1 Prometheus replica, `5Gi`/`90d`, traces `pv`/`2160h0m0s`, `sampleRatio: '0.1'`, default `alerting` | `rhoai-platform/dsc-init.yaml`, `rhoai-platform/monitoring-namespace.yaml` | [Enable the observability stack][enable] |
+| `observabilityDashboard: true` written down (product default) so `validate.sh` can check it | `rhoai-platform/odhdashboardconfig.yaml` | [Enable the observability dashboards][enable-dash] |
+| Trace tenant RBAC added by the repo: writer role for the generated collector SA, reader role for `rhods-admins` only | `observability-operators/trace-roles/` | [View traces in external tracing platforms][traces] (write grant not documented; README records the deviation) |
+| Scrape label only on a demo-owned ServiceMonitor for the operator-managed DCGM exporter, never on operator pods | `gitops/stages/020-gpu-infrastructure-private-ai/nvidia-gpu-operator/rhoai-monitoring/` | [Collect metrics from user workloads][user-workloads] |
+| No external metrics or trace exporters configured | `rhoai-platform/dsc-init.yaml` | [Export metrics][export] |
 
-## Demo Policy
+Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unless they start with `gitops/` or `scripts/`.
 
-For this repo:
+## Procedure
 
-- Treat observability as optional platform infrastructure until a demo step
-  explicitly introduces it.
-- Use `ocp-observability` for the underlying OCP monitoring, logging, and COO
-  product boundary before applying RHOAI-specific observability configuration.
-- Use `ocp-opentelemetry` for Red Hat build of OpenTelemetry Operator,
-  Collector, instrumentation, and telemetry-pipeline behavior before applying
-  RHOAI-specific observability configuration.
-- Use `ocp-distributed-tracing` for Tempo Operator, `TempoStack`, trace
-  tenancy, trace RBAC, and distributed tracing back-end behavior before
-  applying RHOAI-specific observability configuration.
-- Use `redhat-ods-monitoring` as the monitoring namespace unless an active
-  implementation decision changes it.
-- Do not add `monitoring.opendatahub.io/scrape=true` to operator-managed
-  workloads.
-- Add scrape labels only to user workloads that expose metrics and are intended
-  for monitoring.
-- Keep external exporter credentials and endpoints out of Git unless they are
-  harmless placeholders.
-- Keep port-forward examples as operator runbook examples, not automated demo
-  scripts.
-- Treat RHOAI-generated observability operands as product-owned. Stage 110's
-  Cluster Observability Operator `startingCSV` hold is an OLM lifecycle policy,
-  not an image pin. Do not patch generated `Perses.spec.image`, generated
-  `PersesDatasource` resources, or operator-created observability Deployments
-  as durable fixes.
-- Use `rhoai-guardrails-safety` for guardrails CR-level OpenTelemetry fields,
-  spans, detector metrics, and Guardrails Gateway metrics. Use this skill for
-  the shared observability stack receiving that data.
-- Use `rhoai-monitoring-trustyai` for TrustyAI bias metrics, data drift
-  metrics, `TrustyAIService`, model observations, and `trustyai_*` metric
-  semantics. Use this skill for the shared observability stack surfacing those
-  metrics.
+1. Change DSCI monitoring and operator Subscriptions in Git only. Operands in
+   `redhat-ods-monitoring` (`MonitoringStack`, `TempoMonolithic`,
+   `OpenTelemetryCollector`, `PersesDatasource`) are generated by RHOAI: do
+   not patch them as a durable fix.
+2. Deploy and validate:
+   `./stages/010-openshift-ai-platform-foundation/deploy.sh`, then
+   `./stages/010-openshift-ai-platform-foundation/validate.sh` (operator CSVs,
+   DSCI monitoring fields, `observabilityDashboard`) and
+   `./stages/010-openshift-ai-platform-foundation/validate-foundation-services.sh`
+   (Prometheus `up` query, collector SubjectAccessReview, one OTLP span read
+   back from Tempo).
+3. By hand, after the OpenShift safety guard in `AGENTS.md`:
 
-## Workflow
+   ```bash
+   oc get dsci default-dsci -o jsonpath='{.spec.monitoring}{"\n"}'
+   oc get monitoring,monitoringstack,tempomonolithic,opentelemetrycollector -n redhat-ods-monitoring
+   oc get clusterrolebinding rhoai-monitoring-traces-writer rhoai-monitoring-traces-reader -o wide
+   ```
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Confirm the Technology Preview status is acceptable for the intended demo.
-3. Confirm prerequisite Operators are installed:
-   - Cluster Observability Operator
-   - Tempo Operator
-   - Red Hat build of OpenTelemetry
-   Confirm the installed CSV through the owning Subscription, not copied CSVs
-   or display names.
-4. Configure `DSCInitialization.spec.monitoring` through GitOps.
-5. Enable the dashboard menu with
-   `OdhDashboardConfig.spec.dashboardConfig.observabilityDashboard: true`
-   when UI access is required.
-6. Add `monitoring.opendatahub.io/scrape=true` only to eligible user workload
-   pod templates.
-7. Configure metrics or trace exporters only when an external endpoint is
-   approved and reachable.
-8. Validate with `references/validation-checklist.md`.
+## Pitfalls
 
-## References
+- The Cluster dashboard is for cluster administrators only; other users see
+  the Models dashboard for namespaces they can access ([Dashboards overview][dash-overview]).
+- Alertmanager has no route by default ([Access built-in alerts][alerts]).
+- A new minor on a rolling `stable` channel makes `deploy.sh` fail closed
+  until `check-operator-policy.py` is updated.
+- Support posture of the stack at 3.5 (Technology Preview or GA) could not be
+  verified: the 3.5 release notes did not load on 2026-10-15. Check them before
+  presenting it as supported.
+- Known symptoms: `docs/TROUBLESHOOTING.md#observability-dashboard-shows-no-dashboards-found`,
+  `docs/TROUBLESHOOTING.md#rhoai-monitoring-prometheus-stuck-in-init`,
+  `docs/TROUBLESHOOTING.md#observability-dashboards-show-empty-gpu-inter-token-latency-or-error-rate-panels`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/observability-patterns.md`
+## Official documentation (RHOAI 3.5)
+
+| Topic | Section |
+|---|---|
+| Chapter | [Manage observability][chapter] |
+| Enable | [Enable the observability stack][enable], [Enable the observability dashboards][enable-dash] |
+| Dashboards | [Observe platform and model metrics][dashboards], [Dashboards overview][dash-overview], [Metrics beyond the built-in dashboards][beyond] |
+| User workloads | [Collect metrics from user workloads][user-workloads] |
+| Export and traces | [Export metrics][export], [View traces in external tracing platforms][traces] |
+| Alerts | [Access built-in alerts][alerts] |
+
+## Related skills
+
+`rhoai-dsci-dsc-configuration`, `rhoai-logs-and-audit-records`,
+`rhoai-model-management-monitoring`, `rhoai-monitoring-trustyai`,
+`ocp-observability`, `ocp-opentelemetry`, `ocp-distributed-tracing`.
+
+[chapter]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#managing-observability_managing-rhoai
+[enable]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#enabling-the-observability-stack_managing-rhoai
+[dashboards]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#observability-dashboards_managing-rhoai
+[dash-overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#observability-dashboards-overview_observability-dashboards
+[enable-dash]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#enable-observability-dashboards_observability-dashboards
+[beyond]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#accessing-metrics-beyond-built-in-dashboards_observability-dashboards
+[user-workloads]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#collecting-metrics-from-user-workloads_managing-rhoai
+[export]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#exporting-metrics-to-external-observability-tools_managing-rhoai
+[traces]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#viewing-traces-in-external-tracing-platforms_managing-rhoai
+[alerts]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#accessing-built-in-alerts_managing-rhoai

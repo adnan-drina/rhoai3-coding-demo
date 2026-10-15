@@ -1,124 +1,107 @@
 ---
 name: rhoai-monitoring-trustyai
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for official TrustyAI bias/drift monitoring: component enablement, TrustyAIService,
-  project installation, PVC/database storage, credentials, KServe logging, OAuth, data
-  upload/model registration, field mapping,
-  SPD/DIR/MeanShift/FourierMMD/KSTest/ApproxKSTest, dashboard/REST metric operations and
-  Prometheus. Do NOT use for general observability, runtime dashboards/autoscaling, LLM
-  evaluation/risk assessment, guardrails or serving setup beyond logging; use the matching
-  rhoai skills. Live changes require the OpenShift safety guard.
+  Use when someone proposes TrustyAI bias or data-drift monitoring
+  (TrustyAIService, SPD/DIR, MeanShift, FourierMMD, KSTest) for this demo,
+  when reviewing what the `trustyai` DataScienceCluster component enabled by
+  the Stage 050 hook (gitops/stages/050-model-evaluation/mlflow/dsc-enablement/)
+  does here, or when a TrustyAIService appears next to the vLLM models in
+  `internal-models` or `evaluated-models`. Do NOT use for EvalHub evaluations,
+  which the same component runs (use rhoai-evaluation), model serving metrics
+  and dashboards (use rhoai-model-management-monitoring), or runtime safety
+  (use rhoai-guardrails-safety).
 ---
 
 # RHOAI TrustyAI Monitoring
 
-Use this skill for official Red Hat OpenShift AI TrustyAI monitoring workflows
-on the active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/050-model-evaluation/mlflow/README.md` (component enablement).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Monitoring your AI systems guide to this repo's GitOps and README
-review model.
+- A request to add fairness or drift monitoring to a model of this demo.
+- Reviewing why `trustyai` is `Managed` and what that allows.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `trustyai` is set `Managed` by the `enable-model-evaluation` Sync hook (delegated DSC field) because EvalHub runs on the TrustyAI operator; the hook waits for `trustyais/default-trustyai` `Ready` | `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/enable-job.yaml` | [Enable the TrustyAI component][enable] |
+| No `TrustyAIService`, no bias or drift metric in Git: the served models are vLLM (`LLMInferenceService` in `internal-models`, candidate `InferenceService` in `evaluated-models`), and TrustyAI monitoring supports only OpenVINO Model Server models | `gitops/stages/040-governed-models-as-a-service/local-models/`, `gitops/stages/050-model-evaluation/model-qualification/` | [Install the TrustyAI service][install] |
+| Model quality evidence comes from EvalHub benchmarks recorded in MLflow and the registry, not TrustyAI metrics | `gitops/stages/050-model-evaluation/evalhub/` | see `rhoai-evaluation` |
 
-- TrustyAI monitoring for data drift and bias
-- administrator enablement of the `trustyai` `DataScienceCluster` component
-- `TrustyAIService` custom resources in model project namespaces
-- one TrustyAI service instance per project
-- PVC-backed TrustyAI storage
-- database-backed TrustyAI storage with MariaDB/MySQL credentials
-- database migration from PVC to database storage
-- KServe RawDeployment logger integration and CA bundle handling
-- TrustyAI OAuth proxy authentication with user or service account tokens
-- training data upload through `/data/upload`
-- TrustyAI model registration checks through `InferenceService` logger fields
-- field name mapping through `/info/names`
-- observation verification with `trustyai_model_observations_total`
-- bias metric creation, viewing, duplication, and deletion
-- Statistical Parity Difference and Disparate Impact Ratio interpretation
-- drift metric creation, viewing, and deletion
-- MeanShift, FourierMMD, KSTest, and ApproxKSTest interpretation
-- TrustyAI REST endpoint discovery through `/q/openapi`
-- OpenShift Observe metrics for `trustyai_*` metrics
+## Procedure
 
-Use other skills for adjacent work:
+1. Before adding monitoring, confirm the model is deployed with OVMS and
+   choose a project without vLLM models ([Install the TrustyAI
+   service][install]). None of this demo's models qualifies today; record the
+   decision in the Stage 050 README first.
+2. If adopted: one `TrustyAIService` per project, database storage rather than
+   PVC ([database setup][db]), credentials in Secrets created outside Git, and
+   the KServe RawDeployment integration ([KServe integration][kserve]).
+3. Check the component read-only, after the OpenShift safety guard in
+   `AGENTS.md`:
 
-- `rhoai-observability` for OpenShift AI observability stack installation,
-  OpenTelemetry Collector, Prometheus, Alertmanager, Tempo, dashboard menu,
-  and user workload scrape policy
-- `rhoai-model-management-monitoring` for deployed model metrics, KServe
-  operational metrics, KEDA/CMA autoscaling, Grafana dashboards, and NIM
-  metrics
-- `rhoai-model-serving-platform` for KServe, vLLM, OVMS, `ServingRuntime`, and
-  `InferenceService` platform configuration outside TrustyAI logger handoff
-- `rhoai-evaluation` for EvalHub, LM-Eval, automated risk assessment, Garak,
-  judge models, and measured LLM safety evaluation
-- `rhoai-guardrails-safety` for NeMo Guardrails, FMS Guardrails, detector
-  services, and runtime safety controls
-- `rhoai-project-workflows` for project lifecycle and project access
-- `rhoai-api-tiers` for TrustyAI API support posture and CRD durability
+   ```bash
+   oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.trustyai.managementState}{"\n"}'
+   oc get trustyai default-trustyai -o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}{"\n"}'
+   oc get trustyaiservice -A
+   ./stages/050-model-evaluation/validate-ai-services.sh
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- Non-OVMS models in the same namespace as a TrustyAI service are unsupported
+  and can cause errors ([Install the TrustyAI service][install]); do not put a
+  `TrustyAIService` in `internal-models` or `evaluated-models`.
+- Database storage: MySQL is not supported, and TLS does not work with
+  MariaDB operator 0.29 or later ([database setup][db]).
+- Setting `trustyai` to `Removed` also removes EvalHub; the Stage 050 hook and
+  `validate-ai-services.sh` expect it `Managed`.
+- One metric is not a fairness or drift verdict: record the metric, threshold,
+  data window and limitation with any claim ([bias metrics][usebias],
+  [drift metrics][usedrift]).
 
-- Treat this skill as the product source for TrustyAI bias and data-drift
-  monitoring.
-- Do not use TrustyAI monitoring from this guide for the active vLLM/Nemotron
-  private LLM path unless the active Red Hat documentation confirms support.
-  The guide states that TrustyAI only supports models deployed with OpenVINO
-  Model Server and warns that non-OVMS models are not supported.
-- Use `rhoai-evaluation` for LLM evaluation and risk assessment claims.
-- Use `rhoai-guardrails-safety` for runtime LLM safety controls.
-- Install only one `TrustyAIService` instance in a project.
-- Prefer database-backed storage for production-shaped narratives because the
-  guide recommends it for scalability, performance, and data management.
-- Keep database usernames, passwords, TLS keys, and service account tokens in
-  Kubernetes Secrets. Never commit secret values.
-- Use PVC-backed storage only for development, testing, or small demo flows,
-  and label it accordingly.
-- Create bias metrics only when the protected attribute, privileged group,
-  unprivileged group, favorable outcome, threshold, and batch size are
-  meaningful for the scenario.
-- Create drift metrics only after training/reference data is uploaded and the
-  reference tag is known.
-- Do not claim fairness, reliability, or absence of drift from one metric
-  alone. Record metric choice, threshold, data window, and limitation.
+## Official documentation (RHOAI 3.5)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| Overview | [AI system monitoring][overview] |
+| Configure | [Configure TrustyAI][configure], [Serving platform monitoring][servingmon], [Enable][enable], [Database][db], [Install service][install], [CLI install][installcli], [KServe RawDeployment][kserve] |
+| Project setup | [Set up TrustyAI for a project][setup], [Authenticate][auth], [Upload training data][upload], [Label data fields][labels] |
+| Bias | [Monitor model bias][bias], [Create a bias metric][createbias], [View][viewbias], [Use][usebias] |
+| Drift | [Monitor data drift][drift], [Create a drift metric][createdrift], [View][viewdrift], [Use][usedrift] |
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - TrustyAI component enablement
-   - TrustyAI project service installation
-   - storage and database configuration
-   - KServe RawDeployment logger integration
-   - training data upload and field mapping
-   - bias metric configuration
-   - drift metric configuration
-   - dashboard or OpenShift Observe metric review
-   - metric deletion or cleanup
-4. Use `examples/trustyai-monitoring-patterns.md` for compact review patterns.
-5. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-6. Validate with `references/validation-checklist.md`.
+## Related skills
 
-## References
+`rhoai-evaluation`, `rhoai-model-management-monitoring`,
+`rhoai-observability`, `rhoai-guardrails-safety`,
+`rhoai-dsci-dsc-configuration`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/trustyai-monitoring-patterns.md`
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#overview-of-monitoring-your-ai-systems_monitor
+[configure]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#configuring-trustyai_monitor
+[servingmon]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#configuring-monitoring-for-your-model-serving-platform_monitor
+[enable]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#enabling-trustyai-component_monitor
+[db]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#configuring-trustyai-with-a-database_monitor
+[install]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#installing-trustyai-service_monitor
+[installcli]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#installing-trustyai-service-using-cli_monitor
+[kserve]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#enabling-trustyai-kserve-integration_monitor
+[setup]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#setting-up-trustyai-for-your-project_monitor
+[auth]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#authenticating-trustyai-service_monitor
+[upload]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#uploading-training-data-to-trustyai_monitor
+[labels]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#labeling-data-fields_monitor
+[bias]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#monitoring-model-bias_bias-monitoring
+[createbias]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#creating-a-bias-metric_bias-monitoring
+[viewbias]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#viewing-bias-metrics_bias-monitoring
+[usebias]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#using-bias-metrics_bias-monitoring
+[drift]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#monitoring-data-drift_drift-monitoring
+[createdrift]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#creating-a-drift-metric_drift-monitoring
+[viewdrift]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#viewing-drift-metrics_drift-monitoring
+[usedrift]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/monitoring_your_ai_systems/index#using-drift-metrics_drift-monitoring

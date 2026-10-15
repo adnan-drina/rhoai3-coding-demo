@@ -1,163 +1,143 @@
 ---
 name: rhoai-maas-governance
 metadata:
-  author: rhoai3-demo
-  version: 1.2.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift AI
-  Models-as-a-Service governance from the official guide: MaaS enablement,
-  Red Hat Connectivity Link and Kuadrant prerequisites, Gateway API and
-  Authorino TLS prerequisites, PostgreSQL API key database secret,
-  DataScienceCluster and OdhDashboardConfig MaaS feature flags, Tenant,
-  MaaSModelRef, ExternalModel, MaaSSubscription, MaaSAuthPolicy, subscription
-  priority and token limits, API key lifecycle, OpenAI-compatible MaaS
-  endpoints, observability and usage export, external OIDC authentication, and
-  governed external model providers such as OpenAI. Do NOT use for standard
-  model deployment without MaaS (use rhoai-model-deployment), model-serving
-  platform/runtime setup (use rhoai-model-serving-platform), Llama Stack RAG or
-  providers (use rhoai-llama-stack), playground-only testing (use
-  rhoai-gen-ai-playground), or live cluster changes without the OpenShift
-  safety guard.
+  Use when changing, reviewing, or debugging Stage 040 Models-as-a-Service
+  governance: MaaS enablement on default-dsc (aigateway, modelsAsAService),
+  MaaSTenantConfig telemetry, the maas-db-config database Secret, Gateway
+  maas-default-gateway and Authorino TLS, MaaSModelRef publication of
+  qwen3-8-27b and external models (ExternalProvider, ExternalModel),
+  MaaSSubscription and MaaSAuthPolicy in models-as-a-service, API keys, token
+  limits, 401/403/429 from the MaaS gateway, and usage export. Do NOT use for
+  the llm-d serving spec (use rhoai-distributed-inference-llmd), generated
+  Kuadrant policies (use rhcl-configure), Connectivity Link upgrades (use
+  rhcl-update), or playground setup (use rhoai-gen-ai-playground).
 ---
 
 # RHOAI Models-as-a-Service Governance
 
-Use this skill for governed LLM access through Red Hat OpenShift AI
-Models-as-a-Service on the active product baseline in
-`docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record: component READMEs under
+`gitops/stages/040-governed-models-as-a-service/` (start with `maas-platform/README.md`);
+repo lessons not in Git live in `references/working-configuration.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md`,
-`references/official-doc-extraction.md`, and
-`references/working-configuration.md` before using product behavior details.
-Official Red Hat documentation is product authority. The working configuration
-captures repo-validated design decisions and implementation traps; it does not
-override official docs or installed CRD schema.
+- A Stage 040 MaaS component (`040-maas-*`, `040-gateway-governance`,
+  `040-*-models`, `040-model-access`) changes or fails validation.
+- A user, Dev Spaces workspace, evaluation or agent gets 401, 403, 404 or 429
+  from `maas.<cluster-domain>`.
+- Someone adds a model, a consumer, or a token budget.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| MaaS is enabled by a Sync-hook Job patching delegated `default-dsc` fields (`aigateway`, `aigateway.modelsAsAService`, `ogx` Managed; `batchGateway` Removed), not the deprecated `kserve.modelsAsService` | `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml` | [MaaS configuration][config] |
+| Dashboard flags `modelAsService`, `vLLMDeploymentOnMaaS`, `externalModels`, `genAiStudio` and others are set by the same Job; Stage 010 owns `odh-dashboard-config` | same Job; `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` | [Dashboard configuration][dash] |
+| Telemetry on the controller-owned `MaaSTenantConfig` `default-tenant` with `captureUser: true` (product default `false`) for per-user showback | same Job | [Enable telemetry][telemetry] |
+| In-cluster PostgreSQL 16 in `models-as-a-service-db`; `maas-db-config` (`DB_CONNECTION_URL`) in `redhat-ai-gateway-infra` is created by script, `sslmode=disable` behind a NetworkPolicy | `gitops/stages/040-governed-models-as-a-service/maas-database/`, `stages/040-governed-models-as-a-service/setup-database.sh` | [Database secret][db] |
+| Gateway `maas-default-gateway` in `openshift-ingress`, class `data-science-gateway-class`, both required annotations, listeners `api` and `qwen3-8` on the cert-manager ingress certificate; hostnames patched at deploy time | `gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/` | [Gateway requirements][gw], [Configure TLS][tls] |
+| Authorino TLS: serving-cert annotation by hook Job, TLS listener and CA mount declared on the Authorino CR instead of `oc set env` | `gitops/stages/040-governed-models-as-a-service/gateway-governance/governance/`, `.../gateway-governance/jobs/` | [Configure TLS][tls] |
+| Private model `qwen3-8-27b` published by `MaaSModelRef` in `internal-models` | `gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-maas-modelref.yaml` | [Deploy models with MaaS][deploy] |
+| External models `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` in `external-models`, all `apiFormat: openai-chat` so every model is subscription-token-metered; Claude uses Anthropic's OpenAI-compatible path | `gitops/stages/040-governed-models-as-a-service/external-models/` | [External models][ext], [apiFormat values][apiformat] |
+| Provider keys in Secrets `*-provider-api-key` (key `api-key`, label `inference.llm-d.ai/ipp-managed=true`) created from `.env`, never in Git | `stages/040-governed-models-as-a-service/setup-provider-secret.sh` | [External models][ext] |
+| One `MaaSSubscription` + `MaaSAuthPolicy` pair per consumer, owned by a user or one ServiceAccount (not groups); personal priority 150-170 above service subscriptions; 1 h windows | `gitops/stages/040-governed-models-as-a-service/model-access/` | [Subscriptions][subs], [Priority levels][prio], [Authorization policies][authz] |
+| Default MaaS tenant only (external models require it) | `model-access/README.md`, `external-models/README.md` | [Multi-tenancy][tenancy] |
+| API keys use the product default lifetime; keys are minted at runtime by owners (dashboard, Stage 070 provisioner, playground and Stage 050 Jobs) | not in Git | [Manage API keys][keys], [Expiration limit][keyexp] |
+| Usage export queries Thanos (`export-maas-usage.sh`), separate from the dashboard CSV | `stages/040-governed-models-as-a-service/export-maas-usage.sh` | [Export usage data][export] |
 
-- MaaS versus standard model serving decision criteria
-- subscription-based quota management, priority, and token limits
-- self-service and administrator API key lifecycle
-- MaaS CRDs: `Tenant`, `MaaSModelRef`, `ExternalModel`, `MaaSSubscription`,
-  and `MaaSAuthPolicy`
-- Red Hat Connectivity Link Operator, `Kuadrant`, Gateway API, and Authorino
-  TLS prerequisites
-- PostgreSQL database secret for API key lifecycle management
-- `DataScienceCluster` and `OdhDashboardConfig` MaaS feature flags
-- publishing local llm-d or vLLM models and external provider models through
-  MaaS
-- group/user access through subscriptions plus authorization policies
-- MaaS management through the dashboard, CLI, API, and GitOps-managed CRs
-- OpenAI-compatible inference endpoints under `/llm/{model-name}/v1`
-- MaaS observability, Kuadrant observability, telemetry, and usage export
-- external OIDC authentication for MaaS users
-- external model routing through `ExternalModel` and provider-key Secrets
-- administrator and user troubleshooting for 401, 403, 404, token limit, and
-  subscription phase failures
+## Procedure
 
-Use other skills for adjacent work:
+1. Change the component under `gitops/stages/040-governed-models-as-a-service/`
+   that owns the object (component README "What" tables). Access changes go
+   only in `model-access/`; a model change only in `local-models/` or
+   `external-models/`.
+2. Deploy and validate after the OpenShift safety guard in `AGENTS.md`:
 
-- `rhoai-model-serving-platform` for KServe/vLLM/NIM serving platform
-  enablement, runtime templates, and runtime arguments
-- `rhoai-model-deployment` for direct model deployment, routes, endpoint token
-  lookup, and runtime-specific smoke tests outside MaaS
-- `rhoai-distributed-inference-llmd` for `LLMInferenceService`, Gateway
-  discovery, Connectivity Link auth, scheduler, autoscaling, and flow-control
-  details before MaaS governance is layered on top
-- `rhoai-model-management-monitoring` for deployed-model operations before or
-  below the MaaS governance layer
-- `rhoai-gen-ai-playground` for exploratory product playground testing of AI
-  asset endpoints and MaaS endpoints
-- `rhoai-llama-stack` for Llama Stack distributions, providers, vector stores,
-  RAG, and Responses API workflows
-- `rhoai-central-authentication-service` for broader external OIDC
-  authentication service behavior outside MaaS
-- `rhoai-dashboard-customization` for general `OdhDashboardConfig` feature
-  flags and dashboard navigation behavior
-- `rhoai-observability` and `rhoai-monitoring-trustyai` for platform
-  observability and TrustyAI monitoring beyond MaaS usage telemetry
-- `rhoai-api-tiers` for support posture review of MaaS-related APIs
+   ```bash
+   ./stages/040-governed-models-as-a-service/deploy.sh
+   ./stages/040-governed-models-as-a-service/validate.sh --readiness
+   ./stages/040-governed-models-as-a-service/validate.sh --functional   # needs RHOAI_STAGE040_PERSONA_KUBECONFIG
+   ```
 
-## Demo Policy
+   Readiness does not prove inference or quota; the functional run (temporary
+   key, bounded requests, revoke) does. One external model:
+   `RHOAI_STAGE040_MODEL=<name>` + `RHOAI_STAGE040_SINGLE_COMPLETION=true`.
+3. Read-only inspection:
 
-For this repo:
+   ```bash
+   oc get maasmodelref -A
+   oc get maassubscription,maasauthpolicy -n models-as-a-service
+   oc get externalprovider,externalmodel -n external-models
+   oc get maastenantconfigs default-tenant -n models-as-a-service -o jsonpath='{.spec.telemetry}{"\n"}'
+   ```
 
-- Use MaaS when the demo needs centralized LLM governance, group-based access,
-  token limits, API keys, usage tracking, showback, or GitOps-managed model
-  access policy.
-- Keep direct standard model serving for single-team, single-user, or
-  prototype paths where MaaS governance overhead is unnecessary.
-- Treat vLLM runtime support with MaaS, external models, external OIDC
-  authentication, and the MaaS observability dashboard as Technology Preview
-  unless the active baseline changes.
-- Expose the primary local model `nemotron-3-nano-30b-a3b` through MaaS only
-  after the underlying serving endpoint and Gateway/API compatibility are
-  verified.
-- Register external OpenAI `gpt-4o-mini` through the MaaS `ExternalModel` path
-  when external provider access is required. Use `gpt-4o-mini` as the
-  Kubernetes/MaaS resource name and keep `spec.targetModel: gpt-4o-mini` as
-  the provider model ID. Prefer provider model IDs that are also valid
-  Kubernetes Service names for Playground-facing demos; otherwise document the
-  resource-name alias and validate the UI path explicitly. The ExternalModel
-  controller creates Kubernetes Services from the resource name, so dotted
-  names fail Service validation.
-  Do not bypass MaaS for shared demo access to external OpenAI models unless
-  the project explicitly documents a different governance decision.
-- Store MaaS PostgreSQL credentials, provider API keys, API keys, and endpoint
-  tokens in Kubernetes Secrets or an approved secret store. Never commit secret
-  values.
-- Require both a matching `MaaSSubscription` and `MaaSAuthPolicy` before
-  claiming a user or group can access a MaaS model.
-- Revoke and recreate API keys after group membership changes when immediate
-  access revocation or new group access must be reflected.
-- Use MaaS usage metrics for internal showback and capacity planning, not
-  billing-grade external invoicing.
+4. A new upstream namespace needs a Gateway `allowedRoutes` entry and an allow
+   rule in AdminNetworkPolicy `maas-gateway-boundary` (`gateway-governance/README.md`).
 
-## Workflow
+## Pitfalls
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Read `references/working-configuration.md` before changing Stage 220,
-   authoring new MaaS manifests, or debugging MaaS rollout behavior.
-4. Decide whether the task is:
-   - phase-one MaaS prerequisite enablement before MaaS CRDs exist
-   - MaaS prerequisite and enablement review
-   - Gateway, Kuadrant, Authorino TLS, or PostgreSQL setup
-   - dashboard feature flag review
-   - publishing local or external models through MaaS
-   - subscription, priority, token-limit, or cost metadata design
-   - authorization policy design
-   - API key lifecycle management
-   - MaaS API or OpenAI-compatible inference client work
-   - observability, telemetry, or usage export
-   - external OIDC or external provider integration
-   - troubleshooting user or admin access errors
-5. Use `examples/maas-governance-patterns.md` for compact manifest and review
-   patterns.
-6. For GitOps implementation, gate work in phases:
-   - install/enable prerequisites and DSC/dashboard feature flags
-   - rerun live CRD and `oc explain` checks
-   - only then commit MaaS model, subscription, auth-policy, and external-model
-     resources
-7. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-8. Validate with `references/validation-checklist.md`, including real
-   dashboard and Gateway API checks with demo users.
-9. After a new live failure or design correction, update
-   `references/working-configuration.md` before considering the stage done.
+- A subscription without a matching `MaaSAuthPolicy` returns 403 even with
+  quota ([Authorization policies][authz]).
+- Subscription token limits apply only to OpenAI Chat Completions; `messages`
+  and `openai-responses` models are not metered ([apiFormat values][apiformat]).
+- `ExternalProvider`/`ExternalModel` are `inference.opendatahub.io/v1alpha1`;
+  the MaaS kinds are `maas.opendatahub.io/v1alpha1`. Check with `oc explain`.
+- `Tenant` is deprecated in 3.5 in favour of `AITenant` and `MaasTenantConfig`;
+  do not author a `Tenant` ([Multi-tenancy][tenancy]).
+- Native Messages responses hang on Connectivity Link 1.4.3:
+  `docs/TROUBLESHOOTING.md#maas-gateway-holds-a-response-open-until-the-client-times-out`.
+- 429 is an exhausted hourly budget:
+  `docs/TROUBLESHOOTING.md#maas-gateway-returns-429`.
+- Empty MaaS tab: `docs/TROUBLESHOOTING.md#maas-tab-shows-no-models` (still
+  names 3.4 namespaces; `maas-api` and `maas-db-config` are now in `redhat-ai-gateway-infra`).
+- Generated `AuthPolicy`/`TokenRateLimitPolicy` are controller output; never
+  patch them (`rhcl-configure`).
 
-## References
+## Official documentation (OpenShift AI 3.5)
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/working-configuration.md`
-- `references/validation-checklist.md`
-- `examples/maas-governance-patterns.md`
+| Topic | Section |
+|---|---|
+| Prerequisites (Connectivity Link, user workload monitoring) | [Prerequisites][prereq] |
+| Gateway and TLS | [Gateway requirements][gw], [Configure TLS][tls] |
+| Database Secret | [Database secret][db] |
+| Enablement and dashboard | [MaaS configuration][config], [Dashboard configuration][dash] |
+| Subscriptions and authorization | [Subscriptions][subs], [Authorization policies][authz] |
+| API keys and the MaaS API | [Manage API keys][keys], [MaaS API][api] |
+| Observability | [Kuadrant observability][kobs], [Telemetry][telemetry], [Export][export] |
+| Multi-tenancy (TP) and external models (TP) | [Multi-tenancy][tenancy], [External models][ext] |
+| Troubleshooting | [Administration][admints], [User access][userts] |
+
+## Related skills
+
+`rhoai-distributed-inference-llmd`, `rhcl-configure`, `rhcl-update`,
+`rhoai-gen-ai-playground`, `rhoai-telemetry-admin-settings`,
+`ocp-ingress-gateway-routes`, `manage-devspaces`, `rhoai-troubleshoot`.
+
+[prereq]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-prerequisites_maas-deploy
+[gw]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-gateway-requirements_maas-deploy
+[tls]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#configure-tls-for-maas_maas-deploy
+[db]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#configure-postgresql-secret-for-maas_maas-deploy
+[config]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-configuration_maas-deploy
+[dash]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-dashboard-configuration_maas-deploy
+[deploy]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#deploy-models-using-dashboard-wizard_maas-deploy
+[subs]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-subscriptions_maas-deploy
+[prio]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#priority_levels
+[authz]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-authorization-policies_maas-deploy
+[keys]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#managing-admin-api-keys_maas-deploy
+[keyexp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#configure-api-key-expiration-limit_maas-deploy
+[api]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#access-maas-api_maas-deploy
+[kobs]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#enable-kuadrant-observability-maas_maas-deploy
+[telemetry]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#enable-maas-telemetry_maas-deploy
+[export]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#export-maas-usage-data_maas-deploy
+[tenancy]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#managing-maas-multi-tenancy
+[ext]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#configuring-maas-external-models_maas-deploy
+[apiformat]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#apiformat_field_values
+[admints]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-administration-troubleshooting_maas-deploy
+[userts]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-user-access-troubleshooting_maas-user

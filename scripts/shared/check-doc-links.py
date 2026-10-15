@@ -18,9 +18,11 @@ product and the Git pin that must agree with it. This checker reports:
   SKILL-SIZE        SKILL.md longer than the thin-skill target
   LIVE-BROKEN       (--live) URL answered 404/410 or the #anchor is missing
 
-Static mode needs no network. Findings are attributed to a product family.
-Default exit status is 1 when a family listed in converted_families has a
-finding; --report always exits 0. --live fetches each URL sequentially with a
+Static mode needs no network. Findings are attributed to a product family
+and, when they come from a skill, to that skill. Default exit status is 1
+when a finding belongs to a family in converted_families or to a skill in
+converted_skills (a family converted skill by skill; pin findings of such a
+family fail too); --report always exits 0. --live fetches each URL sequentially with a
 delay; 403, 429 and 5xx answers are INCONCLUSIVE, never failures.
 
 Usage:
@@ -73,6 +75,7 @@ class Checker:
     def __init__(self, root: Path):
         self.root = root
         self.findings: list[tuple[str, str, str, str]] = []
+        self.finding_skills: list[str | None] = []
         doc = load_yaml((root / MAP).read_text(encoding="utf-8"))[0]
         self.map = doc
         self.products: dict[str, dict] = {}
@@ -80,6 +83,7 @@ class Checker:
             for key, value in (doc.get(section) or {}).items():
                 self.products[key] = value
         self.converted = set(doc.get("converted_families") or [])
+        self.converted_skills = set(doc.get("converted_skills") or [])
         self.ignore = set(doc.get("skill_reference_ignore") or [])
         self.by_slug = {p["docs_slug"]: k for k, p in self.products.items() if p.get("docs_slug")}
         self.prefixes = sorted(
@@ -88,8 +92,22 @@ class Checker:
         self.skills = {p.name for p in (root / SKILLS).iterdir() if (p / "SKILL.md").is_file()}
 
     # -- helpers -------------------------------------------------------------
-    def add(self, code: str, family: str, where: str, message: str) -> None:
+    def add(self, code: str, family: str, where: str, message: str, skill: str | None = None) -> None:
         self.findings.append((code, family or "-", where, message))
+        self.finding_skills.append(skill)
+
+    def partial_families(self) -> set[str]:
+        return {f for f in map(self.family_of_skill, self.converted_skills) if f}
+
+    def failing(self, index: int) -> bool:
+        code, family = self.findings[index][:2]
+        if family in self.converted or self.finding_skills[index] in self.converted_skills:
+            return True
+        return code.startswith("PIN-") and family in self.partial_families()
+
+    def skill_of_path(self, path: Path) -> str | None:
+        parts = path.relative_to(self.root).parts
+        return parts[2] if parts[:2] == (".agents", "skills") and len(parts) > 3 else None
 
     def family_of_skill(self, name: str) -> str | None:
         for prefix, key in self.prefixes:
@@ -157,7 +175,10 @@ class Checker:
                     skill = route.get("skill")
                     routed.add(skill)
                     if route.get("status", "active") == "active" and skill not in self.skills:
-                        self.add("MISSING-SKILL", key, "map", f"active route to {skill}")
+                        self.add("MISSING-SKILL", key, "map", f"active route to {skill}", skill)
+        for name in sorted(self.converted_skills - self.skills):
+            self.add("MISSING-SKILL", self.family_of_skill(name) or "-", "map",
+                     f"converted_skills lists {name}", name)
         for name in sorted(self.skills):
             family = self.family_of_skill(name)
             if not family:
@@ -168,23 +189,23 @@ class Checker:
             meta = self.frontmatter(text)
             where = self.rel(md)
             if "product" not in meta or "docs-version" not in meta:
-                self.add("FRONTMATTER", family, where, "missing metadata.product or metadata.docs-version")
+                self.add("FRONTMATTER", family, where, "missing metadata.product or metadata.docs-version", name)
             else:
                 if meta["product"] != family:
-                    self.add("FRONTMATTER", family, where, f"metadata.product {meta['product']} != {family}")
+                    self.add("FRONTMATTER", family, where, f"metadata.product {meta['product']} != {family}", name)
                 expected = str(self.products[family].get("docs_version"))
                 if meta["docs-version"] != expected:
                     self.add("STALE", family, where,
-                             f"reviewed against {meta['docs-version']}, product at {expected}")
+                             f"reviewed against {meta['docs-version']}, product at {expected}", name)
             if name not in routed:
-                self.add("UNROUTED", family, where, "no route in the doc map")
+                self.add("UNROUTED", family, where, "no route in the doc map", name)
             lines = text.count("\n")
             if lines > SKILL_LINES_TARGET:
-                self.add("SKILL-SIZE", family, where, f"{lines} lines > {SKILL_LINES_TARGET}")
+                self.add("SKILL-SIZE", family, where, f"{lines} lines > {SKILL_LINES_TARGET}", name)
             for leftover, code in (("official-doc-extraction.md", "EXTRACTION"),
                                    ("source-capture.md", "SOURCE-CAPTURE")):
                 if (skill_dir / "references" / leftover).is_file():
-                    self.add(code, family, self.rel(skill_dir / "references" / leftover), "copied-documentation file")
+                    self.add(code, family, self.rel(skill_dir / "references" / leftover), "copied-documentation file", name)
 
     def link_files(self):
         for path in sorted((self.root / SKILLS).rglob("*")):
@@ -202,6 +223,7 @@ class Checker:
         urls = []
         for path in self.link_files():
             owner = self.file_family(path)
+            skill = self.skill_of_path(path)
             for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 for match in LINK_RE.finditer(line):
                     slug, version = match.group(1), match.group(2)
@@ -212,12 +234,12 @@ class Checker:
                     family = owner or product or "-"
                     url = match.group(0).rstrip(".,;:")
                     if not product:
-                        self.add("LINK-UNKNOWN", family, where, f"unknown product slug {slug}")
+                        self.add("LINK-UNKNOWN", family, where, f"unknown product slug {slug}", skill)
                         continue
                     expected = str(self.products[product]["docs_version"])
                     if version != expected:
-                        self.add("LINK-VERSION", family, where, f"{slug} {version}, map has {expected}")
-                    urls.append((family, where, url))
+                        self.add("LINK-VERSION", family, where, f"{slug} {version}, map has {expected}", skill)
+                    urls.append((family, where, url, skill))
         return urls
 
     def check_references(self) -> None:
@@ -228,18 +250,19 @@ class Checker:
             if not path.is_file():
                 continue
             owner = self.file_family(path)
+            skill = self.skill_of_path(path)
             for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
                 names = set(SKILL_PATH_RE.findall(line))
                 if "skill" in line.lower():
                     names |= {n for n in BACKTICK_RE.findall(line) if n.startswith(known_prefixes)}
                 for name in sorted(names - self.skills - self.ignore):
                     family = owner or self.family_of_skill(name) or "-"
-                    self.add("MISSING-SKILL", family, f"{self.rel(path)}:{number}", f"no skill named {name}")
+                    self.add("MISSING-SKILL", family, f"{self.rel(path)}:{number}", f"no skill named {name}", skill)
 
     def check_live(self, urls, delay: float, limit: int | None) -> None:
         seen: set[str] = set()
         pages: dict[str, tuple[int | None, str]] = {}  # one request per page, many anchors
-        for family, where, url in urls:
+        for family, where, url, skill in urls:
             base, _, anchor = url.partition("#")
             if url in seen or (base not in pages and limit is not None and len(pages) >= limit):
                 continue
@@ -250,11 +273,11 @@ class Checker:
                 pages[base] = fetch(base)
             status, body = pages[base]
             if status in (404, 410):
-                self.add("LIVE-BROKEN", family, where, f"HTTP {status} {url}")
+                self.add("LIVE-BROKEN", family, where, f"HTTP {status} {url}", skill)
             elif status is None or status in INCONCLUSIVE:
                 print(f"INCONCLUSIVE {family} {where}: HTTP {status} {url}")
             elif anchor and f'id="{anchor}"' not in body:
-                self.add("LIVE-BROKEN", family, where, f"anchor #{anchor} not found in {base}")
+                self.add("LIVE-BROKEN", family, where, f"anchor #{anchor} not found in {base}", skill)
         print(f"live: {len(seen)} URLs checked, {len(pages)} pages fetched")
 
 
@@ -290,23 +313,35 @@ def main(argv: list[str] | None = None) -> int:
     checker.check_references()
     families = set(args.family.split(",")) if args.family else None
     if args.live:
-        live_families = families or checker.converted
-        checker.check_live([u for u in urls if u[0] in live_families], args.delay, args.limit)
+        if families:
+            live = [u for u in urls if u[0] in families]
+        else:
+            live = [u for u in urls if u[0] in checker.converted or u[3] in checker.converted_skills]
+        checker.check_live(live, args.delay, args.limit)
 
-    shown = [f for f in checker.findings if families is None or f[1] in families]
+    shown = [i for i, f in enumerate(checker.findings) if families is None or f[1] in families]
+    shown.sort(key=lambda i: (checker.findings[i][1], checker.findings[i][0], checker.findings[i][2]))
     counts: dict[str, dict[str, int]] = {}
-    for code, family, where, message in sorted(shown, key=lambda f: (f[1], f[0], f[2])):
+    failing = 0
+    for i in shown:
+        code, family, where, message = checker.findings[i]
         counts.setdefault(family, {}).setdefault(code, 0)
         counts[family][code] += 1
-        if not args.brief or family in checker.converted:
+        fails = checker.failing(i)
+        failing += fails
+        if not args.brief or fails:
             print(f"{code} {family} {where}: {message}")
-    failing = sum(1 for f in shown if f[1] in checker.converted)
+    partial = checker.partial_families()
     print("summary:")
     for family in sorted(counts):
         tag = "converted" if family in checker.converted else "report-only"
+        if family not in checker.converted and family in partial:
+            done = sum(1 for name in checker.converted_skills if checker.family_of_skill(name) == family)
+            tag = f"partial, {done} skills converted"
         detail = ", ".join(f"{code}={n}" for code, n in sorted(counts[family].items()))
         print(f"  {family} ({tag}): {sum(counts[family].values())} [{detail}]")
-    print(f"  total={len(shown)} failing={failing} converted={','.join(sorted(checker.converted)) or '-'}")
+    print(f"  total={len(shown)} failing={failing} converted={','.join(sorted(checker.converted)) or '-'}"
+          f" converted_skills={len(checker.converted_skills)}")
     return 0 if args.report or failing == 0 else 1
 
 

@@ -109,7 +109,8 @@ skill-name/
 No `official-doc-extraction.md` and no `source-capture.md`: provenance lives in
 the map route. Use `project-red-hat-doc-skill-authoring` for the contract and
 `.agents/references/red-hat-doc-map.yaml` for versions and routes. Families
-listed in the map's `converted_families` are enforced by the checker.
+listed in the map's `converted_families`, and skills listed in its
+`converted_skills`, are enforced by the checker.
 
 ## Shared Hooks
 
