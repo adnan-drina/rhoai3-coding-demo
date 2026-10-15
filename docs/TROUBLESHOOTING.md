@@ -330,7 +330,7 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
 **Recover:**
 
 - Wait for the Kueue CSV to reach `Succeeded`.
-- Confirm the reviewed `kueue-operator.v1.4.2` CSV and `stable-v1.4` channel for the OpenShift 4.22 baseline. Stage 020 uses native `v1beta2` queue APIs and delegates DSC Kueue integration as `Unmanaged` with `autoCreateQueues=false`.
+- Confirm the `stable-v1.4` channel and an installed CSV of at least `kueue-operator.v1.4.2` (the minimum `scripts/platform/check-operator-policy.py` enforces) for the OpenShift 4.22 baseline. Stage 020 uses native `v1beta2` queue APIs and delegates DSC Kueue integration as `Unmanaged` with `autoCreateQueues=false`.
 - If `demo-sandbox` or its reviewed LocalQueues are missing, reconcile the existing Stage 020 Application and confirm `lq-cpu-default` and `lq-gpu-reserved-demo` before running workloads.
 - Re-run `./stages/020-gpu-infrastructure-private-ai/validate.sh`.
 
@@ -399,61 +399,62 @@ oc get pods -n models-as-a-service -o wide | grep router-scheduler
 
 ## Private Models Do Not Produce Kueue Workloads
 
-**Affected stage:** Stage 030
+**Affected stage:** Stage 040 (`internal-models`)
 
-**Likely cause:** Red Hat OpenShift AI 3.4 documents Kueue queue enforcement for `InferenceService`, `Notebook`, `PyTorchJob`, `RayCluster`, and `RayJob`. This demo uses `LLMInferenceService`; Kueue `Workload` creation for that resource must be validated in the live environment.
+**Likely cause:** Red Hat OpenShift AI 3.5 documents Kueue queue enforcement for `InferenceService`, `Notebook`, `PyTorchJob`, `RayCluster`, and `RayJob`. This demo uses `LLMInferenceService`; Kueue `Workload` creation for that resource must be validated in the live environment. A model scaled to zero replicas has no `Workload`.
 
 **Diagnose:**
 
 ```bash
-oc get llminferenceservice -n maas --show-labels
-oc get workloads.kueue.x-k8s.io -n maas
-oc get events -n maas --sort-by=.lastTimestamp | tail -30
+oc get llminferenceservice -n internal-models --show-labels
+oc get workloads.kueue.x-k8s.io -n internal-models
+oc get events -n internal-models --sort-by=.lastTimestamp | tail -30
 ```
 
 **Recover:**
 
 - Treat missing `Workload` objects as a warning unless the demo is explicitly relying on Kueue admission for `LLMInferenceService`.
-- Keep the `kueue.x-k8s.io/queue-name=private-model-serving` labels on the model resources so the manifests remain aligned with the GPUaaS operating model.
+- Keep the `kueue.x-k8s.io/queue-name=lq-gpu-rtxpro6000` label on the model resources so the manifests remain aligned with the GPUaaS operating model.
 - For a strict queue-enforcement demo, add a small supported workload type such as a labeled `Job` or officially documented OpenShift AI `InferenceService` as a separate validation asset.
 
 ## MaaS Tab Shows No Models
 
 **Affected stage:** Stage 040
 
-**Likely cause:** the Red Hat OpenShift AI MaaS controller or `maas-api` deployment is not ready, the `models-as-a-service/default-tenant` reconciliation failed, `MaaSModelRef` resources are not ready, or the dashboard feature flags have not been reconciled after an operator upgrade. In RHOAI 3.4 environments, also check that the MaaS `Config/default` anchor exists and that the `redhat-ods-applications/maas-db-config` secret is present. Without the database connection secret, the operator-managed `maas-api` service can exist with no backing endpoint, which makes the dashboard tab appear empty.
+**Likely cause:** the Red Hat OpenShift AI MaaS controller or `maas-api` deployment is not ready, the `ai-tenants/models-as-a-service` `AITenant` or the `models-as-a-service/default-tenant` `MaasTenantConfig` reconciliation failed, `MaaSModelRef` resources are not ready, or the dashboard feature flags have not been reconciled after an operator upgrade. Also check that the MaaS `Config/default` anchor exists and that the `redhat-ai-gateway-infra/maas-db-config` secret is present. Without the database connection secret, the operator-managed `maas-api` service can exist with no backing endpoint, which makes the dashboard tab appear empty.
 
 **Diagnose:**
 
 ```bash
-oc get deployment maas-api -n redhat-ods-applications \
+oc get deployment maas-api -n redhat-ai-gateway-infra \
   -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 
 oc get dsc default-dsc \
   -o jsonpath='{.status.conditions[?(@.type=="ModelsAsServiceReady")].status}{" "}{.status.conditions[?(@.type=="ModelsAsServiceReady")].reason}{"\n"}'
 
-oc get tenant default-tenant -n models-as-a-service \
+oc get aitenant models-as-a-service -n ai-tenants
+oc get maastenantconfig default-tenant -n models-as-a-service \
   -o jsonpath='{.status.phase}{" "}{.status.conditions[?(@.type=="Ready")].reason}{"\n"}'
 
 oc get config.maas.opendatahub.io default
-oc get secret maas-db-config -n redhat-ods-applications
-oc get endpoints maas-api -n redhat-ods-applications
+oc get secret maas-db-config -n redhat-ai-gateway-infra
+oc get endpoints maas-api -n redhat-ai-gateway-infra
 
-oc get maasmodelref -n maas
-oc get externalmodel -n maas
+oc get maasmodelref -n internal-models
+oc get maasmodelref,externalmodel -n external-models
 ```
 
 **Recover:**
 
-If the `maas-controller` or `maas-api` deployment was created by an older demo workaround, delete the stale deployment and let the Red Hat OpenShift AI 3.4 operator recreate it:
+If the `maas-controller` or `maas-api` deployment was created by an older demo workaround, delete the stale deployment and let the Red Hat OpenShift AI operator recreate it:
 
 ```bash
 oc delete deployment maas-controller -n redhat-ods-applications
-oc delete deployment maas-api -n redhat-ods-applications
+oc delete deployment maas-api -n redhat-ai-gateway-infra
 oc annotate dsc default-dsc \
   recovery.rhoai-demo.io/restarted-at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" --overwrite
 oc rollout status deployment/maas-controller -n redhat-ods-applications
-oc rollout status deployment/maas-api -n redhat-ods-applications
+oc rollout status deployment/maas-api -n redhat-ai-gateway-infra
 ```
 
 Then re-run:
@@ -486,7 +487,7 @@ This binding grants `rhods-admins` the same hosting-project `admin` role already
 
 **Affected stage:** Stage 010 and Stage 040
 
-**Likely cause:** The RHOAI observability stack, dashboard feature flag, Kuadrant observability, or MaaS telemetry is missing; the Perses operator cannot reach the `redhat-ods-monitoring` Perses backend; or the dashboard user cannot list Perses dashboard resources. In current sandbox clusters, OLM can install the Perses operator in `openshift-operators` while the generated backend NetworkPolicy only allows the historical observability operator namespace. If the Usage tab opens but the panels are empty, the Tenant might be collecting MaaS metrics without the `user` label required by the generated dashboard queries.
+**Likely cause:** The RHOAI observability stack, dashboard feature flag, Kuadrant observability, or MaaS telemetry is missing; the Perses operator cannot reach the `redhat-ods-monitoring` Perses backend; or the dashboard user cannot list Perses dashboard resources. In current sandbox clusters, OLM can install the Perses operator in `openshift-operators` while the generated backend NetworkPolicy only allows the historical observability operator namespace. If the Usage tab opens but the panels are empty, the `MaasTenantConfig` might be collecting MaaS metrics without the `user` label required by the generated dashboard queries.
 
 **Diagnose:**
 
@@ -497,7 +498,7 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
 oc get kuadrant kuadrant -n kuadrant-system \
   -o jsonpath='{.spec.observability.enable}{"\n"}'
 
-oc get tenant default-tenant -n models-as-a-service \
+oc get maastenantconfig default-tenant -n models-as-a-service \
   -o jsonpath='{.spec.telemetry.enabled}{" "}{.spec.telemetry.metrics.captureUser}{" "}{.spec.telemetry.metrics.captureModelUsage}{"\n"}'
 
 oc exec -n openshift-user-workload-monitoring prometheus-user-workload-0 -c prometheus -- \
@@ -579,7 +580,7 @@ Expected offenders: `openshift-operators/tempo-operator-controller-manager-metri
 
 **Affected stage:** Stage 010
 
-**Likely cause:** The RHOAI 3.4 generated `MonitoringStack` can reference `Secret/prometheus-web-tls-ca` while the OpenShift service-ca injection path has created `ConfigMap/prometheus-web-tls-ca`. Without the Secret, the Prometheus pod waits on a missing volume and MaaS observability is not fully available.
+**Likely cause:** The RHOAI-generated `MonitoringStack` can reference `Secret/prometheus-web-tls-ca` while the OpenShift service-ca injection path has created `ConfigMap/prometheus-web-tls-ca`. Without the Secret, the Prometheus pod waits on a missing volume and MaaS observability is not fully available.
 
 **Diagnose:**
 
@@ -706,7 +707,7 @@ oc get maassubscription demo-models-subscription \
   -n models-as-a-service \
   -o jsonpath='{.spec.modelRefs[*].name}{"\n"}'
 
-oc get tenant default-tenant \
+oc get maastenantconfig default-tenant \
   -n models-as-a-service \
   -o jsonpath='{.spec.telemetry.enabled}{"\n"}'
 ```
@@ -734,10 +735,10 @@ GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
 **Diagnose:**
 
 ```bash
-oc logs deployment/maas-api -n redhat-ods-applications --tail=100 | \
+oc logs deployment/maas-api -n redhat-ai-gateway-infra --tail=100 | \
   grep -E 'Created API key|/v1/api-keys'
 
-oc get tenant default-tenant -n models-as-a-service \
+oc get maastenantconfig default-tenant -n models-as-a-service \
   -o jsonpath='{.spec.apiKeys.maxExpirationDays}{"\n"}'
 ```
 
@@ -1803,11 +1804,11 @@ oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
 - Stop and restart the affected workspace from the Dev Spaces dashboard, or patch `spec.started` to `false` and then back to `true`.
 - Confirm the Kilo Code sidebar appears in Che Code and that the MaaS configuration has been rendered by the init script.
 
-## Kilo Code Shows The Default Catalog Instead Of MaaS Qwen3.6
+## Kilo Code Shows The Default Catalog Instead Of MaaS Qwen3.8
 
 **Affected stage:** Stage 070 (`agentic-coolstore`)
 
-**Likely cause:** Two stacked defaults. Che Code Restricted Mode (Workspace Trust) leaves a VSIX installed but disabled until the user clicks Enable. After enable, Kilo 7.4 reads `kilo-code.new.model.*` from `vscode-editor-configurations` and its built-in Gateway catalog unless `~/.config/kilo/kilo.jsonc` allow-lists only `qwen27b`. Machine `settings.json` alone does not suppress the first-start trust dialog; Che Code must also merge `product.json` `configurationDefaults`.
+**Likely cause:** Two stacked defaults. Che Code Restricted Mode (Workspace Trust) leaves a VSIX installed but disabled until the user clicks Enable. After enable, Kilo 7.4 reads `kilo-code.new.model.*` from `vscode-editor-configurations` and its built-in Gateway catalog unless `~/.config/kilo/kilo.jsonc` allow-lists only `qwen38`. Machine `settings.json` alone does not suppress the first-start trust dialog; Che Code must also merge `product.json` `configurationDefaults`.
 
 **Diagnose:**
 
@@ -1817,10 +1818,10 @@ oc get configmap vscode-editor-configurations -n wksp-ai-developer \
 oc get configmap vscode-editor-configurations -n wksp-ai-developer \
   -o jsonpath='{.data.product\.json}' | jq .
 oc get configmap devspace-ai-tools-init -n wksp-ai-developer \
-  -o jsonpath='{.data.init-ai-tools\.sh}' | grep -E 'enabled_providers|kilo.jsonc|qwen27b'
+  -o jsonpath='{.data.init-ai-tools\.sh}' | grep -E 'enabled_providers|kilo.jsonc|qwen38'
 ```
 
-**Recover:** Sync Stage 070, then **stop and start** `agentic-coolstore` so Che Code reloads editor settings and postStart rewrites `~/.config/kilo/kilo.jsonc`. Do not click Enable on a Restricted Mode workspace as the configuration path — trust is disabled in these namespaces. The picker should show only `qwen3-6-27b`.
+**Recover:** Sync Stage 070, then **stop and start** `agentic-coolstore` so Che Code reloads editor settings and postStart rewrites `~/.config/kilo/kilo.jsonc`. Do not click Enable on a Restricted Mode workspace as the configuration path — trust is disabled in these namespaces. The picker should show only `qwen3-8-27b`.
 
 ## First Factory Workspace Asks To Trust Authors
 
@@ -2045,19 +2046,20 @@ curl -sSI https://<maas-host>/ >/dev/null && echo "OS store: OK"
 
 **Affected stage:** Stage 040 (affects all downstream consumers)
 
-**Likely cause:** token-rate-limit budget for the subscription/user/model/hour combination has been exhausted. Each `MaaSSubscription` carries per-model token-rate-limit entries (e.g. 1M tokens/hour for coding-tier models).
+**Likely cause:** token-rate-limit budget for the subscription/user/model/hour combination has been exhausted. Each `MaaSSubscription` carries per-model token-rate-limit entries (for example 60M tokens/hour for `devspaces-coding-models`, 1M tokens/hour for a personal subscription's local model).
 
 **Diagnose:**
 
 ```bash
-oc get tokenratelimitpolicy -n models-as-a-service
+oc get tokenratelimitpolicy -n internal-models
+oc get tokenratelimitpolicy -n external-models
 oc get maassubscription -n models-as-a-service -o yaml | grep -A5 tokenRateLimit
 ```
 
 **Recover:**
 
 - Wait for the hourly window to roll over, or
-- adjust the limit in `gitops/stages/040-governed-models-as-a-service/model-access/` files and re-sync `040-model-access`. The coding tier uses 1M tokens/hour per model.
+- adjust the limit in `gitops/stages/040-governed-models-as-a-service/model-access/` files and re-sync `040-model-access`. The budgets and their rationale are in that component's README.
 
 ## ose-cli curl Version Does Not Support --retry-all-errors
 
@@ -2130,8 +2132,8 @@ Auto-sync apps re-sync on their own after the refresh; manual apps need a Sync c
 **Recover:** delete the old pod to free its GPU:
 
 ```bash
-oc get workload -n models-as-a-service | grep <model>
-oc delete pod -n models-as-a-service <old-kserve-pod>
+oc get workload -n internal-models | grep <model>
+oc delete pod -n internal-models <old-kserve-pod>
 ```
 
 Kueue admits the gated pod immediately; expect the usual model load time. If a crash-looping pod holds the quota (bad config baked into its spec), delete that one — its ReplicaSet will not recreate it once the new ReplicaSet's pod is admitted and ready.
@@ -2726,7 +2728,7 @@ The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` a
 
 ## GPU Machine Stays Provisioning Or Fails: Capacity Or Spot Policy
 
-**Affected stage:** Stage 020 GPU MachineSets (`g7e.2xlarge`, `p5.4xlarge`)
+**Affected stage:** Stage 020 GPU MachineSets (`g7e.2xlarge`, `g6e.2xlarge`; also the `p5.4xlarge` pool removed on 2026-10-14)
 
 **Symptom:** A scaled-up GPU Machine stays `Provisioning` with condition `MachineCreationFailed: ... InsufficientInstanceCapacity ... You can currently get ... capacity by not specifying an Availability Zone ... or choosing us-east-2a, us-east-2b`; or, for a Spot MachineSet, the Machine fails within seconds with `not authorized to perform: ec2:RunInstances ... with an explicit deny in a service control policy`.
 

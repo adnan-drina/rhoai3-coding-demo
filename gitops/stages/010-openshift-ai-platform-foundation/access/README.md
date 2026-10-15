@@ -9,10 +9,10 @@ deploy workloads into it.
 | | |
 |---|---|
 | Argo CD Application | `010-access` ([manifest](../../../argocd/app-of-apps/010-openshift-ai-platform-foundation/access.yaml)) |
-| Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 3). Group membership and the connection Secret come from [`setup-access.sh`](../../../../stages/010-openshift-ai-platform-foundation/setup-access.sh), a separate manual step |
+| Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 3). Group membership comes from [`setup-access.sh`](../../../../stages/010-openshift-ai-platform-foundation/setup-access.sh), a separate manual step |
 | Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (project label, `rhods-admins-admin` binding, persona group membership, optional persona `can-i` checks) |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation; `ignoreDifferences` on the Group's `/users` and one Namespace label |
-| Depends on | `010-rhoai-platform` (the `Auth` CR names `rhoai-developers` and creates `rhods-admins`); `010-odf` (StorageClass `openshift-storage.noobaa.io`) |
+| Depends on | `010-rhoai-platform` (the `Auth` CR names `rhoai-developers` and creates `rhods-admins`) |
 | Used by | `010-sandbox-storage` (namespace), Stage 020 Kueue (`kueue.openshift.io/managed` label), Stages 030-130 workloads and personas in `demo-sandbox` |
 
 ## Why
@@ -45,12 +45,11 @@ Not in Git:
 
 ## How
 
-- **Ordering.** The OBC is in wave 5. It is applied after the namespace, the group and the bindings, and after ODF has
-  had time to create the NooBaa StorageClass. Argo CD retries cover the rest.
+- **Ordering.** All four objects are in wave 0; the RoleBindings name groups, which need not exist first.
 - **`ignoreDifferences`.** The `rhoai-developers` Group has `/users` ignored because membership is runtime data from
   the identity provider. The `demo-sandbox` Namespace has the label `evalhub.trustyai.opendatahub.io/tenant` ignored.
   The comment says Stage 050 sets it, but Stage 050 now removes that label (see findings).
-  `RespectIgnoreDifferences=true` keeps a sync from clearing either field [5].
+  `RespectIgnoreDifferences=true` keeps a sync from clearing either field [4].
 - **Project RBAC.** Developers get `edit`, not `admin`, so they cannot change bindings in the project. Administrators
   get `admin` on this project only. The dashboard admin role does not give access to individual project namespaces,
   as the RoleBinding comment explains.
@@ -82,14 +81,12 @@ oc get group rhods-admins rhoai-developers
 | Project roles | Admin manages project and access; Contributor edits workbenches, connections and storage [1] | `admin` for `rhods-admins`, `edit` for `rhoai-developers` | Aligned |
 | OpenShift default roles | `admin`: modify any resource except quota; `edit`: most objects, not roles or bindings [2] | Used as documented | Aligned |
 | User groups | Groups must exist before they are selected; group membership managed in the OpenShift console [3] | Group in Git; membership by `oc adm groups add-users` from `setup-access.sh` | Aligned (CLI equivalent) |
-| OBC | `storageClassName: openshift-storage.noobaa.io`; ConfigMap and Secret named after the claim [4] | Same | Aligned |
-| Connection lifecycle | Connections are Kubernetes Secrets with standard annotations [6] | Imperative Secret from a script, while `010-sandbox-storage` does the same job declaratively | Gap (two mechanisms for sandbox S3 connections, see findings) |
+| Connection lifecycle | Connections are Kubernetes Secrets with standard annotations [5] | Declared by `010-sandbox-storage`; none here | Aligned |
 
 ## References
 
 1. Working on projects, Manage access to projects (Default project roles). Red Hat OpenShift AI Self-Managed 3.5. https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects/managing-access-to-projects_projects
 2. Authentication and authorization, Using RBAC to define and apply permissions (Default cluster roles). OpenShift Container Platform 4.22. https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/authentication_and_authorization/using-rbac
 3. Manage users and groups (Add users to OpenShift AI user groups; Select admin and user groups). Red Hat OpenShift AI Self-Managed 3.5. https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-users-and-groups
-4. Managing hybrid and multicloud resources, Chapter 12: Object Bucket Claim. Red Hat OpenShift Data Foundation 4.22. https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html/managing_hybrid_and_multicloud_resources/object-bucket-claim
-5. Sync Options, Respect Ignore Difference Configs (upstream). Argo CD. https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/
-6. Working on projects, Use connections (Using the connections API). Red Hat OpenShift AI Self-Managed 3.5. https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects/using-connections_projects
+4. Sync Options, Respect Ignore Difference Configs (upstream). Argo CD. https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/
+5. Working on projects, Use connections (Using the connections API). Red Hat OpenShift AI Self-Managed 3.5. https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_on_projects/using-connections_projects

@@ -36,7 +36,7 @@ spec:
     # hf://owner/model[:revision]. No official OCI modelcar is listed for
     # this checkpoint in the Red Hat validated-model matrix (reviewed
     # 2026-09-22), so the documented Hugging Face URI is the artifact source.
-    # This model is not a Red Hat validated model on RHOAI 3.4. A successful
+    # This model is not a Red Hat validated model on RHOAI 3.5. A successful
     # local load is compatibility with the installed runtime, not validation.
     uri: hf://RedHatAI/Qwen3.8-27B-NVFP4:2889ddeeda282f17fc9e159a42125e535159a5e5
   # Default coding model since 2026-10-13. Argo ignores replicas; scale with oc.

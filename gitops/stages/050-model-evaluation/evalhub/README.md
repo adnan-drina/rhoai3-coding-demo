@@ -2,8 +2,8 @@
 
 This Application runs EvalHub, the OpenShift AI evaluation service managed by the TrustyAI operator, in its own `evalhub`
 namespace with a project-owned PostgreSQL database. It registers the built-in and custom providers and collections,
-enables the EvalHub MCP server for coding agents, grants the programmatic and catalog principals, and creates the
-`ai-curated-prompts` global prompt workspace. Platform administrators, the qualification pipeline, the Stage 050 helpers
+enables the EvalHub MCP server for coding agents, and grants the programmatic and catalog principals. The
+`ai-curated-prompts` global prompt workspace belongs to `050-mlflow`. Platform administrators, the qualification pipeline, the Stage 050 helpers
 and MCP clients submit evaluations through it; the dashboard's **Evaluations** pages and the model catalog's **Safety and
 security insights** tab read from it.
 
@@ -24,8 +24,8 @@ are labelled namespaces (here `evaluated-models`) and access is checked against 
 MCP server lets AI coding agents discover providers and submit evaluations [1]. The product does not provide a database
 operator, so this component runs one pinned Red Hat PostgreSQL 16 StatefulSet.
 
-The `ai-curated-prompts` namespace is the global MLflow prompt workspace the dashboard lists through
-`globalMLflowNamespaces`; MLflow watches the `opendatahub.io/global-mlflow-workspace` label [2][3].
+The `ai-curated-prompts` global MLflow prompt workspace, which the dashboard lists through `globalMLflowNamespaces`, is
+declared by `050-mlflow` (`prompts/`); MLflow watches the `opendatahub.io/global-mlflow-workspace` label [2][3].
 
 ## What
 
@@ -68,12 +68,11 @@ Moved on 2026-10-14 to `050-mlflow` (`prompts/`): `ai-curated-prompts` is an MLf
 | Deployments `evalhub`, `evalhub-mcp`; Services `evalhub`, `evalhub-mcp`, `evalhub-metrics`; Route `evalhub-mcp` (re-encrypt); Role `evalhub-service-access-role`; ConfigMap `evalhub-service-ca` | TrustyAI operator, owned by the `EvalHub` CR |
 | Built-in provider ConfigMaps `trustyai-service-operator-evalhub-provider-*` in `redhat-ods-applications` | TrustyAI operator |
 | Tenant objects in `evaluated-models` (`evalhub-evalhub-job`, `evalhub-discovery`, `evalhub-service-ca`) | TrustyAI operator |
-| RoleBindings `odh-group-mlflow-view` / `-edit` in `ai-curated-prompts` | MLflow operator from the global-workspace label [2] |
 | Evaluation jobs, results, MLflow runs | EvalHub at run time |
 
 ## How
 
-**Ordering.** Namespace (0); credential wait (10, 11); database (12); prompts namespace (25); MCP identity (29); EvalHub
+**Ordering.** Namespace (0); credential wait (10, 11); database (12); MCP identity (29); EvalHub
 (30); MCP access (31) [5]. `deploy.sh` applies the Application first and then runs `setup-ai-services.sh`, which creates
 the database Secret the wave-11 hook is waiting for, then publishes the MLflow URI. `deploy.sh` waits for
 `status.ready: True` on the `EvalHub` CR.
@@ -131,7 +130,7 @@ oc get deploy,route -n evalhub
 | MCP server | `spec.mcp` `enabled`, `transport: http`, `port`; manual Route; client token from `oc create token` [1] | No `port` (absent from the 3.5.1 CRD); operator Route; `authSecret` added | Deviation (justified: 3.5.1 CRD differs from the procedure) |
 | MLflow tracking | Running MLflow and tracking URI [1] | URI from a runtime ConfigMap, TLS verified with the service CA | Aligned |
 | Dashboard pages | `disableLMEval` defaults to `true` [3] | Set to `false` by `050-mlflow` | Aligned |
-| Global prompt workspace | Namespace label `opendatahub.io/global-mlflow-workspace` [2]; `globalProjectPrompts` Technology Preview [3] | Labelled namespace here; dashboard field set by `050-mlflow` | Aligned (Technology Preview); ownership split (see findings) |
+| Global prompt workspace | Namespace label `opendatahub.io/global-mlflow-workspace` [2]; `globalProjectPrompts` Technology Preview [3] | Namespace and dashboard field both in `050-mlflow` | Aligned (Technology Preview) |
 | Argo CD | Server-Side Diff by annotation [6]; `Prune=false,Delete=false` for retained data [4] | PVC, namespaces and CR retained; StatefulSet, Service and NetworkPolicy not | Gap (inconsistent with `050-mlflow`; see findings) |
 
 ## References
