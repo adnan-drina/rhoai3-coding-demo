@@ -46,8 +46,8 @@ or tightly related component.
 3. Repo facts: the stage README and component READMEs under
    `gitops/stages/<stage>/` (their "Alignment with official guidance" tables
    already pair decisions with sections), `docs/TROUBLESHOOTING.md`, and
-   `stages/<stage>/validate.sh`. Most rhoai skills' "Demo Policy" sections
-   are the decisions to keep; re-verify each against the current repo.
+   `stages/<stage>/validate.sh`. An existing skill's "Repo decisions" table
+   is the starting point; re-verify each row against the current repo.
 4. Existing `references/working-configuration.md` or pattern files in an
    rhoai skill are repo-owned: keep them, but correct stale facts (GPU type,
    models, versions) in the same change.

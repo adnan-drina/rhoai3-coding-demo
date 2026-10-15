@@ -13,7 +13,9 @@ applies-to:
 
 # RHOAI Platform
 
-Use the `rhoai-*` skills as the source of truth for RHOAI component behavior, configuration, pipelines, chatbot behavior, and evaluation workflows:
+Use the `rhoai-*` skills for this repo's RHOAI decisions, configuration, pipelines, and evaluation workflows. They are thin skills:
+repo decisions and pitfalls, with links to the OpenShift AI documentation version in `.agents/references/red-hat-doc-map.yaml`,
+which stays the product authority:
 
 - `.agents/skills/rhoai-chatbot-customization/SKILL.md`
 - `.agents/skills/rhoai-architecture-overview/SKILL.md`
