@@ -28,6 +28,7 @@ delay; 403, 429 and 5xx answers are INCONCLUSIVE, never failures.
 Usage:
   check-doc-links.py [--report] [--brief] [--family F,...]
   check-doc-links.py --live [--family F,...] [--delay 2] [--limit N]
+  check-doc-links.py --versions     (print each product's docs_version and pin)
 """
 from __future__ import annotations
 
@@ -304,9 +305,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--live", action="store_true", help="also fetch URLs (network)")
     parser.add_argument("--delay", type=float, default=2.0, help="seconds between live requests")
     parser.add_argument("--limit", type=int, help="maximum URLs to fetch in --live mode")
+    parser.add_argument("--versions", action="store_true", help="print each product's docs_version and pin")
     args = parser.parse_args(argv)
 
     checker = Checker(args.root.resolve())
+    if args.versions:
+        for key, product in sorted(checker.products.items()):
+            pin = product.get("pin") or {}
+            source = f"unpinned: {pin['none']}" if "none" in pin else f"{pin.get('file')} {pin.get('field', '')}".strip()
+            print(f"{key:24} {product.get('docs_version', '?'):8} {source}")
+        return 0
     checker.check_pins()
     checker.check_skills()
     urls = checker.check_links()

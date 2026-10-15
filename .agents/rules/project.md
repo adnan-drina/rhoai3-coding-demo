@@ -30,8 +30,10 @@ This repository demonstrates a governed enterprise AI developer platform on Red 
 
 The demo evolves across Red Hat product releases and early-access features. Do not invent or normalize versions in documentation. Use the versions currently implemented by the manifests and scripts.
 
-Use `docs/PLATFORM_BASELINE.md` for the current product targets and the selected
-stage manifests for exact deployment pins. Keep observed live versions,
+Product documentation versions and the Git pins they match live in
+`.agents/references/red-hat-doc-map.yaml` (see `docs/PLATFORM_BASELINE.md`;
+`scripts/shared/check-doc-links.py --versions` prints them). The stage
+manifests hold the exact deployment pins. Keep observed live versions,
 unpublished upgrade selections and documentation baselines distinct. Do not
 reuse the legacy OCP 4.20/RHOAI 3.4/MTA 8.1/RHDH 1.9 posture as current.
 
