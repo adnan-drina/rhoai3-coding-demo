@@ -7,3 +7,5 @@ metadata:
     app.kubernetes.io/part-of: gpu-infra
     app.kubernetes.io/component: operator
     app.kubernetes.io/managed-by: argocd
+    # As the OCP 4.22 NFD install example: platform monitoring scrapes the operator's metrics.
+    openshift.io/cluster-monitoring: "true"

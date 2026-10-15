@@ -82,7 +82,7 @@ oc get nodes -L feature.node.kubernetes.io/pci-10de.present
 | NFD before the GPU Operator | Install NFD and create an instance before the NVIDIA GPU Operator [1] | Separate Application, deploy-order 1 | Aligned |
 | Namespace and OperatorGroup | `openshift-nfd`, OperatorGroup targeting `openshift-nfd` [2] | Same | Aligned |
 | Subscription | `nfd`, channel `stable`, `redhat-operators` [2] | Same, Automatic approval | Aligned |
-| Namespace monitoring label | Example Namespace sets `openshift.io/cluster-monitoring: "true"` [2] | Label not set | Gap (NFD metrics are not scraped by platform monitoring) |
+| Namespace monitoring label | Example Namespace sets `openshift.io/cluster-monitoring: "true"` [2] | Set | Aligned |
 | Operand image | The CLI install example sets `operand.image` [2] | Pinned digest in Git, equal to the installed CSV's operand image; Stage 020 validate fails when they differ, so an Automatic operator update means updating the pin | Aligned |
 | PCI whitelist | The CLI install example uses `["0200", "03", "12"]` [2] | Same | Aligned |
 | Re-detection interval | Default `60s` [2] | `60s` | Aligned |

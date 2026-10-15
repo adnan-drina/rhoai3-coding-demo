@@ -310,6 +310,9 @@ if git -C "$REPO_ROOT" grep -n -E '(^|[^A-Za-z_./-])argocd +(--core|app +(sync|w
   exit 1
 fi
 
+log_step "Checking rendered manifests: duplicate YAML keys and retained sync options"
+python3 "$REPO_ROOT/scripts/shared/check-rendered-manifests.py" "$REPO_ROOT"
+
 log_step "Checking Stage 010 delegations against hook Job declarations"
 python3 "$REPO_ROOT/scripts/shared/stage_apps.py" check-delegations
 
@@ -318,6 +321,21 @@ python3 "$REPO_ROOT/scripts/shared/stage_apps.test.py" 2>&1 | tail -1
 python3 "$REPO_ROOT/scripts/shared/check-doc-links.test.py" 2>&1 | tail -1
 bash "$REPO_ROOT/scripts/shared/validate-lib.test.sh" >/dev/null
 python3 "$REPO_ROOT/.agents/hooks/guard-openshift-command.test.py" 2>&1 | tail -1
+
+log_step "Running the Stage 070 offline suite (PyYAML, jsonschema, Jinja2)"
+# PYTHON names an interpreter with those packages (see docs/OPERATIONS.md prerequisites).
+if "${PYTHON:-python3}" -c 'import yaml, jsonschema, jinja2' 2>/dev/null; then
+    suite_log=$(mktemp)
+    if ! PYTHON="${PYTHON:-python3}" "$REPO_ROOT/stages/070-advanced-app-platform/validate.sh" --static >"$suite_log" 2>&1; then
+        tail -20 "$suite_log"; rm -f "$suite_log"
+        log_error "Stage 070 offline suite failed"
+        exit 1
+    fi
+    rm -f "$suite_log"
+    log_success "Stage 070 offline suite passed"
+else
+    log_warn "Stage 070 offline suite NOT run: set PYTHON to an interpreter with PyYAML, jsonschema and Jinja2"
+fi
 
 log_step "Validating shared skills and product documentation links"
 python3 "$REPO_ROOT/.agents/skills/agentskills-authoring/scripts/validate-skills.py" --all

@@ -59,6 +59,7 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 3
+  activeDeadlineSeconds: 900
   template:
     spec:
       serviceAccountName: job-configure-tektonconfig

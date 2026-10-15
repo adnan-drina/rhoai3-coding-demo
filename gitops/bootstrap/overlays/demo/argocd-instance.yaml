@@ -39,6 +39,9 @@ spec:
           hs.message = "Bound"
           return hs
         end
+        -- Limitation: every Pending claim reads Healthy, including a missing StorageClass or failed provisioning
+        -- (Lua cannot read the class's binding mode). Those failures surface on the consuming workload, which
+        -- never becomes Healthy; storage readiness is never inferred from PVC health alone.
         if obj.status.phase == "Pending" then
           hs.status = "Healthy"
           hs.message = "Pending; WaitForFirstConsumer binds on first pod"

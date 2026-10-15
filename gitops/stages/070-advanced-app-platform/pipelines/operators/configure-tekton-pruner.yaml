@@ -52,6 +52,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "12"
 spec:
   backoffLimit: 2
+  activeDeadlineSeconds: 900
   template:
     spec:
       serviceAccountName: configure-tekton-pruner

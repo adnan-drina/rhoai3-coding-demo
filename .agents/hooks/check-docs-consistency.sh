@@ -12,6 +12,12 @@ if [[ -z "$file_path" ]]; then
     exit 0
 fi
 
+# Tools pass absolute or repository-relative paths; compare repository-relative ones.
+repo_root=$(git -C "$(dirname "$file_path")" rev-parse --show-toplevel 2>/dev/null || true)
+if [[ -n "$repo_root" ]]; then
+    file_path="${file_path#"$repo_root"/}"
+fi
+
 SESSION_ID=$(echo "$input" | jq -r '.conversation_id // "unknown"' 2>/dev/null)
 TRACK_FILE="/tmp/agent-edit-track-${SESSION_ID}.log"
 
@@ -42,7 +48,9 @@ companion_hint=""
 
 if [[ "$file_path" == gitops/*/*.yaml ]] || [[ "$file_path" == gitops/*/*.yml ]]; then
     edited_type="manifest"
-    companion_hint="stages/$stage_name/README.md"
+    # The component README (gitops/stages/<stage>/<component>/README.md) documents the manifests.
+    component_dir=$(echo "$file_path" | cut -d/ -f1-4)
+    companion_hint="$component_dir/README.md"
 elif [[ "$file_path" == */README.md ]]; then
     edited_type="readme"
     companion_hint="gitops/stages/$stage_name/"
@@ -57,7 +65,8 @@ fi
 
 companion_edited=false
 if [[ "$edited_type" == "manifest" ]]; then
-    if grep -q "$stage_name/README.md" "$TRACK_FILE" 2>/dev/null; then
+    if grep -q "$component_dir/README.md" "$TRACK_FILE" 2>/dev/null || \
+       grep -q "$stage_name/README.md" "$TRACK_FILE" 2>/dev/null; then
         companion_edited=true
     fi
 elif [[ "$edited_type" == "readme" ]]; then

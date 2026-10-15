@@ -107,7 +107,7 @@ oc get clusterrolebinding rhoai-monitoring-traces-writer rhoai-monitoring-traces
 | Tempo install | Namespace with the cluster-monitoring label, OperatorGroup with no targets, `tempo-product` `stable` Automatic [6] | Same | Aligned |
 | Trace read RBAC | ClusterRole `get` on `tempo.grafana.com` tenant `traces` [2] | Reader role bound to `rhods-admins` | Aligned (narrower subject) |
 | Trace write RBAC | Not in the Red Hat 3.11 docs; upstream shows `create` on the tenant `traces` [3] | Writer role bound to the RHOAI collector service account | Deviation (justified: fills a gap in the generated RHOAI collector RBAC; upstream-backed) |
-| Version pinning | Rolling `stable` channel in the guides | Rolling channel plus fail-closed minor/minimum check | Aligned |
+| Version pinning | Rolling `stable` channel in the guides | Rolling channel with Automatic approval; the minor/minimum check runs at deploy and validate time only, so OLM may update unattended between runs (accepted for the demo) | Aligned |
 
 ## References
 

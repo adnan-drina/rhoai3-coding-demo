@@ -183,6 +183,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "25"
 spec:
   backoffLimit: 3
+  activeDeadlineSeconds: 900
   template:
     spec:
       serviceAccountName: job-mta-hub-workspace-config
