@@ -30,6 +30,14 @@ TAS 1.5.0 was exercised with its digest-pinned vendor cosign 3.0.4 client and th
 
 The scheduled archive's PostgreSQL 17.6 dump restored in an isolated, network-disabled temporary database; all eight repository bundles restored with refs preserved and passed integrity checks. The test container was removed and live GitLab was untouched. Full service recovery remains open: the archive predates the new validation project, object-store data is skipped, and encryption-secret escrow/whole-service and Sonar/TAS restoration are not demonstrated. Evidence: `tmp/stage070-live-20261013/nonmodel-validation-20261014/`.
 
+## Refactoring audit 2026-10-15: deferred items
+
+The audit (`tmp/reviews/2026-10-15/REPORT.md`, local) R01-R15 corrections are on main (`d94519c4`..`05ce4def`). Left open:
+
+- **Qualification evidence identity (R06, second half).** The leaderboard now requires every collection, but it still selects history by mutable model name and collection ID. Bind evidence to the run and to the exact deployment (model revision, quantization, runtime image, GPU type) before the verdict gates a promotion; until then Stage 050 stays pending and the verdict is advisory.
+- **One canonical `secret_writer.py` (R16).** Seven Stage 070 components carry byte-identical copies; generate them from one source with a parity check, keeping each component independently buildable.
+- **Not pursued by decision:** explicit resources on the 35 hook containers (R10) and further hardening, per the demo security posture in `.agents/rules/env.md`; no OOM has been observed.
+
 ## Stage 010-060 component review: decisions and remaining work (2026-10-14)
 
 Decided by the owner on 2026-10-14 (findings: `tmp/component-review-20261014/`).
