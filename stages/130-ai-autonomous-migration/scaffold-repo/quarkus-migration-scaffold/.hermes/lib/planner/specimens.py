@@ -420,7 +420,9 @@ def build_dest(
     (root / MTA_FINDINGS).write_text(json.dumps(findings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     # Current-release fixtures use the selected pin. Historical 8.2.1
     # compatibility-exception fixtures remain explicit in their own tests.
-    mta_pin = (load_json(root / ".hermes" / "pins.json").get("pins") or {}).get("mta_cli") or {}
+    # The receipt records the MTA CLI that ran: the golden pin. A pins_override on the dest
+    # then disagrees with it, which is what the TOOL_PIN_MISMATCH case tests.
+    mta_pin = (load_json(golden / ".hermes" / "pins.json").get("pins") or {}).get("mta_cli") or {}
     mta_version = str(mta_pin.get("version") or "unknown")
     mta_measured = str(mta_pin.get("product_version") or mta_version)
     frozen_sha = str(mta_pin.get("artifact_sha256") or "") or ("a" * 64)
