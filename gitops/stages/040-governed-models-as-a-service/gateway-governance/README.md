@@ -5,7 +5,7 @@ This Application creates the governed entry point for every model request: the `
 | | |
 |---|---|
 | Argo CD Application | `040-gateway-governance` ([manifest](../../../argocd/app-of-apps/040-governed-models-as-a-service/gateway-governance.yaml)) |
-| Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 3). `deploy.sh` adds a cluster-specific `source.kustomize` patch with the listener hostnames |
+| Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 3). `deploy.sh` passes the listener hostnames for this cluster's ingress domain as a `source.kustomize` patch (`stage_apps.py deploy --kustomize-patches`) |
 | Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.py` (Authorino TLS and CA checks; Gateway, listener, namespace-isolation and route checks); `preflight.py` (adoption checks) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `ServerSideDiff`, `RespectIgnoreDifferences`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on ConfigMap `authorino-service-ca` `/data/service-ca.crt` |
 | Depends on | `040-maas-operators` (Kuadrant and Authorino CRDs); Stage 010 (OpenShift AI `data-science-gateway-class`, cert-manager ingress certificate `cert-manager-ingress-cert`) |
