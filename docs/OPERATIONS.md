@@ -977,23 +977,6 @@ Review GPU MachineSets and persistent volumes separately before removing them be
 
 If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for automated sync. Most applications have automated sync enabled.
 
-### Stage component Applications
-
-Stages 010 to 060 are deployed as component Applications instead of one large one each, so a model switch, a policy change or a failing hook touches only its own component, and data lives in components that never prune it. Each component renders its own folder `gitops/stages/<stage>/<component>/` and is named `<NNN>-<component>`; the stage folder's `kustomization.yaml` renders their union for validation. Components marked `demo.rhoai.io/deploy-order` are applied by the stage `deploy.sh` at one reviewed revision, and validation requires each of them Synced and Healthy at that revision; components marked `demo.rhoai.io/deploy-script` (all of Stage 060, `010-sandbox-storage`, `010-console-observability`, `030-private-model-serving`) are deployed by that script. A component that is expected to report another health state by design names it in its `demo.rhoai.io/accepted-health` annotation (`050-model-qualification` is Suspended while its candidate model is stopped). The layout rules are in `.agents/rules/gitops.md`.
-
-### Moving objects between Applications
-
-Splitting, renaming or re-pointing (new `source.path`) an Application must never delete and recreate its objects. The Applications have no `resources-finalizer`, so deleting one leaves its objects in place, and an Application takes an object over by rewriting its `argocd.argoproj.io/tracking-id`. `scripts/platform/move-applications.py` does this in a safe order:
-
-```bash
-python3 scripts/platform/move-applications.py --stage NNN --revision <pushed sha> [--app NAME ...] [--from OLD ...] --dry-run
-python3 scripts/platform/move-applications.py --stage NNN --revision <pushed sha> [--app NAME ...] [--from OLD ...]
-```
-
-It records the objects and their UIDs, stops automated sync on the `--from` Applications, applies the new Applications at the revision, starts one sync (with the Application's own `syncOptions`) for Applications without automated sync, runs any sync gate (`060-openshell-runtime` needs `setup-runtime.py` after its sync applied `openshell-runtime-ready`), waits for each Application Synced and Healthy, checks every object's tracking id and UID, and then deletes the old Applications without cascade. Without `--from` it only re-points existing Applications. It is safe to re-run after a failure. Run the stage `validate.sh` afterwards. The procedure, its reasons and rollback are in the `gitops-move-applications` skill.
-
-To roll back, re-create the previous Application at its last revision with automated sync off, sync it so it takes the objects back, delete the new Applications (no cascade), then turn automated sync on again.
-
 ## When To Use Which Document
 
 | Need | Use |
