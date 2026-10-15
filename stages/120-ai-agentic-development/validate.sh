@@ -60,6 +60,9 @@ check "workspace MaaS key Secret exists (Stage 070)" \
 check "MaaS model key provisioned (MAAS_API_KEY_QWEN27B serves Qwen 3.8)" \
   "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_KEY_QWEN27B}' | wc -c | tr -d ' ' | awk '{print (\$1>10)?\"yes\":\"no\"}'" \
   "yes"
+check "ai-admin has its own MaaS key (per-persona attribution)" \
+  "oc get secret maas-devspace-api-keys -n wksp-ai-admin -o jsonpath='{.data.MAAS_API_KEY_QWEN27B}' | wc -c | tr -d ' ' | awk '{print (\$1>10)?\"yes\":\"no\"}'" \
+  "yes"
 
 log_step "Migration golden drift"
 check "Published migration golden matches the reviewed staging tree" \
