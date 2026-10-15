@@ -1,155 +1,121 @@
 ---
 name: rhoai-model-deployment
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for RHOAI Deploy a model workflows: selecting models/connections/hardware/runtime,
-  InferenceService or LLMInferenceService settings, replicas/autoscaling, authentication,
-  endpoint checks and supported accelerator/runtime choices. Do NOT use for serving-
-  platform enablement (rhoai-model-serving-platform), deployed-model day-2 metrics (rhoai-
-  model-management-monitoring), TrustyAI bias/drift, model catalog/registry workflows,
-  MaaS governance or llm-d-specific architecture. Live changes require the OpenShift
-  safety guard.
+  Use when deploying, stopping, or querying a model in this repo outside the
+  llm-d path: the Stage 050 candidate InferenceService qwen3-8-27b-int4 in
+  evaluated-models (RawDeployment, Recreate, token auth, stop annotation),
+  model storage choice (pinned Hugging Face URI vs OCI modelcar, PVC, S3),
+  hardware profile and Kueue labels on a deployment, the Deploy a model wizard
+  and AI asset endpoints, deployment strategy, and token or endpoint lookup.
+  Do NOT use for enabling KServe or adding runtimes (use
+  rhoai-model-serving-platform), the LLMInferenceService qwen3-8-27b (use
+  rhoai-distributed-inference-llmd), MaaS access to models (use
+  rhoai-maas-governance), or metrics (use rhoai-model-management-monitoring).
 ---
 
-# RHOAI Model Deployment
+# Model deployment
 
-Use this skill for official Red Hat OpenShift AI model deployment and inference
-request workflows on the active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/050-model-evaluation/model-qualification/README.md` (candidate
+`InferenceService`); the llm-d model is in `rhoai-distributed-inference-llmd`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Deploying models guide to this repo's GitOps and README review model.
+- A change touches `candidate-qwen3-8-27b-int4.yaml` or adds a model
+  deployment to Git.
+- Someone deploys a model from the dashboard into `demo-sandbox` or
+  `internal-models` and asks which storage, profile or runtime to pick.
+- A deployed model does not start, does not get a GPU, or does not appear in a
+  dashboard form.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Model deployments are Git manifests, not wizard output: Stage 040 `LLMInferenceService` for the served model, Stage 050 `InferenceService` (`serving.kserve.io/v1beta1`) for the evaluation candidate | `gitops/stages/040-governed-models-as-a-service/local-models/`, `gitops/stages/050-model-evaluation/model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Deploy on the model serving platform][deploy] |
+| Model source is a URI pinned to a 40-character Hugging Face revision (`hf://RedHatAI/...:<sha>`); no Red Hat OCI modelcar exists for these checkpoints | both manifests (`storageUri`, `spec.model.uri`) | [Storing models][storing], [OCI model storage][oci] |
+| Candidate: `serving.kserve.io/deploymentMode: RawDeployment`, `deploymentStrategy.type: Recreate`, one replica | candidate manifest | [KServe deployment modes][modes], [Deployment strategies][strategies] |
+| Candidate runs stopped in Git (`serving.kserve.io/stop: "true"`) so it holds no GPU; Argo CD reports it `Suspended` | candidate manifest; model-qualification README ("Why the Application is Suspended") | — (Argo CD health check) |
+| Token authentication on (`security.opendatahub.io/enable-auth: "true"`) with a project-scoped client ServiceAccount token; no external route of its own | `candidate-qwen3-8-27b-int4.yaml`, `candidate-model-auth.yaml` | [Token for a deployed model][token], [Inference endpoint][endpoint] |
+| GPU placement by hardware-profile annotations plus the `kueue.x-k8s.io/queue-name` label (`gpu-reserved-demo`/`lq-gpu-reserved-demo` for the candidate, `gpu-rtxpro6000`/`lq-gpu-rtxpro6000` for the served model) | both manifests; profiles in `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/` | [Hardware profile matching][hw-match]; see `rhoai-kueue-workload-management` |
+| Developers and tools reach models only through MaaS, never the deployment endpoint; `opendatahub.io/genai-asset: "true"` marks the served model for Gen AI studio | `local-models/qwen38-27b-llminferenceservice.yaml` | [Deploy on the model serving platform][deploy] (AI asset endpoint); see `rhoai-maas-governance` |
 
-- storing models before deployment in S3, URI sources, PVCs, or OCI images
-- OCI model storage, also called modelcars in KServe
-- building OCI model images with Podman and a shell-capable base image
-- uploading model files to a model-storage PVC through a running workbench IDE
-- Deploy a model wizard workflow for generative and predictive models
-- model location, model type, deployment name, hardware profile, resources,
-  serving runtime, model framework, replicas, and advanced settings
-- automatic serving-runtime selection based on model type, model format, and
-  hardware profile
-- hardware profile matching, selection limitations, manual runtime selection,
-  and administrator distributed-inference override behavior
-- Rolling update versus Recreate deployment strategies
-- AI asset endpoint registration for Gen AI studio playground testing
-- external route and token authentication choices
-- MLServer deployment settings and `MLSERVER_MODEL_URI`
-- CLI deployment of OCI-stored models with `ServingRuntime`,
-  `InferenceService`, `storageUri`, and `imagePullSecrets`
-- NVIDIA NIM model deployment workflow after NIM platform enablement
-- deployed model token lookup and inference endpoint lookup
-- runtime-specific inference paths for Caikit TGIS, OpenVINO Model Server,
-  vLLM, NVIDIA Triton, and MLServer
-- dashboard and OpenShift metric handoff for deployed models
+## Procedure
 
-Use other skills for adjacent work:
+1. Pick the path: an llm-d model behind MaaS goes to
+   `rhoai-distributed-inference-llmd`; a project-local `InferenceService`
+   follows the Stage 050 candidate pattern (template-instantiated runtime,
+   pinned revision, Recreate, auth on, hardware profile, queue label).
+2. Deploy and validate with the owning stage:
+   `./stages/050-model-evaluation/deploy.sh` and
+   `./stages/050-model-evaluation/validate.sh` (accepts `Suspended` only for a
+   stopped `InferenceService`).
+3. Start or stop the candidate by the `serving.kserve.io/stop` annotation in
+   Git; free the GPU first if the served model needs it
+   (`docs/OPERATIONS.md#resuming-gpu-backed-stages-after-shutdown`).
+4. Inspect, after the OpenShift safety guard in `AGENTS.md`:
 
-- `rhoai-model-serving-platform` for KServe platform enablement, NIM platform
-  enablement, preinstalled/custom runtime enablement, runtime templates, vLLM
-  runtime arguments, and default deployment strategy configuration
-- `rhoai-model-management-monitoring` for deployed-model metrics, KServe
-  timeouts, multi-node vLLM operations, Kueue routing, Grafana dashboards,
-  autoscaling, and NIM metrics operations
-- `rhoai-monitoring-trustyai` for TrustyAI model observations, bias metrics,
-  data-drift metrics, and OVMS support boundaries
-- `rhoai-gen-ai-playground` for AI asset endpoint testing in Gen AI studio
-- `rhoai-model-catalog-workflows` for catalog discovery, model card review,
-  and catalog-to-deployment handoff
-- `rhoai-model-registry-workflows` for registered model/version deployment
-  handoff and OCI ModelCar transfer jobs
-- `rhoai-project-workflows` for projects, connections, storage, and project
-  access
-- `rhoai-s3-object-storage-data` for S3-compatible object storage operations
-  and credentials
-- `rhoai-nvidia-gpu-accelerators` for NVIDIA GPU enablement and hardware
-  profiles
-- `rhoai-maas-governance` for MaaS subscriptions, model refs, authorization
-  policies, API keys, observability, external OIDC, and external models
-- `rhoai-distributed-inference-llmd` for `LLMInferenceService`, Gateway
-  discovery, Connectivity Link auth, scheduler, autoscaling, and flow-control
-  workflows
+   ```bash
+   oc get inferenceservice -n evaluated-models
+   oc get inferenceservice qwen3-8-27b-int4 -n evaluated-models \
+     -o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}{"\n"}'
+   oc get workload -n evaluated-models
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- The wizard's llm-d runtime defaults to Recreate, but the Git-managed
+  `LLMInferenceService` rolls out with `maxSurge` and can deadlock on a full
+  GPU queue (`docs/TROUBLESHOOTING.md#qwen-serving-change-never-finishes-rolling-out`).
+- Rolling update needs about twice the requested resources during the switch;
+  on single-GPU nodes use Recreate ([Choosing a strategy][choose]).
+- Canary rollout applies to `InferenceService` in RawDeployment mode only, not
+  to `LLMInferenceService` ([Canary limitations][canary-limits]).
+- The Start evaluation run form lists `InferenceService` objects only
+  (`docs/TROUBLESHOOTING.md#start-evaluation-run-offers-no-model-to-choose`).
+- No Kueue Workload means a missing queue label or unmanaged namespace
+  (`docs/TROUBLESHOOTING.md#private-models-do-not-produce-kueue-workloads`).
+- The `hf://` URI form is proven by the running deployments, not named in the
+  3.5 storage chapter; verify after upgrades.
 
-- Prefer the standard model serving platform with vLLM NVIDIA GPU runtime for
-  the active private model deployment path unless the project explicitly
-  introduces another serving platform.
-- Use NVIDIA GPU hardware profiles for generative model deployment unless the
-  active platform baseline changes.
-- Treat the Deploy a model wizard as the source for user workflow narratives.
-  Convert durable deployment intent into GitOps manifests only after fields are
-  verified against official docs or active CRD schema.
-- Prefer OCI model storage/modelcars for reproducible demo model artifacts when
-  supported by the chosen runtime and model format.
-- Keep private OCI registry credentials, object storage credentials, and model
-  endpoint tokens in Kubernetes Secrets. Never commit secret values.
-- Enable external routes only when the demo needs external clients. Require
-  token authentication for shared demo endpoints unless there is a documented
-  reason not to.
-- Use Recreate for scarce GPU demo environments unless zero-downtime rollout
-  and 200% resource headroom are available and documented.
-- Add generative model deployments as AI asset endpoints when they should be
-  tested in Gen AI studio playground.
-- Do not make NVIDIA NIM part of the demo unless the project explicitly adopts
-  NIM and documents NGC account, GPU, storage, and credential handling.
-- Treat MLServer ServingRuntime for KServe and Spyre x86 paths as Technology
-  Preview where the official guide labels them that way.
+## Official documentation (RHOAI 3.5)
 
-## Project Sizing Checklist: Large Hybrid-MoE On A Single L40S (rhoai3-coding-demo)
+| Topic | Section |
+|---|---|
+| Model storage | [Storing models][storing], [OCI model storage][oci], [Upload to a PVC][pvc] |
+| Deploy | [KServe deployment modes][modes], [Runtime auto-selection][autoselect], [Hardware profile matching][hw-match], [Deploy on the platform][deploy], [OCI image by CLI][oci-cli] |
+| Strategy and rollout | [Deployment strategies][strategies], [Choosing a strategy][choose], [Canary rollout][canary], [Canary limitations][canary-limits] |
+| Inference | [Token for a deployed model][token], [Inference endpoint][endpoint], [Inference endpoints by runtime][endpoints] |
+| Not used | [NIM deployments][nim], [Precache an LLMInferenceService][precache] |
 
-Validated live for qwen3-6-35b-a3b (35GB FP8 weights, 256-expert MoE with
-GDN/mamba layers, multimodal-capable) on one 48GB L40S with the RHOAI 3.4.2
-operator vLLM (v0.18.0+rhaiv.11):
+## Related skills
 
-1. Text-only? Disable multimodal inputs or the vision encoder cache is
-   profiled with a max-size image.
-2. Cap `max_num_seqs` (64 for demos): hybrid models allocate per-slot state
-   for every slot up front.
-3. `kv-cache-dtype=fp8` to double effective KV tokens.
-4. `max-num-batched-tokens` low for MoE workspace but ABOVE the
-   mamba-aligned attention block size printed at startup (assertion enforced).
-5. Read the startup memory ledger before changing anything else: weights,
-   profiling peak, available KV, block override.
-6. Expect the rolling-update GPU deadlock on single-replica models under
-   Kueue; hand over the card by deleting the old pod.
+`rhoai-model-serving-platform`, `rhoai-distributed-inference-llmd`,
+`rhoai-maas-governance`, `rhoai-kueue-workload-management`,
+`rhoai-hardware-profiles`, `rhoai-evaluation`, `rhoai-model-evaluation`,
+`rhoai-gen-ai-playground`, `rhoai-model-registry-workflows`.
 
-## Workflow
-
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - model storage and artifact preparation
-   - dashboard deployment workflow
-   - runtime auto-selection or manual selection review
-   - deployment strategy choice
-   - AI asset endpoint, route, or token-auth setup
-   - MLServer deployment detail
-   - OCI model deployment by CLI
-   - NIM model deployment
-   - endpoint token lookup or inference request testing
-4. Use `examples/model-deployment-patterns.md` for compact review patterns.
-5. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-6. Validate with `references/validation-checklist.md`.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/model-deployment-patterns.md`
+[storing]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#deploying-models_rhoai-user
+[oci]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#using-oci-containers-for-model-storage_rhoai-user
+[pvc]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#uploading-model-files-to-pvc_rhoai-user
+[modes]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#about-kserve-deployment-modes_rhoai-user
+[autoselect]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#automatic-selection-of-serving-runtimes_rhoai-user
+[hw-match]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#hardware_profile_matching
+[strategies]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#deployment-strategies-for-resource-optimization_rhoai-user
+[choose]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#choosing_a_deployment_strategy
+[canary]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#canary-rollout-for-rawdeployment-mode_rhoai-user
+[canary-limits]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#known-limitations-for-canary-rollout_rhoai-user
+[deploy]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#deploying-models-on-the-model-serving-platform_rhoai-user
+[oci-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#deploying-model-stored-in-oci-image_rhoai-user
+[nim]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#deploying-models-on-the-NVIDIA-NIM-model-serving-platform_rhoai-user
+[precache]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#deploying-an-llminferenceservice-with-a-cached-model_rhoai-user
+[token]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#accessing-authentication-token-for-deployed-model_rhoai-user
+[endpoint]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#accessing-inference-endpoint-for-model_rhoai-user
+[endpoints]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index#inference-endpoints_rhoai-user

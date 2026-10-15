@@ -33,7 +33,10 @@ converted_families:
 # findings of their family) and only reports the family's other skills. Move
 # the family to converted_families and drop its entries here once every skill
 # of the family is converted.
-converted_skills: []
+converted_skills:
+  - rhoai-distributed-inference-llmd
+  - rhoai-model-deployment
+  - rhoai-model-serving-platform
 
 # Backticked names on skill lines that look like skill names but are not skills.
 skill_reference_ignore: [rhcl-operator, ocp-baseline]
@@ -340,6 +343,28 @@ products:
           - book: configuring_your_model-serving_platform
             status: active
             skill: rhoai-model-serving-platform
+            sections:
+              - configuring-your-model-serving-platform_rhoai-admin
+              - model_serving_platform
+              - nvidia_nim_model_serving_platform
+              - servingruntime
+              - inferenceservice
+              - understanding-vllm-support-levels_rhoai-admin
+              - unsupported-runtime-visibility_rhoai-admin
+              - model-serving-runtimes-for-accelerators_rhoai-admin
+              - supported-model-serving-runtimes_rhoai-admin
+              - tested-verified-runtimes_rhoai-admin
+              - enabling-the-model-serving-platform_rhoai-admin
+              - enabling-speculative-decoding-and-multi-modal-inferencing_rhoai-admin
+              - adding-a-custom-model-serving-runtime_rhoai-admin
+              - enabling-unsupported-serving-runtimes-gitops_rhoai-admin
+              - enabling-the-nvidia-nim-model-serving-platform_rhoai-admin
+              - customizing-parameters-serving-runtime_rhoai-admin
+              - Customizing-the-vllm-runtime_rhoai-admin
+              - setting-a-default-cluster-wide-deployment-strategy_rhoai-admin
+              - model-cache-overview_rhoai-admin
+              - enabling-model-caching_rhoai-admin
+            reviewed: { version: "3.5", date: 2026-10-15, note: "first 100k of 115k characters read on review" }
           - book: managing_and_monitoring_models
             status: active
             skill: rhoai-model-management-monitoring
@@ -367,6 +392,25 @@ products:
           - book: deploying_models
             status: active
             skill: rhoai-model-deployment
+            sections:
+              - deploying-models_rhoai-user
+              - using-oci-containers-for-model-storage_rhoai-user
+              - uploading-model-files-to-pvc_rhoai-user
+              - about-kserve-deployment-modes_rhoai-user
+              - automatic-selection-of-serving-runtimes_rhoai-user
+              - hardware_profile_matching
+              - deployment-strategies-for-resource-optimization_rhoai-user
+              - choosing_a_deployment_strategy
+              - canary-rollout-for-rawdeployment-mode_rhoai-user
+              - known-limitations-for-canary-rollout_rhoai-user
+              - deploying-models-on-the-model-serving-platform_rhoai-user
+              - deploying-model-stored-in-oci-image_rhoai-user
+              - deploying-models-on-the-NVIDIA-NIM-model-serving-platform_rhoai-user
+              - deploying-an-llminferenceservice-with-a-cached-model_rhoai-user
+              - accessing-authentication-token-for-deployed-model_rhoai-user
+              - accessing-inference-endpoint-for-model_rhoai-user
+              - inference-endpoints_rhoai-user
+            reviewed: { version: "3.5", date: 2026-10-15, note: "hf:// storage URI not named in the read part of the storage chapter; backed by the repo deployments only" }
           - book: govern_llm_access_with_models-as-a-service
             status: active
             skill: rhoai-maas-governance
@@ -380,6 +424,30 @@ products:
           - book: deploy_models_using_distributed_inference_with_llm-d
             status: active
             skill: rhoai-distributed-inference-llmd
+            sections:
+              - deploying-models-using-distributed-inference_distributed-inference
+              - enabling-distributed-inference_distributed-inference
+              - llm-deployment-topology-patterns_topology-selector
+              - llmd-configuration-labels-and-topology-mapping_topology-selector
+              - router-configs-and-supported-topologies_topology-selector
+              - gateway-discovery-for-llmd-overview_gateway-discovery
+              - select-gateway-yaml_gateway-discovery
+              - configuring-gateway-for-llmd-on-openshift_gateway-discovery
+              - configuring-authentication-for-llmd_distributed-inference
+              - enabling-authentication-and-authorization-for-llm-inference-service_distributed-inference
+              - controlled-deployment_distributed-inference
+              - configuring-vllm-args-llm-d_distributed-inference
+              - configure-vllm-endpoint-log-filtering_distributed-inference
+              - configuring-tool-calling-for-llmd_distributed-inference
+              - configuring-scheduler-inline_configuring-llm-scheduler
+              - scheduler-plugins_configuring-llm-scheduler
+              - upgrading-epp-scheduler-configuration-rhoai-3-5_configuring-llm-scheduler
+              - managing-mixed-workloads-with-priority-queuing
+              - autoscaling-llmd-model-deployments
+              - llmd-configuring-pd-disaggregation_distributed-inference
+              - monitoring-llmd-deployments
+              - troubleshooting-llm-d-deployment-issues_distributed-inference
+            reviewed: { version: "3.5", date: 2026-10-15, note: "no support status found for Workload Variant Autoscaler, flow control or llm-d monitoring; the skill claims none" }
       repo_specific_extensions:
         description: Skills grounded in official docs but specialized for this repo implementation.
         routes:
