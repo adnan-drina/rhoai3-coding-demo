@@ -10,7 +10,7 @@ description: >
   Use when reviewing or changing the Red Hat OpenShift AI Operator update
   channel or approval mode: spec.channel stable-3.5 and installPlanApproval
   Automatic on the rhods-operator Subscription in
-  gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/, the
+  gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/, the
   channel and minimum version enforced by
   scripts/platform/check-operator-policy.py, the doc map RHOAI version, and
   planning a minor upgrade (for example 3.5 to 3.6). Do NOT use for the
@@ -23,12 +23,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behaviour in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/README.md`.
 
 ## When to use
 
 - A change touches `spec.channel` or `installPlanApproval` in
-  `gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/subscription.yaml`.
+  `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/subscription.yaml`.
 - A change touches the `rhods-operator` entries in `scripts/platform/check-operator-policy.py`.
 - The next RHOAI minor is planned, or `deploy.sh` refuses the catalog.
 
@@ -36,8 +36,8 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Version-pinned `stable-3.5` channel (not rolling `stable` or `fast`), so a minor upgrade is a reviewed Git change | `rhoai-operator/subscription.yaml` | [Update channels][channels] |
-| `installPlanApproval: Automatic`: z-streams within 3.5 install without review; the CLI example sets no approval mode (recorded as a justified deviation) | `rhoai-operator/subscription.yaml` | [Install the Operator by using the CLI][op-cli] |
+| Version-pinned `stable-3.5` channel (not rolling `stable` or `fast`), so a minor upgrade is a reviewed Git change | `010-rhoai-operator/subscription.yaml` | [Update channels][channels] |
+| `installPlanApproval: Automatic`: z-streams within 3.5 install without review; the CLI example sets no approval mode (recorded as a justified deviation) | `010-rhoai-operator/subscription.yaml` | [Install the Operator by using the CLI][op-cli] |
 | Fail-closed policy: channel must be `stable-3.5`, installed version at least `3.5.1` and inside the 3.5 minor; no `startingCSV` | `scripts/platform/check-operator-policy.py` (`channels`, `minimum`) | [Update channels][channels] |
 | Product docs version for every `rhoai-*` skill follows the channel's minor | `.agents/references/red-hat-doc-map.yaml` (`products.rhoai.docs_version`) | n/a (repo convention) |
 

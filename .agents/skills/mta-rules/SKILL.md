@@ -32,7 +32,7 @@ Thin skill: repo decisions and pitfalls here, rule syntax in the linked MTA
 | Decision | Where in Git | Official section |
 |---|---|---|
 | Canary rule `rhoai3-canary-00001`: `category: optional`, `effort: 0`, `builtin.filecontent` on `*.java`; proves the custom ruleset was in the effective selection | `.../.hermes/planning/mta-rules/rhoai3-canary.yaml` | [Rule metadata][meta], [Categories][categories], [builtin provider][builtin] |
-| Canary carries one `konveyor.io/target=` label per analysis target (quarkus, jakarta-ee9, cloud-readiness, openjdk21) so any target selection loads it | same file; `analysis.targets`, `custom_rules`, `canary_rule_id` in `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/migration.yaml` | [Rule labels][labels], [Reserved labels][reserved] |
+| Canary carries one `konveyor.io/target=` label per analysis target (quarkus, jakarta-ee9, cloud-readiness, openjdk21) so any target selection loads it | same file; `analysis.targets`, `custom_rules`, `canary_rule_id` in `gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/skeleton/migration.yaml` | [Rule labels][labels], [Reserved labels][reserved] |
 | Canary incidents are not migration obligations: the planner filters `analysis.canary_rule_id` and records `mta.canary.fired` | `.../.hermes/skills/analysis/scan-with-mta/scripts/assert-mta-canary.py` | — |
 | Ruleset passed with `--rules <dir>` and never with `--source` | `.../scan-with-mta/scripts/mta-analyze-legacy.sh` | [Custom ruleset][ruleset] |
 

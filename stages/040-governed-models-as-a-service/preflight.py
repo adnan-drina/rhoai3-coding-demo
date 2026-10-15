@@ -32,7 +32,7 @@ try:
  assert serving and reconciled(serving),'Serving exact source/path must be reconciled'
  a=serving['spec'];assert not serving['metadata'].get('ownerReferences') and not serving['metadata'].get('deletionTimestamp') and not a.get('sources'),'Prerequisite Application ownership differs'
  assert a['project']=='rhoai-demo' and a['source']['repoURL']==os.environ['GIT_REPO_URL'] and a['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Prerequisite Application repository/destination differs'
- assert a['source']['path']=='gitops/stages/030-private-model-serving/private-model-serving','Prerequisite source path differs'
+ assert a['source']['path']=='gitops/stages/030-private-model-serving/030-private-model-serving','Prerequisite source path differs'
  paths=stage_apps.delegated('010','DataScienceCluster','default-dsc',group='datasciencecluster.opendatahub.io')
  assert {'/spec/components/aigateway','/spec/components/ogx'}<=paths,'Complete the reviewed retention-safe AIGateway/Studio delegation before Stage040'
  dashboard_paths=stage_apps.delegated('010','OdhDashboardConfig','odh-dashboard-config','redhat-ods-applications','opendatahub.io')

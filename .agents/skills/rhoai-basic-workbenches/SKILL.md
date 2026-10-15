@@ -23,7 +23,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`
+`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md`
 (Workbenches component).
 
 ## When to use
@@ -37,11 +37,11 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Workbenches component `Managed`, `workbenchNamespace: rhods-notebooks`; the operator creates that namespace | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Manage basic workbenches][basic] |
+| Workbenches component `Managed`, `workbenchNamespace: rhods-notebooks`; the operator creates that namespace | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Manage basic workbenches][basic] |
 | No basic workbench, idle timeout or culler ConfigMap in Git; the timeout is whatever an administrator sets in the dashboard | (not in Git) | [Stop idle workbenches][idle] |
-| No workbench tolerations: in 3.5 tolerations come from hardware profiles, and the repo's Queue-type profiles carry none (Kueue ResourceFlavors place pods) | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/hardware-profiles/` | [Workbench pod tolerations][tol] |
-| Dashboard groups `rhods-admins` (admin) and `rhoai-developers` (user) in the `Auth` CR; membership from `setup-access.sh`, not Git | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/auth.yaml`, `stages/010-openshift-ai-platform-foundation/setup-access.sh` | [Jupyter 404][t404] |
-| Demo work uses project workbenches (`demo-sandbox`) and Dev Spaces (Stage 070); basic workbenches are a support path only | `gitops/stages/010-openshift-ai-platform-foundation/access/README.md` | [Manage basic workbenches][basic] |
+| No workbench tolerations: in 3.5 tolerations come from hardware profiles, and the repo's Queue-type profiles carry none (Kueue ResourceFlavors place pods) | `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/hardware-profiles/` | [Workbench pod tolerations][tol] |
+| Dashboard groups `rhods-admins` (admin) and `rhoai-developers` (user) in the `Auth` CR; membership from `setup-access.sh`, not Git | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/auth.yaml`, `stages/010-openshift-ai-platform-foundation/setup-access.sh` | [Jupyter 404][t404] |
+| Demo work uses project workbenches (`demo-sandbox`) and Dev Spaces (Stage 070); basic workbenches are a support path only | `gitops/stages/010-openshift-ai-platform-foundation/010-access/README.md` | [Manage basic workbenches][basic] |
 
 ## Procedure
 

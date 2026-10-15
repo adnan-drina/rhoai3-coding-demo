@@ -11,7 +11,7 @@ description: >
   Gateway maas-default-gateway (listeners, TLS Secret cert-manager-ingress-cert,
   AWS ELB idle-timeout annotation, fixed-ClusterIP Service maas-gateway-internal,
   AdminNetworkPolicy maas-gateway-boundary) in
-  gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/,
+  gitops/stages/040-governed-models-as-a-service/040-gateway-governance/gateway/,
   edge-terminated Routes in Stages 060 and 070, the default IngressController
   certificate or ELB timeout, or "gateway not reachable" and stream-cut
   symptoms. Do NOT use for MaaS AuthPolicy, rate limits or model routing (use
@@ -23,11 +23,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift Container Platform 4.22 sections. Detailed record:
-`gitops/stages/040-governed-models-as-a-service/gateway-governance/README.md`.
+`gitops/stages/040-governed-models-as-a-service/040-gateway-governance/README.md`.
 
 ## When to use
 
-- A change touches `gateway-governance/gateway/` or a `kind: Route` manifest.
+- A change touches `040-gateway-governance/gateway/` or a `kind: Route` manifest.
 - The MaaS endpoint is unreachable, answers on the wrong host, or long
   streams are cut at a fixed interval.
 - The default ingress certificate or the ingress load balancer changes.
@@ -43,11 +43,11 @@ OpenShift Container Platform 4.22 sections. Detailed record:
 | Fixed ClusterIP Service `maas-gateway-internal` (`172.30.250.250`) so workspaces reach the gateway in-cluster through a devfile `hostAlias`, keeping SNI and host matching | `gateway/service-maas-gateway-internal.yaml` | none: repo measurement recorded in the manifest and README |
 | Gateway proxy resources set through the `parametersRef` ConfigMap (requests 1Gi, limit 2Gi) | `gateway/configmap-maas-gateway-resources.yaml` | [Gateway API implementation specifics][gw-impl] |
 | Gateway pod boundary is an AdminNetworkPolicy (priority 40), because the Ingress Operator's allow-all NetworkPolicy cannot be narrowed by more NetworkPolicies; `validate-gateway-boundary.sh` checks it | `gateway/adminnetworkpolicy-maas-gateway.yaml`, `stages/040-governed-models-as-a-service/validate-gateway-boundary.sh` | [Admin network policy][anp] |
-| Plain Routes use `termination: edge` with `insecureEdgeTerminationPolicy: Redirect` and the default router certificate; the Stage 070 Git server Route sets `haproxy.router.openshift.io/timeout: 600s` | `gitops/stages/060-agent-runtime-and-agentops/agent-tools/hosting/route-rw.yaml`, `gitops/stages/070-advanced-app-platform/sonarqube/generated/route-sonarqube.yaml`, `gitops/stages/070-advanced-app-platform/gitlab/route.yaml` | [Edge route][route-edge], [Route timeouts][route-timeout] |
+| Plain Routes use `termination: edge` with `insecureEdgeTerminationPolicy: Redirect` and the default router certificate; the Stage 070 Git server Route sets `haproxy.router.openshift.io/timeout: 600s` | `gitops/stages/060-agent-runtime-and-agentops/060-agent-tools/hosting/route-rw.yaml`, `gitops/stages/070-advanced-app-platform/070-sonarqube/generated/route-sonarqube.yaml`, `gitops/stages/070-advanced-app-platform/070-gitlab/route.yaml` | [Edge route][route-edge], [Route timeouts][route-timeout] |
 | Default IngressController Classic ELB idle timeout raised to 1h as a documented cluster-local step, not GitOps | `docs/OPERATIONS.md` (Bootstrap) | [Classic Load Balancer timeouts on AWS][elb] |
 
 Paths starting with `gateway/` are under
-`gitops/stages/040-governed-models-as-a-service/gateway-governance/`.
+`gitops/stages/040-governed-models-as-a-service/040-gateway-governance/`.
 
 ## Procedure
 

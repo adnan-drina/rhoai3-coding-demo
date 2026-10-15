@@ -16,7 +16,7 @@ SERVERS = {
     "openshift-mcp-server-rw": {"read_only": False, "require_oauth": True, "route": True, "sa": "openshift-mcp-server"},
 }
 APP = "060-agent-tools"
-PATH = "gitops/stages/060-agent-runtime-and-agentops/agent-tools"
+PATH = "gitops/stages/060-agent-runtime-and-agentops/060-agent-tools"
 IMAGE = "registry.redhat.io/openshift-mcp-tech-preview/openshift-mcp-server-rhel9@sha256:855466299c3178f7d9f96a1511005ca6161b8cc6b294df9907c234ce8ecfd0f2"
 
 

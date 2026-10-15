@@ -13,7 +13,7 @@ description: >
   `configure-pipeline-server` hook, Kubernetes pipeline storage (`Pipeline`,
   `PipelineVersion` in Git), the MLflow plugin `insecureSkipVerify` copy,
   creating runs with an MLflow experiment, version clean-up and pipeline
-  server resets (gitops/stages/050-model-evaluation/model-qualification/). Do
+  server resets (gitops/stages/050-model-evaluation/050-model-qualification/). Do
   NOT use for editing pipeline Python or components (use
   rhoai-kfp-pipeline-authoring), the MLflow server (use rhoai-mlflow), EvalHub
   jobs (use rhoai-evaluation), or Tekton (use ocp-pipelines-cicd).
@@ -23,7 +23,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/050-model-evaluation/model-qualification/README.md` and
+`gitops/stages/050-model-evaluation/050-model-qualification/README.md` and
 `docs/OPERATIONS.md#stage-050-model-qualification-pipeline-2026-10-12`.
 
 ## When to use
@@ -38,14 +38,14 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `aipipelines` is `Removed` in Stage 010 and set `Managed` by the Stage 050 MLflow enable hook (delegated field) | `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/enable-job.yaml` | [Manage AI pipelines][manage] |
-| One pipeline server, DSPA `dspa` in `evaluated-models`, created by a Sync hook (wave 14) with the dashboard form's values: `dspVersion: v2`, S3 from the Pipelines connection, default database, `pipelineStore: kubernetes`, `cacheEnabled: true`, no sample pipeline. The DSPA is not in Git | `gitops/stages/050-model-evaluation/model-qualification/pipeline-server.yaml` | [Configure a pipeline server][server] |
+| `aipipelines` is `Removed` in Stage 010 and set `Managed` by the Stage 050 MLflow enable hook (delegated field) | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/enable-job.yaml` | [Manage AI pipelines][manage] |
+| One pipeline server, DSPA `dspa` in `evaluated-models`, created by a Sync hook (wave 14) with the dashboard form's values: `dspVersion: v2`, S3 from the Pipelines connection, default database, `pipelineStore: kubernetes`, `cacheEnabled: true`, no sample pipeline. The DSPA is not in Git | `gitops/stages/050-model-evaluation/050-model-qualification/pipeline-server.yaml` | [Configure a pipeline server][server] |
 | Default on-cluster database accepted for the demo (documented for development and test only) | same | [Configure a pipeline server][server] |
-| The Pipelines connection carries the external ODF S3 Route so signed artifact links open in a browser | `gitops/stages/050-model-evaluation/model-qualification/storage/` | [Data storage with pipelines][storage] |
-| Pipeline definitions stored as Kubernetes `Pipeline` (wave 16) and `PipelineVersion` (wave 17) objects compiled into Git | `gitops/stages/050-model-evaluation/model-qualification/pipeline/` | [Define a pipeline by using the Kubernetes API][k8sapi], [Kubernetes-native manifests][k8scompile] |
-| MLflow plugin `insecureSkipVerify: true` in a copied server config (`ds-pipeline-server-config-custom`, `apiServer.customServerConfigMap`); operator decision 2026-10-12 | `gitops/stages/050-model-evaluation/model-qualification/pipeline-server.yaml` | [Enable MLflow integration for pipeline runs][mlflow-enable] |
+| The Pipelines connection carries the external ODF S3 Route so signed artifact links open in a browser | `gitops/stages/050-model-evaluation/050-model-qualification/storage/` | [Data storage with pipelines][storage] |
+| Pipeline definitions stored as Kubernetes `Pipeline` (wave 16) and `PipelineVersion` (wave 17) objects compiled into Git | `gitops/stages/050-model-evaluation/050-model-qualification/pipeline/` | [Define a pipeline by using the Kubernetes API][k8sapi], [Kubernetes-native manifests][k8scompile] |
+| MLflow plugin `insecureSkipVerify: true` in a copied server config (`ds-pipeline-server-config-custom`, `apiServer.customServerConfigMap`); operator decision 2026-10-12 | `gitops/stages/050-model-evaluation/050-model-qualification/pipeline-server.yaml` | [Enable MLflow integration for pipeline runs][mlflow-enable] |
 | Pipeline runs tracked in MLflow experiment `agentic-coding-qualification`, chosen in the run form | `stages/050-model-evaluation/README.md` | [MLflow experiment tracking for pipeline runs][mlflow] |
-| `pipeline-runner-dspa` is bound to the EvalHub Role; task containers mount the service CA ConfigMap `pipeline-tasks-service-ca` | `gitops/stages/050-model-evaluation/model-qualification/pipeline-server.yaml` | not product guidance |
+| `pipeline-runner-dspa` is bound to the EvalHub Role; task containers mount the service CA ConfigMap `pipeline-tasks-service-ca` | `gitops/stages/050-model-evaluation/050-model-qualification/pipeline-server.yaml` | not product guidance |
 
 ## Procedure
 

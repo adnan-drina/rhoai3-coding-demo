@@ -27,10 +27,10 @@ behavior lives in the linked Developer Hub 1.10 sections.
 
 This repo targets self-managed OpenShift Container Platform and installs
 Developer Hub with the Operator from
-`gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/`.
+`gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/`.
 
 Adopting it is a Stage 070 change: record the decision in
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` and convert this stub
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` and convert this stub
 to a full thin skill.
 
 ## Official documentation (Developer Hub 1.10)

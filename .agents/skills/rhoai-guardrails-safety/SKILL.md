@@ -23,7 +23,7 @@ description: >
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. No guardrail resource is declared in Git; the
 dashboard creates one on request. Detailed record:
-`gitops/stages/040-governed-models-as-a-service/maas-platform/README.md`.
+`gitops/stages/040-governed-models-as-a-service/040-maas-platform/README.md`.
 
 ## When to use
 
@@ -35,11 +35,11 @@ dashboard creates one on request. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Dashboard flag `guardrails: true` set by the `job-enable-dsc-maas` Sync hook on a delegated Stage 010 field; `validate-native.py` requires it | `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml` | [NeMo Guardrails][nemo] |
-| TrustyAI component `Managed` from Stage 050 (the `NemoGuardrails` API group is `trustyai.opendatahub.io`) | `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/` | [Basic deployment][basic] |
+| Dashboard flag `guardrails: true` set by the `job-enable-dsc-maas` Sync hook on a delegated Stage 010 field; `validate-native.py` requires it | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [NeMo Guardrails][nemo] |
+| TrustyAI component `Managed` from Stage 050 (the `NemoGuardrails` API group is `trustyai.opendatahub.io`) | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/` | [Basic deployment][basic] |
 | No guardrail CR in Git; `studio-api.py --initialize-guardrails` calls the dashboard's own initialization, refuses unless the flag is on, and refuses any guardrail resource other than one named `nemoguardrails` | `stages/040-governed-models-as-a-service/studio-api.py` | [CR configuration reference][crref] |
 | NeMo Guardrails only; no FMS `GuardrailsOrchestrator` (3.5 documents migrating from FMS to NeMo) | not in Git | [Migrate from FMS to NeMo][migrate] |
-| Guarded models are reached through MaaS; no detector or self-check model is deployed | `gitops/stages/040-governed-models-as-a-service/local-models/` | [Separate self-check model][selfcheck] |
+| Guarded models are reached through MaaS; no detector or self-check model is deployed | `gitops/stages/040-governed-models-as-a-service/040-local-models/` | [Separate self-check model][selfcheck] |
 
 ## Procedure
 

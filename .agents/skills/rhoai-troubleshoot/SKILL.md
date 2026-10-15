@@ -54,7 +54,7 @@ around it. Command list: `references/diagnostic-commands.md`; symptom index:
    ```
 
 2. Find the owning component: `python3 scripts/shared/stage_apps.py names <NNN>`,
-   then read its README under `gitops/stages/<stage>/<component>/README.md`
+   then read its README under `gitops/stages/<stage>/<application name>/README.md`
    (Validation, Alignment with official guidance).
 3. Gather state with `references/diagnostic-commands.md` for that component.
 4. Match the symptom in `references/diagnostic-patterns.md` and

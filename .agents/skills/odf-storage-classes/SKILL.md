@@ -30,8 +30,8 @@ ODF 4.22 sections.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| ODF provides exactly one class: `openshift-storage.noobaa.io` (provisioner `openshift-storage.noobaa.io/obc`, reclaim `Delete`), for OBCs only | operator-owned; listed in `gitops/stages/010-openshift-ai-platform-foundation/odf/README.md` | [Storage classes][sc] |
-| Block storage (PVCs, including the MCG database) uses the cluster's AWS EBS CSI class `gp3-csi`, not ODF | `gitops/stages/010-openshift-ai-platform-foundation/odf/storagecluster.yaml` | — (cluster-provided) |
+| ODF provides exactly one class: `openshift-storage.noobaa.io` (provisioner `openshift-storage.noobaa.io/obc`, reclaim `Delete`), for OBCs only | operator-owned; listed in `gitops/stages/010-openshift-ai-platform-foundation/010-odf/README.md` | [Storage classes][sc] |
+| Block storage (PVCs, including the MCG database) uses the cluster's AWS EBS CSI class `gp3-csi`, not ODF | `gitops/stages/010-openshift-ai-platform-foundation/010-odf/storagecluster.yaml` | — (cluster-provided) |
 | No `ocs-storagecluster-ceph-rbd` or `ocs-storagecluster-cephfs` classes exist, because there is no Ceph cluster | — | [Deploy standalone MCG][aws-mcg] |
 | RHOAI dashboard storage-class display is configured by the RHOAI skill, not here | — | see `rhoai-storage-classes` |
 

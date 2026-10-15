@@ -31,7 +31,7 @@ linked OpenShift AI 3.5 sections.
 | Decision | Where in Git | Official section |
 |---|---|---|
 | Default PVC size not set; the 3.5 default is 20GiB ("Restore Default") | none under `gitops/` | [Configure the default PVC size][configure], [Restore the default PVC size][restore] |
-| No workbench or workbench PVC is in Git; personas create workbenches in `demo-sandbox` (`rhoai-developers` have `edit` there), so a per-workbench size can be chosen at creation | `gitops/stages/010-openshift-ai-platform-foundation/access/README.md` | see `rhoai-basic-workbenches` |
+| No workbench or workbench PVC is in Git; personas create workbenches in `demo-sandbox` (`rhoai-developers` have `edit` there), so a per-workbench size can be chosen at creation | `gitops/stages/010-openshift-ai-platform-foundation/010-access/README.md` | see `rhoai-basic-workbenches` |
 
 ## Procedure
 

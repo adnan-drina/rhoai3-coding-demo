@@ -23,12 +23,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md`.
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md`.
 
 ## When to use
 
-- A change touches `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/`
-  or `rhdh/jobs/configure-rhdh.yaml`.
+- A change touches `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/`
+  or `070-rhdh/jobs/configure-rhdh.yaml`.
 - The portal does not start, shows 503, or a plugin cannot reach the cluster.
 
 ## Repo decisions
@@ -44,7 +44,7 @@ Developer Hub 1.10 sections. Detailed record:
 | Operator-managed local PostgreSQL (Deviation; external database not used) | Backstage CR (no database override) | [External PostgreSQL][pg] |
 | `backend.reading.allow` lists only the GitLab host and GitHub raw hosts | `rhdh-instance/app-config-configmap.yaml` | [Application configuration][appconfig] |
 
-Paths are under `gitops/stages/070-advanced-app-platform/rhdh/`.
+Paths are under `gitops/stages/070-advanced-app-platform/070-rhdh/`.
 
 ## Procedure
 

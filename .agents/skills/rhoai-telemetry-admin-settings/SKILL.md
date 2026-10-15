@@ -23,7 +23,7 @@ Thin skill: two different things share the word telemetry. Red Hat usage data
 collection (product analytics) and MaaS usage telemetry (token metrics for
 showback). Repo decisions here, product behavior in the linked OpenShift AI
 3.5 sections. Detailed record:
-`gitops/stages/040-governed-models-as-a-service/maas-platform/README.md`.
+`gitops/stages/040-governed-models-as-a-service/040-maas-platform/README.md`.
 
 ## When to use
 
@@ -35,10 +35,10 @@ showback). Repo decisions here, product behavior in the linked OpenShift AI
 | Decision | Where in Git | Official section |
 |---|---|---|
 | Red Hat usage data collection is left at the product default; `odh-segment-key-config` is not managed in Git | none under `gitops/` | [Usage data collection notice][notice], [Disable by using the CLI][disable-cli] |
-| `disableTracking: false` (the default) is written down, so the Usage data collection section stays visible in the dashboard settings | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` | [Hide the usage data collection section][hide], [Dashboard configuration options][options] |
-| MaaS telemetry on: the Sync-hook Job patches `spec.telemetry` of `maastenantconfigs.maas.opendatahub.io/default-tenant` in `models-as-a-service` (owner check plus UID and resourceVersion guard) | `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml`, `jobs/enable-maas-telemetry-role.yaml`, `jobs/enable-maas-telemetry-binding.yaml` | [Enable telemetry for MaaS][maas-telemetry] |
-| `captureUser: true` (product default `false`), `captureGroup: false`, `captureOrganization` and `captureModelUsage: true`; recorded deviation for per-user showback | same Job; `maas-platform/README.md` (Alignment table) | [Enable telemetry for MaaS][maas-telemetry] |
-| Showback beyond the Usage tab: two custom PersesDashboards (cost per token, tokenomics) and a measured-usage CSV script that reads Thanos; unpriced rate card | `gitops/stages/040-governed-models-as-a-service/maas-platform/observability/`, `stages/040-governed-models-as-a-service/export-maas-usage.sh` | [Export usage data for cost attribution][maas-export] |
+| `disableTracking: false` (the default) is written down, so the Usage data collection section stays visible in the dashboard settings | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml` | [Hide the usage data collection section][hide], [Dashboard configuration options][options] |
+| MaaS telemetry on: the Sync-hook Job patches `spec.telemetry` of `maastenantconfigs.maas.opendatahub.io/default-tenant` in `models-as-a-service` (owner check plus UID and resourceVersion guard) | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml`, `jobs/enable-maas-telemetry-role.yaml`, `jobs/enable-maas-telemetry-binding.yaml` | [Enable telemetry for MaaS][maas-telemetry] |
+| `captureUser: true` (product default `false`), `captureGroup: false`, `captureOrganization` and `captureModelUsage: true`; recorded deviation for per-user showback | same Job; `040-maas-platform/README.md` (Alignment table) | [Enable telemetry for MaaS][maas-telemetry] |
+| Showback beyond the Usage tab: two custom PersesDashboards (cost per token, tokenomics) and a measured-usage CSV script that reads Thanos; unpriced rate card | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/observability/`, `stages/040-governed-models-as-a-service/export-maas-usage.sh` | [Export usage data for cost attribution][maas-export] |
 
 ## Procedure
 

@@ -26,10 +26,10 @@ it would touch.
 
 | Fact | Where in Git |
 |---|---|
-| Dashboard flag `autorag: false` (the documented default), written down so `validate.sh` intent is visible | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` |
+| Dashboard flag `autorag: false` (the documented default), written down so `validate.sh` intent is visible | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml` |
 | `/spec/dashboardConfig/autorag` is not in the `010-rhoai-platform` `ignoreDifferences`, so Argo CD restores `false` if it is changed live | `gitops/applications/010-rhoai-platform.yaml` |
 | Stage 010 README lists AutoRAG and AutoML as disabled | `stages/010-openshift-ai-platform-foundation/README.md` |
-| Building blocks a run could use do exist: OGX (Stage 040), AI pipelines (DSC `aipipelines` Managed by Stage 050), MLflow (Stage 050) | `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml`, `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/` |
+| Building blocks a run could use do exist: OGX (Stage 040), AI pipelines (DSC `aipipelines` Managed by Stage 050), MLflow (Stage 050) | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml`, `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/` |
 
 No AutoRAG test data, run, vector database for AutoRAG, or notebook is in Git.
 
@@ -46,7 +46,7 @@ No AutoRAG test data, run, vector database for AutoRAG, or notebook is in Git.
    What / How, alignment table).
 2. Delegate `/spec/dashboardConfig/autorag` in the `010-rhoai-platform`
    Application and set it from that stage's enablement Sync-hook Job, as Stage
-   040 does for `guardrails` (`gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml`).
+   040 does for `guardrails` (`gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml`).
    Never edit the live `OdhDashboardConfig` by hand.
 3. Read the prerequisites in [Create an optimization run][createrun] and
    [Configuration parameters][params] before choosing models; route the

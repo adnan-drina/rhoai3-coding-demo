@@ -28,9 +28,9 @@ excluded from its scope (`docs/OPERATIONS.md`, `BACKLOG.md`).
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Dashboard flag `automl: false` (its documented default, written down to make the intent visible) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml`, `.../rhoai-platform/README.md` | [Automated model selection with AutoML][overview] |
+| Dashboard flag `automl: false` (its documented default, written down to make the intent visible) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml`, `.../rhoai-platform/README.md` | [Automated model selection with AutoML][overview] |
 | AutoML and AutoRAG excluded from the demo's intended scope | `docs/OPERATIONS.md`, `stages/010-openshift-ai-platform-foundation/README.md` | — |
-| The only pipeline server is in the admin-only `evaluated-models` project | `gitops/stages/050-model-evaluation/model-qualification/pipeline-server.yaml` | see `rhoai-ai-pipelines` |
+| The only pipeline server is in the admin-only `evaluated-models` project | `gitops/stages/050-model-evaluation/050-model-qualification/pipeline-server.yaml` | see `rhoai-ai-pipelines` |
 
 ## If enabled
 
@@ -38,7 +38,7 @@ excluded from its scope (`docs/OPERATIONS.md`, `BACKLOG.md`).
    limitations section ([limitations][tp]); label it that way in demo text.
 2. The flag in `odh-dashboard-config` is owned by Stage 010 and not
    delegated; either change it there or delegate it to the owning stage
-   (rules in `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`).
+   (rules in `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md`).
 3. Give the target project a pipeline server and an S3 connection
    (`rhoai-ai-pipelines`), and serve the result through the existing model
    serving stack (`rhoai-model-deployment`).

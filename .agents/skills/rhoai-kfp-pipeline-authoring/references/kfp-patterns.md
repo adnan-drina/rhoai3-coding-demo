@@ -4,7 +4,7 @@ Repo-owned conventions for KFP v2 pipelines in this demo. The reference
 implementation is the Stage 050 qualification pipeline:
 `stages/050-model-evaluation/qualification/pipeline.py` (source) and
 `compile.py` (compiler), output in
-`gitops/stages/050-model-evaluation/model-qualification/pipeline/`.
+`gitops/stages/050-model-evaluation/050-model-qualification/pipeline/`.
 Product behavior (pipeline server, storage modes, caching levels, runs) is in
 the OpenShift AI 3.5 "Working with AI pipelines" guide; see `rhoai-ai-pipelines`.
 

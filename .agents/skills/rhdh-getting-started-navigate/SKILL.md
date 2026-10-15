@@ -21,7 +21,7 @@ description: >
 
 Thin skill: what a user finds in this portal; generic navigation is in the
 linked Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` and the Stage 070
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` and the Stage 070
 README `stages/070-advanced-app-platform/README.md`.
 
 ## When to use
@@ -34,13 +34,13 @@ README `stages/070-advanced-app-platform/README.md`.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Sign-in only through OIDC (`signInPage: oidc`) to Keycloak realm `platform`; no guest | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/app-config-configmap.yaml` | [Log in to RHDH][login] |
-| Two personas: `ai-admin` (RBAC policy admin) and `ai-developer` (`role:default/developer`) | `rhdh/catalog/all.yaml`, `rhdh/rhdh-instance/rbac-policy.yaml` | [Log in and verify your profile][profile] |
+| Sign-in only through OIDC (`signInPage: oidc`) to Keycloak realm `platform`; no guest | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/app-config-configmap.yaml` | [Log in to RHDH][login] |
+| Two personas: `ai-admin` (RBAC policy admin) and `ai-developer` (`role:default/developer`) | `070-rhdh/catalog/all.yaml`, `070-rhdh/rhdh-instance/rbac-policy.yaml` | [Log in and verify your profile][profile] |
 | Portal title "RHOAI Coding Demo Portal"; the global header is declared explicitly (full default header kept) | `app-config-configmap.yaml` (`app.title`, `dynamicPlugins.frontend` global header) | [Using the global header][header] |
-| Catalog scope: one Component `coolstore-inventory-service`, API `inventory-api`, System `coolstore`, Resource `maas-private-code-model-qwen`, two templates | `rhdh/catalog/all.yaml` | [Find software components][find] |
-| Templates: `agentic-quarkus-scaffold` ("New Quarkus app") and `app-migration` ("Application migration") | `rhdh/templates/` | [Create a component from a template][template] |
-| Developer Lightspeed chat is not configured (recorded Gap); the AI help chapters do not apply | `rhdh/README.md` (Alignment) | [AI-assisted help][ai] |
-| The portal is reached from the OpenShift application menu (ConsoleLink `rhdh`) | `rhdh/rhdh-instance/consolelink.yaml` | — |
+| Catalog scope: one Component `coolstore-inventory-service`, API `inventory-api`, System `coolstore`, Resource `maas-private-code-model-qwen`, two templates | `070-rhdh/catalog/all.yaml` | [Find software components][find] |
+| Templates: `agentic-quarkus-scaffold` ("New Quarkus app") and `app-migration` ("Application migration") | `070-rhdh/templates/` | [Create a component from a template][template] |
+| Developer Lightspeed chat is not configured (recorded Gap); the AI help chapters do not apply | `070-rhdh/README.md` (Alignment) | [AI-assisted help][ai] |
+| The portal is reached from the OpenShift application menu (ConsoleLink `rhdh`) | `070-rhdh/rhdh-instance/consolelink.yaml` | — |
 
 ## Procedure
 
@@ -50,7 +50,7 @@ README `stages/070-advanced-app-platform/README.md`.
    Docs, Topology, CI and Argo CD tabs come from the plugins
    (`rhdh-dynamic-plugins-usage`).
 3. Create: choose a template; inputs, refusals and the created workspace are
-   described in the template files and `rhdh/templates/app-migration/delivery-path.md`.
+   described in the template files and `070-rhdh/templates/app-migration/delivery-path.md`.
 4. If something is missing, check read-only after the OpenShift safety guard
    in `AGENTS.md`:
 

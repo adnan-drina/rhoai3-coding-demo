@@ -23,12 +23,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/020-gpu-infrastructure-private-ai/kueue/README.md` and
-`gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/README.md`.
+`gitops/stages/020-gpu-infrastructure-private-ai/020-kueue/README.md` and
+`gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/README.md`.
 
 ## When to use
 
-- A change touches `gitops/stages/020-gpu-infrastructure-private-ai/kueue/` or `.../gpu-quotas/queues/`.
+- A change touches `gitops/stages/020-gpu-infrastructure-private-ai/020-kueue/` or `.../gpu-quotas/queues/`.
 - A project needs a LocalQueue, or a workload is not admitted.
 - The Stage 020 sync waits on `job-enable-dsc-kueue`.
 
@@ -36,14 +36,14 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Red Hat build of Kueue Operator, channel `stable-v1.4`, Automatic, in `openshift-kueue-operator` (cluster monitoring label); minimum 1.4.2 enforced | `kueue/subscription.yaml`, `kueue/namespace.yaml`, `scripts/platform/check-operator-policy.py` | [Kueue workload management][kueue]; OCP side: `ocp-ai-workloads` |
-| DSC `kueue.managementState: Unmanaged`, `autoCreateQueues: false`, set by an Argo CD Sync hook Job because Stage 010 owns `default-dsc` and delegates `/spec/components/kueue` | `kueue/dsc-enablement/job.yaml`, `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Kueue workload management][kueue] |
+| Red Hat build of Kueue Operator, channel `stable-v1.4`, Automatic, in `openshift-kueue-operator` (cluster monitoring label); minimum 1.4.2 enforced | `020-kueue/subscription.yaml`, `020-kueue/namespace.yaml`, `scripts/platform/check-operator-policy.py` | [Kueue workload management][kueue]; OCP side: `ocp-ai-workloads` |
+| DSC `kueue.managementState: Unmanaged`, `autoCreateQueues: false`, set by an Argo CD Sync hook Job because Stage 010 owns `default-dsc` and delegates `/spec/components/kueue` | `020-kueue/dsc-enablement/job.yaml`, `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Kueue workload management][kueue] |
 | The `Kueue` CR is left to OpenShift AI (live name `cluster`); not in Git | — | [Kueue workload management][kueue] |
 | cert-manager not declared; `deploy.sh` requires a `cert-manager-operator.v1.20.*` CSV `Succeeded` | `stages/020-gpu-infrastructure-private-ai/deploy.sh` | [Configure workload management][kueue-config] |
-| Admin-owned queues in Git, `kueue.x-k8s.io/v1beta2`: flavors `default-flavor`, `gpu-rtxpro6000`, `gpu-l40s`; one ClusterQueue per GPU type (2 GPUs each) plus `cq-cpu-default`; LocalQueues `lq-*` in `demo-sandbox` | `gpu-quotas/queues/` | [Manage queues outside the Operator][kueue-outside] |
-| GPU flavors select their pool by `cluster-api/accelerator` and tolerate `nvidia-gpu-only`; no cohorts, no preemption settings (non-preemptive, needed for workbenches) | `gpu-quotas/queues/gpu-*.yaml`, `cq-*.yaml` | [Kueue workload management][kueue] |
-| Managed namespaces: `demo-sandbox` (Stage 010), `internal-models` (Stage 040), `evaluated-models` (Stage 050) carry `kueue.openshift.io/managed: "true"` and their own LocalQueues | `gitops/stages/010-openshift-ai-platform-foundation/access/namespace-demo-sandbox.yaml`, `gitops/stages/040-governed-models-as-a-service/local-models/`, `gitops/stages/050-model-evaluation/model-qualification/` | [Kueue workload management][kueue] |
-| Dashboard Kueue UI on: `disableKueue: false` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` | [Enable Kueue in the dashboard][kueue-dash] |
+| Admin-owned queues in Git, `kueue.x-k8s.io/v1beta2`: flavors `default-flavor`, `gpu-rtxpro6000`, `gpu-l40s`; one ClusterQueue per GPU type (2 GPUs each) plus `cq-cpu-default`; LocalQueues `lq-*` in `demo-sandbox` | `020-gpu-quotas/queues/` | [Manage queues outside the Operator][kueue-outside] |
+| GPU flavors select their pool by `cluster-api/accelerator` and tolerate `nvidia-gpu-only`; no cohorts, no preemption settings (non-preemptive, needed for workbenches) | `020-gpu-quotas/queues/gpu-*.yaml`, `cq-*.yaml` | [Kueue workload management][kueue] |
+| Managed namespaces: `demo-sandbox` (Stage 010), `internal-models` (Stage 040), `evaluated-models` (Stage 050) carry `kueue.openshift.io/managed: "true"` and their own LocalQueues | `gitops/stages/010-openshift-ai-platform-foundation/010-access/namespace-demo-sandbox.yaml`, `gitops/stages/040-governed-models-as-a-service/040-local-models/`, `gitops/stages/050-model-evaluation/050-model-qualification/` | [Kueue workload management][kueue] |
+| Dashboard Kueue UI on: `disableKueue: false` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml` | [Enable Kueue in the dashboard][kueue-dash] |
 
 ## Procedure
 

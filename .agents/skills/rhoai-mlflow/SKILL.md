@@ -13,7 +13,7 @@ description: >
   `rhoai-mlflow-artifacts`, the `mlflowoperator`/`trustyai`/`aipipelines`
   enable hook, the `ai-curated-prompts` global prompt workspace, MLflow SDK
   authentication, or EvalHub and pipeline runs that fail to log to MLflow
-  (gitops/stages/050-model-evaluation/mlflow/). Do NOT use for EvalHub jobs,
+  (gitops/stages/050-model-evaluation/050-mlflow/). Do NOT use for EvalHub jobs,
   providers and collections (use rhoai-evaluation), AI pipeline servers (use
   rhoai-ai-pipelines), or registry records (use rhoai-model-registry-workflows).
 ---
@@ -22,7 +22,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/050-model-evaluation/mlflow/README.md`.
+`gitops/stages/050-model-evaluation/050-mlflow/README.md`.
 
 ## When to use
 
@@ -35,17 +35,17 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `mlflowoperator`, `trustyai` and `aipipelines` set `Managed` by a Sync hook into fields Stage 010 delegates (one shared DSC) | `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/` | [Enable the MLflow Operator component][enable] |
-| One cluster-scoped `MLflow` named `mlflow`; Secret and ConfigMap references resolve in `redhat-ods-applications` | `gitops/stages/050-model-evaluation/mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
-| PostgreSQL 16 metadata store via `backendStoreUriFrom` (Secret `mlflow-db-credentials`, created by `setup-ai-services.sh`); no SQLite | `gitops/stages/050-model-evaluation/mlflow/postgresql-statefulset.yaml` | [Install and configure MLflow][install], [Storage and database compatibility][storage] |
-| Artifacts in ODF bucket `rhoai-mlflow-artifacts` with `serveArtifacts: true`, so clients never hold S3 keys | `gitops/stages/050-model-evaluation/mlflow/objectbucketclaim.yaml` | [MLflow configuration parameters][params] |
-| `ai-curated-prompts` is a global prompt workspace (label `opendatahub.io/global-mlflow-workspace: mlflow`) listed in dashboard `globalMLflowNamespaces` | `gitops/stages/050-model-evaluation/mlflow/prompts/namespace.yaml` | [Cluster roles for global prompt registry namespaces][globalroles] |
-| One replica and one worker, automatic schema migration: demo sizing | `gitops/stages/050-model-evaluation/mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
+| `mlflowoperator`, `trustyai` and `aipipelines` set `Managed` by a Sync hook into fields Stage 010 delegates (one shared DSC) | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/` | [Enable the MLflow Operator component][enable] |
+| One cluster-scoped `MLflow` named `mlflow`; Secret and ConfigMap references resolve in `redhat-ods-applications` | `gitops/stages/050-model-evaluation/050-mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
+| PostgreSQL 16 metadata store via `backendStoreUriFrom` (Secret `mlflow-db-credentials`, created by `setup-ai-services.sh`); no SQLite | `gitops/stages/050-model-evaluation/050-mlflow/postgresql-statefulset.yaml` | [Install and configure MLflow][install], [Storage and database compatibility][storage] |
+| Artifacts in ODF bucket `rhoai-mlflow-artifacts` with `serveArtifacts: true`, so clients never hold S3 keys | `gitops/stages/050-model-evaluation/050-mlflow/objectbucketclaim.yaml` | [MLflow configuration parameters][params] |
+| `ai-curated-prompts` is a global prompt workspace (label `opendatahub.io/global-mlflow-workspace: mlflow`) listed in dashboard `globalMLflowNamespaces` | `gitops/stages/050-model-evaluation/050-mlflow/prompts/namespace.yaml` | [Cluster roles for global prompt registry namespaces][globalroles] |
+| One replica and one worker, automatic schema migration: demo sizing | `gitops/stages/050-model-evaluation/050-mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
 | All data objects (PVC, StatefulSet, bucket, CR) carry `Prune=false,Delete=false`, so MLflow is its own Argo CD Application `050-mlflow` | `gitops/applications/050-mlflow.yaml` | not product guidance |
 
 ## Procedure
 
-1. Change manifests under `gitops/stages/050-model-evaluation/mlflow/`, commit,
+1. Change manifests under `gitops/stages/050-model-evaluation/050-mlflow/`, commit,
    publish, then deploy all Stage 050 Applications at one SHA:
 
    ```bash

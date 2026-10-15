@@ -22,12 +22,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift Container Platform 4.22 sections. Detailed records:
-`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`
-and `gitops/stages/050-model-evaluation/oci-export/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md`
+and `gitops/stages/050-model-evaluation/050-oci-export/README.md`.
 
 ## When to use
 
-- A change touches `image-registry-default-route.yaml`, `oci-export/`, an
+- A change touches `image-registry-default-route.yaml`, `050-oci-export/`, an
   ImageStream, or an image reference to the internal registry.
 - A build or push to `image-registry.openshift-image-registry.svc:5000` fails.
 - Someone proposes mirroring, an `ImageDigestMirrorSet` or a disconnected install.
@@ -37,11 +37,11 @@ and `gitops/stages/050-model-evaluation/oci-export/README.md`.
 | Decision | Where in Git | Official section |
 |---|---|---|
 | The internal registry, its storage and Managed state belong to the provisioned cluster, not to Git | `docs/OPERATIONS.md` (environment baseline) | [Image Registry Operator][operator] |
-| Only `spec.defaultRoute: true` is declared, as a partial Config with `Prune=false,Delete=false`; the operator owns the rest | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/image-registry-default-route.yaml` | [Exposing the registry][expose] |
-| Stage 050 exports evaluation results to ImageStream `evaluated-models/evaluation-results` through the default route; pusher SA `evalhub-oci-pusher` bound to `system:image-builder`; a Sync hook composes the `kubernetes.io/dockerconfigjson` Secret `evalhub-oci-registry` | `gitops/stages/050-model-evaluation/oci-export/oci-export.yaml` | [Accessing the registry][access] |
+| Only `spec.defaultRoute: true` is declared, as a partial Config with `Prune=false,Delete=false`; the operator owns the rest | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/image-registry-default-route.yaml` | [Exposing the registry][expose] |
+| Stage 050 exports evaluation results to ImageStream `evaluated-models/evaluation-results` through the default route; pusher SA `evalhub-oci-pusher` bound to `system:image-builder`; a Sync hook composes the `kubernetes.io/dockerconfigjson` Secret `evalhub-oci-registry` | `gitops/stages/050-model-evaluation/050-oci-export/oci-export.yaml` | [Accessing the registry][access] |
 | Stage 070 refuses to deploy unless the registry is Managed, Available and has persistent (not emptyDir) storage | `stages/070-advanced-app-platform/deploy.sh` | [Setting up and configuring the registry][setup] |
-| Application images are built into the internal registry of their project and deployed by `@sha256:` digest; no external-registry fallback | `gitops/stages/070-advanced-app-platform/pipelines/project-pipeline/imagestream.yaml` | [Managing image streams][imagestreams] |
-| Agent runtime images live in ImageStreams with `referencePolicy: Local`; pulls are granted per stream on `imagestreams/layers` | `gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/images/` | [Using image streams with Kubernetes resources][is-k8s] |
+| Application images are built into the internal registry of their project and deployed by `@sha256:` digest; no external-registry fallback | `gitops/stages/070-advanced-app-platform/070-pipelines/project-pipeline/imagestream.yaml` | [Managing image streams][imagestreams] |
+| Agent runtime images live in ImageStreams with `referencePolicy: Local`; pulls are granted per stream on `imagestreams/layers` | `gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/images/` | [Using image streams with Kubernetes resources][is-k8s] |
 | Red Hat images are pinned by tag or digest; `ose-cli` by digest because it publishes no `latest` | Stage 070 manifests, `docs/TROUBLESHOOTING.md#stage-070-jobs-cannot-pull-ose-cli-after-a-restart` | [Using images][using] |
 | No mirroring: connected cluster, no `ImageDigestMirrorSet`, `ImageTagMirrorSet` or oc-mirror in Git | none | [About disconnected environments][disconnected] |
 

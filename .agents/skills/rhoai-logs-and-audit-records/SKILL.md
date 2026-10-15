@@ -34,9 +34,9 @@ OpenShift AI 3.5 "View logs and audit records" sections.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `default-dsci` sets no `devFlags`, so the operator runs at its default level | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/dsc-init.yaml` | [Configure the operator logger][logger] |
-| A raised log level is temporary: change it in Git on a branch, deploy, collect, then revert the commit; the DSCI is owned by `010-rhoai-platform` (automated sync, self-heal) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md` | [Configure the operator logger][logger] |
-| DSC changes come from three writers: Argo CD (`010-rhoai-platform`), the stage enablement Sync-hook Jobs on delegated fields, and the operator itself; audit review separates them by user | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md` (Delegation model) | [View audit records][audit] |
+| `default-dsci` sets no `devFlags`, so the operator runs at its default level | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/dsc-init.yaml` | [Configure the operator logger][logger] |
+| A raised log level is temporary: change it in Git on a branch, deploy, collect, then revert the commit; the DSCI is owned by `010-rhoai-platform` (automated sync, self-heal) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md` | [Configure the operator logger][logger] |
+| DSC changes come from three writers: Argo CD (`010-rhoai-platform`), the stage enablement Sync-hook Jobs on delegated fields, and the operator itself; audit review separates them by user | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md` (Delegation model) | [View audit records][audit] |
 | The cluster is self-managed OCP on AWS, so kube-apiserver audit logging is on by default; this repo does not change the audit policy | `docs/OPERATIONS.md` (Fresh environment baseline) | [View audit records][audit] |
 | Logs and audit excerpts stay outside Git unless sanitized; never commit raw logs | `AGENTS.md` (Security and privacy) | — |
 

@@ -8,7 +8,7 @@ metadata:
   skill-group: "RHOAI Platform"
 description: >
   Use when reviewing or changing the OdhDashboardConfig odh-dashboard-config
-  in redhat-ods-applications (gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml):
+  in redhat-ods-applications (gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml):
   spec.dashboardConfig feature flags, which stage owns a flag through the
   010-rhoai-platform ignoreDifferences delegation, preview-feature flags, or a
   dashboard menu that is missing or reverted. Do NOT use for application
@@ -22,7 +22,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, option names and defaults in the
 linked OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`
+`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md`
 ("Delegation model", "OdhDashboardConfig").
 
 ## When to use
@@ -36,11 +36,11 @@ linked OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| One `OdhDashboardConfig` (`opendatahub.io/v1alpha`) `odh-dashboard-config` in `redhat-ods-applications`, owned by `010-rhoai-platform`, sync-wave 4 | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` | [Edit the dashboard configuration][edit] |
+| One `OdhDashboardConfig` (`opendatahub.io/v1alpha`) `odh-dashboard-config` in `redhat-ods-applications`, owned by `010-rhoai-platform`, sync-wave 4 | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml` | [Edit the dashboard configuration][edit] |
 | Stage 010 non-default values: `connectionTest: true` (Technology Preview), `disableKueue: false` (Developer Preview), `disableModelCatalog`/`disableModelRegistry: true`, `modelAsService: false`; defaults written down for `observabilityDashboard`, `disableTracking` and several feature flags | same file; README "OdhDashboardConfig" table | [Dashboard configuration options][options] |
 | Later stages own their flags: the Application lists each one as a JSON pointer in `ignoreDifferences` with `RespectIgnoreDifferences=true`, and the owning stage's Sync-hook Job patches it | `gitops/applications/010-rhoai-platform.yaml` | — (repo GitOps rule) |
-| Owners: Stage 030 (`agentsCatalog`, `disableModelCatalog`, `disableModelRegistry`, `toolCalling`, `mcpCatalog`, `mcpRegistry`); Stage 040 (`genAiStudio`, `modelAsService`, `vLLMDeploymentOnMaaS` and the other Gen AI flags, `/spec/genAiStudioConfig`); Stage 050 (`disableLMEval`, `globalProjectPrompts`, `/spec/globalMLflowNamespaces`); Stage 060 (`agentOps`) | `gitops/stages/030-private-model-serving/private-model-serving/model-discovery/enable-job.yaml`, `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml`, `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/enable-job.yaml`, `gitops/stages/060-agent-runtime-and-agentops/agent-console/enable-job.yaml` | [Dashboard configuration options][options], [Global prompt registry namespaces][prompts] |
-| Delegated fields keep a Git value only for first creation; after that the owning stage wins | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md` | — |
+| Owners: Stage 030 (`agentsCatalog`, `disableModelCatalog`, `disableModelRegistry`, `toolCalling`, `mcpCatalog`, `mcpRegistry`); Stage 040 (`genAiStudio`, `modelAsService`, `vLLMDeploymentOnMaaS` and the other Gen AI flags, `/spec/genAiStudioConfig`); Stage 050 (`disableLMEval`, `globalProjectPrompts`, `/spec/globalMLflowNamespaces`); Stage 060 (`agentOps`) | `gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/enable-job.yaml`, `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml`, `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/enable-job.yaml`, `gitops/stages/060-agent-runtime-and-agentops/060-agent-console/enable-job.yaml` | [Dashboard configuration options][options], [Global prompt registry namespaces][prompts] |
+| Delegated fields keep a Git value only for first creation; after that the owning stage wins | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md` | — |
 
 ## Procedure
 

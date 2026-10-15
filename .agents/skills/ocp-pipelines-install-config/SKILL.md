@@ -22,11 +22,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product procedure in the linked
 OpenShift Pipelines 1.24 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/pipelines/README.md`.
+`gitops/stages/070-advanced-app-platform/070-pipelines/README.md`.
 
 ## When to use
 
-- A change touches `gitops/stages/070-advanced-app-platform/pipelines/operators/`
+- A change touches `gitops/stages/070-advanced-app-platform/070-pipelines/operators/`
   or `.../pipelines/build/` (TektonConfig hooks, Triggers settings).
 - The Pipelines channel moves, or `TektonConfig` is not Ready after an update.
 
@@ -34,12 +34,12 @@ OpenShift Pipelines 1.24 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Subscription `openshift-pipelines-operator-rh` in `openshift-operators`, channel `pipelines-1.24`, Automatic; `startingCSV` v1.24.0 is an install floor (1.24.1 runs live) | `pipelines/operators/pipelines-subscription.yaml` | [Install by using the CLI][install-cli] |
+| Subscription `openshift-pipelines-operator-rh` in `openshift-operators`, channel `pipelines-1.24`, Automatic; `startingCSV` v1.24.0 is an install floor (1.24.1 runs live) | `070-pipelines/operators/pipelines-subscription.yaml` | [Install by using the CLI][install-cli] |
 | Automatic approval because `openshift-operators` is shared (RHTAS too); Dev Spaces, RHDH and MTA use Manual approval with their own approver hooks | same; `stages/070-advanced-app-platform/validate.sh` (minor check) | [Install by using the CLI][install-cli] |
-| `TektonConfig` `config` is operator-owned: Sync-hook Jobs patch single fields, never declare the CR | `pipelines/operators/configure-tekton-pruner.yaml`, `pipelines/build/tektonconfig-affinity.yaml` | [Customizing TektonConfig][tektonconfig] |
-| Pruner: PipelineRuns only, keep 10, hourly (product default keep 100, daily at 08:00) | `pipelines/operators/configure-tekton-pruner.yaml` | [Configuring the pruner][pruner] |
-| `createRbacResource=false`: no per-namespace `pipeline` SA grants or `pipelines-scc-rolebinding`; one named SA gets one SCC | `pipelines/build/tektonconfig-affinity.yaml`, `pipelines/operators/image-builder-scc.yaml` | [Disabling automatic RBAC creation][rbac], [RBAC and Trusted CA flags][rbac-flags] |
-| `spec.pipeline.coschedule: pipelineruns` so one run can bind the source PVC and the `maven-cache` PVC | `pipelines/build/tektonconfig-affinity.yaml` | not in the 1.24 Red Hat guides (verified live on the operator; upstream Tekton field) |
+| `TektonConfig` `config` is operator-owned: Sync-hook Jobs patch single fields, never declare the CR | `070-pipelines/operators/configure-tekton-pruner.yaml`, `070-pipelines/build/tektonconfig-affinity.yaml` | [Customizing TektonConfig][tektonconfig] |
+| Pruner: PipelineRuns only, keep 10, hourly (product default keep 100, daily at 08:00) | `070-pipelines/operators/configure-tekton-pruner.yaml` | [Configuring the pruner][pruner] |
+| `createRbacResource=false`: no per-namespace `pipeline` SA grants or `pipelines-scc-rolebinding`; one named SA gets one SCC | `070-pipelines/build/tektonconfig-affinity.yaml`, `070-pipelines/operators/image-builder-scc.yaml` | [Disabling automatic RBAC creation][rbac], [RBAC and Trusted CA flags][rbac-flags] |
+| `spec.pipeline.coschedule: pipelineruns` so one run can bind the source PVC and the `maven-cache` PVC | `070-pipelines/build/tektonconfig-affinity.yaml` | not in the 1.24 Red Hat guides (verified live on the operator; upstream Tekton field) |
 | `config-triggers-core-interceptors` is operator-owned again on 1.24 (its `TektonInstallerSet`); the Git copy added for the 1.22.6 gap was removed on 2026-10-15 | — | operator-owned operand; see Pitfalls |
 
 ## Procedure
@@ -73,7 +73,7 @@ OpenShift Pipelines 1.24 sections. Detailed record:
   the manifest comment pass.
 - Declaring `TektonConfig` in Git fights the operator; patch fields from a hook.
 - With `createRbacResource=false` new namespaces get no `pipeline` SA: each
-  project's ServiceAccounts come from `pipelines/project-pipeline/serviceaccounts.yaml`.
+  project's ServiceAccounts come from `070-pipelines/project-pipeline/serviceaccounts.yaml`.
 - `startingCSV` is ignored after install (`ignoreDifferences`); the validator
   enforces the minor, not the patch.
 

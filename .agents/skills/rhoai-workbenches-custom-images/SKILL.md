@@ -27,7 +27,7 @@ OpenShift AI 3.5 sections.
 **Not deployed in this demo.** Git holds no `ImageStream` for workbenches, no
 `Notebook` CR and no `disableBYONImageStream` setting. The Workbenches
 component is `Managed`
-(`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml`)
+(`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml`)
 and users create project workbenches from the pre-installed images.
 
 ## When to use
@@ -39,9 +39,9 @@ and users create project workbenches from the pre-installed images.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Pre-installed images only; developer tooling lives in Dev Spaces images (Stage 070) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml`, `stages/070-advanced-app-platform/README.md` | [Default workbench images][defaults] |
-| `disableBYONImageStream` not set in `odh-dashboard-config`, so the Workbench images menu keeps its documented default (visible) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` | [Enable custom images][enable] |
-| No workbench objects in Git; users create workbenches in projects such as `demo-sandbox` | `gitops/stages/010-openshift-ai-platform-foundation/access/README.md` | [Custom workbench from a CRD][crd] |
+| Pre-installed images only; developer tooling lives in Dev Spaces images (Stage 070) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml`, `stages/070-advanced-app-platform/README.md` | [Default workbench images][defaults] |
+| `disableBYONImageStream` not set in `odh-dashboard-config`, so the Workbench images menu keeps its documented default (visible) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml` | [Enable custom images][enable] |
+| No workbench objects in Git; users create workbenches in projects such as `demo-sandbox` | `gitops/stages/010-openshift-ai-platform-foundation/010-access/README.md` | [Custom workbench from a CRD][crd] |
 
 ## If you add a custom image
 

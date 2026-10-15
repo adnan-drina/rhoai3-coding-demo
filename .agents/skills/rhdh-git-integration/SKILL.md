@@ -22,8 +22,8 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` (How: Catalog
-sources) and `gitops/stages/070-advanced-app-platform/gitlab/README.md`
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` (How: Catalog
+sources) and `gitops/stages/070-advanced-app-platform/070-gitlab/README.md`
 (How 5: integration hub).
 
 ## When to use
@@ -37,13 +37,13 @@ sources) and `gitops/stages/070-advanced-app-platform/gitlab/README.md`
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| GitLab is the only Git provider; GitHub integration, GitHub App and Bulk Import are not used | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Integrate with GitLab][gitlab] |
-| `integrations.gitlab` host, base and API URL from `${GITLAB_HOST}`/`${GITLAB_BASE_URL}`, token `${GITLAB_PUBLISHER_TOKEN}` (service user `rhdh-publisher`) from Secret `rhdh-gitlab` written by `070-gitlab` | same file; `gitlab/README.md` | [Share secrets with GitLab][share] |
-| Dynamic plugins `backstage-plugin-catalog-backend-module-gitlab-dynamic` and `backstage-plugin-scaffolder-backend-module-gitlab-dynamic` enabled | `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | see `rhdh-dynamic-plugins-reference` |
-| Discovery provider `gitlab.workloads`: group `rhoai-workloads`, branch `main`, `catalog-info.yaml`, every minute; catalog rules forbid `Template` from discovery | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Integrate with GitLab][gitlab] (keys `branch`, `entityFilename` not in the 1.10 guide) |
-| Templates publish private repositories and open an enrollment issue; they never call `catalog:register` | `rhdh/templates/*/template.yaml` | see `rhdh-customize` |
-| The catalog generator verifies every bundled file against the mirror with the read-only `gitlab-catalog-reader` token | `rhdh/jobs/catalog/render_catalog.py` | — (repo control) |
-| `backend.reading.allow` lists `${GITLAB_HOST}` (plus GitHub raw hosts) | `rhdh/rhdh-instance/app-config-configmap.yaml` | — |
+| GitLab is the only Git provider; GitHub integration, GitHub App and Bulk Import are not used | `070-rhdh/rhdh-instance/app-config-configmap.yaml` | [Integrate with GitLab][gitlab] |
+| `integrations.gitlab` host, base and API URL from `${GITLAB_HOST}`/`${GITLAB_BASE_URL}`, token `${GITLAB_PUBLISHER_TOKEN}` (service user `rhdh-publisher`) from Secret `rhdh-gitlab` written by `070-gitlab` | same file; `070-gitlab/README.md` | [Share secrets with GitLab][share] |
+| Dynamic plugins `backstage-plugin-catalog-backend-module-gitlab-dynamic` and `backstage-plugin-scaffolder-backend-module-gitlab-dynamic` enabled | `070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | see `rhdh-dynamic-plugins-reference` |
+| Discovery provider `gitlab.workloads`: group `rhoai-workloads`, branch `main`, `catalog-info.yaml`, every minute; catalog rules forbid `Template` from discovery | `070-rhdh/rhdh-instance/app-config-configmap.yaml` | [Integrate with GitLab][gitlab] (keys `branch`, `entityFilename` not in the 1.10 guide) |
+| Templates publish private repositories and open an enrollment issue; they never call `catalog:register` | `070-rhdh/templates/*/template.yaml` | see `rhdh-customize` |
+| The catalog generator verifies every bundled file against the mirror with the read-only `gitlab-catalog-reader` token | `070-rhdh/jobs/catalog/render_catalog.py` | — (repo control) |
+| `backend.reading.allow` lists `${GITLAB_HOST}` (plus GitHub raw hosts) | `070-rhdh/rhdh-instance/app-config-configmap.yaml` | — |
 
 Paths are under `gitops/stages/070-advanced-app-platform/`.
 

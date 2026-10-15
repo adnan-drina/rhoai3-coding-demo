@@ -35,11 +35,11 @@ object storage is ODF Multicloud Object Gateway (see the `odf-*` skills).
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| No StorageClass is defined in Git; RWO block volumes name `gp3-csi` explicitly (AWS EBS CSI driver, installer-created) | `gitops/stages/040-governed-models-as-a-service/maas-database/statefulset.yaml`, `gitops/stages/050-model-evaluation/mlflow/postgresql-pvc.yaml`, `gitops/stages/050-model-evaluation/evalhub/postgresql-pvc.yaml`, `gitops/stages/070-advanced-app-platform/sonarqube/` | [AWS EBS CSI Driver Operator][ebs], [Defining a storage class][define-sc] |
+| No StorageClass is defined in Git; RWO block volumes name `gp3-csi` explicitly (AWS EBS CSI driver, installer-created) | `gitops/stages/040-governed-models-as-a-service/040-maas-database/statefulset.yaml`, `gitops/stages/050-model-evaluation/050-mlflow/postgresql-pvc.yaml`, `gitops/stages/050-model-evaluation/050-evalhub/postgresql-pvc.yaml`, `gitops/stages/070-advanced-app-platform/070-sonarqube/` | [AWS EBS CSI Driver Operator][ebs], [Defining a storage class][define-sc] |
 | `gp3-csi` must be the default StorageClass: Stage 070 `deploy.sh` fails otherwise, because MTA 8.3 creates default-class RWO claims | `stages/070-advanced-app-platform/deploy.sh` | [Managing the default storage class][default-sc] |
-| Platform and user-workload monitoring persist on `gp3-csi` (40Gi and 20Gi); `stages/030-private-model-serving/validate.sh` checks the reviewed class and size | `gitops/stages/010-openshift-ai-platform-foundation/observability-operators/cluster-monitoring/` | [Understanding persistent storage][pv] |
-| Object storage is ODF MCG (`openshift-storage.noobaa.io` ObjectBucketClaims), owned by the `odf-*` skills | `gitops/stages/010-openshift-ai-platform-foundation/odf/` | see `odf-storagecluster` |
-| GPU worker root disks are 200 GB encrypted gp3, set in the generated MachineSets (node image cache for modelcars) | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/` | [Understanding ephemeral storage][ephemeral] |
+| Platform and user-workload monitoring persist on `gp3-csi` (40Gi and 20Gi); `stages/030-private-model-serving/validate.sh` checks the reviewed class and size | `gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/cluster-monitoring/` | [Understanding persistent storage][pv] |
+| Object storage is ODF MCG (`openshift-storage.noobaa.io` ObjectBucketClaims), owned by the `odf-*` skills | `gitops/stages/010-openshift-ai-platform-foundation/010-odf/` | see `odf-storagecluster` |
+| GPU worker root disks are 200 GB encrypted gp3, set in the generated MachineSets (node image cache for modelcars) | `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets/` | [Understanding ephemeral storage][ephemeral] |
 
 ## Procedure
 

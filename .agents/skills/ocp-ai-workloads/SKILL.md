@@ -9,10 +9,10 @@ metadata:
 description: >
   Use when reviewing the OpenShift AI-workload operators this repo installs: the
   Red Hat build of Kueue Operator in
-  gitops/stages/020-gpu-infrastructure-private-ai/kueue/ (stable-v1.4,
+  gitops/stages/020-gpu-infrastructure-private-ai/020-kueue/ (stable-v1.4,
   openshift-kueue-operator, cert-manager prerequisite, DSC Unmanaged hook Job)
   and the Leader Worker Set Operator in
-  gitops/stages/040-governed-models-as-a-service/maas-operators/lws/
+  gitops/stages/040-governed-models-as-a-service/040-maas-operators/lws/
   (stable-v1.0, LeaderWorkerSetOperator cluster), or deciding whether JobSet is
   needed. Do NOT use for ResourceFlavor, ClusterQueue, LocalQueue and hardware
   profile design (use rhoai-kueue-workload-management and
@@ -24,8 +24,8 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift Container Platform 4.22 sections. Detailed records:
-`gitops/stages/020-gpu-infrastructure-private-ai/kueue/README.md` and
-`gitops/stages/040-governed-models-as-a-service/maas-operators/README.md`.
+`gitops/stages/020-gpu-infrastructure-private-ai/020-kueue/README.md` and
+`gitops/stages/040-governed-models-as-a-service/040-maas-operators/README.md`.
 
 ## When to use
 
@@ -39,12 +39,12 @@ OpenShift Container Platform 4.22 sections. Detailed records:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Red Hat build of Kueue Operator: namespace `openshift-kueue-operator` with cluster-monitoring label, all-namespaces OperatorGroup, Subscription `kueue-operator` on `stable-v1.4`, Automatic; policy minimum `1.4.2` | `kueue/namespace.yaml`, `kueue/operatorgroup.yaml`, `kueue/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Red Hat build of Kueue][kueue] |
+| Red Hat build of Kueue Operator: namespace `openshift-kueue-operator` with cluster-monitoring label, all-namespaces OperatorGroup, Subscription `kueue-operator` on `stable-v1.4`, Automatic; policy minimum `1.4.2` | `020-kueue/namespace.yaml`, `020-kueue/operatorgroup.yaml`, `020-kueue/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Red Hat build of Kueue][kueue] |
 | cert-manager Operator is a prerequisite but not declared here; `deploy.sh` refuses to continue without a `Succeeded` `cert-manager-operator.v1.20.*` CSV | `stages/020-gpu-infrastructure-private-ai/deploy.sh` | [Red Hat build of Kueue][kueue] |
 | `Kueue` CR (`cluster`) is not in Git: OpenShift AI creates it when the DSC sets kueue `Unmanaged` | (operator-created) | [Red Hat build of Kueue][kueue] |
-| DSC kueue subtree set to `Unmanaged`, `autoCreateQueues: false` by an Argo CD Sync hook Job with scoped RBAC, because Stage 010 owns `default-dsc` and delegates `/spec/components/kueue` | `kueue/dsc-enablement/` | [Red Hat build of Kueue][kueue] |
-| Leader Worker Set Operator: namespace `openshift-lws-operator`, own-namespace OperatorGroup, Subscription `leader-worker-set` on `stable-v1.0`, Automatic, `LeaderWorkerSetOperator` `cluster` `Managed`; policy minimum `1.0.1` | `gitops/stages/040-governed-models-as-a-service/maas-operators/lws/` | [Leader Worker Set Operator][lws] |
-| LWS is installed only as the llm-d multi-node prerequisite; current models are single-node, no `LeaderWorkerSet` objects | `gitops/stages/040-governed-models-as-a-service/maas-operators/README.md` | [Leader Worker Set Operator][lws] |
+| DSC kueue subtree set to `Unmanaged`, `autoCreateQueues: false` by an Argo CD Sync hook Job with scoped RBAC, because Stage 010 owns `default-dsc` and delegates `/spec/components/kueue` | `020-kueue/dsc-enablement/` | [Red Hat build of Kueue][kueue] |
+| Leader Worker Set Operator: namespace `openshift-lws-operator`, own-namespace OperatorGroup, Subscription `leader-worker-set` on `stable-v1.0`, Automatic, `LeaderWorkerSetOperator` `cluster` `Managed`; policy minimum `1.0.1` | `gitops/stages/040-governed-models-as-a-service/040-maas-operators/lws/` | [Leader Worker Set Operator][lws] |
+| LWS is installed only as the llm-d multi-node prerequisite; current models are single-node, no `LeaderWorkerSet` objects | `gitops/stages/040-governed-models-as-a-service/040-maas-operators/README.md` | [Leader Worker Set Operator][lws] |
 | JobSet Operator not installed | (none declared) | [JobSet Operator][jobset] |
 
 Paths are relative to `gitops/stages/020-gpu-infrastructure-private-ai/` unless they start with `gitops/`, `stages/` or `scripts/`.

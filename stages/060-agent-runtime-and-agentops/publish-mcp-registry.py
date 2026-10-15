@@ -56,7 +56,7 @@ def main():
     else:
         state = {}
         save(statepath, state)  # Reserve recovery record before any native write.
-    pin = json.loads((ROOT / 'gitops/stages/060-agent-runtime-and-agentops/agent-tools/catalog-source.json').read_text())
+    pin = json.loads((ROOT / 'gitops/stages/060-agent-runtime-and-agentops/060-agent-tools/catalog-source.json').read_text())
     name, version = pin['registry_name'], pin['registry_version']
     # Native version.source is VARCHAR(512); full provenance belongs in JSON.
     source = canonical({'catalog': pin['catalog'], 'source_revision': pin['source_revision']})

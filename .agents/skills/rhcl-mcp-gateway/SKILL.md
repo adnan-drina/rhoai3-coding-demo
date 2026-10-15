@@ -30,7 +30,7 @@ gateway book. Product architecture is in the [introduction][intro].
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| The MCP gateway is not installed; MCP servers run under the OpenShift AI MCP lifecycle operator with per-server access control | `gitops/stages/060-agent-runtime-and-agentops/mcp-platform/README.md`, `.../agent-tools/README.md` (Gap rows) | [About the MCP gateway][about] |
+| The MCP gateway is not installed; MCP servers run under the OpenShift AI MCP lifecycle operator with per-server access control | `gitops/stages/060-agent-runtime-and-agentops/060-mcp-platform/README.md`, `.../agent-tools/README.md` (Gap rows) | [About the MCP gateway][about] |
 | Central MCP governance is recorded as a blocked gap, not planned work in this stage | same READMEs, "Alignment with official guidance" | — |
 
 ## Facts to check before proposing it

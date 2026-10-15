@@ -47,7 +47,7 @@ class Setup:
         self.bootstrap_env = guarded(os.environ['KUBECONFIG'])
         need(oc(self.env,'whoami','--show-server')==oc(self.bootstrap_env,'whoami','--show-server'),'Persona and bootstrap target different clusters')
         self.cli = Path(os.environ['RHOAI_STAGE060_OPENSHELL_CLI'])
-        pins = json.loads((ROOT/'gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/source-pins.json').read_text())
+        pins = json.loads((ROOT/'gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/chart/source-pins.json').read_text())
         need(hashlib.sha256(self.cli.read_bytes()).hexdigest() == pins['cliBinarySha256'] and pins['sourceCommit']=='12cec59bf4c36c305032143eb90870bd16d8820b', 'Native CLI/source pin differs')
         self.gateway_pin=pins['images']['gateway']
         self.directory = Path(args.state_dir)
@@ -75,7 +75,7 @@ class Setup:
         app=self.get('application','060-openshell-runtime','openshift-gitops')
         need(app['spec']['source']['targetRevision']==self.args.revision and app['status']['sync']['revision']==self.args.revision and app['status']['sync']['status']=='Synced' and app['status']['health']['status']=='Healthy' and not app.get('operation'),'Exact runtime revision is not ready')
         need(subprocess.check_output(['git','-C',str(ROOT),'show',self.args.revision+':'+str(self.helper_path.resolve().relative_to(ROOT))])==self.helper_path.read_bytes(),'Published helper differs')
-        for path in [Path(__file__),self.policy_path,Path(__file__).with_name('native_api.py'),Path(__file__).with_name('qualify-inference.py'),ROOT/'gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/source-pins.json']:
+        for path in [Path(__file__),self.policy_path,Path(__file__).with_name('native_api.py'),Path(__file__).with_name('qualify-inference.py'),ROOT/'gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/chart/source-pins.json']:
             need(subprocess.check_output(['git','-C',str(ROOT),'show',self.args.revision+':'+str(path.relative_to(ROOT))])==path.read_bytes(),'Published executable dependency differs')
         for p in self.inputs.iterdir():
             if p.is_file():need(subprocess.check_output(['git','-C',str(ROOT),'show',self.args.revision+':'+str(p.relative_to(ROOT))])==p.read_bytes(),'Published runtime input differs')
@@ -83,7 +83,7 @@ class Setup:
         image=gateway_runtime['spec']['template']['spec']['containers'][0]['image']
         need(image.split('@')[0].split(':')[0]==self.gateway_pin['repository'] and image.endswith('@'+self.gateway_pin['amd64Digest']) and gateway_runtime.get('status',{}).get('readyReplicas')==1,'Gateway does not match the ready pinned runtime')
         subscription=self.get('maassubscription',self.subscription,'models-as-a-service')
-        desired_subscription=yaml.safe_load((ROOT/('gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/'+self.name+'/subscription.yaml')).read_text())['spec']
+        desired_subscription=yaml.safe_load((ROOT/('gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/'+self.name+'/subscription.yaml')).read_text())['spec']
         need(subscription['spec']==desired_subscription,'Dedicated subscription differs from its complete reviewed scope')
         need(subscription['spec']['owner']=={'users':['ai-admin']} and len(subscription['spec']['modelRefs'])==1 and subscription['spec']['modelRefs'][0]['name']=='qwen3-8-27b' and subscription['spec']['modelRefs'][0]['namespace']=='internal-models','Private subscription scope differs')
         need(any(c.get('type')=='Ready' and c.get('status')=='True' and c.get('observedGeneration')==subscription['metadata']['generation'] for c in subscription.get('status',{}).get('conditions',[])),'Dedicated subscription is not Ready')

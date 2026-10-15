@@ -14,14 +14,14 @@ import yaml
 
 ROOT=Path(__file__).resolve().parents[3]
 BASE=ROOT/'gitops/stages/070-advanced-app-platform'
-sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
+sys.path.insert(0, str(BASE / '070-pipelines/gitlab'))
 
 def load(name, path):
     spec=importlib.util.spec_from_file_location(name,BASE/path)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
 
-scm=load('secured_enrollment','pipelines/gitlab/reconcile.py')
-promote=load('secured_promotion','pipelines/project-pipeline/promote.py')
+scm=load('secured_enrollment','070-pipelines/gitlab/reconcile.py')
+promote=load('secured_promotion','070-pipelines/project-pipeline/promote.py')
 
 class Coordinator(unittest.TestCase):
     def setUp(self):
@@ -107,7 +107,7 @@ class NativeProject(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory()
-        target=Path(cls.temp.name)/'pipelines';shutil.copytree(BASE/'pipelines',target)
+        target=Path(cls.temp.name)/'070-pipelines';shutil.copytree(BASE/'070-pipelines',target)
         p=target/'project-enrollment/kustomization.yaml';d=yaml.safe_load(p.read_text())
         d['commonAnnotations']={'rhoai3.io/project-name':'test-example','rhoai3.io/project-namespace':'test-example-dev','rhoai3.io/enrollment':'{}'}
         p.write_text(yaml.safe_dump(d,sort_keys=False))
@@ -140,10 +140,10 @@ class NativeProject(unittest.TestCase):
         self.assertEqual(len(bindings),1)
         self.assertEqual(bindings[0]['subjects'],[{'kind':'ServiceAccount','name':'image-builder','namespace':'test-example-dev'}])
     def test_builder_constraint_requires_pod_isolation_and_no_host_authority(self):
-        role = yaml.safe_load((BASE / 'pipelines/operators/image-builder-scc.yaml').read_text())
+        role = yaml.safe_load((BASE / '070-pipelines/operators/image-builder-scc.yaml').read_text())
         self.assertEqual(role['rules'], [{'apiGroups':['security.openshift.io'], 'resources':['securitycontextconstraints'], 'resourceNames':['nested-container'], 'verbs':['use']}])
-        self.assertFalse((BASE / 'pipelines/operators/pipeline-userns-builder-scc.yaml').exists())
-        task = yaml.safe_load((BASE / 'pipelines/project-pipeline/task-build-image.yaml').read_text())['spec']
+        self.assertFalse((BASE / '070-pipelines/operators/pipeline-userns-builder-scc.yaml').exists())
+        task = yaml.safe_load((BASE / '070-pipelines/project-pipeline/task-build-image.yaml').read_text())['spec']
         step = task['steps'][0]
         self.assertEqual(step['securityContext'], {'runAsNonRoot':True, 'runAsUser':1000, 'allowPrivilegeEscalation':True, 'procMount':'Unmasked', 'capabilities':{'add':['SETUID','SETGID']}})
         self.assertFalse(step['securityContext'].get('privileged',False))
@@ -162,10 +162,10 @@ class NativeProject(unittest.TestCase):
         self.assertEqual(r['rules'][0]['resourceNames'],['migration-source-test-example'])
         self.assertEqual(r['rules'][0]['verbs'],['get'])
         self.assertFalse(any('pipelineruns' in rule['resources'] for rule in r['rules']))
-        policy=yaml.safe_load((BASE/'pipelines/gitlab/provisioning-policy.yaml').read_text())
+        policy=yaml.safe_load((BASE/'070-pipelines/gitlab/provisioning-policy.yaml').read_text())
         self.assertEqual(policy['spec']['validations'],[{'expression':'false','message':'Only the platform coordinator may dispatch migration provisioning'}])
     def test_runtime_project_has_no_cluster_or_rbac_authority(self):
-        p=yaml.safe_load((BASE/'pipelines/gitlab/runtime-projects.yaml').read_text())['spec']
+        p=yaml.safe_load((BASE/'070-pipelines/gitlab/runtime-projects.yaml').read_text())['spec']
         self.assertEqual(p['clusterResourceWhitelist'],[])
         self.assertEqual({r['kind'] for r in p['namespaceResourceWhitelist']},set(promote.KINDS))
         self.assertNotIn('*',p['sourceRepos'])
@@ -173,13 +173,13 @@ class NativeProject(unittest.TestCase):
     def test_repository_allowlists_match_the_native_route_and_owned_groups_only(self):
         host='gitlab-gitlab-system.apps.example.test'
         for name,path in (('platform-projects','rhoai-platform/rhoai3-coding-demo.git'),('runtime-projects','rhoai-delivery/example-deployment.git')):
-            p=yaml.safe_load((BASE/('pipelines/gitlab/'+name+'.yaml')).read_text())
+            p=yaml.safe_load((BASE/('070-pipelines/gitlab/'+name+'.yaml')).read_text())
             patterns=p['spec']['sourceRepos']
             self.assertTrue(any(fnmatch.fnmatchcase('https://'+host+'/'+path,x) for x in patterns))
             for url in ('https://foreign.apps.example.test/'+path,'https://'+host+'/rhoai-workloads/example.git'):
                 self.assertFalse(any(fnmatch.fnmatchcase(url,x) for x in patterns))
     def test_coordinator_has_no_secret_or_rbac_write(self):
-        rs=list(yaml.safe_load_all((BASE/'pipelines/gitlab/reconciler.yaml').read_text()))
+        rs=list(yaml.safe_load_all((BASE/'070-pipelines/gitlab/reconciler.yaml').read_text()))
         cluster=next(r for r in rs if r['kind']=='ClusterRole' and r['metadata']['name']=='project-provisioner')
         self.assertEqual(cluster['rules'],[{'apiGroups':[''],'resources':['namespaces'],'verbs':['get','create']}, {'apiGroups':[''],'resources':['secrets'],'resourceNames':['sonarqube-credentials'],'verbs':['get']}])
         for r in rs:
@@ -190,24 +190,24 @@ class NativeProject(unittest.TestCase):
 
 class PortalContract(unittest.TestCase):
     def test_application_parameters_start_denying_before_the_binding_exists(self):
-        setup=(BASE/'gitlab/configure-argocd-reader.py').read_text()
+        setup=(BASE/'070-gitlab/configure-argocd-reader.py').read_text()
         self.assertIn("'ready':'false'",setup)
         self.assertIn("'(AlreadyExists)'",setup)
-        reader=list(yaml.safe_load_all((BASE/'gitlab/argocd-reader.yaml').read_text()))
+        reader=list(yaml.safe_load_all((BASE/'070-gitlab/argocd-reader.yaml').read_text()))
         hook=next(r for r in reader if r['kind']=='Job')
         self.assertEqual(hook['metadata']['annotations']['argocd.argoproj.io/sync-wave'],'0')
         # Cross-Application order: the binding ships with the hook's component at a later wave, never earlier.
-        binding=yaml.safe_load((BASE/'gitlab/application-policy-binding.yaml').read_text())
+        binding=yaml.safe_load((BASE/'070-gitlab/application-policy-binding.yaml').read_text())
         self.assertEqual(binding['spec']['paramRef']['name'],'stage070-project-release')
         self.assertGreater(int(binding['metadata']['annotations']['argocd.argoproj.io/sync-wave']),0)
-        self.assertIn('application-policy-binding.yaml',(BASE/'gitlab/kustomization.yaml').read_text())
-        self.assertNotIn('application-policy-binding.yaml',(BASE/'pipelines/kustomization.yaml').read_text())
-        policy=yaml.safe_load((BASE/'pipelines/gitlab/application-policy.yaml').read_text())
+        self.assertIn('application-policy-binding.yaml',(BASE/'070-gitlab/kustomization.yaml').read_text())
+        self.assertNotIn('application-policy-binding.yaml',(BASE/'070-pipelines/kustomization.yaml').read_text())
+        policy=yaml.safe_load((BASE/'070-pipelines/gitlab/application-policy.yaml').read_text())
         self.assertIn("params.data['ready'] == 'true'",policy['spec']['validations'][0]['expression'])
-        self.assertIn("'ready':'true'",(BASE/'gitlab/bootstrap-scm.py').read_text())
+        self.assertIn("'ready':'true'",(BASE/'070-gitlab/bootstrap-scm.py').read_text())
 
     def test_only_admins_register_and_discovery_does_not_ingest_templates(self):
-        cfg=yaml.safe_load(yaml.safe_load((BASE/'rhdh/rhdh-instance/app-config-configmap.yaml').read_text())['data']['app-config-rhdh.yaml'])
+        cfg=yaml.safe_load(yaml.safe_load((BASE/'070-rhdh/rhdh-instance/app-config-configmap.yaml').read_text())['data']['app-config-rhdh.yaml'])
         self.assertTrue(cfg['permission']['enabled'])
         self.assertEqual(cfg['permission']['rbac']['admin']['users'],[{'name':'user:default/ai-admin'}])
         self.assertNotIn('Template',cfg['catalog']['rules'][0]['allow'])
@@ -215,13 +215,13 @@ class PortalContract(unittest.TestCase):
         provider=cfg['catalog']['providers']['gitlab']['workloads']
         self.assertEqual((provider['group'],provider['branch'],provider['entityFilename']),('rhoai-workloads','main','catalog-info.yaml'))
         for name in ('agentic-quarkus-scaffold','app-migration'):
-            steps=yaml.safe_load((BASE/('rhdh/templates/'+name+'/template.yaml')).read_text())['spec']['steps']
+            steps=yaml.safe_load((BASE/('070-rhdh/templates/'+name+'/template.yaml')).read_text())['spec']['steps']
             self.assertNotIn('catalog:register',[r['action'] for r in steps])
             issue=next(r for r in steps if r['action']=='gitlab:issues:create')
             self.assertIn('"requester": "${{ user.ref }}"',issue['input']['description'])
 
     def test_developer_can_view_delivery_without_proxy_or_catalog_writes(self):
-        cm = yaml.safe_load((BASE / 'rhdh/rhdh-instance/rbac-policy.yaml').read_text())
+        cm = yaml.safe_load((BASE / '070-rhdh/rhdh-instance/rbac-policy.yaml').read_text())
         rows = {tuple(part.strip() for part in line.split(','))
                 for line in cm['data']['rbac-policies.csv'].splitlines() if line.strip()}
         role = 'role:default/developer'
@@ -233,10 +233,10 @@ class PortalContract(unittest.TestCase):
                                    ('catalog.location.create', 'create')):
             self.assertIn(('p', role, permission, action, 'deny'), rows)
         cfg = yaml.safe_load(yaml.safe_load((BASE /
-            'rhdh/rhdh-instance/app-config-configmap.yaml').read_text())['data']['app-config-rhdh.yaml'])
+            '070-rhdh/rhdh-instance/app-config-configmap.yaml').read_text())['data']['app-config-rhdh.yaml'])
         self.assertIn('kubernetes', cfg['permission']['rbac']['pluginsWithPermission'])
     def test_auto_created_accounts_are_blocked(self):
-        values=yaml.safe_load((BASE/'gitlab/values.yaml').read_text())
+        values=yaml.safe_load((BASE/'070-gitlab/values.yaml').read_text())
         self.assertTrue(values['global']['appConfig']['omniauth']['blockAutoCreatedUsers'])
 
 class OperatorChannel(unittest.TestCase):
@@ -320,7 +320,7 @@ class SourcePromotion(unittest.TestCase):
         output=self.root/'out';output.mkdir()
         with self.assertRaises(ValueError):promote.committed_artifacts(self.git,sha,output)
     def test_promotion_task_never_mounts_the_build_workspace(self):
-        task=yaml.safe_load((BASE/'pipelines/project-pipeline/task-promote.yaml').read_text())['spec']
+        task=yaml.safe_load((BASE/'070-pipelines/project-pipeline/task-promote.yaml').read_text())['spec']
         self.assertNotIn('workspaces',task)
         self.assertFalse(any('persistentVolumeClaim' in v for v in task['volumes']))
         self.assertNotIn('argocd-delivery-reader',json.dumps(task))
@@ -342,18 +342,18 @@ class SecretWriteScope(unittest.TestCase):
         return [r for r in role['rules'] if 'secrets' in r['resources']]
 
     def test_coordinator_writes_workspace_mirrors_without_update(self):
-        for role in self.docs('devspaces/workspace-sonar-credentials.yaml'):
+        for role in self.docs('070-devspaces/workspace-sonar-credentials.yaml'):
             if role['kind'] == 'Role':
                 self.assertEqual([r['verbs'] for r in role['rules'] if 'secrets' in r['resources']], [['get', 'create', 'patch']])
 
     def test_key_provisioner_reads_only_its_key_secrets(self):
-        rules = self.secret_rules('devspaces/maas-keys/base/maas-key-provisioner.yaml', 'Role', 'devspace-maas-key-secret-manager')
+        rules = self.secret_rules('070-devspaces/maas-keys/base/maas-key-provisioner.yaml', 'Role', 'devspace-maas-key-secret-manager')
         self.assertTrue(all(r['verbs'] == ['create'] or r.get('resourceNames') == ['maas-devspace-api-keys', 'workspace-maas-credentials'] for r in rules))
 
     def test_integration_hub_reads_only_named_credentials(self):
-        rules = self.secret_rules('gitlab/integrations-bootstrap.yaml', 'ClusterRole', 'gitlab-integrations-bootstrap')
+        rules = self.secret_rules('070-gitlab/integrations-bootstrap.yaml', 'ClusterRole', 'gitlab-integrations-bootstrap')
         self.assertTrue(all(r['verbs'] == ['create'] or r.get('resourceNames') for r in rules))
-        self.assertNotIn('openshift-gitops-cluster', (BASE / 'gitlab/integrations-bootstrap.yaml').read_text())
+        self.assertNotIn('openshift-gitops-cluster', (BASE / '070-gitlab/integrations-bootstrap.yaml').read_text())
 
 
 if __name__ == '__main__':

@@ -22,12 +22,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/020-gpu-infrastructure-private-ai/nvidia-gpu-operator/README.md`
+`gitops/stages/020-gpu-infrastructure-private-ai/020-nvidia-gpu-operator/README.md`
 (also `.../gpu-machinesets/README.md` and `.../node-feature-discovery/README.md`).
 
 ## When to use
 
-- A change touches `gitops/stages/020-gpu-infrastructure-private-ai/nvidia-gpu-operator/`,
+- A change touches `gitops/stages/020-gpu-infrastructure-private-ai/020-nvidia-gpu-operator/`,
   `.../gpu-machinesets/` or `.../node-feature-discovery/`.
 - GPU nodes do not advertise `nvidia.com/gpu`, or OpenShift AI does not offer GPUs.
 - Planning a new GPU type or pool.
@@ -36,14 +36,14 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| NVIDIA only; NFD Operator and `NodeFeatureDiscovery` instance first (deploy-order 1), then the GPU Operator (deploy-order 2) | `node-feature-discovery/`, `nvidia-gpu-operator/` | [Enable NVIDIA GPUs][nvidia] |
-| `gpu-operator-certified` from `certified-operators`, channel `v26.7`, Automatic, no `startingCSV`; minimum 26.7.1 enforced | `nvidia-gpu-operator/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Enable NVIDIA GPUs][nvidia] (operator is a prerequisite) |
-| `ClusterPolicy` `gpu-cluster-policy` from the operator's default example plus a `nvidia-gpu-only` toleration; Driver Toolkit build; DCGM ServiceMonitor on; sandbox workloads off | `nvidia-gpu-operator/cluster-policy.yaml` | [Enable NVIDIA GPUs][nvidia]; field detail is NVIDIA's (upstream, see component README) |
-| No time-slicing or MIG partitioning: `mig.strategy: single`, no device-plugin config, one card = one `nvidia.com/gpu` (one model per card) | `nvidia-gpu-operator/cluster-policy.yaml` | [GPU time slicing][timeslice] (not used) |
-| Default pool `g7e.2xlarge` (one RTX PRO 6000 Blackwell, 96 GB), one MachineSet per `us-east-2` zone; L40S pool `g6e.2xlarge` kept at zero; all 0 replicas in Git, 200 GB gp3 root disk | `gpu-machinesets/machineset-rtxpro6000.yaml`, `gpu-machinesets/machineset-gpu.yaml` | OCP: see `ocp-machine-management` |
+| NVIDIA only; NFD Operator and `NodeFeatureDiscovery` instance first (deploy-order 1), then the GPU Operator (deploy-order 2) | `020-node-feature-discovery/`, `020-nvidia-gpu-operator/` | [Enable NVIDIA GPUs][nvidia] |
+| `gpu-operator-certified` from `certified-operators`, channel `v26.7`, Automatic, no `startingCSV`; minimum 26.7.1 enforced | `020-nvidia-gpu-operator/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Enable NVIDIA GPUs][nvidia] (operator is a prerequisite) |
+| `ClusterPolicy` `gpu-cluster-policy` from the operator's default example plus a `nvidia-gpu-only` toleration; Driver Toolkit build; DCGM ServiceMonitor on; sandbox workloads off | `020-nvidia-gpu-operator/cluster-policy.yaml` | [Enable NVIDIA GPUs][nvidia]; field detail is NVIDIA's (upstream, see component README) |
+| No time-slicing or MIG partitioning: `mig.strategy: single`, no device-plugin config, one card = one `nvidia.com/gpu` (one model per card) | `020-nvidia-gpu-operator/cluster-policy.yaml` | [GPU time slicing][timeslice] (not used) |
+| Default pool `g7e.2xlarge` (one RTX PRO 6000 Blackwell, 96 GB), one MachineSet per `us-east-2` zone; L40S pool `g6e.2xlarge` kept at zero; all 0 replicas in Git, 200 GB gp3 root disk | `020-gpu-machinesets/machineset-rtxpro6000.yaml`, `020-gpu-machinesets/machineset-gpu.yaml` | OCP: see `ocp-machine-management` |
 | Pool shape: label `cluster-api/accelerator` (`nvidia-rtxpro6000` / `nvidia-gpu`), `node-role.kubernetes.io/gpu`, taint `nvidia-gpu-only:NoSchedule`; generated from the active CPU worker pool | `stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh` | OCP: see `ocp-machine-management` |
 | `migration-gpu-status` delete + dashboard restart is not automated (ConfigMap absent on this cluster, checked 2026-10-14) | `docs/OPERATIONS.md#stage-020` | [Enable NVIDIA GPUs][nvidia] |
-| GPU utilization for the OpenShift AI dashboards via ServiceMonitor `accelerator-gpu-utilization` (workaround for a 3.5.1 gap); `rhods-admins` bound to `cluster-monitoring-metrics-api` | `nvidia-gpu-operator/rhoai-monitoring/`, `nvidia-gpu-operator/rolebinding-gpu-metrics-admins.yaml` | see `rhoai-observability` |
+| GPU utilization for the OpenShift AI dashboards via ServiceMonitor `accelerator-gpu-utilization` (workaround for a 3.5.1 gap); `rhods-admins` bound to `cluster-monitoring-metrics-api` | `020-nvidia-gpu-operator/rhoai-monitoring/`, `020-nvidia-gpu-operator/rolebinding-gpu-metrics-admins.yaml` | see `rhoai-observability` |
 
 ## Procedure
 

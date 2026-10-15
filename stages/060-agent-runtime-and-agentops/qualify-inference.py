@@ -44,7 +44,7 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 STAGE = Path(__file__).resolve().parent
-PINS = ROOT / "gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/source-pins.json"
+PINS = ROOT / "gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/chart/source-pins.json"
 PROFILE_FILE = STAGE / "qualification/maas-qwen38-profile.yaml"
 INFERENCE_POLICY = STAGE / "qualification/opencode-inference-policy.yaml"
 TRANSPORT_POLICY = STAGE / "qualification/opencode-transport-policy.yaml"

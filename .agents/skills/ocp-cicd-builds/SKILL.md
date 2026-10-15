@@ -22,13 +22,13 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift Container Platform 4.22 sections. Detailed record:
-`gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/README.md`
+`gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/README.md`
 (section on `images/`, `hermes-images/`, `compatibility-images/`).
 
 ## When to use
 
 - A change touches a `buildconfig.yaml` or `imagestream.yaml` under
-  `gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/`.
+  `gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/`.
 - `stages/060-agent-runtime-and-agentops/build-opencode.sh` or `build-hermes.sh`
   fails, or a sandbox cannot pull the built image.
 - A new in-cluster image build is proposed.
@@ -37,15 +37,15 @@ OpenShift Container Platform 4.22 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Agent runtime images are built in cluster with BuildConfig, `source.type: Binary`, `strategy.type: Docker`, `runPolicy: Serial`, one kept build each, 600 s deadline and bounded resources | `gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/images/buildconfig.yaml`, `.../hermes-images/buildconfig.yaml` | [Binary (local) source][binary], [Build strategies][strategies] |
+| Agent runtime images are built in cluster with BuildConfig, `source.type: Binary`, `strategy.type: Docker`, `runPolicy: Serial`, one kept build each, 600 s deadline and bounded resources | `gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/images/buildconfig.yaml`, `.../hermes-images/buildconfig.yaml` | [Binary (local) source][binary], [Build strategies][strategies] |
 | Output to a versioned ImageStreamTag (`opencode-runtime:1.18.16`, `hermes-runtime-api:0.20.5-api`); the tag is an output handle, consumers pin the build digest | same files, `.../images/imagestream.yaml` | [Managing build output][output] |
 | ImageStreams carry `Delete=false,Prune=false` so a sync never removes built images; `referencePolicy: Local` | `.../images/imagestream.yaml`, `.../hermes-images/imagestream.yaml` | [Managing image streams][imagestreams] |
 | Sandbox ServiceAccount `openshell-sandbox` gets `get` on `imagestreams/layers` for one named stream only | `.../images/image-pull-role.yaml`, `.../images/image-pull-rolebinding.yaml` | [Using RBAC][rbac] |
 | Builds are started by scripts, not by triggers: they check the Application is Synced at the expected revision, fetch the release asset, verify its SHA-256, `oc start-build --from-dir`, wait, and print the output digest | `stages/060-agent-runtime-and-agentops/build-opencode.sh`, `stages/060-agent-runtime-and-agentops/build-hermes.sh` | [Basic build operations][basic-ops] |
 | Earlier build location `opencode-runtime` in `openshell` kept for `openshell-developer` sandboxes | `.../compatibility-images/` | [Understanding BuildConfigs][buildconfigs] |
-| Application images in Stage 070 are built by Tekton into the internal registry, not by BuildConfig; Shipwright is not used | `gitops/stages/070-advanced-app-platform/pipelines/` | [CI/CD overview][cicd] |
+| Application images in Stage 070 are built by Tekton into the internal registry, not by BuildConfig; Shipwright is not used | `gitops/stages/070-advanced-app-platform/070-pipelines/` | [CI/CD overview][cicd] |
 
-Paths starting with `...` are under `gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/`.
+Paths starting with `...` are under `gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/`.
 
 ## Procedure
 

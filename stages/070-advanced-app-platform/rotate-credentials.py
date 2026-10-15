@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PROVISIONER = 'platform-provisioner'
 SONAR_KEY, SONAR_TYPE, SONAR_NAME = 'rhoai3.io/sonar-project-key', 'rhoai3.io/sonar-token-type', 'rhoai3.io/sonar-token-name'
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
-sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
+sys.path.insert(0, str(BASE / '070-pipelines/gitlab'))
 from secret_writer import write_secret
 sys.path.insert(0, str(ROOT / 'scripts/shared'))
 import stage_apps

@@ -33,7 +33,7 @@ check "Published agentic golden matches the reviewed staging tree" \
 # Factory destfile is the GitOps skeleton (template replace:true), not the
 # GitLab golden destfile. per-workspace avoids RWO FailedMount when the
 # Stage 070 agentic-coolstore seat is still Running.
-SKELETON_070="$REPO_ROOT/gitops/stages/070-advanced-app-platform/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml"
+SKELETON_070="$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml"
 STAGING_070="$SCRIPT_DIR/scaffold-repo/agentic-quarkus-scaffold/devfile.yaml"
 check "GitOps 070 factory destfile uses per-workspace storage" \
   "grep -q 'controller.devfile.io/storage-type: per-workspace' '$SKELETON_070' && echo present || echo missing" \

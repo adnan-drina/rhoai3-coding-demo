@@ -26,12 +26,12 @@ behavior lives in the linked Developer Hub 1.10 sections.
 ## Not used in this repo
 
 The Developer Hub catalog in this repo is generated from
-`gitops/stages/070-advanced-app-platform/rhdh/catalog/all.yaml` and lists no
+`gitops/stages/070-advanced-app-platform/070-rhdh/catalog/all.yaml` and lists no
 AI model entities; the connector is not installed. Models are published
 through MaaS (Stage 040). Developer Preview in 1.10.
 
 Adopting it is a Stage 070 change: record the decision in
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` and convert this stub
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` and convert this stub
 to a full thin skill.
 
 ## Official documentation (Developer Hub 1.10)

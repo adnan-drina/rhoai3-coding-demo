@@ -19,19 +19,19 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md`.
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md`.
 
 ## When to use
 
 - Someone asks whether the portal sends usage data to Red Hat, or wants it off.
 - A change touches the plugin list in
-  `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
+  `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
 
 ## Repo decisions
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Telemetry is disabled: `analytics-provider-segment` is listed with `disabled: true` (2026-10-15) | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Telemetry data collection][about] |
+| Telemetry is disabled: `analytics-provider-segment` is listed with `disabled: true` (2026-10-15) | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Telemetry data collection][about] |
 | Plugins are configured only through the `dynamic-plugins-rhdh` ConfigMap referenced by the `Backstage` CR (Operator path, not Helm) | `.../rhdh-instance/backstage.yaml` (`dynamicPluginsConfigMapName`) | [Disable with the Operator][off-op] |
 
 The component README's alignment table records this decision.

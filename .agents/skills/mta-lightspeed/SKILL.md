@@ -22,12 +22,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 MTA 8.3 sections. Lightspeed proxy and Solution Server are Technology
-Preview. Detailed record: `gitops/stages/070-advanced-app-platform/mta/README.md`.
+Preview. Detailed record: `gitops/stages/070-advanced-app-platform/070-mta/README.md`.
 
 ## When to use
 
-- A change touches the AI fields of `mta/mta-instance/tackle.yaml` or
-  `mta/jobs/configure-ai.yaml` / `configure-ai.py`.
+- A change touches the AI fields of `070-mta/mta-instance/tackle.yaml` or
+  `070-mta/jobs/configure-ai.yaml` / `configure-ai.py`.
 - The `llm-proxy` cannot reach MaaS, or the MaaS key in `kai-api-keys` is
   rotated or refused.
 - Someone proposes re-enabling the Solution Server.
@@ -36,12 +36,12 @@ Preview. Detailed record: `gitops/stages/070-advanced-app-platform/mta/README.md
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Proxy on: `kai_llm_proxy_enabled: true`, `kai_llm_provider: openai`, `kai_llm_model: publishers/internal-models/models/qwen3-8-27b` (the MaaS canonical id) | `gitops/stages/070-advanced-app-platform/mta/mta-instance/tackle.yaml` | [Enable LLM proxy in Tackle][proxy], [Provider settings][provider] |
-| `kai_llm_baseurl` written at runtime to `https://maas.<cluster-domain>/v1`; Argo CD ignores the field | `mta/jobs/configure-ai.py`, Application `ignoreDifferences` | [Enable LLM proxy in Tackle][proxy] |
-| Model credential: Secret `kai-api-keys` key `OPENAI_API_KEY` (+ `MAAS_KEY_ID`), minted by `configure-mta-ai` as ServiceAccount `mta-maas-provisioner`; existing active key kept, foreign owner/subscription stops the Job | `mta/jobs/configure-ai.yaml`, `mta/secret_writer.py` | [Configure the model secret key][secret] |
-| MaaS access: `MaaSSubscription` + `MaaSAuthPolicy` `mta-migration-ai` for that ServiceAccount, `qwen3-8-27b`, 5,000,000 tokens/h | `mta/jobs/configure-ai.yaml` | see `rhoai-maas-governance` |
-| Solution Server disabled (`kai_solution_server_enabled: false`); proxy kept so `kai-db` and its PVC survive | `mta/mta-instance/tackle.yaml` | [About the Solution Server][ss] |
-| Private model hosting is the IP-protection posture: all traffic goes to the governed MaaS gateway | Stage 040, `mta/jobs/configure-ai.yaml` | [Self-managed hosting][selfhost], [LLM on OpenShift AI][rhoai] |
+| Proxy on: `kai_llm_proxy_enabled: true`, `kai_llm_provider: openai`, `kai_llm_model: publishers/internal-models/models/qwen3-8-27b` (the MaaS canonical id) | `gitops/stages/070-advanced-app-platform/070-mta/mta-instance/tackle.yaml` | [Enable LLM proxy in Tackle][proxy], [Provider settings][provider] |
+| `kai_llm_baseurl` written at runtime to `https://maas.<cluster-domain>/v1`; Argo CD ignores the field | `070-mta/jobs/configure-ai.py`, Application `ignoreDifferences` | [Enable LLM proxy in Tackle][proxy] |
+| Model credential: Secret `kai-api-keys` key `OPENAI_API_KEY` (+ `MAAS_KEY_ID`), minted by `configure-mta-ai` as ServiceAccount `mta-maas-provisioner`; existing active key kept, foreign owner/subscription stops the Job | `070-mta/jobs/configure-ai.yaml`, `070-mta/secret_writer.py` | [Configure the model secret key][secret] |
+| MaaS access: `MaaSSubscription` + `MaaSAuthPolicy` `mta-migration-ai` for that ServiceAccount, `qwen3-8-27b`, 5,000,000 tokens/h | `070-mta/jobs/configure-ai.yaml` | see `rhoai-maas-governance` |
+| Solution Server disabled (`kai_solution_server_enabled: false`); proxy kept so `kai-db` and its PVC survive | `070-mta/mta-instance/tackle.yaml` | [About the Solution Server][ss] |
+| Private model hosting is the IP-protection posture: all traffic goes to the governed MaaS gateway | Stage 040, `070-mta/jobs/configure-ai.yaml` | [Self-managed hosting][selfhost], [LLM on OpenShift AI][rhoai] |
 | Key rotation keeps the same ServiceAccount (`rotate-credentials.py`) | `stages/070-advanced-app-platform/rotate-credentials.py` | — |
 
 ## Procedure

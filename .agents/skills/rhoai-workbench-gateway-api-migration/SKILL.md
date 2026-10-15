@@ -36,8 +36,8 @@ image needs migrating. This skill is the acceptance gate for any custom image th
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Workbench routing is product-owned; the repo adds no Route, HTTPRoute or proxy for workbenches | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md` (generated objects are not in Git) | [Path-based routing][paths] |
-| The OpenShift AI gateway class `data-science-gateway-class` comes with the platform; Stage 040 reuses it only for the MaaS Gateway | `gitops/stages/040-governed-models-as-a-service/gateway-governance/README.md` | [Kubernetes Gateway API migration][intro] |
+| Workbench routing is product-owned; the repo adds no Route, HTTPRoute or proxy for workbenches | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md` (generated objects are not in Git) | [Path-based routing][paths] |
+| The OpenShift AI gateway class `data-science-gateway-class` comes with the platform; Stage 040 reuses it only for the MaaS Gateway | `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/README.md` | [Kubernetes Gateway API migration][intro] |
 | A custom image is accepted only when it serves under `NB_PREFIX`, answers the health endpoint and the culling endpoints; prefer the framework's base-path setting over NGINX | (review rule; no image in Git) | [Migrate][migrate], [Migrate with NGINX][nginx] |
 
 ## Procedure

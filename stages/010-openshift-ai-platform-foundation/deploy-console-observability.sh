@@ -14,7 +14,7 @@ commit=$(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" select 010 --ref "$re
 export GIT_REPO_URL
 python3 - <<'PY_ADOPT'
 import json,os,subprocess
-app='010-console-observability';path='gitops/stages/010-openshift-ai-platform-foundation/console-observability'
+app='010-console-observability';path='gitops/stages/010-openshift-ai-platform-foundation/010-console-observability'
 for kind,name,ns in [('application',app,'openshift-gitops'),('uiplugins.observability.openshift.io','monitoring',None)]:
  args=['oc','--request-timeout=10s','get',kind,name,'--ignore-not-found','-o','json']
  if ns:args+=['-n',ns]

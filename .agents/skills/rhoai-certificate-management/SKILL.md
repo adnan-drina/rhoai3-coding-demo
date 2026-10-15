@@ -30,18 +30,18 @@ certificates and skipped TLS verification in scripts are accepted
 ## When to use
 
 - A component fails TLS to S3, MLflow, a model endpoint or the MaaS gateway.
-- A change touches `trustedCABundle` in `rhoai-platform/dsc-init.yaml`.
+- A change touches `trustedCABundle` in `010-rhoai-platform/dsc-init.yaml`.
 - A new component needs to trust an in-cluster service.
 
 ## Repo decisions
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `trustedCABundle.managementState: Managed` with an empty `customCABundle`; no custom CA is injected | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/dsc-init.yaml` | [Understanding certificates][understand]; [Custom CA bundle][custom] |
+| `trustedCABundle.managementState: Managed` with an empty `customCABundle`; no custom CA is injected | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/dsc-init.yaml` | [Understanding certificates][understand]; [Custom CA bundle][custom] |
 | Cluster-wide trust (proxy trusted CA) is the provisioner's, not changed by this repo | `docs/OPERATIONS.md` (Observed inventory: Proxy / trust) | [Cluster-wide CA bundle][cluster] |
-| In-cluster TLS uses OpenShift service-CA ConfigMaps (`service.beta.openshift.io/inject-cabundle: "true"`) per component, not the custom bundle | `gitops/stages/050-model-evaluation/mlflow/service-ca.yaml` (MLflow `caBundleConfigMap`), `gitops/stages/040-governed-models-as-a-service/gateway-governance/governance/authorino-service-ca.yaml`, `gitops/stages/050-model-evaluation/model-qualification/pipeline-server.yaml`, `.../model-qualification/candidate-model-auth.yaml` | [Self-signed certificates with components][selfsigned] |
-| S3 endpoint `https://s3.openshift-storage.svc:443` is signed by the service CA; no CA configuration is added for it (recorded gap) | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/README.md` (Alignment table, TLS row) | [S3 with self-signed certificates][s3] |
-| KServe ingress gateway keeps its default certificate; DSC `kserve` sets no certificate secret | `gitops/stages/030-private-model-serving/private-model-serving/dsc-enablement/` | [Cluster CA bundle for model serving][serving] |
+| In-cluster TLS uses OpenShift service-CA ConfigMaps (`service.beta.openshift.io/inject-cabundle: "true"`) per component, not the custom bundle | `gitops/stages/050-model-evaluation/050-mlflow/service-ca.yaml` (MLflow `caBundleConfigMap`), `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/governance/authorino-service-ca.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/pipeline-server.yaml`, `.../model-qualification/candidate-model-auth.yaml` | [Self-signed certificates with components][selfsigned] |
+| S3 endpoint `https://s3.openshift-storage.svc:443` is signed by the service CA; no CA configuration is added for it (recorded gap) | `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/README.md` (Alignment table, TLS row) | [S3 with self-signed certificates][s3] |
+| KServe ingress gateway keeps its default certificate; DSC `kserve` sets no certificate secret | `gitops/stages/030-private-model-serving/030-private-model-serving/dsc-enablement/` | [Cluster CA bundle for model serving][serving] |
 | Validate and deploy scripts call `oc` with `--insecure-skip-tls-verify=true` | `stages/010-openshift-ai-platform-foundation/validate.sh` | — (demo posture, `.agents/rules/env.md`) |
 
 ## Procedure
@@ -74,7 +74,7 @@ certificates and skipped TLS verification in scripts are accepted
   shows a different path in its example; run
   `oc explain ogxserver.spec --recursive | grep -i cabundle` before writing it.
 - Pipelines: tasks trust the service CA through the ConfigMap in
-  `model-qualification/pipeline-server.yaml`; the DSPA CA field is separate
+  `050-model-qualification/pipeline-server.yaml`; the DSPA CA field is separate
   ([Certificate for pipelines][pipelines]).
 
 ## Official documentation (OpenShift AI 3.5)

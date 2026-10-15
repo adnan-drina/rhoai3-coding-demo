@@ -12,7 +12,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
-sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
+sys.path.insert(0, str(BASE / '070-pipelines/gitlab'))
 
 
 def module(name, path):
@@ -22,7 +22,7 @@ def module(name, path):
     return loaded
 
 
-bootstrap = module('gitlab_bootstrap', 'gitops/stages/070-advanced-app-platform/gitlab/bootstrap.py')
+bootstrap = module('gitlab_bootstrap', 'gitops/stages/070-advanced-app-platform/070-gitlab/bootstrap.py')
 renderer = module('chart_renderer', 'scripts/platform/render-stage070-charts.py')
 
 
@@ -44,7 +44,7 @@ class NativeDelivery(unittest.TestCase):
     def test_offline_render_uses_served_stable_apis(self):
         expected={'CronJob':'batch/v1','PodDisruptionBudget':'policy/v1','HorizontalPodAutoscaler':'autoscaling/v2'}
         seen=set()
-        for path in (BASE/'gitlab/generated').glob('*.yaml'):
+        for path in (BASE/'070-gitlab/generated').glob('*.yaml'):
             row=yaml.safe_load(path.read_text())
             if row.get('kind') in expected:
                 seen.add(row['kind'])

@@ -21,11 +21,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` (How: Authorization).
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` (How: Authorization).
 
 ## When to use
 
-- A change touches `rhdh/rhdh-instance/rbac-policy.yaml` or the `permission`
+- A change touches `070-rhdh/rhdh-instance/rbac-policy.yaml` or the `permission`
   block of `app-config-rhdh`.
 - A persona can see or do more or less than expected in the portal.
 
@@ -33,12 +33,12 @@ Developer Hub 1.10 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| RBAC plugin enabled (`backstage-community-plugin-rbac`), `permission.enabled: true` | `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`, `app-config-configmap.yaml` | [Enable RBAC][enable] |
-| Policy administrator `user:default/ai-admin` in `permission.rbac.admin.users` | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Enable RBAC][enable] |
-| Policies come only from a CSV file in Git (`policies-csv-file: /opt/app-root/src/rbac/rbac-policies.csv`), mounted from ConfigMap `rhdh-rbac-policies` by `extraFiles`; no Web UI or REST edits | `rhdh/rhdh-instance/rbac-policy.yaml`, `backstage.yaml` | [Choose the policy source][source], [External files with the Operator][files-op] |
-| `ai-developer` gets `role:default/developer`: catalog entity read, location read, template read, action use, task create/read, Kubernetes clusters and resources read; catalog location create, entity create and delete denied | `rhdh/rhdh-instance/rbac-policy.yaml` | [Catalog][perm-catalog], [Scaffolder][perm-scaffolder], [Kubernetes][perm-k8s] permissions |
-| `pluginsWithPermission: [catalog, scaffolder, permission, kubernetes]` | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Enable RBAC][enable] |
-| Only the platform catalog may add templates; developers cannot register locations (enforced by the deny rows and catalog rules) | same files, `rhdh/catalog/all.yaml` | [Design policy rules][design] |
+| RBAC plugin enabled (`backstage-community-plugin-rbac`), `permission.enabled: true` | `070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`, `app-config-configmap.yaml` | [Enable RBAC][enable] |
+| Policy administrator `user:default/ai-admin` in `permission.rbac.admin.users` | `070-rhdh/rhdh-instance/app-config-configmap.yaml` | [Enable RBAC][enable] |
+| Policies come only from a CSV file in Git (`policies-csv-file: /opt/app-root/src/rbac/rbac-policies.csv`), mounted from ConfigMap `rhdh-rbac-policies` by `extraFiles`; no Web UI or REST edits | `070-rhdh/rhdh-instance/rbac-policy.yaml`, `backstage.yaml` | [Choose the policy source][source], [External files with the Operator][files-op] |
+| `ai-developer` gets `role:default/developer`: catalog entity read, location read, template read, action use, task create/read, Kubernetes clusters and resources read; catalog location create, entity create and delete denied | `070-rhdh/rhdh-instance/rbac-policy.yaml` | [Catalog][perm-catalog], [Scaffolder][perm-scaffolder], [Kubernetes][perm-k8s] permissions |
+| `pluginsWithPermission: [catalog, scaffolder, permission, kubernetes]` | `070-rhdh/rhdh-instance/app-config-configmap.yaml` | [Enable RBAC][enable] |
+| Only the platform catalog may add templates; developers cannot register locations (enforced by the deny rows and catalog rules) | same files, `070-rhdh/catalog/all.yaml` | [Design policy rules][design] |
 
 Paths are under `gitops/stages/070-advanced-app-platform/`.
 

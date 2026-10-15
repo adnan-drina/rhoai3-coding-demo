@@ -21,7 +21,7 @@ description: >
 
 Thin skill: how the product's architecture maps onto this repo, with links to
 the Dev Spaces 3.30 Discover topics. Detailed record:
-`gitops/stages/070-advanced-app-platform/devspaces/README.md` (Why).
+`gitops/stages/070-advanced-app-platform/070-devspaces/README.md` (Why).
 
 ## When to use
 
@@ -33,12 +33,12 @@ the Dev Spaces 3.30 Discover topics. Detailed record:
 
 | Concept in this repo | Where in Git | Official section |
 |---|---|---|
-| One `CheCluster` `devspaces` in `openshift-devspaces` drives server, dashboard, gateway and plug-in registry | `gitops/stages/070-advanced-app-platform/devspaces/checluster.yaml` | [Operator and lifecycle][operator], [Server components][components] |
-| DevWorkspaces are reconciled by the Dev Workspace Operator (0.43.0 observed), which OLM installs with Dev Spaces in `openshift-operators` | `devspaces/subscription.yaml` | [Dev Workspace Operator][dwo] |
-| Each persona works in a pre-provisioned project (`wksp-ai-developer`, `wksp-ai-admin`, `wksp-kubeadmin`) | `gitops/stages/070-advanced-app-platform/namespaces/namespaces.yaml` | [Server and namespace provisioning][server] |
-| Users sign in with native OpenShift login; Git access through GitLab OAuth | `gitops/stages/070-advanced-app-platform/gitlab/README.md` | [Gateway and routing][gateway] |
-| Extensions come from `open-vsx.org` or baked VSIX files | `devspaces/checluster.yaml`, `stages/070-advanced-app-platform/workspace-image/` | [Plug-in registry][registry] |
-| Source and AI assistance stay in the cluster: workspaces call the governed MaaS gateway | `devspaces/maas-api-key-provisioning.yaml` | [What developers get][workspaces] |
+| One `CheCluster` `devspaces` in `openshift-devspaces` drives server, dashboard, gateway and plug-in registry | `gitops/stages/070-advanced-app-platform/070-devspaces/checluster.yaml` | [Operator and lifecycle][operator], [Server components][components] |
+| DevWorkspaces are reconciled by the Dev Workspace Operator (0.43.0 observed), which OLM installs with Dev Spaces in `openshift-operators` | `070-devspaces/subscription.yaml` | [Dev Workspace Operator][dwo] |
+| Each persona works in a pre-provisioned project (`wksp-ai-developer`, `wksp-ai-admin`, `wksp-kubeadmin`) | `gitops/stages/070-advanced-app-platform/070-namespaces/namespaces.yaml` | [Server and namespace provisioning][server] |
+| Users sign in with native OpenShift login; Git access through GitLab OAuth | `gitops/stages/070-advanced-app-platform/070-gitlab/README.md` | [Gateway and routing][gateway] |
+| Extensions come from `open-vsx.org` or baked VSIX files | `070-devspaces/checluster.yaml`, `stages/070-advanced-app-platform/workspace-image/` | [Plug-in registry][registry] |
+| Source and AI assistance stay in the cluster: workspaces call the governed MaaS gateway | `070-devspaces/maas-api-key-provisioning.yaml` | [What developers get][workspaces] |
 | Stages 110-130 consume workspaces; Developer Hub templates create them | `stages/110-ai-assisted-development/`, `stages/120-ai-agentic-development/`, `stages/130-ai-autonomous-migration/` | [Roles and tasks][roles] |
 
 ## Procedure

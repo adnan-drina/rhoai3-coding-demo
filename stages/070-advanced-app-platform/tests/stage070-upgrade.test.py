@@ -18,7 +18,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
-sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
+sys.path.insert(0, str(BASE / '070-pipelines/gitlab'))
 
 
 def module(name, path):
@@ -27,13 +27,13 @@ def module(name, path):
     return loaded
 
 
-scm = module('gitlab_reconcile', 'pipelines/gitlab/reconcile.py')
-promotion = module('promotion', 'pipelines/project-pipeline/promote.py')
-ai = module('mta_ai', 'mta/jobs/configure-ai.py')
-bootstrap = module('scm_bootstrap', 'gitlab/bootstrap-scm.py')
-oidc = module('gitlab_oidc', 'gitlab/bootstrap-oidc.py')
-signing = module('signing_bootstrap', 'pipelines/signing/configure-signing.py')
-reader = module('argo_reader', 'gitlab/configure-argocd-reader.py')
+scm = module('gitlab_reconcile', '070-pipelines/gitlab/reconcile.py')
+promotion = module('promotion', '070-pipelines/project-pipeline/promote.py')
+ai = module('mta_ai', '070-mta/jobs/configure-ai.py')
+bootstrap = module('scm_bootstrap', '070-gitlab/bootstrap-scm.py')
+oidc = module('gitlab_oidc', '070-gitlab/bootstrap-oidc.py')
+signing = module('signing_bootstrap', '070-pipelines/signing/configure-signing.py')
+reader = module('argo_reader', '070-gitlab/configure-argocd-reader.py')
 
 
 class Enrollment(unittest.TestCase):
@@ -59,7 +59,7 @@ class Enrollment(unittest.TestCase):
 
     def test_webhook_cannot_provision_or_select_another_project(self):
         resources = scm.trigger_resources('example', 'example-dev', 42, 'https://gitlab.example/rhoai-workloads/example.git', self.sha)
-        role = yaml.safe_load((BASE / 'pipelines/project-enrollment/listener-role.yaml').read_text())
+        role = yaml.safe_load((BASE / '070-pipelines/project-enrollment/listener-role.yaml').read_text())
         writes = [r for r in role['rules'] if 'create' in r['verbs']]
         self.assertEqual(writes, [{'apiGroups': ['tekton.dev'], 'resources': ['pipelineruns'], 'verbs': ['create']}])
         event = next(r for r in resources if r['kind'] == 'EventListener')
@@ -109,8 +109,8 @@ class RuntimeArtifact(unittest.TestCase):
 
 class CatalogEnvelope(unittest.TestCase):
     def test_rendered_annotations_remain_strings_for_numeric_gitlab_id(self):
-        renderer = module('catalog_renderer', 'rhdh/jobs/catalog/render_catalog.py')
-        body = renderer.render((BASE / 'rhdh/catalog/all.yaml').read_text(),
+        renderer = module('catalog_renderer', '070-rhdh/jobs/catalog/render_catalog.py')
+        body = renderer.render((BASE / '070-rhdh/catalog/all.yaml').read_text(),
             revision='a' * 40, devspaces_url='https://devspaces.example.test',
             rhdh_url='https://rhdh.example.test', coolstore_url='https://inventory.example.test',
             sonarqube_url='https://sonar.example.test', maas_host='maas.example.test',
@@ -135,8 +135,8 @@ class CatalogEnvelope(unittest.TestCase):
 
 class IntegratedContract(unittest.TestCase):
     def test_mta_consumers_use_the_governed_model_id(self):
-        tackle = yaml.safe_load((BASE / 'mta/mta-instance/tackle.yaml').read_text())
-        gateway = next(row for row in yaml.safe_load_all((BASE / 'mta/jobs/configure-ai.yaml').read_text())
+        tackle = yaml.safe_load((BASE / '070-mta/mta-instance/tackle.yaml').read_text())
+        gateway = next(row for row in yaml.safe_load_all((BASE / '070-mta/jobs/configure-ai.yaml').read_text())
                        if row['kind'] == 'Gateway')
         alias = 'publishers/internal-models/models/qwen3-8-27b'
         self.assertEqual(tackle['spec']['kai_llm_model'], alias)
@@ -148,15 +148,15 @@ class IntegratedContract(unittest.TestCase):
         self.assertNotIn('accounts.rhdh', instance.get('extraConfig', {}))  # extraConfig would override localUsers
         self.assertTrue(set(reader.RULES) <= set(instance['rbac']['policy'].splitlines()))
         self.assertTrue(all(', get,' in r or r.startswith('g, ') for r in reader.RULES))
-        self.assertNotIn("'patch'", (BASE / 'gitlab/configure-argocd-reader.py').read_text())
+        self.assertNotIn("'patch'", (BASE / '070-gitlab/configure-argocd-reader.py').read_text())
 
     def test_both_persona_workspace_namespaces_get_the_same_egress_policy(self):
-        docs = [d for d in yaml.safe_load_all((BASE / 'devspaces/migration-workspace-maas-egress-networkpolicy.yaml').read_text()) if d]
+        docs = [d for d in yaml.safe_load_all((BASE / '070-devspaces/migration-workspace-maas-egress-networkpolicy.yaml').read_text()) if d]
         self.assertEqual(sorted(d['metadata']['namespace'] for d in docs), ['wksp-ai-admin', 'wksp-ai-developer'])
         self.assertEqual(docs[0]['spec'], docs[1]['spec'])
 
     def test_argo_plugins_follow_110_oci_packaging(self):
-        plugins = yaml.safe_load(yaml.safe_load((BASE / 'rhdh/rhdh-instance/dynamic-plugins-configmap.yaml').read_text())['data']['dynamic-plugins.yaml'])['plugins']
+        plugins = yaml.safe_load(yaml.safe_load((BASE / '070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml').read_text())['data']['dynamic-plugins.yaml'])['plugins']
         packages = [p['package'] for p in plugins if 'argocd' in p['package'] or 'argo-cd' in p['package']]
         self.assertEqual(len(packages), 2)
         self.assertTrue(all(p.startswith('oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/') and '@sha256:' in p for p in packages))
@@ -164,11 +164,11 @@ class IntegratedContract(unittest.TestCase):
         self.assertTrue(all('/backstage-community-plugin-argocd' in p for p in packages))
 
     def test_tekton_frontend_is_wired_and_migration_requires_hub(self):
-        plugins = yaml.safe_load(yaml.safe_load((BASE / 'rhdh/rhdh-instance/dynamic-plugins-configmap.yaml').read_text())['data']['dynamic-plugins.yaml'])['plugins']
+        plugins = yaml.safe_load(yaml.safe_load((BASE / '070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml').read_text())['data']['dynamic-plugins.yaml'])['plugins']
         tekton = next(p for p in plugins if 'plugin-tekton@sha256:' in p['package'])
         point = tekton['pluginConfig']['dynamicPlugins']['frontend']['backstage-community.plugin-tekton']['mountPoints'][0]
         self.assertEqual((point['mountPoint'], point['importName']), ('entity.page.ci/cards', 'TektonCI'))
-        steps = yaml.safe_load((BASE / 'rhdh/templates/app-migration/template.yaml').read_text())['spec']['steps']
+        steps = yaml.safe_load((BASE / '070-rhdh/templates/app-migration/template.yaml').read_text())['spec']['steps']
         ids = [s['id'] for s in steps]
         self.assertLess(ids.index('require-mta-hub'), ids.index('publish'))
         guard = steps[ids.index('require-mta-hub')]
@@ -177,14 +177,14 @@ class IntegratedContract(unittest.TestCase):
 
     def test_sonarqube_database_guard_names_the_rendered_deployment(self):
         guard = re.search(r'oc get deployment (\S+) -n sonarqube', (ROOT / 'stages/070-advanced-app-platform/deploy.sh').read_text()).group(1)
-        rendered = [d['metadata']['name'] for d in yaml.safe_load_all((BASE / 'sonarqube/postgresql.yaml').read_text())
+        rendered = [d['metadata']['name'] for d in yaml.safe_load_all((BASE / '070-sonarqube/postgresql.yaml').read_text())
                     if d and d['kind'] == 'Deployment']
         self.assertEqual(rendered, [guard])
 
     def test_coolstore_namespace_precedes_its_delivery_bindings(self):
-        namespace = next(d for d in yaml.safe_load_all((BASE / 'namespaces/namespaces.yaml').read_text())
+        namespace = next(d for d in yaml.safe_load_all((BASE / '070-namespaces/namespaces.yaml').read_text())
                          if d and d['metadata']['name'] == 'coolstore-dev')
-        binding = yaml.safe_load((BASE / 'pipelines/project-pipeline/rbac-image-builder.yaml').read_text())
+        binding = yaml.safe_load((BASE / '070-pipelines/project-pipeline/rbac-image-builder.yaml').read_text())
         self.assertLess(int(namespace['metadata']['annotations']['argocd.argoproj.io/sync-wave']),
                         int(binding['metadata']['annotations']['argocd.argoproj.io/sync-wave']))
 
@@ -319,9 +319,9 @@ class IntegratedContract(unittest.TestCase):
             with self.assertRaises(ValueError): oidc.provider(issuer, host, 'synthetic')
 
     def test_credentials_are_ready_during_sync_not_after_it(self):
-        for name, wave in [('mta/jobs/configure-ai.yaml', '11'),
-                           ('mta/jobs/configure-mta-platform-sso.yaml', '10'),
-                           ('rhdh/jobs/configure-rhdh.yaml', '18')]:
+        for name, wave in [('070-mta/jobs/configure-ai.yaml', '11'),
+                           ('070-mta/jobs/configure-mta-platform-sso.yaml', '10'),
+                           ('070-rhdh/jobs/configure-rhdh.yaml', '18')]:
             docs = list(yaml.safe_load_all((BASE / name).read_text()))
             job = next(d for d in docs if d['kind'] == 'Job')
             annotations = job['metadata']['annotations']
@@ -329,17 +329,17 @@ class IntegratedContract(unittest.TestCase):
             self.assertEqual(annotations['argocd.argoproj.io/sync-wave'], wave)
 
     def test_noobaa_claims_and_disabled_duplicate_components(self):
-        claims = list(yaml.safe_load_all((BASE / 'gitlab/buckets.yaml').read_text()))
+        claims = list(yaml.safe_load_all((BASE / '070-gitlab/buckets.yaml').read_text()))
         self.assertEqual(len(claims), 6)
         for claim in claims:
             self.assertEqual(claim['spec']['storageClassName'], 'openshift-storage.noobaa.io')
             self.assertEqual(claim['metadata']['annotations']['argocd.argoproj.io/sync-options'], 'Prune=false')
-        values = yaml.safe_load((BASE / 'gitlab/values.yaml').read_text())
+        values = yaml.safe_load((BASE / '070-gitlab/values.yaml').read_text())
         for field in ('postgresql', 'redis', 'prometheus', 'gitlab-runner'): self.assertFalse(values[field]['install'])
         self.assertFalse(values['global']['registry']['enabled'])
         self.assertFalse(values['global']['minio']['enabled'])
         self.assertFalse(values['nginx-ingress']['enabled'])
-        rendered_identity = subprocess.check_output(['kustomize', 'build', str(BASE / 'identity')], text=True)
+        rendered_identity = subprocess.check_output(['kustomize', 'build', str(BASE / '070-identity')], text=True)
         kinds = [d['kind'] for d in yaml.safe_load_all(rendered_identity)]
         self.assertNotIn('Keycloak', kinds); self.assertNotIn('Subscription', kinds)
 
@@ -351,20 +351,20 @@ class IntegratedContract(unittest.TestCase):
             with self.assertRaises(ValueError): ai.active_key(row, principal, sub)
 
     def test_no_old_shared_push_or_direct_apply_path(self):
-        pipeline = yaml.safe_load((BASE / 'pipelines/project-pipeline/pipeline.yaml').read_text())
+        pipeline = yaml.safe_load((BASE / '070-pipelines/project-pipeline/pipeline.yaml').read_text())
         deploy = next(t for t in pipeline['spec']['tasks'] if t['name'] == 'deploy')
         self.assertEqual(deploy['taskRef']['name'], 'promote-gitlab-runtime')
-        self.assertFalse((BASE / 'pipelines/build/triggers.yaml').exists())
-        self.assertFalse((BASE / 'devspaces/workspace-git-credentials.yaml').exists())
-        self.assertNotIn('oc apply', (BASE / 'pipelines/project-pipeline/promote.py').read_text())
-        self.assertNotIn('oc delete pod', (BASE / 'devspaces/workspace-sonar-credentials.yaml').read_text())
+        self.assertFalse((BASE / '070-pipelines/build/triggers.yaml').exists())
+        self.assertFalse((BASE / '070-devspaces/workspace-git-credentials.yaml').exists())
+        self.assertNotIn('oc apply', (BASE / '070-pipelines/project-pipeline/promote.py').read_text())
+        self.assertNotIn('oc delete pod', (BASE / '070-devspaces/workspace-sonar-credentials.yaml').read_text())
 
 
 
 
 class GatewayAndPolicy(unittest.TestCase):
     def test_native_agents_do_not_require_solution_server_or_drop_auth(self):
-        spec = yaml.safe_load((BASE / 'mta/mta-instance/tackle.yaml').read_text())['spec']
+        spec = yaml.safe_load((BASE / '070-mta/mta-instance/tackle.yaml').read_text())['spec']
         self.assertTrue(spec['agentic_enabled'])
         self.assertFalse(spec['agentic_steer_enabled'])
         self.assertFalse(spec['kai_solution_server_enabled'])
@@ -390,7 +390,7 @@ class GatewayAndPolicy(unittest.TestCase):
             self.assertIn('FAILURES=' + str(failures), result.stdout)
 
     def test_native_gateway_apply_precedes_endpoint_bootstrap(self):
-        resources = list(yaml.safe_load_all((BASE / 'mta/jobs/configure-ai.yaml').read_text()))
+        resources = list(yaml.safe_load_all((BASE / '070-mta/jobs/configure-ai.yaml').read_text()))
         gateway = next(row for row in resources if row['kind'] == 'Gateway')
         hook = next(row for row in resources if row['kind'] == 'Job')
         wave = lambda row: int(row['metadata']['annotations']['argocd.argoproj.io/sync-wave'])
@@ -448,43 +448,43 @@ class GatewayAndPolicy(unittest.TestCase):
         endpoint = patches['gateways.konveyor.io']['endpoint']
         # Pinned vendor gateway_controller.go adds /v1/models to the origin.
         self.assertEqual(endpoint + '/v1/models', 'https://maas.example.test/v1/models')
-        resources = list(yaml.safe_load_all((BASE / 'mta/jobs/configure-ai.yaml').read_text()))
+        resources = list(yaml.safe_load_all((BASE / '070-mta/jobs/configure-ai.yaml').read_text()))
         gateway = next(row for row in resources if row['kind'] == 'Gateway')
         self.assertEqual(gateway['spec']['endpoint'], 'https://maas.pending.invalid')
         self.assertFalse(any(call[0] == 'apply' for call in calls), 'Existing key must be reused')
 
     def test_maas_host_from_current_gateway_not_listener_name(self):
-        gateway = yaml.safe_load((ROOT / 'gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/gateway.yaml').read_text())
+        gateway = yaml.safe_load((ROOT / 'gitops/stages/040-governed-models-as-a-service/040-gateway-governance/gateway/gateway.yaml').read_text())
         self.assertEqual(ai.gateway_host(gateway), 'maas.placeholder.example.com')
         for listeners in ([], [{'name':'https','hostname':'qwen3-8-maas.example'}], [{'hostname':'maas.one.example'},{'hostname':'maas.two.example'}]):
             with self.assertRaises(ValueError): ai.gateway_host({'spec':{'listeners':listeners}})
 
     def test_shared_operator_namespace_keeps_automatic(self):
         for name in ('pipelines-subscription.yaml','rhtas-subscription.yaml'):
-            sub=yaml.safe_load((BASE/'pipelines/operators'/name).read_text())
+            sub=yaml.safe_load((BASE/'070-pipelines/operators'/name).read_text())
             self.assertEqual(sub['spec']['installPlanApproval'],'Automatic')
 
 
 class InitialInstall(unittest.TestCase):
     def test_mta_configurator_can_read_only_the_objects_it_patches(self):
-        rows=list(yaml.safe_load_all((BASE/'mta/jobs/configure-ai.yaml').read_text()))
+        rows=list(yaml.safe_load_all((BASE/'070-mta/jobs/configure-ai.yaml').read_text()))
         role=next(r for r in rows if r['kind']=='Role' and r['metadata']['namespace']=='openshift-mta')
         for resource,name in (('tackles','mta'),('gateways','maas-qwen')):
             rule=next(r for r in role['rules'] if resource in r['resources'])
             self.assertEqual(set(rule['verbs']),{'get','patch'})
             self.assertEqual(rule['resourceNames'],[name])
-        link=yaml.safe_load((BASE/'mta/mta-instance/consolelink.yaml').read_text())
-        sso=list(yaml.safe_load_all((BASE/'mta/jobs/configure-mta-platform-sso.yaml').read_text()))
+        link=yaml.safe_load((BASE/'070-mta/mta-instance/consolelink.yaml').read_text())
+        sso=list(yaml.safe_load_all((BASE/'070-mta/jobs/configure-mta-platform-sso.yaml').read_text()))
         job=next(r for r in sso if r['kind']=='Job')
         self.assertLess(int(link['metadata']['annotations']['argocd.argoproj.io/sync-wave']),int(job['metadata']['annotations']['argocd.argoproj.io/sync-wave']))
 
     def test_reused_keycloak_served_import_api(self):
-        realm = yaml.safe_load((BASE / 'identity/rhbk-instance/realm-platform.yaml').read_text())
+        realm = yaml.safe_load((BASE / '070-identity/rhbk-instance/realm-platform.yaml').read_text())
         self.assertEqual(realm['apiVersion'], 'k8s.keycloak.org/v2alpha1')
         self.assertEqual(realm['spec']['keycloakCRName'], 'keycloak')
 
     def test_native_tasks_follow_operator_install(self):
-        for path in (BASE / 'pipelines/project-pipeline').glob('*.yaml'):
+        for path in (BASE / '070-pipelines/project-pipeline').glob('*.yaml'):
             for resource in yaml.safe_load_all(path.read_text()):
                 if isinstance(resource, dict) and resource.get('kind') in ('Task', 'Pipeline'):
                     with self.subTest(resource=resource['metadata']['name']):
@@ -497,10 +497,10 @@ class HookRuntime(unittest.TestCase):
         # failed the real first-sync hook before its first API read.
         import ast
         scripts = [BASE / p for p in (
-            'gitlab/configure-argocd-reader.py', 'gitlab/bootstrap.py',
-            'gitlab/bootstrap-oidc.py', 'gitlab/bootstrap-scm.py',
-            'pipelines/gitlab/reconcile.py', 'pipelines/project-pipeline/promote.py',
-            'pipelines/signing/configure-signing.py', 'mta/jobs/configure-ai.py')]
+            '070-gitlab/configure-argocd-reader.py', '070-gitlab/bootstrap.py',
+            '070-gitlab/bootstrap-oidc.py', '070-gitlab/bootstrap-scm.py',
+            '070-pipelines/gitlab/reconcile.py', '070-pipelines/project-pipeline/promote.py',
+            '070-pipelines/signing/configure-signing.py', '070-mta/jobs/configure-ai.py')]
         for script in scripts:
             tree = ast.parse(script.read_text())
             for node in ast.walk(tree):
@@ -512,7 +512,7 @@ class HookRuntime(unittest.TestCase):
 
 class WorkspaceAnnotationRepair(unittest.TestCase):
     def run_repair(self, state, fail_get=False):
-        rows=list(yaml.safe_load_all((BASE/'devspaces/repair-devworkspace-sync-options.yaml').read_text()))
+        rows=list(yaml.safe_load_all((BASE/'070-devspaces/repair-devworkspace-sync-options.yaml').read_text()))
         job=next(r for r in rows if r['kind']=='Job')
         script=job['spec']['template']['spec']['containers'][0]['command'][-1]
         with tempfile.TemporaryDirectory() as d:

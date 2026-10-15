@@ -20,12 +20,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 MTA 8.3 UI guide. Native Agents are Developer Preview. Detailed record:
-`gitops/stages/070-advanced-app-platform/mta/README.md`.
+`gitops/stages/070-advanced-app-platform/070-mta/README.md`.
 
 ## When to use
 
 - A change touches `agentic_enabled`/`agentic_steer_enabled` in the Tackle CR
-  or the Gateway `maas-qwen` in `mta/jobs/configure-ai.yaml`.
+  or the Gateway `maas-qwen` in `070-mta/jobs/configure-ai.yaml`.
 - Native Agents or the `agentic-controller` fail; Hub analysis or task logs
   need review.
 - A workspace or Stage 130 run cannot find the Hub (`MTA_HUB_URL`).
@@ -34,13 +34,13 @@ MTA 8.3 UI guide. Native Agents are Developer Preview. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Native Agents on: `agentic_enabled: true`, `agentic_steer_enabled: false` | `gitops/stages/070-advanced-app-platform/mta/mta-instance/tackle.yaml` | [Enable agent in Tackle][enable] |
-| Gateway `maas-qwen` (`konveyor.io/v1alpha1`): provider `openai`, `credentialRef` → `kai-api-keys`/`OPENAI_API_KEY` (not the doc example Secret), model `publishers/internal-models/models/qwen3-8-27b`, `contextWindow: 262144`, tier `efficient` | `mta/jobs/configure-ai.yaml` | [LLM gateway secret][gwsecret], [Gateway configuration][gwconf] |
-| Gateway `endpoint` is a placeholder in Git; hook `configure-mta-ai` (wave 11, after the Gateway) writes the bare MaaS origin; Argo CD ignores `/spec/endpoint` | `mta/jobs/configure-ai.py`, Application `ignoreDifferences` | [Gateway configuration][gwconf] |
+| Native Agents on: `agentic_enabled: true`, `agentic_steer_enabled: false` | `gitops/stages/070-advanced-app-platform/070-mta/mta-instance/tackle.yaml` | [Enable agent in Tackle][enable] |
+| Gateway `maas-qwen` (`konveyor.io/v1alpha1`): provider `openai`, `credentialRef` → `kai-api-keys`/`OPENAI_API_KEY` (not the doc example Secret), model `publishers/internal-models/models/qwen3-8-27b`, `contextWindow: 262144`, tier `efficient` | `070-mta/jobs/configure-ai.yaml` | [LLM gateway secret][gwsecret], [Gateway configuration][gwconf] |
+| Gateway `endpoint` is a placeholder in Git; hook `configure-mta-ai` (wave 11, after the Gateway) writes the bare MaaS origin; Argo CD ignores `/spec/endpoint` | `070-mta/jobs/configure-ai.py`, Application `ignoreDifferences` | [Gateway configuration][gwconf] |
 | Prerequisite Agent Sandbox controller comes from Stage 060 | `gitops/stages/060-agent-runtime-and-agentops/` | [Agent prerequisites][prereq] |
-| `agentic-controller` memory sized by VPA (`mta/controller-sizing/`) | `mta/controller-sizing/agentic-memory.yaml` | see `mta-install` |
-| Hub URL for workspaces: ConfigMap `mta-hub-config` (`MTA_HUB_URL`) in `wksp-*` | `mta/jobs/mta-hub-workspace-config.yaml` | [Connect the CLI to the Hub][hub] |
-| Personas: `ai-admin` → `role.admin`, `ai-developer` → `role.architect` | `mta/jobs/configure-mta-platform-sso.yaml` | see `mta-install` |
+| `agentic-controller` memory sized by VPA (`070-mta/controller-sizing/`) | `070-mta/controller-sizing/agentic-memory.yaml` | see `mta-install` |
+| Hub URL for workspaces: ConfigMap `mta-hub-config` (`MTA_HUB_URL`) in `wksp-*` | `070-mta/jobs/mta-hub-workspace-config.yaml` | [Connect the CLI to the Hub][hub] |
+| Personas: `ai-admin` → `role.admin`, `ai-developer` → `role.architect` | `070-mta/jobs/configure-mta-platform-sso.yaml` | see `mta-install` |
 
 ## Procedure
 

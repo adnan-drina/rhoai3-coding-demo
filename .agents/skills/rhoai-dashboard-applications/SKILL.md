@@ -34,8 +34,8 @@ keep their documented defaults. Product behavior is in the linked OpenShift AI
 | Decision | Where in Git | Official section |
 |---|---|---|
 | No `OdhApplication` (`dashboard.opendatahub.io/v1`) objects in Git; only product-provided tiles appear | none under `gitops/` | [Add an application to the dashboard][add] |
-| `enablement`, `disableInfo` and `disableISVBadges` are not set, so they keep their defaults | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` (fields absent) | [Prevent users from adding applications][prevent], [Show or hide information][info] |
-| `spec.notebookController` is not set; the basic workbench tile stays, because DSC `workbenches` is `Managed` and personas use workbenches in `demo-sandbox` | same file; `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Hide the default basic workbench application][hide-wb] |
+| `enablement`, `disableInfo` and `disableISVBadges` are not set, so they keep their defaults | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml` (fields absent) | [Prevent users from adding applications][prevent], [Show or hide information][info] |
+| `spec.notebookController` is not set; the basic workbench tile stays, because DSC `workbenches` is `Managed` and personas use workbenches in `demo-sandbox` | same file; `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Hide the default basic workbench application][hide-wb] |
 
 ## Procedure
 

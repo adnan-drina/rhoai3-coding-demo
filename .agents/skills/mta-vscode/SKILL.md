@@ -33,7 +33,7 @@ workspaces created from the Developer Hub `app-migration` template.
 | Decision | Where in Git | Official section |
 |---|---|---|
 | VSIX files `mta-vscode-extension`, `mta-core`, `mta-java` 8.3.1 and the Red Hat Java extension are SHA-256 locked and baked to `/opt/rhoai3/extensions/` | `stages/070-advanced-app-platform/workspace-image/artifacts.lock.json`, `Dockerfile`, `verify-image.py` | [Install the extension][install] |
-| Loaded through `DEFAULT_EXTENSIONS` (Java extension before `mta-java`); postStart asserts each VSIX is non-empty | `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml` | see `ocp-devspaces-user-guide` |
+| Loaded through `DEFAULT_EXTENSIONS` (Java extension before `mta-java`); postStart asserts each VSIX is non-empty | `gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/skeleton/devfile.yaml` | see `ocp-devspaces-user-guide` |
 | Workspace settings: JDT.LS `Standard` launch mode (so `mta-java` registers its provider), `mta-core.genai.enabled: true`, `mta-core.hub.auth.method: oidc` | same devfile (postStart) | [IDE settings][ide], [Hub OIDC][oidc] |
 | Hub connection: `HUB_URL` from the template, `HUB_INSECURE=false`, `HUB_PROFILE_SYNC_ENABLED=true` | same devfile | [Hub OIDC][oidc], [Hub profile analysis][profile] |
 | No analyzer RPC binary is installed separately; the extensions use the baked image | `stages/070-advanced-app-platform/workspace-image/` | [Analyzer RPC binary][rpc] |

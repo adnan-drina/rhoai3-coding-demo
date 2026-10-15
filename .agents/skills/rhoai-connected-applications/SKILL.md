@@ -25,7 +25,7 @@ OpenShift AI 3.5 sections.
 **No connected application is added in this demo.** Git holds no
 `OdhApplication` or other tile resources; Explore shows only what OpenShift AI
 ships. The Start basic workbench tile is not hidden by
-`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml`.
 
 ## When to use
 
@@ -36,9 +36,9 @@ ships. The Start basic workbench tile is not hidden by
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Notebook and data work runs in project workbenches in `demo-sandbox`, code in Dev Spaces (Stage 070); the basic workbench is not part of any stage flow | `gitops/stages/010-openshift-ai-platform-foundation/access/README.md`, `stages/070-advanced-app-platform/README.md` | [Use basic workbenches][basic] |
-| Basic workbenches run in `rhods-notebooks` (DSC `workbenchNamespace`) and get no repo S3 connection; those exist only in project namespaces | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml`, `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/` | [Start a basic workbench][start] |
-| Dashboard access only for `rhods-admins` and `rhoai-developers` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/auth.yaml` | [View connected applications][view] |
+| Notebook and data work runs in project workbenches in `demo-sandbox`, code in Dev Spaces (Stage 070); the basic workbench is not part of any stage flow | `gitops/stages/010-openshift-ai-platform-foundation/010-access/README.md`, `stages/070-advanced-app-platform/README.md` | [Use basic workbenches][basic] |
+| Basic workbenches run in `rhods-notebooks` (DSC `workbenchNamespace`) and get no repo S3 connection; those exist only in project namespaces | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml`, `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/` | [Start a basic workbench][start] |
+| Dashboard access only for `rhods-admins` and `rhoai-developers` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/auth.yaml` | [View connected applications][view] |
 
 ## Procedure
 

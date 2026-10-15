@@ -29,11 +29,11 @@ behavior lives in the linked Developer Hub 1.10 sections.
 The demo cluster is connected: the Operator comes from `redhat-operators` and
 the Tekton and Argo CD plugins are digest-pinned OCI packages pulled from
 ghcr.io
-(`gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`).
+(`gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`).
 A disconnected variant would need those plugin images mirrored.
 
 Adopting it is a Stage 070 change: record the decision in
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` and convert this stub
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` and convert this stub
 to a full thin skill.
 
 ## Official documentation (Developer Hub 1.10)

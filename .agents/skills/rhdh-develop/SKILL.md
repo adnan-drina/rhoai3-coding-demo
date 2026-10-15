@@ -21,15 +21,15 @@ description: >
 
 Thin skill: how this portal's catalog and templates are produced and governed;
 generic catalog and template usage is in the linked Developer Hub 1.10
-sections. Detailed record: `gitops/stages/070-advanced-app-platform/rhdh/README.md`
+sections. Detailed record: `gitops/stages/070-advanced-app-platform/070-rhdh/README.md`
 ("Catalog generation", "Catalog sources") and
-`rhdh/templates/app-migration/delivery-path.md`.
+`070-rhdh/templates/app-migration/delivery-path.md`.
 
 ## When to use
 
-- Changing `rhdh/catalog/all.yaml` (Users, Group, Domain, System, Component
+- Changing `070-rhdh/catalog/all.yaml` (Users, Group, Domain, System, Component
   `coolstore-inventory-service`, API, one model Resource, two template
-  Locations) or a template under `rhdh/templates/`.
+  Locations) or a template under `070-rhdh/templates/`.
 - A template or entity is missing, duplicated, or flaps between 200 and 404.
 - Explaining what a developer can and cannot do in the catalog.
 
@@ -37,11 +37,11 @@ sections. Detailed record: `gitops/stages/070-advanced-app-platform/rhdh/README.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| The runtime catalog is generated: bundle ConfigMap (content-hashed) → `render_catalog.py verify` against the GitLab mirror at the synced revision → `catalog-runtime-rhdh`, stamped with `rhoai3.redhat.com/catalog-revision` | `gitops/stages/070-advanced-app-platform/rhdh/jobs/catalog/`, `rhdh/jobs/generate-rhdh-catalog.yaml`, `rhdh/catalog/all.yaml` | [Centralize components in the catalog][catalog] |
-| Only the file location may introduce `Template` entities; template Locations point at the same pinned revision and older ones are pruned | `rhdh/rhdh-instance/app-config-configmap.yaml` (`catalog.locations`, `catalog.rules`), `render_catalog.py` | [Import an existing Software Template][import-tpl] |
+| The runtime catalog is generated: bundle ConfigMap (content-hashed) → `render_catalog.py verify` against the GitLab mirror at the synced revision → `catalog-runtime-rhdh`, stamped with `rhoai3.redhat.com/catalog-revision` | `gitops/stages/070-advanced-app-platform/070-rhdh/jobs/catalog/`, `070-rhdh/jobs/generate-rhdh-catalog.yaml`, `070-rhdh/catalog/all.yaml` | [Centralize components in the catalog][catalog] |
+| Only the file location may introduce `Template` entities; template Locations point at the same pinned revision and older ones are pruned | `070-rhdh/rhdh-instance/app-config-configmap.yaml` (`catalog.locations`, `catalog.rules`), `render_catalog.py` | [Import an existing Software Template][import-tpl] |
 | GitLab discovery reads `catalog-info.yaml` on `main` in group `rhoai-workloads` every minute and may not ingest templates; `orphanStrategy: delete` | `app-config-configmap.yaml` (`catalog.providers.gitlab.workloads`) | [Update existing components][update] |
-| Templates publish private GitLab repositories (`publish:gitlab`) and open an enrollment issue (`gitlab:issues:create`); they never call `catalog:register` | `rhdh/templates/agentic-quarkus-scaffold/template.yaml`, `rhdh/templates/app-migration/template.yaml` | [Create a component from a template][create-tpl] |
-| `ai-developer` may read the catalog and run templates; `catalog.location.create`, `catalog.entity.create`, `catalog.entity.delete` are denied | `rhdh/rhdh-instance/rbac-policy.yaml` | [Register components manually][register] |
+| Templates publish private GitLab repositories (`publish:gitlab`) and open an enrollment issue (`gitlab:issues:create`); they never call `catalog:register` | `070-rhdh/templates/agentic-quarkus-scaffold/template.yaml`, `070-rhdh/templates/app-migration/template.yaml` | [Create a component from a template][create-tpl] |
+| `ai-developer` may read the catalog and run templates; `catalog.location.create`, `catalog.entity.create`, `catalog.entity.delete` are denied | `070-rhdh/rhdh-instance/rbac-policy.yaml` | [Register components manually][register] |
 | No Bulk Import: projects enter only through templates and the enrollment coordinator | — | [Import your team's codebase][bulk] |
 
 ## Procedure

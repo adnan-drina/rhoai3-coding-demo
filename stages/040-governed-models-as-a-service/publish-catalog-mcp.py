@@ -20,7 +20,7 @@ from native_api import guarded, need, oc, persona, private_receipt
 
 # The Stage 040 component Application that renders the discovery ConfigMap and delegates its published keys.
 APP = '040-genai-studio'
-SOURCE = 'gitops/stages/040-governed-models-as-a-service/genai-studio'
+SOURCE = 'gitops/stages/040-governed-models-as-a-service/040-genai-studio'
 NAMESPACE = 'redhat-ods-applications'
 CM = 'gen-ai-aa-mcp-servers'
 KEY = 'OpenShift-MCP'

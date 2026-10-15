@@ -22,8 +22,8 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/050-model-evaluation/evalhub/README.md` (also
-`model-qualification/`, `evaluation-content/` and `oci-export/` READMEs).
+`gitops/stages/050-model-evaluation/050-evalhub/README.md` (also
+`050-model-qualification/`, `050-evaluation-content/` and `050-oci-export/` READMEs).
 
 ## When to use
 
@@ -35,14 +35,14 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `EvalHub` CR in dedicated namespace `evalhub`, PostgreSQL 16 StatefulSet, Secret `evalhub-db-credentials` with `db-url` (from `setup-ai-services.sh`) | `gitops/stages/050-model-evaluation/evalhub/evalhub.yaml` | [Deploy EvalHub][deploy], [Database configuration][dbconf] |
-| One admin-only tenant `evaluated-models`; Role `evalhub-evaluator` holds the documented virtual-resource and MLflow `experiments` rules | `gitops/stages/050-model-evaluation/model-qualification/access.yaml` | [Set up a tenant][tenant], [Roles][roles] |
-| Models reached through MaaS with subscription `model-qualification`; hook mints Secret `evalhub-model-auth-maas` (`api-key`) for `model.auth.secret_ref` | `gitops/stages/050-model-evaluation/model-qualification/maas-key-provisioner.yaml` | [API key authentication][apikey] |
-| Jobs routed through LocalQueue `lq-cpu-default` (Technology Preview) | `gitops/stages/050-model-evaluation/model-qualification/local-queues.yaml` | [Route jobs through Kueue][kueue] |
-| Qualification gates are versioned `agentic-coding-*-vN` collections; a new gate is a new `-vN`, never an edit; every id is listed in `spec.providers`/`spec.collections` | `gitops/stages/050-model-evaluation/evaluation-content/edd/` | [Collection by ConfigMap][collcm], [Provider by ConfigMap][provcm] |
-| MCP server on, with `spec.mcp.authSecret` and `EVALHUB_TENANT=evaluated-models` (not in the guide's procedure); clients use ServiceAccount `evaluated-models/evalhub-automation` | `gitops/stages/050-model-evaluation/evalhub/mcp-client-identity.yaml` | [Deploy the MCP server][mcp] |
-| OCI export to the internal registry default route, Secret `evalhub-oci-registry` (`kubernetes.io/dockerconfigjson`) | `gitops/stages/050-model-evaluation/oci-export/oci-export.yaml` | [Export results to OCI][oci] |
-| Catalog safety-insights tab: `get` on `evaluations` in `rhoai-model-registries` for `rhods-admins`, `rhoai-developers`; not a tenant | `gitops/stages/050-model-evaluation/evalhub/tenant/` | [Grant access][grant] |
+| `EvalHub` CR in dedicated namespace `evalhub`, PostgreSQL 16 StatefulSet, Secret `evalhub-db-credentials` with `db-url` (from `setup-ai-services.sh`) | `gitops/stages/050-model-evaluation/050-evalhub/evalhub.yaml` | [Deploy EvalHub][deploy], [Database configuration][dbconf] |
+| One admin-only tenant `evaluated-models`; Role `evalhub-evaluator` holds the documented virtual-resource and MLflow `experiments` rules | `gitops/stages/050-model-evaluation/050-model-qualification/access.yaml` | [Set up a tenant][tenant], [Roles][roles] |
+| Models reached through MaaS with subscription `model-qualification`; hook mints Secret `evalhub-model-auth-maas` (`api-key`) for `model.auth.secret_ref` | `gitops/stages/050-model-evaluation/050-model-qualification/maas-key-provisioner.yaml` | [API key authentication][apikey] |
+| Jobs routed through LocalQueue `lq-cpu-default` (Technology Preview) | `gitops/stages/050-model-evaluation/050-model-qualification/local-queues.yaml` | [Route jobs through Kueue][kueue] |
+| Qualification gates are versioned `agentic-coding-*-vN` collections; a new gate is a new `-vN`, never an edit; every id is listed in `spec.providers`/`spec.collections` | `gitops/stages/050-model-evaluation/050-evaluation-content/edd/` | [Collection by ConfigMap][collcm], [Provider by ConfigMap][provcm] |
+| MCP server on, with `spec.mcp.authSecret` and `EVALHUB_TENANT=evaluated-models` (not in the guide's procedure); clients use ServiceAccount `evaluated-models/evalhub-automation` | `gitops/stages/050-model-evaluation/050-evalhub/mcp-client-identity.yaml` | [Deploy the MCP server][mcp] |
+| OCI export to the internal registry default route, Secret `evalhub-oci-registry` (`kubernetes.io/dockerconfigjson`) | `gitops/stages/050-model-evaluation/050-oci-export/oci-export.yaml` | [Export results to OCI][oci] |
+| Catalog safety-insights tab: `get` on `evaluations` in `rhoai-model-registries` for `rhods-admins`, `rhoai-developers`; not a tenant | `gitops/stages/050-model-evaluation/050-evalhub/tenant/` | [Grant access][grant] |
 | No LMEvalJob use; LM-Eval is deprecated in 3.5 | none | [Evaluation of AI systems][overview] |
 
 ## Procedure

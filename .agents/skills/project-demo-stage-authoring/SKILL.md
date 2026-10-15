@@ -53,7 +53,7 @@ stages/NNN-descriptive-slug/
 gitops/
   applications/NNN-<component>.yaml                         # one Application per component; file name = Application name
   stages/NNN-descriptive-slug/kustomization.yaml              # union of the component folders
-  stages/NNN-descriptive-slug/<component>/kustomization.yaml  # one folder per Application (layout: .agents/rules/gitops.md)
+  stages/NNN-descriptive-slug/NNN-<component>/kustomization.yaml  # one folder per Application, named like it (layout: .agents/rules/gitops.md)
 ```
 
 Stages that patch shared platform resources (e.g., RHOAI DataScienceCluster, OpenShift GitOps bootstrap) record the shared owner path and avoid duplicate full-resource ownership.

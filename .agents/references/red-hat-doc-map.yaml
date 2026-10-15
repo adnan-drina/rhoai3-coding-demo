@@ -80,7 +80,7 @@ products:
     docs_version: "3.5"
     deployed: true
     pin:
-      file: gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/subscription.yaml
+      file: gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/subscription.yaml
       field: spec.channel
       pattern: 'stable-(\d+\.\d+)'
     categories:
@@ -1744,7 +1744,7 @@ products:
     docs_version: "1.24"
     deployed: true
     pin:
-      file: gitops/stages/070-advanced-app-platform/pipelines/operators/pipelines-subscription.yaml
+      file: gitops/stages/070-advanced-app-platform/070-pipelines/operators/pipelines-subscription.yaml
       field: spec.channel
       pattern: 'pipelines-(\d+\.\d+)'
     categories:
@@ -1904,7 +1904,7 @@ products:
     docs_version: "4.22"
     deployed: true
     pin:
-      file: gitops/stages/010-openshift-ai-platform-foundation/odf/subscription.yaml
+      file: gitops/stages/010-openshift-ai-platform-foundation/010-odf/subscription.yaml
       field: spec.channel
       pattern: 'stable-(\d+\.\d+)'
     status: active
@@ -1912,7 +1912,7 @@ products:
       ODF follows the OpenShift minor (stable-4.22 on OCP 4.22). Stage 010
       deploys only a standalone Multicloud Object Gateway; there is no Ceph
       block or file storage. Repo facts live in
-      gitops/stages/010-openshift-ai-platform-foundation/odf/README.md.
+      gitops/stages/010-openshift-ai-platform-foundation/010-odf/README.md.
     categories:
       planning:
         routes:
@@ -2008,7 +2008,7 @@ products:
     docs_version: "8.3"
     deployed: true
     pin:
-      file: gitops/stages/070-advanced-app-platform/mta/mta-operator/subscription.yaml
+      file: gitops/stages/070-advanced-app-platform/070-mta/mta-operator/subscription.yaml
       field: spec.startingCSV
       pattern: 'v(\d+\.\d+)\.'
     categories:
@@ -2181,7 +2181,7 @@ products:
     docs_version: "1.10"
     deployed: true
     pin:
-      file: gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/subscription.yaml
+      file: gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/subscription.yaml
       field: spec.startingCSV
       pattern: 'v(\d+\.\d+)\.'
     categories:
@@ -2695,7 +2695,7 @@ products:
     docs_version: "1.4"
     deployed: true
     pin:
-      # The Subscription in gitops/stages/040-governed-models-as-a-service/maas-operators/rhcl/
+      # The Subscription in gitops/stages/040-governed-models-as-a-service/040-maas-operators/rhcl/
       # follows the unversioned `stable` channel; the operator policy holds the qualified minor line.
       file: scripts/platform/check-operator-policy.py
       field: minimum['rhcl-operator']
@@ -2864,7 +2864,7 @@ cited_products:
     docs_slug: red_hat_trusted_artifact_signer
     docs_version: "1.5"
     pin:
-      file: gitops/stages/070-advanced-app-platform/pipelines/operators/rhtas-subscription.yaml
+      file: gitops/stages/070-advanced-app-platform/070-pipelines/operators/rhtas-subscription.yaml
       field: spec.channel
       pattern: 'stable-v(\d+\.\d+)'
   red_hat_ai:

@@ -43,11 +43,11 @@ The stage is five Argo CD Applications. Each component folder has a README with 
 
 | Application | Purpose | Component README |
 |---|---|---|
-| `060-openshell-identity` | `openshell` realm in Red Hat build of Keycloak; the OIDC issuer the OpenShell gateway trusts | [openshell-identity](../../gitops/stages/060-agent-runtime-and-agentops/openshell-identity/README.md) |
-| `060-openshell-runtime` | Agent Sandbox operator, authenticated OpenShell gateway, workspace projects and agent images | [openshell-runtime](../../gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/README.md) |
-| `060-mcp-platform` | Turns on the OpenShift AI MCP Lifecycle Operator | [mcp-platform](../../gitops/stages/060-agent-runtime-and-agentops/mcp-platform/README.md) |
-| `060-agent-tools` | OpenShift MCP Server 0.4 as read-only and read-write native MCPServers | [agent-tools](../../gitops/stages/060-agent-runtime-and-agentops/agent-tools/README.md) |
-| `060-agent-console` | AgentOps view in the OpenShift AI dashboard, read-only per persona | [agent-console](../../gitops/stages/060-agent-runtime-and-agentops/agent-console/README.md) |
+| `060-openshell-identity` | `openshell` realm in Red Hat build of Keycloak; the OIDC issuer the OpenShell gateway trusts | [openshell-identity](../../gitops/stages/060-agent-runtime-and-agentops/060-openshell-identity/README.md) |
+| `060-openshell-runtime` | Agent Sandbox operator, authenticated OpenShell gateway, workspace projects and agent images | [openshell-runtime](../../gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/README.md) |
+| `060-mcp-platform` | Turns on the OpenShift AI MCP Lifecycle Operator | [mcp-platform](../../gitops/stages/060-agent-runtime-and-agentops/060-mcp-platform/README.md) |
+| `060-agent-tools` | OpenShift MCP Server 0.4 as read-only and read-write native MCPServers | [agent-tools](../../gitops/stages/060-agent-runtime-and-agentops/060-agent-tools/README.md) |
+| `060-agent-console` | AgentOps view in the OpenShift AI dashboard, read-only per persona | [agent-console](../../gitops/stages/060-agent-runtime-and-agentops/060-agent-console/README.md) |
 
 ## What To Notice And Why It Matters
 

@@ -35,9 +35,9 @@ run here.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Distributed training operators not installed (`ray`, `trainingoperator`, `trainer` `Removed`) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Overview of distributed workloads][overview] |
-| Workbenches exist (Stage 010 `workbenches` Managed) and `demo-sandbox` is a Kueue-managed project with GPU LocalQueues | `gitops/stages/010-openshift-ai-platform-foundation/access/namespace-demo-sandbox.yaml`, `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/queues/` | [Create a workbench for distributed training][workbench] |
-| Experiment tracking uses the Stage 050 MLflow server | `gitops/stages/050-model-evaluation/mlflow/` | see `rhoai-mlflow` |
+| Distributed training operators not installed (`ray`, `trainingoperator`, `trainer` `Removed`) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Overview of distributed workloads][overview] |
+| Workbenches exist (Stage 010 `workbenches` Managed) and `demo-sandbox` is a Kueue-managed project with GPU LocalQueues | `gitops/stages/010-openshift-ai-platform-foundation/010-access/namespace-demo-sandbox.yaml`, `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/queues/` | [Create a workbench for distributed training][workbench] |
+| Experiment tracking uses the Stage 050 MLflow server | `gitops/stages/050-model-evaluation/050-mlflow/` | see `rhoai-mlflow` |
 
 ## If enabled
 

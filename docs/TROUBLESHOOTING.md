@@ -251,7 +251,7 @@ Prevention: hook jobs must have bounded retries and fail fast; never let a wait-
 
 ```bash
 # Compare what git has against what Argo tracked
-kustomize build gitops/stages/<stage>/<component> | grep <new-resource>
+kustomize build gitops/stages/<stage>/<application name> | grep <new-resource>
 oc get application <NNN-component> -n openshift-gitops -o json \
   | jq -r '.status.resources[] | "\(.kind) \(.namespace)/\(.name)"' | grep <new-resource>
 ```
@@ -366,7 +366,7 @@ The recovery script syncs the existing Stage 020 revision, restores its verified
 
 (b) **The grower — Prometheus emptyDir TSDBs:** four Prometheus replicas (2 platform + 2 UWM) with emptyDir TSDBs on the three workers grow in lockstep. After a cluster resume, eviction → churn → new-series creates a feedback loop that amplifies disk pressure.
 
-**FIXED** by `gitops/stages/030-private-model-serving/private-model-serving/monitoring/` volumeClaimTemplates (gp3-csi; platform 2×40Gi 7d/8GB, UWM 2×20Gi 7d/5GB), which moves the TSDB growth off ephemeral storage. The modelcar cost remains fixed.
+**FIXED** by `gitops/stages/030-private-model-serving/030-private-model-serving/monitoring/` volumeClaimTemplates (gp3-csi; platform 2×40Gi 7d/8GB, UWM 2×20Gi 7d/5GB), which moves the TSDB growth off ephemeral storage. The modelcar cost remains fixed.
 
 **Diagnostic gold:** `oc get --raw /api/v1/nodes/<node>/proxy/stats/summary` returns per-pod ephemeral storage usage — use this to identify which pods dominate `/var` on a suspect worker.
 
@@ -713,7 +713,7 @@ oc get maastenantconfig default-tenant \
 
 **Recover:**
 
-- Add the local model to the persona's subscription in Git (`gitops/stages/040-governed-models-as-a-service/model-access/`), then redeploy Stage 040.
+- Add the local model to the persona's subscription in Git (`gitops/stages/040-governed-models-as-a-service/040-model-access/`), then redeploy Stage 040.
 - Avoid adding a second broad subscription with overlapping model refs. The MaaS controller generates token-rate-limit policy names per model, so overlapping subscriptions can create policy conflicts.
 
 ```bash
@@ -902,7 +902,7 @@ failed requests even when the model and authentication service are ready.
 
 Check the gateway proxy's current memory, last termination reason and restart
 count before assigning the failure to the model. The resource configuration is
-`gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/configmap-maas-gateway-resources.yaml`.
+`gitops/stages/040-governed-models-as-a-service/040-gateway-governance/gateway/configmap-maas-gateway-resources.yaml`.
 Stage 040 validation reads back the generated Deployment's 1 GiB reservation and
 2 GiB limit. A successful sync is resource headroom, not proof of a memory-leak fix.
 If memory continues to grow, retain the resource time series and gateway/control-plane
@@ -1095,7 +1095,7 @@ Since B2 (2026-09-24) the runtime catalog pins template Location targets to the 
 - Re-run `job-generate-rhdh-catalog` (full Argo sync or wait for `refresh-rhdh-catalog`). Do not restart RHDH as the fix.
 - Confirm Stage 070/080 validation. Only the published revision's Location rows remain, and `catalog-runtime-rhdh` carries `rhoai3.redhat.com/catalog-revision` and `rhoai3.redhat.com/catalog-bundle`.
 
-**Related:** `gitops/stages/070-advanced-app-platform/rhdh/catalog/all.yaml`, `jobs/catalog/generate.sh`, `jobs/catalog/render_catalog.py`
+**Related:** `gitops/stages/070-advanced-app-platform/070-rhdh/catalog/all.yaml`, `jobs/catalog/generate.sh`, `jobs/catalog/render_catalog.py`
 
 ## RHDH Catalog Generator Refuses `FACTORY_BUNDLE_MISMATCH`
 
@@ -1451,7 +1451,7 @@ oc exec -n "$NS" "$POD" -c development-tooling -- \
 - Re-run dest-init (or replace `~/.local/bin/kantra-assert-exec` from that ConfigMap) so the live helper skips `rulesets/` shebangs. Then `kantra-assert-exec /opt/mta-cli` exits 0.
 - Re-run isolated `rehearse-legacy.sh` (or a new M1 on a fresh destination). Do not rewrite the failed M1 `mta.json`. Do not `hermes kanban create|link` by hand.
 
-**Related docs:** `.agents/rules/ensure-cli-capability.md`, `gitops/stages/070-advanced-app-platform/devspaces/maas-api-key-provisioning.yaml`
+**Related docs:** `.agents/rules/ensure-cli-capability.md`, `gitops/stages/070-advanced-app-platform/070-devspaces/maas-api-key-provisioning.yaml`
 
 ## Stage 130 rehearsal dies on yamlite `[id]` under UDI python3.9
 
@@ -1502,7 +1502,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 - **Next provision:** restart the workspace so `postStart` re-runs (the fetch is idempotent). Do not re-stamp the RHDH catalog solely for this; the template is SHA-pinned, so only a published artifact that includes the retry is live.
 - **Already-running workspace:** do not treat Running as success. Extract the live ConfigMap and run it in the tooling container (`PROJECT_DIR` / `PROFILE` as that workspace expects). Do not restart a live migration seat to pick this up.
 
-**Related docs:** `gitops/stages/070-advanced-app-platform/rhdh/templates/*/skeleton/devfile.yaml`
+**Related docs:** `gitops/stages/070-advanced-app-platform/070-rhdh/templates/*/skeleton/devfile.yaml`
 
 ## Dest Hermes worker profiles missing (`harness-v2`)
 
@@ -1523,7 +1523,7 @@ ls /projects/modernized/.hermes/home/profiles/
 
 **Recover:** Fix the init error (overlay `/usr/local/bin/hermes`, templates present, secrets only in Managed Scope). Re-run `ensure_hermes` / restart only when the operator asks — do not clone from `default`.
 
-**Related docs:** `gitops/stages/070-advanced-app-platform/devspaces/maas-api-key-provisioning.yaml` (`ensure_dest_worker_profiles`); golden `.hermes/config/profiles/`
+**Related docs:** `gitops/stages/070-advanced-app-platform/070-devspaces/maas-api-key-provisioning.yaml` (`ensure_dest_worker_profiles`); golden `.hermes/config/profiles/`
 
 ## Dest Hermes terminal keeps literal `${env:MAAS_*}` (`harness-v2`)
 
@@ -1694,7 +1694,7 @@ oc get pods -n openshift-ingress \
 
 **Recover:** Additive GitOps NetworkPolicy `payload-processing-maas-gateway` (ingress-only, Istio-managed from-selector). Operator syncs stage 040 and confirms `operationState.syncResult.revision`, then checks the common `GET /v1/models` discovery endpoint; parked Qwen3.6 need not be listed. Do not dest-read dest `.env` values.
 
-**Related docs:** `gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/networkpolicy-payload-processing-maas-gateway.yaml`; Architect `073314ZA`
+**Related docs:** `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/gateway/networkpolicy-payload-processing-maas-gateway.yaml`; Architect `073314ZA`
 
 ## Dest gateway persist WARN / dest `.hermes/home/scripts` (`harness-v2`)
 
@@ -1726,7 +1726,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 ```bash
 # Local skeleton (before publish / dest mint):
 ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
-  gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml
+  gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/skeleton/devfile.yaml
 ```
 
 **Recover:**
@@ -1735,7 +1735,7 @@ ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
 - Do not retry the factory URL pinned to the broken commit. Push a parseable `devfile.yaml` to dest `main`, then start a new workspace from current `main`.
 - Catalog re-stamp does not rewrite an existing dest repo.
 
-**Related docs:** `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml`
+**Related docs:** `gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/skeleton/devfile.yaml`
 
 ## Factory Workspace hermes-dash Route Returns 503 Or Nothing Listens On 9119
 
@@ -1771,7 +1771,7 @@ for proc in ("/proc/net/tcp","/proc/net/tcp6"):
 - **Next provision:** after golden publish + catalog re-stamp, a new workspace should show `state=listening` / `bind=0.0.0.0:9119`. Login is Managed Scope basic-auth (`ai-developer` / demo password) behind the che-gateway OAuth on the `hermes-dash` endpoint.
 - **Already-running workspace:** do not restart a live migration seat. If Hermes is already installed, start by hand in the tooling container only when the operator asks: `hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open` after confirming `grep basic_auth /projects/.platform/hermes/config.yaml`.
 
-**Related docs:** `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml`; v2 golden `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard/`
+**Related docs:** `gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/skeleton/devfile.yaml`; v2 golden `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard/`
 
 ## Kilo Code Is Missing From A Dev Spaces Workspace
 
@@ -2003,7 +2003,7 @@ oc get application <app> -n openshift-gitops -o json \
   | jq '.spec.ignoreDifferences[] | select(.kind=="Namespace")'
 ```
 
-**Recover:** apply the label imperatively (`oc label ns <ns> key=value --overwrite`). Stage 070 namespaces no longer ignore metadata: `070-namespaces` uses `ServerSideDiff=true`, so a label declared in `gitops/stages/070-advanced-app-platform/namespaces/namespaces.yaml` (such as the pipeline-project enrollment label on `coolstore-dev`) is applied to an existing namespace on the next sync.
+**Recover:** apply the label imperatively (`oc label ns <ns> key=value --overwrite`). Stage 070 namespaces no longer ignore metadata: `070-namespaces` uses `ServerSideDiff=true`, so a label declared in `gitops/stages/070-advanced-app-platform/070-namespaces/namespaces.yaml` (such as the pipeline-project enrollment label on `coolstore-dev`) is applied to an existing namespace on the next sync.
 
 ## OpenCode: "unknown certificate verification error" for Every Model
 
@@ -2025,7 +2025,7 @@ curl -sSI https://<maas-host>/ >/dev/null && echo "OS store: OK"
 
 **Recover:**
 
-- **Durable (platform):** `init-ai-tools.sh` exports `NODE_USE_SYSTEM_CA=1` into `~/.bashrc` alongside the opencode PATH block, so every workspace start trusts the gateway. See `gitops/stages/070-advanced-app-platform/devspaces/maas-api-key-provisioning.yaml` (`ensure_opencode_latest`). Applies on a fresh workspace/PV.
+- **Durable (platform):** `init-ai-tools.sh` exports `NODE_USE_SYSTEM_CA=1` into `~/.bashrc` alongside the opencode PATH block, so every workspace start trusts the gateway. See `gitops/stages/070-advanced-app-platform/070-devspaces/maas-api-key-provisioning.yaml` (`ensure_opencode_latest`). Applies on a fresh workspace/PV.
 - **Immediate (running workspace):** quit OpenCode, then `export NODE_USE_SYSTEM_CA=1 && opencode` — the new server inherits it.
 - **Do NOT** use `NODE_EXTRA_CA_CERTS` (broken on Bun 1.3.x — [oven-sh/bun#24581](https://github.com/oven-sh/bun/issues/24581)) or `NODE_TLS_REJECT_UNAUTHORIZED=0` (Bun's `fetch` ignores it, and it disables verification entirely).
 
@@ -2054,7 +2054,7 @@ oc get maassubscription -n models-as-a-service -o yaml | grep -A5 tokenRateLimit
 **Recover:**
 
 - Wait for the hourly window to roll over, or
-- adjust the limit in `gitops/stages/040-governed-models-as-a-service/model-access/` files and re-sync `040-model-access`. The budgets and their rationale are in that component's README.
+- adjust the limit in `gitops/stages/040-governed-models-as-a-service/040-model-access/` files and re-sync `040-model-access`. The budgets and their rationale are in that component's README.
 
 ## ose-cli curl Version Does Not Support --retry-all-errors
 
@@ -2295,7 +2295,7 @@ For browser access failures, verify the platform realm's GitLab client, the subj
 
 **Cause:** `spec.plugins` on `consoles.operator.openshift.io/cluster` is an atomic list. Any writer replaces it whole, and operators that register a plugin only append their own name, so a rewrite drops the others. Append-only Sync hooks did not prevent this (2026-10-12, 2026-10-13).
 
-**Fix:** Application `010-console-observability` owns the list by server-side apply (`gitops/stages/010-openshift-ai-platform-foundation/console-observability/console-plugins.yaml`), and self-heal restores it. To add a plugin, add it to that file and publish; do not `oc patch` the list. `validate-console-observability.sh` fails when an installed ConsolePlugin is disabled or missing from Git.
+**Fix:** Application `010-console-observability` owns the list by server-side apply (`gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/console-plugins.yaml`), and self-heal restores it. To add a plugin, add it to that file and publish; do not `oc patch` the list. `validate-console-observability.sh` fails when an installed ConsolePlugin is disabled or missing from Git.
 
 ## References
 
@@ -2576,7 +2576,7 @@ oc port-forward -n redhat-ods-monitoring svc/data-science-collector-targetalloca
 curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
 ```
 
-**Recover:** The GPU panel is fixed by Stage 020's `nvidia-gpu-operator/rhoai-monitoring/dcgm-accelerator-servicemonitor.yaml`: a user-owned ServiceMonitor with the documented scrape label that reads the DCGM exporter and applies the product's own mapping (`DCGM_FI_DEV_GPU_UTIL` to `accelerator_gpu_utilization`) on the RHOAI side, labelling each series with the model name so the panel's model filter works (the panel groups by the collector's pod attribute, which is the DCGM exporter pod on each GPU node). The inter-token latency, error rate and user-workload target problems remain Red Hat items recorded in BACKLOG; nothing else in this repository is misconfigured (the DSCInitialization monitoring section, the Monitoring service conditions, the datasources and the scrape labels match the 3.5 guide). The Cluster, Models and Usage tabs and the custom Cost per token and Tokenomics tabs are unaffected.
+**Recover:** The GPU panel is fixed by Stage 020's `020-nvidia-gpu-operator/rhoai-monitoring/dcgm-accelerator-servicemonitor.yaml`: a user-owned ServiceMonitor with the documented scrape label that reads the DCGM exporter and applies the product's own mapping (`DCGM_FI_DEV_GPU_UTIL` to `accelerator_gpu_utilization`) on the RHOAI side, labelling each series with the model name so the panel's model filter works (the panel groups by the collector's pod attribute, which is the DCGM exporter pod on each GPU node). The inter-token latency, error rate and user-workload target problems remain Red Hat items recorded in BACKLOG; nothing else in this repository is misconfigured (the DSCInitialization monitoring section, the Monitoring service conditions, the datasources and the scrape labels match the 3.5 guide). The Cluster, Models and Usage tabs and the custom Cost per token and Tokenomics tabs are unaffected.
 
 ## Start Evaluation Run Offers No Model To Choose
 
@@ -2826,7 +2826,7 @@ The reused RHBK 26.4 operator serves `KeycloakRealmImport` at `k8s.keycloak.org/
 
 ## Stage 070 identity hook stops after an existing demo user
 
-**Symptom:** the base-SSO identity hook (`identity/jobs/configure-base-sso.py`) fails with `Existing application identity has no verified OpenShift link: <user>` or `Conflicting base SSO identity: <user>`.
+**Symptom:** the base-SSO identity hook (`070-identity/jobs/configure-base-sso.py`) fails with `Existing application identity has no verified OpenShift link: <user>` or `Conflicting base SSO identity: <user>`.
 
 The hook validates the whole linking plan before it changes any user or client, and it never deletes a federated-identity link. An existing `platform` realm user is linked to `base-sso` only when its OpenShift identity and user UID agree and its single `openshift` link carries that UID, or when it already has a `base-sso` link to the same base user. A missing, stale or foreign link refuses the run instead of being repaired. Inspect the user's federated identities in the `platform` realm and the OpenShift `User`/`Identity` objects, correct the conflicting record, then resync. `stages/070-advanced-app-platform/tests/sso-alignment.test.py` covers the unbound, stale and foreign cases.
 

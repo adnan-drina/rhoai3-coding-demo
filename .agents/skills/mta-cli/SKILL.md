@@ -38,11 +38,11 @@ and the Stage 130 scaffold skill
 | `mta-cli` 8.3.0 at `/opt/mta-cli` (symlinked to `/usr/local/bin`), archive and binary SHA-256 locked; `MTA_CLI_HOME=/opt/mta-cli` | `stages/070-advanced-app-platform/workspace-image/Dockerfile`, `artifacts.lock.json` | [Install the CLI from a .zip][zip] |
 | Image check proves hashes, the Java external provider, the analyzer bundle, `mta-cli version` and Java 21 | `stages/070-advanced-app-platform/workspace-image/verify-image.py` | — |
 | Containerless Java analysis on Java 21 (the analyzer bundle wedges on 17) | `.../scan-with-mta/scripts/mta-analyze-legacy.sh` | [Containerless mode][containerless] |
-| Migration workspaces set `JVM_MAX_MEM=8G` (below the 12Gi container limit), `HUB_URL` from the template, `HUB_INSECURE=false` | `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml` | [Containerless mode][containerless] |
+| Migration workspaces set `JVM_MAX_MEM=8G` (below the 12Gi container limit), `HUB_URL` from the template, `HUB_INSECURE=false` | `gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/skeleton/devfile.yaml` | [Containerless mode][containerless] |
 | Invocation: `analyze --input <frozen copy> --output … --target <each> --rules <custom ruleset> --json-output --overwrite`; never `--source` | `.../scan-with-mta/scripts/mta-analyze-legacy.sh` | [analyze options][flags] |
 | Targets come from `migration.yaml` `analysis.targets`; the custom ruleset carries a canary rule that must fire | `.../.hermes/planning/mta-rules/rhoai3-canary.yaml` | see `mta-rules` |
 | Community kantra is a provisional fallback only: receipt `provenance: kantra-fallback` is non-admissible | `.../scan-with-mta/scripts/emit-mta-receipt.py`, `.agents/rules/ensure-cli-capability.md` | — |
-| Workspaces get the Hub URL from ConfigMap `mta-hub-config` (`MTA_HUB_URL`); TLS verification stays on | `gitops/stages/070-advanced-app-platform/mta/jobs/mta-hub-workspace-config.yaml` | [Connect the CLI to the Hub][hub] |
+| Workspaces get the Hub URL from ConfigMap `mta-hub-config` (`MTA_HUB_URL`); TLS verification stays on | `gitops/stages/070-advanced-app-platform/070-mta/jobs/mta-hub-workspace-config.yaml` | [Connect the CLI to the Hub][hub] |
 
 ## Procedure
 

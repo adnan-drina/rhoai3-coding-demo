@@ -12,13 +12,13 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
-sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
+sys.path.insert(0, str(BASE / '070-pipelines/gitlab'))
 FIXTURES = Path(__file__).with_name('fixtures')
 
 
 class ProductSchemas(unittest.TestCase):
     def test_controller_memory_policy_uses_the_openshift_422_schema(self):
-        policy = yaml.safe_load((BASE / 'mta/controller-sizing/agentic-memory.yaml').read_text())
+        policy = yaml.safe_load((BASE / '070-mta/controller-sizing/agentic-memory.yaml').read_text())
         schema = json.loads((FIXTURES / 'vpa-4.22-spec.schema.json').read_text())['schema']
         jsonschema.validate(policy['spec'], schema)
         self.assertEqual(policy['spec']['targetRef'], {
@@ -32,7 +32,7 @@ class ProductSchemas(unittest.TestCase):
         # Keep the single-replica exception local. Other workloads, including
         # stopped models, are not selected by this policy.
         self.assertEqual(policy['spec']['updatePolicy'], {'minReplicas': 1, 'updateMode': 'Recreate'})
-        controller = yaml.safe_load((BASE / 'mta/controller-sizing/controller.yaml').read_text())
+        controller = yaml.safe_load((BASE / '070-mta/controller-sizing/controller.yaml').read_text())
         self.assertEqual(controller['spec']['minReplicas'], 2)
 
     def test_template_gitlab_inputs_match_installed_action_schemas(self):
@@ -41,7 +41,7 @@ class ProductSchemas(unittest.TestCase):
         captured = json.loads((FIXTURES / 'rhdh-1.10.5-gitlab-actions.json').read_text())
         schemas = {a['id']: a['schema'] for a in captured['actions']}
         for name in ('agentic-quarkus-scaffold', 'app-migration'):
-            template = yaml.safe_load((BASE / ('rhdh/templates/' + name + '/template.yaml')).read_text())
+            template = yaml.safe_load((BASE / ('070-rhdh/templates/' + name + '/template.yaml')).read_text())
             for step in template['spec']['steps']:
                 if step['action'] not in schemas:
                     continue
@@ -60,7 +60,7 @@ class ProductSchemas(unittest.TestCase):
                             self.assertIn(field, schemas[step['action']]['output']['properties'])
 
     def test_tackle_parameters_are_implemented_by_the_downstream_operator(self):
-        spec = yaml.safe_load((BASE / 'mta/mta-instance/tackle.yaml').read_text())['spec']
+        spec = yaml.safe_load((BASE / '070-mta/mta-instance/tackle.yaml').read_text())['spec']
         defaults = json.loads((FIXTURES / 'mta-tackle-8.3-defaults.json').read_text())
         # The actual CRD preserves unknown fields. Check the operand's declared
         # defaults instead of inventing a typed schema that would accept typos.
@@ -68,7 +68,7 @@ class ProductSchemas(unittest.TestCase):
         self.assertNotIn('rwo_storage_class', spec)
 
     def test_mta_gateway_matches_the_actual_83_operator(self):
-        documents = list(yaml.safe_load_all((BASE / 'mta/jobs/configure-ai.yaml').read_text()))
+        documents = list(yaml.safe_load_all((BASE / '070-mta/jobs/configure-ai.yaml').read_text()))
         gateway = next(d for d in documents if d['kind'] == 'Gateway')
         schema = json.loads((FIXTURES / 'mta-gateway-8.3.schema.json').read_text())['schema']
         jsonschema.validate(gateway['spec'], schema)
@@ -76,7 +76,7 @@ class ProductSchemas(unittest.TestCase):
         with self.assertRaises(jsonschema.ValidationError): jsonschema.validate(invalid, schema)
 
     def test_tas_configured_fields_use_the_actual_15_spelling_and_types(self):
-        secure = yaml.safe_load((BASE / 'pipelines/signing/securesign.yaml').read_text())
+        secure = yaml.safe_load((BASE / '070-pipelines/signing/securesign.yaml').read_text())
         schema = json.loads((FIXTURES / 'tas-securesign-1.5.schema.json').read_text())['schema']
         jsonschema.validate(secure['spec'], schema)
         invalid = copy.deepcopy(secure['spec'])
@@ -84,7 +84,7 @@ class ProductSchemas(unittest.TestCase):
         with self.assertRaises(jsonschema.ValidationError): jsonschema.validate(invalid, schema)
 
     def test_both_migration_protocols_render_valid_devfiles(self):
-        path = BASE / 'rhdh/templates/app-migration/app-migration-template.test.py'
+        path = BASE / '070-rhdh/templates/app-migration/app-migration-template.test.py'
         spec = importlib.util.spec_from_file_location('migration_template', path)
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
         schema = json.loads((FIXTURES / 'devfile-2.2.2.schema.json').read_text())

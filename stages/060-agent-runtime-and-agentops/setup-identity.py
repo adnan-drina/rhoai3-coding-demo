@@ -25,7 +25,7 @@ app=oc('get','application',APP,'-n','openshift-gitops','-o','json',optional=args
 if app:
     s=app['spec'];m=app['metadata']
     assert not m.get('ownerReferences') and not m.get('deletionTimestamp') and 'sources' not in s
-    assert s['project']=='rhoai-demo' and s['source']['repoURL']==os.environ.get('GIT_REPO_URL','https://github.com/adnan-drina/rhoai3-coding-demo.git') and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/openshell-identity'
+    assert s['project']=='rhoai-demo' and s['source']['repoURL']==os.environ.get('GIT_REPO_URL','https://github.com/adnan-drina/rhoai3-coding-demo.git') and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/060-openshell-identity'
     assert s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'}
     if not args.preflight:
         assert s['source']['targetRevision']==args.revision

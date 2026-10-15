@@ -34,15 +34,15 @@ no RDMA, no quota reserved for them.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `ray`, `trainingoperator`, `trainer` are `Removed` in `default-dsc` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Manage distributed workloads][dw] |
-| The only queues are the Stage 020 ones (`cq-gpu-rtxpro6000`, `cq-gpu-reserved-demo`, `cq-cpu-default`, `kueue.x-k8s.io/v1beta2`), sized for model servers and workbenches; NVIDIA only, no cohorts, no preemption | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/queues/` | [Configure quota management][quota], [NVIDIA GPUs without shared cohort][nvidia] |
+| `ray`, `trainingoperator`, `trainer` are `Removed` in `default-dsc` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Manage distributed workloads][dw] |
+| The only queues are the Stage 020 ones (`cq-gpu-rtxpro6000`, `cq-gpu-reserved-demo`, `cq-cpu-default`, `kueue.x-k8s.io/v1beta2`), sized for model servers and workbenches; NVIDIA only, no cohorts, no preemption | `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/queues/` | [Configure quota management][quota], [NVIDIA GPUs without shared cohort][nvidia] |
 | No RDMA or accelerated networking is configured | — | [Configure a cluster for RDMA][rdma] |
 
 ## If enabled
 
 1. Enable the components first (`rhoai-distributed-workloads`).
 2. Add quota for training in Git under
-   `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/queues/`
+   `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/queues/`
    (a ClusterQueue or more nominal quota) or in the new stage, and a
    LocalQueue in each training project. The two GPUs per ClusterQueue are
    used by model servers today; adding training without new GPU nodes
@@ -63,7 +63,7 @@ no RDMA, no quota reserved for them.
   frameworks; the operators behind them are not installed.
 - The official quota examples name other GPU models (and AMD); keep this
   repo's flavors and its one-ClusterQueue-per-GPU-type pattern
-  (`gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/queues/cq-gpu-rtxpro6000.yaml`).
+  (`gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/queues/cq-gpu-rtxpro6000.yaml`).
 
 ## Official documentation (OpenShift AI 3.5)
 

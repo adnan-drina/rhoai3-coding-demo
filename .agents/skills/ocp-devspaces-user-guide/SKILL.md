@@ -23,12 +23,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, devfile and workspace behavior
 in the linked Dev Spaces 3.30 topics. Detailed record:
-`gitops/stages/070-advanced-app-platform/devspaces/README.md`.
+`gitops/stages/070-advanced-app-platform/070-devspaces/README.md`.
 
 ## When to use
 
-- A change touches `devspaces/agentic-workspace.yaml`, the template devfiles
-  under `gitops/stages/070-advanced-app-platform/rhdh/templates/*/skeleton/devfile.yaml`,
+- A change touches `070-devspaces/agentic-workspace.yaml`, the template devfiles
+  under `gitops/stages/070-advanced-app-platform/070-rhdh/templates/*/skeleton/devfile.yaml`,
   or the mounted MaaS credentials and bootstrap ConfigMaps.
 - A workspace starts without its tools, extensions or model credentials.
 
@@ -36,14 +36,14 @@ in the linked Dev Spaces 3.30 topics. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Standing DevWorkspace `agentic-coolstore` (`started: false`) in `wksp-ai-developer` and `wksp-ai-admin`, UDI image pinned by digest; `070-gitlab` patches its remote | `gitops/stages/070-advanced-app-platform/devspaces/agentic-workspace.yaml` | [Devfile in Dev Spaces][devfile] |
-| New workspaces come from Developer Hub templates as factory URLs `…#<gitlab repo>?revision=main&existing=<name>` | `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/template.yaml` | [Start from a Git URL][fromurl], [Existing workspace name][existing] |
+| Standing DevWorkspace `agentic-coolstore` (`started: false`) in `wksp-ai-developer` and `wksp-ai-admin`, UDI image pinned by digest; `070-gitlab` patches its remote | `gitops/stages/070-advanced-app-platform/070-devspaces/agentic-workspace.yaml` | [Devfile in Dev Spaces][devfile] |
+| New workspaces come from Developer Hub templates as factory URLs `…#<gitlab repo>?revision=main&existing=<name>` | `gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/template.yaml` | [Start from a Git URL][fromurl], [Existing workspace name][existing] |
 | Kilo Code VSIX downloaded at postStart and loaded through `DEFAULT_EXTENSIONS`; migration workspaces load baked MTA VSIX files | `agentic-workspace.yaml`; `.../app-migration/skeleton/devfile.yaml` | [Pre-install extensions][defext], [Automate VS Code extensions][autoext] |
-| MaaS credentials: Secret `workspace-maas-credentials` mounted as env (`MAAS_API_KEY`, `MAAS_API_BASE_URL`, model id), written by the key Job | `devspaces/maas-api-key-provisioning.yaml` | [Mount Secrets][secrets] |
-| Model profile table `migration-model-profiles` mounted as file at `/etc/rhoai3/model-profiles` with `mount-on-start` | `devspaces/kustomization.yaml`, `devspaces/model-profiles.json` | [Mount ConfigMaps][configmaps] |
-| Tool bootstrap `init-ai-tools.sh` from ConfigMap `devspace-ai-tools-init` at postStart (Kilo Code, OpenCode, Hermes) | `devspaces/maas-api-key-provisioning.yaml` | [Customize workspace components][components] |
-| Model access goes through governed MaaS keys, not the product AI-provider registration | Stage 040, `devspaces/maas-api-key-provisioning.yaml` | [AI assistants][ai], [Register an AI provider][aiprov] |
-| A DevWorkspace that sets `MIGRATION_RUN_NAME` must be named exactly that (ValidatingAdmissionPolicy) | `devspaces/migration-workspace-name-policy.yaml` | — |
+| MaaS credentials: Secret `workspace-maas-credentials` mounted as env (`MAAS_API_KEY`, `MAAS_API_BASE_URL`, model id), written by the key Job | `070-devspaces/maas-api-key-provisioning.yaml` | [Mount Secrets][secrets] |
+| Model profile table `migration-model-profiles` mounted as file at `/etc/rhoai3/model-profiles` with `mount-on-start` | `070-devspaces/kustomization.yaml`, `070-devspaces/model-profiles.json` | [Mount ConfigMaps][configmaps] |
+| Tool bootstrap `init-ai-tools.sh` from ConfigMap `devspace-ai-tools-init` at postStart (Kilo Code, OpenCode, Hermes) | `070-devspaces/maas-api-key-provisioning.yaml` | [Customize workspace components][components] |
+| Model access goes through governed MaaS keys, not the product AI-provider registration | Stage 040, `070-devspaces/maas-api-key-provisioning.yaml` | [AI assistants][ai], [Register an AI provider][aiprov] |
+| A DevWorkspace that sets `MIGRATION_RUN_NAME` must be named exactly that (ValidatingAdmissionPolicy) | `070-devspaces/migration-workspace-name-policy.yaml` | — |
 
 ## Procedure
 

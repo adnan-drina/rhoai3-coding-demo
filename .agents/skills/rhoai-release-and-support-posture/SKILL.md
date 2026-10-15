@@ -37,12 +37,12 @@ official guidance" table.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| The demo follows `stable-3.5` with `Automatic` approval, bounded by a minimum installed version `3.5.1` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Lifecycle][lifecycle]; see `rhoai-update-channels` |
+| The demo follows `stable-3.5` with `Automatic` approval, bounded by a minimum installed version `3.5.1` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Lifecycle][lifecycle]; see `rhoai-update-channels` |
 | TP and DP features may be shown, labelled as such where they are used; posture lives in the component README Alignment table, not in this skill | component READMEs under `gitops/stages/` | [Technology Preview features][tp], [Developer Preview features][dp] |
-| Dashboard flags that enable preview UI: `connectionTest` (TP), `disableKueue: false` (DP), `modelAsService` (TP, Stage 040) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md` (OdhDashboardConfig) | [3.5 GA TP features][tp35] |
-| MaaS and external models are labelled TP | `gitops/stages/040-governed-models-as-a-service/local-models/README.md` | [3.5 GA TP features][tp35] |
+| Dashboard flags that enable preview UI: `connectionTest` (TP), `disableKueue: false` (DP), `modelAsService` (TP, Stage 040) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md` (OdhDashboardConfig) | [3.5 GA TP features][tp35] |
+| MaaS and external models are labelled TP | `gitops/stages/040-governed-models-as-a-service/040-local-models/README.md` | [3.5 GA TP features][tp35] |
 | Stage 060 MCP Lifecycle Operator is labelled TP; the MCP Catalog and AgentOps view DP | `stages/060-agent-runtime-and-agentops/README.md` | [3.5 GA TP features][tp35], [3.5 GA DP features][dp35] |
-| Deprecated `llamastackoperator` stays `Removed`; OGX is used instead | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Deprecated][deprecated] |
+| Deprecated `llamastackoperator` stays `Removed`; OGX is used instead | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Deprecated][deprecated] |
 | AutoRAG and AutoML are out of scope | `docs/OPERATIONS.md` (Ownership and stage boundaries) | [Product features][features] |
 | Product doc version is pinned to the Subscription channel; upgrades change pin, map and skills together | `.agents/references/red-hat-doc-map.yaml`, `docs/PLATFORM_BASELINE.md` | [Release notes overview][overview] |
 

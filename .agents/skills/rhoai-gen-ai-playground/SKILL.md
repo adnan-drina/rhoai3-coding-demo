@@ -21,7 +21,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/040-governed-models-as-a-service/genai-studio/README.md`.
+`gitops/stages/040-governed-models-as-a-service/040-genai-studio/README.md`.
 
 ## When to use
 
@@ -36,19 +36,19 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Users create the playground from the dashboard; Git pre-provisions only platform-owned parts. The 3.5 playground runs on the OGX component (`OGXServer`), enabled with MaaS | `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml` | [Prerequisites][prereq], [Configure a playground][configure] |
+| Users create the playground from the dashboard; Git pre-provisions only platform-owned parts. The 3.5 playground runs on the OGX component (`OGXServer`), enabled with MaaS | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [Prerequisites][prereq], [Configure a playground][configure] |
 | Playground and MaaS dashboard flags are set by the Stage 040 enablement Job, not in the Stage 010 manifest | same Job | [Prerequisites][prereq] |
 | Custom endpoints on, `externalProviders: false`, cluster ingress domain in `clusterDomains`, so endpoints may target the MaaS hostname but not third-party providers | same Job | [Enable custom endpoints][customon] |
-| GPT-6 Luna reached through a Job-provisioned custom endpoint (`gen-ai-aa-custom-model-endpoints`, Secret `endpoint-api-key-gpt-6-luna-maas`) on subscription `playground-sandbox`: workaround for RHOAIENG-90257 (`max_tokens`) in 3.5.1 | `gitops/stages/040-governed-models-as-a-service/genai-studio/playground-endpoint-provisioner-job.yaml` | [Create custom endpoints][customuse] |
-| MCP servers published to every playground: Git owns an empty `gen-ai-aa-mcp-servers` in `redhat-ods-applications`; `publish-catalog-mcp.py` writes the two keys from Stage 060, protected by `ignoreDifferences` | `gitops/stages/040-governed-models-as-a-service/genai-studio/mcp/`, `stages/040-governed-models-as-a-service/publish-catalog-mcp.py` | [Configuring MCP servers][mcp] |
-| Saved agent "OpenShift Ops Assistant" (Developer Preview) as an `AgentProfile` ConfigMap on `qwen3-8-27b`, with an `allowedTools` list on `OpenShift-MCP` | `gitops/stages/040-governed-models-as-a-service/genai-studio/agent-profile-openshift-ops-assistant.yaml` | [Saved agents][agents] |
-| Agent system prompt registered in the project's MLflow prompt registry by a hook Job | `gitops/stages/040-governed-models-as-a-service/genai-studio/openshift-ops-assistant-prompt.yaml`, `agent-prompt-provisioner-job.yaml` | [Reusable system instructions][prompts] |
-| Retained 1 Gi state PVC `genai-playground-state`, attached only to a newly created playground by `studio-api.py` | `gitops/stages/040-governed-models-as-a-service/genai-studio/genai-playground-state-pvc.yaml` | [Resources created][resources] |
+| GPT-6 Luna reached through a Job-provisioned custom endpoint (`gen-ai-aa-custom-model-endpoints`, Secret `endpoint-api-key-gpt-6-luna-maas`) on subscription `playground-sandbox`: workaround for RHOAIENG-90257 (`max_tokens`) in 3.5.1 | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/playground-endpoint-provisioner-job.yaml` | [Create custom endpoints][customuse] |
+| MCP servers published to every playground: Git owns an empty `gen-ai-aa-mcp-servers` in `redhat-ods-applications`; `publish-catalog-mcp.py` writes the two keys from Stage 060, protected by `ignoreDifferences` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/mcp/`, `stages/040-governed-models-as-a-service/publish-catalog-mcp.py` | [Configuring MCP servers][mcp] |
+| Saved agent "OpenShift Ops Assistant" (Developer Preview) as an `AgentProfile` ConfigMap on `qwen3-8-27b`, with an `allowedTools` list on `OpenShift-MCP` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/agent-profile-openshift-ops-assistant.yaml` | [Saved agents][agents] |
+| Agent system prompt registered in the project's MLflow prompt registry by a hook Job | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/openshift-ops-assistant-prompt.yaml`, `agent-prompt-provisioner-job.yaml` | [Reusable system instructions][prompts] |
+| Retained 1 Gi state PVC `genai-playground-state`, attached only to a newly created playground by `studio-api.py` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/genai-playground-state-pvc.yaml` | [Resources created][resources] |
 | Tracing (Technology Preview) only per session, by explicit user choice | `stages/040-governed-models-as-a-service/README.md` ("Optional Studio Tracing") | [How tracing works][tracing] |
 
 ## Procedure
 
-1. Change files under `gitops/stages/040-governed-models-as-a-service/genai-studio/`;
+1. Change files under `gitops/stages/040-governed-models-as-a-service/040-genai-studio/`;
    MCP entries change only through `publish-catalog-mcp.py` (needs `--replace`
    to change a published value).
 2. Deploy and validate after the OpenShift safety guard in `AGENTS.md`:
@@ -77,7 +77,7 @@ OpenShift AI 3.5 sections. Detailed record:
   for every user of the project ([Delete a playground][delete]).
 - Exported code is a template, not a runnable script ([Export][export]).
 - Claude and GPT-6 Luna need Temperature 1 in the playground; GPT-6 Luna
-  rejects `max_tokens` on the MaaS provider path (`external-models/README.md`).
+  rejects `max_tokens` on the MaaS provider path (`040-external-models/README.md`).
 - The custom endpoint ConfigMap format is the dashboard backend's internal
   format, not a documented API; re-check it on every upgrade.
 - No answer from external models:

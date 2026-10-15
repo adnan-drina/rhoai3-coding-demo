@@ -10,7 +10,7 @@ description: >
   Use when reviewing or changing the native OpenShift AI observability stack in
   Stage 010: DSCInitialization spec.monitoring in rhoai-platform/dsc-init.yaml,
   the COO, OpenTelemetry and Tempo Subscriptions and trace roles in
-  gitops/stages/010-openshift-ai-platform-foundation/observability-operators/,
+  gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/,
   the observabilityDashboard flag, the monitoring.opendatahub.io/scrape label,
   redhat-ods-monitoring Prometheus, Alertmanager and Tempo, or
   validate-foundation-services.sh failures. Do NOT use for operator logs and
@@ -23,15 +23,15 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product procedure in the linked
 OpenShift AI 3.5 sections. Detailed records:
-`gitops/stages/010-openshift-ai-platform-foundation/observability-operators/README.md`
+`gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/README.md`
 and the DSCInitialization part of
-`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md`.
 
 ## When to use
 
-- A change touches `spec.monitoring` in `rhoai-platform/dsc-init.yaml`, the
-  `observability-operators/` folder, or `observabilityDashboard` in
-  `rhoai-platform/odhdashboardconfig.yaml`.
+- A change touches `spec.monitoring` in `010-rhoai-platform/dsc-init.yaml`, the
+  `010-observability-operators/` folder, or `observabilityDashboard` in
+  `010-rhoai-platform/odhdashboardconfig.yaml`.
 - A workload should be scraped into the OpenShift AI datasource.
 - Metrics, traces or the dashboard's observability pages are missing.
 
@@ -39,12 +39,12 @@ and the DSCInitialization part of
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Prerequisite operators installed first: COO, Red Hat build of OpenTelemetry, Tempo; rolling `stable`, Automatic, bounded by the operator policy (minimums 1.5.3, 0.158.0-2, 0.22.0-2) | `observability-operators/*/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Enable the observability stack][enable] |
-| Stack enabled in the DSCI: `managementState: Managed`, namespace `redhat-ods-monitoring` (pre-created with the cluster-monitoring label), 1 Prometheus replica, `5Gi`/`90d`, traces `pv`/`2160h0m0s`, `sampleRatio: '0.1'`, default `alerting` | `rhoai-platform/dsc-init.yaml`, `rhoai-platform/monitoring-namespace.yaml` | [Enable the observability stack][enable] |
-| `observabilityDashboard: true` written down (product default) so `validate.sh` can check it | `rhoai-platform/odhdashboardconfig.yaml` | [Enable the observability dashboards][enable-dash] |
-| Trace tenant RBAC added by the repo: writer role for the generated collector SA, reader role for `rhods-admins` only | `observability-operators/trace-roles/` | [View traces in external tracing platforms][traces] (write grant not documented; README records the deviation) |
-| Scrape label only on a demo-owned ServiceMonitor for the operator-managed DCGM exporter, never on operator pods | `gitops/stages/020-gpu-infrastructure-private-ai/nvidia-gpu-operator/rhoai-monitoring/` | [Collect metrics from user workloads][user-workloads] |
-| No external metrics or trace exporters configured | `rhoai-platform/dsc-init.yaml` | [Export metrics][export] |
+| Prerequisite operators installed first: COO, Red Hat build of OpenTelemetry, Tempo; rolling `stable`, Automatic, bounded by the operator policy (minimums 1.5.3, 0.158.0-2, 0.22.0-2) | `010-observability-operators/*/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Enable the observability stack][enable] |
+| Stack enabled in the DSCI: `managementState: Managed`, namespace `redhat-ods-monitoring` (pre-created with the cluster-monitoring label), 1 Prometheus replica, `5Gi`/`90d`, traces `pv`/`2160h0m0s`, `sampleRatio: '0.1'`, default `alerting` | `010-rhoai-platform/dsc-init.yaml`, `010-rhoai-platform/monitoring-namespace.yaml` | [Enable the observability stack][enable] |
+| `observabilityDashboard: true` written down (product default) so `validate.sh` can check it | `010-rhoai-platform/odhdashboardconfig.yaml` | [Enable the observability dashboards][enable-dash] |
+| Trace tenant RBAC added by the repo: writer role for the generated collector SA, reader role for `rhods-admins` only | `010-observability-operators/trace-roles/` | [View traces in external tracing platforms][traces] (write grant not documented; README records the deviation) |
+| Scrape label only on a demo-owned ServiceMonitor for the operator-managed DCGM exporter, never on operator pods | `gitops/stages/020-gpu-infrastructure-private-ai/020-nvidia-gpu-operator/rhoai-monitoring/` | [Collect metrics from user workloads][user-workloads] |
+| No external metrics or trace exporters configured | `010-rhoai-platform/dsc-init.yaml` | [Export metrics][export] |
 
 Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unless they start with `gitops/` or `scripts/`.
 

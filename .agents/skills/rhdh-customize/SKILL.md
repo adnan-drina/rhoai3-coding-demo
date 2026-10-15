@@ -22,24 +22,24 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md`.
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md`.
 
 ## When to use
 
 - Changing the header, launcher tiles or title in `app-config-rhdh`.
 - Adding or changing a software template under
-  `gitops/stages/070-advanced-app-platform/rhdh/templates/`.
+  `gitops/stages/070-advanced-app-platform/070-rhdh/templates/`.
 
 ## Repo decisions
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Title `RHOAI Coding Demo Portal`; base URL from `${RHDH_BASE_URL}` written by the configure hook | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Title][title], [Base URL][baseurl] |
+| Title `RHOAI Coding Demo Portal`; base URL from `${RHDH_BASE_URL}` written by the configure hook | `070-rhdh/rhdh-instance/app-config-configmap.yaml` | [Title][title], [Base URL][baseurl] |
 | Global header `mountPoints` restate the full default composition and append the demo launcher tiles (`${SONARQUBE_URL}`, `${DEVSPACES_URL}`) | same file (`dynamicPlugins.frontend`) | [Customize the global header][header], [Mount points][mounts] |
 | Floating action button, home page, learning paths, Tech Radar, theme and branding are not customized | — | [Floating action button][fab], [Theme and branding][theme] |
-| Two templates, `agentic-quarkus-scaffold` and `app-migration`; they publish private GitLab repositories (`publish:gitlab`) and open an enrollment issue (`gitlab:issues:create`), never `catalog:register` | `rhdh/templates/*/template.yaml` | [Software templates][templates], [Create a template][create] |
-| Templates enter the catalog only from the generated runtime catalog pinned to one platform commit; GitLab discovery may not ingest `Template` | `rhdh/catalog/all.yaml`, `rhdh/jobs/catalog/render_catalog.py` | [Share templates][share] |
-| Template versioning and automated template sync are not used; the pinned bundle is the version | `rhdh/jobs/catalog/generate.sh` | [Version a template][version], [Automated template updates][autoupdate] |
+| Two templates, `agentic-quarkus-scaffold` and `app-migration`; they publish private GitLab repositories (`publish:gitlab`) and open an enrollment issue (`gitlab:issues:create`), never `catalog:register` | `070-rhdh/templates/*/template.yaml` | [Software templates][templates], [Create a template][create] |
+| Templates enter the catalog only from the generated runtime catalog pinned to one platform commit; GitLab discovery may not ingest `Template` | `070-rhdh/catalog/all.yaml`, `070-rhdh/jobs/catalog/render_catalog.py` | [Share templates][share] |
+| Template versioning and automated template sync are not used; the pinned bundle is the version | `070-rhdh/jobs/catalog/generate.sh` | [Version a template][version], [Automated template updates][autoupdate] |
 
 Paths are under `gitops/stages/070-advanced-app-platform/`.
 

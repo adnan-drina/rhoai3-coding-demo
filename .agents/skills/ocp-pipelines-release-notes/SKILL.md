@@ -23,14 +23,14 @@ OpenShift Pipelines 1.24 release notes.
 ## When to use
 
 - Before changing the channel in
-  `gitops/stages/070-advanced-app-platform/pipelines/operators/pipelines-subscription.yaml`.
+  `gitops/stages/070-advanced-app-platform/070-pipelines/operators/pipelines-subscription.yaml`.
 - A z-stream lands (Automatic approval) and behavior changes.
 
 ## Repo decisions
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Channel `pipelines-1.24`, Automatic; patch updates arrive without review (1.24.1 live on 2026-10-15) | `gitops/stages/070-advanced-app-platform/pipelines/operators/pipelines-subscription.yaml` | [Compatibility and support matrix][matrix] |
+| Channel `pipelines-1.24`, Automatic; patch updates arrive without review (1.24.1 live on 2026-10-15) | `gitops/stages/070-advanced-app-platform/070-pipelines/operators/pipelines-subscription.yaml` | [Compatibility and support matrix][matrix] |
 | The validator accepts any `openshift-pipelines-operator-rh.v1.24.*` | `stages/070-advanced-app-platform/validate.sh` | — |
 | Docs version and Git pin are tied in the doc map | `.agents/references/red-hat-doc-map.yaml` (`ocp_pipelines`) | — |
 

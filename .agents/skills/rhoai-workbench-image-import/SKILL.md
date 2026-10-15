@@ -25,7 +25,7 @@ OpenShift AI 3.5 sections.
 **Not deployed in this demo.** No image has been imported and Git holds no
 workbench `ImageStream`. The dashboard Workbench images menu keeps its default
 (visible): `disableBYONImageStream` is not set in
-`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml`.
 
 ## When to use
 
@@ -37,7 +37,7 @@ workbench `ImageStream`. The dashboard Workbench images menu keeps its default
 | Decision | Where in Git | Official section |
 |---|---|---|
 | A lasting image belongs in Git as an ImageStream, not a dashboard import; a dashboard import is live state Argo CD does not track | (none yet; see `rhoai-workbenches-custom-images`) | [Import a custom workbench image][import] |
-| A GPU image recommends one of the Stage 020 profiles (`gpu-rtxpro6000`, `gpu-reserved-demo`) through the form's optional "Hardware profile identifier"; do not use the row's Create profile action, profiles live in Git | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/hardware-profiles/` | [Import a custom workbench image][import] |
+| A GPU image recommends one of the Stage 020 profiles (`gpu-rtxpro6000`, `gpu-reserved-demo`) through the form's optional "Hardware profile identifier"; do not use the row's Create profile action, profiles live in Git | `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/hardware-profiles/` | [Import a custom workbench image][import] |
 
 ## Procedure
 

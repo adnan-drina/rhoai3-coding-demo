@@ -12,7 +12,7 @@ description: >
   list, endpoint-picker scheduler config, gateway refs to maas-default-gateway
   listeners qwen3-8 and api, the enable-auth annotation, delegated replicas,
   the qwen38-fp8 component, and the LLMInferenceServiceConfig topology
-  templates in gitops/stages/040-governed-models-as-a-service/local-models/.
+  templates in gitops/stages/040-governed-models-as-a-service/040-local-models/.
   Also for deciding whether to adopt llm-d autoscaling, flow control, or
   prefill/decode disaggregation. Do NOT use for KServe InferenceService or
   ServingRuntime work (use rhoai-model-serving-platform or
@@ -24,11 +24,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/040-governed-models-as-a-service/local-models/README.md`.
+`gitops/stages/040-governed-models-as-a-service/040-local-models/README.md`.
 
 ## When to use
 
-- A change touches `local-models/qwen38-27b-llminferenceservice.yaml`, the
+- A change touches `040-local-models/qwen38-27b-llminferenceservice.yaml`, the
   templates `single-node-topology.yaml` / `single-node-router.yaml`, or
   `components/qwen38-fp8/`.
 - The model is not Ready, does not roll out, or shows "Starting" in the console.
@@ -39,16 +39,16 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Private model `qwen3-8-27b` is an `LLMInferenceService` (`serving.kserve.io/v1alpha2`) in `internal-models`: `RedHatAI/Qwen3.8-27B-NVFP4` at a pinned Hugging Face revision on one RTX PRO 6000 GPU | `local-models/qwen38-27b-llminferenceservice.yaml` | [Deploy with llm-d][deploy] |
-| LeaderWorkerSet Operator is installed although the model is single-GPU; the docs need it only for multi-node (more than 8 accelerators) | `gitops/stages/040-governed-models-as-a-service/maas-operators/` | [Enable distributed inference][enable] |
-| Gateway chosen in YAML: `router.gateway.refs` to `maas-default-gateway` (`openshift-ingress`) listeners `qwen3-8` and `api` | same manifest; `gateway-governance/gateway/gateway.yaml` | [Select a Gateway in YAML][gw-yaml], [Gateway on OpenShift][gw-ocp] |
-| Authentication on: `security.opendatahub.io/enable-auth: "true"` set explicitly (the default is on); Kuadrant and Authorino TLS live in `040-gateway-governance` | same manifest; `gateway-governance/governance/` | [Enable authentication][auth], [Connectivity Link auth][auth-rhcl] |
+| Private model `qwen3-8-27b` is an `LLMInferenceService` (`serving.kserve.io/v1alpha2`) in `internal-models`: `RedHatAI/Qwen3.8-27B-NVFP4` at a pinned Hugging Face revision on one RTX PRO 6000 GPU | `040-local-models/qwen38-27b-llminferenceservice.yaml` | [Deploy with llm-d][deploy] |
+| LeaderWorkerSet Operator is installed although the model is single-GPU; the docs need it only for multi-node (more than 8 accelerators) | `gitops/stages/040-governed-models-as-a-service/040-maas-operators/` | [Enable distributed inference][enable] |
+| Gateway chosen in YAML: `router.gateway.refs` to `maas-default-gateway` (`openshift-ingress`) listeners `qwen3-8` and `api` | same manifest; `040-gateway-governance/gateway/gateway.yaml` | [Select a Gateway in YAML][gw-yaml], [Gateway on OpenShift][gw-ocp] |
+| Authentication on: `security.opendatahub.io/enable-auth: "true"` set explicitly (the default is on); Kuadrant and Authorino TLS live in `040-gateway-governance` | same manifest; `040-gateway-governance/governance/` | [Enable authentication][auth], [Connectivity Link auth][auth-rhcl] |
 | Manifest owns `command` and the full `args` list (TLS args repeated; tool-calling flags in `args`, not `VLLM_ADDITIONAL_ARGS`); each non-default arg has a reason in the README | same manifest | [Configure vLLM args][vllm-args], [Configure tool calling][tools] |
 | Inline `EndpointPickerConfig`: `queue-scorer` (weight 2) + `max-score-picker`, `failureMode: FailOpen`; prefix and KV scorers dropped for one replica | same manifest | [Inline scheduler config][sched-inline], [Scheduler plugins][sched-plugins] |
-| Two dashboard templates in `redhat-ods-applications`: `single-node-exclusive-gpu` (`workload-single-node`) and `single-node-queue-router` (`router`); the Git model does not use them | `local-models/single-node-topology.yaml`, `single-node-router.yaml` | [Config labels][topo-labels], [Router configs][router-configs] |
+| Two dashboard templates in `redhat-ods-applications`: `single-node-exclusive-gpu` (`workload-single-node`) and `single-node-queue-router` (`router`); the Git model does not use them | `040-local-models/single-node-topology.yaml`, `single-node-router.yaml` | [Config labels][topo-labels], [Router configs][router-configs] |
 | `/spec/replicas` delegated to operators (parked at 0, resumed by hand); Git says 1 | `ignoreDifferences` in `gitops/applications/040-local-models.yaml` | — (Argo CD behavior) |
-| Kueue placement through hardware profile `gpu-rtxpro6000` and queue label `lq-gpu-rtxpro6000` | same manifest; `local-models/local-queue.yaml` | see `rhoai-kueue-workload-management` |
-| Serving health alerts are a repo `PrometheusRule`, not the product llm-d dashboards | `local-models/monitoring/prometheusrule-vllm-serving-health.yaml` | [Monitor llm-d deployments][monitor] |
+| Kueue placement through hardware profile `gpu-rtxpro6000` and queue label `lq-gpu-rtxpro6000` | same manifest; `040-local-models/local-queue.yaml` | see `rhoai-kueue-workload-management` |
+| Serving health alerts are a repo `PrometheusRule`, not the product llm-d dashboards | `040-local-models/monitoring/prometheusrule-vllm-serving-health.yaml` | [Monitor llm-d deployments][monitor] |
 | Not used: Workload Variant Autoscaler, priority queuing, prefill/decode disaggregation, controlled (canary) deployment, batch inference, WideEP, tracing | — | [WVA][wva], [Priority queuing][flow], [P/D][pd], [Controlled deployment][canary] |
 
 ## Procedure
@@ -72,7 +72,7 @@ OpenShift AI 3.5 sections. Detailed record:
    ```
 
 5. Switch to FP8: add `components: [components/qwen38-fp8]` to
-   `local-models/kustomization.yaml`, publish, redeploy, then run
+   `040-local-models/kustomization.yaml`, publish, redeploy, then run
    `stages/040-governed-models-as-a-service/register-model-cards.sh`.
 
 ## Pitfalls

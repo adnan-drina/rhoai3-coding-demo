@@ -35,16 +35,16 @@ are security-sensitive: include validation notes in the PR (`AGENTS.md`).
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Project access by group: `rhoai-developers` get ClusterRole `edit`, `rhods-admins` get `admin`, on `demo-sandbox` only | `gitops/stages/010-openshift-ai-platform-foundation/access/rolebinding-developer-edit.yaml`, `gitops/stages/010-openshift-ai-platform-foundation/access/rolebinding-admins-admin.yaml` | [Using RBAC][rbac] |
+| Project access by group: `rhoai-developers` get ClusterRole `edit`, `rhods-admins` get `admin`, on `demo-sandbox` only | `gitops/stages/010-openshift-ai-platform-foundation/010-access/rolebinding-developer-edit.yaml`, `gitops/stages/010-openshift-ai-platform-foundation/010-access/rolebinding-admins-admin.yaml` | [Using RBAC][rbac] |
 | Demo posture: Argo CD application controller is `cluster-admin`; least privilege is backlog | `gitops/bootstrap/overlays/demo/argocd-cluster-admin.yaml` | [Using RBAC][rbac] |
 | No custom SCC objects; SCCs are granted with `use` on one named built-in SCC through a Role or ClusterRole | see the next rows | [Role-based access to SCCs][scc-rbac] |
-| GitLab ServiceAccount gets `nonroot-v2` in `gitlab-system` only | `gitops/stages/070-advanced-app-platform/gitlab/role-gitlab-use-nonroot.yaml` | [Default SCCs][default-sccs] |
-| Only the pipeline build Task may use `nested-container` (rootless buildah in a user namespace) | `gitops/stages/070-advanced-app-platform/pipelines/operators/image-builder-scc.yaml` | [Managing SCCs][scc] |
-| The migration-run provisioner may grant `container-build` (injected by Dev Spaces) to per-run worker Roles | `gitops/stages/070-advanced-app-platform/devspaces/migration-run-resources-rbac.yaml` | [Role-based access to SCCs][scc-rbac] |
-| Deviation with operator approval: `anyuid` for the two SWE-bench ServiceAccounts in `evaluated-models` | `gitops/stages/050-model-evaluation/evaluation-content/swebench/rbac.yaml` | [Default SCCs][default-sccs] |
-| Image pulls granted per stream (`imagestreams/layers`, one `resourceName`) | `gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/images/image-pull-role.yaml` | [Using RBAC][rbac] |
-| Pod security admission: `audit`/`warn` `restricted` on Stage 040 namespaces, `baseline` on `evaluated-models`; no `enforce` label is set in Git | `gitops/stages/040-governed-models-as-a-service/local-models/namespace.yaml`, `gitops/stages/050-model-evaluation/model-qualification/namespace.yaml` | [Pod security admission][psa] |
-| Hook and automation identities are dedicated ServiceAccounts with namespace Roles | for example `gitops/stages/050-model-evaluation/oci-export/oci-export.yaml` | [Service accounts][sa] |
+| GitLab ServiceAccount gets `nonroot-v2` in `gitlab-system` only | `gitops/stages/070-advanced-app-platform/070-gitlab/role-gitlab-use-nonroot.yaml` | [Default SCCs][default-sccs] |
+| Only the pipeline build Task may use `nested-container` (rootless buildah in a user namespace) | `gitops/stages/070-advanced-app-platform/070-pipelines/operators/image-builder-scc.yaml` | [Managing SCCs][scc] |
+| The migration-run provisioner may grant `container-build` (injected by Dev Spaces) to per-run worker Roles | `gitops/stages/070-advanced-app-platform/070-devspaces/migration-run-resources-rbac.yaml` | [Role-based access to SCCs][scc-rbac] |
+| Deviation with operator approval: `anyuid` for the two SWE-bench ServiceAccounts in `evaluated-models` | `gitops/stages/050-model-evaluation/050-evaluation-content/swebench/rbac.yaml` | [Default SCCs][default-sccs] |
+| Image pulls granted per stream (`imagestreams/layers`, one `resourceName`) | `gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/images/image-pull-role.yaml` | [Using RBAC][rbac] |
+| Pod security admission: `audit`/`warn` `restricted` on Stage 040 namespaces, `baseline` on `evaluated-models`; no `enforce` label is set in Git | `gitops/stages/040-governed-models-as-a-service/040-local-models/namespace.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/namespace.yaml` | [Pod security admission][psa] |
+| Hook and automation identities are dedicated ServiceAccounts with namespace Roles | for example `gitops/stages/050-model-evaluation/050-oci-export/oci-export.yaml` | [Service accounts][sa] |
 
 ## Procedure
 

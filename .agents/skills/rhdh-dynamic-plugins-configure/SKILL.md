@@ -22,11 +22,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product procedure in the linked
 Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` ("Plugins", "Trust").
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` ("Plugins", "Trust").
 
 ## When to use
 
-- A change touches `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`,
+- A change touches `070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`,
   the `kubernetes:` or `argocd:` blocks of `app-config-configmap.yaml`, or
   `kubernetes-reader.yaml`.
 - An entity's Topology, CI or Argo CD tab is empty or shows an error.
@@ -36,14 +36,14 @@ Developer Hub 1.10 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Kubernetes plugin: one `config` cluster `local-cluster`, `authProvider: serviceAccount`, token from `rhdh-secrets`, `caFile` from the mounted `kube-root-ca.crt` | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/app-config-configmap.yaml` | [Kubernetes plugin annotations][topo-annot] |
-| Plugin identity `rhdh-kubernetes-reader` bound to the built-in ClusterRole `view` (Gap: broader than the documented read-only ClusterRole) | `rhdh/rhdh-instance/kubernetes-reader.yaml` | [Enable the Tekton plugin][tekton] |
+| Kubernetes plugin: one `config` cluster `local-cluster`, `authProvider: serviceAccount`, token from `rhdh-secrets`, `caFile` from the mounted `kube-root-ca.crt` | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/app-config-configmap.yaml` | [Kubernetes plugin annotations][topo-annot] |
+| Plugin identity `rhdh-kubernetes-reader` bound to the built-in ClusterRole `view` (Gap: broader than the documented read-only ClusterRole) | `070-rhdh/rhdh-instance/kubernetes-reader.yaml` | [Enable the Tekton plugin][tekton] |
 | `customResources`: Tekton `pipelineruns`, `taskruns` (`tekton.dev/v1`) and OpenShift `routes` | `app-config-configmap.yaml` | [View OpenShift routes][topo-routes], [View Tekton PipelineRuns][topo-tekton] |
-| Tekton frontend mounted at `entity.page.ci/cards` (`TektonCI`, guarded by `isTektonCIAvailable`) | `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Enable the Tekton plugin][tekton] |
+| Tekton frontend mounted at `entity.page.ci/cards` (`TektonCI`, guarded by `isTektonCIAvailable`) | `070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Enable the Tekton plugin][tekton] |
 | Argo CD: Community frontend with the Roadie backend, one `config` instance `main` with a reader token (Gap: the guide recommends Community with Community) | `dynamic-plugins-configmap.yaml`, `app-config-configmap.yaml` | [Enable the Argo CD plugin][argocd] |
-| Entities link to cluster objects with `backstage.io/kubernetes-id`, `janus-idp.io/tekton` and `argocd/app-name` | `rhdh/catalog/all.yaml`, `rhdh/templates/*/skeleton/catalog-info.yaml` | [Enable the Tekton plugin][tekton], [Kubernetes plugin annotations][topo-annot] |
-| `kubernetes` listed in `permission.rbac.pluginsWithPermission`; developers get only `kubernetes.clusters.read` and `kubernetes.resources.read` | `app-config-configmap.yaml`, `rhdh/rhdh-instance/rbac-policy.yaml` | see `rhdh-authorization` |
-| Argo CD reader token and Kubernetes token are written into `rhdh-secrets` by the configure hook, never in Git | `rhdh/jobs/configure-rhdh.yaml` | — (repo pattern) |
+| Entities link to cluster objects with `backstage.io/kubernetes-id`, `janus-idp.io/tekton` and `argocd/app-name` | `070-rhdh/catalog/all.yaml`, `070-rhdh/templates/*/skeleton/catalog-info.yaml` | [Enable the Tekton plugin][tekton], [Kubernetes plugin annotations][topo-annot] |
+| `kubernetes` listed in `permission.rbac.pluginsWithPermission`; developers get only `kubernetes.clusters.read` and `kubernetes.resources.read` | `app-config-configmap.yaml`, `070-rhdh/rhdh-instance/rbac-policy.yaml` | see `rhdh-authorization` |
+| Argo CD reader token and Kubernetes token are written into `rhdh-secrets` by the configure hook, never in Git | `070-rhdh/jobs/configure-rhdh.yaml` | — (repo pattern) |
 
 ## Procedure
 

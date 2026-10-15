@@ -7,14 +7,14 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: "060"
   annotations:
-    argocd.argoproj.io/manifest-generate-paths: /gitops/stages/060-agent-runtime-and-agentops/mcp-platform
+    argocd.argoproj.io/manifest-generate-paths: /gitops/stages/060-agent-runtime-and-agentops/060-mcp-platform
     demo.rhoai.io/deploy-script: stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh
 spec:
   project: rhoai-demo
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/060-agent-runtime-and-agentops/mcp-platform
+    path: gitops/stages/060-agent-runtime-and-agentops/060-mcp-platform
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops

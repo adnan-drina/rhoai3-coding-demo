@@ -30,11 +30,11 @@ project, and no vector store in Git. The current stage list ends at 130
 
 | Building block | Where in Git | Official section |
 |---|---|---|
-| OGX enabled (`ogx` Managed) by the Stage 040 enablement Job; Llama Stack operator kept Removed | `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml` | [Overview of OGX][overview] |
-| Playground OGX server with dashboard-generated pgvector storage in `demo-sandbox` | `gitops/stages/040-governed-models-as-a-service/genai-studio/README.md` | [Resources created with a playground][playres] |
-| Governed generation models through MaaS (`qwen3-8-27b`, approved external models) | `gitops/stages/040-governed-models-as-a-service/local-models/`, `gitops/stages/040-governed-models-as-a-service/external-models/` | [OGX API provider support][providers] |
-| AI pipelines (DSC `aipipelines` Managed) for repeatable ingestion | `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/` | see `rhoai-ai-pipelines` |
-| S3 buckets through ObjectBucketClaims | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/` | see `rhoai-s3-object-storage-data` |
+| OGX enabled (`ogx` Managed) by the Stage 040 enablement Job; Llama Stack operator kept Removed | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [Overview of OGX][overview] |
+| Playground OGX server with dashboard-generated pgvector storage in `demo-sandbox` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/README.md` | [Resources created with a playground][playres] |
+| Governed generation models through MaaS (`qwen3-8-27b`, approved external models) | `gitops/stages/040-governed-models-as-a-service/040-local-models/`, `gitops/stages/040-governed-models-as-a-service/040-external-models/` | [OGX API provider support][providers] |
+| AI pipelines (DSC `aipipelines` Managed) for repeatable ingestion | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/` | see `rhoai-ai-pipelines` |
+| S3 buckets through ObjectBucketClaims | `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/` | see `rhoai-s3-object-storage-data` |
 
 No embedding model or reranker is served by this repo.
 

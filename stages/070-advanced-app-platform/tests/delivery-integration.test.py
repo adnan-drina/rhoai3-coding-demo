@@ -13,7 +13,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
-sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
+sys.path.insert(0, str(BASE / '070-pipelines/gitlab'))
 
 
 def load(name, path):
@@ -23,7 +23,7 @@ def load(name, path):
     return module
 
 
-scm = load('enrollment', BASE / 'pipelines/gitlab/reconcile.py')
+scm = load('enrollment', BASE / '070-pipelines/gitlab/reconcile.py')
 lifecycle = load('lifecycle', ROOT / 'scripts/demo/gitlab-project-lifecycle.py')
 
 
@@ -49,7 +49,7 @@ class Checkout(unittest.TestCase):
                         COMMIT_RESULT=str(self.root / 'result'), GIT_TERMINAL_PROMPT='0',
                         GIT_CONFIG_COUNT='1', GIT_CONFIG_KEY_0='url.file://' + str(repo) + '.insteadOf',
                         GIT_CONFIG_VALUE_0=self.url)
-        task = yaml.safe_load((BASE / 'pipelines/project-pipeline/task-git-clone.yaml').read_text())
+        task = yaml.safe_load((BASE / '070-pipelines/project-pipeline/task-git-clone.yaml').read_text())
         self.script = task['spec']['steps'][0]['script']
 
     def run_task(self, **changes):

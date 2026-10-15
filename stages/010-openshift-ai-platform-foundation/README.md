@@ -80,7 +80,7 @@ Demo groups (`rhods-admins`, `rhoai-developers`) establishing the identity base 
 
 A durable demo AI platform foundation that all subsequent stages build on.
 
-- **OpenShift GitOps** — Argo CD (channel `gitops-1.21`) with AppProject `rhoai-demo` and annotation-based resource tracking, reconciling all platform resources from Git; `gitops-plugin` console plugin enabled for Argo CD visibility in the OpenShift web console. The full console plugin list (`consoles.operator.openshift.io/cluster` `spec.plugins`) is declared in `gitops/stages/010-openshift-ai-platform-foundation/console-observability/console-plugins.yaml` and kept by Argo CD self-heal; add plugins there
+- **OpenShift GitOps** — Argo CD (channel `gitops-1.21`) with AppProject `rhoai-demo` and annotation-based resource tracking, reconciling all platform resources from Git; `gitops-plugin` console plugin enabled for Argo CD visibility in the OpenShift web console. The full console plugin list (`consoles.operator.openshift.io/cluster` `spec.plugins`) is declared in `gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/console-plugins.yaml` and kept by Argo CD self-heal; add plugins there
 - **OpenShift Data Foundation MCG** — standalone Multicloud Object Gateway (NooBaa) providing S3-compatible object storage via `ObjectBucketClaim`; StorageCluster uses `dbStorageClassName: gp3-csi`
 - **Red Hat OpenShift AI 3.5** — operator on `stable-3.5`; Dashboard and Workbenches; model serving and MaaS are added by later stages
 - **Observability stack** — Cluster Observability Operator, Red Hat build of OpenTelemetry and Tempo through native RHOAI monitoring; metrics dashboards and PV-backed tracing

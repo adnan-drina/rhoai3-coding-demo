@@ -13,7 +13,7 @@ description: >
   `demo-registry` with its operator-generated PostgreSQL, the kube-rbac-proxy
   route, registry RoleBindings for `rhods-admins` and `rhoai-developers`, or
   registry deletion and database retention
-  (gitops/stages/030-private-model-serving/private-model-serving/model-discovery/).
+  (gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/).
   Do NOT use for registering models, versions and evaluation properties (use
   rhoai-model-registry-workflows) or catalog sources (use
   rhoai-model-catalog-sources).
@@ -23,7 +23,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/030-private-model-serving/private-model-serving/README.md`.
+`gitops/stages/030-private-model-serving/030-private-model-serving/README.md`.
 
 ## When to use
 
@@ -36,12 +36,12 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `modelregistry` set `Managed` with `registriesNamespace: rhoai-model-registries` by Sync hook `enable-model-discovery` into fields Stage 010 delegates | `gitops/stages/030-private-model-serving/private-model-serving/model-discovery/enable-job.yaml` | [Enable the model registry component][enable] |
-| Registry declared in Git as `ModelRegistry` `demo-registry` (`modelregistry.opendatahub.io/v1beta1`), not created in the dashboard; wave 6, `Prune=false,Delete=false` | `gitops/stages/030-private-model-serving/private-model-serving/model-discovery/registry/modelregistry-demo.yaml` | [Create a model registry][create] |
+| `modelregistry` set `Managed` with `registriesNamespace: rhoai-model-registries` by Sync hook `enable-model-discovery` into fields Stage 010 delegates | `gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/enable-job.yaml` | [Enable the model registry component][enable] |
+| Registry declared in Git as `ModelRegistry` `demo-registry` (`modelregistry.opendatahub.io/v1beta1`), not created in the dashboard; wave 6, `Prune=false,Delete=false` | `gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/registry/modelregistry-demo.yaml` | [Create a model registry][create] |
 | Default database (`postgres.generateDeployment: true`, `sslMode: disable`): demo only, no HA, backup or TLS | same file | [Create a model registry][create] |
 | REST route disabled; only the kube-rbac-proxy route on 443, which checks the caller's token | same file | [Create a model registry][create] |
-| Group access only: `rhods-admins` and `rhoai-developers` bound to the operator-created Role `registry-user-demo-registry` (wave 7) | `gitops/stages/030-private-model-serving/private-model-serving/model-discovery/registry/` | [Manage registry permissions][perms] |
-| Namespace `rhoai-model-registries` is owned by Stage 030 and also hosts the Model Catalog, Agent Catalog source and the EvalHub catalog-insights Role | `gitops/stages/030-private-model-serving/private-model-serving/model-discovery/registry/namespace-rhoai-model-registries.yaml` | [Model catalog and registries][overview] |
+| Group access only: `rhods-admins` and `rhoai-developers` bound to the operator-created Role `registry-user-demo-registry` (wave 7) | `gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/registry/` | [Manage registry permissions][perms] |
+| Namespace `rhoai-model-registries` is owned by Stage 030 and also hosts the Model Catalog, Agent Catalog source and the EvalHub catalog-insights Role | `gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/registry/namespace-rhoai-model-registries.yaml` | [Model catalog and registries][overview] |
 
 ## Procedure
 

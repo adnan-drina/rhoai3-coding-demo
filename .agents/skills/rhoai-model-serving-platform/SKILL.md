@@ -23,11 +23,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/030-private-model-serving/private-model-serving/README.md`.
+`gitops/stages/030-private-model-serving/030-private-model-serving/README.md`.
 
 ## When to use
 
-- A change touches `gitops/stages/030-private-model-serving/private-model-serving/dsc-enablement/`.
+- A change touches `gitops/stages/030-private-model-serving/030-private-model-serving/dsc-enablement/`.
 - Someone proposes a new `ServingRuntime`, a custom or tested-and-verified
   runtime, NVIDIA NIM, model caching, or a cluster default deployment strategy.
 - KServe is not Ready after a Stage 030 sync.
@@ -36,13 +36,13 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Stage 010 creates `default-dsc` with `kserve` `Removed`; Stage 030 turns it on with a Sync-hook Job that merge-patches only `spec.components.kserve.managementState: Managed` (a delegated field) | `gitops/stages/030-private-model-serving/private-model-serving/dsc-enablement/enable-job.yaml` | [Enable the model serving platform][enable] |
+| Stage 010 creates `default-dsc` with `kserve` `Removed`; Stage 030 turns it on with a Sync-hook Job that merge-patches only `spec.components.kserve.managementState: Managed` (a delegated field) | `gitops/stages/030-private-model-serving/030-private-model-serving/dsc-enablement/enable-job.yaml` | [Enable the model serving platform][enable] |
 | KServe sub-fields (`nim`, `rawDeploymentServiceConfig`, `modelsAsService`, `wva`) are left to operator defaults or Stage 040 | component README ("Delegated fields") | see `rhoai-dsci-dsc-configuration` |
 | NVIDIA NIM is not enabled; no NGC credentials exist in the repo | — | [NIM serving platform][nim], [Enable NIM][nim-enable] |
-| No custom and no tested-and-verified runtimes; the private model uses the platform-supplied vLLM runtime of llm-d with no image override | `gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-llminferenceservice.yaml` | [Custom runtime][custom], [Tested and verified runtime][tested], [vLLM support levels][vllm-levels] |
-| One `ServingRuntime` `vllm-cuda-runtime` in `evaluated-models`, instantiated from the platform template `vllm-cuda-runtime-template` with a pinned image digest, for the Stage 050 candidate `InferenceService` | `gitops/stages/050-model-evaluation/model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Supported runtimes][supported], [ServingRuntime][sr] |
+| No custom and no tested-and-verified runtimes; the private model uses the platform-supplied vLLM runtime of llm-d with no image override | `gitops/stages/040-governed-models-as-a-service/040-local-models/qwen38-27b-llminferenceservice.yaml` | [Custom runtime][custom], [Tested and verified runtime][tested], [vLLM support levels][vllm-levels] |
+| One `ServingRuntime` `vllm-cuda-runtime` in `evaluated-models`, instantiated from the platform template `vllm-cuda-runtime-template` with a pinned image digest, for the Stage 050 candidate `InferenceService` | `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Supported runtimes][supported], [ServingRuntime][sr] |
 | vLLM parameters are set in the manifest `args`, not through the dashboard runtime-parameter form | the two manifests above | [Customize vLLM runtime][vllm-custom], [Runtime parameters][params] |
-| Stage 010 sets `vLLMDeploymentOnMaaS: false`; the Stage 040 MaaS enablement Job turns it and `llmdTemplates` on | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml`, `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml` | [Limited-support runtime visibility][limited] |
+| Stage 010 sets `vLLMDeploymentOnMaaS: false`; the Stage 040 MaaS enablement Job turns it and `llmdTemplates` on | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml`, `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [Limited-support runtime visibility][limited] |
 | No cluster default deployment strategy in Git (dashboard setting left at its default) | — | [Default deployment strategy][strategy] |
 | No model caching (`LocalModelCache`) | — | [Model cache][cache] |
 

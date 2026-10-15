@@ -31,10 +31,10 @@ Dev Spaces 3.30 topics.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Operator on `stable` with Automatic approval; the operator policy holds the 3.30 line from 3.30.2 (DWO 0.43.0 observed with it) | `gitops/stages/070-advanced-app-platform/devspaces/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [3.30.2 patch release][p2], [Release notes][rn] |
+| Operator on `stable` with Automatic approval; the operator policy holds the 3.30 line from 3.30.2 (DWO 0.43.0 observed with it) | `gitops/stages/070-advanced-app-platform/070-devspaces/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [3.30.2 patch release][p2], [Release notes][rn] |
 | Doc map pin: `startingCSV` minor equals `docs_version` | `.agents/references/red-hat-doc-map.yaml` | — |
-| Workspace UDI image stays `udi-rhel9:3.29.1` (one minor behind; recorded Gap) | `gitops/stages/070-advanced-app-platform/devspaces/agentic-workspace.yaml` | — (README Alignment table) |
-| Managed Open VSX registry (Technology Preview) not used; `open-vsx.org` URL instead | `devspaces/checluster.yaml` | [Technology Preview][tp] |
+| Workspace UDI image stays `udi-rhel9:3.29.1` (one minor behind; recorded Gap) | `gitops/stages/070-advanced-app-platform/070-devspaces/agentic-workspace.yaml` | — (README Alignment table) |
+| Managed Open VSX registry (Technology Preview) not used; `open-vsx.org` URL instead | `070-devspaces/checluster.yaml` | [Technology Preview][tp] |
 
 ## Procedure
 
@@ -43,7 +43,7 @@ Dev Spaces 3.30 topics.
 2. Update `startingCSV`, the approver allowlist (including the DWO CSV the
    release ships) and the validator expectation together (`ocp-devspaces-install`).
 3. A minor bump also updates the map `docs_version` and the 3.30 links in
-   the Dev Spaces skills and `devspaces/README.md`
+   the Dev Spaces skills and `070-devspaces/README.md`
    (`python3 scripts/shared/check-doc-links.py --family ocp_devspaces`).
 
 ## Pitfalls

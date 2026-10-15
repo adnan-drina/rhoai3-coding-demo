@@ -5,12 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 if [[ "${1:-}" == --static ]]; then
-  export PYTHONPATH="$REPO_ROOT/gitops/stages/070-advanced-app-platform/pipelines/gitlab${PYTHONPATH:+:$PYTHONPATH}"
+  export PYTHONPATH="$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-pipelines/gitlab${PYTHONPATH:+:$PYTHONPATH}"
   for test in correction-package.test.py internal-registry.test.py chart-gitops.test.py stage070-upgrade.test.py product-schemas.test.py delivery-integration.test.py security-boundaries.test.py sonarqube-bootstrap.test.py sonarqube-scope.test.py sso-alignment.test.py; do
     "$PYTHON" "$SCRIPT_DIR/tests/$test"
   done
-  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/rhdh/jobs/catalog/render_catalog.test.py"
-  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/app-migration-template.test.py"
+  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-rhdh/jobs/catalog/render_catalog.test.py"
+  "$PYTHON" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/app-migration-template.test.py"
   kustomize build "$REPO_ROOT/gitops/stages/070-advanced-app-platform" >/dev/null
   bash -n "$SCRIPT_DIR/deploy.sh" "$SCRIPT_DIR/validate.sh"
   echo 'PASS: Stage 070 authoring checks. Live deployment and model-dependent checks are separate.'

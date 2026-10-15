@@ -12,14 +12,14 @@ metadata:
   annotations:
     argocd.argoproj.io/compare-options: ServerSideDiff=true
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/manifest-generate-paths: /gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage
+    argocd.argoproj.io/manifest-generate-paths: /gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage
     demo.rhoai.io/deploy-script: stages/010-openshift-ai-platform-foundation/deploy-sandbox-storage.sh
 spec:
   project: rhoai-demo
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage
+    path: gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops

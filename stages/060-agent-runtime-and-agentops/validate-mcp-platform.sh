@@ -15,9 +15,9 @@ def get(kind,name,ns=None):
  return json.loads(r.stdout) if r.stdout.strip() else None
 a=get('application','060-mcp-platform','openshift-gitops');assert a,'MCP platform Application missing'
 s=a['spec'];st=a['status'];op=st.get('operationState',{});result=op.get('syncResult',{})
-assert not a['metadata'].get('ownerReferences') and not a['metadata'].get('deletionTimestamp') and not s.get('sources') and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'} and s['source']['repoURL']==os.environ['GIT_REPO_URL'] and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/mcp-platform','Unexpected MCP platform Application identity'
+assert not a['metadata'].get('ownerReferences') and not a['metadata'].get('deletionTimestamp') and not s.get('sources') and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'} and s['source']['repoURL']==os.environ['GIT_REPO_URL'] and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/060-mcp-platform','Unexpected MCP platform Application identity'
 assert st['sync']['status']=='Synced' and st['sync']['revision']==s['source']['targetRevision'] and st['health']['status']=='Healthy' and op.get('phase')=='Succeeded' and result.get('revision')==s['source']['targetRevision'] and result.get('source',{}).get('path')==s['source']['path'],'MCP platform source not reconciled'
-pin=json.load(open(os.environ['MCP_PLATFORM_ROOT']+'/gitops/stages/060-agent-runtime-and-agentops/mcp-platform/operator-source.json'))
+pin=json.load(open(os.environ['MCP_PLATFORM_ROOT']+'/gitops/stages/060-agent-runtime-and-agentops/060-mcp-platform/operator-source.json'))
 end=time.monotonic()+180
 while True:
  d=get('datasciencecluster','default-dsc');c=get('crd','mcpservers.mcp.x-k8s.io')

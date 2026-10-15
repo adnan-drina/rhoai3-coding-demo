@@ -2,7 +2,7 @@
 name: managed-scope-enforcement
 skill-group: Demo Environment
 applies-to:
-  - gitops/stages/070-advanced-app-platform/devspaces/**
+  - gitops/stages/070-advanced-app-platform/070-devspaces/**
   - stages/130-ai-autonomous-migration/scaffold-repo/**
 ---
 

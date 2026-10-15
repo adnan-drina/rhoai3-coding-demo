@@ -22,26 +22,26 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift Pipelines 1.24 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/pipelines/README.md` ("Image builds",
+`gitops/stages/070-advanced-app-platform/070-pipelines/README.md` ("Image builds",
 "Credentials", Alignment table).
 
 ## When to use
 
 - A change touches the build Task, project ServiceAccounts or SCC bindings
-  under `gitops/stages/070-advanced-app-platform/pipelines/`.
+  under `gitops/stages/070-advanced-app-platform/070-pipelines/`.
 - Someone proposes `privileged`, `anyuid`, a pipeline-wide SCC, or image signing.
 
 ## Repo decisions
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Buildah runs as UID 1000 in a pod user namespace (`hostUsers: false`) with OCP's default `nested-container` SCC, not the guide's CRI-O annotation or custom-SCC method | `pipelines/project-pipeline/task-build-image.yaml`, `pipelines/gitlab/reconcile.py` (`taskRunSpecs`) | [Non-root Buildah][nonroot] (method differs; see Alignment in the README) |
-| `use` on `nested-container` only through ClusterRole `pipeline-userns-builder`, bound only to SA `image-builder`; the task refuses a non-mapped `uid_map` | `pipelines/operators/image-builder-scc.yaml`, `pipelines/project-pipeline/rbac-image-build-scc.yaml` | [Custom SCC and SA for runs][custom-scc] |
-| Operator RBAC auto-creation off (`createRbacResource=false`), so no namespace gets `pipelines-scc-rolebinding` | `pipelines/build/tektonconfig-affinity.yaml` | see `ocp-pipelines-install-config` |
-| Git credentials as a Secret workspace (`basic-auth` ← `gitlab-read-source`, read-only deploy token); registry login with the TaskRun's projected SA token | `pipelines/project-pipeline/task-git-clone.yaml`, `task-build-image.yaml` | [Secrets using workspaces][ws-secrets] |
-| Webhook: Route `gitlab-webhook` edge TLS with redirect; `gitlab` interceptor checks the `gitlab-webhook` token before CEL filtering | `pipelines/gitlab/reconcile.py` | [Secure connection with routes][el-tls] |
-| Pushes only to its own project's internal-registry path, full commit tag, digest returned; no external registry fallback | `pipelines/project-pipeline/task-build-image.yaml`, `registry-policy.yaml` | — (repo policy) |
-| Tekton Chains signing not wired into `app-push` (Gap; TAS `Securesign` exists for later use) | `pipelines/signing/securesign.yaml`; `BACKLOG.md` | [Tekton Chains][chains], [Sign image and provenance][chains-sign] |
+| Buildah runs as UID 1000 in a pod user namespace (`hostUsers: false`) with OCP's default `nested-container` SCC, not the guide's CRI-O annotation or custom-SCC method | `070-pipelines/project-pipeline/task-build-image.yaml`, `070-pipelines/gitlab/reconcile.py` (`taskRunSpecs`) | [Non-root Buildah][nonroot] (method differs; see Alignment in the README) |
+| `use` on `nested-container` only through ClusterRole `pipeline-userns-builder`, bound only to SA `image-builder`; the task refuses a non-mapped `uid_map` | `070-pipelines/operators/image-builder-scc.yaml`, `070-pipelines/project-pipeline/rbac-image-build-scc.yaml` | [Custom SCC and SA for runs][custom-scc] |
+| Operator RBAC auto-creation off (`createRbacResource=false`), so no namespace gets `pipelines-scc-rolebinding` | `070-pipelines/build/tektonconfig-affinity.yaml` | see `ocp-pipelines-install-config` |
+| Git credentials as a Secret workspace (`basic-auth` ← `gitlab-read-source`, read-only deploy token); registry login with the TaskRun's projected SA token | `070-pipelines/project-pipeline/task-git-clone.yaml`, `task-build-image.yaml` | [Secrets using workspaces][ws-secrets] |
+| Webhook: Route `gitlab-webhook` edge TLS with redirect; `gitlab` interceptor checks the `gitlab-webhook` token before CEL filtering | `070-pipelines/gitlab/reconcile.py` | [Secure connection with routes][el-tls] |
+| Pushes only to its own project's internal-registry path, full commit tag, digest returned; no external registry fallback | `070-pipelines/project-pipeline/task-build-image.yaml`, `registry-policy.yaml` | — (repo policy) |
+| Tekton Chains signing not wired into `app-push` (Gap; TAS `Securesign` exists for later use) | `070-pipelines/signing/securesign.yaml`; `BACKLOG.md` | [Tekton Chains][chains], [Sign image and provenance][chains-sign] |
 
 ## Procedure
 

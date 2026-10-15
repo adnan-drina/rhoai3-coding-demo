@@ -19,11 +19,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product procedure in the linked
 Connectivity Link 1.4 sections. Detailed record:
-`gitops/stages/040-governed-models-as-a-service/maas-operators/README.md`.
+`gitops/stages/040-governed-models-as-a-service/040-maas-operators/README.md`.
 
 ## When to use
 
-- A change touches `gitops/stages/040-governed-models-as-a-service/maas-operators/rhcl/`
+- A change touches `gitops/stages/040-governed-models-as-a-service/040-maas-operators/rhcl/`
   or `.../gateway-governance/governance/`.
 - Stage 040 install fails before the MaaS Gateway is ready.
 
@@ -31,12 +31,12 @@ Connectivity Link 1.4 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `rhcl-operator` from `redhat-operators`, channel `stable`, Automatic, no `startingCSV`, in `openshift-operators` (global OperatorGroup) | `maas-operators/rhcl/rhcl-operator-subscription.yaml` | [Install from the CLI][install-cli] |
-| Authorino, Limitador and DNS operators declared as explicit Subscriptions on `stable` so their channel is reviewed | `maas-operators/rhcl/*-subscription.yaml` | [Install from the CLI][install-cli] (verification lists all four operators) |
+| `rhcl-operator` from `redhat-operators`, channel `stable`, Automatic, no `startingCSV`, in `openshift-operators` (global OperatorGroup) | `040-maas-operators/rhcl/rhcl-operator-subscription.yaml` | [Install from the CLI][install-cli] |
+| Authorino, Limitador and DNS operators declared as explicit Subscriptions on `stable` so their channel is reviewed | `040-maas-operators/rhcl/*-subscription.yaml` | [Install from the CLI][install-cli] (verification lists all four operators) |
 | Qualified minima: rhcl 1.4.3, authorino 1.4.3, limitador 1.4.2, dns 1.4.2; other channels refused | `scripts/platform/check-operator-policy.py` | [Release notes][relnotes] (1.4.0 deprecated; use 1.4.1+) |
-| `servicemeshoperator3` on `stable-3.4`, kept for the Istio CRDs (ServiceEntry, DestinationRule, WasmPlugin, EnvoyFilter, Telemetry); no `Istio` CR | `maas-operators/rhcl/servicemeshoperator3-subscription.yaml` | [Required platforms and components][install-req] |
-| Kuadrant operator override: `AUTH_SERVICE_TIMEOUT=2s`, requests 500m/512Mi, limits 2 CPU/1Gi via Subscription `config` | `maas-operators/rhcl/rhcl-operator-subscription.yaml` | not documented in the install guide (recorded as a Gap in the README) |
-| `Kuadrant` in `kuadrant-system` with `spec.observability.enable: true`; Authorino with a TLS listener using a service serving certificate | `gateway-governance/governance/kuadrant.yaml`, `authorino.yaml` | [Install from the CLI][install-cli]; see `rhoai-maas-governance` for the Authorino TLS requirement |
+| `servicemeshoperator3` on `stable-3.4`, kept for the Istio CRDs (ServiceEntry, DestinationRule, WasmPlugin, EnvoyFilter, Telemetry); no `Istio` CR | `040-maas-operators/rhcl/servicemeshoperator3-subscription.yaml` | [Required platforms and components][install-req] |
+| Kuadrant operator override: `AUTH_SERVICE_TIMEOUT=2s`, requests 500m/512Mi, limits 2 CPU/1Gi via Subscription `config` | `040-maas-operators/rhcl/rhcl-operator-subscription.yaml` | not documented in the install guide (recorded as a Gap in the README) |
+| `Kuadrant` in `kuadrant-system` with `spec.observability.enable: true`; Authorino with a TLS listener using a service serving certificate | `040-gateway-governance/governance/kuadrant.yaml`, `authorino.yaml` | [Install from the CLI][install-cli]; see `rhoai-maas-governance` for the Authorino TLS requirement |
 
 ## Procedure
 

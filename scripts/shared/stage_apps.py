@@ -2,7 +2,7 @@
 """Component Applications of a regrouped stage.
 
 A regrouped stage keeps one Argo CD Application per component in gitops/applications/<name>.yaml (the file is
-named after metadata.name, which starts with the stage number), rendering gitops/stages/<NNN-stage>/<component>/.
+named after metadata.name, which starts with the stage number), rendering gitops/stages/<NNN-stage>/<name>/ (folder, file and Application share one name).
 Components with a demo.rhoai.io/deploy-order annotation are deployed together by the stage deploy.sh at
 one reviewed revision, in that order. Components with a demo.rhoai.io/deploy-script annotation instead are
 deployed by that script (their own revision and procedure). The kustomization at gitops/stages/<NNN-stage>/

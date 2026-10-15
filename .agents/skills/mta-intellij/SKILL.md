@@ -24,7 +24,7 @@ description: >
 
 Dev Spaces workspaces run Code - OSS with the MTA VS Code extensions baked
 into the workspace image (`stages/070-advanced-app-platform/workspace-image/artifacts.lock.json`,
-`gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml`).
+`gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/skeleton/devfile.yaml`).
 No IntelliJ plugin is installed or configured. Use `mta-vscode` for the
 workspace IDE.
 

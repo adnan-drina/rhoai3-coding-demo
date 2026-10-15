@@ -20,7 +20,7 @@ spec:
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas
+    path: gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops

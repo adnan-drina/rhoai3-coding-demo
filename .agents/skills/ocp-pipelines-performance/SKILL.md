@@ -32,10 +32,10 @@ multicluster configuration for pipelines.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Project Tasks set no step `computeResources`; namespace defaults apply | `gitops/stages/070-advanced-app-platform/pipelines/project-pipeline/task-*.yaml` | [Step compute resources][step] |
-| Migration provisioning step: requests 256Mi, limit 1Gi (an earlier 256Mi limit OOMKilled at CLI start) | `gitops/stages/070-advanced-app-platform/pipelines/build/task-provision-migration-run.yaml` | [Override step resources][override] |
-| `coschedule: pipelineruns` keeps all pods of a run on one node so RWO workspaces do not reattach | `gitops/stages/070-advanced-app-platform/pipelines/build/tektonconfig-affinity.yaml` | not in the 1.24 Red Hat guides (upstream Tekton field) |
-| Pruner keep 10 hourly limits completed-pod and PVC buildup | `gitops/stages/070-advanced-app-platform/pipelines/operators/configure-tekton-pruner.yaml` | see `ocp-pipelines-install-config` |
+| Project Tasks set no step `computeResources`; namespace defaults apply | `gitops/stages/070-advanced-app-platform/070-pipelines/project-pipeline/task-*.yaml` | [Step compute resources][step] |
+| Migration provisioning step: requests 256Mi, limit 1Gi (an earlier 256Mi limit OOMKilled at CLI start) | `gitops/stages/070-advanced-app-platform/070-pipelines/build/task-provision-migration-run.yaml` | [Override step resources][override] |
+| `coschedule: pipelineruns` keeps all pods of a run on one node so RWO workspaces do not reattach | `gitops/stages/070-advanced-app-platform/070-pipelines/build/tektonconfig-affinity.yaml` | not in the 1.24 Red Hat guides (upstream Tekton field) |
+| Pruner keep 10 hourly limits completed-pod and PVC buildup | `gitops/stages/070-advanced-app-platform/070-pipelines/operators/configure-tekton-pruner.yaml` | see `ocp-pipelines-install-config` |
 | No ResourceQuota, priority class or multicluster (hub/spoke) setup for pipelines | — | [Quota alternatives][quota-alt], [Multicluster][multi] |
 
 ## Procedure

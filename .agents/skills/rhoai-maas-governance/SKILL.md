@@ -23,7 +23,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record: component READMEs under
-`gitops/stages/040-governed-models-as-a-service/` (start with `maas-platform/README.md`);
+`gitops/stages/040-governed-models-as-a-service/` (start with `040-maas-platform/README.md`);
 repo lessons not in Git live in `references/working-configuration.md`.
 
 ## When to use
@@ -38,17 +38,17 @@ repo lessons not in Git live in `references/working-configuration.md`.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| MaaS is enabled by a Sync-hook Job patching delegated `default-dsc` fields (`aigateway`, `aigateway.modelsAsAService`, `ogx` Managed; `batchGateway` Removed), not the deprecated `kserve.modelsAsService` | `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml` | [MaaS configuration][config] |
-| Dashboard flags `modelAsService`, `vLLMDeploymentOnMaaS`, `externalModels`, `genAiStudio` and others are set by the same Job; Stage 010 owns `odh-dashboard-config` | same Job; `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` | [Dashboard configuration][dash] |
+| MaaS is enabled by a Sync-hook Job patching delegated `default-dsc` fields (`aigateway`, `aigateway.modelsAsAService`, `ogx` Managed; `batchGateway` Removed), not the deprecated `kserve.modelsAsService` | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [MaaS configuration][config] |
+| Dashboard flags `modelAsService`, `vLLMDeploymentOnMaaS`, `externalModels`, `genAiStudio` and others are set by the same Job; Stage 010 owns `odh-dashboard-config` | same Job; `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml` | [Dashboard configuration][dash] |
 | Telemetry on the controller-owned `MaaSTenantConfig` `default-tenant` with `captureUser: true` (product default `false`) for per-user showback | same Job | [Enable telemetry][telemetry] |
-| In-cluster PostgreSQL 16 in `models-as-a-service-db`; `maas-db-config` (`DB_CONNECTION_URL`) in `redhat-ai-gateway-infra` is created by script, `sslmode=disable` behind a NetworkPolicy | `gitops/stages/040-governed-models-as-a-service/maas-database/`, `stages/040-governed-models-as-a-service/setup-database.sh` | [Database secret][db] |
-| Gateway `maas-default-gateway` in `openshift-ingress`, class `data-science-gateway-class`, both required annotations, listeners `api` and `qwen3-8` on the cert-manager ingress certificate; hostnames patched at deploy time | `gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/` | [Gateway requirements][gw], [Configure TLS][tls] |
-| Authorino TLS: serving-cert annotation by hook Job, TLS listener and CA mount declared on the Authorino CR instead of `oc set env` | `gitops/stages/040-governed-models-as-a-service/gateway-governance/governance/`, `.../gateway-governance/jobs/` | [Configure TLS][tls] |
-| Private model `qwen3-8-27b` published by `MaaSModelRef` in `internal-models` | `gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-maas-modelref.yaml` | [Deploy models with MaaS][deploy] |
-| External models `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` in `external-models`, all `apiFormat: openai-chat` so every model is subscription-token-metered; Claude uses Anthropic's OpenAI-compatible path | `gitops/stages/040-governed-models-as-a-service/external-models/` | [External models][ext], [apiFormat values][apiformat] |
+| In-cluster PostgreSQL 16 in `models-as-a-service-db`; `maas-db-config` (`DB_CONNECTION_URL`) in `redhat-ai-gateway-infra` is created by script, `sslmode=disable` behind a NetworkPolicy | `gitops/stages/040-governed-models-as-a-service/040-maas-database/`, `stages/040-governed-models-as-a-service/setup-database.sh` | [Database secret][db] |
+| Gateway `maas-default-gateway` in `openshift-ingress`, class `data-science-gateway-class`, both required annotations, listeners `api` and `qwen3-8` on the cert-manager ingress certificate; hostnames patched at deploy time | `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/gateway/` | [Gateway requirements][gw], [Configure TLS][tls] |
+| Authorino TLS: serving-cert annotation by hook Job, TLS listener and CA mount declared on the Authorino CR instead of `oc set env` | `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/governance/`, `.../gateway-governance/jobs/` | [Configure TLS][tls] |
+| Private model `qwen3-8-27b` published by `MaaSModelRef` in `internal-models` | `gitops/stages/040-governed-models-as-a-service/040-local-models/qwen38-27b-maas-modelref.yaml` | [Deploy models with MaaS][deploy] |
+| External models `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` in `external-models`, all `apiFormat: openai-chat` so every model is subscription-token-metered; Claude uses Anthropic's OpenAI-compatible path | `gitops/stages/040-governed-models-as-a-service/040-external-models/` | [External models][ext], [apiFormat values][apiformat] |
 | Provider keys in Secrets `*-provider-api-key` (key `api-key`, label `inference.llm-d.ai/ipp-managed=true`) created from `.env`, never in Git | `stages/040-governed-models-as-a-service/setup-provider-secret.sh` | [External models][ext] |
-| One `MaaSSubscription` + `MaaSAuthPolicy` pair per consumer, owned by a user or one ServiceAccount (not groups); personal priority 150-170 above service subscriptions; 1 h windows | `gitops/stages/040-governed-models-as-a-service/model-access/` | [Subscriptions][subs], [Priority levels][prio], [Authorization policies][authz] |
-| Default MaaS tenant only (external models require it) | `model-access/README.md`, `external-models/README.md` | [Multi-tenancy][tenancy] |
+| One `MaaSSubscription` + `MaaSAuthPolicy` pair per consumer, owned by a user or one ServiceAccount (not groups); personal priority 150-170 above service subscriptions; 1 h windows | `gitops/stages/040-governed-models-as-a-service/040-model-access/` | [Subscriptions][subs], [Priority levels][prio], [Authorization policies][authz] |
+| Default MaaS tenant only (external models require it) | `040-model-access/README.md`, `040-external-models/README.md` | [Multi-tenancy][tenancy] |
 | API keys use the product default lifetime; keys are minted at runtime by owners (dashboard, Stage 070 provisioner, playground and Stage 050 Jobs) | not in Git | [Manage API keys][keys], [Expiration limit][keyexp] |
 | Usage export queries Thanos (`export-maas-usage.sh`), separate from the dashboard CSV | `stages/040-governed-models-as-a-service/export-maas-usage.sh` | [Export usage data][export] |
 
@@ -56,8 +56,8 @@ repo lessons not in Git live in `references/working-configuration.md`.
 
 1. Change the component under `gitops/stages/040-governed-models-as-a-service/`
    that owns the object (component README "What" tables). Access changes go
-   only in `model-access/`; a model change only in `local-models/` or
-   `external-models/`.
+   only in `040-model-access/`; a model change only in `040-local-models/` or
+   `040-external-models/`.
 2. Deploy and validate after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash
@@ -79,7 +79,7 @@ repo lessons not in Git live in `references/working-configuration.md`.
    ```
 
 4. A new upstream namespace needs a Gateway `allowedRoutes` entry and an allow
-   rule in AdminNetworkPolicy `maas-gateway-boundary` (`gateway-governance/README.md`).
+   rule in AdminNetworkPolicy `maas-gateway-boundary` (`040-gateway-governance/README.md`).
 
 ## Pitfalls
 

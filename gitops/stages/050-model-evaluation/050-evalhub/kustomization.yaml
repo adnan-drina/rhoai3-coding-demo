@@ -1,0 +1,25 @@
+# EvalHub with its PostgreSQL (data) and tenant access; the curated prompts project is in ../050-mlflow/prompts.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: rhoai-platform
+      app.kubernetes.io/managed-by: argocd
+      demo.rhoai.io/stage: "050"
+    includeSelectors: false
+
+resources:
+  - credential-serviceaccount.yaml
+  - credential-role.yaml
+  - credential-rolebinding.yaml
+  - credential-job.yaml
+  - namespace.yaml
+  - postgresql-pvc.yaml
+  - postgresql-service.yaml
+  - postgresql-statefulset.yaml
+  - postgresql-networkpolicy.yaml
+  - evalhub.yaml
+  - mcp-access-rolebinding.yaml
+  - mcp-client-identity.yaml
+  - tenant

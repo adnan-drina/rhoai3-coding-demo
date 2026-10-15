@@ -20,7 +20,7 @@ description: >
 
 Thin skill: what this portal shows and why a tab can be empty; how to use
 each plugin is in the linked Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md`.
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md`.
 
 ## When to use
 
@@ -32,11 +32,11 @@ each plugin is in the linked Developer Hub 1.10 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Plugins in use: Topology, Kubernetes, Tekton (CI tab), Argo CD; no Keycloak, JFrog, Nexus or Ansible plugins | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Topology][topology], [Tekton][tekton], [Argo CD][argocd] |
-| The reference entity `component:default/coolstore-inventory-service` carries `backstage.io/kubernetes-id`, `janus-idp.io/tekton` and `argocd/app-name: project-coolstore-inventory-service` | `rhdh/catalog/all.yaml` | [Enable users to use Topology][topology-users] |
-| Template-created projects get the same three annotations, with Argo CD app `project-<name>` created by the enrollment coordinator | `rhdh/templates/app-migration/skeleton/catalog-info.yaml`, `rhdh/templates/agentic-quarkus-scaffold/skeleton/catalog-info.yaml` | [Topology][topology] |
-| Role `role:default/developer` (`ai-developer`) may read Kubernetes clusters and resources; no catalog writes | `rhdh/rhdh-instance/rbac-policy.yaml` | see `rhdh-authorization` |
-| Plugin reads use the `rhdh-kubernetes-reader` ServiceAccount (ClusterRole `view`), not the signed-in user | `rhdh/rhdh-instance/kubernetes-reader.yaml` | [Enable users to use Topology][topology-users] |
+| Plugins in use: Topology, Kubernetes, Tekton (CI tab), Argo CD; no Keycloak, JFrog, Nexus or Ansible plugins | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Topology][topology], [Tekton][tekton], [Argo CD][argocd] |
+| The reference entity `component:default/coolstore-inventory-service` carries `backstage.io/kubernetes-id`, `janus-idp.io/tekton` and `argocd/app-name: project-coolstore-inventory-service` | `070-rhdh/catalog/all.yaml` | [Enable users to use Topology][topology-users] |
+| Template-created projects get the same three annotations, with Argo CD app `project-<name>` created by the enrollment coordinator | `070-rhdh/templates/app-migration/skeleton/catalog-info.yaml`, `070-rhdh/templates/agentic-quarkus-scaffold/skeleton/catalog-info.yaml` | [Topology][topology] |
+| Role `role:default/developer` (`ai-developer`) may read Kubernetes clusters and resources; no catalog writes | `070-rhdh/rhdh-instance/rbac-policy.yaml` | see `rhdh-authorization` |
+| Plugin reads use the `rhdh-kubernetes-reader` ServiceAccount (ClusterRole `view`), not the signed-in user | `070-rhdh/rhdh-instance/kubernetes-reader.yaml` | [Enable users to use Topology][topology-users] |
 
 ## Procedure
 

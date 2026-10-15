@@ -22,12 +22,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product procedure in the linked
 Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` ("Plugins").
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` ("Plugins").
 
 ## When to use
 
 - A plugin is added to, removed from, or re-pinned in
-  `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
+  `070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
 - The `backstage-developer-hub` pod stays in `Init` or crash-loops after a
   plugin change.
 - Reviewing whether a plugin is embedded in the RHDH image or pulled from OCI.
@@ -36,7 +36,7 @@ Developer Hub 1.10 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Operator path only: ConfigMap `dynamic-plugins-rhdh` (key `dynamic-plugins.yaml`) referenced by `spec.application.dynamicPluginsConfigMapName` on `Backstage` `developer-hub` (`rhdh.redhat.com/v1alpha5`) | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`, `rhdh/rhdh-instance/backstage.yaml` | [Install with the Operator][operator] |
+| Operator path only: ConfigMap `dynamic-plugins-rhdh` (key `dynamic-plugins.yaml`) referenced by `spec.application.dynamicPluginsConfigMapName` on `Backstage` `developer-hub` (`rhdh.redhat.com/v1alpha5`) | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`, `070-rhdh/rhdh-instance/backstage.yaml` | [Install with the Operator][operator] |
 | The file `includes` `dynamic-plugins.default.yaml` and enables embedded packages by path: GitLab catalog and scaffolder modules, RBAC, Kubernetes backend and frontend, Topology | `dynamic-plugins-configmap.yaml` | [Enable plugins added in the RHDH image][embedded] |
 | Tekton, Argo CD (Community frontend) and Roadie Argo CD backend are OCI packages from `ghcr.io/redhat-developer/rhdh-plugin-export-overlays`, pinned by `@sha256` digest, never by tag | `dynamic-plugins-configmap.yaml`; enforced by `stages/070-advanced-app-platform/tests/stage070-upgrade.test.py` | [Install with the Operator][operator], [Community plugins][community] |
 | No custom plugins, no air-gapped mirroring, no registry CA for OCI pulls (ghcr.io is public) | — | [Custom plugins][custom], [Mirror plugins][mirror], [Custom certificates][oci-certs] |
@@ -67,7 +67,7 @@ Developer Hub 1.10 sections. Detailed record:
   exist; the repo injects them from `rhdh-secrets` and `rhdh-gitlab` through
   `extraEnvs.secrets` ([Troubleshoot a pod startup failure][startup]).
 - `rhdh-secrets` `/data` is ignored by Argo CD and written by the configure
-  hook; adding a variable means changing `rhdh/jobs/configure-rhdh.yaml`, not
+  hook; adding a variable means changing `070-rhdh/jobs/configure-rhdh.yaml`, not
   the placeholder Secret.
 - One backend must run migrations on a fresh database: keep `maxSurge: 0` in
   `backstage.yaml` when a plugin change restarts the portal.

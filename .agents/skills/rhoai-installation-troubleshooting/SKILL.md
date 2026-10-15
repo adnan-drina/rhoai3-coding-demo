@@ -38,9 +38,9 @@ with the product symptoms and remedies in the linked OpenShift AI 3.5
 |---|---|---|
 | Check GitOps first: Application sync and health at the reviewed revision, then the OLM objects, then the operator | `stages/010-openshift-ai-platform-foundation/validate.sh`, `docs/TROUBLESHOOTING.md#general-diagnostic-flow` | [Installation troubleshooting][ts] |
 | Catalog, channel and minimum version are checked before deploy (`stable-3.5`, `3.5.1`) | `scripts/platform/check-operator-policy.py`, `stages/010-openshift-ai-platform-foundation/deploy.sh` | [Install the Operator by CLI][op-cli] |
-| Operator auto-creation of the DSCI is disabled (`DISABLE_DSC_CONFIG=true`); `default-dsci` comes from `010-rhoai-platform` at wave 2, DSC at 3, `Auth` at 4 | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/subscription.yaml`, `.../rhoai-platform/` | [Install components by CLI][comp-cli] |
-| Operator and platform are applied in one batch; order comes from Argo CD retry and `SkipDryRunOnMissingResource`, so early `CRD not found` sync errors are expected and transient | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/README.md` (How: Ordering) | — (repo GitOps rule) |
-| The `Auth` CR `auth` is managed in Git, not left over by hand | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/auth.yaml` | [Reinstalling fails][reinstall] |
+| Operator auto-creation of the DSCI is disabled (`DISABLE_DSC_CONFIG=true`); `default-dsci` comes from `010-rhoai-platform` at wave 2, DSC at 3, `Auth` at 4 | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/subscription.yaml`, `.../rhoai-platform/` | [Install components by CLI][comp-cli] |
+| Operator and platform are applied in one batch; order comes from Argo CD retry and `SkipDryRunOnMissingResource`, so early `CRD not found` sync errors are expected and transient | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/README.md` (How: Ordering) | — (repo GitOps rule) |
+| The `Auth` CR `auth` is managed in Git, not left over by hand | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/auth.yaml` | [Reinstalling fails][reinstall] |
 | Support escalation: collect evidence (Subscription, CSV, InstallPlan, operator logs, DSC/DSCI conditions); remedies that say "contact Red Hat Support" are not replaced by local fixes | — | [Installation troubleshooting][ts] |
 
 ## Procedure

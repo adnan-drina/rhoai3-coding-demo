@@ -11,7 +11,7 @@ description: >
   stages/050-model-evaluation/qualification/pipeline.py and compile.py, new
   components or steps, base images and pinned packages, kfp 2.16.1
   Kubernetes-native compilation into
-  gitops/stages/050-model-evaluation/model-qualification/pipeline/, new
+  gitops/stages/050-model-evaluation/050-model-qualification/pipeline/, new
   PipelineVersion names, Metrics/HTML outputs, or reusing catalog components.
   Do NOT use for the pipeline server, run lifecycle, MLflow tracking or
   server resets (use rhoai-ai-pipelines), or EvalHub collections (use
@@ -36,12 +36,12 @@ OpenShift AI 3.5 sections. Pipeline server and runs: `rhoai-ai-pipelines`.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Compile to Kubernetes-native `Pipeline`/`PipelineVersion` manifests and commit them; GitOps applies them | `stages/050-model-evaluation/qualification/compile.py`, `gitops/stages/050-model-evaluation/model-qualification/pipeline/` | [Compile Kubernetes-native manifests][k8scompile], [Define a pipeline by using the Kubernetes API][k8sapi] |
+| Compile to Kubernetes-native `Pipeline`/`PipelineVersion` manifests and commit them; GitOps applies them | `stages/050-model-evaluation/qualification/compile.py`, `gitops/stages/050-model-evaluation/050-model-qualification/pipeline/` | [Compile Kubernetes-native manifests][k8scompile], [Define a pipeline by using the Kubernetes API][k8sapi] |
 | `kfp==2.16.1` with `kfp-kubernetes==2.16.1`, Python 3.11+ | `stages/050-model-evaluation/qualification/compile.py` | [Install the Kubeflow Pipelines SDK][sdk-install] |
 | Base image: RHOAI `odh-pipeline-runtime-minimal-cpu-py312-rhel9` pinned by digest; packages pinned; PyPI index for `eval-hub-sdk[cli]==1.0.5` | `stages/050-model-evaluation/qualification/pipeline.py` | not product guidance |
 | One named component per step (`step-0-...` to `step-7-...`), no `set_display_name` (dashboard looks steps up by task key) | same | not product guidance; see [View pipeline task executions][executions] |
 | Caching off per task (`set_caching_options(False)`) though the server has caching on | same | [Control caching in pipelines][caching] |
-| No credential parameters: tasks use the `pipeline-runner-dspa` token and a mounted service CA ConfigMap | same, `gitops/stages/050-model-evaluation/model-qualification/pipeline-server.yaml` | not product guidance |
+| No credential parameters: tasks use the `pipeline-runner-dspa` token and a mounted service CA ConfigMap | same, `gitops/stages/050-model-evaluation/050-model-qualification/pipeline-server.yaml` | not product guidance |
 | Skip switches (`skip_*`) instead of `dsl.If`, so the step chain keeps its order | `stages/050-model-evaluation/qualification/pipeline.py` | not product guidance |
 
 ## Procedure
@@ -57,7 +57,7 @@ OpenShift AI 3.5 sections. Pipeline server and runs: `rhoai-ai-pipelines`.
    ```
 
 3. Review the diff of
-   `gitops/stages/050-model-evaluation/model-qualification/pipeline/agentic-coding-model-qualification.yaml`,
+   `gitops/stages/050-model-evaluation/050-model-qualification/pipeline/agentic-coding-model-qualification.yaml`,
    commit, re-pin and deploy Stage 050 (`rhoai-ai-pipelines` procedure).
 4. After the OpenShift safety guard in `AGENTS.md`, confirm the version and
    delete the previous one:

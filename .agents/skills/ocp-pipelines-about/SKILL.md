@@ -30,8 +30,8 @@ the linked OpenShift Pipelines 1.24 sections.
 
 | Concept | Repo object | Official section |
 |---|---|---|
-| Task | `gitlab-clone`, `maven-build`, `sonar-scan`, `build-internal-image`, `promote-gitlab-runtime`, `resolve-image-registry` in `gitops/stages/070-advanced-app-platform/pipelines/project-pipeline/` | [Tasks][tasks] |
-| Pipeline / PipelineRun | `app-push` per `<project>-dev`; runs named `gitlab-<project-id>-<sha>` by `pipelines/gitlab/reconcile.py` | [Pipelines][pipelines], [Pipeline run][pipelinerun] |
+| Task | `gitlab-clone`, `maven-build`, `sonar-scan`, `build-internal-image`, `promote-gitlab-runtime`, `resolve-image-registry` in `gitops/stages/070-advanced-app-platform/070-pipelines/project-pipeline/` | [Tasks][tasks] |
+| Pipeline / PipelineRun | `app-push` per `<project>-dev`; runs named `gitlab-<project-id>-<sha>` by `070-pipelines/gitlab/reconcile.py` | [Pipelines][pipelines], [Pipeline run][pipelinerun] |
 | Workspace | `source` (per-run claim), `maven-cache` (PVC), `basic-auth` (Secret) | [Workspaces][workspaces] |
 | Pod template | per-task `podTemplate` (`hostUsers: false`) for the image build | [Pod templates][podtemplate] |
 | Triggers | per-project `EventListener` `gitlab` + `TriggerTemplate` `gitlab-push` | [Triggers][triggers] |

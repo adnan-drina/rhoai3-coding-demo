@@ -28,12 +28,12 @@ behavior lives in the linked Developer Hub 1.10 sections.
 ## Not used in this repo
 
 Self-service in this repo uses Software Templates
-(`gitops/stages/070-advanced-app-platform/rhdh/templates/`) and the
+(`gitops/stages/070-advanced-app-platform/070-rhdh/templates/`) and the
 scaffolder; no Orchestrator plugin, SonataFlow or OpenShift Serverless Logic
 is installed.
 
 Adopting it is a Stage 070 change: record the decision in
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` and convert this stub
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` and convert this stub
 to a full thin skill.
 
 ## Official documentation (Developer Hub 1.10)

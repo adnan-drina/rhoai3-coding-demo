@@ -30,7 +30,7 @@ namespace. Read them from the `backstage-developer-hub` pod logs in `rhdh`;
 forwarding needs a cluster log collector, which this repo does not deploy.
 
 Adopting it is a Stage 070 change: record the decision in
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` and convert this stub
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` and convert this stub
 to a full thin skill.
 
 ## Official documentation (Developer Hub 1.10)

@@ -22,9 +22,9 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/030-private-model-serving/private-model-serving/README.md`
+`gitops/stages/030-private-model-serving/030-private-model-serving/README.md`
 ("model-discovery") and
-`gitops/stages/040-governed-models-as-a-service/local-models/README.md`.
+`gitops/stages/040-governed-models-as-a-service/040-local-models/README.md`.
 
 ## When to use
 
@@ -36,11 +36,11 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Catalog and registry turned on by Stage 030 (`modelregistry` Managed, `disableModelCatalog: false`, `disableModelRegistry: false`) | `gitops/stages/030-private-model-serving/private-model-serving/model-discovery/enable-job.yaml` | [Model catalog and model registries][overview] |
-| One registry, `demo-registry` in `rhoai-model-registries`; both persona groups bound to `registry-user-demo-registry` | `gitops/stages/030-private-model-serving/private-model-serving/model-discovery/registry/` | [Register a model from the catalog][register] |
-| The production model `qwen3-8-27b` is deployed from Git (`LLMInferenceService`), not from the catalog; catalog deployment is a user demonstration | `gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-llminferenceservice.yaml` | [Deploy a model from the catalog][deploy] |
-| Catalog deployments into `internal-models` use hardware profile `gpu-rtxpro6000` or `gpu-reserved-demo`, LocalQueues `lq-gpu-rtxpro6000` / `lq-gpu-reserved-demo`, and the llm-d templates `single-node-exclusive-gpu` + `single-node-queue-router` | `gitops/stages/040-governed-models-as-a-service/local-models/` | [Deploy a model from the catalog][deploy] |
-| Safety and security insights need the EvalHub `get evaluations` grant in `rhoai-model-registries` | `gitops/stages/050-model-evaluation/evalhub/tenant/catalog-insights-role.yaml` | [Safety and security insights][safety] |
+| Catalog and registry turned on by Stage 030 (`modelregistry` Managed, `disableModelCatalog: false`, `disableModelRegistry: false`) | `gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/enable-job.yaml` | [Model catalog and model registries][overview] |
+| One registry, `demo-registry` in `rhoai-model-registries`; both persona groups bound to `registry-user-demo-registry` | `gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/registry/` | [Register a model from the catalog][register] |
+| The production model `qwen3-8-27b` is deployed from Git (`LLMInferenceService`), not from the catalog; catalog deployment is a user demonstration | `gitops/stages/040-governed-models-as-a-service/040-local-models/qwen38-27b-llminferenceservice.yaml` | [Deploy a model from the catalog][deploy] |
+| Catalog deployments into `internal-models` use hardware profile `gpu-rtxpro6000` or `gpu-reserved-demo`, LocalQueues `lq-gpu-rtxpro6000` / `lq-gpu-reserved-demo`, and the llm-d templates `single-node-exclusive-gpu` + `single-node-queue-router` | `gitops/stages/040-governed-models-as-a-service/040-local-models/` | [Deploy a model from the catalog][deploy] |
+| Safety and security insights need the EvalHub `get evaluations` grant in `rhoai-model-registries` | `gitops/stages/050-model-evaluation/050-evalhub/tenant/catalog-insights-role.yaml` | [Safety and security insights][safety] |
 
 ## Procedure
 

@@ -24,7 +24,7 @@ REVISION=$(python3 "$STAGE_APPS" select 070 --ref "${GIT_REPO_BRANCH:-HEAD}" --r
 # The GitLab hub publishes those two goldens from this revision, so they must be the reviewed, published source too.
 "$REPO_ROOT/scripts/platform/require-node-sizing.sh"
 # Read-only: the Automatic Dev Spaces Subscription (openshift-operators) offers the reviewed channel and minimum.
-python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/devspaces"
+python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-devspaces"
 
 log_step "Stage 070: GitLab and advanced application platform"
 # Preconditions are read-only. Do not generate shared GitHub credentials or

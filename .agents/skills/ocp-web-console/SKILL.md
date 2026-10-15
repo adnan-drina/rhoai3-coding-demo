@@ -21,12 +21,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift Container Platform 4.22 sections. Detailed record:
-`gitops/stages/010-openshift-ai-platform-foundation/console-observability/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/README.md`.
 
 ## When to use
 
 - A stage installs an operator that ships a `ConsolePlugin`.
-- A change touches `console-observability/`, a `consolelink.yaml`, or a
+- A change touches `010-console-observability/`, a `consolelink.yaml`, or a
   ConfigMap labelled `console.openshift.io/dashboard`.
 - A console plugin, menu link or dashboard is missing.
 
@@ -34,12 +34,12 @@ OpenShift Container Platform 4.22 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Complete `spec.plugins` list declared in Git (`monitoring-plugin`, `networking-console-plugin`, `monitoring-console-plugin`, `gitops-plugin`, `odf-console`, `kuadrant-console-plugin`, `lightspeed-console-plugin`, `pipelines-console-plugin`), owned by server-side apply on this one object, restored by self-heal; deviation from the documented append patch | `gitops/stages/010-openshift-ai-platform-foundation/console-observability/console-plugins.yaml` | [Dynamic plugins][plugins] |
+| Complete `spec.plugins` list declared in Git (`monitoring-plugin`, `networking-console-plugin`, `monitoring-console-plugin`, `gitops-plugin`, `odf-console`, `kuadrant-console-plugin`, `lightspeed-console-plugin`, `pipelines-console-plugin`), owned by server-side apply on this one object, restored by self-heal; deviation from the documented append patch | `gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/console-plugins.yaml` | [Dynamic plugins][plugins] |
 | `Console/cluster` carries `ServerSideApply=true,Prune=false,Delete=false`: Git owns only `spec.plugins`, never deletes the singleton | same file | — |
 | Own deploy and validate scripts for the plugin list and UIPlugin | `stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh`, `stages/010-openshift-ai-platform-foundation/validate-console-observability.sh` | — |
-| Perses dashboards in Observe through the COO `UIPlugin` `monitoring` | `gitops/stages/010-openshift-ai-platform-foundation/console-observability/monitoring-uiplugin.yaml` | [COO UI plugins][coo-ui] |
-| Application-menu links `rhdh` and `mta`: placeholder `href` in Git, patched to the live Route by Sync hooks; `ignoreDifferences` on `href`/`imageURL` | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/consolelink.yaml`, `gitops/stages/070-advanced-app-platform/mta/mta-instance/consolelink.yaml` | [Customizing the web console][customize] |
-| GPU dashboard as a console dashboard ConfigMap in `openshift-config-managed` | `gitops/stages/020-gpu-infrastructure-private-ai/nvidia-gpu-operator/console-dashboard/` | [About OpenShift monitoring][monitoring] |
+| Perses dashboards in Observe through the COO `UIPlugin` `monitoring` | `gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/monitoring-uiplugin.yaml` | [COO UI plugins][coo-ui] |
+| Application-menu links `rhdh` and `mta`: placeholder `href` in Git, patched to the live Route by Sync hooks; `ignoreDifferences` on `href`/`imageURL` | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/consolelink.yaml`, `gitops/stages/070-advanced-app-platform/070-mta/mta-instance/consolelink.yaml` | [Customizing the web console][customize] |
+| GPU dashboard as a console dashboard ConfigMap in `openshift-config-managed` | `gitops/stages/020-gpu-infrastructure-private-ai/020-nvidia-gpu-operator/console-dashboard/` | [About OpenShift monitoring][monitoring] |
 | Not configured: console route/branding customization, quick starts, web terminal, disabling the console | — | [Configuring the web console][configure] |
 
 ## Procedure

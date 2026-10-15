@@ -29,11 +29,11 @@ sections.
 
 No `Repository` CR, `.tekton/` directory or PAC configuration exists in Git.
 Builds start from plain Tekton Triggers: the enrollment reconciler
-(`gitops/stages/070-advanced-app-platform/pipelines/gitlab/reconcile.py`)
+(`gitops/stages/070-advanced-app-platform/070-pipelines/gitlab/reconcile.py`)
 renders a GitLab `EventListener` per enrolled project; the platform, not the
 project repository, owns the pipeline definition. Adopting PAC would move the
 pipeline into project repositories and needs a design change to that
-boundary (see `gitops/stages/070-advanced-app-platform/pipelines/README.md`, "Why").
+boundary (see `gitops/stages/070-advanced-app-platform/070-pipelines/README.md`, "Why").
 
 ## Official documentation (OpenShift Pipelines 1.24)
 

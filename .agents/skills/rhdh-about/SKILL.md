@@ -20,7 +20,7 @@ description: >
 
 Thin skill: the repo's use of Developer Hub and its deliberate deviations;
 product concepts in the linked Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` and
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` and
 `stages/070-advanced-app-platform/README.md`.
 
 ## When to use
@@ -33,11 +33,11 @@ product concepts in the linked Developer Hub 1.10 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| One self-service entry point: catalog, templates `agentic-quarkus-scaffold` and `app-migration`, TechDocs, delivery views for each project | `gitops/stages/070-advanced-app-platform/rhdh/templates/`, `rhdh/catalog/all.yaml` | [Key features][features] |
-| Operator deployment, not the Helm chart | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/` | [Compare Helm and Operator][compare] |
-| One backend replica with the Operator-managed local PostgreSQL (Deviation, justified for a single-cluster demo) | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/backstage.yaml` | [Database high availability][db-ha], [Sizing][sizing] |
-| External dependencies are in-cluster: Keycloak `platform` realm, private GitLab mirror, Argo CD, Kubernetes API | `gitops/stages/070-advanced-app-platform/rhdh/README.md` (Depends on) | [External data dependencies][deps] |
-| Catalog and templates pinned to one reviewed platform commit in the GitLab mirror | `gitops/stages/070-advanced-app-platform/rhdh/jobs/catalog/` | — (repo design) |
+| One self-service entry point: catalog, templates `agentic-quarkus-scaffold` and `app-migration`, TechDocs, delivery views for each project | `gitops/stages/070-advanced-app-platform/070-rhdh/templates/`, `070-rhdh/catalog/all.yaml` | [Key features][features] |
+| Operator deployment, not the Helm chart | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/` | [Compare Helm and Operator][compare] |
+| One backend replica with the Operator-managed local PostgreSQL (Deviation, justified for a single-cluster demo) | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/backstage.yaml` | [Database high availability][db-ha], [Sizing][sizing] |
+| External dependencies are in-cluster: Keycloak `platform` realm, private GitLab mirror, Argo CD, Kubernetes API | `gitops/stages/070-advanced-app-platform/070-rhdh/README.md` (Depends on) | [External data dependencies][deps] |
+| Catalog and templates pinned to one reviewed platform commit in the GitLab mirror | `gitops/stages/070-advanced-app-platform/070-rhdh/jobs/catalog/` | — (repo design) |
 
 ## Procedure
 

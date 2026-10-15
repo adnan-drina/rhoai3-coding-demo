@@ -8,7 +8,7 @@ metadata:
   skill-group: "OpenShift Platform"
 description: >
   Use when reviewing or changing the Stage 020 Node Feature Discovery component
-  in gitops/stages/020-gpu-infrastructure-private-ai/node-feature-discovery/
+  in gitops/stages/020-gpu-infrastructure-private-ai/020-node-feature-discovery/
   (nfd Subscription on stable, NodeFeatureDiscovery nfd-instance, PCI worker
   config, pinned operand image), the nfd minimum in
   scripts/platform/check-operator-policy.py, or diagnosing missing
@@ -22,11 +22,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift Container Platform 4.22 sections. Detailed record:
-`gitops/stages/020-gpu-infrastructure-private-ai/node-feature-discovery/README.md`.
+`gitops/stages/020-gpu-infrastructure-private-ai/020-node-feature-discovery/README.md`.
 
 ## When to use
 
-- A change touches `node-feature-discovery/*.yaml` or the `020-node-feature-discovery`
+- A change touches `020-node-feature-discovery/*.yaml` or the `020-node-feature-discovery`
   Application.
 - The NFD release family moves (the `nfd` minimum in the operator policy is
   also the doc-map pin for the whole `ocp` product).
@@ -38,12 +38,12 @@ OpenShift Container Platform 4.22 sections. Detailed record:
 | Decision | Where in Git | Official section |
 |---|---|---|
 | NFD installed before the NVIDIA GPU Operator, as its own Application (deploy-order 1) | `gitops/applications/020-node-feature-discovery.yaml` | [Node Feature Discovery Operator][nfd] |
-| Namespace `openshift-nfd`, OperatorGroup targeting it, Subscription `nfd` on `stable` from `redhat-operators`, Automatic approval, no `startingCSV` | `node-feature-discovery/namespace.yaml`, `operatorgroup.yaml`, `subscription.yaml` | [Node Feature Discovery Operator][nfd] |
+| Namespace `openshift-nfd`, OperatorGroup targeting it, Subscription `nfd` on `stable` from `redhat-operators`, Automatic approval, no `startingCSV` | `020-node-feature-discovery/namespace.yaml`, `operatorgroup.yaml`, `subscription.yaml` | [Node Feature Discovery Operator][nfd] |
 | Release family bounded by policy: offered version must stay on 4.22 and be at least `4.22.0` | `scripts/platform/check-operator-policy.py` (`minimum['nfd']`) | [About specialized hardware and driver enablement][about] |
-| One `NodeFeatureDiscovery` `nfd-instance`; Subscription and instance both sync-wave 1, carried by `SkipDryRunOnMissingResource` and retry until OLM installs the CRD | `node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
-| `spec.operand.image` pinned by digest (`ose-node-feature-discovery-rhel9`); recorded deviation: Automatic operator updates no longer move the operand | `node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
-| Worker config: `sleepInterval: 60s`, PCI `deviceClassWhitelist: ["0200", "03", "12"]`, `deviceLabelFields: [vendor]` (vendor-only labels such as `pci-10de.present`) | `node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
-| Namespace has no `openshift.io/cluster-monitoring` label (recorded gap: NFD metrics not scraped) | `node-feature-discovery/namespace.yaml` | [Node Feature Discovery Operator][nfd] |
+| One `NodeFeatureDiscovery` `nfd-instance`; Subscription and instance both sync-wave 1, carried by `SkipDryRunOnMissingResource` and retry until OLM installs the CRD | `020-node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
+| `spec.operand.image` pinned by digest (`ose-node-feature-discovery-rhel9`); recorded deviation: Automatic operator updates no longer move the operand | `020-node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
+| Worker config: `sleepInterval: 60s`, PCI `deviceClassWhitelist: ["0200", "03", "12"]`, `deviceLabelFields: [vendor]` (vendor-only labels such as `pci-10de.present`) | `020-node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
+| Namespace has no `openshift.io/cluster-monitoring` label (recorded gap: NFD metrics not scraped) | `020-node-feature-discovery/namespace.yaml` | [Node Feature Discovery Operator][nfd] |
 | No `NodeFeatureRule`, topology updater, Kernel Module Management or Driver Toolkit use | (none declared) | [Kernel Module Management Operator][kmm], [Driver Toolkit][dtk] |
 
 Paths are relative to `gitops/stages/020-gpu-infrastructure-private-ai/` unless they start with `gitops/` or `scripts/`.

@@ -74,7 +74,7 @@ Verify that manifests match the official Red Hat documentation — not just that
 
 ## How to review a stage
 
-1. Read the stage's component folders (`gitops/stages/NNN-name/<component>/`, one per Argo CD Application; `python3 scripts/shared/stage_apps.py names NNN --all`) and each component README
+1. Read the stage's component folders (`gitops/stages/NNN-name/NNN-<component>/`, one per Argo CD Application, named like it; `python3 scripts/shared/stage_apps.py names NNN --all`) and each component README
 2. For each CR, consult the matching `rhoai-*` or `ocp-*` skill and compare
    fields
 3. For each operator Subscription, verify the channel and source against docs

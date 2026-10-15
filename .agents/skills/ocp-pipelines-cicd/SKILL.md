@@ -23,12 +23,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift Pipelines 1.24 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/pipelines/README.md` ("project-pipeline/
+`gitops/stages/070-advanced-app-platform/070-pipelines/README.md` ("project-pipeline/
 and project-enrollment/" and "How").
 
 ## When to use
 
-- A change touches `gitops/stages/070-advanced-app-platform/pipelines/project-pipeline/`,
+- A change touches `gitops/stages/070-advanced-app-platform/070-pipelines/project-pipeline/`,
   `.../project-enrollment/`, `.../gitlab/reconcile.py` or `.../build/*provision-migration-run*`.
 - A pushed commit does not start a PipelineRun, or a PipelineRun fails.
 
@@ -36,13 +36,13 @@ and project-enrollment/" and "How").
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Plain Triggers per project, not Pipelines as Code: reconciler renders `TriggerTemplate` `gitlab-push`, `EventListener` `gitlab` and Route `gitlab-webhook` (edge TLS to `el-gitlab`) | `pipelines/gitlab/reconcile.py` (`trigger_resources`) | [Adding triggers][triggers], [Creating webhooks][webhooks] |
+| Plain Triggers per project, not Pipelines as Code: reconciler renders `TriggerTemplate` `gitlab-push`, `EventListener` `gitlab` and Route `gitlab-webhook` (edge TLS to `el-gitlab`) | `070-pipelines/gitlab/reconcile.py` (`trigger_resources`) | [Adding triggers][triggers], [Creating webhooks][webhooks] |
 | Event filter: `gitlab` interceptor (secret `gitlab-webhook`, `Push Hook`) then `cel` (project id, repo URL, `refs/heads/main`, 40-hex `checkout_sha`) | same | [Adding triggers][triggers]; CEL filtering example in [GitHub interceptor][gh-filter] |
 | Deterministic PipelineRun name `gitlab-<project-id>-<sha>`: duplicate deliveries end in AlreadyExists | same (`pipeline_run`) | [Running a pipeline][run] |
-| Tasks are local, namespaced Tasks rendered with the project; no ClusterTask, no hub/bundles/git resolvers | `pipelines/project-pipeline/task-*.yaml`, `pipeline.yaml` | [Resolvers][resolvers], [ClusterTask migration][clustertask] |
-| Pipeline `app-push`: resolve registry → clone → Maven build → Sonar gate → internal-registry image → digest promotion into delivery Git | `pipelines/project-pipeline/pipeline.yaml` | [Assembling a pipeline][assemble] |
-| Workspaces: per-run `volumeClaimTemplate` (`gp3-csi`, 2Gi), persistent `maven-cache` PVC, `basic-auth` Secret workspace | `pipelines/gitlab/reconcile.py`, `pipelines/project-pipeline/pvc-maven-cache.yaml` | [Workspaces][workspaces] |
-| Stage 130 runs are created and retired by Pipeline `provision-migration-run` in `app-platform-build`, never by hand | `pipelines/build/pipeline-provision-migration-run.yaml`, `task-provision-migration-run.yaml` | [Pipelines concepts][concepts] |
+| Tasks are local, namespaced Tasks rendered with the project; no ClusterTask, no hub/bundles/git resolvers | `070-pipelines/project-pipeline/task-*.yaml`, `pipeline.yaml` | [Resolvers][resolvers], [ClusterTask migration][clustertask] |
+| Pipeline `app-push`: resolve registry → clone → Maven build → Sonar gate → internal-registry image → digest promotion into delivery Git | `070-pipelines/project-pipeline/pipeline.yaml` | [Assembling a pipeline][assemble] |
+| Workspaces: per-run `volumeClaimTemplate` (`gp3-csi`, 2Gi), persistent `maven-cache` PVC, `basic-auth` Secret workspace | `070-pipelines/gitlab/reconcile.py`, `070-pipelines/project-pipeline/pvc-maven-cache.yaml` | [Workspaces][workspaces] |
+| Stage 130 runs are created and retired by Pipeline `provision-migration-run` in `app-platform-build`, never by hand | `070-pipelines/build/pipeline-provision-migration-run.yaml`, `task-provision-migration-run.yaml` | [Pipelines concepts][concepts] |
 
 ## Procedure
 

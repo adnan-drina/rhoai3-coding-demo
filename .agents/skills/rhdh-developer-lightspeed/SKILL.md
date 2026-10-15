@@ -20,7 +20,7 @@ description: >
 
 Thin skill: the repo's open decision and its constraints; configuration
 procedures are in the linked Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` (Alignment row
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` (Alignment row
 "Developer Lightspeed").
 
 ## When to use
@@ -33,10 +33,10 @@ procedures are in the linked Developer Hub 1.10 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Current state: Backstage `developer-hub` declares no `spec.flavours`, no Lightspeed Secret, no `lightspeed-core` config; the product default (enabled) applies (Gap) | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/backstage.yaml` | [Configure to initialize the assistant][configure] |
+| Current state: Backstage `developer-hub` declares no `spec.flavours`, no Lightspeed Secret, no `lightspeed-core` config; the product default (enabled) applies (Gap) | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/backstage.yaml` | [Configure to initialize the assistant][configure] |
 | Option A, disable: `spec.flavours` entry `name: lightspeed`, `enabled: false`, which also stops the unconfigured sidecar injection | would change `backstage.yaml` | [Disable by using the Operator][disable] |
 | Option B, configure: any model must be reached through the governed MaaS gateway with an owner-bound MaaS subscription and key, never a direct provider key (platform rule) | would add a Secret writer like the other Stage 070 hooks; see `rhoai-maas-governance` | [Configure by using the Operator][operator], [vLLM integration][vllm], [OpenAI integration][openai] |
-| No decision recorded yet; the component README lists it as a Gap | `rhdh/README.md` | — |
+| No decision recorded yet; the component README lists it as a Gap | `070-rhdh/README.md` | — |
 
 ## Procedure
 
@@ -45,7 +45,7 @@ procedures are in the linked Developer Hub 1.10 sections. Detailed record:
 2. Option A: add the flavour entry to `backstage.yaml`; Option B: add the
    Secret (env names per the 1.10 Operator section, values written at runtime,
    never in Git) and a MaaS subscription/auth policy pair for a dedicated
-   owner, following the MTA pattern in `gitops/stages/070-advanced-app-platform/mta/jobs/configure-ai.yaml`.
+   owner, following the MTA pattern in `gitops/stages/070-advanced-app-platform/070-mta/jobs/configure-ai.yaml`.
 3. Static checks: `./stages/070-advanced-app-platform/validate.sh --static`.
 4. After the OpenShift safety guard in `AGENTS.md`, deploy with
    `./stages/070-advanced-app-platform/deploy.sh`; read-only checks:

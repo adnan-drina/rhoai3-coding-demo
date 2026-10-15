@@ -21,9 +21,9 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`
+`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md`
 (Workbenches component) and
-`gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/README.md`.
 
 ## When to use
 
@@ -35,13 +35,13 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Workbenches component Managed with `workbenchNamespace: rhods-notebooks`; no workbench objects in Git (users create them) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Access your workbench IDE][access] |
+| Workbenches component Managed with `workbenchNamespace: rhods-notebooks`; no workbench objects in Git (users create them) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Access your workbench IDE][access] |
 | Developer coding happens in Dev Spaces (Stage 070), not in workbenches; workbenches serve notebook and data work | `stages/070-advanced-app-platform/README.md` | [Working in code-server][codeserver] |
-| `demo-sandbox` gets S3 connections "Models" and "Workbench" with credentials written at runtime | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/` | [Access your workbench IDE][access] |
-| `evaluated-models` has its own Models, Workbench and Pipelines connections | `gitops/stages/050-model-evaluation/model-qualification/storage/` | see `rhoai-ai-pipelines` |
-| Developers are project Contributors (`edit`), administrators project Admins | `gitops/stages/010-openshift-ai-platform-foundation/access/` | [Troubleshooting for users][ts] |
-| CPU workbenches use hardware profile `cpu-default` on non-preemptive `cq-cpu-default` (workbenches cannot be suspended) | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/hardware-profiles/cpu-default.yaml` | see `rhoai-hardware-profiles` |
-| Notebooks call governed models through MaaS with a personal API key, never a pod URL | `gitops/stages/040-governed-models-as-a-service/model-access/README.md` | see `rhoai-maas-governance` |
+| `demo-sandbox` gets S3 connections "Models" and "Workbench" with credentials written at runtime | `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/` | [Access your workbench IDE][access] |
+| `evaluated-models` has its own Models, Workbench and Pipelines connections | `gitops/stages/050-model-evaluation/050-model-qualification/storage/` | see `rhoai-ai-pipelines` |
+| Developers are project Contributors (`edit`), administrators project Admins | `gitops/stages/010-openshift-ai-platform-foundation/010-access/` | [Troubleshooting for users][ts] |
+| CPU workbenches use hardware profile `cpu-default` on non-preemptive `cq-cpu-default` (workbenches cannot be suspended) | `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/hardware-profiles/cpu-default.yaml` | see `rhoai-hardware-profiles` |
+| Notebooks call governed models through MaaS with a personal API key, never a pod URL | `gitops/stages/040-governed-models-as-a-service/040-model-access/README.md` | see `rhoai-maas-governance` |
 
 ## Procedure
 

@@ -21,11 +21,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 Red Hat build of OpenTelemetry 3.11 sections. Detailed record:
-`gitops/stages/010-openshift-ai-platform-foundation/observability-operators/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/README.md`.
 
 ## When to use
 
-- A change touches `observability-operators/opentelemetry/` or the
+- A change touches `010-observability-operators/opentelemetry/` or the
   `opentelemetry-product` entries in `scripts/platform/check-operator-policy.py`.
 - Someone proposes an own `OpenTelemetryCollector`, `Instrumentation` or
   auto-instrumentation annotation.
@@ -35,10 +35,10 @@ Red Hat build of OpenTelemetry 3.11 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Operator only: namespace `openshift-opentelemetry-operator` (cluster-monitoring label), AllNamespaces OperatorGroup `opentelemetry-product`, Subscription `opentelemetry-product`, `stable`, Automatic | `observability-operators/opentelemetry/` | [Installing (CLI)][install] |
+| Operator only: namespace `openshift-opentelemetry-operator` (cluster-monitoring label), AllNamespaces OperatorGroup `opentelemetry-product`, Subscription `opentelemetry-product`, `stable`, Automatic | `010-observability-operators/opentelemetry/` | [Installing (CLI)][install] |
 | Rolling `stable` bounded fail-closed: minimum `0.158.0-2` (operator 0.158 = product 3.11) | `scripts/platform/check-operator-policy.py` | [Installing (CLI)][install] |
-| No collector or `Instrumentation` in Git: RHOAI generates `OpenTelemetryCollector` `data-science-collector` in `redhat-ods-monitoring` from the DSCI | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/dsc-init.yaml` | [Installing (CLI)][install] |
-| Collector SA gets Tempo write access from a repo ClusterRole (not in the generated RBAC) | `observability-operators/trace-roles/` | see `ocp-distributed-tracing` |
+| No collector or `Instrumentation` in Git: RHOAI generates `OpenTelemetryCollector` `data-science-collector` in `redhat-ods-monitoring` from the DSCI | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/dsc-init.yaml` | [Installing (CLI)][install] |
+| Collector SA gets Tempo write access from a repo ClusterRole (not in the generated RBAC) | `010-observability-operators/trace-roles/` | see `ocp-distributed-tracing` |
 | No external telemetry sinks or exporters | — | — |
 
 Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unless they start with `gitops/` or `scripts/`.

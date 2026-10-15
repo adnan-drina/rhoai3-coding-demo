@@ -21,11 +21,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 Red Hat OpenShift distributed tracing platform 3.11 sections. Detailed record:
-`gitops/stages/010-openshift-ai-platform-foundation/observability-operators/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/README.md`.
 
 ## When to use
 
-- A change touches `observability-operators/tempo/` or `trace-roles/`.
+- A change touches `010-observability-operators/tempo/` or `trace-roles/`.
 - Someone proposes a `TempoStack`, object storage for traces, or wider trace
   read access.
 - Spans are rejected, unauthorized, or cannot be read back.
@@ -34,14 +34,14 @@ Red Hat OpenShift distributed tracing platform 3.11 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Operator only: namespace `openshift-tempo-operator` (cluster-monitoring label), AllNamespaces OperatorGroup, Subscription `tempo-product`, `stable`, Automatic | `observability-operators/tempo/` | [Installing the Tempo Operator][install] |
+| Operator only: namespace `openshift-tempo-operator` (cluster-monitoring label), AllNamespaces OperatorGroup, Subscription `tempo-product`, `stable`, Automatic | `010-observability-operators/tempo/` | [Installing the Tempo Operator][install] |
 | Rolling `stable` bounded fail-closed: minimum `0.22.0-2` (operator 0.22 = product 3.11) | `scripts/platform/check-operator-policy.py` | [Installing the Tempo Operator][install] |
-| No `TempoStack`/`TempoMonolithic` in Git: RHOAI generates a `TempoMonolithic` in `redhat-ods-monitoring` (multitenancy `openshift`, tenant `redhat-ods-monitoring`), PV storage, retention `2160h0m0s` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/dsc-init.yaml` | [Configuring Tempo][configure] |
+| No `TempoStack`/`TempoMonolithic` in Git: RHOAI generates a `TempoMonolithic` in `redhat-ods-monitoring` (multitenancy `openshift`, tenant `redhat-ods-monitoring`), PV storage, retention `2160h0m0s` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/dsc-init.yaml` | [Configuring Tempo][configure] |
 | Read access: ClusterRole `rhoai-monitoring-traces-reader` (`get` on `tempo.grafana.com` / tenant / `traces`) bound to group `rhods-admins` only | `trace-roles/tempo-traces-reader-*.yaml` | [Configuring query RBAC][query-rbac] |
 | Write access: ClusterRole `rhoai-monitoring-traces-writer` (`create`) bound to SA `redhat-ods-monitoring/data-science-collector-collector`; not in the 3.11 docs (upstream-backed deviation, recorded in the README) | `trace-roles/tempo-traces-writer-*.yaml` | [Configuring Tempo][configure] |
 | No object storage secret (PV backend) | — | [Configuring Tempo][configure] |
 
-Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/observability-operators/` unless they start with `gitops/` or `scripts/`.
+Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/` unless they start with `gitops/` or `scripts/`.
 
 ## Procedure
 

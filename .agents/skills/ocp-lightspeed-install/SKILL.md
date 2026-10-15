@@ -27,7 +27,7 @@ Thin skill: repo decisions here, installation steps in the linked sections.
 | Decision | Where in Git | Official section |
 |---|---|---|
 | The repo does not install Lightspeed; the environment provisioner does (channel `stable`, Automatic approval) | `docs/OPERATIONS.md` (Fresh environment baseline) | [How Operators are installed][operators] |
-| The console plugin is enabled through the Git-owned Console plugin list, so a reinstall needs no console patch | `gitops/stages/010-openshift-ai-platform-foundation/console-observability/console-plugins.yaml` | [Install from the software catalog][catalog] |
+| The console plugin is enabled through the Git-owned Console plugin list, so a reinstall needs no console patch | `gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/console-plugins.yaml` | [Install from the software catalog][catalog] |
 | Moving Lightspeed into Git is not planned; it would need a stage owner, a Subscription and a doc-map `pin` replacing `pin.none` | — | [Supported product subscriptions][subs] |
 
 ## Procedure

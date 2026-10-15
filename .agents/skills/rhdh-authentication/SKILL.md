@@ -22,32 +22,32 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` (How: Authentication,
-Credentials) and `gitops/stages/070-advanced-app-platform/identity/README.md`.
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` (How: Authentication,
+Credentials) and `gitops/stages/070-advanced-app-platform/070-identity/README.md`.
 
 ## When to use
 
 - A change touches `auth`, `signInPage` or the catalog users in Stage 070
-  Developer Hub, or `rhdh/jobs/configure-rhdh.yaml`.
+  Developer Hub, or `070-rhdh/jobs/configure-rhdh.yaml`.
 - Sign-in fails, loops, or a persona lands without catalog identity.
 
 ## Repo decisions
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| OIDC provider `oidc` (`production` environment) against `https://<keycloak-host>/realms/platform`, client `rhdh`, `signInPage: oidc`, `prompt: auto` | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Enable authentication with RHBK][rhbk] |
+| OIDC provider `oidc` (`production` environment) against `https://<keycloak-host>/realms/platform`, client `rhdh`, `signInPage: oidc`, `prompt: auto` | `070-rhdh/rhdh-instance/app-config-configmap.yaml` | [Enable authentication with RHBK][rhbk] |
 | `auth.environment: production`: guest login disabled | same file | [Disable the Guest login][guest] |
 | Resolver `preferredUsernameMatchingUserEntityName` (documented alternative to the default `oidcSubClaimMatchingKeycloakUserId`) | same file | [Enable authentication with RHBK][rhbk] |
-| Users are two static `User` entities `ai-admin`, `ai-developer` (group `ai-modernization-team`), not imported from Keycloak (Deviation: two fixed personas) | `rhdh/catalog/all.yaml` | [Import users from RHBK][import] |
-| The `platform` realm brokers to the base `sso` realm, so users sign in with their OpenShift account | `identity/` (README How 4) | [Authentication overview][authn] |
-| Hook `job-configure-rhdh` gets a token for `stage070-rhdh-provisioner` (only `manage-clients`), creates or updates client `rhdh` with redirect `<rhdh-url>/api/auth/oidc/handler/frame`, keeps an existing client and session secret, writes `rhdh-secrets` | `rhdh/jobs/configure-rhdh.yaml`, `identity/jobs/` | [Share a secret with RHBK][share] |
+| Users are two static `User` entities `ai-admin`, `ai-developer` (group `ai-modernization-team`), not imported from Keycloak (Deviation: two fixed personas) | `070-rhdh/catalog/all.yaml` | [Import users from RHBK][import] |
+| The `platform` realm brokers to the base `sso` realm, so users sign in with their OpenShift account | `070-identity/` (README How 4) | [Authentication overview][authn] |
+| Hook `job-configure-rhdh` gets a token for `stage070-rhdh-provisioner` (only `manage-clients`), creates or updates client `rhdh` with redirect `<rhdh-url>/api/auth/oidc/handler/frame`, keeps an existing client and session secret, writes `rhdh-secrets` | `070-rhdh/jobs/configure-rhdh.yaml`, `070-identity/jobs/` | [Share a secret with RHBK][share] |
 
 Paths are under `gitops/stages/070-advanced-app-platform/`.
 
 ## Procedure
 
 1. Change provider or resolver config in `app-config-rhdh`; change personas in
-   `rhdh/catalog/all.yaml` (the generator republishes the runtime catalog).
+   `070-rhdh/catalog/all.yaml` (the generator republishes the runtime catalog).
 2. Never put a client or session secret in Git; the hook keeps existing
    values and generates only missing or placeholder ones on the next sync
    (`rotate-credentials.py` rotates the GitLab and Argo CD tokens, not these).

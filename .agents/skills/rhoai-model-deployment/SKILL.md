@@ -23,7 +23,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/050-model-evaluation/model-qualification/README.md` (candidate
+`gitops/stages/050-model-evaluation/050-model-qualification/README.md` (candidate
 `InferenceService`); the llm-d model is in `rhoai-distributed-inference-llmd`.
 
 ## When to use
@@ -39,13 +39,13 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Model deployments are Git manifests, not wizard output: Stage 040 `LLMInferenceService` for the served model, Stage 050 `InferenceService` (`serving.kserve.io/v1beta1`) for the evaluation candidate | `gitops/stages/040-governed-models-as-a-service/local-models/`, `gitops/stages/050-model-evaluation/model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Deploy on the model serving platform][deploy] |
+| Model deployments are Git manifests, not wizard output: Stage 040 `LLMInferenceService` for the served model, Stage 050 `InferenceService` (`serving.kserve.io/v1beta1`) for the evaluation candidate | `gitops/stages/040-governed-models-as-a-service/040-local-models/`, `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Deploy on the model serving platform][deploy] |
 | Model source is a URI pinned to a 40-character Hugging Face revision (`hf://RedHatAI/...:<sha>`); no Red Hat OCI modelcar exists for these checkpoints | both manifests (`storageUri`, `spec.model.uri`) | [Storing models][storing], [OCI model storage][oci] |
 | Candidate: `serving.kserve.io/deploymentMode: RawDeployment`, `deploymentStrategy.type: Recreate`, one replica | candidate manifest | [KServe deployment modes][modes], [Deployment strategies][strategies] |
 | Candidate runs stopped in Git (`serving.kserve.io/stop: "true"`) so it holds no GPU; Argo CD reports it `Suspended` | candidate manifest; model-qualification README ("Why the Application is Suspended") | — (Argo CD health check) |
 | Token authentication on (`security.opendatahub.io/enable-auth: "true"`) with a project-scoped client ServiceAccount token; no external route of its own | `candidate-qwen3-8-27b-int4.yaml`, `candidate-model-auth.yaml` | [Token for a deployed model][token], [Inference endpoint][endpoint] |
-| GPU placement by hardware-profile annotations plus the `kueue.x-k8s.io/queue-name` label (`gpu-reserved-demo`/`lq-gpu-reserved-demo` for the candidate, `gpu-rtxpro6000`/`lq-gpu-rtxpro6000` for the served model) | both manifests; profiles in `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/` | [Hardware profile matching][hw-match]; see `rhoai-kueue-workload-management` |
-| Developers and tools reach models only through MaaS, never the deployment endpoint; `opendatahub.io/genai-asset: "true"` marks the served model for Gen AI studio | `local-models/qwen38-27b-llminferenceservice.yaml` | [Deploy on the model serving platform][deploy] (AI asset endpoint); see `rhoai-maas-governance` |
+| GPU placement by hardware-profile annotations plus the `kueue.x-k8s.io/queue-name` label (`gpu-reserved-demo`/`lq-gpu-reserved-demo` for the candidate, `gpu-rtxpro6000`/`lq-gpu-rtxpro6000` for the served model) | both manifests; profiles in `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/` | [Hardware profile matching][hw-match]; see `rhoai-kueue-workload-management` |
+| Developers and tools reach models only through MaaS, never the deployment endpoint; `opendatahub.io/genai-asset: "true"` marks the served model for Gen AI studio | `040-local-models/qwen38-27b-llminferenceservice.yaml` | [Deploy on the model serving platform][deploy] (AI asset endpoint); see `rhoai-maas-governance` |
 
 ## Procedure
 

@@ -11,7 +11,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = ROOT / 'gitops/stages/070-advanced-app-platform'
-sys.path.insert(0, str(BASE / 'pipelines/gitlab'))
+sys.path.insert(0, str(BASE / '070-pipelines/gitlab'))
 
 
 def load(name, path):
@@ -21,9 +21,9 @@ def load(name, path):
     return module
 
 
-identity = load('base_sso', 'identity/jobs/configure-base-sso.py')
-sonar = load('sonar_sso', 'sonarqube/configure-sso.py')
-signing = load('signing_sso', 'pipelines/signing/configure-signing.py')
+identity = load('base_sso', '070-identity/jobs/configure-base-sso.py')
+sonar = load('sonar_sso', '070-sonarqube/configure-sso.py')
+signing = load('signing_sso', '070-pipelines/signing/configure-signing.py')
 
 
 class IdentityPreservation(unittest.TestCase):
@@ -115,7 +115,7 @@ class IdentityPreservation(unittest.TestCase):
         self.assertNotEqual(client['attributes']['post.logout.redirect.uris'], '+')
 
     def test_cluster_identity_configuration_is_read_only(self):
-        resources = list(yaml.safe_load_all((BASE / 'identity/jobs/configure-platform-identity.yaml').read_text()))
+        resources = list(yaml.safe_load_all((BASE / '070-identity/jobs/configure-platform-identity.yaml').read_text()))
         role = next(r for r in resources if r['kind'] == 'ClusterRole')
         self.assertTrue(all(rule['verbs'] == ['get'] for rule in role['rules']))
         self.assertNotIn('oauthclients', str(role))
@@ -161,16 +161,16 @@ class SignedSAML(unittest.TestCase):
         self.assertEqual(client['defaultClientScopes'], [])
 
     def test_sonar_does_not_receive_keycloak_administrator_credentials(self):
-        resources = list(yaml.safe_load_all((BASE / 'sonarqube/configure-sonarqube.yaml').read_text()))
+        resources = list(yaml.safe_load_all((BASE / '070-sonarqube/configure-sonarqube.yaml').read_text()))
         role = next(r for r in resources if r['kind'] == 'ClusterRole')
         self.assertEqual(role['rules'], [{'apiGroups': ['config.openshift.io'], 'resources': ['oauths'],
                                         'resourceNames': ['cluster'], 'verbs': ['get']}])
-        self.assertNotIn('keycloak-initial-admin', (BASE / 'sonarqube/configure-sso.py').read_text())
+        self.assertNotIn('keycloak-initial-admin', (BASE / '070-sonarqube/configure-sso.py').read_text())
 
 
 class ReconciliationSafety(unittest.TestCase):
     def test_runtime_secret_cannot_overwrite_ignored_data_through_string_data(self):
-        secret = yaml.safe_load((BASE / 'rhdh/rhdh-instance/rhdh-secrets.yaml').read_text())
+        secret = yaml.safe_load((BASE / '070-rhdh/rhdh-instance/rhdh-secrets.yaml').read_text())
         application = yaml.safe_load((ROOT / 'gitops/applications/070-rhdh.yaml').read_text())
         self.assertNotIn('stringData', secret)
         self.assertEqual(base64.b64decode(secret['data']['SESSION_SECRET']).decode(), 'PLACEHOLDER_WILL_BE_PATCHED')

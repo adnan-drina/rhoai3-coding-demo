@@ -30,10 +30,10 @@ MTA 8.3 release notes.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Operator pinned to `mta-operator.v8.3.1` (Subscription `startingCSV`, approver allowlist, validator) | `gitops/stages/070-advanced-app-platform/mta/mta-operator/` | [MTA 8.3][rn83] |
+| Operator pinned to `mta-operator.v8.3.1` (Subscription `startingCSV`, approver allowlist, validator) | `gitops/stages/070-advanced-app-platform/070-mta/mta-operator/` | [MTA 8.3][rn83] |
 | Workspace CLI 8.3.0 and VSIX 8.3.1 qualified separately from the operator | `stages/070-advanced-app-platform/workspace-image/artifacts.lock.json` | [MTA 8.3.0][rn830] |
-| Native Agents treated as Developer Preview; unqualified while models are stopped | `gitops/stages/070-advanced-app-platform/mta/README.md` | [MTA agents][agents] |
-| Lightspeed proxy and Solution Server treated as Technology Preview; Solution Server disabled | `mta/mta-instance/tackle.yaml` | see `mta-lightspeed` |
+| Native Agents treated as Developer Preview; unqualified while models are stopped | `gitops/stages/070-advanced-app-platform/070-mta/README.md` | [MTA agents][agents] |
+| Lightspeed proxy and Solution Server treated as Technology Preview; Solution Server disabled | `070-mta/mta-instance/tackle.yaml` | see `mta-lightspeed` |
 | `mta-ops` (PVC transfer) and BuildConfig conversion (Technology Preview) are not used | — | [mta-ops][mtaops], [Technology Preview][tp] |
 
 ## Procedure

@@ -9,7 +9,7 @@ metadata:
 description: >
   Use when reviewing or changing the OpenShift AI singletons owned by
   010-rhoai-platform: DSCInitialization default-dsci and DataScienceCluster
-  default-dsc in gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/,
+  default-dsc in gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/,
   component managementState values, the delegation model where Stages
   020-060 enable components through Sync hook Jobs and ignoreDifferences
   pointers (scripts/shared/stage_apps.py delegated), or a DSC/DSCI not Ready.
@@ -23,11 +23,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product fields in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md`.
 
 ## When to use
 
-- A change touches `rhoai-platform/dsc-init.yaml` or `rhoai-platform/datasciencecluster.yaml`.
+- A change touches `010-rhoai-platform/dsc-init.yaml` or `010-rhoai-platform/datasciencecluster.yaml`.
 - A stage needs a new DSC component, or a delegated component flips back.
 - `default-dsc` or `default-dsci` is not Ready.
 
@@ -35,12 +35,12 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `default-dsci` created by GitOps (operator auto-creation disabled by `DISABLE_DSC_CONFIG`); `applicationsNamespace: redhat-ods-applications`; `trustedCABundle` Managed, empty custom bundle | `rhoai-platform/dsc-init.yaml`, `rhoai-operator/subscription.yaml` | [Install and manage components by using the CLI][comp-cli] |
-| DSC on `datasciencecluster.opendatahub.io/v2`; Stage 010 manages only `dashboard` and `workbenches` (`workbenchNamespace: rhods-notebooks`); every other component `Removed` in Git | `rhoai-platform/datasciencecluster.yaml` | [Install and manage components by using the CLI][comp-cli] |
+| `default-dsci` created by GitOps (operator auto-creation disabled by `DISABLE_DSC_CONFIG`); `applicationsNamespace: redhat-ods-applications`; `trustedCABundle` Managed, empty custom bundle | `010-rhoai-platform/dsc-init.yaml`, `010-rhoai-operator/subscription.yaml` | [Install and manage components by using the CLI][comp-cli] |
+| DSC on `datasciencecluster.opendatahub.io/v2`; Stage 010 manages only `dashboard` and `workbenches` (`workbenchNamespace: rhods-notebooks`); every other component `Removed` in Git | `010-rhoai-platform/datasciencecluster.yaml` | [Install and manage components by using the CLI][comp-cli] |
 | One owner for the singletons: Application `010-rhoai-platform`; later stages patch the live DSC from a `Sync` hook Job; `ignoreDifferences` plus `RespectIgnoreDifferences=true` keep the patch | `gitops/applications/010-rhoai-platform.yaml` | n/a (Argo CD behaviour, see README) |
 | Delegated owners: `kueue` (020, `Unmanaged`), `kserve` and `modelregistry` (030), `aigateway` and `ogx` (040), `trustyai`, `mlflowoperator`, `aipipelines` (050), `mcplifecycleoperator` (060) | component README "Delegation model" table; `scripts/shared/stage_apps.py` | [Install and manage components by using the CLI][comp-cli]; Kueue: [Install the distributed workloads components][dw] |
-| `llamastackoperator` kept `Removed` (live 3.5 CRD marks it deprecated in favour of `ogx`; the 3.5 CLI example lists `ogx` and omits it) | `rhoai-platform/datasciencecluster.yaml` | [Install and manage components by using the CLI][comp-cli] |
-| No custom namespaces | `rhoai-platform/dsc-init.yaml` | [Configure custom namespaces][custom-ns] |
+| `llamastackoperator` kept `Removed` (live 3.5 CRD marks it deprecated in favour of `ogx`; the 3.5 CLI example lists `ogx` and omits it) | `010-rhoai-platform/datasciencecluster.yaml` | [Install and manage components by using the CLI][comp-cli] |
+| No custom namespaces | `010-rhoai-platform/dsc-init.yaml` | [Configure custom namespaces][custom-ns] |
 
 ## Procedure
 

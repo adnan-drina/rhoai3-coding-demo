@@ -21,7 +21,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/README.md`.
 
 ## When to use
 
@@ -32,10 +32,10 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| No custom connection type; all repo connections use the pre-installed S3-compatible type | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/connection-*.yaml`, `gitops/stages/050-model-evaluation/model-qualification/storage/connection-*.yaml` | [Manage connection types][types], [View][view] |
+| No custom connection type; all repo connections use the pre-installed S3-compatible type | `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/connection-*.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/storage/connection-*.yaml` | [Manage connection types][types], [View][view] |
 | Connection Secrets name the type with `opendatahub.io/connection-type-protocol: s3`, label `opendatahub.io/dashboard: "true"`, display name annotation; no credential data in Git | same paths | [Connections API][api] |
-| Stage 050 Secrets also carry `opendatahub.io/connection-type-ref: s3`, which 3.5 marks deprecated (protocol takes precedence) | `gitops/stages/050-model-evaluation/model-qualification/storage/connection-*.yaml` | [S3 connection via the API][api-s3] |
-| `connectionTest: true` (Technology Preview) lets users test S3 connections in the dashboard | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` | see `rhoai-dashboard-customization` |
+| Stage 050 Secrets also carry `opendatahub.io/connection-type-ref: s3`, which 3.5 marks deprecated (protocol takes precedence) | `gitops/stages/050-model-evaluation/050-model-qualification/storage/connection-*.yaml` | [S3 connection via the API][api-s3] |
+| `connectionTest: true` (Technology Preview) lets users test S3 connections in the dashboard | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml` | see `rhoai-dashboard-customization` |
 
 ## Procedure
 

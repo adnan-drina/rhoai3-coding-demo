@@ -47,7 +47,7 @@ oc create namespace "$PROBE_NS" -o json > "$EVIDENCE_DIR/namespace-private.json"
 NAMESPACE_UID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["uid"])' "$EVIDENCE_DIR/namespace-private.json")"
 oc get namespace "$PROBE_NS" -o json > "$EVIDENCE_DIR/namespace-private.json"
 oc get nodes -o json > "$EVIDENCE_DIR/nodes-private.json"
-python3 - "$PROBE_NS" "$EVIDENCE_DIR" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/source-pins.json" <<'PY'
+python3 - "$PROBE_NS" "$EVIDENCE_DIR" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/chart/source-pins.json" <<'PY'
 import json,pathlib,sys
 ns,folder,pinsfile=sys.argv[1:];p=pathlib.Path(folder)
 pins=json.loads(pathlib.Path(pinsfile).read_text())

@@ -33,10 +33,10 @@ linked Connectivity Link 1.4 observability book.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `Kuadrant` sets `spec.observability.enable: true`, so the operator creates ServiceMonitors and PodMonitors for its components and gateways | `gitops/stages/040-governed-models-as-a-service/gateway-governance/governance/kuadrant.yaml` | [Enable observability monitoring][enable] |
-| User workload monitoring is enabled (`enableUserWorkload: true`) and scrapes those monitors, including Limitador per-user/model series | `gitops/stages/010-openshift-ai-platform-foundation/observability-operators/cluster-monitoring/` | [Configure your monitoring stack][stack] |
-| The gateway proxy keeps an Envoy stats matcher configured in Git | `gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/` (`maas-gateway-resources` ConfigMap) | — |
-| The Connectivity Link Grafana dashboards are not imported; repo-owned MaaS cost and tokenomics dashboards read the Limitador series | `gitops/stages/040-governed-models-as-a-service/maas-platform/observability/` | [Dashboards and alerts][dash] |
+| `Kuadrant` sets `spec.observability.enable: true`, so the operator creates ServiceMonitors and PodMonitors for its components and gateways | `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/governance/kuadrant.yaml` | [Enable observability monitoring][enable] |
+| User workload monitoring is enabled (`enableUserWorkload: true`) and scrapes those monitors, including Limitador per-user/model series | `gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/cluster-monitoring/` | [Configure your monitoring stack][stack] |
+| The gateway proxy keeps an Envoy stats matcher configured in Git | `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/gateway/` (`maas-gateway-resources` ConfigMap) | — |
+| The Connectivity Link Grafana dashboards are not imported; repo-owned MaaS cost and tokenomics dashboards read the Limitador series | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/observability/` | [Dashboards and alerts][dash] |
 | No data-plane tracing or access-log Telemetry CRs are configured | — | [Tracing][tracing], [Access logs][logs] |
 
 ## Procedure

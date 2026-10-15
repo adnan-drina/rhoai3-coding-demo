@@ -22,15 +22,15 @@ Repo-specific skill. **Not deployed in this demo.** The vendored Llama Stack UI
 chatbot (`stage-230-private-data-rag/chatbot/`, `gitops/stage-230-private-data-rag/`)
 belonged to the predecessor repository. None of those paths exist here, and
 the Llama Stack operator it depended on is kept `Removed`
-(`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml`).
+(`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml`).
 
 ## What to use instead
 
 | Request | Deployed surface | Where in Git | Skill |
 |---|---|---|---|
-| Chat with a governed model, test prompts and MCP tools | Gen AI playground in `demo-sandbox` | `gitops/stages/040-governed-models-as-a-service/genai-studio/` | `rhoai-gen-ai-playground` |
-| A reusable assistant with a reviewed system prompt and limited tools | Saved agent "OpenShift Ops Assistant" (Developer Preview) | `gitops/stages/040-governed-models-as-a-service/genai-studio/agent-profile-openshift-ops-assistant.yaml`, `openshift-ops-assistant-prompt.yaml` | `rhoai-gen-ai-playground`, `rhoai-mlflow` |
-| Coding chat in the IDE | Dev Spaces workspaces with MaaS keys | `gitops/stages/070-advanced-app-platform/devspaces/` | `manage-devspaces` |
+| Chat with a governed model, test prompts and MCP tools | Gen AI playground in `demo-sandbox` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/` | `rhoai-gen-ai-playground` |
+| A reusable assistant with a reviewed system prompt and limited tools | Saved agent "OpenShift Ops Assistant" (Developer Preview) | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/agent-profile-openshift-ops-assistant.yaml`, `openshift-ops-assistant-prompt.yaml` | `rhoai-gen-ai-playground`, `rhoai-mlflow` |
+| Coding chat in the IDE | Dev Spaces workspaces with MaaS keys | `gitops/stages/070-advanced-app-platform/070-devspaces/` | `manage-devspaces` |
 | A RAG chatbot over documents | none | not in Git | `rhoai-enterprise-rag` |
 
 ## If a custom chatbot is added

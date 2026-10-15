@@ -20,7 +20,7 @@ description: >
 
 Thin skill: how documentation reaches this portal; the product's authoring
 and reading procedures are in the linked Developer Hub 1.10 sections.
-Detailed record: `gitops/stages/070-advanced-app-platform/rhdh/README.md`
+Detailed record: `gitops/stages/070-advanced-app-platform/070-rhdh/README.md`
 ("Catalog generation", "Catalog sources").
 
 ## When to use
@@ -33,11 +33,11 @@ Detailed record: `gitops/stages/070-advanced-app-platform/rhdh/README.md`
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Docs are attached to platform-owned entities only (System `coolstore`, Component `coolstore-inventory-service`) through `backstage.io/techdocs-ref: url:__RHOAI3_PLATFORM_TREE_URL__` | `gitops/stages/070-advanced-app-platform/rhdh/catalog/all.yaml` | [Add documentation][add] |
-| The URL is rendered to the platform GitLab mirror at the synced revision, so docs follow the reviewed commit, not `main` | `rhdh/jobs/catalog/render_catalog.py`, `rhdh/jobs/catalog/generate.sh` | [Import documentation from a remote repository][import] |
-| Template skeletons set no `techdocs-ref`; template-created projects have no Docs tab | `rhdh/templates/*/skeleton/catalog-info.yaml` | [Enable documentation for an existing entity][existing] |
-| Doc changes go through Git review and a platform commit; the portal shows them only after `070-rhdh` syncs that commit | `rhdh/catalog/all.yaml` | [Make changes to documentation][edit] |
-| No GitHub Actions doc builds; the portal builds locally (`rhdh-techdocs-config`) | `rhdh/rhdh-instance/app-config-configmap.yaml` | [GitHub Actions builds][gha] |
+| Docs are attached to platform-owned entities only (System `coolstore`, Component `coolstore-inventory-service`) through `backstage.io/techdocs-ref: url:__RHOAI3_PLATFORM_TREE_URL__` | `gitops/stages/070-advanced-app-platform/070-rhdh/catalog/all.yaml` | [Add documentation][add] |
+| The URL is rendered to the platform GitLab mirror at the synced revision, so docs follow the reviewed commit, not `main` | `070-rhdh/jobs/catalog/render_catalog.py`, `070-rhdh/jobs/catalog/generate.sh` | [Import documentation from a remote repository][import] |
+| Template skeletons set no `techdocs-ref`; template-created projects have no Docs tab | `070-rhdh/templates/*/skeleton/catalog-info.yaml` | [Enable documentation for an existing entity][existing] |
+| Doc changes go through Git review and a platform commit; the portal shows them only after `070-rhdh` syncs that commit | `070-rhdh/catalog/all.yaml` | [Make changes to documentation][edit] |
+| No GitHub Actions doc builds; the portal builds locally (`rhdh-techdocs-config`) | `070-rhdh/rhdh-instance/app-config-configmap.yaml` | [GitHub Actions builds][gha] |
 
 ## Procedure
 

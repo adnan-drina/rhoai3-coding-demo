@@ -9,7 +9,7 @@
       "demo.rhoai.io/stage": "060"
     },
     "annotations": {
-      "argocd.argoproj.io/manifest-generate-paths": "/gitops/stages/060-agent-runtime-and-agentops/openshell-runtime",
+      "argocd.argoproj.io/manifest-generate-paths": "/gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime",
       "demo.rhoai.io/deploy-script": "stages/060-agent-runtime-and-agentops/deploy-runtime.sh",
       "argocd.argoproj.io/compare-options": "ServerSideDiff=true"
     }
@@ -19,7 +19,7 @@
     "source": {
       "repoURL": "https://github.com/adnan-drina/rhoai3-coding-demo.git",
       "targetRevision": "main",
-      "path": "gitops/stages/060-agent-runtime-and-agentops/openshell-runtime"
+      "path": "gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime"
     },
     "destination": {
       "server": "https://kubernetes.default.svc",

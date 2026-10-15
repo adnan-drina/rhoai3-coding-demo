@@ -3,8 +3,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - mlflow
-  - model-qualification
-  - evalhub
-  - evaluation-content
-  - oci-export
+  - 050-mlflow
+  - 050-model-qualification
+  - 050-evalhub
+  - 050-evaluation-content
+  - 050-oci-export

@@ -32,8 +32,8 @@ resources. Product behavior is in the linked OpenShift AI 3.5 sections.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Operator-owned Deployments are not in Git and are not patched; the DSC only sets `managementState` per component | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Customize component deployment resources][overview] |
-| `opendatahub.io/managed: "false"` appears only on the MaaS Gateway objects, for a different MaaS requirement; it is not a component-resource setting | `gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/gateway.yaml` | see `rhoai-maas-governance` |
+| Operator-owned Deployments are not in Git and are not patched; the DSC only sets `managementState` per component | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Customize component deployment resources][overview] |
+| `opendatahub.io/managed: "false"` appears only on the MaaS Gateway objects, for a different MaaS requirement; it is not a component-resource setting | `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/gateway/gateway.yaml` | see `rhoai-maas-governance` |
 
 ## If a customization is needed
 

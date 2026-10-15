@@ -11,7 +11,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = ROOT / "gitops/stages/070-advanced-app-platform"
-TASKS = BASE / "pipelines/project-pipeline"
+TASKS = BASE / "070-pipelines/project-pipeline"
 SHA = "a" * 40
 DIGEST = "sha256:" + "b" * 64
 PREFIX = "image-registry.openshift-image-registry.svc:5000/example-dev/"
@@ -189,14 +189,14 @@ elif 'imagestream' in sys.argv and os.environ.get('STREAM_MISSING'):
         self.assertNotIn("persistentVolumeClaim", volumes["registry-auth"])
 
     def test_stage_render_has_one_declared_output_and_no_quay_distribution(self):
-        result = subprocess.run(["kustomize", "build", str(BASE / "pipelines/project-enrollment")], capture_output=True, text=True, check=True)
+        result = subprocess.run(["kustomize", "build", str(BASE / "070-pipelines/project-enrollment")], capture_output=True, text=True, check=True)
         objects = list(yaml.safe_load_all(result.stdout))
         outputs = [o for o in objects if o["kind"] == "ImageStream" and o["metadata"].get("namespace") == "unassigned-dev"]
         self.assertEqual([o["metadata"]["name"] for o in outputs], ["unassigned"])
         binding = next(o for o in objects if o["kind"] == "RoleBinding" and o["metadata"]["name"] == "pipeline-image-builder")
         self.assertEqual(binding["metadata"]["namespace"], "unassigned-dev")
         self.assertEqual(binding["subjects"], [{"kind": "ServiceAccount", "name": "image-builder", "namespace": "unassigned-dev"}])
-        for path in (BASE / "pipelines").rglob("*.yaml"):
+        for path in (BASE / "070-pipelines").rglob("*.yaml"):
             self.assertNotIn("quay-push-secret", path.read_text())
         self.assertNotIn("patch-coolstore-image", result.stdout)
 

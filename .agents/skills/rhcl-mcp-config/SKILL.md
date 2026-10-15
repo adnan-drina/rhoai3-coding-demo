@@ -33,8 +33,8 @@ These are the facts an adoption must respect and where they are documented.
 | Constraint | Where | Official section |
 |---|---|---|
 | Credentials never in Git: MCP credential Secrets are created at runtime | `AGENTS.md` (Security and privacy) | [Register an MCP server][register] |
-| Use the existing platform Keycloak (RHBK) as the OIDC issuer rather than a new identity provider | `gitops/stages/070-advanced-app-platform/identity/README.md` | [Authentication][authn] |
-| Today's per-server controls (caller-token passthrough, Secret denial, local rate limit) are the baseline a gateway must not weaken | `gitops/stages/060-agent-runtime-and-agentops/agent-tools/README.md` | — |
+| Use the existing platform Keycloak (RHBK) as the OIDC issuer rather than a new identity provider | `gitops/stages/070-advanced-app-platform/070-identity/README.md` | [Authentication][authn] |
+| Today's per-server controls (caller-token passthrough, Secret denial, local rate limit) are the baseline a gateway must not weaken | `gitops/stages/060-agent-runtime-and-agentops/060-agent-tools/README.md` | — |
 
 ## Facts to keep straight (verified against 1.4 on 2026-10-15)
 

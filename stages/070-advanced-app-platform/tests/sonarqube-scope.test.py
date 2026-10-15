@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[3]
-spec = importlib.util.spec_from_file_location('sonar_scope', ROOT / 'gitops/stages/070-advanced-app-platform/pipelines/gitlab/reconcile.py')
+spec = importlib.util.spec_from_file_location('sonar_scope', ROOT / 'gitops/stages/070-advanced-app-platform/070-pipelines/gitlab/reconcile.py')
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 

@@ -31,7 +31,7 @@ an adoption must be shaped here and where the official procedure is.
 |---|---|---|
 | A new GitOps component with its own Argo CD Application, README (why/what/how, alignment table) and validate step | `.agents/rules/gitops.md`, `stages/<stage>/validate.sh` | — |
 | The Subscription follows the operator policy: add `mcp-gateway` with its channel and minimum to `scripts/platform/check-operator-policy.py` | `scripts/platform/check-operator-policy.py` | [Install with OLM][olm] |
-| Reuse the MaaS-style Gateway pattern (OpenShift Gateway controller, TLS terminate) rather than a second ingress design | `gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/` | [Create a Gateway][gateway], [Configure listeners][listeners] |
+| Reuse the MaaS-style Gateway pattern (OpenShift Gateway controller, TLS terminate) rather than a second ingress design | `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/gateway/` | [Create a Gateway][gateway], [Configure listeners][listeners] |
 
 ## Facts to verify against the docs at adoption time
 

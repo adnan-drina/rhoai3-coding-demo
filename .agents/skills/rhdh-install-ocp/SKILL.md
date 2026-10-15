@@ -22,24 +22,24 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product procedure in the linked
 Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md`.
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md`.
 
 ## When to use
 
-- A change touches `gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/`
-  or `rhdh/rhdh-instance/backstage.yaml`.
+- A change touches `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/`
+  or `070-rhdh/rhdh-instance/backstage.yaml`.
 - Stage 070 stops before the portal answers (operator CSV, Backstage CR, Route).
 
 ## Repo decisions
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Operator path, not the Helm chart (Helm is not used) | `rhdh/rhdh-operator/`, `rhdh/rhdh-instance/backstage.yaml` | [Installation methods][methods] |
-| Namespace `rhdh-operator`, OperatorGroup without target namespaces (all-namespaces mode; a specific namespace is not supported) | `rhdh/rhdh-operator/operatorgroup.yaml` | [Install the Operator][install-op] |
-| Subscription `rhdh`: channel `fast-1.10` (z-streams only), `installPlanApproval: Manual`, `startingCSV: rhdh-operator.v1.10.5`, `redhat-operators` | `rhdh/rhdh-operator/subscription.yaml` | [Install the Operator][install-op] |
-| Sync hook `approve-installplan` approves only InstallPlans whose CSVs are all on its allowlist, then waits for the CSV; its Role reaches only `rhdh-operator` InstallPlans and Subscription `rhdh` | `rhdh/rhdh-operator/approve-installplan.yaml` | — (repo control) |
-| Instance is the `Backstage` CR `developer-hub` in `rhdh` (wave 18), configured only through ConfigMaps, Secrets and the CR | `rhdh/rhdh-instance/` | [Provision custom configuration][provision], [Run with custom configuration][run-op] |
-| Namespaces `rhdh-operator` and `rhdh` come from `070-namespaces`; `070-rhdh` is deploy-order 8 (last) of Stage 070 | `gitops/stages/070-advanced-app-platform/namespaces/`, `gitops/applications/070-rhdh.yaml` | — |
+| Operator path, not the Helm chart (Helm is not used) | `070-rhdh/rhdh-operator/`, `070-rhdh/rhdh-instance/backstage.yaml` | [Installation methods][methods] |
+| Namespace `rhdh-operator`, OperatorGroup without target namespaces (all-namespaces mode; a specific namespace is not supported) | `070-rhdh/rhdh-operator/operatorgroup.yaml` | [Install the Operator][install-op] |
+| Subscription `rhdh`: channel `fast-1.10` (z-streams only), `installPlanApproval: Manual`, `startingCSV: rhdh-operator.v1.10.5`, `redhat-operators` | `070-rhdh/rhdh-operator/subscription.yaml` | [Install the Operator][install-op] |
+| Sync hook `approve-installplan` approves only InstallPlans whose CSVs are all on its allowlist, then waits for the CSV; its Role reaches only `rhdh-operator` InstallPlans and Subscription `rhdh` | `070-rhdh/rhdh-operator/approve-installplan.yaml` | — (repo control) |
+| Instance is the `Backstage` CR `developer-hub` in `rhdh` (wave 18), configured only through ConfigMaps, Secrets and the CR | `070-rhdh/rhdh-instance/` | [Provision custom configuration][provision], [Run with custom configuration][run-op] |
+| Namespaces `rhdh-operator` and `rhdh` come from `070-namespaces`; `070-rhdh` is deploy-order 8 (last) of Stage 070 | `gitops/stages/070-advanced-app-platform/070-namespaces/`, `gitops/applications/070-rhdh.yaml` | — |
 
 Paths are relative to `gitops/stages/070-advanced-app-platform/` unless absolute.
 

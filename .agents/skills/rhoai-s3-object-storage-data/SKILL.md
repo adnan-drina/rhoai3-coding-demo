@@ -22,8 +22,8 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed records:
-`gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/README.md`,
-`gitops/stages/050-model-evaluation/model-qualification/README.md` (`storage/`).
+`gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/README.md`,
+`gitops/stages/050-model-evaluation/050-model-qualification/README.md` (`storage/`).
 
 ## When to use
 
@@ -34,10 +34,10 @@ OpenShift AI 3.5 sections. Detailed records:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `demo-sandbox` buckets `rhoai-models` and `rhoai-workbench` are ODF OBCs; connections "Models" and "Workbench" are filled at runtime by Sync hook `sandbox-s3-connections`, no credentials in Git | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/` | [Prerequisites][prereq] |
-| `evaluated-models` has buckets `evaluation-models-{models,workbench,pipelines}` and three connections, filled by hook `evaluated-models-s3-connections` | `gitops/stages/050-model-evaluation/model-qualification/storage/` | [Prerequisites][prereq] |
-| Connections carry `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`, `AWS_S3_BUCKET`, `AWS_DEFAULT_REGION`; region falls back to `us-east-1` | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/connection-job.yaml` | [Create an S3 client][client] |
-| Endpoint is the in-cluster HTTPS service on port 443 (`s3.openshift-storage.svc`), signed by the OpenShift service CA; the Stage 050 Pipelines connection uses the external ODF Route `s3` instead so signed links open in a browser | `sandbox-storage/README.md` (How, Alignment), `gitops/stages/050-model-evaluation/model-qualification/storage/connection-job.yaml` | [Object storage endpoints][endpoints] |
+| `demo-sandbox` buckets `rhoai-models` and `rhoai-workbench` are ODF OBCs; connections "Models" and "Workbench" are filled at runtime by Sync hook `sandbox-s3-connections`, no credentials in Git | `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/` | [Prerequisites][prereq] |
+| `evaluated-models` has buckets `evaluation-models-{models,workbench,pipelines}` and three connections, filled by hook `evaluated-models-s3-connections` | `gitops/stages/050-model-evaluation/050-model-qualification/storage/` | [Prerequisites][prereq] |
+| Connections carry `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`, `AWS_S3_BUCKET`, `AWS_DEFAULT_REGION`; region falls back to `us-east-1` | `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/connection-job.yaml` | [Create an S3 client][client] |
+| Endpoint is the in-cluster HTTPS service on port 443 (`s3.openshift-storage.svc`), signed by the OpenShift service CA; the Stage 050 Pipelines connection uses the external ODF Route `s3` instead so signed links open in a browser | `010-sandbox-storage/README.md` (How, Alignment), `gitops/stages/050-model-evaluation/050-model-qualification/storage/connection-job.yaml` | [Object storage endpoints][endpoints] |
 | The Workbench bucket is for object exchange; files that need a POSIX filesystem stay on the workbench PVC | `stages/010-openshift-ai-platform-foundation/README.md` | [Object storage endpoints][endpoints] |
 
 ## Procedure
@@ -60,7 +60,7 @@ OpenShift AI 3.5 sections. Detailed records:
 ## Pitfalls
 
 - TLS: the repo configures no CA trust for the service-CA endpoint; this is a
-  recorded Gap in `sandbox-storage/README.md`. If a client rejects the
+  recorded Gap in `010-sandbox-storage/README.md`. If a client rejects the
   certificate, follow [self-signed certificates][selfsigned] and
   `rhoai-certificate-management`; do not switch to plain HTTP.
 - The service host resolves only inside the cluster; from a laptop use the

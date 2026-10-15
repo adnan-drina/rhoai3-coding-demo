@@ -23,7 +23,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/010-openshift-ai-platform-foundation/access/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-access/README.md`.
 
 ## When to use
 
@@ -35,13 +35,13 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Projects are Namespaces in Git with label `opendatahub.io/dashboard: "true"` and a display name: `demo-sandbox`, `internal-models`, `external-models`, `models-as-a-service`, `evaluated-models`, `ai-curated-prompts`, `mcp-servers`, `ai-agents` | `gitops/stages/010-openshift-ai-platform-foundation/access/namespace-demo-sandbox.yaml`; the other stages' `namespace*.yaml` (Stages 040, 050, 060) | [Use projects][projects] |
-| `demo-sandbox`: `rhoai-developers` get `edit` (Contributor), `rhods-admins` get `admin`; `evaluated-models` is admins only | `gitops/stages/010-openshift-ai-platform-foundation/access/rolebinding-*.yaml`, `gitops/stages/050-model-evaluation/model-qualification/access.yaml` | [Manage access][access], [Default project roles][roles] |
+| Projects are Namespaces in Git with label `opendatahub.io/dashboard: "true"` and a display name: `demo-sandbox`, `internal-models`, `external-models`, `models-as-a-service`, `evaluated-models`, `ai-curated-prompts`, `mcp-servers`, `ai-agents` | `gitops/stages/010-openshift-ai-platform-foundation/010-access/namespace-demo-sandbox.yaml`; the other stages' `namespace*.yaml` (Stages 040, 050, 060) | [Use projects][projects] |
+| `demo-sandbox`: `rhoai-developers` get `edit` (Contributor), `rhods-admins` get `admin`; `evaluated-models` is admins only | `gitops/stages/010-openshift-ai-platform-foundation/010-access/rolebinding-*.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/access.yaml` | [Manage access][access], [Default project roles][roles] |
 | No workbench and no custom workbench role in Git; users create workbenches in the dashboard | (not in Git) | [Create a workbench][wb-create] |
-| `demo-sandbox`, `internal-models`, `models-as-a-service` and `evaluated-models` carry `kueue.openshift.io/managed: "true"`; workbenches need a profile whose LocalQueue exists in the project (`lq-cpu-default` in `demo-sandbox` and `evaluated-models`) | `namespace-demo-sandbox.yaml`, `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/queues/` | [Kueue scheduling status][kueue] |
-| Connections are Git-declared Secret skeletons filled by hook Jobs (see `rhoai-s3-object-storage-data`) | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/`, `gitops/stages/050-model-evaluation/model-qualification/storage/` | [Connections API][api] |
-| Models do not use the `opendatahub.io/connections` annotation; the Stage 050 candidate pulls `hf://` directly | `gitops/stages/050-model-evaluation/model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Annotations by workload type][annot] |
-| `evaluated-models` cluster storage: PVC `evaluated-models-storage` (20 Gi `gp3-csi`) created by a hook, not tracked by Argo CD | `gitops/stages/050-model-evaluation/model-qualification/storage/connection-job.yaml` | [Add cluster storage][storage-add] |
+| `demo-sandbox`, `internal-models`, `models-as-a-service` and `evaluated-models` carry `kueue.openshift.io/managed: "true"`; workbenches need a profile whose LocalQueue exists in the project (`lq-cpu-default` in `demo-sandbox` and `evaluated-models`) | `namespace-demo-sandbox.yaml`, `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/queues/` | [Kueue scheduling status][kueue] |
+| Connections are Git-declared Secret skeletons filled by hook Jobs (see `rhoai-s3-object-storage-data`) | `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/`, `gitops/stages/050-model-evaluation/050-model-qualification/storage/` | [Connections API][api] |
+| Models do not use the `opendatahub.io/connections` annotation; the Stage 050 candidate pulls `hf://` directly | `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Annotations by workload type][annot] |
+| `evaluated-models` cluster storage: PVC `evaluated-models-storage` (20 Gi `gp3-csi`) created by a hook, not tracked by Argo CD | `gitops/stages/050-model-evaluation/050-model-qualification/storage/connection-job.yaml` | [Add cluster storage][storage-add] |
 
 ## Procedure
 

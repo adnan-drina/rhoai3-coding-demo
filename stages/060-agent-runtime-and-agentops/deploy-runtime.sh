@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
-python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/controller"
+python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/chart/controller"
 # Use the caller-selected Python interpreter for native readiness checks.
 PYTHON="${RHOAI_STAGE060_PYTHON:-python3}"
 require_env GIT_REPO_URL "reviewed Stage 060 source repository"
@@ -36,7 +36,7 @@ def get(kind,name,ns):
 a=get('application',app,'openshift-gitops')
 if a:
  m=a['metadata'];s=a['spec'];assert not m.get('ownerReferences') and not m.get('deletionTimestamp') and not a.get('operation') and 'sources' not in s
- assert s['project']=='rhoai-demo' and s['source']['repoURL']==os.environ.get('GIT_REPO_URL','https://github.com/adnan-drina/rhoai3-coding-demo.git') and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/openshell-runtime'
+ assert s['project']=='rhoai-demo' and s['source']['repoURL']==os.environ.get('GIT_REPO_URL','https://github.com/adnan-drina/rhoai3-coding-demo.git') and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime'
  assert s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'}
  assert a.get('status',{}).get('operationState',{}).get('phase') not in ('Running','Terminating')
 for kind,name,ns in [('Namespace',n,'openshell') for n in ('openshell','openshell-admin','openshell-developer','ai-agents','agent-sandbox-system')]+[('Subscription','agent-sandbox-operator','agent-sandbox-system'),('ConfigMap','openshell-identity','openshell'),('ConfigMap','openshell-runtime-ready','openshell'),('Secret','openshell-credentials','openshell')]:
@@ -66,7 +66,7 @@ while time.monotonic()<end:
 else:raise RuntimeError('Exact async operation did not start within60seconds')
 PYWAIT
 python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION" --prepare-only
-"$PYTHON" "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/controller" --wait 900
+"$PYTHON" "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime/chart/controller" --wait 900
 "$PYTHON" "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"
 wait_runtime 600
 

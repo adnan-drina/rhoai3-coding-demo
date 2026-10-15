@@ -16,16 +16,16 @@ import yaml
 
 ROOT=Path(__file__).resolve().parents[3]
 BASE=ROOT/'gitops/stages/070-advanced-app-platform'
-sys.path.insert(0,str(BASE/'pipelines/gitlab'))
+sys.path.insert(0,str(BASE/'070-pipelines/gitlab'))
 import secret_writer
 
 def load(name,path):
  spec=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
 sys.path.insert(0,str(ROOT/'scripts/shared'))
 import stage_apps
-scm=load('correction_enrollment',BASE/'pipelines/gitlab/reconcile.py')
-bootstrap=load('correction_bootstrap',BASE/'gitlab/bootstrap-scm.py')
-identity=load('scoped_identity',BASE/'identity/jobs/configure-scm-identity.py')
+scm=load('correction_enrollment',BASE/'070-pipelines/gitlab/reconcile.py')
+bootstrap=load('correction_bootstrap',BASE/'070-gitlab/bootstrap-scm.py')
+identity=load('scoped_identity',BASE/'070-identity/jobs/configure-scm-identity.py')
 sys.path.insert(0,str(ROOT/'stages/070-advanced-app-platform'))
 rotation=load('reviewed_rotation',ROOT/'stages/070-advanced-app-platform/rotate-credentials.py')
 security=load('live_security',ROOT/'stages/070-advanced-app-platform/security-status.py')
@@ -152,21 +152,21 @@ class ScopedAuthority(unittest.TestCase):
   self.assertFalse(any('/master/' in path or '/sso/' in path for method,path,data in requests))
   self.assertTrue(any('/scope-mappings/' in path for method,path,data in requests))
  def test_bootstrap_authority_is_removed_on_success_or_failure(self):
-  docs=list(yaml.safe_load_all((BASE/'gitlab/integrations-bootstrap.yaml').read_text()))
+  docs=list(yaml.safe_load_all((BASE/'070-gitlab/integrations-bootstrap.yaml').read_text()))
   bindings=[d for d in docs if d and d['kind']=='RoleBinding' and any(s.get('name')=='gitlab-integrations-bootstrap' for s in d.get('subjects',[]))]
   self.assertTrue(bindings)
   self.assertTrue(all(d['metadata']['annotations'].get('argocd.argoproj.io/hook')=='Sync' for d in bindings))
-  cleanup=list(yaml.safe_load_all((BASE/'gitlab/bootstrap-cleanup.yaml').read_text()));job=next(d for d in cleanup if d['kind']=='Job')
+  cleanup=list(yaml.safe_load_all((BASE/'070-gitlab/bootstrap-cleanup.yaml').read_text()));job=next(d for d in cleanup if d['kind']=='Job')
   self.assertEqual(job['metadata']['annotations']['argocd.argoproj.io/hook'],'PostSync,SyncFail')
   script=job['spec']['template']['spec']['containers'][0]['command'][-1]
   for d in bindings:self.assertIn('oc delete rolebinding '+d['metadata']['name']+' -n '+d['metadata']['namespace'],script)
   roles=[d for d in cleanup if d['kind']=='Role'];self.assertTrue(all(r['rules'][0]['resources']==['rolebindings'] and r['rules'][0]['verbs']==['get','delete'] and r['rules'][0].get('resourceNames') for r in roles))
  def test_downstream_jobs_have_no_master_secret_access(self):
-  for file in ['rhdh/jobs/configure-rhdh.yaml','mta/jobs/configure-mta-platform-sso.yaml','pipelines/signing/bootstrap.yaml']:
+  for file in ['070-rhdh/jobs/configure-rhdh.yaml','070-mta/jobs/configure-mta-platform-sso.yaml','070-pipelines/signing/bootstrap.yaml']:
    for d in yaml.safe_load_all((BASE/file).read_text()):
     if d and d.get('kind')=='Role' and d['metadata'].get('namespace')=='keycloak':self.assertFalse(any('secrets' in r.get('resources',[]) for r in d.get('rules',[])))
  def test_all_shell_commands_parse(self):
-  for file in ['rhdh/jobs/configure-rhdh.yaml','mta/jobs/configure-mta-platform-sso.yaml','sonarqube/configure-sonarqube.yaml','devspaces/maas-api-key-provisioning.yaml']:
+  for file in ['070-rhdh/jobs/configure-rhdh.yaml','070-mta/jobs/configure-mta-platform-sso.yaml','070-sonarqube/configure-sonarqube.yaml','070-devspaces/maas-api-key-provisioning.yaml']:
    for d in yaml.safe_load_all((BASE/file).read_text()):
     if d and d.get('kind')=='Job':
      for c in d['spec']['template']['spec']['containers']:
@@ -341,9 +341,9 @@ class RotationSafety(unittest.TestCase):
 
 class NativeSyncAndIngress(unittest.TestCase):
  def test_mta_patch_is_exact_in_subscription_allowlist_and_validator(self):
-  selected=yaml.safe_load((BASE/'mta/mta-operator/subscription.yaml').read_text())['spec']
+  selected=yaml.safe_load((BASE/'070-mta/mta-operator/subscription.yaml').read_text())['spec']
   self.assertEqual(selected['startingCSV'],'mta-operator.v8.3.1');self.assertEqual(selected['installPlanApproval'],'Manual')
-  approval=(BASE/'mta/mta-operator/approve-installplan.yaml').read_text()
+  approval=(BASE/'070-mta/mta-operator/approve-installplan.yaml').read_text()
   self.assertIn('value: mta-operator.v8.3.1',approval)
   self.assertNotIn('mta-operator.v8.3.0',approval)
   self.assertIn('openshift-mta mta-operator mta-operator.v8.3.1',(ROOT/'stages/070-advanced-app-platform/validate.sh').read_text())
@@ -352,7 +352,7 @@ class NativeSyncAndIngress(unittest.TestCase):
   claims=[d for d in docs if d and d['kind']=='PersistentVolumeClaim'];self.assertTrue(claims)
   for claim in claims:self.assertEqual(claim['spec'].get('storageClassName'),'gp3-csi',claim['metadata']['name'])
  def test_identity_check_targets_the_client_configured_by_the_mta_job(self):
-  jobs=[d for d in yaml.safe_load_all((BASE/'mta/jobs/configure-mta-platform-sso.yaml').read_text()) if d and d['kind']=='Job']
+  jobs=[d for d in yaml.safe_load_all((BASE/'070-mta/jobs/configure-mta-platform-sso.yaml').read_text()) if d and d['kind']=='Job']
   script=jobs[0]['spec']['template']['spec']['containers'][0]['command'][-1]
   expected=next(line.split('=',1)[1].strip('"') for line in script.splitlines() if line.startswith('CLIENT_ID='))
   actual=next(target for ns,secret,target in security.CLIENTS if secret=='stage070-mta-provisioner')
@@ -383,14 +383,14 @@ class NativeSyncAndIngress(unittest.TestCase):
    else:
     sonar=p['spec']['ingress'][1];self.assertEqual(sonar['ports'],[{'protocol':'TCP','port':9000}])
     self.assertIn({'namespaceSelector':{'matchLabels':{'rhoai3.redhat.com/pipeline-project':'true'}}},sonar['from'])
-  k=(BASE/'pipelines/project-enrollment/kustomization.yaml').read_text();self.assertIn('NetworkPolicy',k)
-  project=yaml.safe_load((BASE/'pipelines/project-pipeline/network-policy.yaml').read_text());self.assertEqual(project['spec']['policyTypes'],['Ingress'])
+  k=(BASE/'070-pipelines/project-enrollment/kustomization.yaml').read_text();self.assertIn('NetworkPolicy',k)
+  project=yaml.safe_load((BASE/'070-pipelines/project-pipeline/network-policy.yaml').read_text());self.assertEqual(project['spec']['policyTypes'],['Ingress'])
  def test_security_authorization_does_not_turn_api_errors_into_denials(self):
   with patch.object(security.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'no\n','')):self.assertTrue(security.denied('get','secret/x','test','principal'))
   with patch.object(security.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'','API unavailable')):
    with self.assertRaises(RuntimeError):security.denied('get','secret/x','test','principal')
  def test_service_credentials_are_not_writable_by_downstream_jobs(self):
-  for file,ns,name in [('rhdh/jobs/configure-rhdh.yaml','rhdh','stage070-rhdh-provisioner'),('mta/jobs/configure-mta-platform-sso.yaml','openshift-mta','stage070-mta-provisioner')]:
+  for file,ns,name in [('070-rhdh/jobs/configure-rhdh.yaml','rhdh','stage070-rhdh-provisioner'),('070-mta/jobs/configure-mta-platform-sso.yaml','openshift-mta','stage070-mta-provisioner')]:
    roles=[d for d in yaml.safe_load_all((BASE/file).read_text()) if d and d['kind']=='Role' and d['metadata']['namespace']==ns]
    for role in roles:
     for rule in role['rules']:
@@ -400,9 +400,9 @@ class NativeSyncAndIngress(unittest.TestCase):
 class ComponentLayout(unittest.TestCase):
  def test_secret_writer_copies_match_the_canonical_writer(self):
   # Kustomize loads files only from inside a component folder, so each bundle carries its own copy.
-  canonical=(BASE/'pipelines/gitlab/secret_writer.py').read_bytes()
+  canonical=(BASE/'070-pipelines/gitlab/secret_writer.py').read_bytes()
   copies=sorted(p for p in BASE.glob('*/secret_writer.py'))
-  self.assertEqual([p.parent.name for p in copies],['devspaces','gitlab','identity','mta','sonarqube'])
+  self.assertEqual([p.parent.name for p in copies],['070-devspaces','070-gitlab','070-identity','070-mta','070-sonarqube'])
   for path in copies:self.assertEqual(path.read_bytes(),canonical,str(path)+' differs from pipelines/gitlab/secret_writer.py')
 
 if __name__=='__main__':unittest.main()

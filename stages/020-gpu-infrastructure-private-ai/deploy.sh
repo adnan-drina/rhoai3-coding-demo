@@ -17,7 +17,7 @@ revision=$(python3 "$STAGE_APPS" select 020 --ref "$ref" --repo-url "$GIT_REPO_U
   --extra scripts/platform/require-node-sizing.sh --extra scripts/platform/check-operator-policy.py)
 stage_gitops="$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai"
 app_manifest="$ROOT_DIR/gitops/applications/020-gpu-machinesets.yaml"
-[[ -f "$stage_gitops/gpu-machinesets/machineset-gpu.yaml" ]] || { echo 'ERROR: generate, review and publish the environment MachineSets first (generate-gpu-machineset.sh).' >&2; exit 1; }
+[[ -f "$stage_gitops/020-gpu-machinesets/machineset-gpu.yaml" ]] || { echo 'ERROR: generate, review and publish the environment MachineSets first (generate-gpu-machineset.sh).' >&2; exit 1; }
 export REPO_ROOT
 # All prerequisites are read-only and run before the first Application write.
 python3 - <<'PY'
@@ -50,7 +50,7 @@ x=read('configmap','nvidia-dcgm-exporter-dashboard','openshift-config-managed')
 if x:assert not x['metadata'].get('ownerReferences') and stage_apps.tracked('020',x),'Existing NVIDIA dashboard requires a reviewed adoption'
 PY_OWNERSHIP
 # Every generated GPU MachineSet must still match the active CPU worker it was derived from.
-oc kustomize "$stage_gitops/gpu-machinesets" | ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' | python3 -c '
+oc kustomize "$stage_gitops/020-gpu-machinesets" | ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' | python3 -c '
 import json,subprocess,sys,copy
 pools=[d for d in json.load(sys.stdin) if d["kind"]=="MachineSet"];assert pools,"No generated GPU MachineSets"
 def read(kind,name,ns=""):

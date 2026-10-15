@@ -87,7 +87,7 @@ Zero-replica provider MachineSets, the preinstalled Keycloak PVC and platform re
 
 `qwen3-8-27b` (Qwen 3.8 NVFP4 on RTX PRO 6000) is the default; Qwen 3.6 is retired. Study: [OPERATIONS](docs/OPERATIONS.md#model-serving-study-and-default-model-2026-10-13).
 
-- [ ] Choose NVFP4 or FP8 for good after the next Hermes migration run (looping behaviour); FP8 is one component away (`local-models/components/qwen38-fp8`).
+- [ ] Choose NVFP4 or FP8 for good after the next Hermes migration run (looping behaviour); FP8 is one component away (`040-local-models/components/qwen38-fp8`).
 - [x] Stage 060 runtime redeployed at `c26d900c` (2026-10-13): `hermes-private-qwen38` and `opencode-private-qwen38` reference `qwen3-8-27b` and are Active/Ready. The emptied `openshell-credentials` key was restored from the running gateway's container config (not rotated; PVC data retained), `setup-runtime.py` now accepts the `/data` delegation from `a769444a`. Open: `setup-ai-agents.py` needs the pinned OpenShell CLI (`RHOAI_STAGE060_OPENSHELL_CLI`), not installed on the operator workstation; local `argocd` v1.7.7 lacks `--core`, so `deploy-runtime.sh` cannot run unmodified (steps were run with `oc`, see `tmp/stage060-redeploy-runtime.sh`).
 - [ ] Publish the Stage 120 OpenCode scaffold and the Stage 130 golden scaffold (`run-defaults.json` now defaults to `qwen3-8-27b`) to their live repositories; the drift checks flag the difference until then.
 - [ ] Stage 050 pipeline v12: summary metrics/params/tags on the parent MLflow run via the documented `injectUserEnvVars` path, `dsl.If` for skipped steps (verified plan in `tmp/model-study/STUDY.md`).

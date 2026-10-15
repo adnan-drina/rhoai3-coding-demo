@@ -34,7 +34,7 @@ Lightspeed documentation. The version lives in
 | Decision | Where in Git | Official section |
 |---|---|---|
 | Lightspeed is a provisioner add-on, not a demo stage; no Subscription, OLSConfig or Secret for it exists in Git | `docs/OPERATIONS.md` (Fresh environment baseline) | [OpenShift Lightspeed overview][overview] |
-| The only Git touch point is the plugin name `lightspeed-console-plugin` in the Console `spec.plugins` list | `gitops/stages/010-openshift-ai-platform-foundation/console-observability/console-plugins.yaml` | [Supported interfaces][interfaces] |
+| The only Git touch point is the plugin name `lightspeed-console-plugin` in the Console `spec.plugins` list | `gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/console-plugins.yaml` | [Supported interfaces][interfaces] |
 | Lightspeed does not use the demo's private models or MaaS; its provider (Azure OpenAI on the observed cluster) is set by the provisioner | not in Git; `docs/TROUBLESHOOTING.md` | [LLM requirements][llm] |
 | Not done: an OpenShift AI provider for Lightspeed. The docs list Red Hat OpenShift AI as a provider; routing it through MaaS would be a new, unvalidated decision | — | [Red Hat OpenShift AI][llm-rhoai] |
 

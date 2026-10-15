@@ -21,11 +21,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 ODF 4.22 sections. The component README is the detailed record:
-`gitops/stages/010-openshift-ai-platform-foundation/odf/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-odf/README.md`.
 
 ## When to use
 
-- A change touches `gitops/stages/010-openshift-ai-platform-foundation/odf/`.
+- A change touches `gitops/stages/010-openshift-ai-platform-foundation/010-odf/`.
 - Someone proposes Ceph RBD/CephFS storage, an ODF upgrade, or a new ODF consumer.
 - ODF or NooBaa is unhealthy and you need the first diagnostics.
 
@@ -33,13 +33,13 @@ ODF 4.22 sections. The component README is the detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Standalone Multicloud Object Gateway only; no Ceph, no `storageDeviceSets` | `odf/storagecluster.yaml` (`spec.multiCloudGateway.reconcileStrategy: standalone`) | [Deploy standalone MCG][aws-mcg] |
-| No StorageSystem object; the StorageCluster is the top-level resource (no `odf.openshift.io` StorageSystem API on this cluster) | `odf/storagecluster.yaml` | [Creating a standalone MCG][aws-mcg-create] |
-| MCG database on `gp3-csi` (AWS EBS CSI, RWOP) — a cluster-specific value | `odf/storagecluster.yaml` (`dbStorageClassName`) | [Deploy standalone MCG][aws-mcg] (RWOP prerequisite) |
-| Channel `stable-4.22` matching the OpenShift minor, approval `Automatic` | `odf/subscription.yaml`; minimum `4.22.5` in `scripts/platform/check-operator-policy.py` | [Updating ODF][update] |
-| OwnNamespace OperatorGroup in `openshift-storage` | `odf/operator-group.yaml` | [Installing the ODF Operator][aws-install] |
-| `OCSInitialization/ocsinit`, NooBaa, BackingStore, BucketClass and the `openshift-storage.noobaa.io` StorageClass stay operator-owned (not in Git) | comment in `odf/kustomization.yaml` | [Architecture][arch] |
-| `SkipDryRunOnMissingResource` on every object; StorageCluster at wave 2 | `odf/kustomization.yaml` | — (Argo CD behavior) |
+| Standalone Multicloud Object Gateway only; no Ceph, no `storageDeviceSets` | `010-odf/storagecluster.yaml` (`spec.multiCloudGateway.reconcileStrategy: standalone`) | [Deploy standalone MCG][aws-mcg] |
+| No StorageSystem object; the StorageCluster is the top-level resource (no `odf.openshift.io` StorageSystem API on this cluster) | `010-odf/storagecluster.yaml` | [Creating a standalone MCG][aws-mcg-create] |
+| MCG database on `gp3-csi` (AWS EBS CSI, RWOP) — a cluster-specific value | `010-odf/storagecluster.yaml` (`dbStorageClassName`) | [Deploy standalone MCG][aws-mcg] (RWOP prerequisite) |
+| Channel `stable-4.22` matching the OpenShift minor, approval `Automatic` | `010-odf/subscription.yaml`; minimum `4.22.5` in `scripts/platform/check-operator-policy.py` | [Updating ODF][update] |
+| OwnNamespace OperatorGroup in `openshift-storage` | `010-odf/operator-group.yaml` | [Installing the ODF Operator][aws-install] |
+| `OCSInitialization/ocsinit`, NooBaa, BackingStore, BucketClass and the `openshift-storage.noobaa.io` StorageClass stay operator-owned (not in Git) | comment in `010-odf/kustomization.yaml` | [Architecture][arch] |
+| `SkipDryRunOnMissingResource` on every object; StorageCluster at wave 2 | `010-odf/kustomization.yaml` | — (Argo CD behavior) |
 
 The version is pinned once, in `.agents/references/red-hat-doc-map.yaml`
 (`products.odf.docs_version`), and the checker verifies it against the
@@ -52,7 +52,7 @@ Subscription channel.
    requirement that the cluster's default CSI storage cannot meet, a recorded
    decision in the component README, and the [AWS dynamic-device
    procedure][aws-dynamic].
-2. Upgrade: change the channel in `odf/subscription.yaml` to the new OpenShift
+2. Upgrade: change the channel in `010-odf/subscription.yaml` to the new OpenShift
    minor, the minimum in `check-operator-policy.py`, and `docs_version` in the
    doc map together; run `python3 scripts/shared/check-doc-links.py`; re-read
    the [release notes][relnotes] and [Updating ODF][update].

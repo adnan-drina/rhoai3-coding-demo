@@ -133,7 +133,8 @@ def check_stage_app(stage_id, name, app_path, component):
     source = spec.get("source") or {}
     labels = metadata.get("labels") or {}
     annotations = metadata.get("annotations") or {}
-    expected_path = f"gitops/stages/{name}/{app_path.stem[len(stage_id) + 1:]}"
+    # One name throughout: file gitops/applications/<name>.yaml, Application <name>, folder gitops/stages/<stage>/<name>.
+    expected_path = f"gitops/stages/{name}/{app_path.stem}"
     if component:
         if metadata.get("name") != app_path.stem or not app_path.stem.startswith(stage_id + "-"):
             fail(f"{app_path.relative_to(repo)} must hold Application {app_path.stem} (file name = metadata.name, stage prefix {stage_id}-)")
@@ -195,7 +196,7 @@ for stage_dir in stage_dirs:
     if not deploy_path.stat().st_mode & 0o111:
         fail(f"stage {stage_id} deploy.sh is not executable: {deploy_path.relative_to(repo)}")
 
-    # One Application per component, each rendering gitops/stages/<stage>/<component>; the stage directory's
+    # One Application per component, each rendering gitops/stages/<stage>/<name>; the stage directory's
     # kustomization is their union (scripts/shared/stage_apps.py check-static below).
     gitops_path = gitops_stages_root / name
     regrouped_stages.append(stage_id)

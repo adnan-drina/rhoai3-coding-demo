@@ -21,11 +21,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product procedure in the linked
 MTA 8.3 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/mta/README.md`.
+`gitops/stages/070-advanced-app-platform/070-mta/README.md`.
 
 ## When to use
 
-- A change touches `gitops/stages/070-advanced-app-platform/mta/` (operator,
+- A change touches `gitops/stages/070-advanced-app-platform/070-mta/` (operator,
   instance, SSO hook, controller sizing).
 - `070-mta` fails to sync, the Tackle instance is not ready, or MTA login does
   not redirect to the platform realm.
@@ -35,13 +35,13 @@ MTA 8.3 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Operator in `openshift-mta`, own-namespace OperatorGroup, channel `stable-v8.3`, `installPlanApproval: Manual`, `startingCSV: mta-operator.v8.3.1` | `gitops/stages/070-advanced-app-platform/mta/mta-operator/` | [Install the MTA Operator][op] |
-| A Sync-hook Job approves the InstallPlan only when every CSV is on its allowlist (`mta-operator.v8.3.1`); `validate.sh` expects exactly that CSV | `mta/mta-operator/approve-installplan.yaml`, `stages/070-advanced-app-platform/validate.sh` | — (repo policy; the guide gives no channel guidance) |
-| `Tackle mta`: `feature_auth_required: true`, `idp_primary: true`, `rwx_supported: "false"`, `kai_database_volume_size: 5Gi`; AI flags owned by `mta-lightspeed` and `mta-ui` | `mta/mta-instance/tackle.yaml` | [Custom resource settings][crs], [Authentication fields][authfields] |
+| Operator in `openshift-mta`, own-namespace OperatorGroup, channel `stable-v8.3`, `installPlanApproval: Manual`, `startingCSV: mta-operator.v8.3.1` | `gitops/stages/070-advanced-app-platform/070-mta/mta-operator/` | [Install the MTA Operator][op] |
+| A Sync-hook Job approves the InstallPlan only when every CSV is on its allowlist (`mta-operator.v8.3.1`); `validate.sh` expects exactly that CSV | `070-mta/mta-operator/approve-installplan.yaml`, `stages/070-advanced-app-platform/validate.sh` | — (repo policy; the guide gives no channel guidance) |
+| `Tackle mta`: `feature_auth_required: true`, `idp_primary: true`, `rwx_supported: "false"`, `kai_database_volume_size: 5Gi`; AI flags owned by `mta-lightspeed` and `mta-ui` | `070-mta/mta-instance/tackle.yaml` | [Custom resource settings][crs], [Authentication fields][authfields] |
 | All volumes RWO on the default class; `deploy.sh` refuses unless `gp3-csi` is the default StorageClass | `stages/070-advanced-app-platform/deploy.sh` | [Persistent volume requirements][pv] |
-| Platform SSO: hook ensures `role.*` realm roles, client `mta-hub`, `+role.<name>` optional scopes, Secret `mta-idp-client-secret` (key `clientSecret`), `IdentityProvider` `platform-sso` (primary), restarts the Hub on change | `mta/jobs/configure-mta-platform-sso.yaml` | [IdP client secret][idpsecret], [IdentityProvider CR][idpcr], [URI templating][uri], [Roles and personas][roles] |
-| PostSync hook publishes `MTA_HUB_URL` to ConfigMap `mta-hub-config` in the three `wksp-*` namespaces | `mta/jobs/mta-hub-workspace-config.yaml` | — |
-| `agentic-controller` memory sized by an OpenShift VPA (`Recreate`, memory only, one container) instead of a Tackle field or Deployment patch | `mta/controller-sizing/` | see `docs/OPERATIONS.md#mta-native-agents-and-controller-memory-sizing` |
+| Platform SSO: hook ensures `role.*` realm roles, client `mta-hub`, `+role.<name>` optional scopes, Secret `mta-idp-client-secret` (key `clientSecret`), `IdentityProvider` `platform-sso` (primary), restarts the Hub on change | `070-mta/jobs/configure-mta-platform-sso.yaml` | [IdP client secret][idpsecret], [IdentityProvider CR][idpcr], [URI templating][uri], [Roles and personas][roles] |
+| PostSync hook publishes `MTA_HUB_URL` to ConfigMap `mta-hub-config` in the three `wksp-*` namespaces | `070-mta/jobs/mta-hub-workspace-config.yaml` | — |
+| `agentic-controller` memory sized by an OpenShift VPA (`Recreate`, memory only, one container) instead of a Tackle field or Deployment patch | `070-mta/controller-sizing/` | see `docs/OPERATIONS.md#mta-native-agents-and-controller-memory-sizing` |
 
 ## Procedure
 

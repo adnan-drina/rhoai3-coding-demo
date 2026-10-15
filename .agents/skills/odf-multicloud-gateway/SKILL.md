@@ -20,7 +20,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 ODF 4.22 sections. Install-side facts live in
-`gitops/stages/010-openshift-ai-platform-foundation/odf/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-odf/README.md`.
 
 ## When to use
 
@@ -33,10 +33,10 @@ ODF 4.22 sections. Install-side facts live in
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| MCG is the only ODF service; it is the S3 store for models, workbenches, pipelines, MLflow and GitLab | `gitops/stages/010-openshift-ai-platform-foundation/odf/storagecluster.yaml` | [Deploy standalone MCG][aws-mcg] |
+| MCG is the only ODF service; it is the S3 store for models, workbenches, pipelines, MLflow and GitLab | `gitops/stages/010-openshift-ai-platform-foundation/010-odf/storagecluster.yaml` | [Deploy standalone MCG][aws-mcg] |
 | Default `pv-pool` BackingStore and default BucketClass are operator-created and not in Git | not in Git (see the 010-odf README "Not in Git") | [Managing hybrid and multicloud resources][mcg] |
 | No custom BackingStore, BucketClass, namespace bucket, or bucket policy | — | [Managing hybrid and multicloud resources][mcg] |
-| No committed NooBaa admin or bucket credentials; consumers read generated Secrets in-cluster | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/` | [Object Bucket Claim][obc] |
+| No committed NooBaa admin or bucket credentials; consumers read generated Secrets in-cluster | `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/` | [Object Bucket Claim][obc] |
 
 ## Procedure
 

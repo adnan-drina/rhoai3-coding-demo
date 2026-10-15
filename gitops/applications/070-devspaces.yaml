@@ -23,7 +23,7 @@ spec:
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/070-advanced-app-platform/devspaces
+    path: gitops/stages/070-advanced-app-platform/070-devspaces
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops

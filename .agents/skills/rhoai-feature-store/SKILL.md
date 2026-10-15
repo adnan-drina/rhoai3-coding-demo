@@ -31,13 +31,13 @@ the demo has no tabular feature workloads.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `feastoperator.managementState: Removed`; the field is not delegated to any stage | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml`, `.../rhoai-platform/README.md` | [Enable the Feature Store component][enable] |
+| `feastoperator.managementState: Removed`; the field is not delegated to any stage | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml`, `.../rhoai-platform/README.md` | [Enable the Feature Store component][enable] |
 
 ## If enabled
 
 1. Delegate `/spec/components/feastoperator` in the Stage 010 Application
    and set it `Managed` from a Sync hook in the owning stage (pattern:
-   `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/enable-job.yaml`;
+   `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/enable-job.yaml`;
    rules in `rhoai-distributed-workloads` and the Stage 010 README).
 2. Declare the `FeatureStore` instance, its storage and RBAC in that
    stage's GitOps folder; check fields with `oc explain` against the

@@ -20,7 +20,7 @@ description: >
 
 Thin skill: which release-note facts the repo depends on; the notes
 themselves are linked, not copied. Deployed version: `rhdh-operator.v1.10.5`
-(`gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/subscription.yaml`).
+(`gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/subscription.yaml`).
 
 ## When to use
 
@@ -32,10 +32,10 @@ themselves are linked, not copied. Deployed version: `rhdh-operator.v1.10.5`
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Tekton and Argo CD plugins are loaded as digest-pinned `oci://` packages, because their embedded wrappers were removed and support moved to Community | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Removed features][removed] |
-| The global header (not the deprecated floating action button) carries the demo tiles | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/app-config-configmap.yaml` | [Deprecated features][deprecated] |
+| Tekton and Argo CD plugins are loaded as digest-pinned `oci://` packages, because their embedded wrappers were removed and support moved to Community | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Removed features][removed] |
+| The global header (not the deprecated floating action button) carries the demo tiles | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/app-config-configmap.yaml` | [Deprecated features][deprecated] |
 | OIDC against Red Hat build of Keycloak is a supported provider (not on the deprecated community provider list) | same app-config | [Deprecated features][deprecated] |
-| Developer Lightspeed is installed by default and needs a configured LLM; the repo neither configures nor disables it (Gap in the component README) | `gitops/stages/070-advanced-app-platform/rhdh/README.md` | see `rhdh-developer-lightspeed` |
+| Developer Lightspeed is installed by default and needs a configured LLM; the repo neither configures nor disables it (Gap in the component README) | `gitops/stages/070-advanced-app-platform/070-rhdh/README.md` | see `rhdh-developer-lightspeed` |
 
 ## Procedure
 

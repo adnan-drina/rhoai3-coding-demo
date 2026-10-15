@@ -11,7 +11,7 @@ description: >
   providers (GitHub, Jira, OpenSSF, Dependabot, file checks), thresholds,
   aggregated KPIs, RBAC and homepage cards. Not used in this repo. Do NOT use
   for SonarQube quality gates in the project pipeline (see
-  gitops/stages/070-advanced-app-platform/sonarqube/README.md) or RBAC in
+  gitops/stages/070-advanced-app-platform/070-sonarqube/README.md) or RBAC in
   general (use rhdh-authorization).
 ---
 
@@ -28,10 +28,10 @@ behavior lives in the linked Developer Hub 1.10 sections.
 
 No Scorecards plugin is enabled. Code quality in this repo is the SonarQube
 gate in each project's Tekton pipeline
-(`gitops/stages/070-advanced-app-platform/sonarqube/`).
+(`gitops/stages/070-advanced-app-platform/070-sonarqube/`).
 
 Adopting it is a Stage 070 change: record the decision in
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` and convert this stub
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` and convert this stub
 to a full thin skill.
 
 ## Official documentation (Developer Hub 1.10)

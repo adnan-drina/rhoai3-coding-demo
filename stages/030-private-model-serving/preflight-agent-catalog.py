@@ -47,7 +47,7 @@ def check(existing, desired):
 
 
 def main():
-    desired = json.loads(subprocess.check_output(["ruby", "-ryaml", "-rjson", "-e", "puts JSON.generate(YAML.load_file(ARGV[0]))", str(ROOT / "gitops/stages/030-private-model-serving/private-model-serving/model-discovery/agent-catalog-sources.yaml")], text=True, timeout=10))
+    desired = json.loads(subprocess.check_output(["ruby", "-ryaml", "-rjson", "-e", "puts JSON.generate(YAML.load_file(ARGV[0]))", str(ROOT / "gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/agent-catalog-sources.yaml")], text=True, timeout=10))
     check(None, desired)
     guard = 'set -euo pipefail; set +x; source "$1/scripts/shared/lib.sh"; REPO_ROOT="${RHOAI_ENV_ROOT:-$1}"; load_env >/dev/null; check_oc_logged_in >/dev/null; python3 -c "import os,json; print(json.dumps({k:os.environ[k] for k in (\'KUBECONFIG\',\'PATH\',\'HOME\',\'RHOAI_EXPECTED_API_SERVER\') if k in os.environ}))"'
     checked = subprocess.run(["/bin/bash", "-c", guard, "guard", str(ROOT)], capture_output=True, text=True, timeout=45)

@@ -21,13 +21,13 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product procedure in the linked
 Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` (Alignment row
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` (Alignment row
 "TechDocs").
 
 ## When to use
 
 - A change touches the `techdocs:` block of
-  `rhdh/rhdh-instance/app-config-configmap.yaml`.
+  `070-rhdh/rhdh-instance/app-config-configmap.yaml`.
 - A docs page fails to build or render in the portal.
 - Someone proposes CI-built docs, object storage, or TechDocs add-ons.
 
@@ -35,8 +35,8 @@ Developer Hub 1.10 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `techdocs.builder: local`, `generator.runIn: local`, `publisher.type: local`: the portal builds docs itself (Deviation, justified: one platform docs source, no docs pipeline) | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/app-config-configmap.yaml` | [Configure TechDocs][configure] |
-| Docs source is the pinned platform revision in the private GitLab mirror: `backstage.io/techdocs-ref: url:__RHOAI3_PLATFORM_TREE_URL__`, rendered by the catalog generator to `<platform repo>/-/tree/<revision>` | `rhdh/catalog/all.yaml`, `rhdh/jobs/catalog/render_catalog.py` | [Configure TechDocs][configure] |
+| `techdocs.builder: local`, `generator.runIn: local`, `publisher.type: local`: the portal builds docs itself (Deviation, justified: one platform docs source, no docs pipeline) | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/app-config-configmap.yaml` | [Configure TechDocs][configure] |
+| Docs source is the pinned platform revision in the private GitLab mirror: `backstage.io/techdocs-ref: url:__RHOAI3_PLATFORM_TREE_URL__`, rendered by the catalog generator to `<platform repo>/-/tree/<revision>` | `070-rhdh/catalog/all.yaml`, `070-rhdh/jobs/catalog/render_catalog.py` | [Configure TechDocs][configure] |
 | Docs are read from GitLab through the GitLab integration and `backend.reading.allow` for `${GITLAB_HOST}` | `app-config-configmap.yaml` | see `rhdh-git-integration` |
 | No object storage, no CI/CD publishing, no add-ons beyond product defaults | — | [Storage][storage], [CI/CD][cicd], [Add-ons][addons] |
 

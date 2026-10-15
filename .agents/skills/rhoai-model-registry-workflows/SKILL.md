@@ -22,7 +22,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/040-governed-models-as-a-service/local-models/README.md`
+`gitops/stages/040-governed-models-as-a-service/040-local-models/README.md`
 (registry linkage) and `stages/050-model-evaluation/README.md` (evaluation
 records).
 
@@ -39,10 +39,10 @@ records).
 |---|---|---|
 | Records are written by scripts through the registry API (`/api/model_registry/v1alpha3`, caller's token, CA-verified route `demo-registry-https`), not the dashboard | `stages/040-governed-models-as-a-service/register-model-cards.sh` | [Register a model][register] |
 | One registered model per checkpoint (name = repository, e.g. `Qwen3.8-27B-NVFP4`), one version per immutable revision (`source-<sha>`), one artifact with the pinned `hf://` URI; idempotent, never overwrites a differing artifact | same script | [Register a model version][version] |
-| Prepared format alternates (`local-models/components/qwen38-fp8`) are registered without deployment linkage | `gitops/stages/040-governed-models-as-a-service/local-models/components/` | [View registered models][view] |
-| Deployment linkage via labels `modelregistry.opendatahub.io/registered-model-id` and `model-version-id` stamped on the LLMInferenceService; Git sets only `modelregistry.opendatahub.io/name: demo-registry` and delegates the id labels | `gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-llminferenceservice.yaml` | not product guidance |
+| Prepared format alternates (`040-local-models/components/qwen38-fp8`) are registered without deployment linkage | `gitops/stages/040-governed-models-as-a-service/040-local-models/components/` | [View registered models][view] |
+| Deployment linkage via labels `modelregistry.opendatahub.io/registered-model-id` and `model-version-id` stamped on the LLMInferenceService; Git sets only `modelregistry.opendatahub.io/name: demo-registry` and delegates the id labels | `gitops/stages/040-governed-models-as-a-service/040-local-models/qwen38-27b-llminferenceservice.yaml` | not product guidance |
 | Evaluation evidence lands as `evalhub.*` custom properties on the model version, because the dashboard renders version properties | `stages/050-model-evaluation/record-evaluation.sh` | [Edit model version metadata][editversion] |
-| Models are deployed from GitOps, not from the registry's Deploy action | `gitops/stages/040-governed-models-as-a-service/local-models/` | [Deploy a model version][deploy] (not used) |
+| Models are deployed from GitOps, not from the registry's Deploy action | `gitops/stages/040-governed-models-as-a-service/040-local-models/` | [Deploy a model version][deploy] (not used) |
 
 ## Procedure
 

@@ -22,7 +22,7 @@ spec:
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/stages/010-openshift-ai-platform-foundation/observability-operators
+    path: gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators
   destination:
     server: https://kubernetes.default.svc
     namespace: openshift-gitops

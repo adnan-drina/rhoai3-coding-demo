@@ -20,13 +20,13 @@ description: >
 
 Thin skill: the repo's plugin inventory and tiers here, the authoritative
 plugin tables in the linked Developer Hub 1.10 reference. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` ("Plugins",
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` ("Plugins",
 "Alignment with official guidance").
 
 ## When to use
 
 - Before adding or replacing a plugin in
-  `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
+  `070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
 - Writing or reviewing a support statement about the portal's plugins.
 - A plugin moves between tiers or becomes deprecated in a release note.
 
@@ -40,7 +40,7 @@ plugin tables in the linked Developer Hub 1.10 reference. Detailed record:
 | Argo CD frontend (Community) and Roadie Argo CD backend (community) | OCI from the same registry, digest-pinned | [Community plugins][community] |
 
 All entries live in
-`gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`;
+`gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`;
 the digest rule is tested by
 `stages/070-advanced-app-platform/tests/stage070-upgrade.test.py`
 (`test_argo_plugins_follow_110_oci_packaging`).

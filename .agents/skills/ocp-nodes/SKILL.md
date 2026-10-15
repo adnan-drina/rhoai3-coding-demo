@@ -22,8 +22,8 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift Container Platform 4.22 sections. Detailed records:
-`gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/README.md` and
-`gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/README.md`.
+`gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets/README.md` and
+`gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/README.md`.
 
 ## When to use
 
@@ -37,12 +37,12 @@ OpenShift Container Platform 4.22 sections. Detailed records:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| GPU workers carry `cluster-api/accelerator` (`nvidia-rtxpro6000` or `nvidia-gpu`), `node-role.kubernetes.io/gpu` and `demo.rhoai.io/gpu-pool` labels from the MachineSet template | `gpu-machinesets/` | [Controlling pod placement onto nodes (scheduling)][placement] |
-| GPU workers are tainted `nvidia-gpu-only:NoSchedule` so non-GPU pods stay off them | `gpu-machinesets/` | [Controlling pod placement onto nodes (scheduling)][placement] |
-| Tolerations live with the GPU consumers: NVIDIA `ClusterPolicy`, each Kueue GPU `ResourceFlavor` (which also selects its pool by `nodeLabels`), and the Qwen `LLMInferenceService` | `nvidia-gpu-operator/cluster-policy.yaml`, `gpu-quotas/queues/gpu-rtxpro6000.yaml`, `gpu-quotas/queues/gpu-l40s.yaml`, `gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-llminferenceservice.yaml` | [Controlling pod placement onto nodes (scheduling)][placement] |
-| Workloads reach a GPU pool through a Kueue flavor, not a hand-written `nodeSelector` | `gpu-quotas/queues/` | [Controlling pod placement onto nodes (scheduling)][placement] |
+| GPU workers carry `cluster-api/accelerator` (`nvidia-rtxpro6000` or `nvidia-gpu`), `node-role.kubernetes.io/gpu` and `demo.rhoai.io/gpu-pool` labels from the MachineSet template | `020-gpu-machinesets/` | [Controlling pod placement onto nodes (scheduling)][placement] |
+| GPU workers are tainted `nvidia-gpu-only:NoSchedule` so non-GPU pods stay off them | `020-gpu-machinesets/` | [Controlling pod placement onto nodes (scheduling)][placement] |
+| Tolerations live with the GPU consumers: NVIDIA `ClusterPolicy`, each Kueue GPU `ResourceFlavor` (which also selects its pool by `nodeLabels`), and the Qwen `LLMInferenceService` | `020-nvidia-gpu-operator/cluster-policy.yaml`, `020-gpu-quotas/queues/gpu-rtxpro6000.yaml`, `020-gpu-quotas/queues/gpu-l40s.yaml`, `gitops/stages/040-governed-models-as-a-service/040-local-models/qwen38-27b-llminferenceservice.yaml` | [Controlling pod placement onto nodes (scheduling)][placement] |
+| Workloads reach a GPU pool through a Kueue flavor, not a hand-written `nodeSelector` | `020-gpu-quotas/queues/` | [Controlling pod placement onto nodes (scheduling)][placement] |
 | Control-plane and CPU workers must be at least 16 vCPU / 60 GiB (GPU nodes exempt); every stage `deploy.sh` checks it first | `scripts/platform/require-node-sizing.sh` | [Working with nodes][nodes] |
-| Platform and user-workload Prometheus use PVCs instead of `emptyDir`, to keep TSDB growth off node ephemeral storage | `gitops/stages/010-openshift-ai-platform-foundation/observability-operators/cluster-monitoring/` | [Working with nodes][nodes] |
+| Platform and user-workload Prometheus use PVCs instead of `emptyDir`, to keep TSDB growth off node ephemeral storage | `gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/cluster-monitoring/` | [Working with nodes][nodes] |
 | No custom scheduler profile, `PriorityClass`, node tuning or descheduler | (none declared) | [Controlling pod placement onto nodes (scheduling)][placement] |
 
 Paths are relative to `gitops/stages/020-gpu-infrastructure-private-ai/` unless they start with `gitops/` or `scripts/`.

@@ -18,7 +18,7 @@ Use this rule for OpenShift Data Foundation storage guidance. Keep procedures in
 `odf-*` skills; the doc map `.agents/references/red-hat-doc-map.yaml` routes ODF
 books to those skills and holds the one ODF documentation version
 (`products.odf.docs_version`), which must equal the Subscription channel in
-`gitops/stages/010-openshift-ai-platform-foundation/odf/subscription.yaml`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-odf/subscription.yaml`.
 
 ## Source Rules
 

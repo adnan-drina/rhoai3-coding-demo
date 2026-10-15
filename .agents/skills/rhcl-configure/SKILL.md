@@ -31,10 +31,10 @@ Connectivity Link 1.4 sections.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| No policy objects in Git: the OpenShift AI MaaS controller generates `AuthPolicy maas-gateway-auth` and `TokenRateLimitPolicy` objects (`gateway-default-deny`, `maas-trlp-<model>`) from MaaS subscriptions | not in Git; `gitops/stages/040-governed-models-as-a-service/maas-operators/README.md` ("Objects not in Git") | [TokenRateLimitPolicy][trlp]; see `rhoai-maas-governance` |
-| Limits are expressed as `MaaSSubscription` token limits, not RateLimitPolicy | `gitops/stages/040-governed-models-as-a-service/model-access/` | see `rhoai-maas-governance` |
-| Every external model uses `apiFormat: openai-chat` so responses carry `usage.total_tokens` for metering | `gitops/stages/040-governed-models-as-a-service/external-models/` | [How token rate limiting works][trlp-how] |
-| The MaaS Gateway terminates TLS with the cert-manager ingress certificate; no TLSPolicy, no DNSPolicy | `gitops/stages/040-governed-models-as-a-service/gateway-governance/gateway/` | [Set a TLS policy][tls] (not used) |
+| No policy objects in Git: the OpenShift AI MaaS controller generates `AuthPolicy maas-gateway-auth` and `TokenRateLimitPolicy` objects (`gateway-default-deny`, `maas-trlp-<model>`) from MaaS subscriptions | not in Git; `gitops/stages/040-governed-models-as-a-service/040-maas-operators/README.md` ("Objects not in Git") | [TokenRateLimitPolicy][trlp]; see `rhoai-maas-governance` |
+| Limits are expressed as `MaaSSubscription` token limits, not RateLimitPolicy | `gitops/stages/040-governed-models-as-a-service/040-model-access/` | see `rhoai-maas-governance` |
+| Every external model uses `apiFormat: openai-chat` so responses carry `usage.total_tokens` for metering | `gitops/stages/040-governed-models-as-a-service/040-external-models/` | [How token rate limiting works][trlp-how] |
+| The MaaS Gateway terminates TLS with the cert-manager ingress certificate; no TLSPolicy, no DNSPolicy | `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/gateway/` | [Set a TLS policy][tls] (not used) |
 
 ## Procedure
 

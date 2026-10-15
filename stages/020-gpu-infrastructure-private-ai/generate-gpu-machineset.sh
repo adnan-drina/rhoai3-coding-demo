@@ -8,7 +8,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 WRITE=false
 SOURCE_MACHINESET="${RHOAI_SOURCE_WORKER_MACHINESET:-}"
-OUTPUT_DIR="gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets"
+OUTPUT_DIR="gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets"
 APP_MANIFEST="gitops/applications/020-gpu-machinesets.yaml"
 
 # Reviewed GPU pools: pool|file|name infix|instance type|cluster-api/accelerator|demo.rhoai.io/gpu-pool label|zones|GPU:memoryMb:vCPU|file comment
@@ -45,7 +45,7 @@ with replicas 0; scripts/platform/resume-gpu-demo.sh scales the pool in use, and
 Application ignores /spec/replicas so Argo CD keeps the live count.
 
 By default, prints the MachineSets to stdout. With --write, replaces the pool files in
-gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/ and writes the replica
+gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets/ and writes the replica
 exception for every generated MachineSet to the 020-gpu-machinesets Application manifest.
 
 Environment overrides:

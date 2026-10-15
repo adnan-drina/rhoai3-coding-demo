@@ -48,7 +48,7 @@ companion_hint=""
 
 if [[ "$file_path" == gitops/*/*.yaml ]] || [[ "$file_path" == gitops/*/*.yml ]]; then
     edited_type="manifest"
-    # The component README (gitops/stages/<stage>/<component>/README.md) documents the manifests.
+    # The component README (gitops/stages/<stage>/<application name>/README.md) documents the manifests.
     component_dir=$(echo "$file_path" | cut -d/ -f1-4)
     companion_hint="$component_dir/README.md"
 elif [[ "$file_path" == */README.md ]]; then

@@ -37,7 +37,7 @@ or tightly related component.
 
 1. Version: the map's `products.rhoai.docs_version` (pinned to the
    `stable-<x.y>` channel in
-   `gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/subscription.yaml`).
+   `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/subscription.yaml`).
    A chapter URL of another version is re-pointed to that version before use;
    never `/latest/`.
 2. Route: find the book and `topics` under `products.rhoai.categories` in

@@ -23,11 +23,11 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, field reference in the linked
 Dev Spaces 3.30 topics. Detailed record:
-`gitops/stages/070-advanced-app-platform/devspaces/README.md` (How, Alignment).
+`gitops/stages/070-advanced-app-platform/070-devspaces/README.md` (How, Alignment).
 
 ## When to use
 
-- A change touches `devspaces/checluster.yaml`, `vscode-editor-configurations.yaml`,
+- A change touches `070-devspaces/checluster.yaml`, `vscode-editor-configurations.yaml`,
   the `wksp-*` namespaces in `070-namespaces`, or the workspace network policies.
 - Workspaces do not get storage, are idled, cannot start from a URL, or lose
   GitLab OAuth.
@@ -36,16 +36,16 @@ Dev Spaces 3.30 topics. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `pvcStrategy: per-workspace`, `claimSize: 20Gi`, `storageClass: gp3-csi`, `persistUserHome.enabled: true` (default is `per-user`) | `gitops/stages/070-advanced-app-platform/devspaces/checluster.yaml` | [Storage strategy][storage], [Persistent home][home], [CheCluster fields][fields] |
+| `pvcStrategy: per-workspace`, `claimSize: 20Gi`, `storageClass: gp3-csi`, `persistUserHome.enabled: true` (default is `per-user`) | `gitops/stages/070-advanced-app-platform/070-devspaces/checluster.yaml` | [Storage strategy][storage], [Persistent home][home], [CheCluster fields][fields] |
 | `secondsOfInactivityBeforeIdling: -1`, `startTimeoutSeconds: 1200` for unattended agent runs and a large image | same | [CheCluster fields][fields] |
 | `maxNumberOfRunningWorkspacesPerUser: 3`; `containerResourceCaps` 6 CPU / 12Gi | same | [Multiple running workspaces][multi], [CheCluster fields][fields] |
-| `allowedSources.urls` is an `.invalid` placeholder in Git; `070-gitlab` writes the GitLab group URLs and `gitServices`; Argo CD ignores both | same; `gitops/stages/070-advanced-app-platform/gitlab/README.md` | [Restrict allowed URLs][allowed] |
-| GitLab OAuth Secret `gitlab-oauth-config` with the documented labels and annotations, created by the `070-gitlab` hub | `gitops/stages/070-advanced-app-platform/gitlab/` | [GitLab OAuth app][gitlabapp], [Apply the GitLab Secret][gitlabsecret] |
-| `pluginRegistry.openVSXURL: https://open-vsx.org`; `metrics.enable: true` | `devspaces/checluster.yaml` | [Alternative extension registry][openvsx], [Server metrics][metrics] |
-| Persona projects `wksp-ai-developer`, `wksp-ai-admin`, `wksp-kubeadmin` pre-provisioned (labels `part-of: che.eclipse.org`, `component: workspaces-namespace`, annotation `che.eclipse.org/username`); `autoProvision: true` for others | `gitops/stages/070-advanced-app-platform/namespaces/namespaces.yaml` | [Provision projects in advance][preprov] |
-| Editor settings per persona project: ConfigMap `vscode-editor-configurations` (label `workspaces-config`) | `devspaces/vscode-editor-configurations.yaml` | [Apply IDE settings][editorcfg] |
-| Persona RoleBindings `wksp-edit-<user>` (ClusterRole `edit`) | `devspaces/workspaces.yaml` | [Grant permissions][roles] |
-| Workspace egress: NetworkPolicy `migration-workspace-maas-egress`, AdminNetworkPolicy `workspace-allow-kapi-egress` (API server, TCP 6443) | `devspaces/migration-workspace-maas-egress-networkpolicy.yaml`, `devspaces/workspace-api-egress-adminnetworkpolicy.yaml` | [Network policies][netpol] |
+| `allowedSources.urls` is an `.invalid` placeholder in Git; `070-gitlab` writes the GitLab group URLs and `gitServices`; Argo CD ignores both | same; `gitops/stages/070-advanced-app-platform/070-gitlab/README.md` | [Restrict allowed URLs][allowed] |
+| GitLab OAuth Secret `gitlab-oauth-config` with the documented labels and annotations, created by the `070-gitlab` hub | `gitops/stages/070-advanced-app-platform/070-gitlab/` | [GitLab OAuth app][gitlabapp], [Apply the GitLab Secret][gitlabsecret] |
+| `pluginRegistry.openVSXURL: https://open-vsx.org`; `metrics.enable: true` | `070-devspaces/checluster.yaml` | [Alternative extension registry][openvsx], [Server metrics][metrics] |
+| Persona projects `wksp-ai-developer`, `wksp-ai-admin`, `wksp-kubeadmin` pre-provisioned (labels `part-of: che.eclipse.org`, `component: workspaces-namespace`, annotation `che.eclipse.org/username`); `autoProvision: true` for others | `gitops/stages/070-advanced-app-platform/070-namespaces/namespaces.yaml` | [Provision projects in advance][preprov] |
+| Editor settings per persona project: ConfigMap `vscode-editor-configurations` (label `workspaces-config`) | `070-devspaces/vscode-editor-configurations.yaml` | [Apply IDE settings][editorcfg] |
+| Persona RoleBindings `wksp-edit-<user>` (ClusterRole `edit`) | `070-devspaces/workspaces.yaml` | [Grant permissions][roles] |
+| Workspace egress: NetworkPolicy `migration-workspace-maas-egress`, AdminNetworkPolicy `workspace-allow-kapi-egress` (API server, TCP 6443) | `070-devspaces/migration-workspace-maas-egress-networkpolicy.yaml`, `070-devspaces/workspace-api-egress-adminnetworkpolicy.yaml` | [Network policies][netpol] |
 
 ## Procedure
 

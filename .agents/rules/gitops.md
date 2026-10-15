@@ -38,7 +38,7 @@ python3 "$REPO_ROOT/scripts/shared/stage_apps.py" deploy NNN --revision "$SHA" -
 - `validate.sh` checks its Applications with `check_stage_applications NNN [SHA]` (bash, `validate-lib.sh`) or `stage_apps.stage_problems(NNN, ..., separate=True)` (Python): every component, never a subset. Exit 0 pass, 1 fail, 2 warnings or pending.
 
 Every GitOps stage (`stages/NNN-name/deploy.sh` present) MUST have:
-1. `gitops/stages/NNN-name/<component>/` - one folder per Argo CD Application (its `source.path`)
+1. `gitops/stages/NNN-name/NNN-<component>/` - one folder per Argo CD Application (its `source.path`), named exactly like the Application, with the component README beside its `kustomization.yaml`; nested folders inside it are not prefixed
 2. `gitops/stages/NNN-name/kustomization.yaml` - the union of the component folders (validators and `check-static` read it)
 3. `gitops/applications/NNN-<component>.yaml` - one Application per component in one flat directory; the file name is exactly `metadata.name` + `.yaml`
 4. `stages/NNN-name/deploy.sh` - applies the Applications
@@ -69,7 +69,7 @@ rhoai3-coding-demo/
 |   |-- bootstrap/
 |   `-- stages/NNN-name/
 |       |-- kustomization.yaml          # union of the component folders
-|       `-- <component>/                # one folder per Application
+|       `-- NNN-<component>/            # one folder per Application, named like it
 |           |-- kustomization.yaml
 |           |-- *.yaml                  # the component's main manifests, flat
 |           |-- <unit>/                 # optional: a further unit (a Job with its RBAC, a second operator, a generator)
@@ -90,7 +90,7 @@ Follows the Kustomize and Red Hat `odh-gitops` conventions: plain manifests in o
 - No `base/`-in-`base/` wrappers, no `aggregate/` layers, no placeholder values patched by an overlay: write the reviewed value (for example the Subscription channel) in the manifest.
 - Add `overlays/<variant>/` only for a real variant, and `components/<feature>/` (Kustomize `kind: Component`) for an optional feature.
 - Transformers (`labels`, `replacements`) belong in the component's `kustomization.yaml`, where they apply to the whole Application.
-- Cluster-specific generated files live in their component folder (Stage 020 `gpu-machinesets/`, written by `generate-gpu-machineset.sh`).
+- Cluster-specific generated files live in their component folder (Stage 020 `020-gpu-machinesets/`, written by `generate-gpu-machineset.sh`).
 
 ### Operator Deployment and CRD Timing
 

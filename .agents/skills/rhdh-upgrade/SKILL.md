@@ -19,7 +19,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product procedure in the linked
 Developer Hub 1.10 sections. Detailed record:
-`gitops/stages/070-advanced-app-platform/rhdh/README.md` (How: Installation).
+`gitops/stages/070-advanced-app-platform/070-rhdh/README.md` (How: Installation).
 
 ## When to use
 
@@ -31,9 +31,9 @@ Developer Hub 1.10 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Upgrades are reviewed Git changes, never console approvals: Subscription `installPlanApproval: Manual` with an exact `startingCSV` | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/subscription.yaml` | [Upgrade the Operator][op] |
+| Upgrades are reviewed Git changes, never console approvals: Subscription `installPlanApproval: Manual` with an exact `startingCSV` | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/subscription.yaml` | [Upgrade the Operator][op] |
 | Channel `fast-1.10` delivers z-streams only; a minor upgrade changes the channel (`fast` would follow every version) | same file | [Install the Operator][channel] |
-| The `approve-installplan` hook approves a plan only if every CSV is on its allowlist and waits for that CSV | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/approve-installplan.yaml` | — (repo control) |
+| The `approve-installplan` hook approves a plan only if every CSV is on its allowlist and waits for that CSV | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/approve-installplan.yaml` | — (repo control) |
 | The validator expects exactly the allow-listed CSV | `stages/070-advanced-app-platform/validate.sh` | — |
 | Helm chart upgrade paths (including 1.8 to 1.10 values migration) do not apply | — | [Helm upgrade][helm], [1.8 to 1.10 with Helm][helm18] |
 
@@ -41,7 +41,7 @@ Developer Hub 1.10 sections. Detailed record:
 
 1. Read the release notes of the target version (fixed issues per z-stream,
    deprecated and removed features); check that every OCI plugin digest in
-   `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` has a build for it.
+   `070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` has a build for it.
 2. In one change: `startingCSV` (and the channel for a minor), the allowlist
    in `approve-installplan.yaml`, the expected CSV in
    `stages/070-advanced-app-platform/validate.sh`, the version text in the

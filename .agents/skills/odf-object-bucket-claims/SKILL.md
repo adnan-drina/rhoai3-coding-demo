@@ -33,17 +33,17 @@ documentation examples.
 | Decision | Where in Git | Official section |
 |---|---|---|
 | Every bucket is an OBC on `openshift-storage.noobaa.io` | OBCs listed below | [Object Bucket Claim][obc] |
-| Fixed `bucketName` (not `generateBucketName`) so buckets are predictable across rebuilds; exception: the Stage 070 GitLab buckets use `generateBucketName` | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/obc-models.yaml`; `gitops/stages/070-advanced-app-platform/gitlab/buckets.yaml` | [Object Bucket Claim][obc] |
-| Bucket objects carry `argocd.argoproj.io/sync-options: Prune=false,Delete=false` so data outlives the Application (GitLab buckets: `Prune=false` only) | `sandbox-storage/obc-*.yaml`, Stage 050 OBCs | — (Argo CD behavior) |
-| Generated credentials never enter Git; a hook Job copies OBC output into RHOAI connection Secrets in-cluster, with owner-UID and HTTPS/443 checks | `sandbox-storage/connection-job.yaml`, `role.yaml` | [Object Bucket Claim][obc] |
-| RHOAI connections are Secret skeletons in Git (`opendatahub.io/connection-type-protocol: s3`), data filled at runtime and ignored by Argo CD | `sandbox-storage/connection-*.yaml` | see `rhoai-connection-types` |
+| Fixed `bucketName` (not `generateBucketName`) so buckets are predictable across rebuilds; exception: the Stage 070 GitLab buckets use `generateBucketName` | `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/obc-models.yaml`; `gitops/stages/070-advanced-app-platform/070-gitlab/buckets.yaml` | [Object Bucket Claim][obc] |
+| Bucket objects carry `argocd.argoproj.io/sync-options: Prune=false,Delete=false` so data outlives the Application (GitLab buckets: `Prune=false` only) | `010-sandbox-storage/obc-*.yaml`, Stage 050 OBCs | — (Argo CD behavior) |
+| Generated credentials never enter Git; a hook Job copies OBC output into RHOAI connection Secrets in-cluster, with owner-UID and HTTPS/443 checks | `010-sandbox-storage/connection-job.yaml`, `role.yaml` | [Object Bucket Claim][obc] |
+| RHOAI connections are Secret skeletons in Git (`opendatahub.io/connection-type-protocol: s3`), data filled at runtime and ignored by Argo CD | `010-sandbox-storage/connection-*.yaml` | see `rhoai-connection-types` |
 
 Existing claims to copy from:
 
-- `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/obc-models.yaml`, `obc-workbench.yaml`
-- `gitops/stages/050-model-evaluation/mlflow/objectbucketclaim.yaml`
-- `gitops/stages/050-model-evaluation/model-qualification/storage/obc-*.yaml`
-- `gitops/stages/070-advanced-app-platform/gitlab/buckets.yaml`
+- `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/obc-models.yaml`, `obc-workbench.yaml`
+- `gitops/stages/050-model-evaluation/050-mlflow/objectbucketclaim.yaml`
+- `gitops/stages/050-model-evaluation/050-model-qualification/storage/obc-*.yaml`
+- `gitops/stages/070-advanced-app-platform/070-gitlab/buckets.yaml`
 
 ## Procedure
 

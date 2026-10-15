@@ -10,15 +10,15 @@ Git comments do not hold. Product behavior: the links in `SKILL.md`.
 
 | Area | Value | Owner in Git |
 |---|---|---|
-| Enablement | `default-dsc` `aigateway` + `aigateway.modelsAsAService` Managed, `ogx` Managed, `batchGateway` Removed | `maas-platform/jobs/enable-maas-job.yaml` (fields delegated by Stage 010) |
-| Tenant | Default tenant only; controller-owned `MaaSTenantConfig` `default-tenant` in `models-as-a-service`, telemetry patched by the Job | `maas-platform/jobs/` |
+| Enablement | `default-dsc` `aigateway` + `aigateway.modelsAsAService` Managed, `ogx` Managed, `batchGateway` Removed | `040-maas-platform/jobs/enable-maas-job.yaml` (fields delegated by Stage 010) |
+| Tenant | Default tenant only; controller-owned `MaaSTenantConfig` `default-tenant` in `models-as-a-service`, telemetry patched by the Job | `040-maas-platform/jobs/` |
 | MaaS API | `maas-api` in `redhat-ai-gateway-infra` (operator-owned) | not in Git |
-| Database | PostgreSQL 16 StatefulSet `maas-postgres` in `models-as-a-service-db` (not Kueue-managed); Secret `maas-db-config` key `DB_CONNECTION_URL` in `redhat-ai-gateway-infra` | `maas-database/`, `stages/040-governed-models-as-a-service/setup-database.sh` |
-| Gateway | `maas-default-gateway` in `openshift-ingress`, listeners `api` (`maas.<domain>`) and `qwen3-8` (`qwen3-8-maas.<domain>`), certificate `cert-manager-ingress-cert`, in-cluster ClusterIP `maas-gateway-internal` 172.30.250.250 | `gateway-governance/gateway/` |
-| Kuadrant and Authorino | `kuadrant` and `authorino` in `kuadrant-system`, Authorino TLS via service CA | `gateway-governance/governance/`, `gateway-governance/jobs/` |
-| Private model | `LLMInferenceService` + `MaaSModelRef` `qwen3-8-27b` (Qwen 3.8 27B NVFP4, one RTX PRO 6000) in `internal-models` | `local-models/` |
-| External models | `gpt-6-luna` (OpenAI), `claude-sonnet-5-5` (Anthropic, OpenAI-compatible path), `nemotron-3-ultra-550b-a55b` (NVIDIA as `provider: openai`) in `external-models` | `external-models/` |
-| Access | Subscriptions + auth policies `personal-kube-admin`, `personal-ai-developer`, `personal-ai-admin`, `devspaces-coding-models`, `playground-sandbox`, `model-qualification` in `models-as-a-service` | `model-access/` |
+| Database | PostgreSQL 16 StatefulSet `maas-postgres` in `models-as-a-service-db` (not Kueue-managed); Secret `maas-db-config` key `DB_CONNECTION_URL` in `redhat-ai-gateway-infra` | `040-maas-database/`, `stages/040-governed-models-as-a-service/setup-database.sh` |
+| Gateway | `maas-default-gateway` in `openshift-ingress`, listeners `api` (`maas.<domain>`) and `qwen3-8` (`qwen3-8-maas.<domain>`), certificate `cert-manager-ingress-cert`, in-cluster ClusterIP `maas-gateway-internal` 172.30.250.250 | `040-gateway-governance/gateway/` |
+| Kuadrant and Authorino | `kuadrant` and `authorino` in `kuadrant-system`, Authorino TLS via service CA | `040-gateway-governance/governance/`, `040-gateway-governance/jobs/` |
+| Private model | `LLMInferenceService` + `MaaSModelRef` `qwen3-8-27b` (Qwen 3.8 27B NVFP4, one RTX PRO 6000) in `internal-models` | `040-local-models/` |
+| External models | `gpt-6-luna` (OpenAI), `claude-sonnet-5-5` (Anthropic, OpenAI-compatible path), `nemotron-3-ultra-550b-a55b` (NVIDIA as `provider: openai`) in `external-models` | `040-external-models/` |
+| Access | Subscriptions + auth policies `personal-kube-admin`, `personal-ai-developer`, `personal-ai-admin`, `devspaces-coding-models`, `playground-sandbox`, `model-qualification` in `models-as-a-service` | `040-model-access/` |
 | Other subscriptions in that namespace | `hermes-private-qwen38`, `opencode-private-qwen38` (Stage 060), `mta-migration-ai` (Stage 070) | other stages |
 
 Paths in the table are relative to `gitops/stages/040-governed-models-as-a-service/`.

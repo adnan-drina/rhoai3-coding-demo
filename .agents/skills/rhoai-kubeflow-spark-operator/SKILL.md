@@ -30,15 +30,15 @@ Thin skill: Spark on OpenShift AI 3.5. **Not deployed in this demo.**
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `sparkoperator.managementState: Removed`; the field is not delegated, so Stage 010 `validate.sh` requires it `Removed` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml`, `stages/010-openshift-ai-platform-foundation/validate.sh` | [Activate the Kubeflow Spark Operator][activate] |
-| The live `Kueue` CR lists `SparkApplication` among its frameworks; that does not install Spark | `gitops/stages/020-gpu-infrastructure-private-ai/kueue/README.md` | see `rhoai-kueue-workload-management` |
+| `sparkoperator.managementState: Removed`; the field is not delegated, so Stage 010 `validate.sh` requires it `Removed` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml`, `stages/010-openshift-ai-platform-foundation/validate.sh` | [Activate the Kubeflow Spark Operator][activate] |
+| The live `Kueue` CR lists `SparkApplication` among its frameworks; that does not install Spark | `gitops/stages/020-gpu-infrastructure-private-ai/020-kueue/README.md` | see `rhoai-kueue-workload-management` |
 
 ## If enabled
 
 1. Delegate `/spec/components/sparkoperator` in the Stage 010 Application
    (`ignoreDifferences` plus `RespectIgnoreDifferences`; Stage 010
    `validate.sh` then stops requiring `Removed`), and set it `Managed` from a Sync hook in the owning stage (pattern:
-   `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/enable-job.yaml`).
+   `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/enable-job.yaml`).
    See `rhoai-distributed-workloads` for the delegation rules.
 2. Put SparkApplications, the namespace RBAC and any Spark Connect server in
    that stage's GitOps folder; verify fields with `oc explain` against the

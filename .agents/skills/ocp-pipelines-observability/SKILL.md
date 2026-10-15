@@ -30,7 +30,7 @@ sections.
 Tekton Results is not configured, and no Pipelines dashboard or alert is in
 Git. Run history is short by design: the pruner keeps the last 10
 PipelineRuns per namespace
-(`gitops/stages/070-advanced-app-platform/pipelines/operators/configure-tekton-pruner.yaml`).
+(`gitops/stages/070-advanced-app-platform/070-pipelines/operators/configure-tekton-pruner.yaml`).
 Durable evidence of a delivery is the digest in the delivery repository and
 the Argo CD runtime Application (`docs/OPERATIONS.md#stage-070--coolstore-dev-environment`).
 Developer Hub shows live PipelineRuns through the Tekton plugin

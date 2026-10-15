@@ -34,9 +34,9 @@ sections.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Hardware profiles are global only: `cpu-default`, `gpu-rtxpro6000`, `gpu-reserved-demo` in `redhat-ods-applications` | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/hardware-profiles/` | [Create project-scoped resources][scoped] |
-| No project-scoped `Template` with a `ServingRuntime`. The Stage 050 candidate ships a plain `ServingRuntime` `vllm-cuda-runtime` in `evaluated-models` with its InferenceService; it is not a dashboard template | `gitops/stages/050-model-evaluation/model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Create project-scoped resources][scoped] |
-| `disableProjectScoped` is not set, so it keeps its documented default (Developer Preview option) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` (field absent) | [Dashboard configuration options][options] |
+| Hardware profiles are global only: `cpu-default`, `gpu-rtxpro6000`, `gpu-reserved-demo` in `redhat-ods-applications` | `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/hardware-profiles/` | [Create project-scoped resources][scoped] |
+| No project-scoped `Template` with a `ServingRuntime`. The Stage 050 candidate ships a plain `ServingRuntime` `vllm-cuda-runtime` in `evaluated-models` with its InferenceService; it is not a dashboard template | `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Create project-scoped resources][scoped] |
+| `disableProjectScoped` is not set, so it keeps its documented default (Developer Preview option) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml` (field absent) | [Dashboard configuration options][options] |
 
 ## If a project-scoped resource is needed
 

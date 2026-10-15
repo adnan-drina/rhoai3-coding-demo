@@ -23,8 +23,8 @@ description: >
 
 Thin skill: how this repo maps onto the OpenShift AI architecture, with product
 behavior in the linked OpenShift AI 3.5 sections. Detailed records:
-`gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/README.md`
-and `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/README.md`
+and `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md`.
 
 ## When to use
 
@@ -38,14 +38,14 @@ and `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Management layer: one OLM Subscription `rhods-operator` in `redhat-ods-operator` (Application `010-rhoai-operator`), separate from platform configuration | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/` | [Architecture][arch]; [Install the Operator by CLI][op-cli] |
-| Predefined projects, no custom namespaces: `applicationsNamespace: redhat-ods-applications`, `workbenchNamespace: rhods-notebooks` | `rhoai-platform/dsc-init.yaml`, `rhoai-platform/datasciencecluster.yaml` | [Architecture][arch]; [Configure custom namespaces][custom-ns] |
-| Service layer switched per component on the shared `default-dsc`; Stage 010 keeps only Dashboard and Workbenches Managed, later stages enable theirs through delegated fields | `rhoai-platform/datasciencecluster.yaml`; delegation table in `rhoai-platform/README.md` | [Install components by CLI][comp-cli] |
-| DSCI, DSC, `Auth` and `odh-dashboard-config` are cluster singletons with one owner (`010-rhoai-platform`) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/` | [Install and manage components][comp] |
-| Native observability stack in `redhat-ods-monitoring`; the namespace is created in Git before the DSCI | `rhoai-platform/monitoring-namespace.yaml`, `rhoai-platform/dsc-init.yaml` | [Enable the observability stack][obs] |
-| Demo workloads stay out of OpenShift AI namespaces: dashboard projects `demo-sandbox`, `internal-models`, `evaluated-models` (label `opendatahub.io/dashboard: "true"`), plus `external-models`, `evalhub`, `rhoai-model-registries` | `gitops/stages/010-openshift-ai-platform-foundation/access/namespace-demo-sandbox.yaml`, `gitops/stages/040-governed-models-as-a-service/local-models/namespace.yaml`, `gitops/stages/050-model-evaluation/model-qualification/namespace.yaml` | [Architecture][arch] (no ISV applications in OpenShift AI namespaces) |
-| Developer tools (Dev Spaces, Developer Hub, GitLab, MTA, SonarQube) get their own namespaces in Stage 070 | `gitops/stages/070-advanced-app-platform/namespaces/namespaces.yaml` | [Architecture][arch] |
-| Generated per-component CRs (`*.components.platform.opendatahub.io`) stay out of Git; enablement Jobs only read them for readiness | `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/enable-job.yaml` | [View installed components][view] |
+| Management layer: one OLM Subscription `rhods-operator` in `redhat-ods-operator` (Application `010-rhoai-operator`), separate from platform configuration | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/` | [Architecture][arch]; [Install the Operator by CLI][op-cli] |
+| Predefined projects, no custom namespaces: `applicationsNamespace: redhat-ods-applications`, `workbenchNamespace: rhods-notebooks` | `010-rhoai-platform/dsc-init.yaml`, `010-rhoai-platform/datasciencecluster.yaml` | [Architecture][arch]; [Configure custom namespaces][custom-ns] |
+| Service layer switched per component on the shared `default-dsc`; Stage 010 keeps only Dashboard and Workbenches Managed, later stages enable theirs through delegated fields | `010-rhoai-platform/datasciencecluster.yaml`; delegation table in `010-rhoai-platform/README.md` | [Install components by CLI][comp-cli] |
+| DSCI, DSC, `Auth` and `odh-dashboard-config` are cluster singletons with one owner (`010-rhoai-platform`) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/` | [Install and manage components][comp] |
+| Native observability stack in `redhat-ods-monitoring`; the namespace is created in Git before the DSCI | `010-rhoai-platform/monitoring-namespace.yaml`, `010-rhoai-platform/dsc-init.yaml` | [Enable the observability stack][obs] |
+| Demo workloads stay out of OpenShift AI namespaces: dashboard projects `demo-sandbox`, `internal-models`, `evaluated-models` (label `opendatahub.io/dashboard: "true"`), plus `external-models`, `evalhub`, `rhoai-model-registries` | `gitops/stages/010-openshift-ai-platform-foundation/010-access/namespace-demo-sandbox.yaml`, `gitops/stages/040-governed-models-as-a-service/040-local-models/namespace.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/namespace.yaml` | [Architecture][arch] (no ISV applications in OpenShift AI namespaces) |
+| Developer tools (Dev Spaces, Developer Hub, GitLab, MTA, SonarQube) get their own namespaces in Stage 070 | `gitops/stages/070-advanced-app-platform/070-namespaces/namespaces.yaml` | [Architecture][arch] |
+| Generated per-component CRs (`*.components.platform.opendatahub.io`) stay out of Git; enablement Jobs only read them for readiness | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/enable-job.yaml` | [View installed components][view] |
 
 Workshop architecture lives in `README.md` and the stage list in `AGENTS.md`
 (Demo stages). Stage 130 keeps its own solution architecture in
@@ -71,7 +71,7 @@ Workshop architecture lives in `README.md` and the stage list in `AGENTS.md`
 ## Pitfalls
 
 - The operator does not create the default DSCI here (`DISABLE_DSC_CONFIG=true`
-  in `rhoai-operator/subscription.yaml`); a missing DSCI points to
+  in `010-rhoai-operator/subscription.yaml`); a missing DSCI points to
   `010-rhoai-platform`, not to the operator.
 - `rhods-admins` is created by the operator from the `Auth` CR; its membership
   comes from `stages/010-openshift-ai-platform-foundation/setup-access.sh`, not Git.

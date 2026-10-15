@@ -25,8 +25,8 @@ Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. In 3.5 the Llama Stack guide is replaced by "Build
 AI/Agentic Applications with OGX" (book `working_with_ogx`); the skill keeps
 its old name. Detailed record:
-`gitops/stages/040-governed-models-as-a-service/maas-platform/README.md` and
-`gitops/stages/040-governed-models-as-a-service/genai-studio/README.md`.
+`gitops/stages/040-governed-models-as-a-service/040-maas-platform/README.md` and
+`gitops/stages/040-governed-models-as-a-service/040-genai-studio/README.md`.
 
 ## When to use
 
@@ -40,10 +40,10 @@ its old name. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `llamastackoperator` stays `Removed` and is not delegated, so Argo CD enforces it; the live 3.5 CRD marks it deprecated in favour of `ogx` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Llama Stack to OGX migration][migration] |
-| `ogx` set `Managed` by the `job-enable-dsc-maas` Sync hook (delegated Stage 010 field); the Job waits for `default-ogx` Ready | `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml` | [Activate the OGX Operator][activate] |
+| `llamastackoperator` stays `Removed` and is not delegated, so Argo CD enforces it; the live 3.5 CRD marks it deprecated in favour of `ogx` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Llama Stack to OGX migration][migration] |
+| `ogx` set `Managed` by the `job-enable-dsc-maas` Sync hook (delegated Stage 010 field); the Job waits for `default-ogx` Ready | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [Activate the OGX Operator][activate] |
 | No OGX server in Git: the only server is the playground `lsd-genai-playground`, created from the dashboard with its pgvector database | not in Git (dashboard-owned) | [Resources created with a playground][playres] |
-| `studio-api.py --install-model` attaches the retained PVC `genai-playground-state` to a freshly created playground through `spec.workload.overrides` | `stages/040-governed-models-as-a-service/studio-api.py`, `gitops/stages/040-governed-models-as-a-service/genai-studio/` | [Deploy an OGX server][deploy] |
+| `studio-api.py --install-model` attaches the retained PVC `genai-playground-state` to a freshly created playground through `spec.workload.overrides` | `stages/040-governed-models-as-a-service/studio-api.py`, `gitops/stages/040-governed-models-as-a-service/040-genai-studio/` | [Deploy an OGX server][deploy] |
 | Models reach OGX only through MaaS endpoints, never through provider keys in an OGX configuration | `gitops/stages/040-governed-models-as-a-service/` | [OGX API provider support][providers] |
 
 ## Procedure

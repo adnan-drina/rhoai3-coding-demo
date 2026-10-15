@@ -28,7 +28,7 @@ sections.
 
 No `TektonHub` resource, hub resolver or Artifact Hub reference exists in
 Git. Every Task the platform runs is a namespaced Task in
-`gitops/stages/070-advanced-app-platform/pipelines/project-pipeline/`,
+`gitops/stages/070-advanced-app-platform/070-pipelines/project-pipeline/`,
 reviewed and pinned with the platform revision. In 1.24, Pipelines as Code
 removed its Tekton Hub integration and `tkn hub` targets Artifact Hub.
 

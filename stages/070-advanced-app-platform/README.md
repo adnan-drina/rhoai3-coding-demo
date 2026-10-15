@@ -53,14 +53,14 @@ Each component is its own Argo CD Application with its own folder and README. `d
 
 | Order | Application | What it owns |
 |---|---|---|
-| 1 | [`070-namespaces`](../../gitops/stages/070-advanced-app-platform/namespaces/README.md) | Every Stage 070 namespace (`Prune=false`) |
-| 2 | [`070-identity`](../../gitops/stages/070-advanced-app-platform/identity/README.md) | Platform Keycloak clients and scoped provisioner identities |
-| 3 | [`070-devspaces`](../../gitops/stages/070-advanced-app-platform/devspaces/README.md) | Dev Spaces, persona workspaces, workspace model access |
-| 4 | [`070-pipelines`](../../gitops/stages/070-advanced-app-platform/pipelines/README.md) | Pipelines, Trusted Artifact Signer, build namespace, project enrollment |
-| 5 | [`070-sonarqube`](../../gitops/stages/070-advanced-app-platform/sonarqube/README.md) | SonarQube and its database |
-| 6 | [`070-mta`](../../gitops/stages/070-advanced-app-platform/mta/README.md) | MTA with Hub Agents and the Developer Lightspeed proxy |
-| 7 | [`070-gitlab`](../../gitops/stages/070-advanced-app-platform/gitlab/README.md) | GitLab and the integration hub that wires it into the other components |
-| 8 | [`070-rhdh`](../../gitops/stages/070-advanced-app-platform/rhdh/README.md) | Developer Hub, its generated catalog and templates |
+| 1 | [`070-namespaces`](../../gitops/stages/070-advanced-app-platform/070-namespaces/README.md) | Every Stage 070 namespace (`Prune=false`) |
+| 2 | [`070-identity`](../../gitops/stages/070-advanced-app-platform/070-identity/README.md) | Platform Keycloak clients and scoped provisioner identities |
+| 3 | [`070-devspaces`](../../gitops/stages/070-advanced-app-platform/070-devspaces/README.md) | Dev Spaces, persona workspaces, workspace model access |
+| 4 | [`070-pipelines`](../../gitops/stages/070-advanced-app-platform/070-pipelines/README.md) | Pipelines, Trusted Artifact Signer, build namespace, project enrollment |
+| 5 | [`070-sonarqube`](../../gitops/stages/070-advanced-app-platform/070-sonarqube/README.md) | SonarQube and its database |
+| 6 | [`070-mta`](../../gitops/stages/070-advanced-app-platform/070-mta/README.md) | MTA with Hub Agents and the Developer Lightspeed proxy |
+| 7 | [`070-gitlab`](../../gitops/stages/070-advanced-app-platform/070-gitlab/README.md) | GitLab and the integration hub that wires it into the other components |
+| 8 | [`070-rhdh`](../../gitops/stages/070-advanced-app-platform/070-rhdh/README.md) | Developer Hub, its generated catalog and templates |
 
 Application migration needs every component, including the full MTA stack.
 

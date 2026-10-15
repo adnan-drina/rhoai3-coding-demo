@@ -11,7 +11,7 @@ description: >
   Auth CR (adminGroups rhods-admins, allowedGroups rhods-admins and
   rhoai-developers) in rhoai-platform/auth.yaml, the rhoai-developers Group
   and demo-sandbox RoleBindings in
-  gitops/stages/010-openshift-ai-platform-foundation/access/, persona
+  gitops/stages/010-openshift-ai-platform-foundation/010-access/, persona
   membership set by setup-access.sh, revoking a user, or cleaning up a
   removed user's workbench, PVC and ConfigMap. Do NOT use for the dashboard
   group-selection screen only (use rhoai-access-group-selection), the
@@ -23,12 +23,12 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product procedure in the linked
 OpenShift AI 3.5 sections. Detailed records:
-`gitops/stages/010-openshift-ai-platform-foundation/access/README.md` and the
-"Auth" part of `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-access/README.md` and the
+"Auth" part of `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md`.
 
 ## When to use
 
-- A change touches `rhoai-platform/auth.yaml` or anything under `access/`.
+- A change touches `010-rhoai-platform/auth.yaml` or anything under `010-access/`.
 - A persona cannot reach the dashboard or `demo-sandbox`.
 - A user must lose access, or their resources must be removed.
 
@@ -36,11 +36,11 @@ OpenShift AI 3.5 sections. Detailed records:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Explicit groups replace the default access for every OpenShift user: `Auth` `adminGroups: [rhods-admins]`, `allowedGroups: [rhods-admins, rhoai-developers]` (API group `services.platform.opendatahub.io`; dashboard `groupsConfig` is read-only) | `rhoai-platform/auth.yaml` | [Select admin and user groups][select], [Dashboard configuration options][dash-options] |
-| Groups must exist first: `rhods-admins` comes from the operator, `rhoai-developers` from Git; `users` ignored by Argo CD | `access/group-rhoai-developers.yaml`, `gitops/applications/010-access.yaml` | [Select admin and user groups][select] |
+| Explicit groups replace the default access for every OpenShift user: `Auth` `adminGroups: [rhods-admins]`, `allowedGroups: [rhods-admins, rhoai-developers]` (API group `services.platform.opendatahub.io`; dashboard `groupsConfig` is read-only) | `010-rhoai-platform/auth.yaml` | [Select admin and user groups][select], [Dashboard configuration options][dash-options] |
+| Groups must exist first: `rhods-admins` comes from the operator, `rhoai-developers` from Git; `users` ignored by Argo CD | `010-access/group-rhoai-developers.yaml`, `gitops/applications/010-access.yaml` | [Select admin and user groups][select] |
 | Membership is runtime data: `setup-access.sh` adds `RHOAI_ADMIN_USER` and `RHOAI_DEVELOPER_USER` from the local `.env` (CLI equivalent of the console procedure) | `stages/010-openshift-ai-platform-foundation/setup-access.sh` | [Add users to user groups][add-users] |
-| Project roles in `demo-sandbox`: `rhods-admins` get `admin`, `rhoai-developers` get `edit` | `access/rolebinding-admins-admin.yaml`, `access/rolebinding-developer-edit.yaml` | [User types][user-types] |
-| Admins only may read RHOAI traces (`rhoai-monitoring-traces-reader` bound to `rhods-admins`) | `observability-operators/trace-roles/` | see `rhoai-observability` |
+| Project roles in `demo-sandbox`: `rhods-admins` get `admin`, `rhoai-developers` get `edit` | `010-access/rolebinding-admins-admin.yaml`, `010-access/rolebinding-developer-edit.yaml` | [User types][user-types] |
+| Admins only may read RHOAI traces (`rhoai-monitoring-traces-reader` bound to `rhods-admins`) | `010-observability-operators/trace-roles/` | see `rhoai-observability` |
 | Identity comes from the cluster's login provider (Keycloak realm `sso`, provider `rhbk`); not in GitOps | `stages/010-openshift-ai-platform-foundation/README.md` | see `ocp-authentication-identity-providers` |
 
 Paths in the table are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unless they start with `gitops/` or `stages/`.
@@ -48,7 +48,7 @@ Paths in the table are relative to `gitops/stages/010-openshift-ai-platform-foun
 ## Procedure
 
 1. Group lists change in `auth.yaml` only; new groups get a manifest under
-   `access/` (or come from the identity provider) before they are listed.
+   `010-access/` (or come from the identity provider) before they are listed.
 2. Deploy, set membership, validate:
    `./stages/010-openshift-ai-platform-foundation/deploy.sh`,
    `./stages/010-openshift-ai-platform-foundation/setup-access.sh`,

@@ -83,7 +83,7 @@ Use a stage-owned GitOps path when the stage owns independent resources:
 
 ```text
 gitops/stages/NNN-descriptive-slug/kustomization.yaml               # union of the component folders
-gitops/stages/NNN-descriptive-slug/<component>/kustomization.yaml   # one folder per Argo CD Application
+gitops/stages/NNN-descriptive-slug/NNN-<component>/kustomization.yaml   # one folder per Application, named like it
 gitops/applications/NNN-<component>.yaml                            # Application NNN-<component>
 ```
 
