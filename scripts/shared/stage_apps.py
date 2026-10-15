@@ -19,6 +19,7 @@ Import it from Python (sys.path.insert(0, "<repo>/scripts/shared"); import stage
   stage_apps.py names STAGE [--all] [--reverse]                   # --reverse: deletion order
   stage_apps.py applications STAGE --revision SHA --repo-url URL [--kustomize-patches FILE]  # JSON List
   stage_apps.py status STAGE [--revision SHA]                      # exit 1 unless all reconciled
+  stage_apps.py preflight STAGE --repo-url URL [--skip-kind K]     # read-only adoption guard before the first write
   stage_apps.py owner STAGE KIND NAME [NAMESPACE]                  # component that renders it
   stage_apps.py delegated STAGE KIND NAME [NAMESPACE] [--group G]  # fields the live owner leaves to later stages
   stage_apps.py check-static STAGE                                 # disjoint components == base
@@ -441,6 +442,46 @@ def stamped(stage, revision, repo_url, root=ROOT, patches=None, separate=False):
     return apps
 
 
+def preflight(stage, repo_url, root=ROOT, skip_kinds=(), separate=False):
+    """Read-only adoption guard before a stage's first write; returns problems (empty = safe to deploy).
+
+    Each existing component Application must have this repository's identity (no owner, single source, project,
+    destination and path as in Git). Each object a component renders must be absent, or unowned and carry the
+    exact tracking id of its component; a Namespace may also be untracked. Kinds whose CRD is not installed yet
+    cannot exist and are skipped; skip_kinds leaves kinds to a stage-specific check (Stage 020 MachineSets)."""
+    problems = []
+    for desired in _deployed(stage, str(root), separate):
+        name = desired["metadata"]["name"]
+        app = get_application(name)
+        if app:
+            spec = app["spec"]
+            if (app["metadata"].get("ownerReferences") or spec.get("sources") or spec.get("project") != "rhoai-demo"
+                    or spec.get("destination") != DESTINATION or spec["source"].get("repoURL") != repo_url
+                    or spec["source"].get("path") != desired["spec"]["source"]["path"]):
+                problems.append(name + ": existing Application has another owner, repository, project, destination or path")
+        for obj in render(desired["spec"]["source"]["path"], root):
+            if obj["kind"] in skip_kinds:
+                continue
+            meta = obj["metadata"]
+            args = ["oc", "--request-timeout=10s", "get", obj["kind"], meta["name"], "--ignore-not-found", "-o", "json"]
+            if meta.get("namespace"):
+                args += ["-n", meta["namespace"]]
+            result = subprocess.run(args, capture_output=True, text=True, timeout=20)
+            if result.returncode and ("no matches for kind" in result.stderr or "doesn't have a resource type" in result.stderr):
+                continue
+            if result.returncode:
+                problems.append(suffix(obj) + ": could not be read")
+                continue
+            if not result.stdout.strip():
+                continue
+            live = json.loads(result.stdout)
+            if live["metadata"].get("ownerReferences"):
+                problems.append(suffix(obj) + ": owned by another object")
+            elif not (tracked(stage, live, root) or (obj["kind"] == "Namespace" and not tracking_id(live))):
+                problems.append(suffix(obj) + ": exists without this stage's tracking id (needs a reviewed adoption)")
+    return problems
+
+
 def aggregate_path(stage, root=ROOT):
     """The stage's union kustomization: gitops/stages/<NNN-stage>/ (each component path is a child folder)."""
     roots = {Path(a["spec"]["source"]["path"]).parent for a in _components(stage, str(root))}
@@ -558,6 +599,10 @@ def main():
     p.add_argument("--kustomize-patches", type=Path)
     p = sub.add_parser("status")
     p.add_argument("stage"); p.add_argument("--revision"); p.add_argument("--repo-url")
+    p = sub.add_parser("preflight")
+    p.add_argument("stage"); p.add_argument("--repo-url", required=True)
+    p.add_argument("--skip-kind", action="append", default=[], help="kind left to a stage-specific check (repeatable)")
+    p.add_argument("--all", action="store_true", help="include script-deployed components")
     p = sub.add_parser("owner")
     p.add_argument("stage"); p.add_argument("kind"); p.add_argument("name"); p.add_argument("namespace", nargs="?"); p.add_argument("--group", default="")
     p = sub.add_parser("delegated")
@@ -592,6 +637,12 @@ def main():
             print(("FAIL " if any(p.startswith(name + ":") for p in problems) else "OK   ") + name)
         for problem in problems:
             print("  - " + problem)
+        return 1 if problems else 0
+    elif args.command == "preflight":
+        problems = preflight(args.stage, args.repo_url, skip_kinds=args.skip_kind, separate=args.all)
+        for problem in problems:
+            print("  - " + problem)
+        print(("FAIL " if problems else "PASS ") + "Stage " + args.stage + " adoption preflight")
         return 1 if problems else 0
     elif args.command == "owner":
         print(owner(args.stage, args.kind, args.name, args.namespace, args.group))

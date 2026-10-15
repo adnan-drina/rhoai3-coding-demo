@@ -1,166 +1,258 @@
 #!/usr/bin/env bash
-# Read-only native readiness checks; functional admission/UI evidence is separate.
+# Read-only Stage 020 checks: operators, NFD, the NVIDIA ClusterPolicy and its workloads, GPU MachineSets and
+# nodes, Kueue, flavors, queues and hardware profiles. --functional adds per-GPU CUDA vectorAdd and DCGM metrics
+# evidence. Queue admission and dashboard persona visibility are separate acceptance (OPERATIONS).
+# Usage: stages/020-gpu-infrastructure-private-ai/validate.sh [--readiness|--functional]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-REPO_ROOT="$ROOT_DIR"
-source "$ROOT_DIR/scripts/shared/lib.sh"
-load_env
-check_oc_logged_in
-python3 "$ROOT_DIR/scripts/platform/check-operator-policy.py" "$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai" --verify
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$REPO_ROOT/scripts/shared/validate-lib.sh"
+STAGE_APPS="$REPO_ROOT/scripts/shared/stage_apps.py"
+
 mode="${1:---readiness}"
 [[ "$mode" == --readiness || "$mode" == --functional ]] || { echo "Use --readiness or --functional (both read-only)." >&2; exit 1; }
-export REPO_ROOT
-python3 - "$mode" <<'PY'
-import json,os,pathlib,subprocess,sys,time,urllib.request,socket,datetime
-failed=0
-def get(kind,name='',ns=''):
- cmd=['oc','--request-timeout=10s','get',kind]
- if name:cmd.append(name)
- if ns:cmd+=['-n',ns]
- p=subprocess.run(cmd+['-o','json'],capture_output=True,text=True,timeout=15)
- if p.returncode:raise RuntimeError('API read failed: '+kind)
- return json.loads(p.stdout)
-def check(label,fn):
- global failed
- try:assert fn();print('PASS '+label)
- except Exception:failed+=1;print('FAIL '+label)
-def instant(value):return datetime.datetime.fromisoformat(value.replace('Z','+00:00'))
-def cond(x,t):
- return any(c.get('type')==t and c.get('status')=='True' for c in x.get('status',{}).get('conditions',[]))
-def freshcond(x,t):
- return any(c.get('type')==t and c.get('status')=='True' and c.get('observedGeneration')==x['metadata'].get('generation') for c in x.get('status',{}).get('conditions',[]))
-def current(x):return isinstance(x['metadata'].get('generation'),int) and x.get('status',{}).get('observedGeneration')==x['metadata']['generation']
-sys.path.insert(0,os.environ['REPO_ROOT']+'/scripts/shared');import stage_apps
-problems=stage_apps.stage_problems('020')
-for problem in problems:print('  - '+problem)
-check('Component Applications at one exact revision, Synced/Healthy',lambda:not problems)
-def metrics_access():
- binding=get('rolebinding','rhoai-gpu-metrics-admins','openshift-monitoring')
- assert binding['roleRef']=={'apiGroup':'rbac.authorization.k8s.io','kind':'Role','name':'cluster-monitoring-metrics-api'}
- assert binding.get('subjects')==[{'apiGroup':'rbac.authorization.k8s.io','kind':'Group','name':'rhods-admins'}]
- role=get('role','cluster-monitoring-metrics-api','openshift-monitoring')
- assert any('monitoring.coreos.com' in r.get('apiGroups',[]) and 'prometheuses/api' in r.get('resources',[]) and 'k8s' in r.get('resourceNames',[]) and {'get','create','update'}.issubset(r.get('verbs',[])) for r in role.get('rules',[]))
- return True
-check('AI administrators use the scoped native monitoring metrics Role',metrics_access)
-def console_dashboard():
- import hashlib
- cm=get('configmap','nvidia-dcgm-exporter-dashboard','openshift-config-managed')
- assert cm['metadata'].get('labels',{}).get('console.openshift.io/dashboard')=='true'
- assert stage_apps.tracked('020',cm)
- body=cm['data']['dcgm-exporter-dashboard.json'];assert hashlib.sha256(body.encode()).hexdigest()=='7c2172e582524efb70d9f585502366f7fec22b2464c3b89f75418ca648353e71'
- assert json.loads(body)['title']=='NVIDIA DCGM Exporter Dashboard'
- return True
-check('Pinned native NVIDIA console dashboard configuration',console_dashboard)
+python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/020-gpu-infrastructure-private-ai" --verify
+
+read_json() { oc --request-timeout=10s get "$@" -o json; }
+yes_no() { jq -e "$@" >/dev/null && echo yes || echo no; }
+# jq definitions shared by the checks below: condition True, condition True at the current generation, current.
+JQ_DEFS='def cond($t): any(.status.conditions[]?; .type == $t and .status == "True");
+  def freshcond($t): .metadata.generation as $g | any(.status.conditions[]?; .type == $t and .status == "True" and .observedGeneration == $g);
+  def current: (.metadata.generation | type) == "number" and .status.observedGeneration == .metadata.generation;
+  def owned_by($uid): any(.metadata.ownerReferences[]?; .uid == $uid);
+  def controlled_by($uid): any(.metadata.ownerReferences[]?; .uid == $uid and .controller == true);'
+# jq with the definitions above; options first, filter last (as with jq).
+jqd() { local n=$# filter="${!#}"; jq "${@:1:n-1}" "$JQ_DEFS $filter"; }
+
+# Reviewed GPU pools: MachineSet label cluster-api/accelerator -> instance type, GFD product, Kueue flavor.
+POOLS='{"nvidia-gpu": ["g6e.2xlarge", "NVIDIA-L40S", "gpu-l40s"],
+  "nvidia-rtxpro6000": ["g7e.2xlarge", "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition", "gpu-rtxpro6000"]}'
+
+applications() {
+    local out
+    out=$(python3 "$STAGE_APPS" status 020 2>&1) && echo yes || grep -v "^OK" <<<"$out" | tr "\n" ";"
+}
+metrics_access() {
+    local binding role
+    binding=$(read_json rolebinding rhoai-gpu-metrics-admins -n openshift-monitoring)
+    role=$(read_json role cluster-monitoring-metrics-api -n openshift-monitoring)
+    jq -n -e --argjson b "$binding" --argjson r "$role" \
+        '$b.roleRef == {apiGroup: "rbac.authorization.k8s.io", kind: "Role", name: "cluster-monitoring-metrics-api"}
+        and $b.subjects == [{apiGroup: "rbac.authorization.k8s.io", kind: "Group", name: "rhods-admins"}]
+        and any($r.rules[]?; (.apiGroups | index("monitoring.coreos.com")) and (.resources | index("prometheuses/api"))
+            and (.resourceNames | index("k8s")) and (["get", "create", "update"] - .verbs | length == 0))' \
+        >/dev/null && echo yes || echo no
+}
+console_dashboard() {
+    local cm owner
+    cm=$(read_json configmap nvidia-dcgm-exporter-dashboard -n openshift-config-managed)
+    owner=$(python3 "$STAGE_APPS" owner 020 ConfigMap nvidia-dcgm-exporter-dashboard openshift-config-managed)
+    # Hash the exact bytes (jq -j; a $(...) capture would drop the trailing newline).
+    local digest
+    digest=$(jq -j '.data["dcgm-exporter-dashboard.json"]' <<<"$cm" | shasum -a 256 | cut -d' ' -f1)
+    [[ "$digest" == 7c2172e582524efb70d9f585502366f7fec22b2464c3b89f75418ca648353e71 ]] ||
+        { echo "dashboard content differs from the pinned digest"; return; }
+    jq -e --arg t "$owner:/ConfigMap:openshift-config-managed/nvidia-dcgm-exporter-dashboard" \
+        '.metadata.labels["console.openshift.io/dashboard"] == "true"
+        and .metadata.annotations["argocd.argoproj.io/tracking-id"] == $t
+        and (.data["dcgm-exporter-dashboard.json"] | fromjson | .title) == "NVIDIA DCGM Exporter Dashboard"' \
+        <<<"$cm" >/dev/null && echo yes || echo no
+}
 # Automatic approval rolls within the reviewed channel; check-operator-policy.py above guards the release family.
-for ns,name in [('openshift-nfd','nfd'),('nvidia-gpu-operator','gpu-operator-certified'),('openshift-kueue-operator','kueue-operator')]:
- def operator(ns=ns,name=name):
-  s=get('subscription',name,ns);installed=s.get('status',{}).get('installedCSV');c=get('csv',installed,ns)
-  return s['spec']['installPlanApproval']=='Automatic' and installed==s['status'].get('currentCSV') and c['status']['phase']=='Succeeded'
- check(name+' current CSV Succeeded',operator)
-nfd=get('nodefeaturediscovery','nfd-instance','openshift-nfd')
-def nfd_operand_matches_operator():
- # The operand image is pinned in Git (the NFD CLI guide sets operand.image); it must be the installed operator's own.
- s=get('subscription','nfd','openshift-nfd');c=get('csv',s['status']['installedCSV'],'openshift-nfd')
- want=[e.get('value') for d in c['spec']['install']['spec']['deployments'] for ct in d['spec']['template']['spec']['containers'] for e in ct.get('env',[]) if e['name']=='NODE_FEATURE_DISCOVERY_IMAGE']
- return want and nfd['spec']['operand']['image']==want[0]
-check('NFD operand image is the installed operator\'s own (update the Git pin after an operator update)',nfd_operand_matches_operator)
-def native_workload(kind,name,ns,owner):
- x=get(kind,name,ns);assert any(o.get('uid')==owner for o in x['metadata'].get('ownerReferences',[]));assert current(x)
- if kind=='daemonset':assert x['status'].get('desiredNumberScheduled',0)>0 and x['status'].get('numberReady')==x['status']['desiredNumberScheduled'] and x['status'].get('updatedNumberScheduled')==x['status']['desiredNumberScheduled']
- else:assert x['spec'].get('replicas',1)>0 and x['status'].get('readyReplicas')==x['spec'].get('replicas',1) and x['status'].get('updatedReplicas')==x['spec'].get('replicas',1) and x['status'].get('availableReplicas')==x['spec'].get('replicas',1)
- return True
-check('NFD Available with fresh native worker/master',lambda:cond(nfd,'Available') and native_workload('daemonset','nfd-worker','openshift-nfd',nfd['metadata']['uid']) and native_workload('deployment','nfd-master','openshift-nfd',nfd['metadata']['uid']))
-cp=get('clusterpolicy','gpu-cluster-policy')
-# Reviewed GPU pools: MachineSet label cluster-api/accelerator -> (instance type, GFD product, Kueue flavor).
-POOLS={'nvidia-gpu':('g6e.2xlarge','NVIDIA-L40S','gpu-l40s'),'nvidia-rtxpro6000':('g7e.2xlarge','NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition','gpu-rtxpro6000')}
-nodes=get('nodes')['items'];gn=[x for x in nodes if x['metadata'].get('labels',{}).get('nvidia.com/gpu.present')=='true' and not x['spec'].get('unschedulable')]
-check('ClusterPolicy native ready',lambda:cp['status'].get('state')=='ready')
-def owned_ds(name):
- x=get('daemonset',name,'nvidia-gpu-operator');assert any(o.get('uid')==cp['metadata']['uid'] and o.get('controller') for o in x['metadata'].get('ownerReferences',[]));assert current(x) and x['status'].get('desiredNumberScheduled')==len(gn)>0 and x['status'].get('numberReady')==len(gn) and x['status'].get('updatedNumberScheduled')==len(gn);return x
-for name in ['nvidia-operator-validator','nvidia-dcgm-exporter']:
- check(name+' native owner/current readiness',lambda n=name:bool(owned_ds(n)))
-ms=get('machinesets','','openshift-machine-api')['items'];gpu=[x for x in ms if x['metadata'].get('labels',{}).get('cluster-api/accelerator') in POOLS]
-def pools_reviewed():
- assert gpu and all(x['spec']['template']['spec']['providerSpec']['value']['instanceType']==POOLS[x['metadata']['labels']['cluster-api/accelerator']][0] and current(x) and x['status'].get('readyReplicas',0)==x['spec']['replicas'] for x in gpu)
- for label in POOLS:
-  print('  pool '+label+': '+', '.join(x['metadata']['name']+'='+str(x['spec']['replicas']) for x in gpu if x['metadata']['labels']['cluster-api/accelerator']==label))
- return True
-check('Reviewed GPU MachineSets (L40S g6e.2xlarge, RTX PRO 6000 g7e.2xlarge) at their desired replicas',pools_reviewed)
-def gpu_nodes():
- assert gn
- for x in gn:
-  pool=POOLS[x['metadata']['labels'].get('cluster-api/accelerator')]
-  assert cond(x,'Ready') and x['status']['allocatable'].get('nvidia.com/gpu')=='1' and x['metadata']['labels'].get('nvidia.com/gpu.product')==pool[1] and any(t['key']=='nvidia-gpu-only' and t['effect']=='NoSchedule' for t in x['spec'].get('taints',[]))
- print('  GPU workers: '+', '.join(x['metadata']['labels']['nvidia.com/gpu.product'] for x in gn))
- return True
-check('Ready GPU workers each advertise one full GPU matching their pool, with the intended taint',gpu_nodes)
-def driver_ready(node):
- version=node['metadata']['labels'].get('feature.node.kubernetes.io/system-os_release.OSTREE_VERSION')
- assert version
- candidates=[d for d in get('daemonsets','','nvidia-gpu-operator')['items'] if d['metadata'].get('labels',{}).get('openshift.driver-toolkit.rhcos')==version and any(c['name']=='nvidia-driver-ctr' for c in d['spec']['template']['spec']['containers']) and any(o.get('uid')==cp['metadata']['uid'] and o.get('controller') for o in d['metadata'].get('ownerReferences',[]))]
- assert len(candidates)==1
- d=candidates[0];assert current(d) and d['status'].get('numberReady')==d['status'].get('desiredNumberScheduled') and d['status'].get('updatedNumberScheduled')==d['status'].get('desiredNumberScheduled')
- return any(p['spec'].get('nodeName')==node['metadata']['name'] and cond(p,'Ready') and any(o.get('uid')==d['metadata']['uid'] and o.get('controller') for o in p['metadata'].get('ownerReferences',[])) for p in get('pods','','nvidia-gpu-operator')['items'])
-for index,node in enumerate(gn):check('GPU '+str(index+1)+' native Driver Toolkit/current driver',lambda n=node:driver_ready(n))
-dsc=get('datasciencecluster','default-dsc')
-check('Kueue delegated Unmanaged with autoCreateQueues=false',lambda:dsc['spec']['components']['kueue']['managementState']=='Unmanaged' and dsc['spec']['components']['kueue'].get('autoCreateQueues') is False and cond(dsc,'Ready') and current(dsc))
-def kueue_ready():
- xs=get('kueues.kueue.openshift.io')['items'];assert len(xs)==1;k=xs[0]
- assert cond(k,'Available') and cond(k,'CertManagerAvailable') and not cond(k,'Degraded') and not cond(k,'Progressing')
- return native_workload('deployment','kueue-controller-manager','openshift-kueue-operator',k['metadata']['uid'])
-check('Native Kueue Available with fresh owned controller',kueue_ready)
-def flavors():
- for label,(itype,product,flavor) in POOLS.items():
-  f=get('resourceflavor',flavor)
-  assert f['spec'].get('nodeLabels')=={'cluster-api/accelerator':label} and any(t.get('key')=='nvidia-gpu-only' for t in f['spec'].get('tolerations',[]))
- return True
-check('Each GPU ResourceFlavor selects exactly its own pool',flavors)
-for suffix in ['cpu-default','gpu-reserved-demo','gpu-rtxpro6000']:
- check('ClusterQueue '+suffix+' Active',lambda s=suffix:freshcond(get('clusterqueue','cq-'+s),'Active'))
- check('Sandbox LocalQueue '+suffix+' Active',lambda s=suffix:freshcond(get('localqueue','lq-'+s,'demo-sandbox'),'Active'))
- check('HardwareProfile '+suffix+' queue identity',lambda s=suffix:get('hardwareprofile',s,'redhat-ods-applications')['spec']['scheduling']['kueue']['localQueueName']=='lq-'+s)
+operator_current() {
+    local sub csv
+    sub=$(read_json subscription "$2" -n "$1")
+    csv=$(read_json csv "$(jq -r '.status.installedCSV' <<<"$sub")" -n "$1")
+    jq -n -e --argjson s "$sub" --argjson c "$csv" '$s.spec.installPlanApproval == "Automatic"
+        and $s.status.installedCSV == $s.status.currentCSV and $c.status.phase == "Succeeded"' >/dev/null && echo yes || echo no
+}
+nfd=$(read_json nodefeaturediscovery nfd-instance -n openshift-nfd)
+NFD_UID=$(jq -r '.metadata.uid' <<<"$nfd")
+# The operand image is pinned in Git (the NFD CLI guide sets operand.image); it must be the installed operator's own.
+nfd_operand_matches_operator() {
+    local csv
+    csv=$(read_json csv "$(read_json subscription nfd -n openshift-nfd | jq -r '.status.installedCSV')" -n openshift-nfd)
+    jq -n -e --argjson c "$csv" --argjson n "$nfd" \
+        '[$c.spec.install.spec.deployments[].spec.template.spec.containers[].env[]?
+          | select(.name == "NODE_FEATURE_DISCOVERY_IMAGE").value] as $want
+        | ($want | length) > 0 and $n.spec.operand.image == $want[0]' >/dev/null && echo yes || echo no
+}
+# A DaemonSet or Deployment owned by uid, at its current generation, with every replica ready and updated.
+native_workload() {
+    read_json "$1" "$2" -n "$3" | jqd --arg uid "$4" -e 'owned_by($uid) and current
+        and (if .kind == "DaemonSet"
+             then .status.desiredNumberScheduled > 0 and .status.numberReady == .status.desiredNumberScheduled
+                  and .status.updatedNumberScheduled == .status.desiredNumberScheduled
+             else (.spec.replicas // 1) as $n | $n > 0 and .status.readyReplicas == $n
+                  and .status.updatedReplicas == $n and .status.availableReplicas == $n end)' >/dev/null
+}
+nfd_ready() {
+    jqd -e 'cond("Available")' <<<"$nfd" >/dev/null && native_workload daemonset nfd-worker openshift-nfd "$NFD_UID" &&
+        native_workload deployment nfd-master openshift-nfd "$NFD_UID" && echo yes || echo no
+}
+
+cp=$(read_json clusterpolicy gpu-cluster-policy)
+CP_UID=$(jq -r '.metadata.uid' <<<"$cp")
+gpu_nodes=$(read_json nodes | jq -c '[.items[] | select(.metadata.labels["nvidia.com/gpu.present"] == "true"
+    and (.spec.unschedulable | not))]')
+GPU_COUNT=$(jq 'length' <<<"$gpu_nodes")
+clusterpolicy_ready() { yes_no '.status.state == "ready"' <<<"$cp"; }
+# A ClusterPolicy-controlled DaemonSet, current, scheduled and ready on every schedulable GPU node.
+owned_daemonset() {
+    read_json daemonset "$1" -n nvidia-gpu-operator | jqd --arg uid "$CP_UID" --argjson n "$GPU_COUNT" -e \
+        'controlled_by($uid) and current and $n > 0 and .status.desiredNumberScheduled == $n
+        and .status.numberReady == $n and .status.updatedNumberScheduled == $n' >/dev/null && echo yes || echo no
+}
+machinesets=$(read_json machinesets -n openshift-machine-api | jq -c --argjson pools "$POOLS" \
+    '[.items[] | select(.metadata.labels["cluster-api/accelerator"] as $l | $pools | has($l // ""))]')
+pools_reviewed() {
+    jqd --argjson pools "$POOLS" -e 'length > 0 and all(.[];
+        .spec.template.spec.providerSpec.value.instanceType == $pools[.metadata.labels["cluster-api/accelerator"]][0]
+        and current and (.status.readyReplicas // 0) == .spec.replicas)' <<<"$machinesets" >/dev/null && echo yes || echo no
+}
+gpu_nodes_ready() {
+    jqd --argjson pools "$POOLS" -e 'length > 0 and all(.[]; $pools[.metadata.labels["cluster-api/accelerator"] // ""] as $p
+        | $p != null and cond("Ready") and .status.allocatable["nvidia.com/gpu"] == "1"
+        and .metadata.labels["nvidia.com/gpu.product"] == $p[1]
+        and any(.spec.taints[]?; .key == "nvidia-gpu-only" and .effect == "NoSchedule"))' \
+        <<<"$gpu_nodes" >/dev/null && echo yes || echo no
+}
+# The node's driver DaemonSet (selected by its RHCOS build) is current, and a Ready driver pod runs on the node.
+driver_ready() {
+    local node=$1 version daemonsets ds_uid
+    version=$(jq -r --arg n "$node" '.[] | select(.metadata.name == $n)
+        | .metadata.labels["feature.node.kubernetes.io/system-os_release.OSTREE_VERSION"] // ""' <<<"$gpu_nodes")
+    [[ -n "$version" ]] || { echo "node has no OSTREE_VERSION label"; return; }
+    daemonsets=$(read_json daemonsets -n nvidia-gpu-operator | jqd -c --arg v "$version" --arg uid "$CP_UID" \
+        '[.items[] | select(.metadata.labels["openshift.driver-toolkit.rhcos"] == $v and controlled_by($uid)
+          and any(.spec.template.spec.containers[]; .name == "nvidia-driver-ctr"))]')
+    jqd -e 'length == 1 and (.[0] | current and .status.numberReady == .status.desiredNumberScheduled
+        and .status.updatedNumberScheduled == .status.desiredNumberScheduled)' <<<"$daemonsets" >/dev/null ||
+        { echo "driver DaemonSet missing or not current"; return; }
+    ds_uid=$(jq -r '.[0].metadata.uid' <<<"$daemonsets")
+    read_json pods -n nvidia-gpu-operator | jqd -e --arg n "$node" --arg uid "$ds_uid" \
+        'any(.items[]; .spec.nodeName == $n and cond("Ready") and controlled_by($uid))' >/dev/null && echo yes || echo no
+}
+dsc=$(read_json datasciencecluster default-dsc)
+kueue_delegated() {
+    jqd -e '.spec.components.kueue.managementState == "Unmanaged" and .spec.components.kueue.autoCreateQueues == false
+        and cond("Ready") and current' <<<"$dsc" >/dev/null && echo yes || echo no
+}
+kueue_ready() {
+    local kueues uid
+    kueues=$(read_json kueues.kueue.openshift.io)
+    jqd -e '(.items | length) == 1 and (.items[0] | cond("Available") and cond("CertManagerAvailable")
+        and (cond("Degraded") | not) and (cond("Progressing") | not))' <<<"$kueues" >/dev/null || { echo no; return; }
+    uid=$(jq -r '.items[0].metadata.uid' <<<"$kueues")
+    native_workload deployment kueue-controller-manager openshift-kueue-operator "$uid" && echo yes || echo no
+}
+flavors() {
+    local label flavor
+    for label in $(jq -r 'keys[]' <<<"$POOLS"); do
+        flavor=$(jq -r --arg l "$label" '.[$l][2]' <<<"$POOLS")
+        read_json resourceflavor "$flavor" | jq -e --arg l "$label" '.spec.nodeLabels == {"cluster-api/accelerator": $l}
+            and any(.spec.tolerations[]?; .key == "nvidia-gpu-only")' >/dev/null || { echo "$flavor"; return; }
+    done
+    echo yes
+}
+queue_active() { read_json "$@" | jqd -e 'freshcond("Active")' >/dev/null && echo yes || echo no; }
+profile_queue() {
+    read_json hardwareprofile "$1" -n redhat-ods-applications |
+        jq -r --arg q "lq-$1" 'if .spec.scheduling.kueue.localQueueName == $q then "yes" else "no" end'
+}
+
+check "Component Applications at one exact revision, Synced/Healthy" applications yes
+check "AI administrators use the scoped native monitoring metrics Role" metrics_access yes
+check "Pinned native NVIDIA console dashboard configuration" console_dashboard yes
+check "nfd current CSV Succeeded" "operator_current openshift-nfd nfd" yes
+check "gpu-operator-certified current CSV Succeeded" "operator_current nvidia-gpu-operator gpu-operator-certified" yes
+check "kueue-operator current CSV Succeeded" "operator_current openshift-kueue-operator kueue-operator" yes
+check "NFD operand image is the installed operator's own (update the Git pin after an operator update)" \
+    nfd_operand_matches_operator yes
+check "NFD Available with fresh native worker/master" nfd_ready yes
+check "ClusterPolicy native ready" clusterpolicy_ready yes
+check "nvidia-operator-validator native owner/current readiness" "owned_daemonset nvidia-operator-validator" yes
+check "nvidia-dcgm-exporter native owner/current readiness" "owned_daemonset nvidia-dcgm-exporter" yes
+check "Reviewed GPU MachineSets (L40S g6e.2xlarge, RTX PRO 6000 g7e.2xlarge) at their desired replicas" pools_reviewed yes
+jq -r 'group_by(.metadata.labels["cluster-api/accelerator"])[]
+    | "  pool \(.[0].metadata.labels["cluster-api/accelerator"]): \(map("\(.metadata.name)=\(.spec.replicas)") | join(", "))"' \
+    <<<"$machinesets"
+check "Ready GPU workers each advertise one full GPU matching their pool, with the intended taint" gpu_nodes_ready yes
+index=0
+for node in $(jq -r '.[].metadata.name' <<<"$gpu_nodes"); do
+    index=$((index + 1))
+    check "GPU $index native Driver Toolkit/current driver" "driver_ready $node" yes
+done
+check "Kueue delegated Unmanaged with autoCreateQueues=false" kueue_delegated yes
+check "Native Kueue Available with fresh owned controller" kueue_ready yes
+check "Each GPU ResourceFlavor selects exactly its own pool" flavors yes
+for suffix in cpu-default gpu-reserved-demo gpu-rtxpro6000; do
+    check "ClusterQueue $suffix Active" "queue_active clusterqueue cq-$suffix" yes
+    check "Sandbox LocalQueue $suffix Active" "queue_active localqueue lq-$suffix -n demo-sandbox" yes
+    check "HardwareProfile $suffix queue identity" "profile_queue $suffix" yes
+done
 # Consumer LocalQueues belong to their stages: internal-models to Stage 040, evaluated-models to Stage 050.
-print('One hardware profile per GPU type: gpu-reserved-demo (L40S) and gpu-rtxpro6000, each with its own ClusterQueue.')
-print('Global profiles require matching LocalQueues in every consuming project.')
-if sys.argv[1]=='--functional':
- pods=get('pods','','nvidia-gpu-operator')['items']
- def cuda(node):
-  candidates=[p for p in pods if p['metadata'].get('labels',{}).get('app')=='nvidia-cuda-validator' and p['spec'].get('nodeName')==node and any(o.get('uid')==cp['metadata']['uid'] for o in p['metadata'].get('ownerReferences',[]))]
-  assert candidates
-  p=max(candidates,key=lambda x:x['metadata']['creationTimestamp'])
-  ds=owned_ds('nvidia-operator-validator')
-  revisions=[r for r in get('controllerrevisions','','nvidia-gpu-operator')['items'] if any(o.get('uid')==ds['metadata']['uid'] for o in r['metadata'].get('ownerReferences',[]))]
-  assert revisions
-  revision=max(revisions,key=lambda r:r['revision'])['metadata']['name'].rsplit('-',1)[1]
-  currentpods=[v for v in pods if v['spec'].get('nodeName')==node and v['metadata'].get('labels',{}).get('controller-revision-hash')==revision and any(o.get('uid')==ds['metadata']['uid'] and o.get('controller') for o in v['metadata'].get('ownerReferences',[]))]
-  assert len(currentpods)==1 and not currentpods[0]['metadata'].get('deletionTimestamp') and cond(currentpods[0],'Ready')
-  runs=[i.get('state',{}).get('terminated',{}) for i in currentpods[0]['status'].get('initContainerStatuses',[]) if i['name']=='cuda-validation']
-  assert len(runs)==1 and runs[0].get('exitCode')==0
-  assert instant(runs[0]['startedAt']) <= instant(p['metadata']['creationTimestamp']) <= instant(runs[0]['finishedAt']) and p['status']['phase']=='Succeeded'
-  init=[i for i in ds['spec']['template']['spec']['initContainers'] if i['name']=='cuda-validation'][0]
-  assert not any(e.get('name')=='WITH_WORKLOAD' and str(e.get('value','')).lower()=='false' for e in init.get('env',[]))
-  assert any(x['name']=='cuda-validation' and x.get('state',{}).get('terminated',{}).get('exitCode')==0 for x in p['status'].get('initContainerStatuses',[]))
-  return True
- def metrics(node):
-  ds=owned_ds('nvidia-dcgm-exporter')
-  candidates=[p for p in pods if any(o.get('uid')==ds['metadata']['uid'] and o.get('controller') for o in p['metadata'].get('ownerReferences',[])) and not p['metadata'].get('deletionTimestamp') and p['metadata'].get('labels',{}).get('app')=='nvidia-dcgm-exporter' and p['spec'].get('nodeName')==node and cond(p,'Ready')]
-  assert len(candidates)==1
-  with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
-  proc=subprocess.Popen(['oc','--request-timeout=10s','port-forward','-n','nvidia-gpu-operator','pod/'+candidates[0]['metadata']['name'],str(port)+':9400','--address=127.0.0.1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-  try:
-   for attempt in range(30):
-    try:
-     with urllib.request.urlopen('http://127.0.0.1:'+str(port)+'/metrics',timeout=3) as response:body=response.read(4*1024*1024).decode()
-     assert 'DCGM_FI_DEV_GPU_UTIL{' in body and 'modelName="NVIDIA ' in body
-     return True
-    except OSError:time.sleep(1)
-   return False
-  finally:proc.terminate();proc.wait(timeout=10)
- for index,node in enumerate(gn):
-  check('GPU '+str(index+1)+' native CUDA vectorAdd success',lambda n=node['metadata']['name']:cuda(n))
-  check('GPU '+str(index+1)+' native DCGM metrics',lambda n=node['metadata']['name']:metrics(n))
- print('Read-only CUDA/DCGM checks do not prove queue admission or dashboard persona visibility. Follow the bounded admission procedure in OPERATIONS.')
-else:print('READINESS ONLY: CUDA/DCGM, queue admission and dashboard persona visibility remain separate acceptance.')
-sys.exit(1 if failed else 0)
-PY
+echo "One hardware profile per GPU type: gpu-reserved-demo (L40S) and gpu-rtxpro6000, each with its own ClusterQueue."
+echo "Global profiles require matching LocalQueues in every consuming project."
+
+if [[ "$mode" == --functional ]]; then
+    pods=$(read_json pods -n nvidia-gpu-operator)
+    validator=$(read_json daemonset nvidia-operator-validator -n nvidia-gpu-operator)
+    VALIDATOR_UID=$(jq -r '.metadata.uid' <<<"$validator")
+    # The newest cuda-validator pod on the node ran inside the current validator pod's cuda-validation init
+    # container window and succeeded, and workload validation is not disabled.
+    cuda_vectoradd() {
+        local node=$1 revision
+        revision=$(read_json controllerrevisions -n nvidia-gpu-operator | jqd -r --arg uid "$VALIDATOR_UID" \
+            '[.items[] | select(owned_by($uid))] | max_by(.revision) | .metadata.name | split("-") | last')
+        jqd -n -e --argjson pods "$pods" --argjson ds "$validator" --arg n "$node" --arg rev "$revision" \
+            --arg cp "$CP_UID" --arg uid "$VALIDATOR_UID" '
+            def t: fromdateiso8601;
+            ([$pods.items[] | select(.metadata.labels.app == "nvidia-cuda-validator" and .spec.nodeName == $n
+                and owned_by($cp))] | max_by(.metadata.creationTimestamp)) as $p
+            | [$pods.items[] | select(.spec.nodeName == $n and .metadata.labels["controller-revision-hash"] == $rev
+                and controlled_by($uid))] as $current
+            | $p != null and ($current | length) == 1 and ($current[0] | (.metadata.deletionTimestamp == null) and cond("Ready"))
+            and ([$current[0].status.initContainerStatuses[]? | select(.name == "cuda-validation") | .state.terminated]
+                 | length == 1 and .[0].exitCode == 0
+                 and (.[0].startedAt | t) <= ($p.metadata.creationTimestamp | t)
+                 and ($p.metadata.creationTimestamp | t) <= (.[0].finishedAt | t))
+            and $p.status.phase == "Succeeded"
+            and (any($p.status.initContainerStatuses[]?; .name == "cuda-validation" and .state.terminated.exitCode == 0))
+            and ($ds.spec.template.spec.initContainers[] | select(.name == "cuda-validation")
+                 | any(.env[]?; .name == "WITH_WORKLOAD" and ((.value // "") | ascii_downcase) == "false") | not)' \
+            >/dev/null && echo yes || echo no
+    }
+    # The node's DCGM exporter pod serves GPU utilization for an NVIDIA GPU (local port-forward, up to 30 s).
+    dcgm_metrics() {
+        local node=$1 exporter pod log pid port body=""
+        exporter=$(read_json daemonset nvidia-dcgm-exporter -n nvidia-gpu-operator | jq -r '.metadata.uid')
+        pod=$(jqd -r --arg n "$node" --arg uid "$exporter" '[.items[] | select(controlled_by($uid)
+            and .metadata.deletionTimestamp == null and .metadata.labels.app == "nvidia-dcgm-exporter"
+            and .spec.nodeName == $n and cond("Ready"))] | if length == 1 then .[0].metadata.name else "" end' <<<"$pods")
+        [[ -n "$pod" ]] || { echo "no single Ready exporter pod"; return; }
+        log=$(mktemp)
+        oc --request-timeout=10s port-forward -n nvidia-gpu-operator "pod/$pod" :9400 --address=127.0.0.1 >"$log" 2>&1 &
+        pid=$!
+        for _ in $(seq 1 30); do
+            port=$(sed -n 's/^Forwarding from 127.0.0.1:\([0-9]*\) .*/\1/p' "$log" | head -1)
+            [[ -n "$port" ]] && body=$(curl -s --max-time 3 "http://127.0.0.1:$port/metrics" || true)
+            [[ "$body" == *'DCGM_FI_DEV_GPU_UTIL{'* && "$body" == *'modelName="NVIDIA '* ]] && break
+            sleep 1
+        done
+        kill "$pid" 2>/dev/null || true
+        rm -f "$log"
+        [[ "$body" == *'DCGM_FI_DEV_GPU_UTIL{'* && "$body" == *'modelName="NVIDIA '* ]] && echo yes || echo no
+    }
+    index=0
+    for node in $(jq -r '.[].metadata.name' <<<"$gpu_nodes"); do
+        index=$((index + 1))
+        check "GPU $index native CUDA vectorAdd success" "cuda_vectoradd $node" yes
+        check "GPU $index native DCGM metrics" "dcgm_metrics $node" yes
+    done
+    echo "Read-only CUDA/DCGM checks do not prove queue admission or dashboard persona visibility." \
+        "Follow the bounded admission procedure in OPERATIONS."
+else
+    echo "READINESS ONLY: CUDA/DCGM, queue admission and dashboard persona visibility remain separate acceptance."
+fi
+validation_summary

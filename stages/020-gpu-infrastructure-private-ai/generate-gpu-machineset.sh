@@ -70,7 +70,7 @@ source "$ROOT_DIR/scripts/shared/lib.sh"
 load_env >&2
 check_oc_logged_in >&2
 [[ -n "$SOURCE_MACHINESET" ]] || { echo "ERROR: select an active CPU worker MachineSet with --source." >&2; exit 1; }
-for cmd in oc jq ruby python3; do command -v "$cmd" >/dev/null || { echo "Missing command: $cmd" >&2; exit 1; }; done
+for cmd in oc jq ruby; do command -v "$cmd" >/dev/null || { echo "Missing command: $cmd" >&2; exit 1; }; done
 
 # Root volume sized for large modelcar images: a 100GB worker default hits
 # kubelet DiskPressure mid-pull (~36GB qwen modelcar + base images) and image
@@ -190,18 +190,11 @@ done <<<"$POOLS"
 if [[ "$WRITE" == "true" ]]; then
   # Every generated MachineSet keeps its live replica count: an exact-name exception per MachineSet goes into the
   # 020-gpu-machinesets Application manifest, which deploy.sh applies as it is.
-  python3 - "$ROOT_DIR" "$OUTPUT_DIR" "$APP_MANIFEST" "${NAMES[@]}" <<'PY_PATCH'
-import json, pathlib, subprocess, sys
-root, out_dir, manifest, names = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4:]
-def to_yaml(data):
-    return subprocess.check_output(['ruby', '-rjson', '-ryaml', '-e', 'puts YAML.dump(JSON.parse(STDIN.read))'], input=json.dumps(data), text=True)
-ignore = [{'group': 'machine.openshift.io', 'kind': 'MachineSet', 'name': n, 'namespace': 'openshift-machine-api',
-           'jsonPointers': ['/spec/replicas']} for n in sorted(names)]
-app_path = root / manifest
-app = json.loads(subprocess.check_output(['ruby', '-ryaml', '-rjson', '-e', 'puts JSON.generate(YAML.load_file(ARGV[0]))', str(app_path)], text=True))
-app['spec']['ignoreDifferences'] = ignore
-app_path.write_text(to_yaml(app))
-PY_PATCH
+  ignore=$(jq -n '[$ARGS.positional | sort[] | {group: "machine.openshift.io", kind: "MachineSet", name: .,
+    namespace: "openshift-machine-api", jsonPointers: ["/spec/replicas"]}]' --args "${NAMES[@]}")
+  ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV[0]))' "$ROOT_DIR/$APP_MANIFEST" |
+    jq --argjson ignore "$ignore" '[.spec.ignoreDifferences = $ignore]' | to_yaml >"$ROOT_DIR/$APP_MANIFEST.tmp"
+  mv "$ROOT_DIR/$APP_MANIFEST.tmp" "$ROOT_DIR/$APP_MANIFEST"
   echo "✓ Replica exceptions for ${#NAMES[@]} MachineSets written to $APP_MANIFEST"
   echo "  Review native provider identifiers, AMI compatibility, disk and retention before publishing."
 else
