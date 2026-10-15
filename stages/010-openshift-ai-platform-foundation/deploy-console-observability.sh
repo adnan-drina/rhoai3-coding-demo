@@ -34,6 +34,7 @@ ruby -ryaml -e 'a=YAML.load_file(ARGV[0]);a["spec"]["source"]["repoURL"]=ENV.fet
 # First write is our Application; COO owns the generated plugin/Perses.
 oc --request-timeout=10s apply -f "$manifest"
 python3 "$REPO_ROOT/scripts/shared/stage_apps.py" sync 010 --app 010-console-observability  # an unchanged render gets no automatic sync operation
+python3 "$REPO_ROOT/scripts/shared/stage_apps.py" wait 010 --app 010-console-observability --revision "$commit" --repo-url "$GIT_REPO_URL" --timeout 600
 deadline=$((SECONDS + 600))
 while (( SECONDS < deadline )); do
  if "$SCRIPT_DIR/validate-console-observability.sh"; then exit 0; fi

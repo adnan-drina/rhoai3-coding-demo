@@ -508,6 +508,7 @@ def main():
     p = sub.add_parser("wait")
     p.add_argument("stage"); p.add_argument("--revision", required=True); p.add_argument("--repo-url", required=True)
     p.add_argument("--timeout", type=int, default=1800)
+    p.add_argument("--app", action="append", help="wait for these components only (also script-deployed ones)")
     p = sub.add_parser("applications")
     p.add_argument("stage"); p.add_argument("--revision", required=True); p.add_argument("--repo-url", required=True)
     p = sub.add_parser("status")
@@ -530,8 +531,8 @@ def main():
                            log=lambda m: print(m, flush=True), wait=not args.no_wait):
             print("  " + line)
     elif args.command == "wait":
-        wait_for(args.stage, names(args.stage), args.revision, args.repo_url, args.timeout)
-        print("PASS Stage " + args.stage + " components Synced and Healthy at " + args.revision[:12])
+        wait_for(args.stage, args.app or names(args.stage), args.revision, args.repo_url, args.timeout)
+        print("PASS " + (", ".join(args.app) if args.app else "Stage " + args.stage + " components") + " Synced and Healthy at " + args.revision[:12])
     elif args.command == "applications":
         print(json.dumps({"apiVersion": "v1", "kind": "List", "items": stamped(args.stage, args.revision, args.repo_url)}))
     elif args.command == "status":

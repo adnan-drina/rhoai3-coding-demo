@@ -11,7 +11,8 @@ commit=$(git -C "$REPO_ROOT" rev-parse --verify "${2}^{commit}")
 paths=(gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/sandbox-storage.yaml stages/010-openshift-ai-platform-foundation/deploy-sandbox-storage.sh stages/010-openshift-ai-platform-foundation/validate-sandbox-storage.sh scripts/shared)
 git -C "$REPO_ROOT" diff --quiet "$commit" -- "${paths[@]}" || { echo "ERROR: Component differs from selected revision" >&2; exit 1; }
 [[ -z "$(git -C "$REPO_ROOT" ls-files --others --exclude-standard -- "${paths[@]}")" ]] || { echo "ERROR: Component has unpublished files" >&2; exit 1; }
-repo="${GIT_REPO_URL:-https://github.com/adnan-drina/rhoai3-coding-demo.git}"
+require_env GIT_REPO_URL "reviewed Stage 010 source repository"; assert_required_env
+repo="$GIT_REPO_URL"
 git ls-remote "$repo" | awk '{print $1}' | grep -Fx "$commit" >/dev/null || { echo "ERROR: Revision is not published" >&2; exit 1; }
 GIT_REPO_URL="$repo" python3 - <<'PY_ADOPT'
 import json,subprocess,os
@@ -36,14 +37,5 @@ sed -e "s|repoURL: .*|repoURL: $repo|" -e "s|targetRevision: .*|targetRevision: 
 # First write targets only this additive component, never the core foundation.
 oc --request-timeout=10s apply -f "$manifest"
 python3 "$REPO_ROOT/scripts/shared/stage_apps.py" sync 010 --app 010-sandbox-storage  # an unchanged render gets no automatic sync operation
-deadline=$((SECONDS+720))
-while (( SECONDS < deadline )); do
-  state=$(oc --request-timeout=10s get application 010-sandbox-storage -n openshift-gitops -o jsonpath='{.status.sync.revision} {.status.sync.status} {.status.health.status}')
-  if [[ "$state" == "$commit Synced Healthy" ]]; then
-    "$SCRIPT_DIR/validate-sandbox-storage.sh"
-    exit
-  fi
-  sleep 10
-done
-echo "ERROR: Sandbox storage reconciliation timed out" >&2
-exit 1
+python3 "$REPO_ROOT/scripts/shared/stage_apps.py" wait 010 --app 010-sandbox-storage --revision "$commit" --repo-url "$GIT_REPO_URL" --timeout 720
+"$SCRIPT_DIR/validate-sandbox-storage.sh"
