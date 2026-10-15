@@ -33,7 +33,7 @@ The normal fresh demo provisioning contract is standard cluster credentials, per
 
 The unused MCP Gateway prerequisite is retired from future installation; its former shared OperatorGroup remains untouched. OLM InstallPlans are atomic and can include other Subscriptions in the same namespace. A foreign Manual Subscription can hold Automatic subscriptions; preflight refuses that case rather than approving an unrelated plan or changing its policy. All repository-owned selections in a normal fresh namespace use Automatic. Previously reviewed combined upgrades are historical live actions, not required manual steps in the future path.
 
-No deployment helper in the normal 010/020/040/060 flow patches InstallPlan approval. The historical `approve-controller.py` remains an explicit manual audit/recovery utility and is not invoked by normal deployment. `approve-operators.sh` is a backward-compatible name for a read-only Automatic readiness wait.
+No deployment helper in the normal 010/020/040/060 flow patches InstallPlan approval. The historical `approve-controller.py` recovery utility was removed on 2026-10-15; it had no callers. `approve-operators.sh` is a backward-compatible name for a read-only Automatic readiness wait.
 
 ## Evidence and limits
 
