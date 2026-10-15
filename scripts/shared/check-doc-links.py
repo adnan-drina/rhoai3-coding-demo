@@ -20,7 +20,7 @@ product and the Git pin that must agree with it. This checker reports:
 
 Links are read from skills, component READMEs (gitops/stages/*/*/README.md),
 stage READMEs (stages/*/README.md) and top-level docs (docs/*.md, not
-docs/migration/). Static mode needs no network. Findings are attributed to
+their subdirectories). Static mode needs no network. Findings are attributed to
 a product family and, when they come from a skill, to that skill; a README or
 doc link belongs to the family of the product it links to. Default exit status is 1
 when a finding belongs to a family in converted_families or to a skill in
@@ -219,7 +219,7 @@ class Checker:
             if path.is_file() and path.suffix in TEXT_SUFFIXES:
                 yield path
         yield from sorted((self.root / "gitops" / "stages").glob("*/*/README.md"))
-        # Stage READMEs, top-level docs and the main README; docs/migration/ is history.
+        # Stage READMEs, top-level docs (not subdirectories) and the main README.
         yield from sorted((self.root / "stages").glob("*/README.md"))
         yield from sorted((self.root / "docs").glob("*.md"))
         if (self.root / "README.md").is_file():

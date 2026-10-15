@@ -114,7 +114,7 @@ oc get configmap gitlab-gitlab-chart-info -n gitlab-system -o jsonpath='{.data}'
 
 | Topic | Official guidance | This repository | Status |
 |---|---|---|---|
-| Installation method on OpenShift | Use the GitLab Operator on OpenShift, "otherwise you must update the security context constraints yourself" [1][2] | Offline chart render with namespace-scoped SCC bindings | Deviation (justified: one Argo CD owner and reviewable manifests, no Helm or Operator at runtime; 2026-10-13 decision in the [upgrade plan](../../../../docs/migration/070-upgrade-and-gitlab-plan-20261013.md)) |
+| Installation method on OpenShift | Use the GitLab Operator on OpenShift, "otherwise you must update the security context constraints yourself" [1][2] | Offline chart render with namespace-scoped SCC bindings | Deviation (justified: one Argo CD owner and reviewable manifests, no Helm or Operator at runtime; decided 2026-10-13) |
 | SCC | Operator binds `nonroot-v2` to `gitlab-app-nonroot`, a ServiceAccount with no other privileges [7]; `nonroot-v2` drops all capabilities and defaults seccomp to `runtime/default` [8] | `use` on `nonroot-v2` only, by name, in one namespace; no `anyuid` or `privileged` | Aligned |
 | Chart and application version | Chart 10.4.2 maps to GitLab 19.4.2 [4] | Lock and receipt both record 10.4.2 / 19.4.2 | Aligned |
 | External PostgreSQL | `global.psql.*` with a password Secret [10]; GitLab 19.x needs PostgreSQL 17.x–18.x [11] | `global.psql` to `gitlab-postgresql`; PostgreSQL 17.6 per the restore record in Operations | Aligned (version pinned by digest only) |

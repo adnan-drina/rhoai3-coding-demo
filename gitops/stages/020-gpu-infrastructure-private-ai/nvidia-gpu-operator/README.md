@@ -72,7 +72,7 @@ zero replicas, the operand DaemonSets schedule no pods and the `ClusterPolicy` s
 - **Installation.** Channel `v26.7`, Automatic approval, no `startingCSV`.
   `scripts/platform/check-operator-policy.py` requires the offered version to stay on 26.7 and at least `26.7.1`.
   Installed on this cluster: `gpu-operator-certified.v26.7.2`. NVIDIA's CLI example uses Manual approval [2];
-  this repository uses Automatic approval within a reviewed channel (see `docs/migration/035-operator-automatic-policy.md`).
+  this repository uses Automatic approval within a reviewed channel (see Fresh operator deployment in `docs/OPERATIONS.md`).
 - **Ordering.** Subscription at wave 1, `ClusterPolicy` at wave 2 with `SkipDryRunOnMissingResource`, because its
   CRD comes from the CSV.
 - **`ClusterPolicy` fields.** The spec is the operator's default example with these intentional choices:

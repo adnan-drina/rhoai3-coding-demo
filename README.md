@@ -201,4 +201,4 @@ Stage 120 teaches agentic development with `AGENTS.md` and reusable skills. This
 - [A guide to AI code assistants with Red Hat OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/01/28/guide-ai-code-assistants-red-hat-openshift-dev-spaces)
 - [Vibes, specs, skills, and agents: The four pillars of AI coding](https://developers.redhat.com/articles/2026/03/30/vibes-specs-skills-agents-ai-coding)
 
-Fresh platform deployment uses native Automatic operator approval on selected release channels, with compatible-version preflight and bounded readiness checks. `startingCSV` does not freeze future updates. The standard cluster-credential prerequisite and rolling-channel exceptions are listed in [operator deployment policy](docs/migration/035-operator-automatic-policy.md).
+Fresh platform deployment uses native Automatic operator approval on selected release channels, with compatible-version preflight and bounded readiness checks. `startingCSV` does not freeze future updates. The standard cluster-credential prerequisite and rolling-channel exceptions are listed in [Fresh operator deployment](docs/OPERATIONS.md#fresh-operator-deployment).

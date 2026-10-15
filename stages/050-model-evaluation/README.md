@@ -106,7 +106,7 @@ The evaluation foundation uses the platform, serving and governed-access stages;
 
 The stage is deployed as five Argo CD Applications at one reviewed revision: `050-mlflow` (tracking service, its data and the curated prompts project), `050-model-qualification` (the Evaluated Models project, candidate serving and the qualification pipeline), `050-evalhub` (EvalHub and its database), `050-evaluation-content` (collections and SWE-bench) and `050-oci-export`. A stopped candidate model shows `050-model-qualification` as Suspended; the other components stay Healthy.
 
-Use the [operations guide](../../docs/OPERATIONS.md) for deployment and validation. The [Stage 050 design and acceptance record](../../docs/migration/050-model-evaluation-plan.md) carries the benchmark, coding-pilot and trace-verification prerequisites. Validation separates service readiness from completed results and retained MLflow evidence.
+Use the [operations guide](../../docs/OPERATIONS.md) for deployment and validation. Validation separates service readiness from completed results and retained MLflow evidence.
 
 ## References
 
@@ -117,7 +117,6 @@ Use the [operations guide](../../docs/OPERATIONS.md) for deployment and validati
 - [MaaS observability and internal showback](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service)
 - [Feature-specific Technology Preview boundaries](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/release_notes/technology-preview-features_relnotes)
 - [ConfigIQ public project](https://github.com/redhat-performance/configiq) — future inference-sizing and GPU/cost comparisons.
-- [EvalHub workflows and configuration](../../docs/migration/050-evalhub-completion.md)
 
 ## Next Stage
 

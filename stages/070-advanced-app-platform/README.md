@@ -88,7 +88,7 @@ The ordinary delivery contract requires a passing quality gate and an exact inte
 
 ## Deploy And Validate
 
-Review the complete published and pending release diff and the [release checklist](../../docs/migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status) before publishing and deploying. Keep the models stopped during platform installation.
+Review the complete published and pending release diff before publishing and deploying. Keep the models stopped during platform installation.
 
 ```bash
 ./stages/070-advanced-app-platform/validate.sh --static
