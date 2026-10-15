@@ -2,100 +2,58 @@
 name: rhdh-monitoring
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when configuring monitoring, logging, and performance tracking for Red
-  Hat Developer Hub 1.10. Covers LOG_LEVEL configuration via Operator and Helm,
-  enabling ServiceMonitor metrics on OpenShift, Amazon Prometheus and
-  CloudWatch integration, Azure AKS monitoring and live logs, and Red Hat
-  Build of Keycloak OpenTelemetry metrics. Do NOT use for audit log
-  configuration or RBAC audit events; use rhdh-audit-logs. Do NOT use for
-  Segment web analytics or telemetry data collection; use rhdh-telemetry.
+  Use when someone asks about Red Hat Developer Hub 1.10 log levels or metrics:
+  setting the log level with the Operator, enabling metrics so the Operator
+  creates a ServiceMonitor, or AWS/AKS monitoring. Not used in this repo: the
+  Backstage CR enables no metrics. Do NOT use for audit events (use
+  rhdh-audit-logs), support data (use rhdh-diagnostic-data) or cluster
+  monitoring in general (use ocp-observability).
 ---
 
-# RHDH Monitoring
+# Developer Hub monitoring and logging
 
-Use this skill to configure monitoring, logging, and performance tracking
-for Red Hat Developer Hub 1.10.
+Thin skill, link-only stub: the feature is not used in this repo. Product
+behavior lives in the linked Developer Hub 1.10 sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is the product authority. This skill adapts
-the official Monitoring and Logging guide for this repo's demo posture.
+- Someone wants Developer Hub metrics in user workload monitoring, or more verbose backend logs.
 
-## Scope
+## Not used in this repo
 
-This skill covers:
+`gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/backstage.yaml`
+sets no `spec.monitoring`, so no ServiceMonitor exists for the portal.
+NetworkPolicy `platform-ingress`
+(`gitops/stages/070-advanced-app-platform/rhdh/network-policy.yaml`) already
+admits the monitoring namespaces. The documented Operator path is
+`spec.monitoring.enabled: true`, after which the Operator creates the
+ServiceMonitor; user workload monitoring must be on.
 
-- Application log level configuration (`LOG_LEVEL` environment variable)
-- Enabling metrics via `ServiceMonitor` on OpenShift Container Platform
-- Amazon Prometheus and CloudWatch integration
-- Azure AKS monitoring and live logs
-- Red Hat Build of Keycloak (RHBK) OpenTelemetry metrics
+Adopting it is a Stage 070 change: record the decision in
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` and convert this stub
+to a full thin skill.
 
-## Demo Policy
+## Official documentation (Developer Hub 1.10)
 
-For this repo:
+| Topic | Section |
+|---|---|
+| Log levels | [Log levels][l1] |
+| Set the log level with the Operator | [Set the log level with the Operator][l2] |
+| Observability on OpenShift | [Observability on OpenShift][l3] |
+| Metrics with the Operator | [Metrics with the Operator][l4] |
+| Keycloak metrics | [Keycloak metrics][l5] |
 
-- Treat monitoring as optional platform infrastructure until a demo step
-  explicitly introduces it.
-- The OCP deployment path (ServiceMonitor) is the primary focus for this demo.
-- AWS and AKS monitoring sections are documented for reference but are not
-  part of the default demo flow.
-- Do not commit cloud provider credentials or Prometheus endpoints.
-- Use `ocp-observability` for the underlying OCP monitoring stack before
-  applying RHDH-specific monitoring configuration.
+## Related skills
 
-## Workflow
+`rhdh-audit-logs`, `rhdh-diagnostic-data`, `ocp-observability`.
 
-### Log Level Configuration
-
-1. Set `LOG_LEVEL` via the Backstage CR (Operator) or `values.yaml` (Helm).
-2. Supported values in order of increasing severity: `debug`, `info` (default),
-   `warn`, `error`, `critical`.
-
-### OCP Metrics Enablement (Operator)
-
-1. Confirm monitoring for user-defined projects is enabled on the cluster.
-2. Edit the Backstage CR to set `spec.monitoring.enabled: true`.
-3. The Operator creates a `ServiceMonitor` named `metrics-<cr_name>`
-   automatically with correct labels.
-4. Verify in the OpenShift web console under Observe > Dashboard.
-
-### OCP Metrics Enablement (Helm)
-
-1. Confirm monitoring for user-defined projects is enabled on the cluster.
-2. Set `upstream.metrics.serviceMonitor.enabled: true` and
-   `upstream.metrics.serviceMonitor.path: /metrics` in `values.yaml`.
-3. Upgrade the Helm release.
-4. Verify in the OpenShift web console under Observe > Dashboard.
-
-### RHBK Metrics
-
-The RHBK backend plugin exposes OpenTelemetry counters:
-
-| Metric | Description |
-|--------|-------------|
-| `backend_keycloak_fetch_task_failure_count_total` | Fetch task failures with no data returned |
-| `backend_keycloak_fetch_data_batch_failure_count_total` | Partial data batch failures |
-
-All counters include the `taskInstanceId` label for tracing individual fetch
-task executions. Query with PromQL in Prometheus UI or Grafana.
-
-## Verification Commands
-
-```bash
-oc get servicemonitor -n <rhdh-namespace>
-oc get pods -l app.kubernetes.io/name=developer-hub -n <rhdh-namespace>
-oc logs deployment/<rhdh-deployment> -n <rhdh-namespace> | head -20
-```
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[l1]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/monitoring_and_logging/index#log-levels_monitoring-and-logging
+[l2]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/monitoring_and_logging/index#configure-the-log-level-with-the-rhdh-operator_log-levels
+[l3]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/monitoring_and_logging/index#enable-observability-for-rhdh-on-ocp_monitoring-and-logging
+[l4]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/monitoring_and_logging/index#enable-metrics-monitoring-in-a-rhdh-operator-installation-on-an-ocp-cluster_enable-observability-for-rhdh-on-ocp
+[l5]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/monitoring_and_logging/index#rhbk-metrics_monitoring-and-logging-rhdh-on

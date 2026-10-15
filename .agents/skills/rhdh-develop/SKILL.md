@@ -2,107 +2,101 @@
 name: rhdh-develop
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when documenting software development workflows, CI/CD management,
-  service monitoring, and code quality tools in Red Hat Developer Hub 1.10.
-  Covers Bulk Import (Technology Preview), Software Catalog management,
-  and Software Template usage. Do NOT use for TechDocs documentation
-  lifecycle (use rhdh-techdocs-manage) or adoption analytics
-  (use rhdh-adoption-insights).
+  Use when working with this demo's Developer Hub software catalog and
+  Software Templates: the generated runtime catalog, the two golden-path
+  templates (agentic-quarkus-scaffold "New Quarkus app", app-migration
+  "Application migration"), GitLab discovery of catalog-info.yaml, why
+  developers cannot register components, and why Bulk Import is not used. Do
+  NOT use for TechDocs (use rhdh-techdocs-manage), plugin tabs (use
+  rhdh-dynamic-plugins-usage), GitLab integration settings (use
+  rhdh-git-integration), or the Stage 130 migration run itself.
 ---
 
-# RHDH Software Development and Management
+# RHDH software development and management
 
-Use this skill for Red Hat Developer Hub 1.10 software development and
-management workflows grounded in official product documentation.
+Thin skill: how this portal's catalog and templates are produced and governed;
+generic catalog and template usage is in the linked Developer Hub 1.10
+sections. Detailed record: `gitops/stages/070-advanced-app-platform/rhdh/README.md`
+("Catalog generation", "Catalog sources") and
+`rhdh/templates/app-migration/delivery-path.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers Bulk Import,
-Software Catalog, and Software Template workflows.
+- Changing `rhdh/catalog/all.yaml` (Users, Group, Domain, System, Component
+  `coolstore-inventory-service`, API, one model Resource, two template
+  Locations) or a template under `rhdh/templates/`.
+- A template or entity is missing, duplicated, or flaps between 200 and 404.
+- Explaining what a developer can and cannot do in the catalog.
 
-## Key Capabilities
+## Repo decisions
 
-1. **Bulk Import (Technology Preview)** — Import multiple GitHub repositories
-   and GitLab projects into the catalog. Requires user OAuth tokens and
-   `bulk.import` RBAC permission. Creates pull requests with
-   `catalog-info.yaml` files.
-2. **Software Catalog** — Centralized view of all software (components, APIs,
-   resources). Metadata stored as YAML alongside code. Register manually, via
-   templates, or via Bulk Import.
-3. **Software Templates** — YAML-defined scaffolding for new components.
-   Sequential actions (code scaffolding, repo creation) with conditional steps.
-   Import existing templates via `catalog.rules` and `catalog.locations`.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| The runtime catalog is generated: bundle ConfigMap (content-hashed) → `render_catalog.py verify` against the GitLab mirror at the synced revision → `catalog-runtime-rhdh`, stamped with `rhoai3.redhat.com/catalog-revision` | `gitops/stages/070-advanced-app-platform/rhdh/jobs/catalog/`, `rhdh/jobs/generate-rhdh-catalog.yaml`, `rhdh/catalog/all.yaml` | [Centralize components in the catalog][catalog] |
+| Only the file location may introduce `Template` entities; template Locations point at the same pinned revision and older ones are pruned | `rhdh/rhdh-instance/app-config-configmap.yaml` (`catalog.locations`, `catalog.rules`), `render_catalog.py` | [Import an existing Software Template][import-tpl] |
+| GitLab discovery reads `catalog-info.yaml` on `main` in group `rhoai-workloads` every minute and may not ingest templates; `orphanStrategy: delete` | `app-config-configmap.yaml` (`catalog.providers.gitlab.workloads`) | [Update existing components][update] |
+| Templates publish private GitLab repositories (`publish:gitlab`) and open an enrollment issue (`gitlab:issues:create`); they never call `catalog:register` | `rhdh/templates/agentic-quarkus-scaffold/template.yaml`, `rhdh/templates/app-migration/template.yaml` | [Create a component from a template][create-tpl] |
+| `ai-developer` may read the catalog and run templates; `catalog.location.create`, `catalog.entity.create`, `catalog.entity.delete` are denied | `rhdh/rhdh-instance/rbac-policy.yaml` | [Register components manually][register] |
+| No Bulk Import: projects enter only through templates and the enrollment coordinator | — | [Import your team's codebase][bulk] |
 
-## Bulk Import
+## Procedure
 
-- Plugins: `red-hat-developer-hub-backstage-plugin-bulk-import-backend-dynamic`
-  and `red-hat-developer-hub-backstage-plugin-bulk-import` (disabled by default)
-- RBAC: `bulk.import` permission required for non-admin users
-- Audit log events: `BulkImportFindAllOrganizations`,
-  `BulkImportCreateImportJobs`, `BulkImportDeleteImportByRepo`, etc.
-- Import statuses: `Added`, `Waiting for approval`, `Empty`
-- Supports GitHub and GitLab source control tools
+1. Edit the catalog or a template in Git; keep placeholders in the
+   `__RHOAI3_*__` form the renderer resolves.
+2. Static checks: `./stages/070-advanced-app-platform/validate.sh --static`
+   (`render_catalog.test.py`, `app-migration-template.test.py`,
+   `security-boundaries.test.py`, `product-schemas.test.py`).
+3. After the OpenShift safety guard in `AGENTS.md`, deploy with
+   `./stages/070-advanced-app-platform/deploy.sh` and run `validate.sh`
+   ("Portal catalog bundle stamped", "Portal catalog has no unresolved
+   placeholders", "Portal templates use private GitLab mirror").
+4. Read-only checks:
 
-## Software Catalog
+   ```bash
+   oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations}{"\n"}'
+   oc get cronjob refresh-rhdh-catalog -n rhdh
+   ```
 
-- Entity kinds: Component, API, Resource, Template
-- Registration: manual `catalog-info.yaml`, Software Templates, Bulk Import
-- RBAC permissions: `catalog.entity.create`, `catalog.location.create`,
-  `catalog.entity.refresh`
-- Catalog refresh: up to 45 minutes; manual refresh via entity Overview tab
-- Starred entities for quick access
+## Pitfalls
 
-### catalog-info.yaml Shape
+- Generator refusals (`FACTORY_BUNDLE_MISMATCH`, `CATALOG_RENDER`):
+  `docs/TROUBLESHOOTING.md#rhdh-catalog-generator-refuses-factory_bundle_mismatch`.
+- A template flapping 200/404 means more than one Location for it:
+  `docs/TROUBLESHOOTING.md#rhdh-template-entity-returns-200-then-404-after-a-catalog-re-stamp`;
+  re-run the generator, do not restart RHDH as the fix.
+- `app-migration` refuses without the MaaS route annotations on the platform
+  entity: `docs/TROUBLESHOOTING.md#migration-workspace-creation-fails-with-factory_maas_route_missing`.
+- Template GitLab inputs must match the installed scaffolder action schemas
+  (`product-schemas.test.py`); the GitLab scaffolder module is Technology
+  Preview in 1.10 (`rhdh-dynamic-plugins-reference`).
+- Do not "fix" a missing entity by registering it in the UI: developers are
+  denied and admin registrations bypass the pinned bundle.
 
-```yaml
-apiVersion: backstage.io/v1alpha1
-kind: Component
-metadata:
-  name: <component_name>
-  description: <description>
-  tags: [example, service]
-  annotations:
-    github.com/project-slug: <org>/<repo>
-spec:
-  type: service
-  owner: group:default/<team>
-  lifecycle: production
-```
+## Official documentation (Developer Hub 1.10)
 
-## Software Templates
+| Topic | Section |
+|---|---|
+| Catalog | [Centralize components][catalog], [Add new components][add], [Update][update], [Find by kind][find], [Review YAML][yaml] |
+| Software Templates | [Create a component from a template][create-tpl], [Search templates][search-tpl], [Import a template][import-tpl] |
+| Bulk Import (not used) | [Import your team's codebase][bulk] |
 
-- Import via `catalog.rules: [allow: [Template]]` and `catalog.locations`
-- RBAC: `scaffolder.template.parameter.read`,
-  `scaffolder.template.step.read`, `scaffolder.task.create`
-- Access: Catalog > Self-service or Global Header Create (+)
-- Review step verifies parameters before scaffolding
+## Related skills
 
-## Workflow
+`rhdh-techdocs-manage`, `rhdh-dynamic-plugins-usage`, `rhdh-git-integration`,
+`rhdh-authorization`, `rhdh-getting-started-navigate`, `ocp-pipelines-cicd`.
 
-1. Read `references/official-doc-extraction.md` for exact configuration.
-2. Identify the task:
-   - Enabling Bulk Import plugins and RBAC
-   - Importing GitHub repositories or GitLab projects
-   - Registering components manually
-   - Creating components from Software Templates
-   - Importing existing Software Templates
-   - Filtering and searching the Software Catalog
-3. Use exact plugin package paths and RBAC permission names from the extraction.
-4. Validate using the verification steps per section.
-
-## Related Skills
-
-- `rhdh-techdocs-manage` — TechDocs documentation lifecycle
-- `rhdh-adoption-insights` — Adoption analytics and engagement metrics
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[catalog]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/streamline_software_development_and_management_in_red_hat_developer_hub/index#centralize-your-software-components-in-the-rhdh-catalog_streamline-software-development-and-management-in-rhdh
+[add]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/streamline_software_development_and_management_in_red_hat_developer_hub/index#add-new-components-to-your-rhdh-instance_centralize-your-software-components-in-the-rhdh-catalog
+[register]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/streamline_software_development_and_management_in_red_hat_developer_hub/index#register-components-manually-in-your-rhdh-instance_centralize-your-software-components-in-the-rhdh-catalog
+[update]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/streamline_software_development_and_management_in_red_hat_developer_hub/index#update-existing-components-in-your-rhdh-catalog_centralize-your-software-components-in-the-rhdh-catalog
+[find]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/streamline_software_development_and_management_in_red_hat_developer_hub/index#find-components-by-kind-in-the-rhdh-catalog_centralize-your-software-components-in-the-rhdh-catalog
+[yaml]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/streamline_software_development_and_management_in_red_hat_developer_hub/index#review-the-yaml-configuration-of-your-rhdh-software-catalog_centralize-your-software-components-in-the-rhdh-catalog
+[create-tpl]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/streamline_software_development_and_management_in_red_hat_developer_hub/index#create-a-software-component-using-software-templates_import-and-use-an-existing-software-template-for-faster-development
+[search-tpl]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/streamline_software_development_and_management_in_red_hat_developer_hub/index#search-and-filter-software-templates-in-your-rhdh-instance_import-and-use-an-existing-software-template-for-faster-development
+[import-tpl]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/streamline_software_development_and_management_in_red_hat_developer_hub/index#import-an-existing-software-template_import-and-use-an-existing-software-template-for-faster-development
+[bulk]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/streamline_software_development_and_management_in_red_hat_developer_hub/index#import-your-team-s-codebase-from-git_streamline-software-development-and-management-in-rhdh

@@ -2,188 +2,98 @@
 name: rhdh-techdocs-config
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when configuring the TechDocs plugin for reading and managing technical
-  documentation in Red Hat Developer Hub. Covers TechDocs builder modes, storage
-  backends (AWS S3, OpenShift Data Foundation), CI/CD generation, add-ons
-  (ReportIssue, TextSize, LightBox), third-party add-on packaging, and custom
-  add-on creation. Do NOT use for general RHDH configuration (use
-  rhdh-configure), appearance customization (use rhdh-customize), or upgrade
-  procedures (use rhdh-upgrade).
+  Use when changing or reviewing how this demo's Developer Hub builds and
+  stores TechDocs: the local builder, generator and publisher in
+  app-config-rhdh, the techdocs-ref annotations rendered into the runtime
+  catalog, and the decision not to use object storage or a CI docs pipeline.
+  Also use before proposing S3/ODF storage or TechDocs add-ons. Do NOT use
+  for reading or editing documentation content (use rhdh-techdocs-manage),
+  general app-config (use rhdh-configure), or ObjectBucketClaims (use
+  odf-object-bucket-claims).
 ---
 
-# RHDH TechDocs Config
+# RHDH TechDocs configuration
 
-Use this skill to configure the TechDocs plugin for Red Hat Developer Hub 1.10
-grounded in official product documentation.
+Thin skill: repo decisions and pitfalls here, product procedure in the linked
+Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` (Alignment row
+"TechDocs").
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers TechDocs concepts,
-builder modes, storage configuration, CI/CD pipeline generation, preinstalled
-and external add-ons, third-party add-on installation, and custom add-on
-creation.
+- A change touches the `techdocs:` block of
+  `rhdh/rhdh-instance/app-config-configmap.yaml`.
+- A docs page fails to build or render in the portal.
+- Someone proposes CI-built docs, object storage, or TechDocs add-ons.
 
-## TechDocs Overview
+## Repo decisions
 
-The TechDocs plugin is preinstalled and enabled by default. It provides:
-- Docs-like-code approach (Markdown stored alongside code)
-- MkDocs-based static HTML site generation
-- Built-in navigation and search
-- Extensible via add-ons
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `techdocs.builder: local`, `generator.runIn: local`, `publisher.type: local`: the portal builds docs itself (Deviation, justified: one platform docs source, no docs pipeline) | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/app-config-configmap.yaml` | [Configure TechDocs][configure] |
+| Docs source is the pinned platform revision in the private GitLab mirror: `backstage.io/techdocs-ref: url:__RHOAI3_PLATFORM_TREE_URL__`, rendered by the catalog generator to `<platform repo>/-/tree/<revision>` | `rhdh/catalog/all.yaml`, `rhdh/jobs/catalog/render_catalog.py` | [Configure TechDocs][configure] |
+| Docs are read from GitLab through the GitLab integration and `backend.reading.allow` for `${GITLAB_HOST}` | `app-config-configmap.yaml` | see `rhdh-git-integration` |
+| No object storage, no CI/CD publishing, no add-ons beyond product defaults | — | [Storage][storage], [CI/CD][cicd], [Add-ons][addons] |
 
-## Builder Modes
+## Procedure
 
-- **local** (default, not for production) — built-in builder generates HTML
-- **external** (production) — CI/CD pipeline generates docs, stores in cloud
-  storage
+1. Change TechDocs settings only in `app-config-configmap.yaml`; a change to the
+   docs source changes `catalog/all.yaml` and goes through the catalog
+   generator (bundle hash, GitLab byte check).
+2. Static checks: `./stages/070-advanced-app-platform/validate.sh --static`
+   (`render_catalog.test.py`).
+3. After the OpenShift safety guard in `AGENTS.md`, deploy with
+   `./stages/070-advanced-app-platform/deploy.sh`; then check read-only:
 
-## Storage Backends
+   ```bash
+   oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\.yaml}' | grep techdocs-ref
+   oc logs deployment/backstage-developer-hub -n rhdh -c backstage-backend --tail=300 | grep -i techdocs
+   ```
 
-### AWS S3
+## Pitfalls
 
-Required IAM permissions on bucket:
-- `s3:ListBucket` on `arn:aws:s3:::<bucket_name>`
-- `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`,
-  `s3:DeleteObjectVersion` on `arn:aws:s3:::<bucket_name>/*`
+- The 1.10 guide states the default local builder setup is not intended for
+  production ([Configure TechDocs][configure]); keep the deviation recorded
+  if this demo is reused as a production pattern.
+- A docs link that still contains `__RHOAI3_` means the runtime catalog was
+  not rendered: `docs/TROUBLESHOOTING.md#rhdh-catalog-generator-refuses-factory_bundle_mismatch`.
+- The 1.10 docs-adding procedures expect an `mkdocs.yml` and a `docs/`
+  directory with `index.md` at the referenced root, and show only the
+  `dir:.` form of `techdocs-ref` ([Add documentation][add-docs]). The platform
+  repository has no `mkdocs.yml`, and the repo uses `url:<tree>`; whether the
+  platform docs page renders is unverified here (check live before demoing).
+- Moving to S3 or ODF storage needs a bucket (an OBC, `odf-object-bucket-claims`),
+  credentials outside Git, and a CI step that builds and publishes the site;
+  that is a new design, not a config toggle.
 
-### OpenShift Data Foundation
+## Official documentation (Developer Hub 1.10)
 
-Uses `ObjectBucketClaim` CR with `storageClassName: openshift-storage.noobaa.io`.
+| Topic | Section |
+|---|---|
+| Overview | [About TechDocs][about] |
+| Builder and publisher | [Configure TechDocs][configure] |
+| Storage (not used) | [Storage for TechDocs files][storage], [Amazon S3][s3], [OpenShift Data Foundation][odf], [Operator object storage][odf-operator] |
+| CI/CD publishing (not used) | [Generate and publish TechDocs sites][cicd] |
+| Add-ons (not used) | [TechDocs add-ons][addons], [Operator install of an add-on][addon-operator], [Create an add-on][addon-create] |
 
-```yaml
-apiVersion: objectbucket.io/v1alpha1
-kind: ObjectBucketClaim
-metadata:
-  name: <rhdh_bucket_claim_name>
-spec:
-  generateBucketName: <rhdh_bucket_claim_name>
-  storageClassName: openshift-storage.noobaa.io
-```
+## Related skills
 
-Creating the OBC auto-generates a ConfigMap and Secret with access info.
+`rhdh-techdocs-manage`, `rhdh-configure`, `rhdh-git-integration`,
+`odf-object-bucket-claims`.
 
-### ODF with Helm chart
-
-```yaml
-upstream:
-  backstage:
-    extraEnvVarsSecrets:
-      - <rhdh_bucket_claim_name>
-    extraEnvVarsCM:
-      - <rhdh_bucket_claim_name>
-```
-
-### ODF with Operator
-
-```yaml
-apiVersion: rhdh.redhat.com/v1alpha5
-kind: Backstage
-metadata:
-  name: <name>
-spec:
-  application:
-    extraEnvs:
-      configMaps:
-        - name: <rhdh_bucket_claim_name>
-      secrets:
-        - name: <rhdh_bucket_claim_name>
-```
-
-## TechDocs Plugin Configuration
-
-### Helm chart example
-
-```yaml
-global:
-  dynamic:
-    includes:
-      - 'dynamic-plugins.default.yaml'
-  plugins:
-    - disabled: false
-      package: ./dynamic-plugins/dist/backstage-plugin-techdocs-backend-dynamic
-      pluginConfig:
-        techdocs:
-          builder: external
-          generator:
-            runIn: local
-          publisher:
-            type: awsS3
-            awsS3:
-              bucketName: '${BUCKET_NAME}'
-              credentials:
-                accessKeyId: '${AWS_ACCESS_KEY_ID}'
-                secretAccessKey: '${AWS_SECRET_ACCESS_KEY}'
-              endpoint: 'https://${BUCKET_HOST}'
-              region: '${BUCKET_REGION}'
-              s3ForcePathStyle: true
-```
-
-For Operator deployment, wrap the same plugin config inside a ConfigMap
-referenced by `spec.application.dynamicPluginsConfigMapName` in the Backstage CR.
-See `references/official-doc-extraction.md` for the full Operator example.
-
-## CI/CD Generation
-
-```bash
-npm install -g @techdocs/cli
-pip install "mkdocs-techdocs-core==1.*"
-techdocs-cli generate --no-docker
-techdocs-cli publish --publisher-type awsS3 \
-  --storage-name <bucket/container> \
-  --entity <Namespace/Kind/Name>
-```
-
-## TechDocs Add-ons
-
-| Add-on | Package | Type |
-|--------|---------|------|
-| ReportIssue | `backstage-plugin-techdocs-module-addons-contrib` | Preinstalled |
-| TextSize | `backstage-plugin-techdocs-module-addons-contrib` | External |
-| LightBox | `backstage-plugin-techdocs-module-addons-contrib` | External |
-
-### Enable external add-ons (Operator)
-
-```yaml
-plugins:
-  - package: ./dynamic-plugins/dist/backstage-plugin-techdocs-module-addons-contrib
-    disabled: false
-    pluginConfig:
-      dynamicPlugins:
-        frontend:
-          backstage.plugin-techdocs-module-addons-contrib:
-            techdocsAddons:
-              - importName: ReportIssue
-              - importName: TextSize
-              - importName: LightBox
-```
-
-## Workflow
-
-1. Read `references/official-doc-extraction.md` for exact YAML patterns.
-2. Identify the TechDocs task:
-   - Configure storage backend (AWS S3 or ODF)
-   - Set up CI/CD pipeline for doc generation
-   - Enable/configure TechDocs add-ons
-   - Install third-party add-ons
-3. Apply configuration to the appropriate resource.
-4. Restart RHDH pod to apply changes.
-5. Verify static files appear in storage and docs render in the UI.
-
-## Related Skills
-
-- `rhdh-configure` — Config maps, secrets, and infrastructure configuration
-- `rhdh-customize` — Appearance and feature customization
-- `rhdh-upgrade` — Upgrade procedures
-- `odf-object-bucket-claims` — ODF ObjectBucketClaim details
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[about]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/techdocs_for_red_hat_developer_hub/index#about-techdocs_techdocs-for-rhdh
+[configure]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/techdocs_for_red_hat_developer_hub/index#configure-techdocs_techdocs-for-rhdh
+[storage]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/techdocs_for_red_hat_developer_hub/index#configuring-storage-for-techdocs-files_configure-techdocs
+[s3]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/techdocs_for_red_hat_developer_hub/index#configure-amazon-s3-for-file-storage_configure-techdocs
+[odf]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/techdocs_for_red_hat_developer_hub/index#configure-for-file-storage_configure-techdocs
+[odf-operator]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/techdocs_for_red_hat_developer_hub/index#make-object-storage-accessible-to-containers-by-using-the-operator_configure-techdocs
+[cicd]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/techdocs_for_red_hat_developer_hub/index#configuring-ci-cd-to-generate-and-publish-techdocs-sites_configure-techdocs
+[addons]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/techdocs_for_red_hat_developer_hub/index#techdocs-add-ons_techdocs-for-rhdh
+[addon-operator]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/techdocs_for_red_hat_developer_hub/index#install-and-configure-an-external-techdocs-add-on-using-the-operator_install-and-configure-a-techdocs-add-on
+[add-docs]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/manage_and_consume_technical_documentation_within_red_hat_developer_hub/index#add-documentation-to-techdocs-for-your-project_manage-and-consume-technical-documentation-within-rhdh
+[addon-create]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/techdocs_for_red_hat_developer_hub/index#create-a-techdocs-add-on_techdocs-for-rhdh

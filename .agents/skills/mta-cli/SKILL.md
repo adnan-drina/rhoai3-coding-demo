@@ -2,208 +2,109 @@
 name: mta-cli
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "mta"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: mta
+  docs-version: "8.3"
   skill-group: "Application Modernization"
 description: >
-  Use when using the MTA CLI for application analysis, migration assessment,
-  and modernization. Do NOT use for UI workflows (use mta-ui), VS Code (use
-  mta-vscode), IntelliJ (use mta-intellij), or AI features (use
-  mta-lightspeed).
+  Use when running or reviewing MTA command-line analysis in this demo: the
+  digest-locked mta-cli 8.3.0 in the Stage 070 workspace image, the Stage 130
+  scan-with-mta analyze invocation (targets, custom rules with the canary, no
+  --source, containerless Java 21), the kantra fallback and its provenance
+  receipt, Hub profiles from a workspace, and analysis report review. Do NOT
+  use for writing rules (use mta-rules), Hub UI or native Agents (use mta-ui),
+  the operator install (use mta-install), or the IDE extension (use
+  mta-vscode).
 ---
 
 # MTA CLI
 
-Use this skill for command-line application analysis, transformation, and
-platform asset generation with Migration Toolkit for Applications (MTA) 8.3.
+Thin skill: repo decisions and pitfalls here, command reference in the linked
+MTA 8.3 CLI guide. Repo sources: `stages/070-advanced-app-platform/workspace-image/`
+and the Stage 130 scaffold skill
+`stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/analysis/scan-with-mta/`.
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **MTA 8.3**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A workspace analysis fails, falls back to kantra, or its receipt is not
+  admissible.
+- The workspace image's MTA CLI or Java runtime changes.
+- Someone adds an `analyze` option, a target, or a Hub profile to a workflow.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat docs are product authority. This skill covers the `mta-cli`
-binary for analysing Java and non-Java applications, transforming source code,
-generating deployment manifests, and reviewing analysis reports.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `mta-cli` 8.3.0 at `/opt/mta-cli` (symlinked to `/usr/local/bin`), archive and binary SHA-256 locked; `MTA_CLI_HOME=/opt/mta-cli` | `stages/070-advanced-app-platform/workspace-image/Dockerfile`, `artifacts.lock.json` | [Install the CLI from a .zip][zip] |
+| Image check proves hashes, the Java external provider, the analyzer bundle, `mta-cli version` and Java 21 | `stages/070-advanced-app-platform/workspace-image/verify-image.py` | — |
+| Containerless Java analysis on Java 21 (the analyzer bundle wedges on 17) | `.../scan-with-mta/scripts/mta-analyze-legacy.sh` | [Containerless mode][containerless] |
+| Migration workspaces set `JVM_MAX_MEM=8G` (below the 12Gi container limit), `HUB_URL` from the template, `HUB_INSECURE=false` | `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/devfile.yaml` | [Containerless mode][containerless] |
+| Invocation: `analyze --input <frozen copy> --output … --target <each> --rules <custom ruleset> --json-output --overwrite`; never `--source` | `.../scan-with-mta/scripts/mta-analyze-legacy.sh` | [analyze options][flags] |
+| Targets come from `migration.yaml` `analysis.targets`; the custom ruleset carries a canary rule that must fire | `.../.hermes/planning/mta-rules/rhoai3-canary.yaml` | see `mta-rules` |
+| Community kantra is a provisional fallback only: receipt `provenance: kantra-fallback` is non-admissible | `.../scan-with-mta/scripts/emit-mta-receipt.py`, `.agents/rules/ensure-cli-capability.md` | — |
+| Workspaces get the Hub URL from ConfigMap `mta-hub-config` (`MTA_HUB_URL`); TLS verification stays on | `gitops/stages/070-advanced-app-platform/mta/jobs/mta-hub-workspace-config.yaml` | [Connect the CLI to the Hub][hub] |
 
-## Supported Languages
+## Procedure
 
-| Language | Support level |
-|----------|---------------|
-| Java | GA — containerless and container modes |
-| Go | GA |
-| .NET | Developer Preview |
-| Node.js | Technology Preview |
-| Python | Technology Preview |
+1. Change the CLI only through the workspace image lock and verifier; the
+   operator (8.3.1) and the workspace CLI (8.3.0) are qualified separately
+   (`docs/OPERATIONS.md#stage-070--mta-mta-component`).
+2. In a workspace, prove usability, not presence:
 
-## Key Concepts
+   ```bash
+   mta-cli version
+   readlink -f "$(command -v mta-cli)"   # expect /opt/mta-cli/mta-cli
+   ```
 
-### Containerless Mode
+   Image builds prove the full contract with `verify-image.py`.
 
-Default for Java applications. Requires JDK 17+, Maven 3.9.9+, JAVA_HOME,
-`mvn` on PATH and an explicitly sized JVM_MAX_MEM.
-Disable with `--run-local=false` to use container runtime.
+3. Stage 130 analysis runs through the scaffold scripts, never by hand-built
+   argv; check the receipt in `evidence/producers/mta.json`
+   (`provenance`, `admissible`, `binary_realpath`).
+4. Static checks: `./stages/130-ai-autonomous-migration/validate.sh` and
+   the scaffold tests under `scan-with-mta/scripts/*.test.py`.
 
-### Container Mode
+## Pitfalls
 
-Required for non-Java languages. Uses Podman (or Docker as unsupported
-alternative). Automatically used when non-Java providers are detected.
+- An executable file or version string is not analyzer qualification; a
+  shipped non-executable ruleset fixture once pushed `ensure_cli` to kantra:
+  `docs/TROUBLESHOOTING.md#stage-130-mta-receipt-is-kantra-fallback-though-overlay-mta-cli-is-821`.
+- `--source` narrows rule selection and excluded the custom rules; the
+  canary then reports `CANARY_MISSING`.
+- `--overwrite` empties the output directory when the analyzer starts; keep
+  receipts outside it.
+- Deprecated commands still exist but have replacements; check
+  [Deprecated commands][deprecated] before scripting one.
+- Image, CLI and VSIX versions drift independently; see
+  `docs/TROUBLESHOOTING.md#stage-070-workspace-tools-or-mta-ai-are-unavailable`.
 
-### Analysis Profiles
+## Official documentation (MTA 8.3)
 
-Technology Preview feature. Download standardised analysis configurations from
-the MTA Hub (`mta-cli config sync`). Profiles include target/source
-technologies, custom rules, and label selectors.
+| Topic | Section |
+|---|---|
+| Install | [.zip install][zip], [Disconnected][disc] |
+| Commands | [Command structure][structure], [Deprecated commands][deprecated] |
+| Java analysis | [Single application][single], [Containerless mode][containerless], [analyze options][flags] |
+| Other languages | [Provider and rules options][provider] |
+| Hub profiles | [Connect to the Hub][hub], [Analyze with a profile][profile] |
+| Reports and known issues | [Report sections][report], [Issues and incidents][incidents], [Known issues][known] |
+| Transformation (not used) | [OpenRewrite transformation][transform] |
 
-## Workflow
+## Related skills
 
-1. Read `references/source-capture.md` and confirm the product baseline.
-2. Read `references/official-doc-extraction.md` for detailed procedures.
-3. Install the `mta-cli` binary.
-4. Select analysis mode:
-   - Single application analysis
-   - Bulk analysis (Developer Preview)
-   - Non-Java language analysis
-   - Profile-based analysis from MTA Hub
-5. Run analysis and review reports.
-6. Optionally run transformations (`openrewrite`).
-7. Optionally generate deployment manifests (`discover` / `generate helm`).
+`mta-rules`, `mta-ui`, `mta-vscode`, `mta-release-notes`, `manage-devspaces`.
 
-### Single Application Analysis
-
-Select the intended target and confirm that all required rules match the
-source/target label filters. Unlabeled-rule behavior measured on 8.2 does
-not qualify 8.3; verify inclusion on the upgraded provider:
-
-```shell
-mta-cli analyze --input <path_to_input> \
-  --output <path_to_output> \
-  --target <target_name>
-```
-
-When adding `--source`, verify matching source labels and the actual rules selected.
-
-### List Available Targets
-
-8.3 uses the rules subcommand; the analyze flag is a deprecated
-compatibility form, not the default for new scripts:
-
-```shell
-mta-cli rules list-targets
-mta-cli analyze --list-targets
-```
-
-### Non-Java Analysis
-
-```shell
-mta-cli analyze --input <path_to_input> \
-  --output <path_to_output> \
-  --provider <language_provider> \
-  --rules <path_to_custom_rules>
-```
-
-### Profile-Based Analysis
-
-```shell
-mta-cli config login
-mta-cli config sync --url https://<git-host>/<group>/<repo> \
-  --application-path <path>
-mta-cli analyze -i <path> -o <report_path> --overwrite --mode source-only
-```
-
-### Source Code Transformation
-
-```shell
-mta-cli openrewrite --list-targets
-mta-cli openrewrite --input=<source_path> --target=<recipe>
-```
-
-Requires container runtime. Available recipes: `javax`-to-`jakarta` imports,
-bootstrapping files, `persistence.xml`, and Spring Boot-to-Quarkus properties.
-
-### Platform Asset Generation (Developer Preview)
-
-```shell
-mta-cli discover cloud-foundry --input <manifest> --output-dir <dir>
-mta-cli generate helm --chart-dir <chart> --input <discovery.yaml> \
-  --output-dir <dir>
-```
-
-## Key CLI Options
-
-| Option | Description |
-|--------|-------------|
-| `--input` | Path to application source or binary |
-| `--output` | Output directory for reports |
-| `--source` / `--target` | Source and target technologies (label filters; unlabeled rules excluded) |
-| `--rules` | Custom rule files or directory |
-| `--label-selector` | Filter rules by label expression |
-| `--provider` | Language provider for non-Java analysis |
-| `--run-local` | Enable/disable containerless mode (default: true) |
-| `--bulk` | Analyse multiple apps with shared output (Dev Preview) |
-| `--mode` | `full` (default) or `source-only` |
-| `--overwrite` | Overwrite existing output directory |
-| `--skip-static-report` | Skip HTML report generation |
-| `--json-output` | Boolean: also write `output.json` (and `dependencies.json`) into `--output`; takes no path. MTA CLI 8.2.1 exits 1 after a completed analysis when `dependencies.yaml` has nested `baseDep.extras` ("json: unsupported type: map[interface {}]interface {}"); `output.json` is already written |
-| `--enable-default-rulesets` | Include default rules (default: true) |
-
-## Analysis Report Sections
-
-| Section | Purpose |
-|---------|---------|
-| Dashboard | Overview of incidents and story points by category |
-| Issues | Summary of migration issues requiring attention |
-| Dependencies | Java-packaged dependencies found in the application |
-| Technologies | Embedded libraries grouped by functionality |
-| Insights | Zero-effort rule violations and technology tags (Tech Preview) |
-
-## Story Points
-
-| Level | Points | Meaning |
-|-------|--------|---------|
-| Information | 0 | Low-priority informational warning |
-| Trivial | 1 | Simple library swap, minimal API changes |
-| Complex | 3 | Documented but complex changes |
-| Redesign | 5 | Complete library change, significant API changes |
-| Rearchitecture | 7 | Complete component rearchitecture |
-| Unknown | 13 | Solution not known, possible rewrite |
-
-## Validation
-
-```shell
-mta-cli rules list-targets
-mta-cli analyze --list-targets
-mta-cli provider list
-mta-cli rules list-sources
-```
-
-## Known Issues
-
-- Podman on Windows: RHEL 9 / UBI 9 images require x86-64-v2 CPU support.
-  Workaround: use Docker by setting `CONTAINER_TOOL=/usr/local/bin/docker`.
-- `--provider` must be specified for non-Java analysis or the analysis may fail
-  if unsupported providers are discovered.
-- Bulk analysis (`--bulk`) is Developer Preview; not production-ready.
-- `--source` / `--target` exclude rules without matching labels (documented in
-  MTA 7.1; omitted from 8.1/8.2 Rule metadata docs; confirmed on 8.2 runs).
-
-## Related Skills
-
-- `mta-lightspeed` — AI-assisted code migration with LLM integration.
-- `mta-ui` — web UI analysis and assessment workflows.
-- `mta-install` — MTA Operator installation and Tackle CR management.
-- `mta-vscode` — VS Code extension (non-AI features).
-- `mta-intellij` — IntelliJ IDEA plugin workflows.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[zip]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/installing_the_migration_toolkit_for_applications/index#installing-cli-zip_installing-mta-cli
+[disc]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/installing_the_migration_toolkit_for_applications/index#installing-mta-disconnected-environment_installing-mta-cli
+[structure]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#cli-command-structure_about-the-command-line-tool
+[deprecated]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#deprecated-commands-and-options_about-the-command-line-tool
+[single]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#analyzing-single-app-wth-mta-cli_analyzing-applications-mta-cli
+[containerless]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#running-the-containerless-mta-cli_analyzing-applications-mta-cli
+[flags]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#mta-cli-analyze-flags_analyzing-applications-mta-cli
+[provider]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#provider-and-rules-command-options_analyzing-nonjava-applications
+[hub]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#connect-cli-hub_analyzing-apps-profiles
+[profile]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#analyzing-app-with-profile_analyzing-apps-profiles
+[report]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#analysis-report-sections_reviewing-analysis-reports
+[incidents]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#reviewing-analysis-issues-and-incidents_reviewing-analysis-reports
+[known]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#cli-known-issues_cli-guide
+[transform]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#transforming-application-source-code_performing-transformation

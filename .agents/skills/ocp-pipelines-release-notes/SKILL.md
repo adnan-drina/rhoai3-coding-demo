@@ -2,57 +2,71 @@
 name: ocp-pipelines-release-notes
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_pipelines
+  docs-version: "1.24"
   skill-group: "OpenShift Platform"
 description: >
-  Use when answering questions about Red Hat OpenShift Pipelines 1.24 release
-  notes: version compatibility matrix, new features and enhancements, breaking
-  changes, deprecated features, removed features, Technology Preview features,
-  known issues, fixed issues, component versions, and supported OCP versions.
-  Do NOT use for installing or configuring OpenShift Pipelines, creating CI/CD
-  pipelines or tasks, Pipelines as Code setup and configuration, Tekton CRD
-  authoring, security policy, observability, or general OpenShift Pipelines
-  operational guidance.
+  Use when checking OpenShift Pipelines 1.24 version posture for this demo:
+  which z-stream runs, supported OpenShift versions, component versions,
+  breaking changes, deprecated and removed features, and what to read before
+  moving the pipelines-1.24 channel. Do NOT use for installing or configuring
+  the operator (use ocp-pipelines-install-config), pipeline authoring (use
+  ocp-pipelines-cicd), or security (use ocp-pipelines-security).
 ---
 
-# OpenShift Pipelines Release Notes — 1.24
+# OpenShift Pipelines 1.24 release posture
 
-Read `references/source-capture.md` and the current-update section of
-`references/official-doc-extraction.md` for release-specific claims.
+Thin skill: the repo's version facts here, release content in the linked
+OpenShift Pipelines 1.24 release notes.
 
-## Current documented patches
+## When to use
 
-The captured guide covers **1.24.0 and 1.24.1**. This branch currently selects
-1.24.0 for deployment; availability and qualification of 1.24.1 remain separate.
+- Before changing the channel in
+  `gitops/stages/070-advanced-app-platform/pipelines/operators/pipelines-subscription.yaml`.
+- A z-stream lands (Automatic approval) and behavior changes.
 
-1.24.1 removes the cluster-wide system:authenticated approval grant from Manual
-Approval Gate and enforces immutable approval parameters and approver entries.
-Use explicit namespace RoleBindings for approvers. Manual Approval Gate remains
-Technology Preview.
+## Repo decisions
 
-## Compatibility and breaking changes
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Channel `pipelines-1.24`, Automatic; patch updates arrive without review (1.24.1 live on 2026-10-15) | `gitops/stages/070-advanced-app-platform/pipelines/operators/pipelines-subscription.yaml` | [Compatibility and support matrix][matrix] |
+| The validator accepts any `openshift-pipelines-operator-rh.v1.24.*` | `stages/070-advanced-app-platform/validate.sh` | — |
+| Docs version and Git pin are tied in the doc map | `.agents/references/red-hat-doc-map.yaml` (`ocp_pipelines`) | — |
 
-The 1.24 matrix lists Pipelines 1.15.x, Triggers 0.37.x, CLI 0.46.x, Chains
-0.29.x, PAC 0.50.x and Results 0.20.x. Supported OCP versions listed are 4.14,
-4.16, 4.18, 4.19, 4.20, 4.21 and 4.22. Check the current lifecycle matrix and
-installed CSV rather than equating Operator and upstream component versions.
+## Procedure
 
-- PAC removes Tekton Hub integration; use Artifact Hub. The 1.24 matrix no
-  longer includes a Hub component.
-- GitLab source lookups use the immutable event SHA; new-branch pushes and
-  token rotation have specific fixes.
-- Infrastructure metrics move to OpenTelemetry prefixes. Audit dashboards
-  against the actual endpoints after an upgrade.
-- Multicluster/Kueue and manual approval retain their preview boundaries.
+1. Read the [matrix][matrix]: OpenShift 4.22 is listed for 1.24.
+2. For each z-stream, read its breaking changes and fixed issues; for a new
+   minor, read [deprecated][deprecated] and [removed][removed] features and
+   search the repo for each removed item (`git grep -n -i <feature>`).
+3. Then follow `ocp-pipelines-install-config` (procedure step 4).
 
-Use the current release chapters, not retained 1.22 notes, for claims about
-new features, fixes or current support.
+## Pitfalls
 
-## References
+- 1.24.1's only breaking change is in Manual Approval Gate (explicit
+  RoleBindings needed); the repo does not use Manual Approval Gate.
+- Pipelines as Code dropped Tekton Hub integration in 1.24; the repo uses
+  neither (see `ocp-pipelines-tekton-hub`).
+- A z-stream can drop an operand: see
+  `docs/TROUBLESHOOTING.md#pipelines-1226-template-publishes-but-provisioning-never-starts`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
+## Official documentation (OpenShift Pipelines 1.24)
+
+| Topic | Section |
+|---|---|
+| Versions and OpenShift support | [Compatibility and support matrix][matrix] |
+| 1.24.1 | [Release notes 1.24.1][r1241], [Breaking changes][r1241-break] |
+| 1.24.0 | [Release notes 1.24.0][r1240], [New features][new], [Deprecated][deprecated], [Removed][removed] |
+
+## Related skills
+
+`ocp-pipelines-install-config`, `ocp-pipelines-tekton-hub`, `ocp-pipelines-as-code`.
+
+[matrix]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#compatibility-support-matrix_op-release-notes-1-24
+[r1241]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#op-release-notes-1-24-1_op-release-notes-1-24
+[r1241-break]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#breaking-changes-1-24-1_op-release-notes-1-24
+[r1240]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#op-release-notes-1-24-0_op-release-notes-1-24
+[new]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#new-features-and-enhancements-1-24-0_op-release-notes-1-24
+[deprecated]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#deprecated-features-1-24-0_op-release-notes-1-24
+[removed]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#removed-features-1-24-0_op-release-notes-1-24

@@ -2,162 +2,102 @@
 name: rhdh-getting-started-navigate
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when learning to navigate the Red Hat Developer Hub 1.10 interface, log
-  in, verify identity, discover software components, use Software Templates,
-  browse TechDocs, test APIs, search for resources, use Developer Lightspeed
-  for RHDH, manage extensions, customize interface settings, or star items
-  for quick access. Do NOT use for installing or configuring a RHDH instance
-  (use rhdh-getting-started-setup).
+  Use when guiding a developer or presenter through this demo's Developer
+  Hub on day one: signing in through the Keycloak platform realm as
+  ai-developer or ai-admin, the global header and its application links,
+  finding coolstore-inventory-service, running the "New Quarkus app" or
+  "Application migration" template, reading TechDocs, and what the portal does
+  not offer here (Developer Lightspeed chat, Extensions installs). Do NOT use
+  for installing or configuring the instance (use
+  rhdh-getting-started-setup).
 ---
 
-# RHDH Getting Started — Navigate
+# RHDH getting started: navigate
 
-Use this skill to ground developer onboarding and navigation guidance in the
-official Red Hat Developer Hub 1.10 documentation for the active baseline in
-`docs/PLATFORM_BASELINE.md`.
+Thin skill: what a user finds in this portal; generic navigation is in the
+linked Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` and the Stage 070
+README `stages/070-advanced-app-platform/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+- Preparing or giving the Stage 070 portal walkthrough, or the entry steps of
+  Stages 110–130.
+- A user cannot sign in, cannot see an entity, or cannot run a template.
 
-## Purpose of RHDH
+## Repo decisions
 
-Red Hat Developer Hub is an internal developer portal (IDP) that centralizes
-infrastructure management, software project generation, tools and services, and
-technical documentation. It reduces context switching by unifying code
-repositories, CI/CD, monitoring, and API documentation in one interface.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Sign-in only through OIDC (`signInPage: oidc`) to Keycloak realm `platform`; no guest | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/app-config-configmap.yaml` | [Log in to RHDH][login] |
+| Two personas: `ai-admin` (RBAC policy admin) and `ai-developer` (`role:default/developer`) | `rhdh/catalog/all.yaml`, `rhdh/rhdh-instance/rbac-policy.yaml` | [Log in and verify your profile][profile] |
+| Portal title "RHOAI Coding Demo Portal"; the global header is declared explicitly (full default header kept) | `app-config-configmap.yaml` (`app.title`, `dynamicPlugins.frontend` global header) | [Using the global header][header] |
+| Catalog scope: one Component `coolstore-inventory-service`, API `inventory-api`, System `coolstore`, Resource `maas-private-code-model-qwen`, two templates | `rhdh/catalog/all.yaml` | [Find software components][find] |
+| Templates: `agentic-quarkus-scaffold` ("New Quarkus app") and `app-migration` ("Application migration") | `rhdh/templates/` | [Create a component from a template][template] |
+| Developer Lightspeed chat is not configured (recorded Gap); the AI help chapters do not apply | `rhdh/README.md` (Alignment) | [AI-assisted help][ai] |
+| The portal is reached from the OpenShift application menu (ConsoleLink `rhdh`) | `rhdh/rhdh-instance/consolelink.yaml` | — |
 
-Core capabilities:
-- **Software Catalog** — centralized inventory of components, APIs, systems
-- **Software Templates** — self-service project scaffolding
-- **TechDocs** — docs-as-code rendered inside the portal
-- **Plugins** — extend with Jira, Jenkins, ArgoCD, Kubernetes, etc.
-- **Global Search** — unified search across the software ecosystem
+## Procedure
 
-## Onboarding Workflow
+1. Open the portal from the OpenShift console application menu, sign in as
+   `ai-developer`, check the profile shows `user:default/ai-developer`.
+2. Catalog: filter by kind Component, open `coolstore-inventory-service`; the
+   Docs, Topology, CI and Argo CD tabs come from the plugins
+   (`rhdh-dynamic-plugins-usage`).
+3. Create: choose a template; inputs, refusals and the created workspace are
+   described in the template files and `rhdh/templates/app-migration/delivery-path.md`.
+4. If something is missing, check read-only after the OpenShift safety guard
+   in `AGENTS.md`:
 
-1. **Log in** — authenticate via SSO, Keycloak, GitHub, GitLab, Azure, or guest
-   (limited, non-production).
-2. **Verify profile** — Settings > User Entity; check ownership card.
-3. **Organize workspace** — star frequently used components, pin sidebar.
-4. **Explore production resources** — browse Docs, APIs, Software Templates.
+   ```bash
+   oc get route -n rhdh
+   oc get consolelink rhdh -o jsonpath='{.spec.href}{"\n"}'
+   ```
 
-## Interface Navigation
+## Pitfalls
 
-### Global Header
+- 504 on sign-in after a cluster resume: restart the portal
+  (`docs/TROUBLESHOOTING.md#red-hat-developer-hub-oidc-sign-in-fails-with-504-gateway-timeout`).
+- A user who is not a catalog User entity cannot sign in (static entities,
+  `preferredUsernameMatchingUserEntityName` resolver).
+- `ai-developer` cannot register or delete entities; that is intended
+  (`rhdh-develop`).
+- Coolstore missing from the catalog:
+  `docs/TROUBLESHOOTING.md#red-hat-developer-hub-catalog-does-not-load-coolstore`.
 
-- **Search** — locate components, APIs, docs, and users instantly.
-- **Create (+)** — access Software Templates for self-service scaffolding.
-- **User profile** — manage settings, appearance (Light/Dark/Auto), log out.
-- **Help (?)** — support resources and Quick start panel.
-- **Starred Items** — bookmarked entities.
-- **Application Launcher** — integrated applications and tools.
+## Official documentation (Developer Hub 1.10)
 
-### Left Navigation Sidebar
+| Topic | Section |
+|---|---|
+| Onboarding | [Onboarding workflow][onboarding] |
+| Sign-in and interface | [Log in to RHDH][login], [Navigate the interface][interface], [Global header][header] |
+| Catalog and APIs | [Find software components][find], [Verify API contracts][api] |
+| Templates | [Create a component from a template][template] |
+| TechDocs and search | [Search TechDocs][techdocs], [Find resources using search][search] |
+| AI help (not configured) | [AI-assisted help][ai] |
+| Extensions, settings, starred items | [Extensions][extensions], [Interface settings][settings], [Starred items][starred] |
 
-- **Home** — personalized dashboard with team updates and recent items.
-- **Catalog** — software components, services, and resources inventory.
-- **Docs** — TechDocs library linked to software entities.
-- **APIs** — centralized API definition browser.
+## Related skills
 
-## Software Catalog
+`rhdh-getting-started-setup`, `rhdh-develop`, `rhdh-dynamic-plugins-usage`,
+`rhdh-techdocs-manage`, `rhdh-authentication`, `rhdh-developer-lightspeed`.
 
-Filter components by Kind (Component, API, Template, Group), Type (Library,
-Website, Service, Tool), Owner, and Lifecycle (production, experimental,
-deprecated). Select a component card to view Overview, Docs, Dependencies, and
-Relations tabs.
-
-## Software Templates
-
-Create new components via Catalog > Self-service or Create (+) in the header.
-Templates use YAML definitions with sequential actions (scaffolding, repo
-creation, CI/CD setup). Required permissions: `scaffolder.template.parameter.read`,
-`scaffolder.template.step.read`, `scaffolder.task.create`.
-
-Import templates via `catalog.locations` in `app-config.yaml`:
-
-```yaml
-catalog:
-  rules:
-    - allow: [Template]
-  locations:
-    - type: url
-      target: https://<repository_url/template-name>.yaml
-```
-
-## TechDocs
-
-Docs-as-code documentation rendered inside the portal. Search, filter by
-Owner, Tags, Starred, or Owned. Navigate content using table of contents,
-navigation menu, and search bar within documents.
-
-## API Browser
-
-Browse APIs via the left sidebar or Catalog > Kind: API. View Definition tab
-for rendered Swagger/AsyncAPI/GraphQL. Interactive testing: Try it out > enter
-parameters > Run. Supported formats: OpenAPI, AsyncAPI, GraphQL.
-
-## Global Search
-
-Unified search indexes the entire software ecosystem. Filter results by Kind,
-Type, and Lifecycle. Results categorize matches as Components, APIs, TechDocs,
-and Users.
-
-## Developer Lightspeed for RHDH
-
-AI assistant for platform questions, log analysis, code generation, and test
-plans. Features:
-
-- Thinking cards with reasoning visibility
-- MCP tool call transparency
-- RAG citations from internal documentation
-- Context preservation across model changes
-- Notebooks for private knowledge bases (Developer Preview)
-
-Safety guards use Llama Guard by default; configurable via `run.yaml`.
-
-## Extensions Marketplace
-
-Browse extensions via left sidebar > Extensions. Categories: Installed,
-Available. End users typically cannot install plugins; contact administrator
-to request new integrations.
-
-## Interface Customization
-
-Settings > Appearance:
-- Theme: Light, Dark, Auto
-- Language: preferred interface language
-- Pin Sidebar: keep left navigation expanded (enabled by default)
-
-Profile: verify User Entity, view Direct Relations vs Aggregated Relations.
-
-## Starred Items
-
-Star components in Catalog > Actions column (star icon). Access starred items
-from the Home page (Your Starred Entities card) or Starred Items in the header.
-
-## Workflow
-
-1. Confirm the active RHDH baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md` for detailed feature coverage.
-3. Log in and verify your identity and ownership.
-4. Explore the Software Catalog, APIs, TechDocs, and Templates.
-5. Customize your workspace (starred items, theme, pinned sidebar).
-6. Use Developer Lightspeed for AI-assisted help if configured.
-
-## Related Skills
-
-- Use `rhdh-getting-started-setup` for installing and configuring a RHDH
-  instance, authentication, and RBAC setup.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[onboarding]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#overview-of-the-onboarding-workflow_purpose-and-structure-of-rhdh
+[profile]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#log-in-and-verify-your-profile
+[login]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#log-in-to-rhdh_purpose-and-structure-of-rhdh
+[interface]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#navigate-the-rhdh-interface_log-in-to-rhdh
+[header]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#using-the-global-header
+[find]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#find-software-components-to-discover-assets_purpose-and-structure-of-rhdh
+[api]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#verify-api-contracts-before-integrating-with-backend-services_search-for-relevant-content-in-technical-documentation-techdocs
+[template]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#create-a-software-component-using-software-templates_import-and-use-an-existing-software-template-for-faster-development
+[techdocs]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#search-for-relevant-content-in-technical-documentation-techdocs_import-and-use-an-existing-software-template-for-faster-development
+[search]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#find-resources-and-documentation-using-search_verify-api-contracts-before-integrating-with-backend-services
+[ai]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#get-ai-assisted-help-for-your-development-tasks_find-resources-and-documentation-using-search
+[extensions]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#integrate-and-customize-your-daily-tools-using-extensions_get-ai-assisted-help-for-your-development-tasks
+[settings]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#customize-your-rhdh-interface-settings_get-ai-assisted-help-for-your-development-tasks
+[starred]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/navigate_red_hat_developer_hub_on_your_first_day/index#manage-starred-items-for-quick-access_customize-your-rhdh-interface-settings

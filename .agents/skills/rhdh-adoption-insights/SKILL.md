@@ -2,126 +2,52 @@
 name: rhdh-adoption-insights
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when configuring adoption analytics, engagement metrics, and portal usage
-  insights in Red Hat Developer Hub 1.10. Covers the Adoption Insights plugin
-  (enable, disable, customize), dashboard cards (active users, total users,
-  top catalog entities, templates, TechDocs, plugins, searches), RBAC
-  permissions, and CSV export. Do NOT use for TechDocs documentation lifecycle
-  (use rhdh-techdocs-manage) or Software Catalog workflows
-  (use rhdh-develop).
+  Use when someone asks about the Red Hat Developer Hub 1.10 Adoption Insights
+  plugin: enabling, disabling or customizing it, and reading active users, top
+  templates, catalog entities, TechDocs and searches. Not used in this repo. Do
+  NOT use for telemetry sent to Red Hat (use rhdh-telemetry) or platform metrics
+  (use rhdh-monitoring).
 ---
 
-# RHDH Adoption Insights
+# Developer Hub Adoption Insights
 
-Use this skill for Adoption Insights configuration and usage in Red Hat
-Developer Hub 1.10 grounded in official product documentation.
+Thin skill, link-only stub: the feature is not used in this repo. Product
+behavior lives in the linked Developer Hub 1.10 sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers the Adoption Insights
-plugin lifecycle and dashboard analytics.
+- Someone wants portal usage analytics inside Developer Hub.
 
-## Key Capabilities
+## Not used in this repo
 
-1. **Adoption Insights plugin** — Preinstalled and enabled by default via
-   `backstage-community-plugin-analytics-provider-segment`. Can be disabled
-   in `dynamic-plugins.yaml`.
-2. **Dashboard cards** — Active users, total number of users, top catalog
-   entities, top 3 templates, top 3 TechDocs, top 3 plugins, searches.
-3. **Configuration** — Buffer size, flush interval, debug mode, licensed users
-   count, and RBAC permissions in `app-config.yaml`.
-4. **Data export** — Active users data exportable in CSV format.
-5. **Time range selection** — Today, last week, last month, last 28 days
-   (default), last year, custom date range.
-6. **Record count** — Configurable display: top 3, 5, 10, or 20 records.
+No Adoption Insights plugin is enabled in
+`gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
 
-## Plugin Configuration
+Adopting it is a Stage 070 change: record the decision in
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` and convert this stub
+to a full thin skill.
 
-### Enable (default state)
+## Official documentation (Developer Hub 1.10)
 
-```yaml
-plugins:
-  - package: ./dynamic-plugins/dist/backstage-community-plugin-analytics-provider-segment
-    disabled: false
-```
+| Topic | Section |
+|---|---|
+| Overview | [Overview][l1] |
+| Enable the plugin | [Enable the plugin][l2] |
+| Disable the plugin | [Disable the plugin][l3] |
+| Customize the plugin | [Customize the plugin][l4] |
+| Use Adoption Insights | [Use Adoption Insights][l5] |
 
-### Disable
+## Related skills
 
-```yaml
-plugins:
-  - package: ./dynamic-plugins/dist/backstage-community-plugin-analytics-provider-segment
-    disabled: true
-```
+`rhdh-telemetry`, `rhdh-dynamic-plugins-install`.
 
-### Customize settings
-
-```yaml
-app:
-  analytics:
-    adoptionInsights:
-      maxBufferSize: 20          # event batching buffer (default: 20)
-      flushInterval: 5000        # flush interval in ms (default: 5000)
-      debug: false               # debug logging (default: false)
-      licensedUsers: 100         # licensed user cap (default: 100)
-```
-
-### RBAC for non-admin users
-
-```yaml
-p, role:default/<your_team>, adoption-insights.events.read, read, allow
-g, user:default/<your_user>, role:default/<your_team>
-```
-
-## Dashboard Cards
-
-| Card | Data shown |
-|------|-----------|
-| Active users | Returning + new users over time; CSV export |
-| Total number of users | Logged-in vs licensed users (numeric + %) |
-| Top catalog entities | Name, kind, last used, views |
-| Top 3 templates | Name, mostly in use by, executions |
-| Top 3 TechDocs | Name, entity type, last used, views |
-| Top 3 plugins | Name, trend graph, views |
-| Searches | Search volume trends, total, averages |
-
-### Card display details
-
-- Name column shows `metadata.title`; falls back to `metadata.name`
-- Hover for tooltip: `entityRef | type | description`
-- Long titles truncated with ellipsis
-- Down arrow next to "3 rows" changes record count (3, 5, 10, 20)
-- Top catalog entities filterable by entity type via dropdown
-
-## Access
-
-Navigate: Administration > Adoption Insights
-
-## Workflow
-
-1. Read `references/official-doc-extraction.md` for exact configuration.
-2. Identify the task:
-   - Enabling or disabling the Adoption Insights plugin
-   - Customizing buffer, flush, debug, or licensed user settings
-   - Granting RBAC access to non-admin users
-   - Viewing dashboard cards and metrics
-   - Exporting active user data to CSV
-   - Changing time range or record count
-3. Use exact plugin package path and `app-config.yaml` keys.
-4. Validate via Administration > Adoption Insights dashboard.
-
-## Related Skills
-
-- `rhdh-develop` — Software Catalog and template workflows
-- `rhdh-techdocs-manage` — TechDocs documentation lifecycle
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[l1]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/adoption_insights_in_red_hat_developer_hub/index#adoption-insights-overview_adoption-insights-in-rhdh
+[l2]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/adoption_insights_in_red_hat_developer_hub/index#enable-the-adoption-insights-plugin_adoption-insights-in-rhdh
+[l3]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/adoption_insights_in_red_hat_developer_hub/index#disable-the-adoption-insights-plugin_adoption-insights-in-rhdh
+[l4]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/adoption_insights_in_red_hat_developer_hub/index#customize-the-adoption-insights-plugin-in-rhdh_adoption-insights-in-rhdh
+[l5]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/adoption_insights_in_red_hat_developer_hub/index#use-adoption-insights-in-rhdh_adoption-insights-in-rhdh

@@ -2,167 +2,116 @@
 name: mta-lightspeed
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "mta"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: mta
+  docs-version: "8.3"
   skill-group: "Application Modernization"
 description: >
-  Use when configuring or using Red Hat Developer Lightspeed for MTA to
-  modernize applications with AI assistance, including LLM provider
-  configuration, code migration suggestions, and AI-assisted analysis. Do NOT
-  use for installing MTA (use mta-install) or non-AI tool usage (use
-  mta-cli/mta-ui).
+  Use when changing, reviewing, or debugging Red Hat Developer Lightspeed for
+  MTA in this demo: the Tackle LLM proxy flags (kai_llm_proxy_enabled,
+  kai_llm_provider, kai_llm_model, kai_llm_baseurl), the kai-api-keys Secret
+  minted from the owner-bound MaaS subscription mta-migration-ai, the
+  deliberately disabled Solution Server, IDE agent mode against MaaS, and
+  emergency proxy shutdown. Do NOT use for native Hub Agents and the
+  konveyor.io Gateway (use mta-ui), the MTA install (use mta-install), MaaS
+  subscriptions in general (use rhoai-maas-governance), or the VS Code
+  extension install (use mta-vscode).
 ---
 
-# MTA Developer Lightspeed
+# Developer Lightspeed for MTA
 
-Use this skill for configuring and using Red Hat Developer Lightspeed for
-Migration Toolkit for Applications (MTA) 8.3 — the AI-assisted code migration
-component that integrates LLMs with MTA static analysis.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+MTA 8.3 sections. Lightspeed proxy and Solution Server are Technology
+Preview. Detailed record: `gitops/stages/070-advanced-app-platform/mta/README.md`.
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **MTA 8.3**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A change touches the AI fields of `mta/mta-instance/tackle.yaml` or
+  `mta/jobs/configure-ai.yaml` / `configure-ai.py`.
+- The `llm-proxy` cannot reach MaaS, or the MaaS key in `kai-api-keys` is
+  rotated or refused.
+- Someone proposes re-enabling the Solution Server.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat docs are product authority. This skill covers LLM provider
-configuration, Solution Server setup, Agent AI mode, VS Code extension settings,
-and AI-assisted code resolution workflows.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Proxy on: `kai_llm_proxy_enabled: true`, `kai_llm_provider: openai`, `kai_llm_model: publishers/internal-models/models/qwen3-8-27b` (the MaaS canonical id) | `gitops/stages/070-advanced-app-platform/mta/mta-instance/tackle.yaml` | [Enable LLM proxy in Tackle][proxy], [Provider settings][provider] |
+| `kai_llm_baseurl` written at runtime to `https://maas.<cluster-domain>/v1`; Argo CD ignores the field | `mta/jobs/configure-ai.py`, Application `ignoreDifferences` | [Enable LLM proxy in Tackle][proxy] |
+| Model credential: Secret `kai-api-keys` key `OPENAI_API_KEY` (+ `MAAS_KEY_ID`), minted by `configure-mta-ai` as ServiceAccount `mta-maas-provisioner`; existing active key kept, foreign owner/subscription stops the Job | `mta/jobs/configure-ai.yaml`, `mta/secret_writer.py` | [Configure the model secret key][secret] |
+| MaaS access: `MaaSSubscription` + `MaaSAuthPolicy` `mta-migration-ai` for that ServiceAccount, `qwen3-8-27b`, 5,000,000 tokens/h | `mta/jobs/configure-ai.yaml` | see `rhoai-maas-governance` |
+| Solution Server disabled (`kai_solution_server_enabled: false`); proxy kept so `kai-db` and its PVC survive | `mta/mta-instance/tackle.yaml` | [About the Solution Server][ss] |
+| Private model hosting is the IP-protection posture: all traffic goes to the governed MaaS gateway | Stage 040, `mta/jobs/configure-ai.yaml` | [Self-managed hosting][selfhost], [LLM on OpenShift AI][rhoai] |
+| Key rotation keeps the same ServiceAccount (`rotate-credentials.py`) | `stages/070-advanced-app-platform/rotate-credentials.py` | — |
 
-## Support Posture
+## Procedure
 
-> **Important:** Developer Lightspeed for MTA and the Solution Server are
-> Technology Preview features. They are not supported with Red Hat production
-> SLAs and might not be functionally complete. Do not use them in production.
+1. Change Tackle AI fields or the provisioning Job in Git only; keep the
+   model id equal to the MaaS canonical id
+   (`stage070-upgrade.test.py::test_mta_consumers_use_the_governed_model_id`).
+2. Validate after the OpenShift safety guard in `AGENTS.md`:
 
-## Concepts
+   ```bash
+   ./stages/070-advanced-app-platform/validate.sh          # "MTA Developer Lightspeed proxy" rows
+   ./stages/070-advanced-app-platform/validate.sh --static
+   ```
 
-### Developer Lightspeed for MTA
+3. Read-only checks (never print the key):
 
-Starting from MTA 8.0.0, the VS Code extension integrates with LLMs through the
-Developer Lightspeed component. It applies LLM-driven code changes to resolve
-issues found through static code analysis of Java applications, using Retrieval
-Augmented Generation (RAG) for context-based resolutions.
+   ```bash
+   oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_baseurl}{"\n"}'
+   oc get deployment llm-proxy -n openshift-mta
+   oc get maassubscription,maasauthpolicy mta-migration-ai -n models-as-a-service
+   ```
 
-### Solution Server
+4. Emergency isolation follows the product procedure ([Disable the proxy (CLI)][shutcli]);
+   the GitOps value must be changed too, or self-heal re-enables it.
 
-An optional component that builds collective memory of source code changes
-across analyses. It stores solved examples, computes success metrics (confidence
-levels), and improves migration hints over successive migration waves. Requires
-the LLM proxy service and a 5 Gi RWO persistent volume.
+## Pitfalls
 
-### Agent AI
+- Lightspeed keeps the `/v1` base; the native Gateway endpoint must be the
+  bare origin. Reusing one for the other gives `/v1/v1/models`:
+  `docs/TROUBLESHOOTING.md#mta-83-solution-server-crashes-or-its-agentic-controller-oomkills`.
+- Proxy cannot call MaaS (placeholder key, invalid key, proxy not restarted):
+  `docs/TROUBLESHOOTING.md#red-hat-developer-lightspeed-for-mta-cannot-call-maas`
+  (entry still names Stage 130; the Job is now `configure-mta-ai` in `070-mta`).
+- The Solution Server image lacks `greenlet` (vendor defect); do not
+  re-enable it to reproduce the crash.
+- Models may be stopped during platform work: a failed inference is not a
+  configuration verdict until models run and the functional checks pass.
 
-An automated analysis mode that plans context, selects sub-agents, and iterates
-through code fixes. Accepts changes, recompiles, and re-analyzes in a loop
-until all issues are resolved or a maximum of two attempts per issue is reached.
+## Official documentation (MTA 8.3)
 
-## Native MTA Agents (Developer Preview)
+| Topic | Section |
+|---|---|
+| Concepts, Solution Server, agent mode | [Overview][overview], [Solution Server][ss], [Agent AI][agent], [Enable agent mode][agentmode] |
+| Proxy setup | [Prerequisites][prereq], [Proxy workflow][proxyflow], [Model secret][secret], [Enable proxy][proxy] |
+| Models and data protection | [Supported providers][providers], [Code transmission][ip], [Self-managed hosting][selfhost], [LLM on OpenShift AI][rhoai] |
+| IDE settings | [IDE settings][ide], [Profile settings][profile] |
+| Logs and monitoring | [Logs][logs], [Proxy logs][proxylogs] |
+| Emergency shutdown | [Overview][shut], [CLI][shutcli], [Re-enable][reenable] |
 
-These Hub agents are distinct from IDE Agent AI. The 8.3 UI guide requires
-Agent Sandbox Operator, SCM push access and a konveyor.io Gateway, with Tackle
-`agentic_enabled` and optional `agentic_steer_enabled`. Read the current-update
-section of the extraction before configuring them. Pin skill Git refs and OCI
-digests; preserve private MaaS access and do not replace frozen Hermes runs.
+## Related skills
 
-## Supported LLM Providers
+`mta-ui`, `mta-vscode`, `mta-install`, `rhoai-maas-governance`.
 
-| Provider (Tackle CR value) | Example models |
-|-----------------------------|---------------|
-| OpenShift AI platform | OpenAI-compatible models deployed on-cluster |
-| OpenAI (`openai`) | `gpt-4`, `gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo` |
-| Azure OpenAI (`azure_openai`) | `gpt-4`, `gpt-35-turbo` |
-| Amazon Bedrock (`bedrock`) | `anthropic.claude-3-5-sonnet-*`, `meta.llama3-1-70b-instruct-*` |
-| Google Gemini (`google`) | `gemini-2.0-flash-exp`, `gemini-1.5-pro` |
-| Ollama (`ollama`) | `llama3.1`, `codellama`, `mistral` |
-
-## Workflow
-
-1. Read `references/source-capture.md` and confirm the product baseline.
-2. Read `references/official-doc-extraction.md` for detailed procedures.
-3. Select a deployment workflow:
-   - **Agent AI without LLM proxy** — direct LLM connection via
-     `provider-settings.yaml`.
-   - **LLM proxy with optional Solution Server** — centralised key management
-     via Tackle CR proxy service.
-4. Configure LLM API key Secret in `openshift-mta` namespace.
-5. Configure Tackle CR with provider and model settings.
-6. Configure the VS Code extension (`provider-settings.yaml`, GenAI settings).
-7. Run analysis and request AI-assisted code resolutions.
-
-### LLM API Key Secret
-
-```shell
-oc create secret generic kai-api-keys -n openshift-mta \
-  --from-literal=OPENAI_API_KEY='<YOUR_KEY>'
-```
-
-Provider-specific variants exist for Azure, Bedrock, Google, and
-OpenShift AI. See `references/official-doc-extraction.md`.
-
-### Tackle CR Configuration
-
-```yaml
-kind: Tackle
-apiVersion: tackle.konveyor.io/v1alpha1
-metadata:
-  name: mta
-  namespace: openshift-mta
-spec:
-  kai_llm_proxy_enabled: true
-  kai_solution_server_enabled: true
-  kai_llm_provider: <provider-name>
-  kai_llm_model: <model-name>
-```
-
-### Validation
-
-```shell
-oc get deploy,svc -n openshift-mta | grep -E 'kai-(api|db|importer)'
-```
-
-## Data Privacy
-
-Code snippets are transmitted intact to the configured LLM. No automatic
-sanitisation or redaction is performed. Organisations with strict IP protection
-should deploy self-managed models on OpenShift AI or RHEL AI and point
-Developer Lightspeed at the private endpoint.
-
-## VS Code Extension Settings
-
-Key settings in `Extensions > MTA`:
-
-| Setting | Purpose |
-|---------|---------|
-| Gen AI: Enabled | Enable AI-assisted code fixes (default: true) |
-| Gen AI: Agent mode | Enable automated agentic analysis loop |
-| Gen AI: Excluded diagnostic sources | Skip specific diagnostic sources in Agent AI |
-| Cache directory | Store cached LLM responses |
-| Trace enabled / Trace directory | Trace MTA–LLM communication for debugging |
-
-## Debugging
-
-- Extension logs: `Developer: Open Extension Logs Folder` >
-  `redhat.mta-vscode-extension/extension.log`.
-- Output panel: select `Red Hat Developer Lightspeed for MTA`.
-- Archive logs: `MTA: Generate Debug Archive` in Command Palette.
-
-## Related Skills
-
-- `mta-cli` — CLI-based application analysis and migration.
-- `mta-ui` — web UI analysis and assessment workflows.
-- `mta-install` — MTA Operator installation and Tackle CR management.
-- `mta-vscode` — VS Code extension non-AI features.
-- `mta-intellij` — IntelliJ IDEA plugin workflows.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[overview]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#how-developerlightspeed-works_intro-to-the-developer-lightspeed
+[ss]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#solution-server_dl-context
+[agent]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#agent-ai_solution-server
+[agentmode]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#enabling-agent-mode_agent-ai
+[prereq]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#prerequisites_getting-started
+[proxyflow]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#llm-proxy-workflow_getting-started
+[secret]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#tackle-llm-secret_getting-started
+[proxy]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#tackle-enable-llm-proxy_getting-started
+[providers]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#supported-large-language-models-and-providers_configuring-llm
+[ip]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#ip-protection-risk-disclosure_configuring-llm
+[selfhost]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#ip-protection-mitigation_configuring-llm
+[rhoai]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#llm-service-openshift-ai_configuring-llm
+[provider]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#llm-provider-settings_configuring-llm
+[ide]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#configuring-developer-lightspeed-ide-settings_configuring-dev-lightspeed-ide
+[profile]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#configuring-developer-lightspeed-profile-settings_configuring-dev-lightspeed-ide
+[logs]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#developer-lightspeed-logs_mta-developer-lightspeed
+[proxylogs]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#llm-proxy-log-access_assembly-llm-proxy-interaction-monitoring
+[shut]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#llm-proxy-shutdown-overview_assembly-emergency-llm-proxy-shutdown
+[shutcli]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#disable-llm-proxy-cli_assembly-emergency-llm-proxy-shutdown
+[reenable]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index#reenable-llm-proxy_assembly-emergency-llm-proxy-shutdown

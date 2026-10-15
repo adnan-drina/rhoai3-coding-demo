@@ -2,172 +2,99 @@
 name: mta-rules
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "mta"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: mta
+  docs-version: "8.3"
   skill-group: "Application Modernization"
 description: >
-  Use when creating custom rules for MTA 8.3 analysis, including YAML rule
-  syntax, rule metadata (labels, categories, effort), provider conditions
-  (java, builtin, go, csharp, python, nodejs), logical conditions, condition
-  chaining, custom variables, rule actions, and rulesets. Do NOT use for CLI
-  workflows (use mta-cli), web UI workflows (use mta-ui), or AI-assisted
-  resolution (use mta-lightspeed).
+  Use when writing or reviewing custom MTA 8.3 YAML rules in this demo: the
+  Stage 130 canary ruleset (rhoai3-canary-00001), konveyor.io/target labels
+  that must match the analysis targets, builtin and java provider conditions,
+  rule categories and effort, and how a custom ruleset is passed with --rules.
+  Do NOT use for running the CLI or reading receipts (use mta-cli), Hub UI
+  analysis (use mta-ui), or AI-assisted fixes (use mta-lightspeed).
 ---
 
-# MTA Rules Development
+# MTA rules
 
-Use this skill to ground Migration Toolkit for Applications (MTA) 8.3 custom
-rule authoring in the official Configuring and Using Rules guide. MTA rules
-instruct the analyzer to detect problematic patterns in application source
-code before migration to target technologies.
+Thin skill: repo decisions and pitfalls here, rule syntax in the linked MTA
+8.3 rules guide. The only custom ruleset in the repo is the Stage 130 canary.
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **MTA 8.3**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A change to
+  `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/planning/mta-rules/`.
+- A run blocks with `CANARY_MISSING`, or analysis targets change.
+- Someone proposes a project-specific migration rule.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product behavior. Official
-Red Hat documentation is product authority.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Canary rule `rhoai3-canary-00001`: `category: optional`, `effort: 0`, `builtin.filecontent` on `*.java`; proves the custom ruleset was in the effective selection | `.../.hermes/planning/mta-rules/rhoai3-canary.yaml` | [Rule metadata][meta], [Categories][categories], [builtin provider][builtin] |
+| Canary carries one `konveyor.io/target=` label per analysis target (quarkus, jakarta-ee9, cloud-readiness, openjdk21) so any target selection loads it | same file; `analysis.targets`, `custom_rules`, `canary_rule_id` in `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/skeleton/migration.yaml` | [Rule labels][labels], [Reserved labels][reserved] |
+| Canary incidents are not migration obligations: the planner filters `analysis.canary_rule_id` and records `mta.canary.fired` | `.../.hermes/skills/analysis/scan-with-mta/scripts/assert-mta-canary.py` | — |
+| Ruleset passed with `--rules <dir>` and never with `--source` | `.../scan-with-mta/scripts/mta-analyze-legacy.sh` | [Custom ruleset][ruleset] |
 
-## YAML Rule Structure
+## Procedure
 
-Rules consist of metadata, conditions, and actions:
+1. Write a rule in the canary's file layout (YAML list of rules); copy the
+   structure from the repo file, the syntax from [YAML rule structure][syntax].
+2. Give every rule the target labels the run selects; a rule without a
+   matching `konveyor.io/target` label is silently not selected.
+3. Run the scaffold tests and a rehearsal, not an ad hoc analysis:
 
-```yaml
-ruleID: <unique_id>
-category: mandatory|optional|potential
-effort: <integer>
-description: <summary>
-labels:
-  - konveyor.io/source=<source_tech>
-  - konveyor.io/target=<target_tech>
-links:
-  - url: <hyperlink>
-    title: <title>
-when:
-  <condition(s)>
-message: "<message>"
-tag:
-  - <tag_1>, <tag_2>
-```
+   ```bash
+   python3 stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/analysis/scan-with-mta/scripts/scan-with-mta.test.py
+   ./stages/130-ai-autonomous-migration/validate.sh
+   ```
 
-## Rule Metadata
+## Pitfalls
 
-- **ruleID**: unique within the ruleset
-- **category**: `mandatory` (must fix), `optional` (should fix), `potential`
-  (needs examination)
-- **effort**: integer estimating story points to resolve
-- **labels**: `key=val` pairs; reserved prefixes `konveyor.io/source`,
-  `konveyor.io/target`, `konveyor.io/include` (values: `always` or `never`)
+- Wrong target label, missing `--rules`, or a kantra fallback without custom
+  rules all end in `CANARY_MISSING` (comment in `rhoai3-canary.yaml`).
+- A canary that matches nothing passes vacuously elsewhere; keep it on a
+  pattern every Java application has (`.agents/rules/ensure-cli-capability.md`
+  states presence is not capability).
+- Wildcard-import annotation incidents can be missed by the Java provider
+  (MTA-6530 in the 8.3.0 [known issues][known]); do not rely on such a rule as
+  a gate.
 
-### Label Selectors
+## Official documentation (MTA 8.3)
 
-Use `--label-selector` to filter rules by labels with logical AND (`&&`),
-OR (`||`), NOT (`!`), and grouping `()`. Use `--dep-label-selector` to filter
-dependency-generated incidents.
+| Topic | Section |
+|---|---|
+| Basics | [The MTA rules][about], [How MTA analyzes][how], [YAML rule structure][syntax] |
+| Metadata | [Structure][meta], [Labels][labels], [Reserved labels][reserved], [Categories][categories] |
+| Providers | [How providers work][providers], [Rule condition][cond], [builtin][builtin], [Java][java] |
+| Java conditions | [Locations][locations], [Annotation inspection][annotations] |
+| Logic | [AND][and], [OR][or], [Chaining][chaining], [Custom variables][vars] |
+| Actions | [Tag][tag], [Message][message] |
+| Authoring | [Create a YAML rule][create], [Custom ruleset][ruleset] |
 
-## Providers and Capabilities
+## Related skills
 
-| Provider | Capabilities | Support Level |
-|----------|-------------|---------------|
-| `java` | `referenced`, `dependency` | Fully supported |
-| `builtin` | `xml`, `json`, `filecontent`, `file`, `hasTags` | Fully supported |
-| `go` | `referenced`, `dependency` | Fully supported |
-| `csharp` | `referenced` | Developer Preview |
-| `python` | `referenced` | Developer Preview |
-| `nodejs` | `referenced` | Developer Preview |
+`mta-cli`, `mta-ui`, `mta-release-notes`.
 
-### Java Provider
-
-**`java.referenced`**: search by `pattern` (regex), `location` (IMPORT,
-PACKAGE, TYPE, ANNOTATION, IMPLEMENTS_TYPE, RETURN_TYPE, VARIABLE_DECLARATION,
-FIELD, METHOD, METHOD_CALL, CLASS, CONSTRUCTOR_CALL, INHERITANCE), and
-`annotated` (annotation inspection with elements).
-
-**`java.dependency`**: check dependencies by `name` (required), `nameregex`,
-`upperbound`, `lowerbound`.
-
-### Builtin Provider
-
-- **`builtin.xml`**: XPath queries with optional `filepaths` and `namespaces`
-- **`builtin.json`**: XPath queries on JSON files with optional `filepaths`
-- **`builtin.filecontent`**: regex `pattern` with optional `filePattern`
-- **`builtin.file`**: find files matching a name `pattern`
-- **`builtin.hasTags`**: check application tags (logical AND for multiple)
-
-### Go, C#, Python, Node.js Providers
-
-Go supports `referenced` (pattern) and `dependency` (name, bounds). C# supports
-`referenced` with `pattern` and `location` (CLASS, METHOD, FIELD, ALL). Python
-and Node.js support `referenced` with `pattern` only.
-
-## Logical Conditions
-
-- **`and`**: all child conditions must match
-- **`or`**: any child condition must match
-- **Nesting**: combine `and`/`or` at multiple levels
-
-## Condition Chaining
-
-Use `as` to save a condition's output, `from` to reference it, and Mustache
-templates (`{{name.filepaths}}`) for variable interpolation. Set `ignore: true`
-on conditions used only for chaining. In Java rules, capitalize the variable
-(e.g., `{{annotation.Filepaths}}`).
-
-## Custom Variables
-
-Capture data from matched source lines using `customVariables`:
-
-```yaml
-customVariables:
-  - pattern: '([A-z]+)\.get\(\)'
-    name: VariableName
-message: "Found generic call - {{ VariableName }}"
-```
-
-## Rule Actions
-
-- **Message**: informative text in the report with optional `links`
-- **Tag**: categorize code with `key=val` pairs; tag-only rules do not
-  generate issues
-
-## Rulesets
-
-Group rules in a directory with a `ruleset.yaml` file:
-
-```yaml
-name: "Ruleset name"
-description: "Ruleset description"
-labels:
-  - key=val
-```
-
-Rules inherit ruleset labels. Pass the directory with `--rules=<dir>`.
-
-## Workflow
-
-1. Identify the migration path and target technology.
-2. Choose the appropriate provider and capability for the condition.
-3. Read `references/official-doc-extraction.md` for field details and examples.
-4. Write the rule with metadata, condition, and action.
-5. Test with `mta-cli analyze --input <app> --output <dir> --rules <rule.yaml>`.
-6. Review the static report at `<output>/static-report/index.html`.
-
-## Related Skills
-
-- Use `mta-intellij` for IntelliJ IDEA plugin analysis workflows.
-- Use `mta-cli` for command-line analysis workflows.
-- Use `mta-ui` for web console analysis workflows.
-- Use `mta-lightspeed` for AI-assisted code resolution.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[about]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#about-rules_rules-introduction
+[how]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#how_mta_performs_an_analysis
+[syntax]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-rule-structure-syntax_rules-introduction
+[meta]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-rule-metadata-structure_rule-yaml-metadata
+[labels]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-rule-labels_rule-yaml-metadata
+[reserved]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#reserved-label_rule-yaml-metadata
+[categories]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-rule-categories_rule-yaml-metadata
+[providers]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#external-providers_rules-prov-cond
+[cond]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-provider-conditions_rules-prov-cond
+[builtin]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-builtin-provider_rules-prov-cond
+[java]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-java-provider_rules-prov-cond
+[locations]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-java-locations_java-conditions-capabilities
+[annotations]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-annotation-inspection_java-conditions-capabilities
+[and]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-and-condition_logical-chaining-custom-variables
+[or]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-or-condition_logical-chaining-custom-variables
+[chaining]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-chaining-condition-variables_logical-chaining-custom-variables
+[vars]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-custom-variables_logical-chaining-custom-variables
+[tag]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-tag-actions_rule-yaml-actions
+[message]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-message-actions_rule-yaml-actions
+[create]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#create-first-yaml-rule_creating-rule
+[ruleset]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_rules_for_an_mta_analysis/index#yaml-rulesets_rule-rulesets
+[known]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index#known-issues-8-3-0_mta-8-3-0

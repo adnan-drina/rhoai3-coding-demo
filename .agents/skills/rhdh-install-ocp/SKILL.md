@@ -2,135 +2,105 @@
 name: rhdh-install-ocp
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when installing Red Hat Developer Hub 1.10 on OpenShift Container Platform
-  using the Operator or Helm chart, including prerequisites, namespace setup,
-  custom configuration provisioning, Backstage CR authoring, and verification.
-  Do NOT use for air-gapped/disconnected installations (use rhdh-install-airgapped),
-  configuration beyond initial deployment, or plugin development.
+  Use when reviewing or changing how this demo installs Red Hat Developer Hub
+  1.10 on OpenShift: the rhdh-operator OperatorGroup and Subscription
+  (fast-1.10, Manual approval, startingCSV), the reviewed-CSV approve-installplan
+  hook, the Backstage CR developer-hub in namespace rhdh, sync-wave order of the
+  070-rhdh Application, and install verification. Do NOT use for z-stream
+  upgrades (use rhdh-upgrade), app-config or Backstage CR fields beyond install
+  (use rhdh-configure), plugins (use rhdh-dynamic-plugins-configure), or other
+  platforms (rhdh-install-aks, rhdh-install-eks, rhdh-install-gke,
+  rhdh-install-osd-gcp, rhdh-install-airgapped).
 ---
 
-# RHDH Install on OpenShift Container Platform
+# Developer Hub install on OpenShift
 
-Use this skill to install Red Hat Developer Hub 1.10 on a connected OpenShift
-Container Platform cluster using either the Operator or the Helm chart.
+Thin skill: repo decisions and pitfalls here, product procedure in the linked
+Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers Operator installation
-via OperatorHub, Helm chart deployment via console or CLI, custom configuration
-provisioning (config maps, secrets, dynamic plugins), Backstage CR authoring,
-and deployment verification.
+- A change touches `gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/`
+  or `rhdh/rhdh-instance/backstage.yaml`.
+- Stage 070 stops before the portal answers (operator CSV, Backstage CR, Route).
 
-## Installation Methods
+## Repo decisions
 
-RHDH 1.10 supports two installation methods on OpenShift:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Operator path, not the Helm chart (Helm is not used) | `rhdh/rhdh-operator/`, `rhdh/rhdh-instance/backstage.yaml` | [Installation methods][methods] |
+| Namespace `rhdh-operator`, OperatorGroup without target namespaces (all-namespaces mode; a specific namespace is not supported) | `rhdh/rhdh-operator/operatorgroup.yaml` | [Install the Operator][install-op] |
+| Subscription `rhdh`: channel `fast-1.10` (z-streams only), `installPlanApproval: Manual`, `startingCSV: rhdh-operator.v1.10.5`, `redhat-operators` | `rhdh/rhdh-operator/subscription.yaml` | [Install the Operator][install-op] |
+| Sync hook `approve-installplan` approves only InstallPlans whose CSVs are all on its allowlist, then waits for the CSV; its Role reaches only `rhdh-operator` InstallPlans and Subscription `rhdh` | `rhdh/rhdh-operator/approve-installplan.yaml` | — (repo control) |
+| Instance is the `Backstage` CR `developer-hub` in `rhdh` (wave 18), configured only through ConfigMaps, Secrets and the CR | `rhdh/rhdh-instance/` | [Provision custom configuration][provision], [Run with custom configuration][run-op] |
+| Namespaces `rhdh-operator` and `rhdh` come from `070-namespaces`; `070-rhdh` is deploy-order 8 (last) of Stage 070 | `gitops/stages/070-advanced-app-platform/namespaces/`, `gitops/argocd/app-of-apps/070-advanced-app-platform/rhdh.yaml` | — |
 
-1. **Red Hat Developer Hub Operator** — OLM-managed, automatic subscription
-   updates, installed via OperatorHub.
-2. **Red Hat Developer Hub Helm chart** — manual install via web console or
-   Helm CLI from `charts.openshift.io`.
+Paths are relative to `gitops/stages/070-advanced-app-platform/` unless absolute.
 
-## Prerequisites (Operator)
+## Procedure
 
-- OpenShift Container Platform 4.18 to 4.21
-- Administrator access to the web console
-- Appropriate roles and permissions to create applications
-- System meets minimum sizing requirements
+1. Change the Subscription, allowlist and validator together: a new CSV is a
+   reviewed change in `subscription.yaml`, `approve-installplan.yaml` and
+   `stages/070-advanced-app-platform/validate.sh` (it expects exactly
+   `rhdh-operator.v1.10.5`). Keep the map pin consistent
+   (`python3 scripts/shared/check-doc-links.py --family rhdh`).
+2. Deploy and validate through the stage scripts after the OpenShift safety
+   guard in `AGENTS.md`:
 
-## Prerequisites (Helm chart)
+   ```bash
+   ./stages/070-advanced-app-platform/deploy.sh
+   ./stages/070-advanced-app-platform/validate.sh
+   ./stages/070-advanced-app-platform/validate.sh --static
+   ```
 
-- OpenShift Container Platform with admin role configured
-- Project created in OpenShift
-- Helm CLI installed (for CLI method)
-- System meets minimum sizing requirements
+3. Read-only checks:
 
-## Operator Installation
+   ```bash
+   oc get subscription rhdh -n rhdh-operator -o jsonpath='{.status.installedCSV}{"\n"}'
+   oc get csv -n rhdh-operator
+   oc get backstage developer-hub -n rhdh; oc get pods,route -n rhdh
+   ```
 
-- **Update channels:** `fast` or `fast-1.10` (z-stream only)
-- **Installation mode:** All namespaces on the cluster (required)
-- **Installed namespace:** `rhdh-operator` (recommended for security)
-- **Verification:** Ecosystem > Installed Operators shows `Succeeded`
+## Pitfalls
 
-## Custom Configuration Provisioning
+- With Manual approval nothing installs until the hook approves; a CSV not on
+  the allowlist leaves the InstallPlan pending by design. Never approve a
+  foreign InstallPlan by hand.
+- Argo CD ignores Subscription `startingCSV` and OperatorGroup
+  `olm.providedAPIs` (`ignoreDifferences` in the Application); drift there is
+  not a reason to resync.
+- Operator-owned objects (Deployment `backstage-developer-hub`, StatefulSet
+  `backstage-psql-developer-hub`, Route, default app-config) are not in Git;
+  do not add them.
+- OutOfSync while healthy:
+  `docs/TROUBLESHOOTING.md#red-hat-developer-hub-is-healthy-but-stage-070-is-outofsync`.
 
-Before creating the Backstage CR, provision:
+## Official documentation (Developer Hub 1.10)
 
-1. **Secrets** — `oc create secret generic my-rhdh-secrets --from-file=secrets.txt`
-2. **App config** — `oc create configmap my-rhdh-app-config --from-file=app-config.yaml`
-3. **Dynamic plugins** — `oc create configmap dynamic-plugins-rhdh --from-file=dynamic-plugins.yaml`
+| Topic | Section |
+|---|---|
+| Installation methods | [Installation methods][methods] |
+| Operator install | [Install with the Operator][op], [Install the Operator][install-op] |
+| Custom configuration | [Provision custom configuration][provision], [Run with custom configuration][run-op] |
+| Helm chart (not used) | [Install with the Helm chart][helm] |
+| Operator vs Helm, sizing | [Compare deployment methods][compare], [Sizing][sizing] |
 
-Critical: Set `baseUrl` in `app-config.yaml` to match the external URL of the
-instance in both `app.baseUrl` and `backend.baseUrl`.
+## Related skills
 
-## Backstage CR
+`rhdh-upgrade`, `rhdh-configure`, `rhdh-release-notes`, `rhdh-about`,
+`rhdh-dynamic-plugins-configure`.
 
-- **apiVersion:** `rhdh.redhat.com/v1alpha5`
-- **kind:** `Backstage`
-- **Key spec fields:** `spec.application.appConfig.configMaps`,
-  `spec.application.dynamicPluginsConfigMapName`,
-  `spec.application.extraEnvs.secrets`, `spec.application.route.enabled`,
-  `spec.database.enableLocalDb`
-
-Apply with:
-```bash
-oc apply -f my-rhdh-custom-resource.yaml -n my-rhdh-project
-```
-
-## Helm Chart Installation (CLI)
-
-```bash
-NAMESPACE=rhdh
-oc new-project ${NAMESPACE} || oc project ${NAMESPACE}
-
-helm upgrade redhat-developer-hub -i \
-  https://github.com/openshift-helm-charts/charts/releases/download/redhat-redhat-developer-hub-1.10.1/redhat-developer-hub-1.10.1.tgz
-
-PASSWORD=$(oc get secret redhat-developer-hub-postgresql -o jsonpath="{.data.password}" | base64 -d)
-CLUSTER_ROUTER_BASE=$(oc get route console -n openshift-console -o=jsonpath='{.spec.host}' | sed 's/^[^.]*\.//')
-
-helm upgrade redhat-developer-hub -i \
-  "https://github.com/openshift-helm-charts/charts/releases/download/redhat-redhat-developer-hub-1.10.1/redhat-developer-hub-1.10.1.tgz" \
-  --set global.clusterRouterBase="$CLUSTER_ROUTER_BASE" \
-  --set global.postgresql.auth.password="$PASSWORD"
-```
-
-## Verification
-
-```bash
-oc get backstage -n my-rhdh-project
-oc get pods -n my-rhdh-project
-oc get route -n my-rhdh-project
-echo "https://redhat-developer-hub-${NAMESPACE}.${CLUSTER_ROUTER_BASE}"
-```
-
-## Troubleshooting
-
-Pod in `CrashLoopBackOff` with error `Missing required config value at
-'backend.database.client'` indicates the configuration files are not accessible.
-Verify config maps are correctly mounted.
-
-## Workflow
-
-1. Read `references/official-doc-extraction.md` for exact YAML patterns.
-2. Choose installation method (Operator vs Helm).
-3. Verify prerequisites and sizing.
-4. For Operator: install via OperatorHub, provision config, create Backstage CR.
-5. For Helm: create project, run `helm upgrade -i`, configure router base.
-6. Validate with verification commands.
-
-## Related Skills
-
-- `rhdh-install-airgapped` — Air-gapped/disconnected installation
-- `ocp-gitops-operator` — GitOps-managed deployment patterns
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[methods]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_red_hat_developer_hub_on_openshift_container_platform/index#rhdh-installation-methods-on-ocp_installing-rhdh-on-ocp
+[op]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_red_hat_developer_hub_on_openshift_container_platform/index#install-rhdh-on-ocp-with-the-operator_installing-rhdh-on-ocp
+[install-op]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_red_hat_developer_hub_on_openshift_container_platform/index#install-the-rhdh-operator_install-rhdh-on-ocp-with-the-operator
+[provision]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_red_hat_developer_hub_on_openshift_container_platform/index#provision-your-custom-rhdh-configuration_install-rhdh-on-ocp-with-the-operator
+[run-op]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_red_hat_developer_hub_on_openshift_container_platform/index#use-the-rhdh-operator-to-run-rhdh-with-your-custom-configuration_install-rhdh-on-ocp-with-the-operator
+[helm]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_red_hat_developer_hub_on_openshift_container_platform/index#install-rhdh-on-ocp-with-the-helm-chart_installing-rhdh-on-ocp
+[compare]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#compare-the-helm-chart-and-operator-to-choose-the-optimal-deployment-method_about-rhdh
+[sizing]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#sizing-requirements-for-rhdh_about-rhdh

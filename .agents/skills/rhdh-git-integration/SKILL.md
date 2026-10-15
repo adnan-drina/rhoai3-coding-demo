@@ -2,104 +2,98 @@
 name: rhdh-git-integration
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when configuring Git provider integration (GitHub, GitLab, Bitbucket) in
-  Red Hat Developer Hub. Covers GitHub App setup, repository discovery,
-  GitLab integration, and Bulk Import capabilities for automated catalog
-  onboarding. Do NOT use for RHDH installation or operator configuration;
-  use rhdh-install-* skills. Do NOT use for authentication provider setup
-  beyond Git integration specifics.
+  Use when changing or debugging how this demo's Red Hat Developer Hub talks
+  to the private GitLab: integrations.gitlab with the rhdh-publisher token
+  from Secret rhdh-gitlab, the GitLab catalog discovery provider for group
+  rhoai-workloads (catalog-info.yaml on main, no templates), the scaffolder
+  GitLab module used by the templates (publish:gitlab, gitlab:issues:create),
+  the read-only gitlab-catalog-reader used by the catalog generator, and token
+  rotation. Do NOT use for GitLab itself (see the gitlab component README),
+  sign-in (use rhdh-authentication), template content (use rhdh-customize),
+  or GitHub and Bulk Import (not used in this repo).
 ---
 
-# RHDH Git Integration
+# Developer Hub Git provider integration
 
-Configure Red Hat Developer Hub 1.10 to integrate with GitHub and GitLab
-Git providers for repository discovery, catalog entity ingestion, and bulk
-import workflows.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` (How: Catalog
+sources) and `gitops/stages/070-advanced-app-platform/gitlab/README.md`
+(How 5: integration hub).
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **Developer Hub 1.10**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A change touches the `integrations` or `catalog.providers` blocks of
+  `app-config-rhdh`, or the GitLab modules in `dynamic-plugins-rhdh`.
+- A template cannot publish, or a project's `catalog-info.yaml` does not
+  appear in the catalog.
 
+## Repo decisions
 
-## When to Use
+| Decision | Where in Git | Official section |
+|---|---|---|
+| GitLab is the only Git provider; GitHub integration, GitHub App and Bulk Import are not used | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Integrate with GitLab][gitlab] |
+| `integrations.gitlab` host, base and API URL from `${GITLAB_HOST}`/`${GITLAB_BASE_URL}`, token `${GITLAB_PUBLISHER_TOKEN}` (service user `rhdh-publisher`) from Secret `rhdh-gitlab` written by `070-gitlab` | same file; `gitlab/README.md` | [Share secrets with GitLab][share] |
+| Dynamic plugins `backstage-plugin-catalog-backend-module-gitlab-dynamic` and `backstage-plugin-scaffolder-backend-module-gitlab-dynamic` enabled | `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | see `rhdh-dynamic-plugins-reference` |
+| Discovery provider `gitlab.workloads`: group `rhoai-workloads`, branch `main`, `catalog-info.yaml`, every minute; catalog rules forbid `Template` from discovery | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Integrate with GitLab][gitlab] (keys `branch`, `entityFilename` not in the 1.10 guide) |
+| Templates publish private repositories and open an enrollment issue; they never call `catalog:register` | `rhdh/templates/*/template.yaml` | see `rhdh-customize` |
+| The catalog generator verifies every bundled file against the mirror with the read-only `gitlab-catalog-reader` token | `rhdh/jobs/catalog/render_catalog.py` | — (repo control) |
+| `backend.reading.allow` lists `${GITLAB_HOST}` (plus GitHub raw hosts) | `rhdh/rhdh-instance/app-config-configmap.yaml` | — |
 
-- Setting up GitHub App for RHDH integration
-- Configuring automatic repository discovery via `catalog.providers.github`
-- Enabling Bulk Import plugins for GitHub or GitLab
-- Configuring GitLab integration via `integrations.gitlab`
-- Setting up RBAC for `bulk.import` permission
-- Troubleshooting repository visibility or OAuth token issues
-- Configuring custom Scaffolder templates for Bulk Import
-- Setting up Orchestrator workflows for bulk operations
+Paths are under `gitops/stages/070-advanced-app-platform/`.
 
-## Key Concepts
+## Procedure
 
-### GitHub Integration
+1. Token values never enter Git; `070-gitlab` mints 90-day tokens and reuses
+   them while valid. Rotate before expiry (a token expiring within seven days
+   refuses the GitLab sync) with
+   `stages/070-advanced-app-platform/rotate-credentials.py --component publisher`
+   (dry run unless `--execute`; it also needs `--revision`, `--repo-url`,
+   `--report`; procedure in `docs/OPERATIONS.md#gitlab-ownership-and-lifecycle`).
 
-- Uses a **GitHub App** (not OAuth app) for fine-grained permissions and
-  short-lived tokens
-- Discovery via `plugin-catalog-backend-module-github` dynamic plugin
-- Configuration in `catalog.providers.github` and `integrations.github`
-- Required secrets: `GITHUB_APP_APP_ID`, `GITHUB_APP_CLIENT_ID_INTEGRATION`,
-  `GITHUB_APP_CLIENT_SECRET_INTEGRATION`, `GITHUB_APP_PRIVATE_KEY`
+2. Validate after the safety guard in `AGENTS.md`:
 
-### GitLab Integration
+   ```bash
+   ./stages/070-advanced-app-platform/validate.sh --static   # template input vs GitLab action schemas
+   ./stages/070-advanced-app-platform/validate.sh            # gitlab-publisher, gitlab-catalog-reader, private mirror checks
+   oc get secret rhdh-gitlab gitlab-publisher gitlab-catalog-reader -n rhdh -o name
+   ```
 
-- Configuration via `integrations.gitlab` with host and token
-- Catalog provider plugin: `backstage-plugin-catalog-backend-module-gitlab-org-dynamic`
-- Bulk Import creates merge requests (MRs) instead of pull requests
+## Pitfalls
 
-### Bulk Import (Technology Preview)
+- Template inputs must match the installed GitLab action schemas
+  (`stages/070-advanced-app-platform/tests/product-schemas.test.py`).
+- Do not let discovery ingest templates; a second Location for a template
+  causes 200/404 flapping:
+  `docs/TROUBLESHOOTING.md#rhdh-template-entity-returns-200-then-404-after-a-catalog-re-stamp`.
+- A mirror that is behind the synced revision makes the generator refuse:
+  `docs/TROUBLESHOOTING.md#rhdh-catalog-generator-refuses-factory_bundle_mismatch`.
+- No apply annotation may hold GitLab credentials (`security-status.py`).
+- GitLab API rate limits on the catalog provider: [Catalog provider errors][ratelimit].
+- Token lifecycle: `docs/OPERATIONS.md#gitlab-ownership-and-lifecycle`.
 
-- Requires **user OAuth tokens** for repository listing (no fallback to
-  integration credentials)
-- Plugins (disabled by default):
-  - `red-hat-developer-hub-backstage-plugin-bulk-import-backend-dynamic`
-  - `red-hat-developer-hub-backstage-plugin-bulk-import`
-- RBAC: `bulk.import` permission required for non-admin users
-- Supports three import modes: `open-pull-requests` (default), `scaffolder`,
-  `orchestrator`
-- User-scoped access ensures audit trails tied to individual accounts
+## Official documentation (Developer Hub 1.10)
 
-## Prerequisites
+| Topic | Section |
+|---|---|
+| GitLab | [Integrate with GitLab][gitlab], [Share secrets with GitLab][share], [Import users from GitLab][gl-users] (not used) |
+| Bulk Import (not used) | [Bulk importing from GitLab][bulk] |
+| GitHub (not used) | [Integrate with GitHub][github] |
+| Troubleshooting | [Catalog provider errors][ratelimit] |
 
-- RHDH 1.10 instance deployed (Operator or Helm)
-- Sufficient GitHub/GitLab permissions to create and manage apps
-- GitHub or GitLab configured as authentication provider (required for
-  Bulk Import)
+## Related skills
 
-## Validation
+`rhdh-configure`, `rhdh-customize`, `rhdh-authentication`,
+`rhdh-dynamic-plugins-reference`.
 
-```bash
-# Verify GitHub discovery plugin loaded
-oc logs deployment/<rhdh-deployment> -c backstage-backend | grep "github"
-
-# Verify Bulk Import plugins
-oc logs -c install-dynamic-plugins deployment/<rhdh-deployment> | grep "bulk-import"
-
-# Verify catalog entities discovered
-curl -H "Authorization: Bearer $TOKEN" \
-  https://<rhdh-url>/api/catalog/entities?filter=kind=Component | jq length
-```
-
-## Boundaries
-
-- Git integration configuration only; authentication provider setup is a
-  separate concern
-- Bulk Import is Technology Preview — not for production SLA workloads
-- Orchestrator workflow mode requires separate Orchestrator plugin installation
-
-## References
-
-- `references/source-capture.md` — source ledger
-- `references/official-doc-extraction.md` — extracted procedures and config
+[gitlab]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/integrating_red_hat_developer_hub_with_your_git_provider/index#integrate-with-gitlab_integrate-with-github
+[bulk]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/integrating_red_hat_developer_hub_with_your_git_provider/index#bulk-importing-from-gitlab_integrate-with-gitlab
+[github]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/integrating_red_hat_developer_hub_with_your_git_provider/index#integrate-with-github_integrating-rhdh-with-your-git-provider
+[share]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#share-secrets-with-gitlab_share-a-secret-with-your-identity-provider
+[gl-users]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#import-users-and-groups-from-gitlab_import-users-and-groups-from-your-identity-provider
+[ratelimit]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#troubleshoot-catalog-provider-errors_troubleshoot-authentication-issues

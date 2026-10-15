@@ -2,45 +2,53 @@
 name: ocp-pipelines-tekton-hub
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_pipelines
+  docs-version: "1.24"
   skill-group: "OpenShift Platform"
 description: >
-  Use when auditing or retiring historical Tekton Hub integrations while
-  moving to OpenShift Pipelines 1.24, including old TektonHub resources,
-  PAC resolver references and migration to Artifact Hub or reviewed tasks.
-  Do NOT use to deploy a new Tekton Hub on 1.24; use
-  ocp-pipelines-install-config or ocp-pipelines-cicd for current paths.
+  Use when someone asks about Tekton Hub, the hub resolver, tkn hub, or
+  migrating catalog task references to Artifact Hub on OpenShift Pipelines
+  1.24. No Tekton Hub or hub resolver is used in this repo; this stub records
+  that and links the official sections. Do NOT use to deploy a Tekton Hub, or
+  for the repo's own Tasks (use ocp-pipelines-cicd).
 ---
 
-# Retire Historical Tekton Hub Integrations
+# Tekton Hub and Artifact Hub (not used in this repo)
 
-Read `references/source-capture.md` and the current-update section of
-`references/official-doc-extraction.md` before using historical Hub material.
+Link-only stub. Product guidance lives in the linked OpenShift Pipelines 1.24
+sections.
 
-OpenShift Pipelines 1.24 no longer includes a Hub component in its compatibility
-matrix or a custom Hub guide. PAC removed its Tekton Hub-specific integration;
-tkn's Tekton Hub integration is deprecated in favor of Artifact Hub.
+## When to use
 
-## Workflow
+- A pipeline proposal references a hub or catalog task, or an old Tekton Hub
+  resource needs retiring.
 
-1. Inventory old TektonHub resources, catalog consumers and retained data.
-2. Identify PAC annotations, hub resolver configuration and tkn install paths.
-3. Move each consumer to Artifact Hub, a reviewed namespaced Task, cluster
-   resolver or immutable OCI bundle, as supported by its actual resolver.
-4. Verify resource resolution and a bounded pipeline execution.
-5. Retire old Hub resources only after a reviewed data-retention/removal plan.
+## Not used in this repo
 
-Do not create a new TektonHub CR from the old extraction or advertise its old
-database/OAuth fields as supported 1.24 configuration. Use
-`ocp-pipelines-install-config`, `ocp-pipelines-as-code` and `ocp-pipelines-cicd`
-for the replacement paths. This stable skill name remains useful for legacy
-diagnosis; it does not endorse a new Hub deployment.
+No `TektonHub` resource, hub resolver or Artifact Hub reference exists in
+Git. Every Task the platform runs is a namespaced Task in
+`gitops/stages/070-advanced-app-platform/pipelines/project-pipeline/`,
+reviewed and pinned with the platform revision. In 1.24, Pipelines as Code
+removed its Tekton Hub integration and `tkn hub` targets Artifact Hub.
 
-## References
+## Official documentation (OpenShift Pipelines 1.24)
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
+| Topic | Section |
+|---|---|
+| Removal and deprecation | [Removed features][removed], [Deprecated features][deprecated] |
+| Migration | [Migrating to Artifact Hub][migrate], [Assess impact][assess], [Private Artifact Hub][private] |
+| Hub resolver | [Hub resolver][hub-resolver] |
+| CLI | [tkn hub commands][tkn-hub] |
+
+## Related skills
+
+`ocp-pipelines-cicd`, `ocp-pipelines-as-code`, `ocp-pipelines-release-notes`.
+
+[removed]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#removed-features-1-24-0_op-release-notes-1-24
+[deprecated]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#deprecated-features-1-24-0_op-release-notes-1-24
+[migrate]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-migrating-to-artifact-hub_customizing-configurations-in-the-tektonconfig-cr
+[assess]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-assess-migration-impact_customizing-configurations-in-the-tektonconfig-cr
+[private]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-configuring-private-artifact-hub_customizing-configurations-in-the-tektonconfig-cr
+[hub-resolver]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/creating_cicd_pipelines/index#resolver-hub_remote-pipelines-tasks-resolvers
+[tkn-hub]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/pipelines_cli_tkn_reference/index#op-tkn-hub-interaction_op-tkn-reference

@@ -2,138 +2,82 @@
 name: rhdh-telemetry
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when configuring web analytics and system observability telemetry data
-  collection in Red Hat Developer Hub 1.10. Covers Segment-based web analytics,
-  OpenTelemetry system observability, enabling and disabling telemetry via
-  Operator and Helm, and customizing the Segment source write key. Do NOT use
-  for application log levels, ServiceMonitor metrics, or cloud provider
-  monitoring; use rhdh-monitoring. Do NOT use for audit log configuration or
-  RBAC audit events; use rhdh-audit-logs.
+  Use when reviewing or changing Red Hat Developer Hub 1.10 telemetry data
+  collection in this demo: the default-on analytics-provider-segment plugin,
+  disabling or enabling it through the dynamic-plugins-rhdh ConfigMap, and
+  customizing the Segment source. Do NOT use for log levels or metrics (use
+  rhdh-monitoring), audit events (use rhdh-audit-logs), or in-portal usage
+  analytics (use rhdh-adoption-insights).
 ---
 
-# RHDH Telemetry
+# Developer Hub telemetry
 
-Use this skill to configure web analytics and system observability telemetry
-data collection in Red Hat Developer Hub 1.10.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is the product authority. This skill adapts
-the official Telemetry Data Collection and Analysis guide for this repo's
-demo posture.
+- Someone asks whether the portal sends usage data to Red Hat, or wants it off.
+- A change touches the plugin list in
+  `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
 
-## Scope
+## Repo decisions
 
-RHDH collects two types of telemetry data by default:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Telemetry is left at the product default (enabled): `analytics-provider-segment` is not listed, so it is neither disabled nor customized | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Telemetry data collection][about] |
+| Plugins are configured only through the `dynamic-plugins-rhdh` ConfigMap referenced by the `Backstage` CR (Operator path, not Helm) | `.../rhdh-instance/backstage.yaml` (`dynamicPluginsConfigMapName`) | [Disable with the Operator][off-op] |
 
-### Web Analytics (Segment)
+The component README's alignment table does not list telemetry yet; record
+a decision there when this changes.
 
-Tracks user behavior and interactions:
+## Procedure
 
-- Page visits and link/button clicks
-- System information (locale, time zone, user agent)
-- Page information (title, category, extension name, URL, path, referrer)
-- Anonymous IP addresses (recorded as `0.0.0.0`)
-- Anonymous username hashes (unique user count only)
+1. To disable: add `analytics-provider-segment` to the plugin list in
+   `dynamic-plugins-configmap.yaml` with `disabled: true`, as the
+   [Operator procedure][off-op] describes; to change the destination, follow
+   [Customize the Segment source][seg-op]. Never put a write key in Git; use
+   `rhdh-secrets` (written by the configure hook) or a new Secret.
+2. Sync through the stage: `./stages/070-advanced-app-platform/deploy.sh`,
+   then `./stages/070-advanced-app-platform/validate.sh`.
+3. Check by hand (read-only, after the OpenShift safety guard in `AGENTS.md`):
 
-### System Observability (OpenTelemetry)
+   ```bash
+   oc get configmap dynamic-plugins-rhdh -n rhdh -o yaml | grep -n -A1 segment
+   oc get backstage developer-hub -n rhdh -o jsonpath='{.spec.application.dynamicPluginsConfigMapName}{"\n"}'
+   ```
 
-Tracks RHDH performance:
+## Pitfalls
 
-- CPU usage, memory usage, and performance indicators
-- System component information
-- Traces and logs for system process monitoring
+- Default-on means "not mentioned in Git" still sends data; review the
+  ConfigMap, not the README, to know the state.
+- Expect a portal rollout after a plugin change; with `maxSurge: 0`
+  (`backstage.yaml`) the old pod stops first, so the portal is briefly
+  unavailable.
 
-## Demo Policy
+## Official documentation (Developer Hub 1.10)
 
-For this repo:
+| Topic | Section |
+|---|---|
+| What is collected | [Telemetry data collection][about] |
+| Disable | [Disable telemetry][off], [with the Operator][off-op] |
+| Enable | [Enable telemetry][on], [with the Operator][on-op] |
+| Segment source | [Customize the Segment source][seg], [with the Operator][seg-op] |
 
-- Telemetry is enabled by default in RHDH.
-- In air-gapped or restricted environments, disable telemetry to avoid
-  outbound requests that affect responsiveness.
-- Do not commit real Segment write keys.
-- When customizing the Segment source, create a data collection notice for
-  application users.
-- Use `SEGMENT_WRITE_KEY` environment variable to point to a custom source.
+## Related skills
 
-## Workflow
+`rhdh-dynamic-plugins-install`, `rhdh-adoption-insights`, `rhdh-monitoring`, `rhdh-configure`.
 
-### Disable Telemetry
-
-#### Operator
-
-1. Create or update the `dynamic-plugins-rhdh` ConfigMap with the
-   `analytics-provider-segment` plugin set to `disabled: true`.
-2. Set `spec.application.dynamicPluginsConfigMapName: dynamic-plugins-rhdh`
-   in the Backstage CR.
-
-#### Helm Chart
-
-Add to `values.yaml`:
-
-```yaml
-global:
-  dynamic:
-    plugins:
-      - package: './dynamic-plugins/dist/backstage-community-plugin-analytics-provider-segment'
-        disabled: true
-```
-
-### Enable Telemetry
-
-Same configuration as disable, but set `disabled: false`.
-
-### Customize Segment Source
-
-#### Operator
-
-Set `SEGMENT_WRITE_KEY` in the Backstage CR:
-
-```yaml
-spec:
-  application:
-    extraEnvs:
-      envs:
-        - name: SEGMENT_WRITE_KEY
-          value: <segment_key>
-```
-
-#### Helm Chart
-
-Set in `values.yaml`:
-
-```yaml
-upstream:
-  backstage:
-    extraEnvVars:
-      - name: SEGMENT_WRITE_KEY
-        value: <segment_key>
-```
-
-## Key Configuration
-
-| Configuration | Plugin Package | Default |
-|---------------|----------------|---------|
-| Web Analytics | `./dynamic-plugins/dist/backstage-community-plugin-analytics-provider-segment` | Enabled |
-| Dynamic plugins ConfigMap | `dynamic-plugins-rhdh` | Must be created |
-| Segment write key | `SEGMENT_WRITE_KEY` env var | Points to Red Hat source |
-
-## Verification Commands
-
-```bash
-oc get configmap dynamic-plugins-rhdh -n <rhdh-namespace> -o yaml
-oc get backstage -n <rhdh-namespace> -o yaml
-oc logs deployment/<rhdh-deployment> -n <rhdh-namespace> | grep -i segment
-```
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[about]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/telemetry_data_collection_and_analysis/index#telemetry-data-collection-and-analysis_telemetry-data-collection-and-analysis
+[off]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/telemetry_data_collection_and_analysis/index#disable-telemetry-data-collection-in-rhdh_telemetry-data-collection-and-analysis
+[off-op]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/telemetry_data_collection_and_analysis/index#disable-telemetry-data-collection-using-the-operator_disable-telemetry-data-collection-in-rhdh
+[on]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/telemetry_data_collection_and_analysis/index#enable-telemetry-data-collection-in-rhdh_telemetry-data-collection-and-analysis
+[on-op]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/telemetry_data_collection_and_analysis/index#enable-telemetry-data-collection-using-the-operator_enable-telemetry-data-collection-in-rhdh
+[seg]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/telemetry_data_collection_and_analysis/index#customize-segment-source_telemetry-data-collection-and-analysis
+[seg-op]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/telemetry_data_collection_and_analysis/index#customize-segment-source-using-the-operator_customize-segment-source

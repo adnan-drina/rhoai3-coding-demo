@@ -2,51 +2,75 @@
 name: mta-release-notes
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "mta"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: mta
+  docs-version: "8.3"
   skill-group: "Application Modernization"
 description: >
-  Use when checking MTA 8.3 release notes, new features, bug fixes, known
-  issues, and deprecated features. Do NOT use for installing (use mta-install),
-  using tools (use mta-cli/mta-ui), or AI features (use mta-lightspeed).
+  Use when checking MTA 8.3 release posture for this demo: which z-stream is
+  pinned (operator 8.3.1, workspace CLI 8.3.0, VSIX 8.3.1), Developer Preview
+  vs Technology Preview status of native Agents, Lightspeed and Solution
+  Server, known issues that affect the repo, and reviewing an MTA update. Do
+  NOT use for installing (use mta-install), AI configuration (use
+  mta-lightspeed or mta-ui), or CLI usage (use mta-cli).
 ---
 
-# MTA Release Notes — 8.3
+# MTA release notes
 
-Read `references/source-capture.md` and the current-update section of
-`references/official-doc-extraction.md` for exact source and support boundaries.
+Thin skill: the repo's version posture here, release content in the linked
+MTA 8.3 release notes.
 
-## Current release
+## When to use
 
-The captured release is 8.3.0. New native MTA Agents support single runs and
-predetermined multistage workflows with sandbox execution and shared-Git
-handoffs. These capabilities are **Developer Preview**.
+- Reviewing an MTA operator, CLI or extension update.
+- Deciding whether a feature the repo relies on is Developer Preview,
+  Technology Preview or GA.
 
-mta-ops adds same-cluster PVC StorageClass conversion, indirect transfer through
-S3, persistent structured audit logging and clearer transfer progress. AWS S3
-is the validated indirect-transfer provider. S3 compatibility alone does not
-qualify NooBaa for this particular transfer workflow.
+## Repo decisions
 
-BuildConfig-to-Shipwright conversion is **Technology Preview**. Developer
-Lightspeed, Solution Server and IDE Agent AI retain their own preview boundaries.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Operator pinned to `mta-operator.v8.3.1` (Subscription `startingCSV`, approver allowlist, validator) | `gitops/stages/070-advanced-app-platform/mta/mta-operator/` | [MTA 8.3][rn83] |
+| Workspace CLI 8.3.0 and VSIX 8.3.1 qualified separately from the operator | `stages/070-advanced-app-platform/workspace-image/artifacts.lock.json` | [MTA 8.3.0][rn830] |
+| Native Agents treated as Developer Preview; unqualified while models are stopped | `gitops/stages/070-advanced-app-platform/mta/README.md` | [MTA agents][agents] |
+| Lightspeed proxy and Solution Server treated as Technology Preview; Solution Server disabled | `mta/mta-instance/tackle.yaml` | see `mta-lightspeed` |
+| `mta-ops` (PVC transfer) and BuildConfig conversion (Technology Preview) are not used | — | [mta-ops][mtaops], [Technology Preview][tp] |
 
-## Changes to check
+## Procedure
 
-- The CLI's deprecated listing, test and transform commands have replacements
-  under rules, provider and openrewrite.
-- MTA-6530 still misses annotation incidents through wildcard imports.
-- MTA-6863 fixes applying unsaved review-editor suggestions.
-- MTA-7870 can leave mta-ops executing without an audit file after a warning;
-  verify the artifact if the workflow requires it.
+1. Read the release notes for the target z-stream and its known issues.
+2. Update the pin as one change: Subscription, approver allowlist, validator
+   (see `mta-install`), then `.agents/references/red-hat-doc-map.yaml` if the
+   minor changes.
+3. Re-qualify the workspace CLI and VSIX separately (`mta-cli`, `mta-vscode`).
 
-The release book contains historical 8.0–8.2 chapters. Attribute a feature or
-fix to its actual release. Do not copy those chapters as new 8.3 functionality.
-Verify installed Operator, CLI, RPC and IDE versions separately.
+## Pitfalls
 
-## References
+- The 8.3 release notes describe 8.3.0 only (checked 2026-10-15); the repo
+  runs 8.3.1, so its fixes are not in this book. Check the Red Hat errata for
+  the CSV before relying on a fix.
+- The book also carries 8.0–8.2 chapters; attribute a feature to its actual
+  release.
+- MTA-6530 (wildcard imports miss annotation matches) affects rules that
+  gate on annotations (`mta-rules`).
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
+## Official documentation (MTA 8.3)
+
+| Topic | Section |
+|---|---|
+| 8.3 | [MTA 8.3][rn83], [8.3.0][rn830], [New features][new], [Technology Preview][tp], [Known issues][known], [Fixed issues][fixed] |
+| Previous minor | [MTA 8.2.1][rn821] |
+
+## Related skills
+
+`mta-install`, `mta-lightspeed`, `mta-ui`, `mta-cli`, `mta-rules`.
+
+[rn83]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index#mta-8-3_release-notes
+[rn830]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index#mta-8-3-0_mta-8-3
+[new]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index#new-features-and-enhancements-8-3-0_mta-8-3-0
+[agents]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index#mta_agents
+[mtaops]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index#mta_ops_command_line_interface
+[tp]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index#tech-previews-8-3-0_mta-8-3-0
+[known]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index#known-issues-8-3-0_mta-8-3-0
+[fixed]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index#fixed-issues-8-3-0_mta-8-3-0
+[rn821]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/release_notes/index#mta-8-2-1_mta-8-2

@@ -2,148 +2,101 @@
 name: rhdh-customize
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when customizing Red Hat Developer Hub appearance, templates, Learning
-  Paths, Tech Radar, Home page, quick access cards, global header, floating
-  action buttons, navigation, branding, and localization. Do NOT use for
-  provisioning config maps and secrets (use rhdh-configure), TechDocs plugin
-  setup (use rhdh-techdocs-config), or upgrade procedures (use rhdh-upgrade).
+  Use when changing what developers see in this demo's Red Hat Developer Hub:
+  the portal title, the global header (application launcher tiles for
+  SonarQube and Dev Spaces), and the two software templates
+  agentic-quarkus-scaffold and app-migration (steps publish:gitlab and
+  gitlab:issues:create, skeletons, catalog registration through the pinned
+  runtime catalog). Do NOT use for app-config plumbing, secrets and the
+  Backstage CR (use rhdh-configure), plugin enablement (use
+  rhdh-dynamic-plugins-configure), TechDocs (use rhdh-techdocs-config), or
+  sign-in (use rhdh-authentication).
 ---
 
-# RHDH Customize
+# Developer Hub customization
 
-Use this skill to customize Red Hat Developer Hub 1.10 appearance and features
-grounded in official product documentation.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers title, base URL,
-backend secret, Software Templates, Learning Paths, global header, floating
-action buttons, quick start plugin, Tech Radar, theme and branding, navigation,
-persona-specific homepages, quick access cards, metadata cards, and
-localization.
+- Changing the header, launcher tiles or title in `app-config-rhdh`.
+- Adding or changing a software template under
+  `gitops/stages/070-advanced-app-platform/rhdh/templates/`.
 
-## Key Customization Areas
+## Repo decisions
 
-1. **Title and base URL** — `app.title`, `app.baseUrl`, `backend.baseUrl`
-2. **Backend secret** — `BACKEND_SECRET` for service-to-service auth
-3. **Software Templates** — `template.yaml` scaffolding, versioning,
-   provenance tracking, automated lifecycle management
-4. **Learning Paths** — JSON-based learning content configuration
-5. **Global header** — Header links, profile menu, logo placement via
-   `dynamicPlugins.frontend` config
-6. **Floating action button** — Configurable action buttons via
-   `app-config.yaml`
-7. **Quick start plugin** — Guided walkthroughs for developers
-8. **Tech Radar** — Radar visualization of technology adoption status
-9. **Theme and branding** — Custom logos, colors, fonts, page titles
-10. **Navigation** — Sidebar menu customization
-11. **Persona-specific homepages** — Targeted content for distinct teams
-12. **Quick access cards** — Homepage quick links configuration
-13. **Metadata card** — Settings page RHDH metadata display
-14. **Localization** — Multi-language support
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Title `RHOAI Coding Demo Portal`; base URL from `${RHDH_BASE_URL}` written by the configure hook | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Title][title], [Base URL][baseurl] |
+| Global header `mountPoints` restate the full default composition and append the demo launcher tiles (`${SONARQUBE_URL}`, `${DEVSPACES_URL}`) | same file (`dynamicPlugins.frontend`) | [Customize the global header][header], [Mount points][mounts] |
+| Floating action button, home page, learning paths, Tech Radar, theme and branding are not customized | — | [Floating action button][fab], [Theme and branding][theme] |
+| Two templates, `agentic-quarkus-scaffold` and `app-migration`; they publish private GitLab repositories (`publish:gitlab`) and open an enrollment issue (`gitlab:issues:create`), never `catalog:register` | `rhdh/templates/*/template.yaml` | [Software templates][templates], [Create a template][create] |
+| Templates enter the catalog only from the generated runtime catalog pinned to one platform commit; GitLab discovery may not ingest `Template` | `rhdh/catalog/all.yaml`, `rhdh/jobs/catalog/render_catalog.py` | [Share templates][share] |
+| Template versioning and automated template sync are not used; the pinned bundle is the version | `rhdh/jobs/catalog/generate.sh` | [Version a template][version], [Automated template updates][autoupdate] |
 
-## Software Templates
+Paths are under `gitops/stages/070-advanced-app-platform/`.
 
-### Template versioning
+## Procedure
 
-Enable version tracking with custom actions:
-- `catalog:scaffolded-from` — provenance annotation
-- `catalog:template:version` — version annotation
+1. Header: copy the whole current `mountPoints` list and append; never send
+   a partial list.
+2. Templates: edit `template.yaml` and its `skeleton/`; the bundle hash
+   changes, Argo CD applies the new ConfigMap and the catalog generator
+   publishes it only when every bundled file matches the GitLab mirror.
+3. Validate statically, then after the safety guard in `AGENTS.md`:
 
-Required plugins:
-```yaml
-global:
-  dynamic:
-    plugins:
-      - package: ./dynamic-plugins/dist/backstage-community-plugin-catalog-backend-module-scaffolder-relation-processor-dynamic
-        disabled: false
-      - package: ./dynamic-plugins/dist/backstage-plugin-notifications
-        disabled: false
-      - package: ./dynamic-plugins/dist/backstage-plugin-notifications-backend-dynamic
-        disabled: false
-```
+   ```bash
+   ./stages/070-advanced-app-platform/validate.sh --static   # render_catalog and app-migration template tests
+   ./stages/070-advanced-app-platform/validate.sh
+   oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\.redhat\.com/catalog-revision}{"\n"}'
+   ```
 
-### Template update notifications
+## Pitfalls
 
-```yaml
-scaffolder:
-  notifications:
-    templateUpdate:
-      enabled: true
-      message:
-        title: 'Custom title for $ENTITY_DISPLAY_NAME'
-        description: 'Custom description'
-```
+- A custom header `mountPoints` list replaces the default composition in
+  practice (observed live 2026-07-14, comment in the ConfigMap); dropping the
+  `GlobalHeader` entry removes the whole top header. The 1.10 guide says only
+  to copy the default configuration and modify it.
+- Template input names must match the installed GitLab action schemas
+  (`stages/070-advanced-app-platform/tests/product-schemas.test.py`).
+- Template flaps 200/404 after a re-stamp:
+  `docs/TROUBLESHOOTING.md#rhdh-template-entity-returns-200-then-404-after-a-catalog-re-stamp`.
+- `FACTORY_MAAS_ROUTE_MISSING` from `app-migration`:
+  `docs/TROUBLESHOOTING.md#migration-workspace-creation-fails-with-factory_maas_route_missing`.
 
-### Automated template lifecycle
+## Official documentation (Developer Hub 1.10)
 
-```yaml
-scaffolder:
-  pullRequests:
-    templateUpdate:
-      enabled: true
-```
+| Topic | Section |
+|---|---|
+| Title, URL | [Title][title], [Base URL][baseurl] |
+| Global header | [Configure the global header][header-ch], [Customize][header], [Mount points][mounts] |
+| Templates | [About templates][about-templates], [Software templates][templates], [Create a template][create], [Share templates][share], [Version a template][version], [Automated template updates][autoupdate] |
+| Not used | [Floating action button][fab], [Theme and branding][theme], [Navigation][nav], [Localization][l10n] |
 
-### Default environment parameters
+## Related skills
 
-```yaml
-scaffolder:
-  defaultEnvironment:
-    parameters:
-      githubOrg: my-org
-      defaultOwner: platform-team
-    secrets:
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
-```
+`rhdh-configure`, `rhdh-dynamic-plugins-configure`, `rhdh-git-integration`,
+`rhdh-techdocs-config`, `rhdh-getting-started-navigate`.
 
-Access via `${{ environment.parameters.* }}` and
-`${{ environment.secrets.* }}` in templates.
-
-## Theme and Branding
-
-Custom theme configuration in `app-config.yaml`:
-- Custom logos (light/dark mode, full/icon variants)
-- Color palette overrides
-- Font customization
-- Page title
-
-## Navigation Customization
-
-Sidebar navigation items configured via `dynamicPlugins.frontend` in the
-dynamic plugins configuration.
-
-## Persona-Specific Homepages
-
-Deploy targeted content for distinct teams using conditional homepage
-configuration based on user groups.
-
-## Workflow
-
-1. Read `references/official-doc-extraction.md` for exact YAML patterns.
-2. Identify the customization task:
-   - Title, URL, or branding changes
-   - Software Template authoring or versioning
-   - Homepage or navigation customization
-   - Plugin-based features (Tech Radar, Learning Paths, etc.)
-3. Apply configuration to the appropriate file (`app-config.yaml` or
-   dynamic plugins ConfigMap).
-4. Restart/redeploy RHDH to apply changes.
-5. Verify in the RHDH UI.
-
-## Related Skills
-
-- `rhdh-configure` — Config maps, secrets, and infrastructure configuration
-- `rhdh-upgrade` — Upgrade procedures
-- `rhdh-techdocs-config` — TechDocs plugin configuration
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[title]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#customize-your-rhdh-title_customizing-rhdh
+[baseurl]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#customize-your-rhdh-base-url_customizing-rhdh
+[about-templates]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#about-software-templates_customizing-rhdh
+[version]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#version-a-software-template-in-rhdh_about-software-templates
+[autoupdate]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#enable-automated-template-updates_automated-software-template-lifecycle-management
+[templates]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#software-templates-in-rhdh_standardize-project-development-with-software-templates
+[create]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#create-a-basic-software-template_standardize-project-development-with-software-templates
+[share]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#share-software-templates-with-your-organization_standardize-project-development-with-software-templates
+[header-ch]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#configure-the-global-header-in-rhdh_customizing-rhdh
+[header]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#customize-your-rhdh-global-header_configure-the-global-header-in-rhdh
+[mounts]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#mount-points-for-dynamic-plugin-integration_configure-the-global-header-in-rhdh
+[fab]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#configure-a-floating-action-button-in-rhdh_customizing-rhdh
+[theme]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#customize-rhdh-theme-and-branding_customizing-rhdh
+[nav]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#customize-rhdh-navigation_customizing-rhdh
+[l10n]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/customizing_red_hat_developer_hub/index#localization-in-rhdh_customizing-rhdh

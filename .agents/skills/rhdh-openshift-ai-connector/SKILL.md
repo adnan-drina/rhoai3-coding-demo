@@ -2,97 +2,52 @@
 name: rhdh-openshift-ai-connector
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when installing, configuring, or troubleshooting OpenShift AI Connector
-  for Red Hat Developer Hub to accelerate AI development. Covers AI asset
-  mapping (InferenceService to Component, Model Registry to Resource, API specs,
-  TechDocs model cards), RBAC setup, sidecar containers, dynamic plugin
-  installation, metadata enrichment, and diagnostic procedures. Do NOT use for
-  model serving itself (use rhoai-model-serving-platform). Do NOT use for RHDH
-  installation or Git integration.
+  Use when someone asks about the OpenShift AI Connector for Red Hat Developer
+  Hub 1.10 (Developer Preview): mapping OpenShift AI model registry and catalog
+  assets to catalog entities, setup, metadata enrichment and troubleshooting.
+  Not used in this repo. Do NOT use for the model registry itself (use
+  rhoai-model-registry) or MaaS model access (use rhoai-maas-governance).
 ---
 
-# RHDH OpenShift AI Connector
+# OpenShift AI Connector for Developer Hub
 
-Install and configure the OpenShift AI Connector for Red Hat Developer Hub
-1.10 to automatically discover and surface AI models, model servers, and APIs
-from Red Hat OpenShift AI in the RHDH Software Catalog.
+Thin skill, link-only stub: the feature is not used in this repo. Product
+behavior lives in the linked Developer Hub 1.10 sections.
 
-## When to Use
+## When to use
 
-- Installing the OpenShift AI Connector dynamic plugins
-- Configuring ServiceAccount and RBAC for RHOAI access
-- Setting up sidecar containers (rhoai-normalizer, storage-rest, location)
-- Mapping RHOAI artifacts to Backstage entity kinds
-- Enriching AI model metadata (API spec, owner, lifecycle, TechDocs)
-- Troubleshooting connector data sync issues
-- Configuring entity provider in `catalog.providers.modelCatalog`
+- Someone wants OpenShift AI models to appear as Developer Hub catalog entities.
 
-## Key Concepts
+## Not used in this repo
 
-### Support Status
+The Developer Hub catalog in this repo is generated from
+`gitops/stages/070-advanced-app-platform/rhdh/catalog/all.yaml` and lists no
+AI model entities; the connector is not installed. Models are published
+through MaaS (Stage 040). Developer Preview in 1.10.
 
-- **Developer Preview** — not production-ready, not supported by Red Hat SLA
-- Requires RHOAI 2.25 for model card TechDocs propagation
-- RHOAI 2.20+ for other features
+Adopting it is a Stage 070 change: record the decision in
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` and convert this stub
+to a full thin skill.
 
-### RHOAI-to-Backstage Entity Mapping
+## Official documentation (Developer Hub 1.10)
 
-| RHOAI Artifact | Backstage Kind | Type | Purpose |
-|----------------|---------------|------|---------|
-| InferenceService | Component | `model-server` | Running AI model endpoint |
-| Model Registry Version | Resource | `ai-model` | AI model artifact |
-| Model Server API | API | `openapi` | REST endpoint specification |
-| Model Cards | TechDocs | N/A | Model documentation |
+| Topic | Section |
+|---|---|
+| AI assets in the catalog | [AI assets in the catalog][l1] |
+| Set up the connector | [Set up the connector][l2] |
+| Enrich model metadata | [Enrich model metadata][l3] |
+| Troubleshooting | [Troubleshooting][l4] |
 
-### Architecture
+## Related skills
 
-Three sidecar containers alongside `backstage-backend`:
-- **rhoai-normalizer**: Kubernetes controller normalizing RHOAI metadata
-- **storage-rest**: ConfigMap-based storage bridge
-- **location**: Location service providing data to RHDH Entity Provider
+`rhoai-model-registry`, `rhoai-maas-governance`, `rhdh-dynamic-plugins-install`.
 
-## Prerequisites
-
-- RHDH 1.10 deployed (Helm)
-- RHOAI 2.25 (recommended) or 2.20+ on same cluster
-- Model Registry enabled in RHOAI
-- Cluster administrator privileges
-
-## Validation
-
-```bash
-# Verify dynamic plugins installed
-oc logs -c install-dynamic-plugins deployment/<rhdh> | grep "model-catalog"
-
-# Check sidecar containers running
-oc get pod -l app=backstage -o jsonpath='{.items[*].spec.containers[*].name}'
-
-# Verify location service
-oc rsh -c backstage-backend deployment/<rhdh> curl http://localhost:9090/list
-
-# Check ConfigMap with cached data
-oc get configmap bac-import-model -o json | jq '.binaryData | keys'
-
-# Check backstage-backend logs for entity provider
-oc logs deployment/<rhdh> -c backstage-backend | grep "ModelCatalog"
-```
-
-## Boundaries
-
-- Developer Preview — not for production workloads
-- Model cards from RHOAI < 2.25 registrations do not transfer as TechDocs
-- Helm-based deployment only (sidecar container approach)
-- `baseUrl: http://localhost:9090` is the only supported value for
-  Developer Preview
-- API spec must be manually populated via Model Registry Properties
-
-## References
-
-- `references/source-capture.md` — source ledger
-- `references/official-doc-extraction.md` — extracted procedures and config
+[l1]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/accelerate_ai_development_with_openshift_ai_connector_for_red_hat_developer_hub/index#understand-how-ai-assets-map-to-the-rhdh-catalog_accelerating-ai-development-with-openshift-ai-connector-for-rhdh
+[l2]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/accelerate_ai_development_with_openshift_ai_connector_for_red_hat_developer_hub/index#set-up-with_accelerating-ai-development-with-openshift-ai-connector-for-rhdh
+[l3]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/accelerate_ai_development_with_openshift_ai_connector_for_red_hat_developer_hub/index#enrich-ai-model-metadata-for-enhanced-rhdh-experience_accelerating-ai-development-with-openshift-ai-connector-for-rhdh
+[l4]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/accelerate_ai_development_with_openshift_ai_connector_for_red_hat_developer_hub/index#troubleshoot-connector-functionality_accelerating-ai-development-with-openshift-ai-connector-for-rhdh
