@@ -1,65 +1,92 @@
 #!/usr/bin/env bash
-# Reuse the authorized provider credential; values never enter Git or command arguments.
+# Ensures one external provider credential Secret in external-models (RHOAI_STAGE040_PROVIDER_SECRET, default
+# openai-provider-api-key): reuses an existing owned Secret, copies the prior one from models-as-a-service, or
+# creates it from OPENAI_API_KEY / ANTHROPIC_API_KEY / NVIDIA_API_KEY. RHOAI_STAGE040_ROTATE_PROVIDER_SECRET=true
+# replaces the OpenAI key in place. Values only travel through pipes and jq's environment: never Git, arguments or
+# output. Secret JSON is piped (printf | jq), not passed as a here-string, which bash 3.2 backs with a temp file.
+# Usage: RHOAI_STAGE040_PROVIDER_SECRET=<name> stages/040-governed-models-as-a-service/setup-provider-secret.sh
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-REPO_ROOT="$ROOT_DIR"
-source "$ROOT_DIR/scripts/shared/lib.sh"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
-export REPO_ROOT
-python3 - <<'PY'
-import base64,json,os,subprocess,sys,time
-sys.path.insert(0,os.environ['REPO_ROOT']+'/scripts/shared');import stage_apps
-NS='external-models';NAME=os.environ.get('RHOAI_STAGE040_PROVIDER_SECRET','openai-provider-api-key');assert NAME in ('openai-provider-api-key','anthropic-provider-api-key','nvidia-provider-api-key'),'Unreviewed provider credential';APP='040-external-models'
-ROTATE=os.environ.get('RHOAI_STAGE040_ROTATE_PROVIDER_SECRET','false').lower()
-assert ROTATE in ('true','false'),'Rotation flag must be explicitly true or false'
-assert ROTATE!='true' or NAME=='openai-provider-api-key','Explicit rotation is scoped to the OpenAI provider'
-def get(ns):
- r=subprocess.run(['oc','--request-timeout=10s','get','secret',NAME,'-n',ns,'--ignore-not-found','-o','json'],capture_output=True,text=True,timeout=15)
- if r.returncode:raise RuntimeError('Provider credential read failed')
- return json.loads(r.stdout) if r.stdout.strip() else None
-try:
- for _ in range(60):
-  r=subprocess.run(['oc','--request-timeout=10s','get','namespace',NS,'--ignore-not-found','-o','json'],capture_output=True,text=True,timeout=15)
-  if r.returncode:raise RuntimeError('Provider namespace read failed')
-  if r.stdout.strip():
-   n=json.loads(r.stdout);assert n['metadata'].get('annotations',{}).get('argocd.argoproj.io/tracking-id')==APP+':/Namespace:openshift-gitops/'+NS,'Provider namespace ownership differs';break
-  time.sleep(5)
- else:raise RuntimeError('Provider namespace did not reconcile')
- target=get(NS)
- if target:
-  assert stage_apps.runtime_tracking_ok('040',target),'Existing provider credential is tracked by another Application'
-  assert not target['metadata'].get('ownerReferences') and not target['metadata'].get('deletionTimestamp'),'Existing provider credential requires reviewed ownership'
-  encoded=target.get('data',{}).get('api-key','');assert base64.b64decode(encoded,validate=True),'Existing provider credential is incomplete'
-  assert target['metadata'].get('labels',{}).get('inference.llm-d.ai/ipp-managed')=='true','Existing native provider credential metadata differs'
-  if ROTATE=='true':
-   value=os.environ.get('OPENAI_API_KEY');assert value,'Fresh authorized OpenAI credential is unavailable'
-   replacement=base64.b64encode(value.encode()).decode()
-   if replacement!=encoded:
-    patch=[{'op':'test','path':'/metadata/uid','value':target['metadata']['uid']},{'op':'test','path':'/metadata/resourceVersion','value':target['metadata']['resourceVersion']},{'op':'replace','path':'/data/api-key','value':replacement}]
-    r=subprocess.run(['oc','--request-timeout=10s','patch','secret',NAME,'-n',NS,'--type=json','--patch-file=/dev/stdin'],input=json.dumps(patch),capture_output=True,text=True,timeout=15)
-    if r.returncode:raise RuntimeError('Scoped provider credential rotation failed; response suppressed')
-    after=get(NS)
-    assert after['metadata']['uid']==target['metadata']['uid'] and after['metadata'].get('labels')==target['metadata'].get('labels'),'Provider identity or labels changed during rotation'
-    assert after.get('type')==target.get('type') and after.get('data')=={**target['data'],'api-key':replacement},'Provider credential readback differs'
-   print('PASS Authorized OpenAI credential matches the retained native Secret; identity and labels preserved.')
-  else:
-   print('PASS Existing native provider credential reused without rotation.')
- else:
-  assert ROTATE!='true','Explicit rotation requires the existing owned provider credential'
-  prior=get('models-as-a-service')
-  if prior:
-   assert not prior['metadata'].get('deletionTimestamp'),'Prior credential is terminating'
-   encoded=prior.get('data',{}).get('api-key','');assert base64.b64decode(encoded,validate=True),'Prior authorized credential is incomplete'
-  else:
-   value=(os.environ.get('OPENAI_API_KEY') or os.environ.get('RHOAI_OPENAI_API_KEY')) if NAME=='openai-provider-api-key' else os.environ.get('NVIDIA_API_KEY') if NAME=='nvidia-provider-api-key' else os.environ.get('ANTHROPIC_API_KEY');assert value,'Authorized provider credential is unavailable'
-   encoded=base64.b64encode(value.encode()).decode()
-  secret={'apiVersion':'v1','kind':'Secret','metadata':{'name':NAME,'namespace':NS,'labels':{'inference.llm-d.ai/ipp-managed':'true','app.kubernetes.io/part-of':'rhoai3-coding-demo'}},'type':'Opaque','data':{'api-key':encoded}}
-  r=subprocess.run(['oc','--request-timeout=10s','create','-f','-'],input=json.dumps(secret),capture_output=True,text=True,timeout=15)
-  if r.returncode:raise RuntimeError('Native provider credential creation failed; inspect ownership before retry')
-  print('PASS Authorized provider credential supplied through private standard input.')
-except Exception as e:
- print('ERROR: '+(str(e) if isinstance(e,(AssertionError,RuntimeError)) else type(e).__name__))
- raise SystemExit(1)
-PY
+
+NS=external-models
+APP=040-external-models
+NAME="${RHOAI_STAGE040_PROVIDER_SECRET:-openai-provider-api-key}"
+ROTATE=$(tr '[:upper:]' '[:lower:]' <<<"${RHOAI_STAGE040_ROTATE_PROVIDER_SECRET:-false}")
+fail() { echo "ERROR: $*" >&2; exit 1; }
+case "$NAME" in
+    openai-provider-api-key) KEY_VAR=OPENAI_API_KEY ;;
+    anthropic-provider-api-key) KEY_VAR=ANTHROPIC_API_KEY ;;
+    nvidia-provider-api-key) KEY_VAR=NVIDIA_API_KEY ;;
+    *) fail "Unreviewed provider credential $NAME" ;;
+esac
+[[ "$ROTATE" == true || "$ROTATE" == false ]] || fail "Rotation flag must be explicitly true or false"
+[[ "$ROTATE" == false || "$NAME" == openai-provider-api-key ]] || fail "Explicit rotation is scoped to the OpenAI provider"
+# The OpenAI key may also come from the older RHOAI_OPENAI_API_KEY name.
+if [[ "$NAME" == openai-provider-api-key && -z "${OPENAI_API_KEY:-}" && -n "${RHOAI_OPENAI_API_KEY:-}" ]]; then
+    export OPENAI_API_KEY="$RHOAI_OPENAI_API_KEY"
+fi
+export KEY_VAR
+read_secret() { oc --request-timeout=10s get secret "$NAME" -n "$1" --ignore-not-found -o json; }
+
+# The provider namespace comes from 040-external-models; wait for it (up to 5 minutes).
+for attempt in $(seq 1 60); do
+    tracking=$(oc --request-timeout=10s get namespace "$NS" --ignore-not-found \
+        -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/tracking-id}{"|"}{.metadata.uid}')
+    if [[ "$tracking" == *"|"?* ]]; then
+        [[ "${tracking%|*}" == "$APP:/Namespace:openshift-gitops/$NS" ]] || fail "Provider namespace ownership differs"
+        break
+    fi
+    (( attempt < 60 )) || fail "Provider namespace did not reconcile"
+    sleep 5
+done
+
+target=$(read_secret "$NS")
+if [[ -n "$target" ]]; then
+    components=$(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" names 040 --all | jq -R . | jq -s -c .)
+    printf '%s' "$target" | jq -e --argjson apps "$components" '.metadata as $m
+        | ($m.annotations["argocd.argoproj.io/tracking-id"] // "" | . == "" or (split(":")[0] as $a | $apps | index($a)))
+        and ($m.ownerReferences // [] | length) == 0 and $m.deletionTimestamp == null
+        and (.data["api-key"] // "" | length) > 0 and (.data["api-key"] | @base64d | length) > 0
+        and $m.labels["inference.llm-d.ai/ipp-managed"] == "true"' >/dev/null ||
+        fail "Existing provider credential is foreign, incomplete or lacks its native label"
+    if [[ "$ROTATE" == true ]]; then
+        [[ -n "${OPENAI_API_KEY:-}" ]] || fail "Fresh authorized OpenAI credential is unavailable"
+        # JSON patch guarded by uid and resourceVersion; the new value comes from jq's environment.
+        printf '%s' "$target" | jq -c '[{op: "test", path: "/metadata/uid", value: .metadata.uid},
+            {op: "test", path: "/metadata/resourceVersion", value: .metadata.resourceVersion},
+            {op: "replace", path: "/data/api-key", value: ($ENV.OPENAI_API_KEY | @base64)}]' |
+            oc --request-timeout=10s patch secret "$NAME" -n "$NS" --type=json --patch-file=/dev/stdin >/dev/null ||
+            fail "Scoped provider credential rotation failed; response suppressed"
+        read_secret "$NS" | jq -e --slurpfile before <(printf '%s' "$target") '$before[0] as $before
+            | .metadata.uid == $before.metadata.uid
+            and .metadata.labels == $before.metadata.labels and .type == $before.type
+            and .data == ($before.data + {"api-key": ($ENV.OPENAI_API_KEY | @base64)})' >/dev/null ||
+            fail "Provider identity, labels or readback differ after rotation"
+        echo "PASS Authorized OpenAI credential matches the retained native Secret; identity and labels preserved."
+    else
+        echo "PASS Existing native provider credential reused without rotation."
+    fi
+    exit 0
+fi
+
+[[ "$ROTATE" == false ]] || fail "Explicit rotation requires the existing owned provider credential"
+# New Secret: the prior credential from models-as-a-service if present, else the key from the environment.
+prior=$(read_secret models-as-a-service)
+if [[ -n "$prior" ]]; then
+    printf '%s' "$prior" | jq -e '.metadata.deletionTimestamp == null and (.data["api-key"] // "" | @base64d | length) > 0' >/dev/null ||
+        fail "Prior authorized credential is terminating or incomplete"
+    source_json="$prior"
+else
+    [[ -n "${!KEY_VAR:-}" ]] || fail "Authorized provider credential is unavailable ($KEY_VAR)"
+    source_json=$(jq -n '{data: {"api-key": ($ENV[$ENV.KEY_VAR] | @base64)}}')
+fi
+printf '%s' "$source_json" | jq --arg name "$NAME" --arg ns "$NS" '{apiVersion: "v1", kind: "Secret", type: "Opaque",
+    metadata: {name: $name, namespace: $ns,
+        labels: {"inference.llm-d.ai/ipp-managed": "true", "app.kubernetes.io/part-of": "rhoai3-coding-demo"}},
+    data: {"api-key": .data["api-key"]}}' |
+    oc --request-timeout=10s create -f - >/dev/null || fail "Native provider credential creation failed; inspect ownership before retry"
+echo "PASS Authorized provider credential supplied through private standard input."
