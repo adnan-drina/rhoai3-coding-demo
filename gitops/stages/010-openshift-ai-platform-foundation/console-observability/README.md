@@ -49,7 +49,7 @@ Pipelines).
 ## How
 
 - **Own deploy script.** `deploy-console-observability.sh` checks the following before its first write:
-  - the component files match the selected, published commit;
+  - the Stage 010 source matches the selected, published commit (`stage_apps.py select`);
   - an existing Application has the expected identity;
   - an existing `UIPlugin/monitoring` has no owner, is not being deleted, has no foreign tracking id, and has exactly
     the reviewed spec.

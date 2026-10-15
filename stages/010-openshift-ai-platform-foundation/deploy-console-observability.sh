@@ -6,15 +6,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
-revision="${GIT_REPO_BRANCH:-}"
-if [[ "${1:-}" == --revision && $# -eq 2 ]]; then revision="$2";
-elif [[ $# -ne 0 ]]; then echo "Usage: $0 [--revision <published ref>]" >&2; exit 1; fi
-commit=$(git -C "$REPO_ROOT" rev-parse --verify "${revision:?Select published revision}^{commit}")
-paths=(gitops/stages/010-openshift-ai-platform-foundation/console-observability gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/console-observability.yaml stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh stages/010-openshift-ai-platform-foundation/validate-console-observability.sh scripts/shared)
-git -C "$REPO_ROOT" diff --quiet "$commit" -- "${paths[@]}" || { echo 'ERROR: Component differs from reviewed revision' >&2; exit 1; }
-[[ -z $(git -C "$REPO_ROOT" ls-files --others --exclude-standard -- "${paths[@]}") ]] || { echo 'ERROR: Unpublished component files' >&2; exit 1; }
+require_env GIT_REPO_URL "reviewed Stage 010 source repository"
+assert_required_env
+ref="${GIT_REPO_BRANCH:-HEAD}"
+if [[ "${1:-}" == --revision && $# -eq 2 ]]; then ref="$2"; elif [[ $# -ne 0 ]]; then echo "Usage: $0 [--revision REF]" >&2; exit 1; fi
+commit=$(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" select 010 --ref "$ref" --repo-url "$GIT_REPO_URL")
 export GIT_REPO_URL
-git ls-remote "${GIT_REPO_URL:?}" | awk '{print $1}' | grep -Fx "$commit" >/dev/null || { echo 'ERROR: Revision is not published' >&2; exit 1; }
 python3 - <<'PY_ADOPT'
 import json,os,subprocess
 app='010-console-observability';path='gitops/stages/010-openshift-ai-platform-foundation/console-observability'
@@ -29,10 +26,8 @@ for kind,name,ns in [('application',app,'openshift-gitops'),('uiplugins.observab
   s=x['spec'];assert not s.get('sources') and s['project']=='rhoai-demo' and s['source']['repoURL']==os.environ['GIT_REPO_URL'] and s['source']['path']==path and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'},'Unexpected Application identity'
  else:assert x['spec']=={'type':'Monitoring','monitoring':{'perses':{'enabled':True}}},'Existing UIPlugin requires a reviewed merge'
 PY_ADOPT
-manifest=$(mktemp);trap 'rm -f "$manifest"' EXIT
-ruby -ryaml -e 'a=YAML.load_file(ARGV[0]);a["spec"]["source"]["repoURL"]=ENV.fetch("GIT_REPO_URL");a["spec"]["source"]["targetRevision"]=ARGV[1];puts YAML.dump(a)' "$REPO_ROOT/gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/console-observability.yaml" "$commit" > "$manifest"
 # First write is our Application; COO owns the generated plugin/Perses.
-oc --request-timeout=10s apply -f "$manifest"
+python3 "$REPO_ROOT/scripts/shared/stage_apps.py" apply 010 --app 010-console-observability --revision "$commit" --repo-url "$GIT_REPO_URL"
 python3 "$REPO_ROOT/scripts/shared/stage_apps.py" sync 010 --app 010-console-observability  # an unchanged render gets no automatic sync operation
 python3 "$REPO_ROOT/scripts/shared/stage_apps.py" wait 010 --app 010-console-observability --revision "$commit" --repo-url "$GIT_REPO_URL" --timeout 600
 deadline=$((SECONDS + 600))

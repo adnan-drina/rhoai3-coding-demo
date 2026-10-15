@@ -6,15 +6,13 @@ source "$REPO_ROOT/scripts/shared/lib.sh"
 load_env
 check_oc_logged_in
 # The approved additive component leaves existing buckets and consumers intact.
-[[ "${1:-}" == --revision && $# -eq 2 ]] || { echo "Usage: $0 --revision <published-ref>" >&2; exit 1; }
-commit=$(git -C "$REPO_ROOT" rev-parse --verify "${2}^{commit}")
-paths=(gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/sandbox-storage.yaml stages/010-openshift-ai-platform-foundation/deploy-sandbox-storage.sh stages/010-openshift-ai-platform-foundation/validate-sandbox-storage.sh scripts/shared)
-git -C "$REPO_ROOT" diff --quiet "$commit" -- "${paths[@]}" || { echo "ERROR: Component differs from selected revision" >&2; exit 1; }
-[[ -z "$(git -C "$REPO_ROOT" ls-files --others --exclude-standard -- "${paths[@]}")" ]] || { echo "ERROR: Component has unpublished files" >&2; exit 1; }
-require_env GIT_REPO_URL "reviewed Stage 010 source repository"; assert_required_env
-repo="$GIT_REPO_URL"
-git ls-remote "$repo" | awk '{print $1}' | grep -Fx "$commit" >/dev/null || { echo "ERROR: Revision is not published" >&2; exit 1; }
-GIT_REPO_URL="$repo" python3 - <<'PY_ADOPT'
+require_env GIT_REPO_URL "reviewed Stage 010 source repository"
+assert_required_env
+ref="${GIT_REPO_BRANCH:-HEAD}"
+if [[ "${1:-}" == --revision && $# -eq 2 ]]; then ref="$2"; elif [[ $# -ne 0 ]]; then echo "Usage: $0 [--revision REF]" >&2; exit 1; fi
+commit=$(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" select 010 --ref "$ref" --repo-url "$GIT_REPO_URL")
+export GIT_REPO_URL
+python3 - <<'PY_ADOPT'
 import json,subprocess,os
 app="010-sandbox-storage"
 for kind,name,ns in [("application",app,"openshift-gitops"),("obc","rhoai-models","demo-sandbox"),("obc","rhoai-workbench","demo-sandbox"),("secret","rhoai-models-connection","demo-sandbox"),("secret","rhoai-workbench-connection","demo-sandbox")]:
@@ -31,11 +29,8 @@ for kind,name,ns in [("application",app,"openshift-gitops"),("obc","rhoai-models
         s=json.loads(p.stdout)
         if s.get('sources') or s.get("source",{}).get("repoURL")!=os.environ["GIT_REPO_URL"] or s.get("destination")!={"server":"https://kubernetes.default.svc","namespace":"openshift-gitops"} or s.get("project")!="rhoai-demo" or s.get("source",{}).get("path")!="gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage": raise SystemExit("ERROR: Existing Application identity differs")
 PY_ADOPT
-manifest=$(mktemp)
-trap 'rm -f "$manifest"' EXIT
-sed -e "s|repoURL: .*|repoURL: $repo|" -e "s|targetRevision: .*|targetRevision: $commit|" "$REPO_ROOT/gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/sandbox-storage.yaml" > "$manifest"
 # First write targets only this additive component, never the core foundation.
-oc --request-timeout=10s apply -f "$manifest"
+python3 "$REPO_ROOT/scripts/shared/stage_apps.py" apply 010 --app 010-sandbox-storage --revision "$commit" --repo-url "$GIT_REPO_URL"
 python3 "$REPO_ROOT/scripts/shared/stage_apps.py" sync 010 --app 010-sandbox-storage  # an unchanged render gets no automatic sync operation
 python3 "$REPO_ROOT/scripts/shared/stage_apps.py" wait 010 --app 010-sandbox-storage --revision "$commit" --repo-url "$GIT_REPO_URL" --timeout 720
 "$SCRIPT_DIR/validate-sandbox-storage.sh"

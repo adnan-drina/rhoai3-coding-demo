@@ -69,7 +69,7 @@ The hook Job stays after a successful run as evidence. Argo CD deletes it before
   carry `Prune=false,Delete=false` [6].
 - **Own deploy script.** Before its first write, `deploy-sandbox-storage.sh` refuses to continue if any of the
   following is true:
-  - the component files differ from the selected, published commit;
+  - the Stage 010 source differs from the selected, published commit (`stage_apps.py select`);
   - an existing OBC or connection Secret has an owner, is being deleted, or has another tracking id;
   - the existing Application's identity differs.
 
