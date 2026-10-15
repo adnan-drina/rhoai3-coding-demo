@@ -2,127 +2,47 @@
 name: rhdh-install-osd-gcp
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when installing Red Hat Developer Hub on OpenShift Dedicated on Google
-  Cloud: Operator-based installation, Helm chart deployment, custom
-  configuration (app-config, dynamic plugins, RBAC), Backstage CR authoring,
-  and OSD-specific considerations (baseUrl requirement, clusterRouterBase).
-  Do NOT use for vanilla GKE installation (use rhdh-install-gke), other
-  platforms, or RHDH configuration beyond initial deployment.
+  Use when someone asks how to install Red Hat Developer Hub 1.10 on OpenShift
+  Dedicated on Google Cloud with the Operator or the Helm chart. Not used in
+  this repo: the demo runs on self-managed OpenShift Container Platform. Do NOT
+  use for the repo's install (use rhdh-install-ocp) or portal configuration (use
+  rhdh-configure).
 ---
 
-# RHDH Install OSD on Google Cloud
+# Developer Hub on OpenShift Dedicated on Google Cloud
 
-Use this skill to ground Red Hat Developer Hub 1.10 installation on OpenShift
-Dedicated on Google Cloud in official Red Hat documentation.
+Thin skill, link-only stub: the feature is not used in this repo. Product
+behavior lives in the linked Developer Hub 1.10 sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers two installation
-methods (Operator and Helm) for the OpenShift Dedicated on Google Cloud
-platform.
+- A question is about OpenShift Dedicated on Google Cloud.
 
-## Installation Methods
+## Not used in this repo
 
-### Operator-Based
+This repo targets self-managed OpenShift Container Platform and installs
+Developer Hub with the Operator from
+`gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/`.
 
-On OpenShift Dedicated, the Operator and OLM framework are available natively:
+Adopting it is a Stage 070 change: record the decision in
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` and convert this stub
+to a full thin skill.
 
-1. Provision custom configuration:
-   - Create a `app-config-rhdh` ConfigMap with `app-config.yaml` including
-     `baseUrl` for `app`, `backend`, and `backend.cors.origin`.
-   - Create a `my-rhdh-secrets` Secret with `BACKEND_SECRET`.
-2. Author a `Backstage` CR or use the web console to create the instance.
+## Official documentation (Developer Hub 1.10)
 
-### Helm Chart
+| Topic | Section |
+|---|---|
+| Install with the Operator | [Install with the Operator][l1] |
+| Install with the Helm chart | [Install with the Helm chart][l2] |
 
-1. Select Form view or YAML view in the Helm install wizard.
-2. Configure `baseUrl` via `global.app.baseUrl`, `global.backend.baseUrl`,
-   and `global.backend.cors.origin` in Helm values.
-3. Alternatively, set `global.clusterRouterBase` to
-   `apps.<clusterName>.com` and enable `global.auth.backend.enabled: true`.
+## Related skills
 
-## OSD-Specific Considerations
+`rhdh-install-ocp`, `rhdh-helm-reference`.
 
-- **baseUrl**: Required for RHDH to function correctly. If not set, frontend
-  and backend services cannot communicate properly.
-- **Routes**: OpenShift Routes are available natively (no Ingress
-  workaround needed).
-- **Operator availability**: OLM and OperatorHub are built into OpenShift
-  Dedicated, simplifying operator installation.
-- **clusterRouterBase**: The Helm chart can use the OpenShift router hostname
-  via `global.clusterRouterBase`.
-
-## Key Resources
-
-| Resource | apiVersion | Purpose |
-|----------|-----------|---------|
-| ConfigMap (`app-config-rhdh`) | `v1` | App configuration |
-| Secret (`my-rhdh-secrets`) | `v1` | Backend auth secret |
-
-## Custom Configuration
-
-### app-config.yaml
-
-```yaml
-app:
-  title: Red Hat Developer Hub
-  baseUrl: https://<my_developer_hub_domain>
-backend:
-  auth:
-    externalAccess:
-        - type: legacy
-          options:
-            subject: legacy-default-config
-            secret: "${BACKEND_SECRET}"
-  baseUrl: https://<my_developer_hub_domain>
-  cors:
-    origin: https://<my_developer_hub_domain>
-```
-
-### Helm values (YAML view)
-
-```yaml
-global:
-  auth:
-    backend:
-      enabled: true
-  clusterRouterBase: apps.<clusterName>.com
-```
-
-### Helm values (Form view)
-
-Navigate to Root Schema > global > Enable service authentication within
-Backstage instance and paste the OpenShift router host.
-
-## Verification
-
-- Review the configuration, select deployment options, and click Create.
-- Access Developer Hub via the URL in the OpenShift web console.
-- For Helm: edit values if needed, click Create, wait for database and
-  Developer Hub to start, then click the Open URL icon.
-
-## Workflow
-
-1. Confirm the RHDH version baseline.
-2. Read `references/official-doc-extraction.md`.
-3. Choose Operator or Helm based on requirements.
-4. Follow the platform-specific steps for OSD on Google Cloud.
-5. Verify access through the web console or URL.
-
-## Related Skills
-
-- Use `rhdh-install-aks` for AKS installation.
-- Use `rhdh-install-eks` for EKS installation.
-- Use `rhdh-install-gke` for GKE installation.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[l1]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_red_hat_developer_hub_on_openshift_dedicated_on_google_cloud/index#install-rhdh-on-on-using-the-operator_installing-rhdh-on-osd-on-gcp
+[l2]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_red_hat_developer_hub_on_openshift_dedicated_on_google_cloud/index#install-rhdh-on-on-using-the-helm-chart_installing-rhdh-on-osd-on-gcp

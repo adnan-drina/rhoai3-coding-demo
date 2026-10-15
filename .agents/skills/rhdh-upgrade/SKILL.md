@@ -2,132 +2,89 @@
 name: rhdh-upgrade
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when upgrading Red Hat Developer Hub to a later version using Operator or
-  Helm chart. Covers Operator subscription upgrades, Helm chart version bumps,
-  and the 1.8-to-1.10 migration for custom values.yaml overrides. Do NOT use
-  for initial installation, configuration, or customization of RHDH.
+  Use when moving this demo's Red Hat Developer Hub to another 1.10 z-stream
+  or a later minor: changing the rhdh Subscription channel and startingCSV,
+  the approve-installplan allowlist and the Stage 070 validator, checking the
+  release notes, and verifying the portal after the Operator upgrade. Do NOT
+  use for the first installation (use rhdh-install-ocp), configuration changes
+  (use rhdh-configure), or Helm chart upgrades (not used in this repo).
 ---
 
-# RHDH Upgrade
+# Developer Hub upgrade
 
-Use this skill to upgrade Red Hat Developer Hub 1.10 grounded in official
-product documentation.
+Thin skill: repo decisions and pitfalls here, product procedure in the linked
+Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` (How: Installation).
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **Developer Hub 1.10**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A new RHDH z-stream (1.10.x) or minor is to be adopted.
+- The installed CSV differs from `rhdh-operator.v1.10.5` or an InstallPlan
+  stays pending in `rhdh-operator`.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers Operator-based
-upgrades, Helm chart upgrades, and the specific 1.8-to-1.10 migration path.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Upgrades are reviewed Git changes, never console approvals: Subscription `installPlanApproval: Manual` with an exact `startingCSV` | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/subscription.yaml` | [Upgrade the Operator][op] |
+| Channel `fast-1.10` delivers z-streams only; a minor upgrade changes the channel (`fast` would follow every version) | same file | [Install the Operator][channel] |
+| The `approve-installplan` hook approves a plan only if every CSV is on its allowlist and waits for that CSV | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/approve-installplan.yaml` | — (repo control) |
+| The validator expects exactly the allow-listed CSV | `stages/070-advanced-app-platform/validate.sh` | — |
+| Helm chart upgrade paths (including 1.8 to 1.10 values migration) do not apply | — | [Helm upgrade][helm], [1.8 to 1.10 with Helm][helm18] |
 
-## Key Upgrade Paths
+## Procedure
 
-1. **Operator upgrade** — Use the OpenShift web console Subscription page to
-   approve an available InstallPlan upgrade for the RHDH Operator.
-2. **Helm chart upgrade (web console)** — Select the newer Helm chart version
-   from the OpenShift console; save `values.yaml` first if initially deployed
-   via Helm CLI.
-3. **Helm chart upgrade (CLI)** — Run `helm upgrade` with the target chart
-   version and a `values.yaml` override file.
-4. **1.8-to-1.10 migration** — Manually merge new mandatory defaults into
-   custom `values.yaml` files that override `extraVolumeMounts`,
-   `extraVolumes`, or `initContainers`.
+1. Read the release notes of the target version (fixed issues per z-stream,
+   deprecated and removed features); check that every OCI plugin digest in
+   `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` has a build for it.
+2. In one change: `startingCSV` (and the channel for a minor), the allowlist
+   in `approve-installplan.yaml`, the expected CSV in
+   `stages/070-advanced-app-platform/validate.sh`, the version text in the
+   component README and `stages/070-advanced-app-platform/README.md`, and the
+   map pin (`python3 scripts/shared/check-doc-links.py --family rhdh`).
+3. After the OpenShift safety guard in `AGENTS.md`, sync and validate:
 
-## Operator Upgrade Procedure
+   ```bash
+   ./stages/070-advanced-app-platform/deploy.sh
+   ./stages/070-advanced-app-platform/validate.sh
+   oc get installplan -n rhdh-operator
+   oc get subscription rhdh -n rhdh-operator -o jsonpath='{.status.installedCSV}{"\n"}'
+   ```
 
-Prerequisites:
-- Logged in as administrator on OpenShift web console
-- RHDH Operator already installed
-- Appropriate roles and permissions configured
+## Pitfalls
 
-Steps:
-1. Navigate to Operators > Installed Operators > Red Hat Developer Hub Operator
-2. Click Subscription tab
-3. In Upgrade status field, click "Upgrade available"
-4. On InstallPlan details page, click Preview InstallPlan > Approve
+- Argo CD ignores `startingCSV` after installation, so editing it alone does
+  not move an installed operator; the allowlisted InstallPlan does.
+- A fresh database migration after an upgrade can race two backend pods; the
+  Backstage CR keeps `maxSurge: 0` for that reason (see `rhdh-configure`).
+- OCI plugin packages are pinned by digest; an RHDH upgrade does not update
+  them (see `rhdh-dynamic-plugins-install`).
+- Stale catalog after a re-stamp:
+  `docs/TROUBLESHOOTING.md#rhdh-template-entity-returns-200-then-404-after-a-catalog-re-stamp`.
 
-Verification:
-- Upgrade status field shows "Up to date"
+## Official documentation (Developer Hub 1.10)
 
-## Helm Chart Upgrade (CLI)
+| Topic | Section |
+|---|---|
+| Operator upgrade | [Upgrade the Operator][op] |
+| Channels | [Install the Operator][channel] |
+| Helm (not used) | [Helm upgrade][helm], [1.8 to 1.10 with Helm][helm18] |
+| What changed | [Fixed issues][fixed], [Deprecated][deprecated], [Removed][removed] |
 
-```bash
-oc login -u <user> -p <password> https://api.<HOSTNAME>:6443
-oc project my-rhdh-project
-helm upgrade -i rhdh -f new-values.yml \
-  openshift-helm-charts/redhat-developer-hub --version 1.10.1
-```
+## Related skills
 
-## 1.8-to-1.10 Migration (Helm)
+`rhdh-install-ocp`, `rhdh-release-notes`, `rhdh-dynamic-plugins-install`,
+`rhdh-configure`.
 
-When custom `values.yaml` overrides `upstream.backstage.extraVolumeMounts`,
-`upstream.backstage.extraVolumes`, or `upstream.backstage.initContainers`,
-merge these mandatory new defaults before upgrading:
-
-```yaml
-upstream:
-  backstage:
-    extraVolumeMounts:
-      - name: extensions-catalog
-        mountPath: /extensions
-    extraVolumes:
-      - name: extensions-catalog
-        emptyDir: {}
-    initContainers:
-      - name: install-dynamic-plugins
-        env:
-          - name: CATALOG_INDEX_IMAGE
-            value: '{{ .Values.global.catalogIndex.image.registry }}/{{ .Values.global.catalogIndex.image.repository }}:{{ .Values.global.catalogIndex.image.tag }}'
-          - name: CATALOG_ENTITIES_EXTRACT_DIR
-            value: '/extensions'
-        volumeMounts:
-          - name: extensions-catalog
-            mountPath: /extensions
-```
-
-View full defaults:
-```bash
-helm show values redhat-developer-hub --repo https://charts.openshift.io --version 1.10.1
-```
-
-## Important Notes
-
-- OCP supported from version 4.18 to 4.21
-- Helm upgrades can skip intermediate versions; review release notes for all
-  skipped versions to identify breaking changes
-- Orchestrator plugin 1.7 users must manually update plugin config after
-  Operator approval to avoid failed deployment
-- Helm CLI-deployed releases cannot be upgraded via the OCP web console due to
-  platform limitations; use `helm upgrade` instead
-
-## Workflow
-
-1. Read `references/official-doc-extraction.md` for exact procedures.
-2. Identify upgrade method (Operator or Helm).
-3. If Helm with custom `values.yaml`, check for affected override fields.
-4. Apply the upgrade following documented steps.
-5. Verify the RHDH application initializes successfully.
-
-## Related Skills
-
-- `rhdh-configure` — Configuration with config maps, secrets, and plugins
-- `rhdh-customize` — Appearance and feature customization
-- `rhdh-techdocs-config` — TechDocs plugin configuration
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[op]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/upgrading_red_hat_developer_hub/index#upgrade-the-rhdh-operator_upgrade-rhdh
+[helm]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/upgrading_red_hat_developer_hub/index#upgrade-the-rhdh-helm-chart_upgrade-rhdh
+[helm18]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/upgrading_red_hat_developer_hub/index#upgrade-rhdh-from-1-8-to-using-the-helm-chart_upgrade-rhdh
+[channel]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_red_hat_developer_hub_on_openshift_container_platform/index#install-the-rhdh-operator_install-rhdh-on-ocp-with-the-operator
+[fixed]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#fixed-issues
+[deprecated]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#deprecated-features
+[removed]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#removed-features

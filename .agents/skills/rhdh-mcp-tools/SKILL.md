@@ -2,101 +2,56 @@
 name: rhdh-mcp-tools
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when integrating Model Context Protocol (MCP) server with Red Hat
-  Developer Hub to enable AI client interaction with the developer portal.
-  Covers MCP server plugin installation, tool plugins (Software Catalog,
-  TechDocs, Scaffolder), token/endpoint configuration, client setup (Cursor,
-  Continue, Lightspeed), and troubleshooting. Do NOT use for Developer
-  Lightspeed chat configuration (use rhdh-developer-lightspeed). Do NOT use
-  for RHDH installation.
+  Use when someone asks about the Red Hat Developer Hub 1.10 Model Context
+  Protocol server and tool plugins (Developer Preview): installing them, tokens
+  and client endpoints, catalog, TechDocs and scaffolder MCP tools, and
+  troubleshooting. Not used in this repo. Do NOT use for the platform MCP
+  gateway (use rhcl-mcp-gateway) or Developer Lightspeed (use
+  rhdh-developer-lightspeed).
 ---
 
-# RHDH MCP Tools
+# Developer Hub MCP tools
 
-Install and configure Model Context Protocol (MCP) server and tool plugins
-in Red Hat Developer Hub 1.10 to expose portal capabilities (Software Catalog,
-TechDocs, Scaffolder) to AI clients through standardized MCP tools.
+Thin skill, link-only stub: the feature is not used in this repo. Product
+behavior lives in the linked Developer Hub 1.10 sections.
 
-## When to Use
+## When to use
 
-- Installing `mcp-actions-backend` plugin
-- Installing MCP tool plugins (catalog, techdocs, scaffolder extras)
-- Configuring static token authentication for MCP clients
-- Setting up MCP endpoints (SSE legacy or Streamable)
-- Configuring Cursor, Continue, or Lightspeed as MCP clients
-- Enabling Software Catalog, TechDocs, or Scaffolder MCP tools
-- Troubleshooting MCP tool execution or authentication issues
-- Configuring encryption and database for personal access tokens
-- Managing MCP server toggles in the Lightspeed chat interface
+- Someone wants AI clients to query or drive Developer Hub through MCP.
 
-## Key Concepts
+## Not used in this repo
 
-### Support Status
+No MCP server or tool plugin is enabled in
+`gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
+The feature is Developer Preview in 1.10.
 
-- MCP plugin is **Developer Preview** — not production-ready
-- Requires model with **tool calling** support (incompatible model = errors)
-- Recommended: 7B+ parameter model with 32k+ context window
+Adopting it is a Stage 070 change: record the decision in
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` and convert this stub
+to a full thin skill.
 
-### Plugin Architecture
+## Official documentation (Developer Hub 1.10)
 
-- **Backend server**: `backstage-plugin-mcp-actions-backend` — runs MCP tools
-- **Tool plugins** (extras — replaces deprecated versions):
-  - `software-catalog-mcp-extras` — catalog entity queries
-  - `techdocs-mcp-extras` — documentation search/retrieval
-  - `scaffolder-mcp-extras` — template actions, dry-runs, execution
+| Topic | Section |
+|---|---|
+| Model Context Protocol | [Model Context Protocol][l1] |
+| Install the MCP server and tool plugins | [Install the MCP server and tool plugins][l2] |
+| Tokens and endpoints | [Tokens and endpoints][l3] |
+| Software Catalog tools | [Software Catalog tools][l4] |
+| Scaffolder tools | [Scaffolder tools][l5] |
+| Troubleshooting | [Troubleshooting][l6] |
 
-### Endpoints
+## Related skills
 
-| Type | URL Pattern |
-|------|-------------|
-| Streamable | `https://<domain>/api/mcp-actions/v1` |
-| SSE (Legacy) | `https://<domain>/api/mcp-actions/v1/sse` |
+`rhdh-developer-lightspeed`, `rhcl-mcp-gateway`.
 
-### Security Model
-
-- Static token authentication via `backend.auth.externalAccess`
-- Scaffolder tools use OBOU (On Behalf Of User) with bearer token
-- Personal access tokens can be encrypted and stored in database
-
-## Prerequisites
-
-- RHDH 1.10 instance running
-- AI model that supports tool calling
-- MCP client (Cursor, Continue, or Lightspeed Core)
-
-## Validation
-
-```bash
-# Verify MCP backend plugin installed
-oc logs -c install-dynamic-plugins deployment/<rhdh> | grep "mcp-actions-backend"
-
-# Verify tool plugins loaded
-oc logs -c install-dynamic-plugins deployment/<rhdh> | grep "mcp"
-
-# Check MCP tool logs
-oc logs deployment/<rhdh> -c backstage-backend | grep "software-catalog-mcp-tool"
-
-# Test MCP endpoint
-curl -H "Authorization: Bearer $MCP_TOKEN" \
-  https://<domain>/api/mcp-actions/v1
-```
-
-## Boundaries
-
-- Developer Preview — no Red Hat production SLA
-- Deprecated plugins: `software-catalog-mcp-tool`, `techdocs-mcp-tool`
-  (use `extras` versions)
-- OpenAI models require `mcpActions.namespacedToolNames: false`
-- Some clients only support SSE (legacy) endpoint
-- Iframe content not accessible through MCP tools
-
-## References
-
-- `references/source-capture.md` — source ledger
-- `references/official-doc-extraction.md` — extracted procedures and config
+[l1]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_model_context_protocol_tools_for_red_hat_developer_hub/index#model-context-protocol_interacting-with-model-context-protocol-tools-for-rhdh
+[l2]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_model_context_protocol_tools_for_red_hat_developer_hub/index#install-mcp-server-and-tool-plugins-to-expose-portal-capabilities-to-the-ai_interacting-with-model-context-protocol-tools-for-rhdh
+[l3]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_model_context_protocol_tools_for_red_hat_developer_hub/index#configure-mcp-tokens-and-endpoints-to-authorize-client-access_interacting-with-model-context-protocol-tools-for-rhdh
+[l4]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_model_context_protocol_tools_for_red_hat_developer_hub/index#enable-software-catalog-mcp-tools-to-allow-the-ai-to-query-component-metadata_interacting-with-model-context-protocol-tools-for-rhdh
+[l5]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_model_context_protocol_tools_for_red_hat_developer_hub/index#automate-software-templates-by-using-scaffolder-mcp-tools_interacting-with-model-context-protocol-tools-for-rhdh
+[l6]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_model_context_protocol_tools_for_red_hat_developer_hub/index#troubleshoot-mcp-server-and-client-problems_interacting-with-model-context-protocol-tools-for-rhdh

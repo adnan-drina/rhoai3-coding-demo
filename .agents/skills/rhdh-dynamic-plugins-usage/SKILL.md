@@ -2,144 +2,91 @@
 name: rhdh-dynamic-plugins-usage
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when using Red Hat Developer Hub 1.10 plugins to access development
-  infrastructure and software development tools, including Argo CD, Tekton,
-  Topology, Keycloak, JFrog Artifactory, and Nexus Repository Manager plugins.
-  Do NOT use for developing new plugins (use rhdh-dynamic-plugins-develop) or
-  for installing plugins (use rhdh-dynamic-plugins-install).
+  Use when a developer or demo presenter uses the Developer Hub plugins this
+  demo enables: the Topology, Kubernetes, CI (Tekton) and Argo CD tabs on the
+  coolstore-inventory-service entity or on a project created from a template,
+  and when one of those tabs is empty for a user. Do NOT use for enabling or
+  configuring plugins (use rhdh-dynamic-plugins-configure or
+  rhdh-dynamic-plugins-install), or for catalog and template workflows (use
+  rhdh-develop).
 ---
 
-# RHDH Dynamic Plugins: Usage
+# RHDH dynamic plugins: usage
 
-Use this skill to understand how to use installed dynamic plugins in Red Hat
-Developer Hub 1.10 to interact with development infrastructure and tools.
+Thin skill: what this portal shows and why a tab can be empty; how to use
+each plugin is in the linked Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers usage procedures for
-shipped RHDH plugins including Argo CD, Tekton, Topology, Keycloak, JFrog
-Artifactory, and Nexus Repository Manager.
+- Demonstrating delivery state of a project in the portal (Stage 070 and the
+  Stage 110–130 workflows).
+- A user reports an empty Topology, Kubernetes, CI or Argo CD tab.
 
-## Available Plugins
+## Repo decisions
 
-### Argo CD Plugin
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Plugins in use: Topology, Kubernetes, Tekton (CI tab), Argo CD; no Keycloak, JFrog, Nexus or Ansible plugins | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Topology][topology], [Tekton][tekton], [Argo CD][argocd] |
+| The reference entity `component:default/coolstore-inventory-service` carries `backstage.io/kubernetes-id`, `janus-idp.io/tekton` and `argocd/app-name: project-coolstore-inventory-service` | `rhdh/catalog/all.yaml` | [Enable users to use Topology][topology-users] |
+| Template-created projects get the same three annotations, with Argo CD app `project-<name>` created by the enrollment coordinator | `rhdh/templates/app-migration/skeleton/catalog-info.yaml`, `rhdh/templates/agentic-quarkus-scaffold/skeleton/catalog-info.yaml` | [Topology][topology] |
+| Role `role:default/developer` (`ai-developer`) may read Kubernetes clusters and resources; no catalog writes | `rhdh/rhdh-instance/rbac-policy.yaml` | see `rhdh-authorization` |
+| Plugin reads use the `rhdh-kubernetes-reader` ServiceAccount (ClusterRole `view`), not the signed-in user | `rhdh/rhdh-instance/kubernetes-reader.yaml` | [Enable users to use Topology][topology-users] |
 
-Visualize CD workflows in OpenShift GitOps:
+## Procedure
 
-- **CD tab** — view deployment details: commit message, author, container
-  image, deployment history
-- **Deployment summary** — overview across namespaces in the Overview tab
-- **Deep links** — click link icon to open deployment details in Argo CD
-- **Revision tracking** — click commit ID to review changes in GitLab/GitHub
+1. Sign in as `ai-developer` or `ai-admin` (Keycloak `platform` realm) and open
+   the entity; the tabs need the project's namespace, PipelineRuns and the
+   `project-<name>` Argo CD Application to exist.
+2. If a tab is empty, check the objects behind it (read-only, after the
+   OpenShift safety guard in `AGENTS.md`):
 
-**Prerequisites:** Argo CD plugin must be enabled in RHDH.
+   ```bash
+   oc get deployment,pipelinerun -n <project>-dev -l backstage.io/kubernetes-id=<name>
+   oc get application project-<name> -n openshift-gitops
+   ```
 
-### Tekton Plugin
+3. Platform-side checks: `./stages/070-advanced-app-platform/validate.sh`
+   ("Coolstore pipeline installed", "Runtime is reconciled from delivery Git").
 
-Visualize CI/CD pipeline run results from Kubernetes/OpenShift clusters:
+## Pitfalls
 
-- **CI tab** — list of `PipelineRun` resources with NAME, VULNERABILITIES,
-  STATUS, TASK STATUS, STARTED, DURATION
-- **Pipeline visualization** — expand a PipelineRun to see task cards; hover
-  for step details
-- **Component view** — select a component from Catalog to see its pipelines
+- Every Kubernetes-backed tab shows "Problem retrieving Kubernetes objects"
+  when the cluster CA is not trusted process-wide:
+  `docs/TROUBLESHOOTING.md#developer-hub-topologycikubernetes-tabs-show-problem-retrieving-kubernetes-objects`.
+- The Coolstore entity disappears when the runtime catalog is stale or
+  refused: `docs/TROUBLESHOOTING.md#red-hat-developer-hub-catalog-does-not-load-coolstore`
+  and `docs/TROUBLESHOOTING.md#rhdh-catalog-generator-refuses-factory_bundle_mismatch`.
+- Workloads must carry the `backstage.io/kubernetes-id` label as well as the
+  entity annotation, or Topology shows nothing ([Kubernetes plugin annotations][k8s-annot]).
+- Tabs for a new project appear only after the enrollment coordinator has
+  created the namespace and Application (`ocp-pipelines-cicd`).
 
-**Prerequisites:** Tekton plugin must be installed per the "Installing" guide.
+## Official documentation (Developer Hub 1.10)
 
-### Topology Plugin
+| Topic | Section |
+|---|---|
+| Argo CD tab | [Use the Argo CD plugin][argocd] |
+| CI tab | [Use the Tekton plugin][tekton] |
+| Topology | [Use the Topology plugin][topology], [Enable users to use it][topology-users] |
+| Annotations and labels | [Kubernetes plugin annotations][k8s-annot] |
+| Plugins not used here | [Keycloak][keycloak], [JFrog Artifactory][jfrog], [Nexus][nexus] |
 
-View workloads as nodes on Kubernetes clusters:
+## Related skills
 
-- **TOPOLOGY tab** — visual node graph of deployments and pods
-- **Node details** — select a node for Details and Resources tabs
-- **Open URL** — access associated Ingresses to run the application
+`rhdh-dynamic-plugins-configure`, `rhdh-develop`,
+`rhdh-getting-started-navigate`, `rhdh-authorization`, `ocp-pipelines-cicd`.
 
-**RBAC permissions required:**
-
-| Permission | Purpose |
-|-----------|---------|
-| `kubernetes.clusters.read` + `read` | View Topology panel |
-| `kubernetes.resources.read` + `read` | View Topology panel |
-| `kubernetes.proxy` + `use` | View pod logs |
-| `catalog-entity` + `read` | View catalog items |
-
-Example RBAC policy (`rbac-policy.csv`):
-
-```csv
-g, user:default/<USERNAME>, role:default/topology-viewer
-p, role:default/topology-viewer, kubernetes.clusters.read, read, allow
-p, role:default/topology-viewer, kubernetes.resources.read, read, allow
-p, role:default/topology-viewer, kubernetes.proxy, use, allow
-p, role:default/topology-viewer, catalog-entity, read, allow
-```
-
-### Keycloak Plugin
-
-Synchronize Keycloak users and groups into the RHDH catalog:
-
-- **User sync** — imports users from a Keycloak realm
-- **Group sync** — imports groups and their members
-- **Scheduled sync** — configure a schedule for periodic imports
-- **Browse** — Catalog > User/Group entity type filter
-
-### JFrog Artifactory Plugin
-
-Display container image information from JFrog Artifactory:
-
-- **Image Registry tab** — list of container images with Version,
-  Repositories, Manifest, Modified, Size
-- Navigate from a Catalog component to its images
-
-**Prerequisites:** JFrog Artifactory plugin must be enabled.
-
-### Nexus Repository Manager Plugin
-
-View build artifacts from Nexus Repository Manager:
-
-- **BUILD ARTIFACTS tab** — list with VERSION, REPOSITORY, REPOSITORY TYPE,
-  MANIFEST, MODIFIED, SIZE
-- Navigate from a Catalog component to its artifacts
-
-**Prerequisites:** Nexus Repository Manager plugin must be installed.
-
-### Ansible Plugins (Technology Preview)
-
-Ansible-specific portal experience with:
-- Curated learning paths
-- Push-button content creation
-- Integrated development tools
-
-**Note:** Technology Preview — not supported for production use.
-
-## Plugin Navigation Pattern
-
-All plugins follow a consistent pattern:
-1. Open RHDH application
-2. Select a component from the Catalog page
-3. Navigate to the plugin-specific tab (CD, CI, TOPOLOGY, BUILD ARTIFACTS,
-   Image Registry, Feedback)
-
-## Workflow
-
-1. Identify the plugin needed for the development tool.
-2. Confirm the plugin is enabled (Administration > Extensions > Installed).
-3. Navigate to a Catalog component entity page.
-4. Select the appropriate tab for the plugin.
-5. For Topology, ensure RBAC permissions are granted.
-
-## Related Skills
-
-- `rhdh-dynamic-plugins-develop` — developing custom dynamic plugins
-- `rhdh-dynamic-plugins-install` — installing and configuring plugins
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[argocd]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/using_dynamic_plugins_in_red_hat_developer_hub/index#use-the-argo-cd-plugin_using-dynamic-plugins-in-rhdh
+[tekton]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/using_dynamic_plugins_in_red_hat_developer_hub/index#use-the-tekton-plugin_using-dynamic-plugins-in-rhdh
+[topology]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/using_dynamic_plugins_in_red_hat_developer_hub/index#use-the-topology-plugin_using-dynamic-plugins-in-rhdh
+[topology-users]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/using_dynamic_plugins_in_red_hat_developer_hub/index#enable-users-to-use-the-topology-plugin_use-the-topology-plugin
+[keycloak]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/using_dynamic_plugins_in_red_hat_developer_hub/index#use-keycloak_using-dynamic-plugins-in-rhdh
+[jfrog]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/using_dynamic_plugins_in_red_hat_developer_hub/index#use-the-jfrog-artifactory-plugin_using-dynamic-plugins-in-rhdh
+[nexus]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/using_dynamic_plugins_in_red_hat_developer_hub/index#use-the-nexus-repository-manager-plugin_using-dynamic-plugins-in-rhdh
+[k8s-annot]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_dynamic_plugins/index#add-entity-annotations-and-labels-for-the-kubernetes-plugin_manage-labels-and-annotations-for-topology-plugins

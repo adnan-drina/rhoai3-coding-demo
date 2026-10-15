@@ -2,166 +2,103 @@
 name: rhdh-dynamic-plugins-install
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when installing and viewing plugins in Red Hat Developer Hub 1.10,
-  including Operator-based and Helm-based dynamic plugin installation, OCI
-  registry configuration, custom certificates, air-gapped mirroring,
-  dependency management, custom plugin export/packaging/loading, front-end
-  wiring, Extensions UI management, and troubleshooting pod startup failures.
-  Do NOT use for developing new plugins from scratch (use
-  rhdh-dynamic-plugins-develop) or for using already-installed plugins (use
-  rhdh-dynamic-plugins-usage).
+  Use when adding, removing, pinning or debugging a Developer Hub dynamic
+  plugin in this demo: the dynamic-plugins-rhdh ConfigMap referenced by the
+  Backstage CR, embedded ./dynamic-plugins/dist packages versus digest-pinned
+  OCI packages from rhdh-plugin-export-overlays, the includes of
+  dynamic-plugins.default.yaml, the install-dynamic-plugins init container,
+  and a portal pod that fails to start after a plugin change. Do NOT use for
+  per-plugin settings and annotations (use rhdh-dynamic-plugins-configure),
+  support tiers (use rhdh-dynamic-plugins-reference), or writing new plugins
+  (use rhdh-dynamic-plugins-develop).
 ---
 
-# RHDH Dynamic Plugins: Install and View
+# RHDH dynamic plugin installation
 
-Use this skill to install, configure, and view dynamic plugins in Red Hat
-Developer Hub 1.10.
+Thin skill: repo decisions and pitfalls here, product procedure in the linked
+Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` ("Plugins").
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **Developer Hub 1.10**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A plugin is added to, removed from, or re-pinned in
+  `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
+- The `backstage-developer-hub` pod stays in `Init` or crash-loops after a
+  plugin change.
+- Reviewing whether a plugin is embedded in the RHDH image or pulled from OCI.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers Operator and Helm
-plugin installation, OCI/TGZ/NPM plugin loading, custom certificates,
-air-gapped mirroring, dependency management, custom plugin export and
-packaging, front-end wiring, Extensions UI, and troubleshooting.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Operator path only: ConfigMap `dynamic-plugins-rhdh` (key `dynamic-plugins.yaml`) referenced by `spec.application.dynamicPluginsConfigMapName` on `Backstage` `developer-hub` (`rhdh.redhat.com/v1alpha5`) | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`, `rhdh/rhdh-instance/backstage.yaml` | [Install with the Operator][operator] |
+| The file `includes` `dynamic-plugins.default.yaml` and enables embedded packages by path: GitLab catalog and scaffolder modules, RBAC, Kubernetes backend and frontend, Topology | `dynamic-plugins-configmap.yaml` | [Enable plugins added in the RHDH image][embedded] |
+| Tekton, Argo CD (Community frontend) and Roadie Argo CD backend are OCI packages from `ghcr.io/redhat-developer/rhdh-plugin-export-overlays`, pinned by `@sha256` digest, never by tag | `dynamic-plugins-configmap.yaml`; enforced by `stages/070-advanced-app-platform/tests/stage070-upgrade.test.py` | [Install with the Operator][operator], [Community plugins][community] |
+| No custom plugins, no air-gapped mirroring, no registry CA for OCI pulls (ghcr.io is public) | — | [Custom plugins][custom], [Mirror plugins][mirror], [Custom certificates][oci-certs] |
+| Extensions UI stays at product default; plugins are installed only through Git | `dynamic-plugins-configmap.yaml` | [Extensions][extensions] |
 
-## Installation Methods
+## Procedure
 
-### Operator-Based
+1. Check the plugin's support tier and package form in
+   `rhdh-dynamic-plugins-reference`; for an OCI package, resolve the digest of
+   the tag you reviewed and write `oci://...@sha256:<digest>`.
+2. Edit only `dynamic-plugins-configmap.yaml` (and the app-config block the
+   plugin needs, see `rhdh-dynamic-plugins-configure`). Keep `disabled: false`
+   explicit.
+3. Static checks: `./stages/070-advanced-app-platform/validate.sh --static`.
+4. After the OpenShift safety guard in `AGENTS.md`, deploy with
+   `./stages/070-advanced-app-platform/deploy.sh` and run `validate.sh`.
+5. Read-only diagnosis of a failed start:
 
-Store plugin config in a ConfigMap (`dynamic-plugins.yaml` key) and reference
-it from the Backstage CR via `spec.application.dynamicPluginsConfigMapName`.
-The CR `apiVersion` is `rhdh.redhat.com/v1alpha5`, kind `Backstage`.
+   ```bash
+   oc get pods -n rhdh
+   oc logs deployment/backstage-developer-hub -n rhdh -c install-dynamic-plugins --tail=100
+   oc logs deployment/backstage-developer-hub -n rhdh -c backstage-backend --tail=200
+   ```
 
-### Helm-Based
+## Pitfalls
 
-Use `global.dynamic.plugins` in Helm values. Plugin merging: main values
-override `includes` file entries for matching packages.
+- A plugin that needs environment variables fails the pod start until they
+  exist; the repo injects them from `rhdh-secrets` and `rhdh-gitlab` through
+  `extraEnvs.secrets` ([Troubleshoot a pod startup failure][startup]).
+- `rhdh-secrets` `/data` is ignored by Argo CD and written by the configure
+  hook; adding a variable means changing `rhdh/jobs/configure-rhdh.yaml`, not
+  the placeholder Secret.
+- One backend must run migrations on a fresh database: keep `maxSurge: 0` in
+  `backstage.yaml` when a plugin change restarts the portal.
+- Tekton is a Community plugin delivered as OCI in 1.10, not an embedded
+  wrapper; do not switch it to a `./dynamic-plugins/dist` path.
 
-See `references/official-doc-extraction.md` for full YAML examples of both
-methods.
+## Official documentation (Developer Hub 1.10)
 
-## Plugin Loading Formats
+| Topic | Section |
+|---|---|
+| Operator install, dependencies | [Install with the Operator][operator], [Dependency management][deps] |
+| Embedded plugins | [Enable plugins added in the RHDH image][embedded] |
+| Custom plugins (not used) | [Custom plugins][custom] |
+| Disconnected and private registries (not used) | [Mirror plugins][mirror], [Custom certificates][oci-certs] |
+| Extensions UI | [Extensions][extensions] |
+| Front-end wiring (mount points) | [Front-end plugin wiring][wiring], [Using mount points][mounts] |
+| Pod startup failure | [Troubleshoot][startup] |
 
-| Format | `package` value | Integrity required |
-|--------|----------------|-------------------|
-| OCI image | `oci://quay.io/example/image:v1.0.0` | No (digest optional) |
-| OCI digest | `oci://quay.io/example/image@sha256:...` | Implicit |
-| TGZ | `https://example.com/plugin-1.0.0.tgz` | Yes (`integrity:`) |
-| NPM | `@example/plugin@1.0.0` | Yes (`integrity:`) |
-| Local dir | `./dynamic-plugins/dist/plugin-name` | No |
+## Related skills
 
-Version inheritance from base config: use `{{inherit}}` placeholder.
+`rhdh-dynamic-plugins-configure`, `rhdh-dynamic-plugins-reference`,
+`rhdh-dynamic-plugins-develop`, `rhdh-install-airgapped`, `rhdh-configure`.
 
-## Plugin Dependencies
-
-Dependencies are Kubernetes resources created alongside the Backstage CR:
-
-- Cluster-level: manifests in `/config/profile/{PROFILE}/plugin-deps/`
-- Infrastructure: `/config/profile/{PROFILE}/plugin-infra/` (use
-  `make plugin-infra` with caution)
-- Referenced via `dependencies[].ref` in plugin configuration
-
-## Air-Gapped / Disconnected Environments
-
-- **NPM registry** — create `.npmrc` Secret, mount into
-  `install-dynamic-plugins` init container via `extraFiles.secrets`
-- **OCI mirroring** — use `mirror-plugins.sh` script with `--plugin-index`,
-  `--to-registry`, `--to-dir`/`--from-dir` for two-phase disconnect
-
-See `references/official-doc-extraction.md` for full YAML and commands.
-
-## Custom Certificates for OCI Registries
-
-Three approaches:
-1. **Per-registry TLS** — mount CA cert ConfigMap at
-   `/etc/containers/certs.d/<registry>:<port>`
-2. **CA bundle** — mount at `/etc/pki/tls/certs/`
-3. **OpenShift cluster-wide** — use `config.openshift.io/inject-trusted-cabundle`
-   label on empty ConfigMap, mount at `/etc/pki/ca-trust/extracted/pem`
-
-## Extensions UI (Tech Preview)
-
-- View available plugins: Administration > Extensions > Catalog
-- View installed plugins: Administration > Extensions > Installed
-- Search by name, filter by category/author/support
-- Install plugins (Developer Preview, development environments only)
-- RBAC permissions: `extensions.install.create`, `extensions.install.read`
-
-## Front-End Plugin Wiring
-
-Key configuration sections under `pluginConfig.dynamicPlugins.frontend`:
-
-- `dynamicRoutes` — pages and sidebar menu items
-- `mountPoints` — inject components into entity pages
-- `entityTabs` — add/customize entity view tabs
-- `appIcons` — register custom icons
-- `menuItems` — sidebar navigation
-- `routeBindings` — link routes between plugins
-- `apiFactories` — custom utility API implementations
-- `scaffolderFieldExtensions` — Scaffolder custom fields
-- `techdocsAddons` — TechDocs add-ons
-- `translationResources` — localization overrides
-
-## Enabling Pre-Installed Plugins
-
-Since RHDH 1.10, `dynamic-plugins.default.yaml` exists in the plugin catalog
-index image. Retrieve with:
-
-```bash
-unpack registry.access.redhat.com/rhdh/plugin-catalog-index:1.10 \
-  dynamic-plugins.default.yaml
-```
-
-Or use `{{inherit}}` tag for automatic version resolution:
-
-```yaml
-plugins:
-  - package: oci://registry.access.redhat.com/rhdh/backstage-community-plugin-analytics-provider-segment:{{inherit}}
-    disabled: false
-```
-
-## Troubleshooting Pod Startup
-
-If RHDH pod fails after enabling a plugin, check logs for missing env vars:
-
-```bash
-oc logs -c install-dynamic-plugins deploy/backstage-my-rhdh
-```
-
-Set missing variables via a Secret mounted with `extraEnvs.secrets` (Operator)
-or `extraEnvVarsSecrets` (Helm).
-
-## Verification
-
-```bash
-# Loaded plugins API
-curl <RHDH_URL>/api/dynamic-plugins-info/loaded-plugins | jq .
-
-# Init container logs
-oc logs -c install-dynamic-plugins deploy/backstage-<name>
-```
-
-## Related Skills
-
-- `rhdh-dynamic-plugins-develop` — developing custom dynamic plugins
-- `rhdh-dynamic-plugins-usage` — using installed plugins
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[operator]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_and_viewing_plugins_in_red_hat_developer_hub/index#install-dynamic-plugins-with-the-rhdh-operator_install-dynamic-plugins-in-rhdh
+[deps]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_and_viewing_plugins_in_red_hat_developer_hub/index#dynamic-plugins-dependency-management_install-dynamic-plugins-in-rhdh
+[embedded]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_and_viewing_plugins_in_red_hat_developer_hub/index#enable-plugins-added-in-the-rhdh-container-image_plugins-in-rhdh
+[custom]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_and_viewing_plugins_in_red_hat_developer_hub/index#plugins-in-rhdh_mirror-rhdh-dynamic-plugins-in-disconnected-environments
+[mirror]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_and_viewing_plugins_in_red_hat_developer_hub/index#mirror-rhdh-dynamic-plugins-in-disconnected-environments_install-dynamic-plugins-in-rhdh
+[oci-certs]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_and_viewing_plugins_in_red_hat_developer_hub/index#install-plugins-from-oci-registries-by-using-custom-certificates_mirror-rhdh-dynamic-plugins-in-disconnected-environments
+[extensions]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_and_viewing_plugins_in_red_hat_developer_hub/index#extensions-in-rhdh_plugins-in-rhdh
+[wiring]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_and_viewing_plugins_in_red_hat_developer_hub/index#front-end-plugin-wiring_plugins-in-rhdh
+[mounts]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_and_viewing_plugins_in_red_hat_developer_hub/index#using-mount-points_front-end-plugin-wiring
+[startup]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/installing_and_viewing_plugins_in_red_hat_developer_hub/index#troubleshoot-a-pod-startup-failure-after-enabling-a-plugin_plugins-in-rhdh
+[community]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/dynamic_plugins_reference/index#community-supported-plugins_dynamic-plugins-reference

@@ -28,6 +28,7 @@ converted_families:
   - ocp_pipelines
   - odf
   - rhcl
+  - rhdh
 
 # Skills that follow the thin-skill contract in a family that is not converted
 # as a whole yet. The checker fails on findings from these skills (and on pin
@@ -1430,144 +1431,501 @@ products:
           - book: about_red_hat_developer_hub
             status: active
             skill: rhdh-about
+            sections:
+              - understanding-internal-developer-platforms_about-rhdh
+              - key-features
+              - system-architecture-for-deployment-planning_about-rhdh
+              - external-data-dependencies
+              - compare-the-helm-chart-and-operator-to-choose-the-optimal-deployment-method_about-rhdh
+              - high-availability-with-database-and-cache-layers_about-rhdh
+              - database-high-availability
+              - sizing-requirements-for-rhdh_about-rhdh
+              - integrations-in-rhdh_about-rhdh
+              - integration-with-red-hat-openshift-container-platform
+              - supported-platforms_about-rhdh
+              - rhdh-support_about-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15, note: "supported OpenShift versions not on the page (lifecycle link only)" }
       whats_new:
         description: Release notes, new features, bug fixes, known issues, deprecated features, and preview capabilities.
         routes:
           - book: red_hat_developer_hub_release_notes
             status: active
             skill: rhdh-release-notes
+            sections:
+              - new-features-and-enhancements
+              - technology-preview-features
+              - developer-preview-features
+              - deprecated-features
+              - removed-features
+              - known-issues
+              - fixed-issues
+              - fixed-issues-in-1-10-5
+              - fixed-security-issues
+            reviewed: { version: "1.10", date: 2026-10-15 }
           - book: explore_preview_of_emerging_and_supplemental_capabilities
             status: active
             skill: rhdh-preview-features
+            sections:
+              - integrate-argo-cd-notifications-with-red-hat-developer-hub
+              - troubleshooting
+              - security-considerations
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used in this repo; the 1.10 book covers only Argo CD notifications" }
       get_started:
         description: First-instance setup, navigation, developer onboarding, and initial configuration.
         routes:
           - book: setting_up_and_configuring_your_first_red_hat_developer_hub_instance
             status: active
             skill: rhdh-getting-started-setup
+            sections:
+              - checklist-to-run-your-first-rhdh-instance-in-production_setting-up-and-configuring-your-first-red-hat-developer-hub-instance
+              - install-the-rhdh-operator_setting-up-and-configuring-your-first-red-hat-developer-hub-instance
+              - prepare-your-external-services_setting-up-and-configuring-your-first-red-hat-developer-hub-instance
+              - provision-your-custom-rhdh-configuration_setting-up-and-configuring-your-first-red-hat-developer-hub-instance
+              - understand-authentication-and-user-provisioning_enable-authentication-in-rhdh-with-mandatory-steps-only
+              - disable-the-guest-login_enable-or-disable-authentication-with-the-guest-user
+              - share-a-secret-with-rhbk_enable-authentication-in-rhdh-with-mandatory-steps-only
+              - import-users-and-groups-from-rhbk_enable-authentication-in-rhdh-with-mandatory-steps-only
+              - enable-authentication-with-rhbk_enable-authentication-in-rhdh-with-mandatory-steps-only
+              - use-the-rhdh-operator-to-run-rhdh-with-your-custom-configuration_enable-authentication-in-rhdh-with-mandatory-steps-only
+              - manage-role-based-access-controls-rbac-using-the-rhdh-web-ui_enable-authentication-in-rhdh-with-mandatory-steps-only
+            reviewed: { version: "1.10", date: 2026-10-15 }
           - book: navigate_red_hat_developer_hub_on_your_first_day
             status: active
             skill: rhdh-getting-started-navigate
+            sections:
+              - overview-of-the-onboarding-workflow_purpose-and-structure-of-rhdh
+              - log-in-and-verify-your-profile
+              - log-in-to-rhdh_purpose-and-structure-of-rhdh
+              - navigate-the-rhdh-interface_log-in-to-rhdh
+              - using-the-global-header
+              - find-software-components-to-discover-assets_purpose-and-structure-of-rhdh
+              - verify-api-contracts-before-integrating-with-backend-services_search-for-relevant-content-in-technical-documentation-techdocs
+              - create-a-software-component-using-software-templates_import-and-use-an-existing-software-template-for-faster-development
+              - search-for-relevant-content-in-technical-documentation-techdocs_import-and-use-an-existing-software-template-for-faster-development
+              - find-resources-and-documentation-using-search_verify-api-contracts-before-integrating-with-backend-services
+              - get-ai-assisted-help-for-your-development-tasks_find-resources-and-documentation-using-search
+              - integrate-and-customize-your-daily-tools-using-extensions_get-ai-assisted-help-for-your-development-tasks
+              - customize-your-rhdh-interface-settings_get-ai-assisted-help-for-your-development-tasks
+              - manage-starred-items-for-quick-access_customize-your-rhdh-interface-settings
+            reviewed: { version: "1.10", date: 2026-10-15 }
       install:
         description: Installation on OCP, AKS, EKS, OSD-GCP, GKE, and air-gapped environments using Operator or Helm chart.
         routes:
           - book: installing_red_hat_developer_hub_on_openshift_container_platform
             status: active
             skill: rhdh-install-ocp
+            sections:
+              - rhdh-installation-methods-on-ocp_installing-rhdh-on-ocp
+              - install-rhdh-on-ocp-with-the-operator_installing-rhdh-on-ocp
+              - install-the-rhdh-operator_install-rhdh-on-ocp-with-the-operator
+              - provision-your-custom-rhdh-configuration_install-rhdh-on-ocp-with-the-operator
+              - use-the-rhdh-operator-to-run-rhdh-with-your-custom-configuration_install-rhdh-on-ocp-with-the-operator
+              - install-rhdh-on-ocp-with-the-helm-chart_installing-rhdh-on-ocp
+            reviewed: { version: "1.10", date: 2026-10-15 }
           - book: installing_red_hat_developer_hub_on_microsoft_azure_kubernetes_service_aks
             status: active
             skill: rhdh-install-aks
+            sections:
+              - install-rhdh-on-by-using-the-operator_installing-rhdh-on-aks
+              - install-the-operator-on-aks-by-using-olm_install-rhdh-on-by-using-the-operator
+              - provision-your-pull-secret-to-your-rhdh-instance-namespace_install-rhdh-on-by-using-the-operator
+              - expose-your-operator-based-instance-on-aks_install-rhdh-on-by-using-the-operator
+              - deploy-rhdh-on-with-the-helm-chart_installing-rhdh-on-aks
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used in this repo" }
           - book: installing_red_hat_developer_hub_on_amazon_elastic_kubernetes_service_eks
             status: active
             skill: rhdh-install-eks
+            sections:
+              - install-rhdh-on-by-using-the-operator_installing-rhdh-on-eks
+              - install-the-operator-on-eks-by-using-olm_install-rhdh-on-by-using-the-operator
+              - provision-your-pull-secret-to-your-rhdh-instance-namespace_install-rhdh-on-by-using-the-operator
+              - expose-your-operator-based-instance-on-eks_install-rhdh-on-by-using-the-operator
+              - deploy-on-eks-with-the-helm-chart_installing-rhdh-on-eks
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used in this repo" }
           - book: installing_red_hat_developer_hub_on_openshift_dedicated_on_google_cloud
             status: active
             skill: rhdh-install-osd-gcp
+            sections:
+              - install-rhdh-on-on-using-the-operator_installing-rhdh-on-osd-on-gcp
+              - install-rhdh-on-on-using-the-helm-chart_installing-rhdh-on-osd-on-gcp
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used in this repo" }
           - book: installing_red_hat_developer_hub_on_google_kubernetes_engine_gke
             status: active
             skill: rhdh-install-gke
+            sections:
+              - install-rhdh-on-by-using-the-operator_installing-rhdh-on-gke
+              - install-the-operator-on-gke-by-using-olm_install-rhdh-on-by-using-the-operator
+              - provision-your-pull-secret-to-your-rhdh-instance-namespace_install-rhdh-on-by-using-the-operator
+              - expose-your-operator-based-instance-on-gke_install-rhdh-on-by-using-the-operator
+              - deploy-on-gke-with-the-helm-chart_installing-rhdh-on-gke
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used in this repo" }
           - book: installing_red_hat_developer_hub_in_an_air-gapped_environment
             status: active
             skill: rhdh-install-airgapped
+            sections:
+              - air-gapped-environment_installing-rhdh-in-an-air-gapped-environment
+              - install-rhdh-in-a-fully-disconnected-environment-with-the-operator_install-rhdh-in-an-air-gapped-environment-with-the-operator
+              - install-rhdh-in-a-partially-disconnected-environment-with-the-operator_install-rhdh-in-an-air-gapped-environment-with-the-operator
+              - install-rhdh-on-ocp-in-an-air-gapped-environment-with-the-helm-chart_installing-rhdh-in-an-air-gapped-environment
+              - install-rhdh-on-a-supported-kubernetes-platform-in-an-air-gapped-environment-with-the-helm-chart_installing-rhdh-in-an-air-gapped-environment
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used in this repo" }
       upgrade:
         description: Upgrading RHDH using Operator or Helm chart, migration paths.
         routes:
           - book: upgrading_red_hat_developer_hub
             status: active
             skill: rhdh-upgrade
+            sections:
+              - upgrade-the-rhdh-operator_upgrade-rhdh
+              - upgrade-the-rhdh-helm-chart_upgrade-rhdh
+              - upgrade-rhdh-from-1-8-to-using-the-helm-chart_upgrade-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15, note: "guide names no channel or approval strategy; channel semantics come from the install guide 2.1" }
       configure:
         description: Config maps, secrets, Backstage CR, Helm values, customization, branding, TechDocs plugin.
         routes:
           - book: configuring_red_hat_developer_hub
             status: active
             skill: rhdh-configure
+            sections:
+              - rhdh-configuration-files-overview_understanding-rhdh-configuration-files
+              - application-configuration-file_understanding-rhdh-configuration-files
+              - rhdh-secrets_understanding-rhdh-configuration-files
+              - custom-resource_understanding-rhdh-configuration-files
+              - configuration-precedence_understanding-rhdh-configuration-files
+              - use-the-rhdh-operator-to-run-rhdh-with-your-custom-configuration_provision-and-use-your-custom-rhdh-configuration
+              - rhdh-default-configuration_configuring-rhdh
+              - inject-extra-files-and-environment-variables-into-containers_configuring-rhdh
+              - mount-secrets-and-pvcs-to-specific-containers_configuring-rhdh
+              - configure-rhdh-deployment-when-using-the-operator_configuring-rhdh
+              - configure-trust-for-corporate-certificate-authority-with-node-extra-ca-certs_configuring-rhdh
+              - configure-a-route-with-an-external-tls-certificate-by-using-the-operator_configuring-rhdh
+              - configure-external-postgresql-databases_configuring-rhdh
+              - configure-high-availability-in-rhdh_configuring-rhdh
+              - catalog-entity-descriptor-reference_rhdh-default-configuration
+              - define-locations-in-the-catalog_rhdh-default-configuration
+              - troubleshoot-rhdh-configuration-issues_configuring-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15 }
           - book: customizing_red_hat_developer_hub
             status: active
             skill: rhdh-customize
+            sections:
+              - customize-your-rhdh-title_customizing-rhdh
+              - customize-your-rhdh-base-url_customizing-rhdh
+              - about-software-templates_customizing-rhdh
+              - version-a-software-template-in-rhdh_about-software-templates
+              - enable-automated-template-updates_automated-software-template-lifecycle-management
+              - software-templates-in-rhdh_standardize-project-development-with-software-templates
+              - create-a-basic-software-template_standardize-project-development-with-software-templates
+              - share-software-templates-with-your-organization_standardize-project-development-with-software-templates
+              - configure-the-global-header-in-rhdh_customizing-rhdh
+              - customize-your-rhdh-global-header_configure-the-global-header-in-rhdh
+              - mount-points-for-dynamic-plugin-integration_configure-the-global-header-in-rhdh
+              - configure-a-floating-action-button-in-rhdh_customizing-rhdh
+              - customize-rhdh-theme-and-branding_customizing-rhdh
+              - customize-rhdh-navigation_customizing-rhdh
+              - localization-in-rhdh_customizing-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15, note: "guide does not say whether a custom global-header mountPoints list replaces or merges with the default; replace is a live repo observation (2026-07-14); chapter anchors 4-16 and 18 come from the body headings, not the TOC" }
           - book: techdocs_for_red_hat_developer_hub
             status: active
             skill: rhdh-techdocs-config
+            sections:
+              - about-techdocs_techdocs-for-rhdh
+              - configure-techdocs_techdocs-for-rhdh
+              - configuring-storage-for-techdocs-files_configure-techdocs
+              - configure-amazon-s3-for-file-storage_configure-techdocs
+              - configure-for-file-storage_configure-techdocs
+              - make-object-storage-accessible-to-containers-by-using-the-operator_configure-techdocs
+              - configuring-ci-cd-to-generate-and-publish-techdocs-sites_configure-techdocs
+              - techdocs-add-ons_techdocs-for-rhdh
+              - install-and-configure-an-external-techdocs-add-on-using-the-operator_install-and-configure-a-techdocs-add-on
+              - create-a-techdocs-add-on_techdocs-for-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15 }
       control_access:
         description: Authentication providers, SSO, RBAC, permission policies, and role management.
         routes:
           - book: authentication_in_red_hat_developer_hub
             status: active
             skill: rhdh-authentication
+            sections:
+              - authentication
+              - user-provisioning
+              - disable-the-guest-login_enable-or-disable-authentication-with-the-guest-user
+              - share-a-secret-with-rhbk_share-a-secret-with-your-identity-provider
+              - import-users-and-groups-from-rhbk_import-users-and-groups-from-your-identity-provider
+              - enable-authentication-with-rhbk_enable-authentication-with-your-identity-provider
+              - manage-session-expiration_enable-authentication-with-external-services
+              - troubleshoot-authentication-issues_enable-authentication-with-external-services
+              - troubleshoot-login-failed-errors_troubleshoot-authentication-issues
+              - enable-authentication-with-gitlab_enable-authentication-with-your-identity-provider
+              - enable-service-to-service-authentication_enable-authentication-with-external-services
+            reviewed: { version: "1.10", date: 2026-10-15 }
           - book: authorization_in_red_hat_developer_hub
             status: active
             skill: rhdh-authorization
+            sections:
+              - role-based-access-control-in-rhdh_authorization-in-rhdh
+              - enable-and-give-access-to-the-role-based-access-control-rbac-feature_authorization-in-rhdh
+              - determine-permission-policy-and-role-configuration-source_authorization-in-rhdh
+              - design-your-policy-rules_authorization-in-rhdh
+              - manage-authorizations-by-using-external-files_authorization-in-rhdh
+              - define-authorizations-in-external-files-by-using-the-operator_manage-authorizations-by-using-external-files
+              - permission-policies-reference_authorization-in-rhdh
+              - catalog-permissions_permission-policies-reference
+              - scaffolder-permissions_permission-policies-reference
+              - kubernetes-permissions_permission-policies-reference
+              - topology-permissions_permission-policies-reference
+              - tekton-permissions_permission-policies-reference
+              - argocd-permissions_permission-policies-reference
+              - manage-role-based-access-controls-rbac-using-the-rhdh-web-ui_authorization-in-rhdh
+              - manage-authorizations-by-using-the-rest-api_authorization-in-rhdh
+              - conditional-policies-in-rhdh_authorization-in-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15 }
       integrate:
         description: Git providers, Developer Lightspeed AI, MCP server tools, and OpenShift AI Connector.
         routes:
           - book: integrating_red_hat_developer_hub_with_your_git_provider
             status: active
             skill: rhdh-git-integration
+            sections:
+              - integrate-with-gitlab_integrate-with-github
+              - bulk-importing-from-gitlab_integrate-with-gitlab
+              - integrate-with-github_integrating-rhdh-with-your-git-provider
+            reviewed: { version: "1.10", date: 2026-10-15, note: "GitLab discovery keys branch and entityFilename are not documented in the 1.10 guide; the skill also links authentication-book anchors share-secrets-with-gitlab_share-a-secret-with-your-identity-provider, import-users-and-groups-from-gitlab_import-users-and-groups-from-your-identity-provider and troubleshoot-catalog-provider-errors_troubleshoot-authentication-issues" }
           - book: interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub
             status: active
             skill: rhdh-developer-lightspeed
+            sections:
+              - chat-assistance-with_interacting-with-developer-lightspeed-for-rhdh
+              - architecture-for-your-ai-backend-deployment_interacting-with-developer-lightspeed-for-rhdh
+              - retrieval-augmented-generation-rag-embeddings-for-grounded-ai-responses_interacting-with-developer-lightspeed-for-rhdh
+              - configure-to-initialize-the-ai-assistant_interacting-with-developer-lightspeed-for-rhdh
+              - configure-by-using-the-operator_configure-to-initialize-the-ai-assistant
+              - disable-by-using-the-operator_configure-to-initialize-the-ai-assistant
+              - customize-ai-responses_configure-to-initialize-the-ai-assistant
+              - configure-safety-guards-in-rhdh_get-ai-assisted-help-for-your-development-tasks
+              - ai-model-evaluation-data-to-select-the-right-ai-model_get-ai-assisted-help-for-your-development-tasks
+              - large-language-model-llm-requirements_appendix-llm-requirements
+              - vllm-model-integration-for-high-throughput-inference_appendix-llm-requirements
+              - openai-model-integration-for-your-deployment_appendix-llm-requirements
+              - appendix-manage-user-data-security_get-ai-assisted-help-for-your-development-tasks
+            reviewed: { version: "1.10", date: 2026-10-15, note: "1.10 states no support level for the chat assistant (Notebooks are Developer Preview); sidecar injection when unconfigured is implied by the disable section, not checked live" }
           - book: interacting_with_model_context_protocol_tools_for_red_hat_developer_hub
             status: active
             skill: rhdh-mcp-tools
+            sections:
+              - model-context-protocol_interacting-with-model-context-protocol-tools-for-rhdh
+              - install-mcp-server-and-tool-plugins-to-expose-portal-capabilities-to-the-ai_interacting-with-model-context-protocol-tools-for-rhdh
+              - configure-mcp-tokens-and-endpoints-to-authorize-client-access_interacting-with-model-context-protocol-tools-for-rhdh
+              - enable-software-catalog-mcp-tools-to-allow-the-ai-to-query-component-metadata_interacting-with-model-context-protocol-tools-for-rhdh
+              - automate-software-templates-by-using-scaffolder-mcp-tools_interacting-with-model-context-protocol-tools-for-rhdh
+              - troubleshoot-mcp-server-and-client-problems_interacting-with-model-context-protocol-tools-for-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used; Developer Preview in 1.10" }
           - book: accelerate_ai_development_with_openshift_ai_connector_for_red_hat_developer_hub
             status: active
             skill: rhdh-openshift-ai-connector
+            sections:
+              - understand-how-ai-assets-map-to-the-rhdh-catalog_accelerating-ai-development-with-openshift-ai-connector-for-rhdh
+              - set-up-with_accelerating-ai-development-with-openshift-ai-connector-for-rhdh
+              - enrich-ai-model-metadata-for-enhanced-rhdh-experience_accelerating-ai-development-with-openshift-ai-connector-for-rhdh
+              - troubleshoot-connector-functionality_accelerating-ai-development-with-openshift-ai-connector-for-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used; Developer Preview in 1.10" }
       develop:
         description: Software development workflows, CI/CD management, service monitoring, code quality, and documentation lifecycle.
         routes:
           - book: streamline_software_development_and_management_in_red_hat_developer_hub
             status: active
             skill: rhdh-develop
+            sections:
+              - centralize-your-software-components-in-the-rhdh-catalog_streamline-software-development-and-management-in-rhdh
+              - add-new-components-to-your-rhdh-instance_centralize-your-software-components-in-the-rhdh-catalog
+              - register-components-manually-in-your-rhdh-instance_centralize-your-software-components-in-the-rhdh-catalog
+              - update-existing-components-in-your-rhdh-catalog_centralize-your-software-components-in-the-rhdh-catalog
+              - find-components-by-kind-in-the-rhdh-catalog_centralize-your-software-components-in-the-rhdh-catalog
+              - review-the-yaml-configuration-of-your-rhdh-software-catalog_centralize-your-software-components-in-the-rhdh-catalog
+              - create-a-software-component-using-software-templates_import-and-use-an-existing-software-template-for-faster-development
+              - search-and-filter-software-templates-in-your-rhdh-instance_import-and-use-an-existing-software-template-for-faster-development
+              - import-an-existing-software-template_import-and-use-an-existing-software-template-for-faster-development
+              - import-your-team-s-codebase-from-git_streamline-software-development-and-management-in-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15 }
           - book: manage_and_consume_technical_documentation_within_red_hat_developer_hub
             status: active
             skill: rhdh-techdocs-manage
+            sections:
+              - add-documentation-to-techdocs-for-your-project_manage-and-consume-technical-documentation-within-rhdh
+              - import-documentation-into-techdocs-from-a-remote-repository_add-documentation-to-techdocs-for-your-project
+              - create-standalone-documentation-in-techdocs_add-documentation-to-techdocs-for-your-project
+              - enable-documentation-for-an-existing-entity_add-documentation-to-techdocs-for-your-project
+              - search-for-relevant-content_manage-and-consume-technical-documentation-within-rhdh
+              - access-and-navigate-documentation_manage-and-consume-technical-documentation-within-rhdh
+              - make-changes-to-project-documentation-in-techdocs_manage-and-consume-technical-documentation-within-rhdh
+              - add-video-content-to-enhance-techdocs_manage-and-consume-technical-documentation-within-rhdh
+              - streamline-documentation-builds-using-github-actions_manage-and-consume-technical-documentation-within-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15, note: "procedures expect mkdocs.yml and docs/index.md and show only techdocs-ref dir:.; the repo uses url:<tree> and has no mkdocs.yml; rendering unverified" }
       observability:
         description: Adoption analytics, audit logs, monitoring, telemetry, scorecards, and diagnostic data.
         routes:
           - book: adoption_insights_in_red_hat_developer_hub
             status: active
             skill: rhdh-adoption-insights
+            sections:
+              - adoption-insights-overview_adoption-insights-in-rhdh
+              - enable-the-adoption-insights-plugin_adoption-insights-in-rhdh
+              - disable-the-adoption-insights-plugin_adoption-insights-in-rhdh
+              - customize-the-adoption-insights-plugin-in-rhdh_adoption-insights-in-rhdh
+              - use-adoption-insights-in-rhdh_adoption-insights-in-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used in this repo" }
           - book: audit_logs_in_red_hat_developer_hub
             status: active
             skill: rhdh-audit-logs
+            sections:
+              - audit-logs-overview_audit-logs-in-rhdh
+              - configure-audit-logs-for-rhdh-on-ocp_audit-logs-in-rhdh
+              - forward-rhdh-audit-logs-to-splunk_audit-logs-in-rhdh
+              - view-audit-logs-in-rhdh_audit-logs-in-rhdh
+              - rbac-audit-log-events_audit-logs-in-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used in this repo" }
           - book: monitoring_and_logging
             status: active
             skill: rhdh-monitoring
+            sections:
+              - log-levels_monitoring-and-logging
+              - configure-the-log-level-with-the-rhdh-operator_log-levels
+              - enable-observability-for-rhdh-on-ocp_monitoring-and-logging
+              - enable-metrics-monitoring-in-a-rhdh-operator-installation-on-an-ocp-cluster_enable-observability-for-rhdh-on-ocp
+              - rhbk-metrics_monitoring-and-logging-rhdh-on
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: Backstage CR sets no spec.monitoring" }
           - book: telemetry_data_collection_and_analysis
             status: active
             skill: rhdh-telemetry
+            sections:
+              - telemetry-data-collection-and-analysis_telemetry-data-collection-and-analysis
+              - disable-telemetry-data-collection-in-rhdh_telemetry-data-collection-and-analysis
+              - disable-telemetry-data-collection-using-the-operator_disable-telemetry-data-collection-in-rhdh
+              - enable-telemetry-data-collection-in-rhdh_telemetry-data-collection-and-analysis
+              - enable-telemetry-data-collection-using-the-operator_enable-telemetry-data-collection-in-rhdh
+              - customize-segment-source_telemetry-data-collection-and-analysis
+              - customize-segment-source-using-the-operator_customize-segment-source
+            reviewed: { version: "1.10", date: 2026-10-15, note: "telemetry is on by default (analytics-provider-segment) and the repo does not disable it" }
           - book: evaluate_project_health_using_scorecards
             status: active
             skill: rhdh-scorecards
+            sections:
+              - component-health-and-compliance-monitoring-using-scorecards_evaluate-project-health-using-scorecards
+              - available-scorecard-metric-providers-and-metric-ids_evaluate-project-health-using-scorecards
+              - enable-scorecards_set-up-scorecards-to-monitor-your-project-health
+              - configure-rbac-for-scorecards-by-using-the-rbac-csv-file_set-up-scorecards-to-monitor-your-project-health
+              - scorecard-metric-thresholds_evaluate-project-health-using-scorecards
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used in this repo" }
           - book: collect_diagnostic_data_to_streamline_support_resolution
             status: active
             skill: rhdh-diagnostic-data
+            sections:
+              - diagnostic-data-collection-overview_diagnostic-data-collection
+              - run-must-gather-on-openshift-to-collect-diagnostic-data_diagnostic-data-collection
+              - diagnostic-data-types-and-collection-scope_diagnostic-data-collection
+              - collect-heap-dumps-to-diagnose-memory-issues_diagnostic-data-collection
+              - configuration-options-for-diagnostic-collection_diagnostic-data-collection
+              - diagnostic-data-output-structure-and-organization_diagnostic-data-collection
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: no repo configuration; support-case use only" }
       extend:
         description: Orchestrator, dynamic plugin development, installation, usage, catalog, and configuration.
         routes:
           - book: orchestrator_in_red_hat_developer_hub
             status: active
             skill: rhdh-orchestrator
+            sections:
+              - about-orchestrator-in-rhdh_orchestrator-in-rhdh
+              - compatibility-guide-for-orchestrator_about-orchestrator-in-rhdh
+              - orchestrator-plugin-dependencies-for-operator-installation_about-orchestrator-in-rhdh
+              - install-rhdh-with-orchestrator-by-using-the-rhdh-operator_orchestrator-in-rhdh
+              - manage-orchestrator-plugin-permissions-using-rbac-policies_install-rhdh-with-orchestrator-by-using-the-rhdh-operator
+              - build-and-deploy-serverless-workflows_orchestrator-in-rhdh
+              - diagnose-and-resolve-serverless-workflow-issues_orchestrator-in-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used in this repo" }
           - book: develop_and_deploy_dynamic_plugins_in_red_hat_developer_hub
             status: active
             skill: rhdh-dynamic-plugins-develop
+            sections:
+              - dynamic-plugins_develop-and-deploy-plugins-in-rhdh
+              - prepare-your-development-environment_develop-and-deploy-plugins-in-rhdh
+              - determine-rhdh-version_develop-a-new-plugin
+              - develop-a-new-plugin_develop-and-deploy-plugins-in-rhdh
+              - convert-a-custom-plugin-into-a-dynamic-plugin_develop-and-deploy-plugins-in-rhdh
+              - add-a-dynamic-plugin-to-rhdh_deployment-configurations
+              - verify-plugins-locally_develop-and-deploy-plugins-in-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15, note: "stub: not used in this repo" }
           - book: installing_and_viewing_plugins_in_red_hat_developer_hub
             status: active
             skill: rhdh-dynamic-plugins-install
+            sections:
+              - install-dynamic-plugins-with-the-rhdh-operator_install-dynamic-plugins-in-rhdh
+              - dynamic-plugins-dependency-management_install-dynamic-plugins-in-rhdh
+              - enable-plugins-added-in-the-rhdh-container-image_plugins-in-rhdh
+              - plugins-in-rhdh_mirror-rhdh-dynamic-plugins-in-disconnected-environments
+              - mirror-rhdh-dynamic-plugins-in-disconnected-environments_install-dynamic-plugins-in-rhdh
+              - install-plugins-from-oci-registries-by-using-custom-certificates_mirror-rhdh-dynamic-plugins-in-disconnected-environments
+              - extensions-in-rhdh_plugins-in-rhdh
+              - front-end-plugin-wiring_plugins-in-rhdh
+              - using-mount-points_front-end-plugin-wiring
+              - troubleshoot-a-pod-startup-failure-after-enabling-a-plugin_plugins-in-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15 }
           - book: using_dynamic_plugins_in_red_hat_developer_hub
             status: active
             skill: rhdh-dynamic-plugins-usage
+            sections:
+              - use-the-argo-cd-plugin_using-dynamic-plugins-in-rhdh
+              - use-the-tekton-plugin_using-dynamic-plugins-in-rhdh
+              - use-the-topology-plugin_using-dynamic-plugins-in-rhdh
+              - enable-users-to-use-the-topology-plugin_use-the-topology-plugin
+              - use-keycloak_using-dynamic-plugins-in-rhdh
+              - use-the-jfrog-artifactory-plugin_using-dynamic-plugins-in-rhdh
+              - use-the-nexus-repository-manager-plugin_using-dynamic-plugins-in-rhdh
+            reviewed: { version: "1.10", date: 2026-10-15 }
           - book: dynamic_plugins_reference
             status: active
             skill: rhdh-dynamic-plugins-reference
+            sections:
+              - preinstalled-dynamic-plugins_dynamic-plugins-reference
+              - ga-plugins_dynamic-plugins-reference
+              - technology-preview-plugins_dynamic-plugins-reference
+              - community-supported-plugins_dynamic-plugins-reference
+              - deprecated-plugins_dynamic-plugins-reference
+              - other-installable-plugins_dynamic-plugins-reference
+            reviewed: { version: "1.10", date: 2026-10-15 }
           - book: configuring_dynamic_plugins
             status: active
             skill: rhdh-dynamic-plugins-configure
+            sections:
+              - install-and-configure-argo-cd_configuring-dynamic-plugins
+              - enable-the-argo-cd-plugin_install-and-configure-argo-cd
+              - enable-the-tekton-plugin_configuring-dynamic-plugins
+              - install-the-topology-plugin_configuring-dynamic-plugins
+              - configure-the-topology-plugin_install-the-topology-plugin
+              - view-openshift-routes_configure-the-topology-plugin
+              - view-tekton-pipelineruns_configure-the-topology-plugin
+              - manage-labels-and-annotations-for-topology-plugins_install-the-topology-plugin
+              - add-entity-annotations-and-labels-for-the-kubernetes-plugin_manage-labels-and-annotations-for-topology-plugins
+              - bulk-importing-in-rhdh_install-the-topology-plugin
+              - kubernetes-custom-actions-in-rhdh_install-the-topology-plugin
+              - override-core-backend-service-configuration_install-the-topology-plugin
+            reviewed: { version: "1.10", date: 2026-10-15, note: "the 1.10 Argo CD section documents argocd/app-selector and argocd/instance-name; the repo's argocd/app-name is not in it" }
       reference:
         description: Helm Chart configuration values, parameters, and customization options.
         routes:
           - book: helm_chart_configuration_reference
             status: active
             skill: rhdh-helm-reference
+            sections:
+              - display-a-complete-list-of-helm-chart-values-with-helm-cli_helm-chart-configuration-reference
+              - root-namespace-value_helm-chart-configuration-reference
+              - global-namespace-values_helm-chart-configuration-reference
+              - orchestrator-namespace-values_helm-chart-configuration-reference
+              - route-namespace-values_helm-chart-configuration-reference
+              - test-namespace-values_helm-chart-configuration-reference
+              - upstream-namespace-values_helm-chart-configuration-reference
+              - additional-upstream-chart-values_helm-chart-configuration-reference
+              - helm-chart-orchestrator-infrastructure-reference_helm-chart-config-reference
+            reviewed: { version: "1.10", date: 2026-10-15, note: "the repo installs with the Operator; the skill maps Helm keys to Operator objects and also links the install guide's Operator and Helm chapters" }
 
   rhcl:
     name: Red Hat Connectivity Link

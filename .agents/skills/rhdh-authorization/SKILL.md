@@ -2,178 +2,102 @@
 name: rhdh-authorization
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when configuring authorization, RBAC, permission policies, and role
-  management in Red Hat Developer Hub: enabling the RBAC plugin; declaring
-  policy administrators; creating roles and assigning users/groups; defining
-  permission policies via Web UI, REST API, or external CSV/YAML files;
-  designing policy rules and conditional policies; using condition rule
-  operators (anyOf, allOf, not); and managing user statistics. Do NOT use for
-  authentication provider setup, user provisioning, or sign-in configuration;
-  use rhdh-authentication. Do NOT use for RHDH installation or plugin
-  management.
+  Use when changing or reviewing who may do what in this demo's Red Hat
+  Developer Hub: the RBAC plugin, policy administrator ai-admin, the
+  rbac-policies.csv file in ConfigMap rhdh-rbac-policies mounted through
+  extraFiles, role:default/developer for ai-developer (catalog read, template
+  use, task create/read, Kubernetes read; catalog writes denied),
+  pluginsWithPermission, and RBAC-related validation tests. Do NOT use for
+  sign-in or user identity (use rhdh-authentication), Kubernetes RBAC of the
+  plugin ServiceAccount (use rhdh-dynamic-plugins-configure), or installation.
 ---
 
-# RHDH Authorization
+# Developer Hub authorization
 
-Use this skill to configure role-based access control (RBAC) and permission
-policies in Red Hat Developer Hub 1.10.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` (How: Authorization).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Authorization guide to this repo's GitOps and secret-handling model.
+- A change touches `rhdh/rhdh-instance/rbac-policy.yaml` or the `permission`
+  block of `app-config-rhdh`.
+- A persona can see or do more or less than expected in the portal.
 
-## Key Concepts
+## Repo decisions
 
-- RBAC is built on top of the Permissions framework.
-- Default policy is **deny** — all access must be explicitly allowed.
-- Policies can be defined via three sources: Configuration file, REST API/Web
-  UI, or external CSV file. Each resource is associated with one source.
-- Conditional policies override basic policies; deny conditional overrides
-  allow conditional.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| RBAC plugin enabled (`backstage-community-plugin-rbac`), `permission.enabled: true` | `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`, `app-config-configmap.yaml` | [Enable RBAC][enable] |
+| Policy administrator `user:default/ai-admin` in `permission.rbac.admin.users` | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Enable RBAC][enable] |
+| Policies come only from a CSV file in Git (`policies-csv-file: /opt/app-root/src/rbac/rbac-policies.csv`), mounted from ConfigMap `rhdh-rbac-policies` by `extraFiles`; no Web UI or REST edits | `rhdh/rhdh-instance/rbac-policy.yaml`, `backstage.yaml` | [Choose the policy source][source], [External files with the Operator][files-op] |
+| `ai-developer` gets `role:default/developer`: catalog entity read, location read, template read, action use, task create/read, Kubernetes clusters and resources read; catalog location create, entity create and delete denied | `rhdh/rhdh-instance/rbac-policy.yaml` | [Catalog][perm-catalog], [Scaffolder][perm-scaffolder], [Kubernetes][perm-k8s] permissions |
+| `pluginsWithPermission: [catalog, scaffolder, permission, kubernetes]` | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Enable RBAC][enable] |
+| Only the platform catalog may add templates; developers cannot register locations (enforced by the deny rows and catalog rules) | same files, `rhdh/catalog/all.yaml` | [Design policy rules][design] |
 
-## Policy Evaluation Order
+Paths are under `gitops/stages/070-advanced-app-platform/`.
 
-1. Default policy: `deny`
-2. A conditional rule overrides a basic rule.
-3. A `deny` basic rule overrides an `allow` basic rule.
-4. An `allow` conditional rule overrides a `deny` basic rule.
-5. A `deny` conditional rule overrides an `allow` conditional rule.
+## Procedure
 
-## Workflow
+1. Edit `rbac-policies.csv` in Git; keep default-deny (grant only what a
+   persona needs) and add an explicit deny for catalog writes.
+2. A new plugin with its own permissions needs its ID in
+   `pluginsWithPermission` and rows from the [permission reference][perms].
+3. Validate:
 
-1. **Enable RBAC plugin** in `dynamic-plugins.yaml` (Chapter 2).
-2. **Declare policy administrators** in `app-config.yaml` under
-   `permission.rbac.admin.users` (Chapter 2).
-3. **Choose policy source**: Web UI, REST API, or external CSV/YAML files.
-4. **Define roles** and assign users/groups to them.
-5. **Define permission policies** for each role.
-6. **Add conditional policies** when fine-grained resource filtering is needed.
-7. **Verify** via the RBAC tab in Administration or REST API GET endpoints.
+   ```bash
+   ./stages/070-advanced-app-platform/validate.sh --static   # security-boundaries.test.py RBAC tests
+   ./stages/070-advanced-app-platform/validate.sh
+   oc get configmap rhdh-rbac-policies -n rhdh -o jsonpath='{.data.rbac-policies\.csv}'
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- Tekton, Topology and Argo CD have their own permission sets
+  ([Tekton][perm-tekton], [Topology][perm-topology], [Argo CD][perm-argocd]);
+  the repo lists only `kubernetes` of these in `pluginsWithPermission`. Read
+  the reference and add CSV rows before listing another plugin, or its views
+  can disappear for `ai-developer`.
+- `ai-admin` is a policy administrator by config; giving it a CSV role as
+  well is unnecessary.
+- The tests `test_only_admins_register_and_discovery_does_not_ingest_templates`
+  and `test_developer_can_view_delivery_without_proxy_or_catalog_writes` in
+  `stages/070-advanced-app-platform/tests/security-boundaries.test.py` encode
+  this policy; update them with any intentional change.
 
-- Use external CSV/YAML files managed through GitOps for reproducible RBAC
-  configuration.
-- Declare the demo admin user as the policy administrator.
-- Keep RBAC policies in ConfigMaps referenced by the Backstage CR.
-- Default deny ensures new plugins/resources require explicit access grants.
+## Official documentation (Developer Hub 1.10)
 
-## Enabling RBAC
+| Topic | Section |
+|---|---|
+| Concepts | [RBAC in Developer Hub][rbac] |
+| Enablement | [Enable RBAC][enable] |
+| Policy source and design | [Choose the policy source][source], [Design policy rules][design] |
+| External files | [External files][files], [With the Operator][files-op] |
+| Permission reference | [Reference][perms], [Catalog][perm-catalog], [Scaffolder][perm-scaffolder], [Kubernetes][perm-k8s] |
+| Not used | [Web UI][webui], [REST API][rest], [Conditional policies][cond] |
 
-In `dynamic-plugins.yaml`:
-```yaml
-plugins:
-  - package: ./dynamic-plugins/dist/backstage-community-plugin-rbac
-    disabled: false
-```
+## Related skills
 
-In `app-config.yaml`:
-```yaml
-permission:
-  enabled: true
-  rbac:
-    admin:
-      users:
-        - name: user:default/<admin_username>
-    pluginsWithPermission:
-      - catalog
-      - scaffolder
-      - permission
-```
+`rhdh-authentication`, `rhdh-configure`, `rhdh-dynamic-plugins-configure`.
 
-## Policy Sources
-
-| Source | Managed via | Mutability |
-|--------|------------|-----------|
-| Configuration file | `app-config.yaml` | Read-only at runtime |
-| REST API | Web UI or curl | Mutable at runtime |
-| CSV file | External `rbac-policies.csv` | Mutable via file only |
-| Legacy | Pre-2.1.3 policies | Should be migrated |
-
-## CSV Policy Format
-
-Role permission:
-```
-p, <role_entity_reference>, <permission>, <action>, <allow_or_deny>
-```
-
-Role assignment:
-```
-g, <group_or_user>, <role_entity_reference>
-```
-
-Example:
-```
-p, role:default/guests, catalog-entity, read, allow
-p, role:default/guests, catalog.entity.create, create, allow
-g, user:default/my-user, role:default/guests
-g, group:default/my-group, role:default/guests
-```
-
-## Conditional Policies (YAML)
-
-```yaml
-result: CONDITIONAL
-roleEntityRef: role:default/test
-pluginId: catalog
-resourceType: catalog-entity
-permissionMapping:
-  - read
-conditions:
-  rule: IS_ENTITY_OWNER
-  resourceType: catalog-entity
-  params:
-    claims:
-      - group:default/team-a
-```
-
-Condition operators: `anyOf`, `allOf`, `not` (nestable).
-
-## RBAC REST API Endpoints
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| GET | `/api/permission/roles` | List all roles |
-| POST | `/api/permission/roles` | Create a role |
-| PUT | `/api/permission/roles/<kind>/<ns>/<name>` | Update a role |
-| DELETE | `/api/permission/roles/<kind>/<ns>/<name>` | Delete a role |
-| GET | `/api/permission/policies` | List all policies |
-| POST | `/api/permission/policies` | Create a policy |
-| PUT | `/api/permission/policies/<kind>/<ns>/<name>` | Update a policy |
-| DELETE | `/api/permission/policies/<kind>/<ns>/<name>` | Delete a policy |
-| GET | `/api/permission/roles/conditions` | List conditions |
-| POST | `/api/permission/roles/conditions` | Create a condition |
-| GET | `/api/permission/plugins/condition-rules` | List available rules |
-| GET | `/api/permission/plugins/policies` | List plugin permissions |
-
-## Available Condition Rules (Catalog Plugin)
-
-| Rule | Description | Params |
-|------|-------------|--------|
-| `HAS_ANNOTATION` | Match entities with annotation | `annotation`, `value` |
-| `HAS_LABEL` | Match entities with label | `label` |
-| `HAS_METADATA` | Match entities with metadata field | `key`, `value` |
-| `HAS_SPEC` | Match entities with spec field | `key`, `value` |
-| `IS_ENTITY_KIND` | Match entities of specified kinds | `kinds[]` |
-| `IS_ENTITY_OWNER` | Match entities owned by claims | `claims[]` |
-
-## Validation
-
-- With RBAC enabled, most features are disabled by default (deny-all).
-- The Create button disappears from Catalog; Register button from API page.
-- REST API returns standard HTTP codes: 200, 201, 204, 400, 401, 403, 404, 409.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[rbac]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#role-based-access-control-in-rhdh_authorization-in-rhdh
+[enable]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#enable-and-give-access-to-the-role-based-access-control-rbac-feature_authorization-in-rhdh
+[source]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#determine-permission-policy-and-role-configuration-source_authorization-in-rhdh
+[design]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#design-your-policy-rules_authorization-in-rhdh
+[files]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#manage-authorizations-by-using-external-files_authorization-in-rhdh
+[files-op]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#define-authorizations-in-external-files-by-using-the-operator_manage-authorizations-by-using-external-files
+[perms]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#permission-policies-reference_authorization-in-rhdh
+[perm-catalog]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#catalog-permissions_permission-policies-reference
+[perm-scaffolder]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#scaffolder-permissions_permission-policies-reference
+[perm-k8s]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#kubernetes-permissions_permission-policies-reference
+[perm-topology]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#topology-permissions_permission-policies-reference
+[perm-tekton]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#tekton-permissions_permission-policies-reference
+[perm-argocd]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#argocd-permissions_permission-policies-reference
+[webui]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#manage-role-based-access-controls-rbac-using-the-rhdh-web-ui_authorization-in-rhdh
+[rest]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#manage-authorizations-by-using-the-rest-api_authorization-in-rhdh
+[cond]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authorization_in_red_hat_developer_hub/index#conditional-policies-in-rhdh_authorization-in-rhdh

@@ -2,104 +2,93 @@
 name: rhdh-dynamic-plugins-reference
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when looking up preinstalled dynamic plugins, their names, configuration
-  options, and support status in Red Hat Developer Hub. Covers Red Hat GA
-  plugins, Technology Preview plugins, community-supported plugins, deprecated
-  plugins, other installable plugins, plugin versioning and tagging, OCI image
-  references, SHA256 digest determination, and required environment variables.
-  Do NOT use for configuring individual plugin settings and integration options
-  (use rhdh-dynamic-plugins-configure), Helm Chart deployment values (use
-  rhdh-helm-reference), or live cluster changes without the OpenShift safety
-  guard.
+  Use when checking which Developer Hub 1.10 plugins this demo enables and
+  their support tier (preinstalled, GA, Technology Preview, community,
+  deprecated), whether a plugin is embedded or must be pulled as an OCI
+  package, and how its digest is pinned before it goes into
+  dynamic-plugins-rhdh. Do NOT use for per-plugin settings (use
+  rhdh-dynamic-plugins-configure), the install mechanics (use
+  rhdh-dynamic-plugins-install), or Helm values (use rhdh-helm-reference).
 ---
 
-# RHDH Dynamic Plugins Reference
+# RHDH dynamic plugins reference
 
-Use this skill to look up preinstalled and installable dynamic plugin names,
-versions, OCI paths, support tiers, and required environment variables for
-Red Hat Developer Hub on the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: the repo's plugin inventory and tiers here, the authoritative
+plugin tables in the linked Developer Hub 1.10 reference. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` ("Plugins",
+"Alignment with official guidance").
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **Developer Hub 1.10**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- Before adding or replacing a plugin in
+  `rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
+- Writing or reviewing a support statement about the portal's plugins.
+- A plugin moves between tiers or becomes deprecated in a release note.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product behavior details.
-Official Red Hat documentation is product authority. This skill adapts the
-official dynamic plugins reference guide to this repo's operations and GitOps
-review model.
+| Plugin in this repo (1.10 tier) | Package form in Git | Official section |
+|---|---|---|
+| GitLab catalog backend module, RBAC, Kubernetes backend, Topology (GA) | embedded `./dynamic-plugins/dist/...` | [GA plugins][ga] |
+| GitLab scaffolder backend module, Kubernetes frontend (Technology Preview) | embedded `./dynamic-plugins/dist/...` | [Technology Preview plugins][tp] |
+| Tekton (community) | `oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-community-plugin-tekton@sha256:...` | [Community plugins][community] |
+| Argo CD frontend (Community) and Roadie Argo CD backend (community) | OCI from the same registry, digest-pinned | [Community plugins][community] |
 
-## Scope
+All entries live in
+`gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`;
+the digest rule is tested by
+`stages/070-advanced-app-platform/tests/stage070-upgrade.test.py`
+(`test_argo_plugins_follow_110_oci_packaging`).
 
-This skill covers:
+## Procedure
 
-- preinstalled dynamic plugins and their default enabled/disabled state
-- Red Hat Generally Available (GA) plugins: names, versions, package paths,
-  required environment variables
-- Red Hat Technology Preview plugins: names, versions, package paths, required
-  environment variables, and TP support boundary
-- community-supported plugins in `ghcr.io`: names, versions, OCI paths,
-  required environment variables
-- other installable plugins not preinstalled in the RHDH image
-- deprecated plugins status
-- plugin versioning: `bs_<backstage-version>__<plugin-version>` tag format
-- SHA256 digest determination via Skopeo CLI or the RHDH Plugin Export Overlays
-  repository
-- enabling a disabled preinstalled plugin via `dynamic-plugins.yaml`
-- overriding default plugin configuration with `pluginConfig`
+1. Look the plugin up in the 1.10 tables below and record its tier in the
+   change description; community plugins carry community support only.
+2. For an OCI package, take the documented tag form, resolve its digest with a
+   registry client of your choice, and pin `@sha256:<digest>` (the product
+   guide recommends digests for stability).
+3. Continue with `rhdh-dynamic-plugins-install`; then run
+   `./stages/070-advanced-app-platform/validate.sh --static`.
 
-Use other skills for adjacent work:
+## Pitfalls
 
-- `rhdh-dynamic-plugins-configure` for configuring individual plugin settings,
-  app-config fragments, annotations, ClusterRoles, and integration options
-- `rhdh-helm-reference` for Helm Chart configuration values, global/upstream
-  namespace parameters, route, test, and orchestrator settings
+- Tekton and both Argo CD packages are community supported in 1.10, and the
+  GitLab scaffolder module and Kubernetes frontend are Technology Preview; do
+  not describe templates' GitLab publishing, the Kubernetes tab, CI or Argo CD
+  tabs as fully supported.
+- Embedded is not the same as preinstalled: none of the repo's embedded
+  plugins is in the 1.10 "Preinstalled" chapter; keep each enabled explicitly
+  with `disabled: false`.
+- The Roadie Argo CD backend paired with the Community frontend mixes two
+  plugin families, which the configuration guide does not recommend; it is a
+  recorded Gap in the component README.
+- Embedded package paths change between RHDH releases; re-check
+  [Preinstalled plugins][pre] and [Deprecated plugins][deprecated] on every
+  RHDH minor upgrade (`rhdh-upgrade`).
+- Do not invent package names or OCI paths: copy them from the reference.
 
-## Current packaging boundary
+## Official documentation (Developer Hub 1.10)
 
-On 1.10, Tekton, Quay, scaffolder Quay and the Roadie Argo CD scaffolder wrapper
-must use the officially listed external OCI packages; they are not embedded
-wrappers. Keep Community support explicit and pin a verified digest. GitLab
-catalog/scaffolder modules and Community GitLab UI plugins are distinct.
+| Topic | Section |
+|---|---|
+| Preinstalled (embedded) plugins | [Preinstalled dynamic plugins][pre] |
+| Red Hat GA and Technology Preview | [GA plugins][ga], [Technology Preview plugins][tp] |
+| Community supported (Tekton, Argo CD) | [Community plugins][community] |
+| Deprecated and other installable plugins | [Deprecated][deprecated], [Other installable][other] |
 
-## Demo Policy
+## Related skills
 
-For this repo:
+`rhdh-dynamic-plugins-install`, `rhdh-dynamic-plugins-configure`,
+`rhdh-release-notes`, `rhdh-upgrade`.
 
-- Reference the dynamic plugins reference guide for plugin names and support
-  tiers when reviewing or authoring RHDH plugin configuration.
-- Distinguish GA, Technology Preview, and community-supported plugins clearly
-  in any documentation or review output.
-- Do not claim Technology Preview plugins are production-ready.
-- Use SHA256 digests for environment stability when pinning community plugins.
-- Do not invent plugin names, versions, or OCI paths not listed in the official
-  reference.
-
-## Workflow
-
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - looking up a plugin name, version, or support tier
-   - finding the OCI path or required environment variables for a plugin
-   - determining the correct tag or SHA256 digest for a community plugin
-   - checking whether a plugin is preinstalled or must be installed externally
-   - reviewing plugin enablement in `dynamic-plugins.yaml`
-4. Cross-reference the official docs when uncertain about support status.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[pre]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/dynamic_plugins_reference/index#preinstalled-dynamic-plugins_dynamic-plugins-reference
+[ga]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/dynamic_plugins_reference/index#ga-plugins_dynamic-plugins-reference
+[tp]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/dynamic_plugins_reference/index#technology-preview-plugins_dynamic-plugins-reference
+[community]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/dynamic_plugins_reference/index#community-supported-plugins_dynamic-plugins-reference
+[deprecated]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/dynamic_plugins_reference/index#deprecated-plugins_dynamic-plugins-reference
+[other]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/dynamic_plugins_reference/index#other-installable-plugins_dynamic-plugins-reference

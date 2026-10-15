@@ -2,127 +2,89 @@
 name: rhdh-about
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when explaining Red Hat Developer Hub concepts, architecture, software
-  catalog, Backstage foundations, developer portal capabilities, sizing
-  requirements, deployment method comparison, high availability, integrations,
-  or supported platforms from the official RHDH 1.10 about guide. Do NOT use
-  for installing (use rhdh-install), configuring (use rhdh-configure),
-  extending with plugins or dynamic plugins (use rhdh-plugins), or access
-  control and RBAC (use rhdh-rbac).
+  Use when explaining what Red Hat Developer Hub does in this demo and how the
+  portal is built: role in Stage 070 (catalog, two software templates,
+  TechDocs, Kubernetes/Topology/Tekton/Argo CD views), architecture and
+  external dependencies, Operator vs Helm choice, single-replica sizing and
+  local database posture, and supported platforms. Do NOT use for installing
+  (use rhdh-install-ocp), configuring (use rhdh-configure), plugins (use
+  rhdh-dynamic-plugins-configure), or access control (use rhdh-authorization).
 ---
 
-# RHDH About
+# About Developer Hub in this demo
 
-Use this skill to ground Red Hat Developer Hub conceptual guidance in the
-official RHDH 1.10 about guide.
+Thin skill: the repo's use of Developer Hub and its deliberate deviations;
+product concepts in the linked Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` and
+`stages/070-advanced-app-platform/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+- Explaining the portal's place in the workshop (Stage 070 builds it,
+  Stages 110–130 consume it).
+- Reviewing sizing, high availability or database choices.
 
-## What Is Red Hat Developer Hub
+## Repo decisions
 
-Red Hat Developer Hub (RHDH) is an enterprise-grade internal developer portal
-(IDP) built on upstream Backstage 1.49.4. It provides a customizable web-based
-interface that centralizes access to source code repositories, CI/CD pipelines,
-APIs, documentation, and runtime environments.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| One self-service entry point: catalog, templates `agentic-quarkus-scaffold` and `app-migration`, TechDocs, delivery views for each project | `gitops/stages/070-advanced-app-platform/rhdh/templates/`, `rhdh/catalog/all.yaml` | [Key features][features] |
+| Operator deployment, not the Helm chart | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/` | [Compare Helm and Operator][compare] |
+| One backend replica with the Operator-managed local PostgreSQL (Deviation, justified for a single-cluster demo) | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/backstage.yaml` | [Database high availability][db-ha], [Sizing][sizing] |
+| External dependencies are in-cluster: Keycloak `platform` realm, private GitLab mirror, Argo CD, Kubernetes API | `gitops/stages/070-advanced-app-platform/rhdh/README.md` (Depends on) | [External data dependencies][deps] |
+| Catalog and templates pinned to one reviewed platform commit in the GitLab mirror | `gitops/stages/070-advanced-app-platform/rhdh/jobs/catalog/` | — (repo design) |
 
-RHDH is designed for cloud-native environments including Red Hat OpenShift
-Container Platform, supported Kubernetes platforms (EKS, GKE, AKS), and hybrid
-infrastructure.
+## Procedure
 
-## Key Features
+1. For any behavior question start at the component README "Why/What/How"
+   and its "Alignment with official guidance" table; it lists every Gap and
+   Deviation.
+2. Read-only state after the safety guard in `AGENTS.md`:
 
-- **Software Catalog**: central inventory to search, view, and manage services,
-  APIs, and libraries with ownership, metadata, and component health tracking.
-- **Software Templates**: preconfigured templates for CI/CD, runtime, and
-  security to standardize project setup.
-- **TechDocs**: create, store, and view technical documentation alongside code.
-- **RBAC**: role-based access control with enterprise security permissions.
-- **Learning Paths**: structured tutorials and onboarding steps.
-- **Dynamic Plugins**: extend RHDH with verified plugins without downtime.
-- **Scalability**: horizontal scaling with stateless backend design.
+   ```bash
+   oc get backstage developer-hub -n rhdh
+   oc get deployment,statefulset,route -n rhdh
+   ```
 
-## Architecture
+## Pitfalls
 
-RHDH uses a three-layer architecture:
+- Sizing guidance recommends two or more application replicas and an
+  external database for production; the demo knowingly runs one replica on
+  the local database ([Sizing][sizing]). Do not scale the Deployment by hand;
+  it is Operator-owned and `maxSurge: 0` is set for migration safety.
+- Supported OpenShift versions come from the lifecycle page linked from
+  [Supported platforms][platforms], not from this skill.
 
-- **Frontend**: browser-based SPA communicating with backend via REST API.
-- **Backend**: stateless service layer providing REST API endpoints; scales
-  horizontally behind a load balancer; externalizes all state to PostgreSQL.
-- **Data layer**: PostgreSQL (required) for persistence; Redis (optional) as
-  shared logical cache for multi-instance deployments.
+## Official documentation (Developer Hub 1.10)
 
-## Deployment Methods
+| Topic | Section |
+|---|---|
+| Concepts | [Internal developer platforms][idp], [Key features][features] |
+| Architecture | [System architecture][arch], [External data dependencies][deps] |
+| Deployment method | [Compare Helm and Operator][compare] |
+| HA and sizing | [High availability][ha], [Database high availability][db-ha], [Sizing][sizing] |
+| Integrations | [Integrations][integrations], [OpenShift integration][ocp] |
+| Platforms and support | [Supported platforms][platforms], [Support][support] |
 
-Two fully supported installation methods:
+## Related skills
 
-- **Helm chart**: maximum portability across Kubernetes platforms; manual
-  update control; direct access to Kubernetes resources.
-- **Operator**: OpenShift-native with OLM; automated update availability via
-  subscription channels; continuous reconciliation; declarative configuration
-  through custom resources.
+`rhdh-install-ocp`, `rhdh-configure`, `rhdh-release-notes`,
+`rhdh-getting-started-setup`, `rhdh-dynamic-plugins-configure`.
 
-## Sizing Requirements
-
-| Scale | Entities | Concurrent Users | App CPU | App Memory | DB Storage |
-|-------|----------|-------------------|---------|------------|------------|
-| Small | up to 5K | up to 50 | 2 vCPU | 8 GiB | 50 GiB |
-| Mid | 5-20K | 50-150 | 4 vCPU | 16 GiB | 100 GiB |
-| Large | 20-50K | 150-400 | 8 vCPU | 32 GiB | 200 GiB |
-| Enterprise | 50-150K | 400-800 | 16 vCPU | 64 GiB | 500 GiB |
-
-Base component requirements: application (4 vCPU, 16 GB), database (2 vCPU,
-8 GB, 20 GB storage), operator (1 vCPU, 1500 Mi).
-
-## High Availability
-
-- Deploy 2+ backend instances with load balancing.
-- Disable session affinity (database-backed sessions).
-- Configure PostgreSQL HA (primary-replica replication).
-- Optional Redis cache for multi-instance consistency.
-
-## Integrations
-
-- **Red Hat OpenShift Container Platform**: operators, service mesh, serverless,
-  GitOps, distributed tracing, pipelines plugins.
-- **RHADS - secure supply chain**: code scanning, image building, vulnerability
-  detection, TAS, TPA, ACS integration.
-- **Backstage ecosystem**: enhanced search, centralized catalog, open-source
-  plugins, simplified TechDocs.
-
-## Supported Platforms
-
-See the RHDH Life Cycle page for current platform compatibility. OCP 4.21 and
-Kubernetes 1.34 are supported as of RHDH 1.10.
-
-## Support
-
-- Red Hat Knowledgebase for technical articles.
-- Support cases via Red Hat Customer Portal (product: Red Hat Developer Hub).
-- `must-gather` tool for collecting diagnostic data from RHDH deployments.
-
-## Workflow
-
-1. Read `references/official-doc-extraction.md` for detailed concepts.
-2. Identify the relevant concept (architecture, sizing, HA, integrations).
-3. Use sizing tables to plan infrastructure.
-4. Use deployment method comparison for installation decisions.
-5. Validate against `references/source-capture.md` boundaries.
-
-## Related Skills
-
-- `rhdh-release-notes` — RHDH 1.10 new features, fixes, known issues.
-- `rhdh-preview-features` — Technology Preview and Developer Preview features.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[idp]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#understanding-internal-developer-platforms_about-rhdh
+[features]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#key-features
+[arch]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#system-architecture-for-deployment-planning_about-rhdh
+[deps]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#external-data-dependencies
+[compare]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#compare-the-helm-chart-and-operator-to-choose-the-optimal-deployment-method_about-rhdh
+[ha]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#high-availability-with-database-and-cache-layers_about-rhdh
+[db-ha]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#database-high-availability
+[sizing]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#sizing-requirements-for-rhdh_about-rhdh
+[integrations]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#integrations-in-rhdh_about-rhdh
+[ocp]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#integration-with-red-hat-openshift-container-platform
+[platforms]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#supported-platforms_about-rhdh
+[support]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/about_red_hat_developer_hub/index#rhdh-support_about-rhdh

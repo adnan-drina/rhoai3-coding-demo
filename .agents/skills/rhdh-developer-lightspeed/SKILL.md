@@ -2,88 +2,95 @@
 name: rhdh-developer-lightspeed
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when integrating Developer Lightspeed AI assistant with Red Hat Developer
-  Hub for AI-driven developer portal interaction. Covers LCORE sidecar
-  architecture, LLM provider configuration (vLLM, OpenAI, Ollama, Vertex AI),
-  RAG embeddings, safety guards, chat history, user feedback, Notebooks, and
-  air-gapped mirroring. Do NOT use for MCP tool configuration (use
-  rhdh-mcp-tools). Do NOT use for RHDH installation (use rhdh-install-*).
+  Use when deciding or reviewing Developer Lightspeed for RHDH in this demo:
+  it is enabled by default in 1.10, but the repo neither configures an LLM
+  for it nor disables it (a recorded Gap), so the Operator still injects the
+  unconfigured sidecar. Use it to close the Gap either by disabling the
+  lightspeed flavour on the Backstage CR or by pointing it at the governed
+  MaaS gateway. Do NOT use for Developer Lightspeed for MTA (use
+  mta-lightspeed), MCP tools (use rhdh-mcp-tools), or OpenShift Lightspeed.
 ---
 
 # RHDH Developer Lightspeed
 
-Configure Red Hat Developer Lightspeed for Red Hat Developer Hub 1.10 — an
-AI-powered virtual assistant providing chat assistance, RAG-grounded responses,
-Notebooks for private research, and model evaluation capabilities.
+Thin skill: the repo's open decision and its constraints; configuration
+procedures are in the linked Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` (Alignment row
+"Developer Lightspeed").
 
-## When to Use
+## When to use
 
-- Configuring LLM provider connections (vLLM, OpenAI, Ollama, Vertex AI)
-- Setting up Developer Lightspeed via Operator or Helm chart
-- Configuring RBAC for `lightspeed.chat.read` / `lightspeed.chat.create`
-- Enabling/disabling the Lightspeed floating action button (FAB)
-- Configuring RAG embeddings and vector database
-- Setting up safety guards (Llama Guard)
-- Enabling user feedback collection and chat history persistence
-- Configuring Notebooks (Developer Preview)
-- Mirroring images for air-gapped environments
-- Customizing system prompts for LLM behavior
+- Closing the Developer Lightspeed Gap of `070-rhdh`.
+- Someone asks why the portal shows (or should show) an AI chat.
+- Reviewing extra containers in the `backstage-developer-hub` pod.
 
-## Architecture
+## Repo decisions
 
-- **LCORE (Lightspeed Core Service)**: Sidecar container managing LLM
-  interactions, MCP tool runtime, safety providers, vector DB, chat history
-- **RAG init container**: Copies embedding data to shared volume
-- **FAB interface**: Floating action button on all RHDH pages
-- **BYOM (Bring Your Own Model)**: No bundled model; connect any
-  OpenAI-compatible inference provider
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Current state: Backstage `developer-hub` declares no `spec.flavours`, no Lightspeed Secret, no `lightspeed-core` config; the product default (enabled) applies (Gap) | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/backstage.yaml` | [Configure to initialize the assistant][configure] |
+| Option A, disable: `spec.flavours` entry `name: lightspeed`, `enabled: false`, which also stops the unconfigured sidecar injection | would change `backstage.yaml` | [Disable by using the Operator][disable] |
+| Option B, configure: any model must be reached through the governed MaaS gateway with an owner-bound MaaS subscription and key, never a direct provider key (platform rule) | would add a Secret writer like the other Stage 070 hooks; see `rhoai-maas-governance` | [Configure by using the Operator][operator], [vLLM integration][vllm], [OpenAI integration][openai] |
+| No decision recorded yet; the component README lists it as a Gap | `rhdh/README.md` | — |
 
-## Supported LLM Providers
+## Procedure
 
-| Provider | Env Variable | Notes |
-|----------|-------------|-------|
-| vLLM | `ENABLE_VLLM` | Append `/v1` to URL manually; used for RHOAI |
-| OpenAI | `ENABLE_OPENAI` | Cloud-based inference |
-| Ollama | `ENABLE_OLLAMA` | Desktop/cluster inference |
-| Vertex AI | `ENABLE_VERTEX_AI` | Google Cloud Gemini models |
+1. Decide A or B with the architect; record the choice in the component
+   README Alignment table in the same change.
+2. Option A: add the flavour entry to `backstage.yaml`; Option B: add the
+   Secret (env names per the 1.10 Operator section, values written at runtime,
+   never in Git) and a MaaS subscription/auth policy pair for a dedicated
+   owner, following the MTA pattern in `gitops/stages/070-advanced-app-platform/mta/jobs/configure-ai.yaml`.
+3. Static checks: `./stages/070-advanced-app-platform/validate.sh --static`.
+4. After the OpenShift safety guard in `AGENTS.md`, deploy with
+   `./stages/070-advanced-app-platform/deploy.sh`; read-only checks:
 
-**Important**: Set `ENABLE_*` variables to `"true"` to activate. Leaving
-unset disables. Setting to `"false"` does NOT disable (system checks if
-defined).
+   ```bash
+   oc get backstage developer-hub -n rhdh -o jsonpath='{.spec.flavours}{"\n"}'
+   oc get deployment backstage-developer-hub -n rhdh -o jsonpath='{.spec.template.spec.containers[*].name}{"\n"}'
+   ```
 
-## Prerequisites
+## Pitfalls
 
-- RHDH 1.10 deployed (Operator or Helm)
-- Active API key/credentials for chosen LLM provider
-- Cluster administrator privileges
+- The 1.10 guide does not state a support level for the chat assistant; its
+  Notebooks feature is Developer Preview. Do not present it as GA.
+- Any `Backstage` change restarts the portal; keep `maxSurge: 0`.
+- Option B adds model traffic and a credential: treat it as security
+  sensitive (MaaS auth, API key handling) per `AGENTS.md`.
+- Custom `lightspeed-stack.yaml` belongs in a ConfigMap mounted for the
+  `lightspeed-core` container, or later changes (for example MCP servers) are
+  overwritten ([Configure by using the Operator][operator]).
 
-## Validation
+## Official documentation (Developer Hub 1.10)
 
-```bash
-# Verify LCORE sidecar running
-oc get pods -l app=backstage -o jsonpath='{.items[*].spec.containers[*].name}'
+| Topic | Section |
+|---|---|
+| Overview and architecture | [Chat assistance][chat], [Architecture][arch], [RAG embeddings][rag] |
+| Configure or disable (Operator) | [Configure][configure], [Operator configuration][operator], [Disable][disable] |
+| Responses, history, feedback | [Customize AI responses][customize] |
+| Safety and model choice | [Safety guards][safety], [Model evaluation data][eval], [LLM requirements][llm] |
+| Data handling | [User data security][data] |
 
-# Verify FAB appears (functional check in browser)
-# Check RBAC permissions
-oc logs deployment/<rhdh> -c backstage-backend | grep lightspeed
-```
+## Related skills
 
-## Boundaries
+`rhdh-configure`, `rhdh-mcp-tools`, `rhdh-getting-started-navigate`,
+`rhoai-maas-governance`, `mta-lightspeed`.
 
-- Lightspeed is enabled by default in RHDH 1.10
-- Notebooks are Developer Preview — not production-ready
-- Model evaluation framework is Developer Preview
-- Red Hat does not collect or access feedback/chat data
-- MCP server configuration within LCORE is covered by rhdh-mcp-tools skill
-- Vertex AI has limited testing and custom architecture mapping
-
-## References
-
-- `references/source-capture.md` — source ledger
-- `references/official-doc-extraction.md` — extracted procedures and config
+[chat]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#chat-assistance-with_interacting-with-developer-lightspeed-for-rhdh
+[arch]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#architecture-for-your-ai-backend-deployment_interacting-with-developer-lightspeed-for-rhdh
+[rag]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#retrieval-augmented-generation-rag-embeddings-for-grounded-ai-responses_interacting-with-developer-lightspeed-for-rhdh
+[configure]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#configure-to-initialize-the-ai-assistant_interacting-with-developer-lightspeed-for-rhdh
+[operator]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#configure-by-using-the-operator_configure-to-initialize-the-ai-assistant
+[disable]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#disable-by-using-the-operator_configure-to-initialize-the-ai-assistant
+[customize]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#customize-ai-responses_configure-to-initialize-the-ai-assistant
+[safety]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#configure-safety-guards-in-rhdh_get-ai-assisted-help-for-your-development-tasks
+[eval]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#ai-model-evaluation-data-to-select-the-right-ai-model_get-ai-assisted-help-for-your-development-tasks
+[llm]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#large-language-model-llm-requirements_appendix-llm-requirements
+[vllm]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#vllm-model-integration-for-high-throughput-inference_appendix-llm-requirements
+[openai]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#openai-model-integration-for-your-deployment_appendix-llm-requirements
+[data]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index#appendix-manage-user-data-security_get-ai-assisted-help-for-your-development-tasks

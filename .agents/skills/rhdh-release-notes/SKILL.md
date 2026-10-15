@@ -2,119 +2,83 @@
 name: rhdh-release-notes
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when checking RHDH 1.10 release notes, new features, bug fixes, known
-  issues, deprecated features, removed features, or Technology Preview and
-  Developer Preview status from the official release notes. Do NOT use for
-  product concepts or architecture (use rhdh-about), installing or configuring
-  (use rhdh-install/rhdh-configure), or preview feature details
-  (use rhdh-preview-features).
+  Use when checking what Red Hat Developer Hub 1.10 release notes say about a
+  feature this demo depends on: fixed issues per z-stream (1.10.0 to 1.10.5),
+  Technology and Developer Preview status, deprecated and removed features
+  (embedded Tekton and Argo CD wrappers, floating action button), and known
+  issues before reporting a bug. Do NOT use for product concepts (use
+  rhdh-about), installing (use rhdh-install-ocp), upgrading (use rhdh-upgrade),
+  or preview feature details (use rhdh-preview-features).
 ---
 
-# RHDH Release Notes
+# Developer Hub release notes
 
-Use this skill to ground Red Hat Developer Hub 1.10 release note inquiries in
-the official release notes document.
+Thin skill: which release-note facts the repo depends on; the notes
+themselves are linked, not copied. Deployed version: `rhdh-operator.v1.10.5`
+(`gitops/stages/070-advanced-app-platform/rhdh/rhdh-operator/subscription.yaml`).
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **Developer Hub 1.10**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- Before a z-stream or minor upgrade (with `rhdh-upgrade`).
+- A plugin, header or sign-in behaves unexpectedly and may be a known issue.
+- Deciding whether a feature is GA, Technology Preview or Developer Preview.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before citing specific features or fixes.
-Official Red Hat documentation is product authority.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Tekton and Argo CD plugins are loaded as digest-pinned `oci://` packages, because their embedded wrappers were removed and support moved to Community | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Removed features][removed] |
+| The global header (not the deprecated floating action button) carries the demo tiles | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/app-config-configmap.yaml` | [Deprecated features][deprecated] |
+| OIDC against Red Hat build of Keycloak is a supported provider (not on the deprecated community provider list) | same app-config | [Deprecated features][deprecated] |
+| Developer Lightspeed is installed by default and needs a configured LLM; the repo neither configures nor disables it (Gap in the component README) | `gitops/stages/070-advanced-app-platform/rhdh/README.md` | see `rhdh-developer-lightspeed` |
 
-## Release Summary
+## Procedure
 
-RHDH 1.10 is GA. It is a productized version of upstream Backstage 1.49.4.
-Plugins may be compatible with a newer Backstage version. Updated to Node.js 24.
+1. Read [Fixed issues][fixed] for each z-stream between the installed and the
+   target version, then [Known issues][known] and [Removed features][removed].
+2. Check each Technology or Developer Preview item the repo would rely on
+   ([TP][tp], [DP][dp]) and record the posture in the component README
+   "Alignment with official guidance" table.
+3. Confirm the installed version read-only after the safety guard in `AGENTS.md`:
 
-## Highlights
+   ```bash
+   oc get csv -n rhdh-operator -o custom-columns=NAME:.metadata.name,PHASE:.status.phase
+   ```
 
-Key new features in RHDH 1.10:
+## Pitfalls
 
-- **Developer Lightspeed for RHDH** available as default plugin (requires LLM
-  configuration by platform engineer). MCP servers manageable from chat
-  interface.
-- **Personalized homepages** for user groups via dynamic plugins and visibility
-  rules.
-- **Default RBAC role and baseline permissions** via
-  `permission.rbac.defaultPermissions`.
-- **PingFederate** as new authentication provider.
-- **Flavor-based Operator configuration** via v1alpha5 API with
-  `spec.flavours[]`.
-- **New Frontend System (NFS)** support for Red Hat GA frontend plugins.
-- **Scorecard enhancements**: file-level compliance checks, aggregated KPI
-  cards, navigation and data freshness.
-- **Scaffolder MCP tools** for template discovery, validation, and execution.
-- **Single database deployments** with `pluginDivisionMode: schema`.
-- **Bulk Import** scoped to signed-in user OAuth with pending import filtering.
-- **Localization**: Spanish and German added.
-- **Orchestrator**: Loki backend (GA), retry configuration, custom review pages.
-- **OCP 4.21** and Kubernetes 1.34 supported.
+- Support status of a plugin can change between z-streams; quote the release
+  note section, not a skill, when recording a support claim.
+- Bulk Import and Orchestrator known issues do not affect this repo (neither
+  is enabled).
+- Fixed security issues are listed by advisory; check them before deferring
+  a z-stream.
 
-## Deprecated Features
+## Official documentation (Developer Hub 1.10)
 
-- Global Floating Action Button disabled by default (use Global Header).
-- Community-supported auth providers (Atlassian, Auth0, Azure-easyauth,
-  Bitbucket, Bitbucket Server, Cloudflare Access, Google, Google IAP, OAuth 2
-  Custom Proxy, OneLogin, Okta) will move to dynamic plugins in a future
-  release.
-- `backstage-community-plugin-acr` moved to Community support.
+| Topic | Section |
+|---|---|
+| New features | [New features and enhancements][new] |
+| Preview posture | [Technology Preview][tp], [Developer Preview][dp] |
+| Deprecated, removed | [Deprecated features][deprecated], [Removed features][removed] |
+| Issues | [Known issues][known], [Fixed issues][fixed] ([1.10.5][fix-1105]), [Security fixes][sec] |
 
-## Removed Features
+## Related skills
 
-- OCM plugin and wrapper removed.
-- Operator no longer auto-deletes user-created resources when features disabled.
-- Several plugins downgraded from GA/TP to Community support and removed as
-  embedded wrappers (quay, tekton, scaffolder-backend-argocd). Use `oci://`
-  references instead.
+`rhdh-upgrade`, `rhdh-about`, `rhdh-preview-features`,
+`rhdh-dynamic-plugins-install`, `rhdh-developer-lightspeed`.
 
-## Known Issues
-
-See `references/official-doc-extraction.md` for the complete list including:
-- Orchestrator in-place upgrade fails on immutable database-creation Job.
-- OCI images from registry.access.redhat.com fail plugin path auto-detection.
-- Custom threshold configuration unavailable for Filecheck/Openssf/Dependabot
-  Scorecard modules.
-- Bulk Import marks repos with open PRs as already imported.
-- Label casing mismatch in conditional HAS_LABEL RBAC policies.
-
-## Fixed Issues
-
-RHDH 1.10.0 and 1.10.1 include fixes tracked in Red Hat Bug Advisories
-RHBA-2026:25065 and RHBA-2026:25382. See
-`references/official-doc-extraction.md` for the complete list.
-
-## Security Fixes
-
-Security issues fixed in RHDH 1.10.0 are tracked in RHSA-2026:24841.
-
-## Workflow
-
-1. Read `references/official-doc-extraction.md` for detailed feature and fix
-   listings.
-2. Check whether a feature is GA, Technology Preview, or Developer Preview
-   before documenting or implementing.
-3. Verify deprecated auth providers before configuring authentication.
-4. Check known issues before reporting new bugs.
-
-## Related Skills
-
-- `rhdh-about` — RHDH concepts, architecture, sizing, and deployment methods.
-- `rhdh-preview-features` — Technology Preview and Developer Preview details.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[new]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#new-features-and-enhancements
+[tp]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#technology-preview-features
+[dp]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#developer-preview-features
+[deprecated]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#deprecated-features
+[removed]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#removed-features
+[known]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#known-issues
+[fixed]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#fixed-issues
+[fix-1105]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#fixed-issues-in-1-10-5
+[sec]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#fixed-security-issues

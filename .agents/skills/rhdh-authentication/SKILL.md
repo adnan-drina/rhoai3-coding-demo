@@ -2,108 +2,100 @@
 name: rhdh-authentication
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when configuring authentication to external services, identity providers,
-  and SSO in Red Hat Developer Hub: RHBK/OIDC, GitHub, Microsoft Azure, GitLab
-  authentication providers; user and group provisioning from RHBK, LDAP, GitHub,
-  Azure, GitLab; sign-in resolvers; session configuration; guest access; sharing
-  secrets with identity providers; and custom user/group transformers. Do NOT use
-  for RBAC, permission policies, or role management; use rhdh-authorization. Do
-  NOT use for RHDH installation, deployment topology, or plugin management.
+  Use when changing or debugging sign-in to this demo's Red Hat Developer Hub:
+  the OIDC provider against the Keycloak platform realm (client rhdh, redirect
+  /api/auth/oidc/handler/frame), the configure hook that creates the client and
+  session secrets through the stage070-rhdh-provisioner service client, the
+  preferredUsernameMatchingUserEntityName resolver with static User entities
+  ai-admin and ai-developer, guest login disabled, and 504 or "unable to resolve
+  user identity" sign-in failures. Do NOT use for RBAC (use
+  rhdh-authorization), the platform realm itself (see the identity component
+  README), GitLab tokens (use rhdh-git-integration), or installation.
 ---
 
-# RHDH Authentication
+# Developer Hub authentication
 
-Use this skill to configure authentication and user provisioning in Red Hat
-Developer Hub 1.10.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md` (How: Authentication,
+Credentials) and `gitops/stages/070-advanced-app-platform/identity/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Authentication guide to this repo's GitOps and secret-handling model.
+- A change touches `auth`, `signInPage` or the catalog users in Stage 070
+  Developer Hub, or `rhdh/jobs/configure-rhdh.yaml`.
+- Sign-in fails, loops, or a persona lands without catalog identity.
 
-## Key Concepts
+## Repo decisions
 
-- **User provisioning** and **authentication** are independent mechanisms.
-  Provisioning populates the software catalog with user/group entities from an
-  IdP. Authentication validates user credentials at sign-in time.
-- Provisioning is required for catalog ownership features and RBAC group-based
-  access controls.
-- The `dangerouslyAllowSignInWithoutUserInCatalog` resolver option bypasses the
-  provisioning requirement but is NOT recommended for production.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| OIDC provider `oidc` (`production` environment) against `https://<keycloak-host>/realms/platform`, client `rhdh`, `signInPage: oidc`, `prompt: auto` | `rhdh/rhdh-instance/app-config-configmap.yaml` | [Enable authentication with RHBK][rhbk] |
+| `auth.environment: production`: guest login disabled | same file | [Disable the Guest login][guest] |
+| Resolver `preferredUsernameMatchingUserEntityName` (documented alternative to the default `oidcSubClaimMatchingKeycloakUserId`) | same file | [Enable authentication with RHBK][rhbk] |
+| Users are two static `User` entities `ai-admin`, `ai-developer` (group `ai-modernization-team`), not imported from Keycloak (Deviation: two fixed personas) | `rhdh/catalog/all.yaml` | [Import users from RHBK][import] |
+| The `platform` realm brokers to the base `sso` realm, so users sign in with their OpenShift account | `identity/` (README How 4) | [Authentication overview][authn] |
+| Hook `job-configure-rhdh` gets a token for `stage070-rhdh-provisioner` (only `manage-clients`), creates or updates client `rhdh` with redirect `<rhdh-url>/api/auth/oidc/handler/frame`, keeps an existing client and session secret, writes `rhdh-secrets` | `rhdh/jobs/configure-rhdh.yaml`, `identity/jobs/` | [Share a secret with RHBK][share] |
 
-## Supported Identity Providers
+Paths are under `gitops/stages/070-advanced-app-platform/`.
 
-| Provider | Auth plugin key | Provisioning plugin |
-|----------|----------------|---------------------|
-| RHBK (OIDC) | `oidc` | `backstage-community-plugin-catalog-backend-module-keycloak-dynamic` |
-| GitHub | `github` | `backstage-plugin-catalog-backend-module-github-org-dynamic` |
-| Microsoft Azure | `microsoft` | `backstage-plugin-catalog-backend-module-msgraph-dynamic` |
-| GitLab | `gitlab` | GitLab catalog provider (built-in config) |
-| LDAP | (any auth provider) | `backstage-plugin-catalog-backend-module-ldap-dynamic` |
+## Procedure
 
-## Workflow
+1. Change provider or resolver config in `app-config-rhdh`; change personas in
+   `rhdh/catalog/all.yaml` (the generator republishes the runtime catalog).
+2. Never put a client or session secret in Git; the hook keeps existing
+   values and generates only missing or placeholder ones on the next sync
+   (`rotate-credentials.py` rotates the GitLab and Argo CD tokens, not these).
+3. Validate after the safety guard in `AGENTS.md`:
 
-1. **Share secrets** with the chosen identity provider (Chapter 3).
-2. **Enable provisioning** by configuring the catalog provider plugin and
-   `catalog.providers.*` section in `app-config.yaml` (Chapter 4).
-3. **Enable authentication** by configuring `auth.providers.*` and `signInPage`
-   in `app-config.yaml` (Chapter 5).
-4. **Configure sign-in resolvers** to match authenticated users to catalog
-   entities.
-5. **Disable guest access** by setting `auth.environment: production`.
-6. **Verify** provisioning via console logs and authentication via the login
-   page.
+   ```bash
+   ./stages/070-advanced-app-platform/validate.sh   # includes security-status.py client checks
+   oc logs deployment/backstage-developer-hub -n rhdh -c backstage-backend --tail=200 | grep -i 'auth\|OPError'
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- After a cluster suspend/resume the backend can keep stale connections and
+  fail every sign-in with 504 while Keycloak is healthy; restart the
+  Deployment, do not rotate secrets:
+  `docs/TROUBLESHOOTING.md#red-hat-developer-hub-oidc-sign-in-fails-with-504-gateway-timeout`.
+  That section's diagnosis commands still name the retired MTA Keycloak route
+  and `mta` realm; check the `keycloak` Route and the `platform` realm instead.
+- A signed-in user without a matching `User` entity fails with "unable to
+  resolve user identity" ([Login failed][loginfail]); add the entity to
+  `catalog/all.yaml`, not a resolver workaround.
+- `job-configure-rhdh` must never read the master admin Secret
+  (`security-status.py` `no_master_secret`).
 
-- Keep real IdP client secrets, tokens, and credentials out of Git.
-- Use environment variable placeholders (`${VAR}`) in `app-config.yaml`
-  examples.
-- Prefer RHBK/OIDC as the primary authentication provider for demo
-  environments, since MTA and other stage components already use RHBK.
-- Treat LDAP provisioning as an optional add-on that works independently of
-  the authentication provider.
+## Official documentation (Developer Hub 1.10)
 
-## Critical Configuration Points
+| Topic | Section |
+|---|---|
+| Concepts | [Authentication overview][authn], [User provisioning][prov] |
+| Guest access | [Disable the Guest login][guest] |
+| Keycloak (RHBK) | [Share a secret with RHBK][share], [Import users from RHBK][import], [Enable authentication with RHBK][rhbk] |
+| Sessions | [Session management][session] |
+| Troubleshooting | [Authentication issues][ts], [Login failed errors][loginfail] |
+| Not used | [GitLab authentication][gitlab-auth], [Service-to-service authentication][s2s] |
 
-- `auth.environment`: `development` (guest enabled) or `production` (guest
-  disabled).
-- `auth.session.secret`: Required for OIDC provider; session support must be
-  enabled.
-- `signInPage`: Must match the provider key (`oidc`, `github`, `microsoft`,
-  `gitlab`).
-- `auth.providers.<provider>.<env>.signIn.resolvers`: Controls how
-  authenticated identities map to catalog User entities.
-- `catalog.providers.<providerOrg>`: Configures user/group import schedule,
-  filters, and field mappings.
+## Related skills
 
-## Sign-In Resolvers by Provider
+`rhdh-authorization`, `rhdh-configure`, `rhdh-git-integration`,
+`ocp-authentication-identity-providers`.
 
-| Provider | Default resolver | Additional resolvers |
-|----------|-----------------|---------------------|
-| OIDC/RHBK | `oidcSubClaimMatchingKeycloakUserId` | `preferredUsernameMatchingUserEntityName`, `emailMatchingUserEntityProfileEmail`, `emailLocalPartMatchingUserEntityName`, `oidcLdapUuidMatchingAnnotation` |
-| GitHub | `usernameMatchingUserEntityName` | `preferredUsernameMatchingUserEntityName`, `emailMatchingUserEntityProfileEmail` |
-| Microsoft | `userIdMatchingUserEntityAnnotation` | `emailMatchingUserEntityAnnotation`, `emailLocalPartMatchingUserEntityName`, `emailMatchingUserEntityProfileEmail` |
-| GitLab | `usernameMatchingUserEntityName` | `emailMatchingUserEntityProfileEmail` |
-
-## Validation
-
-- Console logs show `Read N <provider> users and M <provider> groups in X
-  seconds. Committing...` on successful provisioning.
-- Login page shows the configured sign-in button and guest access is
-  disabled when `auth.environment: production`.
-- Users appear in the Catalog under the User kind after provisioning runs.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[authn]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#authentication
+[prov]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#user-provisioning
+[guest]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#disable-the-guest-login_enable-or-disable-authentication-with-the-guest-user
+[share]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#share-a-secret-with-rhbk_share-a-secret-with-your-identity-provider
+[import]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#import-users-and-groups-from-rhbk_import-users-and-groups-from-your-identity-provider
+[rhbk]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#enable-authentication-with-rhbk_enable-authentication-with-your-identity-provider
+[session]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#manage-session-expiration_enable-authentication-with-external-services
+[ts]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#troubleshoot-authentication-issues_enable-authentication-with-external-services
+[loginfail]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#troubleshoot-login-failed-errors_troubleshoot-authentication-issues
+[gitlab-auth]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#enable-authentication-with-gitlab_enable-authentication-with-your-identity-provider
+[s2s]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/authentication_in_red_hat_developer_hub/index#enable-service-to-service-authentication_enable-authentication-with-external-services

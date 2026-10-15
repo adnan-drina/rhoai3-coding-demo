@@ -2,123 +2,120 @@
 name: rhdh-configure
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "rhdh"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhdh
+  docs-version: "1.10"
   skill-group: "Developer Hub"
 description: >
-  Use when adding custom config maps, secrets, and configuring Red Hat Developer
-  Hub to work in your IT ecosystem. Covers app-config.yaml, dynamic plugins,
-  RBAC policies, Backstage CR, Helm values, external PostgreSQL, HA, proxy,
-  TLS certificates, deployment patches, and front-end system migration. Do NOT
-  use for appearance customization (use rhdh-customize), TechDocs setup (use
-  rhdh-techdocs-config), or upgrade procedures (use rhdh-upgrade).
+  Use when changing or debugging this demo's Red Hat Developer Hub
+  configuration: the Backstage CR developer-hub (appConfig,
+  dynamicPluginsConfigMapName, extraFiles, extraEnvs, deployment patch
+  maxSurge 0), ConfigMap app-config-rhdh, the runtime Secret rhdh-secrets
+  written by the configure hook, NODE_EXTRA_CA_CERTS cluster CA trust, the
+  catalog file location and providers, local database, and OutOfSync on
+  Operator-owned fields. Do NOT use for appearance and global header (use
+  rhdh-customize), sign-in (use rhdh-authentication), RBAC (use
+  rhdh-authorization), plugins (use rhdh-dynamic-plugins-configure), TechDocs
+  (use rhdh-techdocs-config), or upgrades (use rhdh-upgrade).
 ---
 
-# RHDH Configure
+# Developer Hub configuration
 
-Use this skill to configure Red Hat Developer Hub 1.10 grounded in official
-product documentation.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+Developer Hub 1.10 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/rhdh/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers configuration files,
-provisioning, Operator and Helm deployment methods, default configuration,
-front-end system migration, predefined Operator configurations, external
-PostgreSQL, HA, proxy, TLS, dynamic plugin cache, and deployment customization.
+- A change touches `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/`
+  or `rhdh/jobs/configure-rhdh.yaml`.
+- The portal does not start, shows 503, or a plugin cannot reach the cluster.
 
-## Configuration Files Overview
+## Repo decisions
 
-| File | Purpose | Provisioning |
-|------|---------|-------------|
-| `app-config.yaml` | Main application config (URLs, auth, catalog, DB, plugins) | ConfigMap via Operator or Helm |
-| Secrets (`my-rhdh-secrets`) | Credentials, BACKEND_SECRET, DB passwords | Secret via `extraEnvs.secrets` or `extraEnvVarsSecrets` |
-| `dynamic-plugins.yaml` | Enable/disable/configure dynamic plugins | ConfigMap via `dynamicPluginsConfigMapName` or `global.dynamic.plugins` |
-| `rbac-policy.csv` | RBAC permission policies (Casbin format) | ConfigMap mounted as file |
-| `rbac-conditional-policies.yaml` | Conditional RBAC policies | ConfigMap mounted as file |
+| Decision | Where in Git | Official section |
+|---|---|---|
+| All configuration through the `Backstage` CR (`rhdh.redhat.com/v1alpha5`): `appConfig` ConfigMap `app-config-rhdh`, `dynamicPluginsConfigMapName: dynamic-plugins-rhdh`, `extraFiles`, `extraEnvs` | `rhdh-instance/backstage.yaml`, `rhdh-instance/app-config-configmap.yaml` | [Backstage CR][cr], [Extra files and env][extra] |
+| `extraFiles` mounts the RBAC CSV, the runtime catalog `catalog-runtime-rhdh` and `kube-root-ca.crt` into `backstage-backend` only | `rhdh-instance/backstage.yaml` | [Mount to specific containers][mount] |
+| Cluster CA trusted through `NODE_EXTRA_CA_CERTS`, never by disabling TLS | `rhdh-instance/backstage.yaml` | [NODE_EXTRA_CA_CERTS][ca] |
+| `spec.deployment.patch` sets `maxSurge: 0`, `maxUnavailable: 1` so only one backend runs migrations | `rhdh-instance/backstage.yaml` | [Deployment with the Operator][deploy] |
+| Cluster-specific values are `${VAR}` references; the wave-18 hook `job-configure-rhdh` merge-patches `rhdh-secrets` (base URL, OIDC and session secrets, Kubernetes and Argo CD tokens, catalog URL); Git holds placeholders only | `rhdh-instance/rhdh-secrets.yaml`, `jobs/configure-rhdh.yaml` | [RHDH secrets][secrets] |
+| Catalog: one file location (runtime catalog, only source allowed to add `Template`), GitLab discovery that may not ingest templates, `orphanStrategy: delete` | `rhdh-instance/app-config-configmap.yaml`, `jobs/catalog/` | [Define locations][locations] |
+| Operator-managed local PostgreSQL (Deviation; external database not used) | Backstage CR (no database override) | [External PostgreSQL][pg] |
+| `backend.reading.allow` lists only the GitLab host and GitHub raw hosts | `rhdh-instance/app-config-configmap.yaml` | [Application configuration][appconfig] |
 
-## Backstage Custom Resource (Operator)
+Paths are under `gitops/stages/070-advanced-app-platform/rhdh/`.
 
-- **apiVersion:** `rhdh.redhat.com/v1alpha5`
-- **kind:** `Backstage`
-- **Key fields:**
-  - `spec.application.appConfig.configMaps` — app-config references
-  - `spec.application.dynamicPluginsConfigMapName` — plugins ConfigMap
-  - `spec.application.extraEnvs.secrets` — inject secrets as env vars
-  - `spec.application.extraFiles.secrets` — mount secrets as files
-  - `spec.application.route.enabled` — route configuration
-  - `spec.database.enableLocalDb` — local or external PostgreSQL
-  - `spec.deployment.patch` — strategic merge patch for Deployment
+## Procedure
 
-## Helm Chart Key Values
+1. Edit the ConfigMap or CR in Git; secrets only through the configure hook
+   or `070-gitlab`, never `stringData` in Git.
+2. Validate statically, then sync and validate after the safety guard in `AGENTS.md`:
 
-- `upstream.backstage.appConfig` — inline app config
-- `upstream.backstage.extraAppConfig` — external config map references
-- `upstream.backstage.extraEnvVarsSecrets` — secret injection
-- `global.dynamic.plugins` — dynamic plugin configuration
+   ```bash
+   ./stages/070-advanced-app-platform/validate.sh --static
+   ./stages/070-advanced-app-platform/deploy.sh
+   ./stages/070-advanced-app-platform/validate.sh
+   ```
 
-## Configuration Precedence
+3. Read-only checks:
 
-1. Multiple `app-config.yaml` files deep-merge; later overrides earlier
-2. Arrays replace entirely (not append)
-3. `${VAR_NAME}` resolves at runtime from environment variables
-4. Dynamic plugins merge with base `includes` list by package name
-5. Operator merges multiple pre-configured settings automatically
+   ```bash
+   oc get backstage developer-hub -n rhdh -o yaml
+   oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data}' | jq 'keys'
+   oc logs deployment/backstage-developer-hub -n rhdh -c backstage-backend --tail=100
+   ```
 
-## Provisioning Steps (Operator)
+## Pitfalls
 
-```bash
-oc create namespace my-rhdh-project
-oc create configmap my-rhdh-app-config \
-  --from-file=app-config.yaml --namespace=my-rhdh-project
-oc create configmap dynamic-plugins-rhdh \
-  --from-file=dynamic-plugins.yaml --namespace=my-rhdh-project
-oc create secret generic my-rhdh-secrets \
-  --from-file=secrets.txt --namespace=my-rhdh-project
-oc apply -f my-rhdh-custom-resource.yaml --namespace=my-rhdh-project
-```
+- Two backends on a fresh database crash with `relation ... already exists`
+  and the portal stays 0/1; keep `maxSurge: 0` (`strategy.type: Recreate`
+  produces an invalid Deployment with the Operator's base rollingUpdate).
+- The Operator disables service-account token automount, so the cluster CA
+  must come from `kube-root-ca.crt` via `extraFiles`:
+  `docs/TROUBLESHOOTING.md#developer-hub-topologycikubernetes-tabs-show-problem-retrieving-kubernetes-objects`.
+- Argo CD ignores `rhdh-secrets` `/data` so syncs keep the runtime values;
+  never add `stringData` to the Git placeholder (it would overwrite them;
+  guarded by `stages/070-advanced-app-platform/tests/sso-alignment.test.py`).
+- Catalog load and generator failures:
+  `docs/TROUBLESHOOTING.md#red-hat-developer-hub-catalog-does-not-load-coolstore`,
+  `docs/TROUBLESHOOTING.md#rhdh-catalog-generator-refuses-factory_bundle_mismatch`.
+- OutOfSync while healthy: narrow `ignoreDifferences` only, never the whole
+  spec (`docs/TROUBLESHOOTING.md#red-hat-developer-hub-is-healthy-but-stage-070-is-outofsync`).
+- Day-2 notes: `docs/OPERATIONS.md#stage-070--developer-hub-rhdh-component`.
 
-## Provisioning Steps (Helm)
+## Official documentation (Developer Hub 1.10)
 
-```yaml
-upstream:
-  backstage:
-    extraAppConfig:
-      - configMapRef: my-rhdh-app-config
-        filename: app-config.yaml
-    extraEnvVarsSecrets:
-      - my-rhdh-secrets
-```
+| Topic | Section |
+|---|---|
+| Configuration files | [Overview][files], [Application configuration][appconfig], [RHDH secrets][secrets], [Backstage CR][cr], [Precedence][precedence] |
+| Running a custom configuration | [With the Operator][run-op], [Default configuration][defaults] |
+| Container injection | [Extra files and env][extra], [Mount to specific containers][mount], [Deployment with the Operator][deploy] |
+| Trust and TLS | [NODE_EXTRA_CA_CERTS][ca], [Route with external TLS][route-tls] |
+| Database and HA (not used) | [External PostgreSQL][pg], [High availability][ha] |
+| Catalog descriptors | [Catalog entity descriptor][descriptor], [Define locations][locations] |
+| Troubleshooting | [Configuration issues][ts] |
 
-## Key Configuration Areas
+## Related skills
 
-1. **External PostgreSQL** — Disable local DB, configure connection via secrets
-2. **High availability** — Multiple replicas configuration
-3. **Corporate proxy** — HTTP_PROXY, HTTPS_PROXY, NO_PROXY via `extraEnvs`
-4. **TLS certificates** — NODE_EXTRA_CA_CERTS for corporate CA trust
-5. **Dynamic plugins cache** — Performance optimization for plugin loading
-6. **Front-end system migration** — Blueprint-based dynamic routing
-7. **Deployment patches** — Strategic merge patches for advanced customization
-8. **HTTP server timeouts** — Backend timeout configuration
-9. **Mount paths** — Custom mount paths for secrets and PVCs
+`rhdh-install-ocp`, `rhdh-customize`, `rhdh-authentication`,
+`rhdh-authorization`, `rhdh-git-integration`, `rhdh-dynamic-plugins-configure`,
+`rhdh-techdocs-config`.
 
-## Workflow
-
-1. Read `references/official-doc-extraction.md` for exact YAML patterns.
-2. Identify the configuration task (provisioning, plugins, DB, proxy, TLS, etc.).
-3. Use the correct provisioning method (Operator CR or Helm values).
-4. Apply configuration following documented steps.
-5. Verify RHDH starts successfully with the new configuration.
-
-## Related Skills
-
-- `rhdh-upgrade` — Upgrade procedures
-- `rhdh-customize` — Appearance, templates, and branding customization
-- `rhdh-techdocs-config` — TechDocs plugin configuration
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[files]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#rhdh-configuration-files-overview_understanding-rhdh-configuration-files
+[appconfig]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#application-configuration-file_understanding-rhdh-configuration-files
+[secrets]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#rhdh-secrets_understanding-rhdh-configuration-files
+[cr]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#custom-resource_understanding-rhdh-configuration-files
+[precedence]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#configuration-precedence_understanding-rhdh-configuration-files
+[run-op]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#use-the-rhdh-operator-to-run-rhdh-with-your-custom-configuration_provision-and-use-your-custom-rhdh-configuration
+[defaults]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#rhdh-default-configuration_configuring-rhdh
+[extra]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#inject-extra-files-and-environment-variables-into-containers_configuring-rhdh
+[mount]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#mount-secrets-and-pvcs-to-specific-containers_configuring-rhdh
+[deploy]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#configure-rhdh-deployment-when-using-the-operator_configuring-rhdh
+[ca]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#configure-trust-for-corporate-certificate-authority-with-node-extra-ca-certs_configuring-rhdh
+[route-tls]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#configure-a-route-with-an-external-tls-certificate-by-using-the-operator_configuring-rhdh
+[pg]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#configure-external-postgresql-databases_configuring-rhdh
+[ha]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#configure-high-availability-in-rhdh_configuring-rhdh
+[descriptor]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#catalog-entity-descriptor-reference_rhdh-default-configuration
+[locations]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#define-locations-in-the-catalog_rhdh-default-configuration
+[ts]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/configuring_red_hat_developer_hub/index#troubleshoot-rhdh-configuration-issues_configuring-rhdh
