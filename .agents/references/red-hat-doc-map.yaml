@@ -35,8 +35,13 @@ converted_families:
 # of the family is converted.
 converted_skills:
   - rhoai-distributed-inference-llmd
+  - rhoai-dsci-dsc-configuration
   - rhoai-model-deployment
   - rhoai-model-serving-platform
+  - rhoai-observability
+  - rhoai-self-managed-installation
+  - rhoai-update-channels
+  - rhoai-users-groups-access
 
 # Backticked names on skill lines that look like skill names but are not skills.
 skill_reference_ignore: [rhcl-operator, ocp-baseline]
@@ -121,11 +126,31 @@ products:
               - update_channels
             status: active
             skill: rhoai-update-channels
+            sections:
+              - understanding-update-channels_install
+              - installing-openshift-ai-operator-using-cli_operator-install
+              - installing-openshift-ai-operator-using-web-console_operator-install
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: installing_and_uninstalling_openshift_ai_self-managed
             topics:
               - installing_and_deploying
             status: active
             skill: rhoai-self-managed-installation
+            sections:
+              - architecture-of-openshift-ai-self-managed_install
+              - understanding-update-channels_install
+              - requirements-for-openshift-ai-self-managed_install
+              - platform_requirements
+              - component_requirements
+              - configuring-custom-namespaces
+              - installing-the-openshift-ai-operator_operator-install
+              - installing-openshift-ai-operator-using-cli_operator-install
+              - installing-openshift-ai-operator-using-web-console_operator-install
+              - installing-and-managing-openshift-ai-components_component-install
+              - viewing-installed-components_component-install
+              - accessing-the-dashboard_install
+              - troubleshooting-common-installation-problems_install
+            reviewed: { version: "3.5", date: 2026-10-15, note: "DISABLE_DSC_CONFIG is not in the 3.5 guide (repo behaviour only); platform requirements list OpenShift 4.19-4.20, 4.22 is covered by the supported-configurations matrix" }
           - book: installing_and_uninstalling_openshift_ai_self-managed
             topics:
               - custom_namespaces
@@ -134,6 +159,15 @@ products:
               - component_management
             status: active
             skill: rhoai-dsci-dsc-configuration
+            sections:
+              - installing-and-managing-openshift-ai-components_component-install
+              - installing-openshift-ai-components-using-cli_component-install
+              - installing-openshift-ai-components-using-web-console_component-install
+              - updating-installation-status-of-openshift-ai-components-using-web-console_component-install
+              - viewing-installed-components_component-install
+              - configuring-custom-namespaces
+              - installing-the-distributed-workloads-components_install
+            reviewed: { version: "3.5", date: 2026-10-15, note: "3.5 guide defines Managed and Removed only (Unmanaged appears for kueue); llamastackoperator deprecation comes from the live CRD, the 3.5 CLI example lists ogx instead" }
           - book: installing_and_uninstalling_openshift_ai_self-managed
             topics:
               - distributed_workloads_components
@@ -182,12 +216,31 @@ products:
       administer:
         description: Administrator workflows for RHOAI access, dashboard, resources, workloads, and observability.
         routes:
+          - book: managing_resources
+            status: active
+            skill: rhoai-users-groups-access
+            sections:
+              - ref-dashboard-configuration-options_dashboard
+            reviewed: { version: "3.5", date: 2026-10-15, note: "Auth CR spec.adminGroups/allowedGroups; OdhDashboardConfig groupsConfig is read-only" }
           - book: managing_openshift_ai
             topics:
               - users
               - groups
             status: active
             skill: rhoai-users-groups-access
+            sections:
+              - overview-of-user-types-and-permissions_managing-rhoai
+              - platform_user_types
+              - custom_roles_for_project_resources
+              - viewing-data-science-users_managing-rhoai
+              - adding-users-to-user-groups_managing-rhoai
+              - selecting-admin-and-user-groups_managing-rhoai
+              - about-deleting-users-and-resources_managing-rhoai
+              - stopping-basic-workbenches-owned-by-other-users_managing-rhoai
+              - revoking-user-access-to-basic-workbenches_managing-rhoai
+              - backing-up-storage-data_managing-rhoai
+              - cleaning-up-after-deleting-users_managing-rhoai
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: managing_openshift_ai
             topics:
               - custom_workbench_images
@@ -229,6 +282,18 @@ products:
               - observability
             status: active
             skill: rhoai-observability
+            sections:
+              - managing-observability_managing-rhoai
+              - enabling-the-observability-stack_managing-rhoai
+              - observability-dashboards_managing-rhoai
+              - observability-dashboards-overview_observability-dashboards
+              - enable-observability-dashboards_observability-dashboards
+              - accessing-metrics-beyond-built-in-dashboards_observability-dashboards
+              - collecting-metrics-from-user-workloads_managing-rhoai
+              - exporting-metrics-to-external-observability-tools_managing-rhoai
+              - viewing-traces-in-external-tracing-platforms_managing-rhoai
+              - accessing-built-in-alerts_managing-rhoai
+            reviewed: { version: "3.5", date: 2026-10-15, note: "support status (TP or GA) not verified: release_notes answered HTTP 503 twice on review" }
           - book: managing_openshift_ai
             topics:
               - logs
