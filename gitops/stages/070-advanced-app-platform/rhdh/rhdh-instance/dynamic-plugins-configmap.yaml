@@ -11,6 +11,9 @@ data:
     includes:
       - dynamic-plugins.default.yaml
     plugins:
+      # Telemetry to Red Hat (Segment) is on by default; the demo turns it off (RHDH 1.10 telemetry guide).
+      - package: ./dynamic-plugins/dist/backstage-community-plugin-analytics-provider-segment
+        disabled: true
       - package: ./dynamic-plugins/dist/backstage-plugin-catalog-backend-module-gitlab-dynamic
         disabled: false
       - package: ./dynamic-plugins/dist/backstage-community-plugin-rbac

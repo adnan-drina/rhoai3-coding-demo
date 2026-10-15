@@ -113,6 +113,7 @@ oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotation
 | TechDocs | Local builder is not intended for production; use CI-built docs in object storage [7] | `builder: local` | Deviation (justified: one platform docs source, no docs pipeline) |
 | Developer Lightspeed | Enabled by default; disable with the `lightspeed` flavour when no LLM is configured, which also stops the unconfigured sidecar [9] | Not configured and not disabled; the default sidecar runs | Gap |
 | Namespace ingress | NetworkPolicy allowing the OpenShift router namespaces by `policy-group.network.openshift.io/ingress` [10] | Same, plus same-namespace and monitoring | Aligned |
+| Telemetry | `analytics-provider-segment` is enabled by default; disable it with `disabled: true` in the dynamic plugins ConfigMap [11] | Disabled | Aligned |
 
 ## References
 
@@ -126,5 +127,6 @@ oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotation
 8. Sync phases and waves, Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
 9. Interacting with Red Hat Developer Lightspeed for Red Hat Developer Hub, chapter 4 and 4.3 "Disable Developer Lightspeed for RHDH by using the Operator", Red Hat Developer Hub 1.10. https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index
 10. Network policy, 3.1.1.1 "Policy additivity" (`allow-from-router` example), OpenShift Container Platform 4.22. https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/network_security/network-policy
+11. Telemetry data collection and analysis, "Disable telemetry data collection by using the Operator", Red Hat Developer Hub 1.10. https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/telemetry_data_collection_and_analysis/index#disable-telemetry-data-collection-using-the-operator_disable-telemetry-data-collection-in-rhdh
 
 Repository: [Stage 070 README](../../../../stages/070-advanced-app-platform/README.md), [Application manifest](../../../argocd/app-of-apps/070-advanced-app-platform/rhdh.yaml), [stage validator](../../../../stages/070-advanced-app-platform/validate.sh).
