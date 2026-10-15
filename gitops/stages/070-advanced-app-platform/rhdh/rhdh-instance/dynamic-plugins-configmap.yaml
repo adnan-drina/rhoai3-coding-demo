@@ -44,7 +44,8 @@ data:
                       if:
                         allOf:
                           - isTektonCIAvailable
-      - package: oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/roadiehq-backstage-plugin-argo-cd-backend@sha256:2b799e7cf53fde418731a432417a3979e4aadf3a1a4fd7b4a5c2e491cd8c3056
+      # Community Argo CD backend (bs_1.49.4__1.4.0), paired with the Community frontend below as RHDH 1.10 recommends.
+      - package: oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-community-plugin-argocd-backend@sha256:de3a311dafb2a853354f30434451fc04c56b5ee53f085f38471410c695f16e46
         disabled: false
       - package: oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-community-plugin-argocd@sha256:a359632458c901e6b22019b161c45ec3d45398f74ad0c4dccfdf46974b9152a7
         disabled: false

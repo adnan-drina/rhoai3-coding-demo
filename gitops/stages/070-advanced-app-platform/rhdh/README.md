@@ -107,11 +107,11 @@ oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotation
 | RBAC | Policy admins in `permission.rbac.admin.users`; CSV through `policies-csv-file` and `extraFiles`; list plugin IDs in `pluginsWithPermission` [4] | As documented, CSV in Git | Aligned |
 | Tekton plugin | OCI package from `rhdh-plugin-export-overlays`, digest recommended; Kubernetes plugin with a ServiceAccount; Tekton custom resources [5] | Digest-pinned OCI package; `pipelineruns`, `taskruns` | Aligned |
 | Kubernetes plugin RBAC | Read-only ClusterRole with named resources (for example `backstage-read-only` with Tekton `get`/`list`) [5] | ClusterRole `rhdh-kubernetes-reader`: the Backstage Kubernetes plugin's documented read rules plus Tekton runs and Routes [12] | Aligned |
-| Argo CD plugin | Recommended: Community frontend with Community backend; mixing Community and Roadie plugins is not recommended [5] | Community frontend with Roadie backend | Gap |
+| Argo CD plugin | Recommended: Community frontend with Community backend; mixing Community and Roadie plugins is not recommended [5] | Community frontend `bs_1.49.4__2.8.0` with Community backend `bs_1.49.4__1.4.0`, both digest-pinned | Aligned |
 | Custom CA | Configure trust with `NODE_EXTRA_CA_CERTS` [6] | Cluster CA through `NODE_EXTRA_CA_CERTS` | Aligned |
 | Database | Operator-managed local PostgreSQL by default; external PostgreSQL for production [6] | Operator-managed local PostgreSQL | Deviation (justified: single-cluster demo) |
 | TechDocs | Local builder is not intended for production; use CI-built docs in object storage [7] | `builder: local` | Deviation (justified: one platform docs source, no docs pipeline) |
-| Developer Lightspeed | Enabled by default; disable with the `lightspeed` flavour when no LLM is configured, which also stops the unconfigured sidecar [9] | Not configured and not disabled; the default sidecar runs | Gap |
+| Developer Lightspeed | Enabled by default; disable with the `lightspeed` flavour when no LLM is configured, which also stops the unconfigured sidecar [9] | `flavours: [{name: lightspeed, enabled: false}]` in the Backstage CR | Aligned |
 | Namespace ingress | NetworkPolicy allowing the OpenShift router namespaces by `policy-group.network.openshift.io/ingress` [10] | Same, plus same-namespace and monitoring | Aligned |
 | Telemetry | `analytics-provider-segment` is enabled by default; disable it with `disabled: true` in the dynamic plugins ConfigMap [11] | Disabled | Aligned |
 

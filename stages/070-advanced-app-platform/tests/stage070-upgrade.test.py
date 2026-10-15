@@ -160,6 +160,8 @@ class IntegratedContract(unittest.TestCase):
         packages = [p['package'] for p in plugins if 'argocd' in p['package'] or 'argo-cd' in p['package']]
         self.assertEqual(len(packages), 2)
         self.assertTrue(all(p.startswith('oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/') and '@sha256:' in p for p in packages))
+        # RHDH 1.10 recommends the Community pair and advises against mixing Community and Roadie plugins.
+        self.assertTrue(all('/backstage-community-plugin-argocd' in p for p in packages))
 
     def test_tekton_frontend_is_wired_and_migration_requires_hub(self):
         plugins = yaml.safe_load(yaml.safe_load((BASE / 'rhdh/rhdh-instance/dynamic-plugins-configmap.yaml').read_text())['data']['dynamic-plugins.yaml'])['plugins']
