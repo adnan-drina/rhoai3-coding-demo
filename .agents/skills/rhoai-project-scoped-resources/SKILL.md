@@ -1,102 +1,82 @@
 ---
 name: rhoai-project-scoped-resources
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift AI
-  project-scoped resources: project-local workbench images, hardware profiles,
-  and KServe model-serving runtime templates; dashboard visibility controlled
-  by disableProjectScoped; resource naming and namespace rules; copying trusted
-  global resources into a target project; and GitOps review of project-scoped
-  resource manifests. Do NOT use for global RHOAI installation, generic
-  OpenShift project RBAC, creating data science projects, custom workbench image
-  build/import, full hardware profile schema design, full KServe serving runtime
-  authoring, or live cluster changes without the OpenShift safety guard.
+  Use when a team or project needs its own workbench image, hardware profile
+  or KServe serving-runtime template visible only in one project, when
+  deciding between a global resource in redhat-ods-applications and a
+  project-scoped copy, or when the disableProjectScoped dashboard option comes
+  up. Do NOT use for the global hardware profiles of Stage 020 (use
+  rhoai-hardware-profiles), serving runtime details (use
+  rhoai-model-serving-platform), custom image content (use
+  rhoai-workbenches-custom-images), or creating projects (use
+  rhoai-project-workflows).
 ---
 
-# RHOAI Project-Scoped Resources
+# RHOAI project-scoped resources
 
-Use this skill to manage OpenShift AI resources that should be visible only in
-specific projects for the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill. Not deployed in this demo: every workbench image, hardware profile
+and serving-runtime template that the dashboard offers is global (in
+`redhat-ods-applications`). Product behavior is in the linked OpenShift AI 3.5
+sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior details.
-Official Red Hat documentation is product authority. This skill adapts the
-official project-scoped resource workflow to this repo's GitOps review model.
+- A demo step needs an option that only one project should see.
+- Someone proposes copying a global profile or template into a project.
 
-## Scope
+## Repo decisions
 
-This skill covers project-scoped copies of:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Hardware profiles are global only: `cpu-default`, `gpu-rtxpro6000`, `gpu-reserved-demo` in `redhat-ods-applications` | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/hardware-profiles/` | [Create project-scoped resources][scoped] |
+| No project-scoped `Template` with a `ServingRuntime`. The Stage 050 candidate ships a plain `ServingRuntime` `vllm-cuda-runtime` in `evaluated-models` with its InferenceService; it is not a dashboard template | `gitops/stages/050-model-evaluation/model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Create project-scoped resources][scoped] |
+| `disableProjectScoped` is not set, so it keeps its documented default (Developer Preview option) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` (field absent) | [Dashboard configuration options][options] |
 
-- workbench images
-- hardware profiles
-- model-serving runtimes for KServe, represented by Templates whose
-  `objects.kind` is `ServingRuntime`
+## If a project-scoped resource is needed
 
-This skill does not cover full object schemas for those resources. Use the
-component owner skill and active CRD/schema verification for detailed fields:
+1. Put the copy in the GitOps component that owns the target project (for
+   example the stage folder that creates the namespace), not in Stage 010.
+2. Set `metadata.namespace` to the project and give it a name that is unique
+   in that project, as the [procedure][scoped] requires.
+3. A hardware profile copy that uses `Queue` scheduling also needs its
+   LocalQueue in that project (see `rhoai-hardware-profiles`).
+4. If the dashboard must show project-scoped items, add `disableProjectScoped`
+   to `odhdashboardconfig.yaml` explicitly and record the Developer Preview
+   status in the component README.
+5. Read-only check after the OpenShift safety guard in `AGENTS.md`:
 
-- `rhoai-project-workflows` for creating data science projects and the
-  user-facing project-scoped resource handoff workflow
-- `rhoai-workbenches-custom-images` for workbench image content and dashboard
-  discovery
-- `rhoai-hardware-profiles` for hardware profile schema, lifecycle, and
-  recommended accelerator tags
-- `rhoai-nvidia-gpu-accelerators` for accelerator infrastructure intent
-- `rhoai-model-serving-platform` for KServe `ServingRuntime` details and
-  model-serving platform behavior
+   ```bash
+   oc get hardwareprofile -A
+   oc get templates -n redhat-ods-applications
+   ```
 
-## Resource Boundary
+## Pitfalls
 
-OpenShift AI users can access global resources across OpenShift AI projects.
-They can access project-scoped resources only in projects where they have
-permissions.
+- Global resources come from `redhat-ods-applications`; editing them changes
+  every project.
+- Users see a project-scoped resource only in projects where they have
+  permissions ([Create project-scoped resources][scoped]).
 
-All resource names must be unique within a project. Project-scoped resources
-must set `metadata.namespace` to the target project.
+## Official documentation (OpenShift AI 3.5)
 
-## Demo Policy
+| Topic | Section |
+|---|---|
+| Project-scoped workbench images, profiles, runtime templates | [Create project-scoped resources][scoped] |
+| `disableProjectScoped` | [Dashboard configuration options][options] |
+| Extra resources per user | [Allocate additional resources to OpenShift AI users][allocate] |
 
-For this repo:
+## Related skills
 
-- Prefer project-scoped resources when a demo step needs different options for
-  different teams, model-serving projects, or regulated audience scenarios.
-- Keep global resources in the OpenShift AI application layer only when they
-  should be visible across projects.
-- Keep project-scoped resources in the same GitOps stage as the project that
-  consumes them, or in a clearly ordered prerequisite stage.
-- Set `disableProjectScoped: false` only when project-scoped resources should
-  be enabled in the dashboard.
-- Copy YAML only from trusted sources: official docs, existing verified
-  resources, or reviewed GitOps manifests.
-- Do not invent resource schemas. Verify `ImageStream`, `HardwareProfile`,
-  `Template`, and embedded `ServingRuntime` fields before authoring.
+`rhoai-hardware-profiles`, `rhoai-model-serving-platform`,
+`rhoai-workbenches-custom-images`, `rhoai-project-workflows`,
+`rhoai-dashboard-customization`.
 
-## Workflow
-
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Decide whether the target resource is a project-scoped:
-   - workbench image
-   - hardware profile
-   - model-serving runtime template
-4. Confirm project-scoped dashboard support is enabled with
-   `disableProjectScoped: false`.
-5. Copy YAML from a trusted source, update `metadata.namespace`, make
-   `metadata.name` unique in the target project, and adjust only documented
-   display-name fields.
-6. Use `examples/project-scoped-resource-patterns.md` for review patterns.
-7. Validate with `references/validation-checklist.md`.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/project-scoped-resource-patterns.md`
+[scoped]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#creating-project-scoped-resources_managing-rhoai
+[allocate]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#allocating-additional-resources-to-users_managing-rhoai
+[options]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#ref-dashboard-configuration-options_dashboard

@@ -1,115 +1,107 @@
 ---
 name: rhoai-certificate-management
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when installing, documenting, reviewing, or rebuilding Red Hat OpenShift
-  AI certificate handling: DSCI trustedCABundle managementState, cluster-wide
-  and custom CA bundles, odh-trusted-ca-bundle ConfigMaps, self-signed
-  certificate handling for S3-compatible object storage, AI pipelines,
-  workbenches, model serving, and Llama Stack, CA bundle removal, namespace
-  opt-out, and GitOps review of certificate-related manifests. Do NOT use for
-  production PKI design, certificate issuance, cert-manager installation,
-  unrelated OpenShift ingress certificate work, or live troubleshooting; use
-  env-* skills for live diagnosis.
+  Use when reviewing or changing how OpenShift AI trusts certificates in this
+  repo: DSCInitialization default-dsci spec.trustedCABundle (Managed, empty
+  customCABundle), the odh-trusted-ca-bundle ConfigMap in project namespaces,
+  the OpenShift service-CA ConfigMaps components use for in-cluster TLS
+  (mlflow-service-ca, authorino-service-ca, pipeline-tasks-service-ca,
+  candidate-model-service-ca), S3 or OGX CA trust, workbench restarts after a
+  CA change, or x509 "unknown authority" errors between RHOAI components.
+  Do NOT use for ingress or Gateway certificates (use ocp-ingress-gateway-routes),
+  MaaS Gateway and Authorino TLS (use rhoai-maas-governance), Developer Hub
+  Kubernetes-plugin TLS (use rhdh-configure), or PKI and cert-manager design
+  (out of scope for this demo).
 ---
 
 # RHOAI Certificate Management
 
-Use this skill to configure and review OpenShift AI certificate behavior for
-the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: this repo's trust decisions, with product behavior in the linked
+OpenShift AI 3.5 "Work with certificates" chapter. Demo posture: self-signed
+certificates and skipped TLS verification in scripts are accepted
+(`.agents/rules/env.md`, Security Posture); do not add PKI or rotation tooling.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. This skill adapts the
-official certificate guidance to this repo's GitOps operating model and demo
-security posture.
+- A component fails TLS to S3, MLflow, a model endpoint or the MaaS gateway.
+- A change touches `trustedCABundle` in `rhoai-platform/dsc-init.yaml`.
+- A new component needs to trust an in-cluster service.
 
-## Demo Policy
+## Repo decisions
 
-For this demo:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `trustedCABundle.managementState: Managed` with an empty `customCABundle`; no custom CA is injected | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/dsc-init.yaml` | [Understanding certificates][understand]; [Custom CA bundle][custom] |
+| Cluster-wide trust (proxy trusted CA) is the provisioner's, not changed by this repo | `docs/OPERATIONS.md` (Observed inventory: Proxy / trust) | [Cluster-wide CA bundle][cluster] |
+| In-cluster TLS uses OpenShift service-CA ConfigMaps (`service.beta.openshift.io/inject-cabundle: "true"`) per component, not the custom bundle | `gitops/stages/050-model-evaluation/mlflow/service-ca.yaml` (MLflow `caBundleConfigMap`), `gitops/stages/040-governed-models-as-a-service/gateway-governance/governance/authorino-service-ca.yaml`, `gitops/stages/050-model-evaluation/model-qualification/pipeline-server.yaml`, `.../model-qualification/candidate-model-auth.yaml` | [Self-signed certificates with components][selfsigned] |
+| S3 endpoint `https://s3.openshift-storage.svc:443` is signed by the service CA; no CA configuration is added for it (recorded gap) | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/README.md` (Alignment table, TLS row) | [S3 with self-signed certificates][s3] |
+| KServe ingress gateway keeps its default certificate; DSC `kserve` sets no certificate secret | `gitops/stages/030-private-model-serving/private-model-serving/dsc-enablement/` | [Cluster CA bundle for model serving][serving] |
+| Validate and deploy scripts call `oc` with `--insecure-skip-tls-verify=true` | `stages/010-openshift-ai-platform-foundation/validate.sh` | — (demo posture, `.agents/rules/env.md`) |
 
-- Keep `spec.trustedCABundle.managementState: Managed` unless there is an
-  explicit architecture reason to delegate CA bundle management elsewhere.
-- Prefer a custom RHOAI CA bundle for demo-specific external endpoints that use
-  self-signed or private CA certificates.
-- Use the cluster-wide CA bundle only when the certificate must be trusted
-  across the OpenShift cluster.
-- Do not commit private keys. Treat CA PEM content as environment-specific
-  unless it is intentionally public demo material.
-- Use `--insecure-skip-tls-verify=true` and `curl -k` only for local validation
-  and demo convenience; do not convert that shortcut into product guidance.
+## Procedure
 
-## Certificate Model
+1. Decide where the trust belongs: an in-cluster service signed by the service
+   CA gets a component service-CA ConfigMap (follow the MLflow pattern); an
+   external private CA goes into `customCABundle` in `dsc-init.yaml`.
+2. Change Git only; `010-rhoai-platform` self-heals the DSCI.
+3. Deploy and validate the owning stage, for example
+   `./stages/010-openshift-ai-platform-foundation/deploy.sh` then `validate.sh`.
+4. Check after the OpenShift safety guard in `AGENTS.md`:
 
-OpenShift AI uses the `DSCInitialization` trusted CA bundle settings to control
-the `odh-trusted-ca-bundle` ConfigMap in non-reserved namespaces.
+   ```bash
+   oc get dsci default-dsci -o jsonpath='{.spec.trustedCABundle.managementState}{"\n"}'
+   oc get configmap odh-trusted-ca-bundle -n demo-sandbox -o jsonpath='{.data}' | head -c 300
+   oc get configmap mlflow-service-ca -n redhat-ods-applications -o jsonpath='{.data}' | head -c 120
+   ```
 
-Management states:
+5. Restart running workbenches after a bundle change; new ones pick it up.
 
-- `Managed`: the OpenShift AI Operator manages and updates the trusted CA
-  bundle ConfigMap.
-- `Unmanaged`: the ConfigMap remains, but the Operator no longer updates it
-  from `customCABundle`.
-- `Removed`: the Operator removes `odh-trusted-ca-bundle` from existing
-  non-reserved namespaces and prevents new ones from being created.
+## Pitfalls
 
-The managed ConfigMap can contain:
+- `Removed` deletes `odh-trusted-ca-bundle` from existing namespaces; do not use
+  it to "clean up" ([Remove the CA bundle][remove-all]).
+- Reserved namespaces (`default`, `openshift-*`, `kube-*`) never get the bundle;
+  a component there needs its own trust.
+- Opting one namespace out uses the annotation
+  `security.opendatahub.io/inject-trusted-ca-bundle=false` ([single namespace][remove-one]).
+- OGX: the 3.5 chapter names `spec.server.tlsConfig.caBundle` in text and
+  shows a different path in its example; run
+  `oc explain ogxserver.spec --recursive | grep -i cabundle` before writing it.
+- Pipelines: tasks trust the service CA through the ConfigMap in
+  `model-qualification/pipeline-server.yaml`; the DSPA CA field is separate
+  ([Certificate for pipelines][pipelines]).
 
-- `ca-bundle.crt`: cluster-wide CA bundle injected by the Cluster Network
-  Operator.
-- `odh-ca-bundle.crt`: custom CA certificates added through the DSCI
-  `customCABundle` field.
+## Official documentation (OpenShift AI 3.5)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| Chapter and model | [Work with certificates][chapter], [Understanding certificates][understand], [Adding certificates][adding] |
+| Bundles | [Cluster-wide CA bundle][cluster], [Custom CA bundle][custom], [Without the Operator][unmanaged] |
+| Components | [S3][s3], [Pipelines][pipelines], [Workbenches][workbenches], [Model serving][serving], [OGX CA bundle][ogx] |
+| Removal | [Remove from all namespaces][remove-all], [Remove from one namespace][remove-one] |
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Decide whether the certificate belongs in the cluster-wide CA bundle, RHOAI
-   custom CA bundle, or a component-specific bundle.
-3. Read `references/official-doc-extraction.md` for the affected component.
-4. Verify the target CRD fields before writing GitOps:
-   - `oc explain dscinitialization.spec.trustedCABundle`
-   - `oc explain datasciencepipelinesapplication.spec`
-   - `oc explain llamastackdistribution.spec.server.tlsConfig`
-   - `oc explain datasciencecluster.spec.components.kserve`
-5. Encode only verified fields in GitOps manifests.
-6. Validate with `references/validation-checklist.md`.
-7. Update README or operations notes only with claims backed by implemented
-   manifests and official documentation.
+## Related skills
 
-## Component Routing
+`rhoai-dsci-dsc-configuration`, `rhoai-s3-object-storage-data`, `rhoai-mlflow`,
+`rhoai-maas-governance`, `ocp-ingress-gateway-routes`, `rhoai-troubleshoot`.
 
-Use these patterns:
-
-- Cluster-wide trust: update OpenShift proxy trusted CA, then verify
-  `odh-trusted-ca-bundle` appears in non-reserved namespaces.
-- RHOAI-specific custom trust: set DSCI `trustedCABundle.customCABundle` with
-  `managementState: Managed`.
-- S3-compatible object storage or in-cluster databases: add the relevant CA to
-  the RHOAI custom CA bundle.
-- Workbench S3-compatible object storage data workflows: use
-  `rhoai-s3-object-storage-data` for endpoint and Boto3 behavior, then return
-  here for trusted CA bundle changes.
-- AI pipelines: use cluster-wide/custom trust or a DSPA-specific CA bundle.
-- Workbenches: restart existing workbenches after CA bundle changes; new
-  workbenches pick up the configured bundle.
-- Model serving: use a provided ingress gateway certificate through the KServe
-  serving configuration only after verifying the active `DataScienceCluster`
-  schema.
-- Llama Stack: prefer referencing `odh-trusted-ca-bundle` from
-  `spec.server.tlsConfig.caBundle`.
-- Namespace opt-out: annotate a namespace only when the project should not get
-  `odh-trusted-ca-bundle`.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/demo-certificate-patterns.md`
+[chapter]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#working-with-certificates_certs
+[understand]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#understanding-certificates_certs
+[adding]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#adding_certificates
+[cluster]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#adding-certificates-to-a-cluster-ca-bundle_certs
+[custom]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#adding-certificates-to-a-custom-ca-bundle_certs
+[selfsigned]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#using_self_signed_certificates_with_openshift_ai_components
+[s3]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#accessing-s3-compatible-object-storage-with-self-signed-certificates_certs
+[pipelines]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#configuring-a-certificate-for-pipelines_certs
+[workbenches]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#configuring-a-certificate-for-workbenches_certs
+[serving]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#using-the-cluster-CA-bundle-for-model-serving_certs
+[ogx]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#configuring-a-ca-bundle-for-ogx_certs
+[unmanaged]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#managing-certificates-without-the-operator_certs
+[remove-all]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#removing-the-ca-bundle-from-all-namespaces_certs
+[remove-one]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#removing-the-ca-bundle-from-a-single-namespace_certs

@@ -1,101 +1,95 @@
 ---
 name: rhoai-logs-and-audit-records
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when configuring, documenting, reviewing, or troubleshooting Red Hat
-  OpenShift AI Operator logging and audit-record workflows: DSCI
-  spec.devFlags.logmode, development versus production log output, viewing
-  rhods-operator pod logs in redhat-ods-operator, collecting OpenShift
-  kube-apiserver audit logs, filtering audit records for DataScienceCluster
-  and DSCInitialization changes, audit policy prerequisites, and GitOps review
-  of logger settings. Do NOT use for general application logs, model-serving
-  logs, pipeline run logs, OpenShift cluster logging architecture, or live
-  environment troubleshooting; use env-troubleshoot or the relevant rhoai-*
-  component skill.
+  Use when reading OpenShift AI Operator logs (rhods-operator pods in
+  redhat-ods-operator), raising the operator log level through
+  DSCInitialization default-dsci spec.devFlags.logLevel for a troubleshooting
+  session, or reviewing kube-apiserver audit records for who changed the
+  DataScienceCluster default-dsc or the DSCI (including Argo CD and the stage
+  enablement Jobs that patch delegated DSC fields). Do NOT use for model server,
+  workbench or pipeline run logs (use the component skill or
+  rhoai-troubleshoot), the RHOAI observability stack (use rhoai-observability),
+  OpenShift logging or audit policy design (use ocp-observability), or install
+  failures (use rhoai-installation-troubleshooting).
 ---
 
 # RHOAI Logs And Audit Records
 
-Use this skill to configure and review OpenShift AI Operator logging and audit
-record access for the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 "View logs and audit records" sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Administer logs and audit-record guidance to this repo's GitOps
-operating model and live-cluster safety guard.
+- The DSC or DSCI is not Ready and the operator log is the next evidence.
+- Someone needs more operator detail (`debug`) for a short session.
+- A DSC component flipped unexpectedly and you need to know who patched it.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `default-dsci` sets no `devFlags`, so the operator runs at its default level | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/dsc-init.yaml` | [Configure the operator logger][logger] |
+| A raised log level is temporary: change it in Git on a branch, deploy, collect, then revert the commit; the DSCI is owned by `010-rhoai-platform` (automated sync, self-heal) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md` | [Configure the operator logger][logger] |
+| DSC changes come from three writers: Argo CD (`010-rhoai-platform`), the stage enablement Sync-hook Jobs on delegated fields, and the operator itself; audit review separates them by user | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md` (Delegation model) | [View audit records][audit] |
+| The cluster is self-managed OCP on AWS, so kube-apiserver audit logging is on by default; this repo does not change the audit policy | `docs/OPERATIONS.md` (Fresh environment baseline) | [View audit records][audit] |
+| Logs and audit excerpts stay outside Git unless sanitized; never commit raw logs | `AGENTS.md` (Security and privacy) | — |
 
-- OpenShift AI Operator logger configuration through
-  `DSCInitialization.spec.devFlags.logmode`
-- viewing OpenShift AI Operator logs from `rhods-operator` pods
-- collecting kube-apiserver audit logs from control plane nodes
-- filtering audit records for `DataScienceCluster` and `DSCInitialization`
-  changes
+## Procedure
 
-This skill does not cover model server logs, pipeline run logs, notebook logs,
-cluster logging stack deployment, log forwarding architecture, or SIEM
-integration.
+1. Read operator logs, after the OpenShift safety guard in `AGENTS.md`:
 
-## Logger Policy
+   ```bash
+   oc get pods -n redhat-ods-operator -l name=rhods-operator
+   oc logs -n redhat-ods-operator -l name=rhods-operator --tail=200
+   oc get dsc default-dsc -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}{"\n"}{end}'
+   ```
 
-For this repo:
+2. To raise the level, set `spec.devFlags.logLevel` in `dsc-init.yaml` (check
+   the allowed values with `oc explain dscinitialization.spec.devFlags`),
+   publish and deploy Stage 010 as usual (`docs/OPERATIONS.md`, Stage 010;
+   `deploy.sh --revision <published-sha>`), collect, then revert the same way.
+3. Audit review (cluster-admin): collect and filter the kube-apiserver audit
+   records for DSC and DSCI changes with the procedure in [View audit
+   records][audit]. Map each user to Argo CD or a stage Job ServiceAccount
+   (`python3 scripts/shared/stage_apps.py delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io`
+   lists the delegated fields).
+4. Keep extracts in a private scratch location.
 
-- Keep production/default logging unless a troubleshooting task explicitly needs
-  development output.
-- Treat `development`/`devel` logging as temporary because it is more verbose.
-- Record any GitOps change to DSCI logger settings in docs or operations notes.
-- Prefer reverting temporary logger changes to production/default after
-  troubleshooting.
-- Do not patch live DSCI objects unless the user explicitly asks for live
-  troubleshooting and the OpenShift safety guard has passed.
+## Pitfalls
 
-## Audit Policy
+- 3.5 documents `spec.devFlags.logLevel`; older notes in this repo used
+  `logmode`. Do not copy the old field.
+- The log level applies to `rhods-operator` only, not to the components it
+  deploys.
+- A live `oc patch` of the DSCI is not the procedure here; a field absent from
+  Git may persist silently and be forgotten. Use the Git change.
+- The documented audit filter excludes the operator's own service account and
+  read verbs; changes by Argo CD and stage Jobs still appear.
+- Request bodies are only in audit records with `WriteRequestBodies` or a
+  broader profile; this cluster's profile is not changed by the repo.
 
-Audit records are useful for reviewing who changed OpenShift AI Operator
-configuration. The official chapter focuses on DSC and DSCI custom resources.
+## Official documentation (OpenShift AI 3.5)
 
-For this repo:
+| Topic | Section |
+|---|---|
+| Chapter | [View logs and audit records][chapter] (Managing OpenShift AI); same content in the install guide: [View logs and audit records][chapter-install] |
+| Operator logger | [Configure the OpenShift AI Operator logger][logger] ([install guide copy][logger-install]) |
+| Audit records | [View audit records][audit] ([install guide copy][audit-install]) |
 
-- Use audit records for governance and change review, not as the primary
-  deployment validation mechanism.
-- Do not change OpenShift audit policy casually. If full changed-resource
-  content is needed, document why `WriteRequestBodies` or a broader profile is
-  required.
-- Check cluster type before relying on audit availability. Standard OpenShift
-  configurations enable audit logging by default; Red Hat OpenShift Service on
-  AWS has different default behavior called out by Red Hat docs.
-- Store collected audit excerpts outside the repo unless they are sanitized and
-  intentionally committed as documentation evidence.
+## Related skills
 
-## Workflow
+`rhoai-installation-troubleshooting`, `rhoai-troubleshoot`,
+`rhoai-dsci-dsc-configuration`, `rhoai-observability`, `ocp-observability`.
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - persistent GitOps logger configuration
-   - temporary live troubleshooting
-   - readonly log viewing
-   - audit-record review
-4. For logger configuration, verify the active DSCI schema with
-   `oc explain dscinitialization.spec.devFlags`.
-5. For audit review, confirm cluster-admin access and audit log availability.
-6. Use `examples/operator-log-and-audit-commands.md` for command patterns.
-7. Validate with `references/validation-checklist.md`.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/operator-log-and-audit-commands.md`
+[chapter]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#viewing-logs-and-audit-records_managing-rhoai
+[logger]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#configuring-the-operator-logger_managing-rhoai
+[audit]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#viewing-audit-records_managing-rhoai
+[chapter-install]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#viewing-logs-and-audit-records_install
+[logger-install]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#configuring-the-operator-logger_install
+[audit-install]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#viewing-audit-records_install

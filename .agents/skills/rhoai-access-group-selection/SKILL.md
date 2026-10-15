@@ -1,86 +1,82 @@
 ---
 name: rhoai-access-group-selection
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or performing the Red Hat OpenShift AI
-  dashboard workflow for selecting existing OpenShift administrator and user
-  groups: default all-authenticated access, default cluster-admin
-  administrator behavior, Settings > User management group selection,
-  system:authenticated access implications, and post-selection verification.
-  Do NOT use for creating groups, adding or removing users, LDAP group sync,
-  user deletion, PVC cleanup, central OIDC setup, or general OpenShift RBAC;
-  use rhoai-users-groups-access or rhoai-central-authentication-service instead.
+  Use when someone wants to pick OpenShift AI administrator or user groups in
+  the dashboard (Settings > User management), asks why that screen shows
+  rhods-admins and rhoai-developers, or considers system:authenticated for
+  broad access in this demo. Do NOT use for the Auth CR contents, group
+  creation, membership, revocation or user cleanup (use
+  rhoai-users-groups-access), the identity provider (use
+  ocp-authentication-identity-providers), or external OIDC (use
+  rhoai-central-authentication-service).
 ---
 
-# RHOAI Access Group Selection
+# RHOAI access group selection
 
-Use this skill for the OpenShift AI dashboard workflow that selects existing
-OpenShift groups as OpenShift AI administrator and user groups on the active
-baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: the dashboard group-selection screen only. The groups themselves,
+their membership and the `Auth` CR belong to `rhoai-users-groups-access`.
+Product behavior is in the linked OpenShift AI 3.5 sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Managing resources chapter to this repo's access-governance model.
+- A request says "select groups in Settings > User management".
+- Someone proposes `system:authenticated` to open the dashboard to everyone.
+- The screen shows groups that differ from what was expected.
 
-## Scope
+## Repo decisions
 
-This skill covers only selection of existing groups in the OpenShift AI
-dashboard:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Groups are not selected in the dashboard. Git sets them in the `Auth` resource `auth` (`services.platform.opendatahub.io/v1alpha1`); the screen reflects that state | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/auth.yaml` | [Select admin and user groups][select-mr], [Dashboard configuration options][dash-options] |
+| Admin group `rhods-admins`; user groups `rhods-admins` and `rhoai-developers`. `system:authenticated` is not listed, so the default access for all authenticated users is replaced | same file; `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md` ("Auth") | [Select admin and user groups (Managing OpenShift AI)][select-mo] |
+| `Auth` is owned by Argo CD Application `010-rhoai-platform` (automated sync with self-heal; `ignoreDifferences` covers only the DSC and the dashboard config) | `gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/rhoai-platform.yaml` | — (repo GitOps rule) |
+| The dashboard `groupsConfig` field is not set; the 3.5 options table marks it read-only | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` (field absent) | [Dashboard configuration options][dash-options] |
 
-- understanding default access for all authenticated OpenShift users
-- understanding default OpenShift AI administrator access for users with
-  OpenShift `cluster-admin`
-- selecting one or more OpenShift groups under administrator groups
-- selecting one or more OpenShift groups under user groups
-- treating `system:authenticated` as broad access
-- validating administrator and non-administrator access after saving
+## Procedure
 
-Use `rhoai-users-groups-access` for group creation, membership, LDAP sync,
-revocation, user deletion, workbench shutdown, PVC backup, and cleanup.
+1. Change groups in `auth.yaml` through `rhoai-users-groups-access`, not in
+   the dashboard. A dashboard edit that reaches the `Auth` resource is drift,
+   and self-heal returns it to the Git value.
+2. Deploy and validate with Stage 010:
+   `./stages/010-openshift-ai-platform-foundation/deploy.sh`, then
+   `./stages/010-openshift-ai-platform-foundation/validate.sh`.
+3. Read-only check, after the OpenShift safety guard in `AGENTS.md`:
 
-## Demo Policy
-
-For this repo:
-
-- Prefer explicit groups such as `rhoai-admins` and `rhoai-users`, or
-  environment-provided identity-provider groups, instead of broad access.
-- Use `system:authenticated` only when unrestricted demo access is intentional
-  and documented.
-- Treat dashboard group selection as a manual or runbook-backed operation until
-  official docs or schema verification provides an approved automation path.
-- Do not model dashboard user-management settings as CR fields unless the
-  active product docs or installed schema exposes them.
-- Require access changes to be documented in `docs/OPERATIONS.md` when they
-  become part of the active implementation.
-
-## Workflow
-
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Confirm the target administrator and user groups already exist in OpenShift.
-3. Log in to OpenShift AI as a user with OpenShift AI administrator privileges.
-4. Open the dashboard path:
-
-   ```text
-   OpenShift AI dashboard -> Settings -> User management
+   ```bash
+   oc get auth auth -o jsonpath='{.spec.adminGroups} {.spec.allowedGroups}{"\n"}'
    ```
 
-5. Select one or more OpenShift groups under administrator groups.
-6. Select one or more OpenShift groups under user groups.
-7. Avoid `system:authenticated` unless broad access is the documented intent.
-8. Save changes.
-9. Validate access with `references/validation-checklist.md`.
+   Then open Settings > User management as the admin persona and compare.
 
-## References
+## Pitfalls
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/group-selection-patterns.md`
+- A selected group must already exist in OpenShift ([Select admin and user
+  groups][select-mo]); `rhoai-developers` comes from
+  `gitops/stages/010-openshift-ai-platform-foundation/access/`.
+- `system:authenticated` in the user groups opens the dashboard to every
+  logged-in user; the demo's persona separation depends on not doing that.
+- Users see a group change only after they log out of all sessions (see
+  `rhoai-users-groups-access`).
+
+## Official documentation (OpenShift AI 3.5)
+
+| Topic | Section |
+|---|---|
+| Group selection screen | [Select admin and user groups (Managing resources)][select-mr] |
+| Same procedure in the access chapter | [Select admin and user groups (Managing OpenShift AI)][select-mo] |
+| `groupsConfig` read-only, `Auth` fields | [Dashboard configuration options][dash-options] |
+
+## Related skills
+
+`rhoai-users-groups-access`, `ocp-authentication-identity-providers`,
+`rhoai-central-authentication-service`, `rhoai-dashboard-customization`.
+
+[select-mr]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#selecting-admin-and-user-groups_resource-mgmt
+[select-mo]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#selecting-admin-and-user-groups_managing-rhoai
+[dash-options]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#ref-dashboard-configuration-options_dashboard

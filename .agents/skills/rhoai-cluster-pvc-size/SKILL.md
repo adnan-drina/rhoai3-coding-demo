@@ -1,96 +1,70 @@
 ---
 name: rhoai-cluster-pvc-size
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or performing the Red Hat OpenShift AI
-  dashboard workflow for managing the cluster default persistent volume claim
-  size: Settings > Cluster settings PVC size, choosing a default size in GiB or
-  MiB, understanding the workbench pod restart impact, restoring the default
-  20GiB PVC size, and verifying that new PVCs use the configured size. Do NOT
-  use for project cluster storage lifecycle or storage-class migration (use
-  rhoai-project-workflows), storage class configuration, RWX storage design,
-  object storage endpoints, resizing existing PVCs, workbench image PVC mounts, or live
-  cluster changes without the OpenShift safety guard.
+  Use when someone wants to change or restore the OpenShift AI cluster default
+  PVC size (Settings > Cluster settings > PVC size) for new workbench storage
+  in this demo, or asks why new workbench PVCs have a given size. Do NOT use
+  for which storage class backs the PVC (use rhoai-storage-classes), resizing
+  or migrating existing project storage (use rhoai-project-workflows), or
+  Prometheus and database volumes (see the owning stage README).
 ---
 
-# RHOAI Cluster PVC Size
+# RHOAI cluster PVC size
 
-Use this skill for the OpenShift AI dashboard workflow that configures or
-restores the cluster default PVC size for new OpenShift AI PVCs on the active
-baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill. Not customized in this demo: the cluster default PVC size is left
+at the product default, set by no GitOps object. Product behavior is in the
+linked OpenShift AI 3.5 sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Managing resources chapter to this repo's operations and GitOps review
-model.
+- A demo workbench runs out of disk and a larger default is proposed.
+- Someone changed the size in the dashboard and asks whether Git tracks it.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Default PVC size not set; the 3.5 default is 20GiB ("Restore Default") | none under `gitops/` | [Configure the default PVC size][configure], [Restore the default PVC size][restore] |
+| No workbench or workbench PVC is in Git; personas create workbenches in `demo-sandbox` (`rhoai-developers` have `edit` there), so a per-workbench size can be chosen at creation | `gitops/stages/010-openshift-ai-platform-foundation/access/README.md` | see `rhoai-basic-workbenches` |
 
-- changing the cluster default PVC size from the OpenShift AI dashboard
-- entering a default size in gibibytes or mebibytes
-- understanding that changing the setting restarts the workbench pod and can
-  make it unavailable for up to 30 seconds
-- scheduling changes outside normal working hours when possible
-- restoring the documented default PVC size of 20GiB
-- verifying that new PVCs are created with the configured size
+## Procedure
 
-Use other skills for adjacent storage work:
+1. Prefer a per-workbench size in the workbench form for a one-off need.
+2. If the cluster default must change, follow
+   [Configure the default PVC size][configure] as an admin persona, then
+   record the value and the date in `docs/OPERATIONS.md` (the setting is not in
+   Git, so a rebuilt cluster returns to the default).
+3. Check that a new PVC has the size, after the OpenShift safety guard in
+   `AGENTS.md`:
 
-- `rhoai-workbenches-custom-images` for workbench `Notebook` PVC mounts and
-  custom image runtime behavior
-- `rhoai-project-workflows` for project cluster storage lifecycle and
-  storage-class migration inside a project
-- `rhoai-storage-classes` for storage class visibility, access modes, RWX
-  shared storage, default storage class selection, and object storage endpoint
-  formatting
-- `env-troubleshoot` for live storage or Pending pod diagnostics
-
-## Demo Policy
-
-For this repo:
-
-- Pick a default PVC size that matches the demo's expected workbench data
-  footprint and record it in `docs/OPERATIONS.md` when implemented.
-- Do not imply this setting resizes existing PVCs; the official verification is
-  about new PVCs.
-- Treat PVC-size changes as live platform changes because they can restart a
-  workbench pod.
-- Prefer making the change outside the demo audience's working window.
-- Keep dashboard configuration as a runbook-backed operation until the active
-  GitOps implementation identifies an official or schema-verified field.
-
-## Workflow
-
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Confirm the operator has OpenShift AI administrator privileges.
-4. Decide whether the task is:
-   - setting a custom default PVC size
-   - restoring the documented 20GiB default
-5. Use the dashboard path:
-
-   ```text
-   OpenShift AI dashboard -> Settings -> Cluster settings
+   ```bash
+   oc get pvc -n demo-sandbox -o custom-columns=NAME:.metadata.name,SIZE:.spec.resources.requests.storage,CLASS:.spec.storageClassName
    ```
 
-6. Change the PVC size or click Restore Default.
-7. Save changes.
-8. Validate with `references/validation-checklist.md`.
+## Pitfalls
 
-## References
+- Changing the setting restarts the workbench pod and makes it unavailable for
+  up to 30 seconds ([Configure][configure]); do not change it during a demo.
+- The setting applies to new PVCs; existing PVCs keep their size.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/cluster-pvc-size-patterns.md`
+## Official documentation (OpenShift AI 3.5)
+
+| Topic | Section |
+|---|---|
+| Chapter | [Manage cluster PVC size][chapter] |
+| Procedures | [Configure the default PVC size][configure], [Restore the default PVC size][restore] |
+
+## Related skills
+
+`rhoai-storage-classes`, `rhoai-basic-workbenches`, `rhoai-project-workflows`,
+`ocp-storage`.
+
+[chapter]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#managing-cluster-pvc-size
+[configure]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#configuring-the-default-pvc-size-for-your-cluster_resource-mgmt
+[restore]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#restoring-the-default-pvc-size-for-your-cluster_resource-mgmt

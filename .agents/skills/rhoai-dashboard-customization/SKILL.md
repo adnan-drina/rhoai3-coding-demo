@@ -1,115 +1,97 @@
 ---
 name: rhoai-dashboard-customization
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift AI dashboard
-  customization through the OdhDashboardConfig custom resource: editing
-  spec.dashboardConfig, showing or hiding dashboard navigation items, enabling
-  or disabling dashboard feature flags, handling Technology Preview and
-  Developer Preview dashboard controls, model server and workbench size
-  configuration, notebookController visibility, template ordering, usage data
-  collection visibility, and dashboard configuration validation. Do NOT use for
-  OdhApplication tiles, application enablement flows, user/group selection,
-  cluster default PVC size, storage class settings, connection type templates,
-  custom workbench image import, Feature Store configuration, KServe serving
-  configuration, or live cluster changes without the OpenShift safety guard.
+  Use when reviewing or changing the OdhDashboardConfig odh-dashboard-config
+  in redhat-ods-applications (gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml):
+  spec.dashboardConfig feature flags, which stage owns a flag through the
+  010-rhoai-platform ignoreDifferences delegation, preview-feature flags, or a
+  dashboard menu that is missing or reverted. Do NOT use for application
+  tiles and notebookController (use rhoai-dashboard-applications), access
+  groups (use rhoai-users-groups-access), project-scoped resources (use
+  rhoai-project-scoped-resources), or usage data collection (use
+  rhoai-telemetry-admin-settings).
 ---
 
-# RHOAI Dashboard Customization
+# RHOAI dashboard customization
 
-Use this skill to customize the OpenShift AI dashboard interface through
-`OdhDashboardConfig` on the active product baseline in
-`docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, option names and defaults in the
+linked OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`
+("Delegation model", "OdhDashboardConfig").
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Managing resources chapter to this repo's GitOps review model.
+- A change touches `odhdashboardconfig.yaml` or a stage Job that patches
+  `odh-dashboard-config`.
+- A dashboard menu or feature is missing, or flips back after a sync.
+- A new stage needs its own dashboard flag.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| One `OdhDashboardConfig` (`opendatahub.io/v1alpha`) `odh-dashboard-config` in `redhat-ods-applications`, owned by `010-rhoai-platform`, sync-wave 4 | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` | [Edit the dashboard configuration][edit] |
+| Stage 010 non-default values: `connectionTest: true` (Technology Preview), `disableKueue: false` (Developer Preview), `disableModelCatalog`/`disableModelRegistry: true`, `modelAsService: false`; defaults written down for `observabilityDashboard`, `disableTracking` and several feature flags | same file; README "OdhDashboardConfig" table | [Dashboard configuration options][options] |
+| Later stages own their flags: the Application lists each one as a JSON pointer in `ignoreDifferences` with `RespectIgnoreDifferences=true`, and the owning stage's Sync-hook Job patches it | `gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/rhoai-platform.yaml` | — (repo GitOps rule) |
+| Owners: Stage 030 (`agentsCatalog`, `disableModelCatalog`, `disableModelRegistry`, `toolCalling`, `mcpCatalog`, `mcpRegistry`); Stage 040 (`genAiStudio`, `modelAsService`, `vLLMDeploymentOnMaaS` and the other Gen AI flags, `/spec/genAiStudioConfig`); Stage 050 (`disableLMEval`, `globalProjectPrompts`, `/spec/globalMLflowNamespaces`); Stage 060 (`agentOps`) | `gitops/stages/030-private-model-serving/private-model-serving/model-discovery/enable-job.yaml`, `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml`, `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/enable-job.yaml`, `gitops/stages/060-agent-runtime-and-agentops/agent-console/enable-job.yaml` | [Dashboard configuration options][options], [Global prompt registry namespaces][prompts] |
+| Delegated fields keep a Git value only for first creation; after that the owning stage wins | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md` | — |
 
-- editing the `odh-dashboard-config` instance in the OpenShift AI application
-  namespace
-- using `spec.dashboardConfig` to show or hide dashboard navigation items and
-  feature controls
-- preserving default behavior when a field is absent
-- handling fields with inverted `disable*` semantics
-- documenting Technology Preview and Developer Preview dashboard controls
-- configuring `spec.notebookController.enabled`
-- reviewing `spec.modelServerSizes`, `spec.notebookSizes`, and
-  `spec.templateOrder`
-- validating dashboard behavior after changes
+## Procedure
 
-Use other skills for adjacent work:
+1. Pick the owner. A Stage 010 flag changes in `odhdashboardconfig.yaml`. A
+   flag for a later stage goes in that stage's enable Job (declared in its
+   `demo.rhoai.io/writes-delegated` annotation), and its pointer goes into the
+   `010-rhoai-platform` `ignoreDifferences` list. Static check:
+   `python3 scripts/shared/stage_apps.py check-delegations` (also run by
+   `./scripts/platform/validate-stage-flow.sh`).
+2. Look up the option name, default and support status in [Dashboard
+   configuration options][options]; record any preview status in the owning
+   component README ("Alignment with official guidance").
+3. Deploy and validate the owning stage, for example
+   `./stages/010-openshift-ai-platform-foundation/validate.sh` (checks
+   `observabilityDashboard`) or the later stage's `validate.sh`.
+4. Read-only check, after the OpenShift safety guard in `AGENTS.md`:
 
-- `rhoai-dashboard-applications` for `OdhApplication` tiles and application
-  enablement
-- `rhoai-access-group-selection` for selecting existing administrator and user
-  groups
-- `rhoai-cluster-pvc-size` for Settings -> Cluster settings PVC size
-- `rhoai-storage-classes` for Settings -> Cluster settings -> Storage classes
-- `rhoai-connection-types` for Settings -> Environment setup -> Connection
-  types
-- `rhoai-basic-workbenches` for basic workbench administration and
-  troubleshooting
-- `rhoai-model-serving-platform` for KServe, NIM, serving runtime, runtime
-  parameter, and deployment-strategy behavior
-- `rhoai-model-catalog-sources` for AI hub -> Catalog source governance,
-  Hugging Face or YAML catalog sources, and model visibility patterns
-- `rhoai-model-catalog-workflows` for AI hub -> Catalog discovery, performance
-  evaluation, registration, and deployment workflows
-- `rhoai-gen-ai-playground` for Gen AI studio playground, custom endpoint, AI
-  asset endpoint, RAG upload, reusable prompt, and MCP user workflows
-- `rhoai-model-registry` for AI hub -> Registry provisioning, permissions, and
-  administrator lifecycle
-- `rhoai-model-registry-workflows` for AI hub -> Registry user workflows such
-  as registering, deploying, archiving, and restoring models
-- `rhoai-workbenches-custom-images` for importing custom workbench images
-- component-specific `rhoai-*` skills for enabling the underlying platform
-  components surfaced by dashboard flags
+   ```bash
+   oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
+     -o jsonpath='{.spec.dashboardConfig}{"\n"}'
+   python3 scripts/shared/stage_apps.py delegated 010 OdhDashboardConfig \
+     odh-dashboard-config redhat-ods-applications --group opendatahub.io
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- A flag patched live without a delegated pointer is reverted by self-heal.
+  Removing a pointer makes Argo CD restore the Git value on the next sync.
+- `disable*` options hide a feature when `true`; the others enable it. Check
+  each name in the options table before setting it.
+- A visible menu does not mean the component works; the DSC component must be
+  `Managed` too (see `rhoai-dsci-dsc-configuration`).
+- `disableHardwareProfiles` and `groupsConfig` are no longer used in 3.5
+  ([Dashboard configuration options][options]).
 
-- Manage long-lived dashboard configuration through GitOps once active GitOps
-  implementation exists.
-- Treat `redhat-ods-applications` as the default OpenShift AI application
-  namespace unless the active installation records another namespace.
-- Preserve unrelated `OdhDashboardConfig` fields when adding or changing one
-  option.
-- Do not enable Technology Preview or Developer Preview dashboard features
-  without documenting their support posture in the relevant README or
-  operations notes.
-- Do not claim that a feature works only because its dashboard menu is visible;
-  the underlying component must also be installed and validated.
-- Do not use deprecated or read-only options for new behavior.
+## Official documentation (OpenShift AI 3.5)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| Chapter | [Customize the dashboard][chapter] |
+| Edit the CR | [Edit the dashboard configuration][edit] |
+| Options, defaults, preview status | [Dashboard configuration options][options] |
+| Global prompt namespaces | [Configure global prompt registry namespaces][prompts] |
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Identify the dashboard field that controls the desired UI behavior.
-4. Check whether the option is absent and therefore using the documented
-   default.
-5. Add or edit only the needed field under the correct `spec` section.
-6. Preserve unrelated existing `OdhDashboardConfig` settings.
-7. Document any Technology Preview or Developer Preview status.
-8. Validate with `references/validation-checklist.md`.
+## Related skills
 
-## References
+`rhoai-dashboard-applications`, `rhoai-dsci-dsc-configuration`,
+`rhoai-users-groups-access`, `rhoai-telemetry-admin-settings`,
+`rhoai-project-scoped-resources`, `review-gitops-change`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/dashboard-customization-patterns.md`
+[chapter]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#customizing-the-dashboard
+[edit]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#editing-the-dashboard-configuration_dashboard
+[prompts]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#configuring-global-prompt-registry-namespaces_dashboard
+[options]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#ref-dashboard-configuration-options_dashboard

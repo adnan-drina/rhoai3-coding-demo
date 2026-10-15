@@ -1,115 +1,88 @@
 ---
 name: rhoai-storage-classes
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or managing Red Hat OpenShift AI storage
-  classes from the Managing resources documentation: persistent storage
-  concepts, dashboard storage class enablement, display names, descriptions,
-  access mode selection, OpenShift AI default storage class selection, RWO,
-  RWX, ROX, and RWOP access-mode behavior, and safe shared RWX storage use. Do
-  NOT use for project cluster storage lifecycle or storage-class migration
-  inside a project (use rhoai-project-workflows), workbench S3-compatible
-  object storage data workflows or endpoint formatting (use
-  rhoai-s3-object-storage-data), cluster default PVC size management
-  (use rhoai-cluster-pvc-size), connection type templates (use
-  rhoai-connection-types), workbench PVC mounts (use
-  rhoai-workbenches-custom-images), OpenShift storage backend installation, AI
-  pipelines object-store configuration, model registry persistence, or live
-  cluster changes without the OpenShift safety guard.
+  Use when someone wants to enable, rename or set the default of a storage
+  class in OpenShift AI (Settings > Cluster settings > Storage classes),
+  choose access modes such as ReadWriteMany for workbench cluster storage, or
+  asks which storage class backs workbench PVCs in this demo (gp3-csi block,
+  ODF openshift-storage.noobaa.io only for buckets). Do NOT use for the
+  default PVC size (use rhoai-cluster-pvc-size), S3 data access from
+  workbenches (use rhoai-s3-object-storage-data), ODF storage classes and
+  ObjectBucketClaims (use odf-storage-classes, odf-object-bucket-claims), or
+  OpenShift storage in general (use ocp-storage).
 ---
 
-# RHOAI Storage Classes
+# RHOAI storage classes
 
-Use this skill for OpenShift AI administrator workflows that expose OpenShift
-cluster storage classes to OpenShift AI users on the active baseline in
-`docs/PLATFORM_BASELINE.md`.
+Thin skill. Not customized in this demo: OpenShift AI storage class settings
+are left at their defaults and no GitOps object sets them. Product behavior is
+in the linked OpenShift AI 3.5 sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Managing resources chapter to this repo's operations and GitOps review
-model.
+- A workbench needs shared (RWX) cluster storage.
+- The storage class list in the dashboard is questioned or must change.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Block storage comes from the cluster's AWS EBS CSI class `gp3-csi`; repo-managed PVCs name it explicitly | `gitops/stages/010-openshift-ai-platform-foundation/odf/README.md` ("Depends on"), for example `gitops/stages/050-model-evaluation/mlflow/postgresql-pvc.yaml` | [Storage classes in OpenShift AI][sc-rhoai] |
+| ODF is standalone Multicloud Object Gateway only: `openshift-storage.noobaa.io` serves ObjectBucketClaims, not workbench PVCs; no Ceph block or file classes, so no RWX class | `gitops/stages/010-openshift-ai-platform-foundation/odf/` | [Access modes][access], [Object storage endpoints][object] |
+| No OpenShift AI storage class settings (enabled list, display names, access modes, default) in Git; the OpenShift AI default is not changed | none under `gitops/` | [Configure storage class settings][settings], [Configure the default storage class][default] |
+| Data sharing between workbenches goes through S3 connections, not RWX volumes | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/README.md` | [Persistent storage for workbenches][persistent] |
 
-- persistent storage concepts used by OpenShift AI workbenches, project data,
-  and model training
-- storage classes as OpenShift-provided cluster resources surfaced in
-  OpenShift AI
-- enabling or disabling storage classes for OpenShift AI users
-- configuring OpenShift AI-only display names and descriptions
-- enabling access modes exposed to users for cluster storage
-- selecting the default storage class for OpenShift AI
-- choosing between `ReadWriteOnce`, `ReadWriteMany`, `ReadOnlyMany`, and
-  `ReadWriteOncePod`
-- shared storage risks and guardrails for `ReadWriteMany`
+## Procedure
 
-Use other skills for adjacent work:
+1. Check the classes and what the cluster supports, after the OpenShift
+   safety guard in `AGENTS.md`:
 
-- `rhoai-cluster-pvc-size` for Settings -> Cluster settings PVC size
-- `rhoai-project-workflows` for project cluster storage lifecycle, attachment
-  to workbenches, and storage-class migration inside a project
-- `rhoai-dashboard-customization` for hiding or showing the Storage classes
-  dashboard menu with `disableStorageClasses`
-- `rhoai-connection-types` for connection type templates that users select
-  when creating object storage connections
-- `rhoai-s3-object-storage-data` for workbench Boto3 data workflows and object
-  storage endpoint formatting
-- `rhoai-workbenches-custom-images` for workbench image behavior and Notebook
-  PVC mount context
-- `env-troubleshoot` for live Pending pod, PVC, or storage access diagnostics
-
-## Demo Policy
-
-For this repo:
-
-- Treat OpenShift storage classes as platform prerequisites owned by the
-  underlying OpenShift cluster, not as RHOAI-only resources.
-- Use dashboard storage class settings to control what OpenShift AI users can
-  select; do not assume those settings change the underlying OpenShift storage
-  class.
-- Keep `ReadWriteOnce` as the default access mode for individual workloads.
-- Use `ReadWriteMany` only for explicit shared-data scenarios and document the
-  data integrity, security, and backup expectations.
-- Do not select a default OpenShift AI storage class until the target AWS
-  environment's available storage classes and access modes are verified.
-- Keep storage-class dashboard workflows as runbook-backed operations until
-  official docs or active schema verification identifies a reviewed GitOps
-  representation.
-
-## Workflow
-
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Confirm the operator has OpenShift AI administrator privileges.
-4. Confirm the target OpenShift storage class exists and supports the desired
-   access mode before exposing it to users.
-5. Use the dashboard path:
-
-   ```text
-   OpenShift AI dashboard -> Settings -> Cluster settings -> Storage classes
+   ```bash
+   oc get storageclass
+   oc get pvc -n demo-sandbox -o custom-columns=NAME:.metadata.name,CLASS:.spec.storageClassName,MODES:.spec.accessModes
    ```
 
-6. Decide whether the task is:
-   - enabling or disabling a storage class for users
-   - editing the OpenShift AI display name or description
-   - selecting access modes shown to users
-   - setting the OpenShift AI default storage class
-7. Validate with `references/validation-checklist.md`.
+2. Before offering RWX, a class that supports it must exist; that needs a new
+   storage backend (for example ODF file storage), which is a platform change
+   with its own GitOps component and README (see `odf-storage-classes`).
+3. Dashboard settings change only what OpenShift AI users see, not the
+   OpenShift class ([Configure storage class settings][settings]). If one is
+   changed, record it in `docs/OPERATIONS.md`, because it is not in Git.
 
-## References
+## Pitfalls
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/storage-class-patterns.md`
+- `ReadWriteMany` lets several workbenches write the same data; read
+  [Using shared storage (RWX)][rwx] before enabling it.
+- The OpenShift AI default storage class can differ from the OpenShift
+  default ([Configure the default storage class][default]); check both when a
+  PVC lands on an unexpected class.
+
+## Official documentation (OpenShift AI 3.5)
+
+| Topic | Section |
+|---|---|
+| Chapter | [Manage storage classes][chapter] |
+| Concepts | [Persistent storage][persistent], [Storage classes in OpenShift AI][sc-rhoai], [Access modes][access], [Shared storage (RWX)][rwx] |
+| Procedures | [Storage class settings][settings], [Default storage class][default] |
+| Object storage | [Object storage endpoints][object] |
+
+## Related skills
+
+`rhoai-cluster-pvc-size`, `rhoai-s3-object-storage-data`,
+`rhoai-connection-types`, `odf-storage-classes`, `odf-object-bucket-claims`,
+`ocp-storage`, `rhoai-project-workflows`.
+
+[chapter]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#managing-storage-classes
+[persistent]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#about-persistent-storage_resource-mgmt
+[sc-rhoai]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#storage_classes_in_openshift_ai
+[access]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#access_modes
+[rwx]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#using_shared_storage_rwx
+[settings]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#configuring-storage-class-settings_resource-mgmt
+[default]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#configuring-the-default-storage-class-for-your-cluster_resource-mgmt
+[object]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#overview-of-object-storage-endpoints_resource-mgmt

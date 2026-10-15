@@ -1,97 +1,89 @@
 ---
 name: rhoai-dashboard-applications
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift AI dashboard
-  application visibility: adding application tiles with OdhApplication,
-  controlling whether administrators can add applications, showing or hiding
-  application information panels and support-level badges, disabling connected
-  applications, hiding the default Start basic workbench application, and
-  GitOps review of OdhDashboardConfig and OdhApplication resources. For general
-  dashboard feature flags, navigation visibility, Technology Preview dashboard
-  controls, size profiles, and global OdhDashboardConfig customization, use
-  rhoai-dashboard-customization. For user-facing connected application
-  discovery, enablement, disabled tile removal, endpoint handling, and Start
-  basic workbench access, use rhoai-connected-applications. Do NOT use for user/group access, custom
-  workbench image import, general OpenShift console plugins, model catalog
-  source governance, product installation, or destructive Operator uninstall
-  work without explicit approval.
+  Use when an administrator wants to add an application tile with an
+  OdhApplication, stop users from adding applications (enablement), hide
+  application info panels or support badges (disableInfo, disableISVBadges),
+  hide the default basic workbench tile (notebookController.enabled), or
+  disable a connected application in this demo. Do NOT use for the user-facing
+  Applications > Enabled flow (use rhoai-connected-applications), other
+  dashboard feature flags (use rhoai-dashboard-customization), or custom
+  workbench images (use rhoai-workbench-image-import).
 ---
 
-# RHOAI Dashboard Applications
+# RHOAI dashboard applications
 
-Use this skill to manage OpenShift AI dashboard application tiles and related
-dashboard visibility settings for the active baseline in
-`docs/PLATFORM_BASELINE.md`.
+Thin skill: administrator control of dashboard application tiles. Not
+customized in this demo: no `OdhApplication` is in Git and the tile options
+keep their documented defaults. Product behavior is in the linked OpenShift AI
+3.5 sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. This skill adapts the
-official dashboard application-management chapter to this repo's GitOps review
-model.
+- A request to add, hide or remove a tile on the dashboard Applications page.
+- The Start basic workbench tile should disappear for a demo.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| No `OdhApplication` (`dashboard.opendatahub.io/v1`) objects in Git; only product-provided tiles appear | none under `gitops/` | [Add an application to the dashboard][add] |
+| `enablement`, `disableInfo` and `disableISVBadges` are not set, so they keep their defaults | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` (fields absent) | [Prevent users from adding applications][prevent], [Show or hide information][info] |
+| `spec.notebookController` is not set; the basic workbench tile stays, because DSC `workbenches` is `Managed` and personas use workbenches in `demo-sandbox` | same file; `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Hide the default basic workbench application][hide-wb] |
 
-- adding dashboard application tiles with `OdhApplication`
-- reviewing `OdhApplication` metadata and spec fields
-- controlling the dashboard application enablement feature through
-  `OdhDashboardConfig.spec.dashboardConfig.enablement`
-- showing or hiding application information panels with `disableInfo`
-- showing or hiding support-level badges with `disableISVBadges`
-- hiding the default Start basic workbench application through the documented
-  notebook controller setting
-- understanding the effect and risk of disabling connected applications by
-  uninstalling Operators
+## Procedure
 
-This skill does not cover OpenShift AI user permissions, dashboard custom
-workbench image import, model catalog source governance, Models-as-a-Service
-catalog entries, OpenShift console plugins, broad `OdhDashboardConfig`
-feature-flag tuning, or general Operator lifecycle management. Use
-`rhoai-connected-applications` for user-facing connected application workflows
-and `rhoai-model-catalog-sources` for model catalog source governance.
+If a tile change is needed:
 
-## Demo Policy
+1. Add the field to `odhdashboardconfig.yaml` (owned by `010-rhoai-platform`)
+   or put a new `OdhApplication` manifest in the component that delivers the
+   application, in `redhat-ods-applications`. Read the schema first:
+   `oc explain odhapplication.spec` after the OpenShift safety guard in `AGENTS.md`.
+2. Add a tile only for a capability the demo deploys and validates.
+3. Record the choice in the owning component README and validate the stage
+   (`./stages/010-openshift-ai-platform-foundation/validate.sh` for Stage 010).
+4. Read-only check:
 
-For this repo:
+   ```bash
+   oc get odhapplications -n redhat-ods-applications
+   oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
+     -o jsonpath='{.spec.notebookController}{"\n"}'
+   ```
 
-- Prefer GitOps-managed `OdhApplication` and `OdhDashboardConfig` resources for
-  stable demo dashboard behavior.
-- Keep dashboard resources in the OpenShift AI application namespace, normally
-  `redhat-ods-applications`, unless the active installation records a different
-  applications namespace.
-- Treat Operator uninstall and resource cleanup as destructive; do not perform
-  it without explicit user approval.
-- Use application tiles only for implemented demo capabilities. Do not add
-  dashboard entries that imply an unavailable workflow.
-- Do not invent `OdhApplication` or `OdhDashboardConfig` fields. Verify active
-  schema before adding new fields.
+## Pitfalls
 
-## Workflow
+- Disabling a connected application means uninstalling its Operator
+  ([Disable applications connected to OpenShift AI][disable]); that is
+  destructive here because GitOps owns the Subscriptions. Ask first and remove
+  it through Git.
+- Hiding the basic workbench tile does not remove workbenches; DSC
+  `workbenches` still controls the component.
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - adding a dashboard application tile
-   - preventing dashboard users from adding applications
-   - hiding information panels or support badges
-   - hiding the default basic workbench tile
-   - disabling a connected application and removing the underlying Operator
-4. Use `examples/dashboard-application-patterns.md` for minimal review
-   patterns.
-5. Validate with `references/validation-checklist.md`.
+## Official documentation (OpenShift AI 3.5)
 
-## References
+| Topic | Section |
+|---|---|
+| Chapter | [Manage applications that show in the dashboard][chapter] |
+| Tiles | [Add an application][add], [Prevent users from adding applications][prevent] |
+| Visibility | [Show or hide information about available applications][info], [Hide the default basic workbench application][hide-wb] |
+| Connected applications | [Disable applications connected to OpenShift AI][disable] |
+| Field defaults | [Dashboard configuration options][options] |
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/dashboard-application-patterns.md`
+## Related skills
+
+`rhoai-connected-applications`, `rhoai-dashboard-customization`,
+`rhoai-basic-workbenches`, `rhoai-workbench-image-import`.
+
+[chapter]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#managing-applications-that-show-in-the-dashboard
+[add]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#adding-an-application-to-the-dashboard_dashboard
+[prevent]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#preventing-users-from-adding-applications-to-the-dashboard_dashboard
+[disable]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#disabling-applications-connected_dashboard
+[info]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#showing-hiding-information-about-available-applications_dashboard
+[hide-wb]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#hiding-the-default-basic-workbench-application_dashboard
+[options]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#ref-dashboard-configuration-options_dashboard
