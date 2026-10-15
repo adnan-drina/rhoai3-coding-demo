@@ -20,6 +20,7 @@ Use these files for durable domain constraints that should apply across agent to
 | `m2-plan-assignee-implementer.md` | M2 PLAN `--assignee implementer`; retire dest AGENTS.md orchestrator-for-M2 |
 | `m2-m3-native-dispatch.md` | Minted M3 children claim via native dispatcher; M4 still needs a named GO |
 | `gitops.md` | GitOps authoring, manifests, labels, schema validation |
+| `scripts.md` | Operator scripts: self-contained, shell first, two shared files, shape and placement |
 | `docs.md` | Documentation standards, README structure, operations docs |
 | `rhoai.md` | RHOAI platform component guidance backed by official Red Hat documentation |
 | `ocp.md` | OpenShift Container Platform infrastructure, control plane, networking, auth, monitoring, GitOps, cluster, and storage integration guidance |

@@ -99,6 +99,8 @@ For Stage 130 native Kanban review/attach vs custom M4 receipts and K4 mint tran
 
 For GitOps authoring, manifests, labels, and schema validation, read `.agents/rules/gitops.md`.
 
+For operator scripts (self-contained, shell first, Python only when shell cannot do it; only `lib.sh` and `stage_apps.py` shared), read `.agents/rules/scripts.md`.
+
 For documentation standards, README structure, and operations docs, read `.agents/rules/docs.md`.
 
 For RHOAI platform component guidance backed by official Red Hat documentation, read `.agents/rules/rhoai.md`.
