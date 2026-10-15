@@ -29,6 +29,12 @@ problems=stage_apps.stage_problems("050",os.environ.get("RHOAI_STAGE050_EXPECTED
 qualification=stage_apps.get_application("050-model-qualification")
 if qualification and not parked_only(qualification):
     problems.append("050-model-qualification: Suspended by something other than a stopped candidate InferenceService")
+# Stage 020 owns the ClusterQueues; this stage owns the consumer LocalQueues in evaluated-models.
+for q in ("lq-gpu-reserved-demo","lq-gpu-rtxpro6000"):
+    lq=subprocess.run(["oc","--request-timeout=10s","get","localqueue",q,"-n","evaluated-models","-o","json"],capture_output=True,text=True)
+    active=lq.returncode==0 and any(c.get("type")=="Active" and c.get("status")=="True" for c in json.loads(lq.stdout).get("status",{}).get("conditions",[]))
+    if not active:
+        problems.append("LocalQueue "+q+" is not Active in evaluated-models")
 for problem in problems:
     print("  - "+problem)
 print("[PASS] Stage 050 Applications Synced/Healthy" if not problems else "[FAIL] Stage 050 Applications not Synced/Healthy")

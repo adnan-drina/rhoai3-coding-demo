@@ -58,7 +58,7 @@ PostgreSQL and Valkey run under the default ServiceAccount and the `restricted-v
 
 | Hook (wave) | ServiceAccount | Writes |
 |---|---|---|
-| `stage070-argocd-reader-setup` (Sync, 0), namespace `openshift-gitops` | `stage070-argocd-reader-setup` | Creates the denying `stage070-project-release` ConfigMap if absent; merges the `rhdh` API-key account and `role:rhdh-reader` read rules into the `openshift-gitops` ArgoCD CR, keeping existing rules |
+| `stage070-argocd-reader-setup` (Sync, 0), namespace `openshift-gitops` | `stage070-argocd-reader-setup` | Creates the denying `stage070-project-release` ConfigMap if absent; then checks (read-only) that the `rhdh` local user and `role:rhdh-reader` rules Stage 010 declares on the ArgoCD CR are present. The `stage070-project-applications` binding (wave 12) follows this hook |
 | `gitlab-bootstrap` (Sync, 6) | `gitlab-bootstrap` | Configures the GitLab OIDC client in the `platform` realm and writes `gitlab-oidc`. Generates `gitlab-database`, `gitlab-cache` and `gitlab-initial-root` once. Builds `gitlab-storage-*` from the OBC credentials. Grants the backup account access to the temporary bucket with a bucket policy. Writes the `*-runtime` ConfigMaps from the Route host and bucket names |
 | `gitlab-record-release` (Sync, 12) | `gitlab-bootstrap` | Writes `gitlab-gitlab-chart-info` only after webservice, sidekiq and toolbox are available |
 | `gitlab-integrations-bootstrap` (Sync, 14) | `gitlab-integrations-bootstrap` | See How |

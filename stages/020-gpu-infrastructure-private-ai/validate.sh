@@ -120,9 +120,7 @@ for suffix in ['cpu-default','gpu-reserved-demo','gpu-rtxpro6000']:
  check('ClusterQueue '+suffix+' Active',lambda s=suffix:freshcond(get('clusterqueue','cq-'+s),'Active'))
  check('Sandbox LocalQueue '+suffix+' Active',lambda s=suffix:freshcond(get('localqueue','lq-'+s,'demo-sandbox'),'Active'))
  check('HardwareProfile '+suffix+' queue identity',lambda s=suffix:get('hardwareprofile',s,'redhat-ods-applications')['spec']['scheduling']['kueue']['localQueueName']=='lq-'+s)
-for ns in ['internal-models','evaluated-models']:
- for q in ['lq-gpu-reserved-demo','lq-gpu-rtxpro6000']:
-  check('LocalQueue '+q+' Active in '+ns,lambda n=ns,q=q:freshcond(get('localqueue',q,n),'Active'))
+# Consumer LocalQueues belong to their stages: internal-models to Stage 040, evaluated-models to Stage 050.
 print('One hardware profile per GPU type: gpu-reserved-demo (L40S) and gpu-rtxpro6000, each with its own ClusterQueue.')
 print('Global profiles require matching LocalQueues in every consuming project.')
 if sys.argv[1]=='--functional':

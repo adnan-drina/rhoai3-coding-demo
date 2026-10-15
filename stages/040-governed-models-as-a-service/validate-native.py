@@ -232,6 +232,10 @@ def main():
             need(csv_owner(native, csv), "Operator workload has unexpected CSV owner")
             workload(native)
     print("[PASS] Six selected operators and current workloads")
+    # Stage 020 owns the ClusterQueues; this stage owns the consumer LocalQueues in internal-models.
+    for q in ("lq-gpu-reserved-demo", "lq-gpu-rtxpro6000"):
+        condition(get("localqueue", q, "internal-models"), "Active")
+    print("[PASS] GPU LocalQueues Active in internal-models")
     dsc = get("datasciencecluster", "default-dsc")
     current(dsc); condition(dsc, "Ready")
     for key in ("aigateway", "ogx", "kserve"):
@@ -407,6 +411,15 @@ def main():
                     need(not obj["spec"].get("endpointOverride"), "Unexpected external endpoint override remains")
                 need(obj["status"].get("endpoint") == endpoint, "External discovery does not select the API hostname")
     print("[PASS] Native external/provider/model references and credential presence; upstream entitlement/inference pending")
+    # References alone do not prove attachment: each declared subscription and auth policy must report Active and Ready.
+    governed = [o for o in desired if o["kind"] in ("MaaSSubscription", "MaaSAuthPolicy")]
+    need(governed, "No MaaS subscriptions or auth policies declared")
+    for d in governed:
+        live = get(d["kind"].lower() + "s.maas.opendatahub.io", d["metadata"]["name"], d["metadata"]["namespace"])
+        need(not live["metadata"].get("deletionTimestamp"), "MaaS governance object is being deleted")
+        need(live.get("status", {}).get("phase") == "Active", d["kind"] + " " + d["metadata"]["name"] + " is not Active")
+        condition(live, "Ready")
+    print("[PASS] %d declared MaaS subscriptions and auth policies Active and Ready; quota enforcement is functional acceptance" % len(governed))
     command([sys.executable, str(ROOT / "stages/040-governed-models-as-a-service/publish-catalog-mcp.py"), "--validate", "--defer-if-absent"])
     command([sys.executable, str(ROOT / "stages/040-governed-models-as-a-service/publish-catalog-mcp.py"), "--key", "OpenShift-MCP-ReadWrite", "--validate", "--defer-if-absent"])
     print("[PASS] Studio catalog field or explicit deferred Stage060 prerequisite; session use is separate")

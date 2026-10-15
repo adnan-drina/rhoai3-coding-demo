@@ -57,7 +57,7 @@ One Application holds these parts because they change together: the per-project 
 | ConfigMap | `gitlab-project-reconciler-<hash>` | `app-platform-build` | `reconcile.py` and `secret_writer.py` |
 | AppProject | `platform-projects` | `openshift-gitops` | Pinned project setup into `*-dev` (wave 12) |
 | AppProject | `runtime-projects` | `openshift-gitops` | Delivery repos into `*-dev`; Deployment, Service, Route, PVC, ConfigMap only; no cluster kinds (wave 12) |
-| ValidatingAdmissionPolicy + Binding | `stage070-project-applications` | cluster | Coordinator and per-project bootstrap may create only their own pinned or delivery Applications; parameters from `stage070-project-release` (deny if absent) (wave 12) |
+| ValidatingAdmissionPolicy | `stage070-project-applications` | cluster | Coordinator and per-project bootstrap may create only their own pinned or delivery Applications; parameters from `stage070-project-release` (deny if absent) (wave 12). Its Binding lives in `070-gitlab`, after that component's wave-0 hook creates the denying parameter, so a fresh install never has a binding without its parameter |
 | ValidatingAdmissionPolicy + Binding | `stage070-bootstrap-secrets` | cluster | Per-project bootstrap may write only its own named Secrets (wave 12) |
 | ValidatingAdmissionPolicy + Binding | `stage070-project-provisioning` | cluster | Per-project bootstrap may never create PipelineRuns in `app-platform-build` (wave 12) |
 
@@ -81,7 +81,7 @@ The coordinator creates `project-<name>` Applications that render `project-enrol
 ## How
 
 - **Order.** `stage_apps.py deploy 070` syncs this Application fourth, after `070-namespaces`, `070-identity` and `070-devspaces`. Inside it: Subscriptions (wave 2), signing RBAC (3), Securesign and signing hook (10), TektonConfig and Triggers settings (11), admission policies, AppProjects, provisioning Pipeline and pruner hook (12), coordinator (13).
-- **Operator installation.** Pipelines and TAS share `openshift-operators`, so they keep Automatic approval on versioned channels; `startingCSV` is an installation floor (1.24.1 is installed live). Dev Spaces, RHDH and MTA use Manual approval, and each of those components approves its own reviewed InstallPlan.
+- **Operator installation.** Pipelines and TAS share `openshift-operators`, so they keep Automatic approval on versioned channels; `startingCSV` is an installation floor (1.24.1 is installed live). Dev Spaces moved to `openshift-operators` on 2026-10-15 and uses Automatic approval like them; RHDH and MTA use Manual approval, and each of those components approves its own reviewed InstallPlan.
 - **TektonConfig.** The operator owns the singleton, so Sync hooks patch single fields instead of declaring the CR. `coschedule: pipelineruns` replaces the removed `disable-affinity-assistant` flag [3] and lets the source and Maven cache PVCs bind to one run. `createRbacResource=false` disables the operator's per-namespace pipeline ServiceAccount grants and `pipelines-scc-rolebinding` [1]. Only the `image-builder` ServiceAccount receives `nested-container` through `pipeline-userns-builder`.
 - **Image builds.** `build-internal-image` runs Buildah as UID 1000 in a pod user namespace (`hostUsers: false`, SCC `nested-container` [6]), refuses a non-mapped namespace, pushes only to its own project's internal registry path with a full commit tag, and returns the digest. Registry login uses the TaskRun's projected token.
 - **Promotion.** `promote-gitlab-runtime` writes the image digest into the platform-owned `rhoai-delivery/<name>-deployment` repository with the project's `gitlab-delivery-writer` token. Argo CD (`runtime-projects`) deploys it.
@@ -121,7 +121,7 @@ oc get securesign platform -n trusted-artifact-signer -o jsonpath='{.status.cond
 | Affinity assistant | `disable-affinity-assistant` removed; use `coschedule` [3] | `coschedule: pipelineruns` | Aligned |
 | Non-root Buildah | User-namespace or custom SA/SCC methods [2] | User namespace with the OCP default `nested-container` SCC [6], bound to `image-builder` only | Aligned (OCP SCC instead of the guide's annotation method) |
 | SCC grant | Role-based access to SCCs (`use` verb) [6] | ClusterRole with `resourceNames: [nested-container]` | Aligned |
-| Triggers interceptor ConfigMap | Operator-owned operand | GitOps also applies it; live it is owned by the operator's `TektonInstallerSet` on 1.24.1 | Gap (workaround no longer needed) |
+| Triggers interceptor ConfigMap | Operator-owned operand | Owned by the operator's `TektonInstallerSet`; the Git copy was removed on 2026-10-15 | Aligned |
 | TAS installation | Operator in `openshift-operators` via OLM [4] | `stable-v1.5`, Automatic | Aligned |
 | TAS OIDC issuer | `fulcio.config` OIDC issuers with issuer, client ID, issuer URL, type `email`; Red Hat build of Keycloak example [4] | Platform realm issuer, client `trusted-artifact-signer`, type `email` | Aligned |
 | TAS storage | TUF must use RWX for HA; one TUF replica not recommended for production [5] | Single replica, RWO `gp3-csi`, retained claims | Deviation (justified: demo scale; signing roots retained) |

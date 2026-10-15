@@ -3,6 +3,8 @@ kind: Kustomization
 resources:
 - network-policy.yaml
 - argocd-reader.yaml
+# Binds the pipelines policy only after the wave-0 reader hook has created its denying parameter.
+- application-policy-binding.yaml
 - buckets.yaml
 - database-cache.yaml
 - bootstrap.yaml

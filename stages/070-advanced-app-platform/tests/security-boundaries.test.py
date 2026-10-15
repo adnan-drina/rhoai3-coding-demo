@@ -196,6 +196,12 @@ class PortalContract(unittest.TestCase):
         reader=list(yaml.safe_load_all((BASE/'gitlab/argocd-reader.yaml').read_text()))
         hook=next(r for r in reader if r['kind']=='Job')
         self.assertEqual(hook['metadata']['annotations']['argocd.argoproj.io/sync-wave'],'0')
+        # Cross-Application order: the binding ships with the hook's component at a later wave, never earlier.
+        binding=yaml.safe_load((BASE/'gitlab/application-policy-binding.yaml').read_text())
+        self.assertEqual(binding['spec']['paramRef']['name'],'stage070-project-release')
+        self.assertGreater(int(binding['metadata']['annotations']['argocd.argoproj.io/sync-wave']),0)
+        self.assertIn('application-policy-binding.yaml',(BASE/'gitlab/kustomization.yaml').read_text())
+        self.assertNotIn('application-policy-binding.yaml',(BASE/'pipelines/kustomization.yaml').read_text())
         policy=yaml.safe_load((BASE/'pipelines/gitlab/application-policy.yaml').read_text())
         self.assertIn("params.data['ready'] == 'true'",policy['spec']['validations'][0]['expression'])
         self.assertIn("'ready':'true'",(BASE/'gitlab/bootstrap-scm.py').read_text())

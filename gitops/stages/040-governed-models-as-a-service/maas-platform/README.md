@@ -33,7 +33,7 @@ The cost dashboards ship here because MaaS showback is a platform function that 
 |---|---|---|---|
 | ServiceAccount | `prepare-maas-route-access` | `redhat-ods-applications` | Namespace-label Job identity (wave 8) |
 | ClusterRole, ClusterRoleBinding | `prepare-maas-route-access` | (cluster) | `get`/`patch` on Namespaces `redhat-ods-applications` and `redhat-ai-gateway-infra` only (wave 8) |
-| Job | `prepare-maas-route-access` | `redhat-ods-applications` | `Sync` hook, wave 9, `BeforeHookCreation,HookSucceeded`. Waits for both namespaces and adds `maas-gateway-access=true` (UID and resourceVersion guarded merge patch) |
+| Job | `prepare-maas-route-access` | `redhat-ods-applications` | `Sync` hook, wave 15 (after `job-enable-dsc-maas` creates the AIGateway namespace; AIGateway readiness does not depend on route admission), `BeforeHookCreation,HookSucceeded`. Waits for both namespaces and adds `maas-gateway-access=true` (UID and resourceVersion guarded merge patch) |
 | ServiceAccount | `job-enable-dsc-maas` | `redhat-ods-applications` | Enablement Job identity (wave 13) |
 | ClusterRole, ClusterRoleBinding | `job-enable-dsc-maas` | (cluster) | `get`/`patch` DataScienceCluster `default-dsc`; `get` AIGateway `default-aigateway`, OGX `default-ogx`, MaaS Config `default`, Ingress config `cluster` (wave 13) |
 | Role, RoleBinding | `job-enable-dsc-maas` | `redhat-ods-applications` | `get`/`patch` OdhDashboardConfig `odh-dashboard-config` (wave 13) |

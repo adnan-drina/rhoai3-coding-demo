@@ -8,7 +8,8 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/managed-by: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: '9'
+    # After job-enable-dsc-maas (wave 14): redhat-ai-gateway-infra exists only once AIGateway is Managed.
+    argocd.argoproj.io/sync-wave: '15'
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
   namespace: redhat-ods-applications

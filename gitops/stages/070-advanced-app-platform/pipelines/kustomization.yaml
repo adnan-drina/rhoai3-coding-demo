@@ -16,7 +16,6 @@ resources:
 - gitlab/runtime-projects.yaml
 - gitlab/platform-projects.yaml
 - gitlab/application-policy.yaml
-- gitlab/application-policy-binding.yaml
 - gitlab/bootstrap-secret-policy.yaml
 - gitlab/bootstrap-secret-policy-binding.yaml
 - gitlab/provisioning-policy.yaml
