@@ -2,8 +2,7 @@
 
 This Application turns on the OpenShift AI model-serving and model-discovery foundations: the KServe and Model Registry
 components of the shared `DataScienceCluster`, the `demo-registry` model registry, the Model Catalog and the Developer
-Preview Agent Catalog with one custom agent source, and persistent storage for OpenShift platform and user-workload
-Prometheus. It deploys no model and allocates no GPU. Stage 040 deploys models and writes registry records, Stage 050
+Preview Agent Catalog with one custom agent source. It deploys no model and allocates no GPU. Stage 040 deploys models and writes registry records, Stage 050
 reads the registry and catalog, and Stage 060 is the subject of the agent catalog cards.
 
 | | |
@@ -13,7 +12,7 @@ reads the registry and catalog, and Stage 060 is the subject of the agent catalo
 | Validated by | [`validate.sh`](../../../../stages/030-private-model-serving/validate.sh) (Application at its exact revision, DSC/KServe conditions, KServe-owned workloads, both Prometheus PVCs) and [`validate-model-discovery.sh`](../../../../stages/030-private-model-serving/validate-model-discovery.sh) (registry and catalog workloads, authenticated registry, Model Catalog and Agent Catalog APIs, dashboard flags) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff through the `compare-options` annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`, `CreateNamespace=true`. Retry 10 times, 5 s to 3 min backoff. |
 | Depends on | `010-rhoai-platform` (the `default-dsc` and `odh-dashboard-config` objects and their delegated fields); Stage 020 readiness (checked by `deploy.sh` on first install); the `gp3-csi` StorageClass (AWS EBS CSI). |
-| Used by | Stage 040 (KServe, registry records), `050-evalhub` (catalog safety-insights Role in `rhoai-model-registries`), Stage 060 (MCP catalog/registry dashboard flags, Agent Catalog cards), Stage 040/050 dashboards and alerts that need user-workload monitoring. |
+| Used by | Stage 040 (KServe, registry records), `050-evalhub` (catalog safety-insights Role in `rhoai-model-registries`), Stage 060 (MCP catalog/registry dashboard flags, Agent Catalog cards). |
 
 ## Why
 
@@ -24,13 +23,12 @@ A registry instance (`ModelRegistry` CR) is then created in that namespace [1]. 
 Preview feature for agent starter-kit discovery [5]; it is shown in the dashboard only with `agentsCatalog: true` [4].
 
 Stage 010 creates the shared `DataScienceCluster` and dashboard configuration with these components `Removed`, so the
-base platform validates on its own. This component turns them on by patching only the delegated fields. The registry,
-catalog and monitoring changes have one lifecycle (serving foundation, no model), so they share one Application. Models
+base platform validates on its own. This component turns them on by patching only the delegated fields. The registry
+and catalog changes have one lifecycle (serving foundation, no model), so they share one Application. Models
 change often and live in Stage 040.
 
-OpenShift monitoring keeps Prometheus data on `emptyDir` unless a persistent volume claim is configured; Red Hat highly
-recommends persistent storage for production clusters [8]. On this demo the unbounded `emptyDir` time-series databases
-caused worker disk-pressure evictions, so both Prometheus stacks get PVCs and retention limits [8][9][10].
+Platform and user-workload Prometheus persistence, retention and user-workload monitoring [8][9][10] are configured by
+`010-observability-operators` (`cluster-monitoring/`). `validate.sh` for this stage still checks both Prometheus PVCs.
 
 ## What
 
@@ -68,7 +66,6 @@ Moved on 2026-10-14 to `010-observability-operators` (`cluster-monitoring/`), wi
 | `Deployment` `demo-registry`, `demo-registry-postgres`; PVC `demo-registry-postgres-storage`; Secret `demo-registry-postgres-credentials`; Route `demo-registry-https`; Role `registry-user-demo-registry`; Group `demo-registry-users` | Model Registry operator, owned by the `ModelRegistry` CR |
 | `ModelRegistry` component `default-modelregistry`; `Deployment` `model-catalog`, `model-catalog-postgres`; Route `model-catalog-https`; catalog Roles | OpenShift AI operator (`modelregistry` component) |
 | `KServe` component `default-kserve` and its controller Deployments in `redhat-ods-applications` | OpenShift AI operator (`kserve` component) |
-| Prometheus PVCs `prometheus-k8s-db-prometheus-k8s-{0,1}` (40 Gi) and `prometheus-user-workload-db-prometheus-user-workload-{0,1}` (20 Gi) | Cluster Monitoring Operator from the two ConfigMaps |
 | Registry models, versions and artifacts | Stage 040 and Stage 050 helpers, through the registry API |
 
 ## How
@@ -80,8 +77,8 @@ proceed before the CRD exists [12]. Argo CD applies hooks and resources wave by 
 
 **Deploy script.** `deploy.sh` refuses to run unless the published branch equals the reviewed local commit, Stage 010 is
 reconciled, Stage 010 delegates the fields below, any existing registry objects are already tracked by this Application,
-any existing `demo-registry` spec equals Git and owns its database PVC and Secret, and the monitoring ConfigMaps are absent
-or already owned by this Application. It runs `preflight-agent-catalog.py`, which only adopts an empty
+any existing `demo-registry` spec equals Git and owns its database PVC and Secret, and the monitoring ConfigMaps, where present, are
+owned by `010-observability-operators`. It runs `preflight-agent-catalog.py`, which only adopts an empty
 `agent-catalog-sources` ConfigMap. It then applies the Application with `targetRevision` set to the commit SHA, waits for
 `Synced`/`Healthy`/`Succeeded` at that SHA, and runs `validate.sh`. On a first install it runs the Stage 020 readiness
 check; on an update it runs `validate-serving-update.py` so parked GPU capacity is not started.
@@ -112,9 +109,8 @@ route is the kube-rbac-proxy route on 443, which checks the caller's token. Grou
 ConfigMap) [3]. The Agent Catalog source schema is taken from the upstream model-registry source code at the commit named in
 the ConfigMap comment. The cards carry metadata and a README only; no image, template or credential.
 
-**Monitoring.** `enableUserWorkload: true` turns on monitoring for user-defined projects [10]. `retention` and
-`retentionSize` cap the time-series databases below the PVC size, and `volumeClaimTemplate` requests `gp3-csi` volumes
-[8][9]. The storage class is AWS-specific; `deploy.sh` checks that `gp3-csi` uses the `ebs.csi.aws.com` provisioner.
+**Monitoring.** Not configured here (see Why). `deploy.sh` checks that `gp3-csi` uses the `ebs.csi.aws.com` provisioner
+because the Prometheus PVCs that `validate.sh` checks use it.
 
 **Secrets.** None in Git. The registry database Secret is generated by the registry operator. Validators use the caller's
 own token in memory only.
@@ -152,10 +148,7 @@ oc get datasciencecluster default-dsc \
 | Registry access | Grant groups through the registry permissions (operator-created role) [1] | RoleBindings for `rhods-admins` and `rhoai-developers` to `registry-user-demo-registry` | Aligned |
 | Dashboard flags | `dashboardConfig` options and defaults [4] | Registry/Catalog shown; Agent Catalog, tool calling, MCP catalog and registry enabled | Aligned (preview features: Developer/Technology Preview) |
 | Agent Catalog | Developer Preview in 3.5 [5]; no documented source format [3] | Custom source from upstream schema | Deviation (justified: Developer Preview; schema pinned to an upstream commit) |
-| Prometheus persistence | Persistent storage highly recommended for production [8][9] | 40 Gi / 20 Gi `gp3-csi` PVCs | Aligned |
-| Retention | `retention` and `retentionSize` under the Prometheus key [8][9] | 7 d with 8 GB / 5 GB caps | Aligned |
-| User-workload monitoring | `enableUserWorkload: true` in `cluster-monitoring-config` [10] | Set | Aligned |
-| Ownership of cluster monitoring config | One owner per object | Owned here, not by a Stage 010 observability component | Gap (cluster-wide platform configuration lives in a serving component; see findings) |
+| Ownership of cluster monitoring config | One owner per object | Owned by `010-observability-operators`, not by this component | Aligned |
 | Argo CD sync options | Server-Side Diff by Application annotation [13]; `Prune=false`/`Delete=false` for retained objects [12] | Annotation present; registry objects retained | Aligned |
 
 ## References
