@@ -66,7 +66,7 @@ Live installed CSVs (read 2026-10-14): `rhcl-operator.v1.4.3`, `authorino-operat
 
 ## Validation
 
-`validate-native.py` renders the stage and requires exactly six Subscriptions. For each one, the live channel, source, approval and `startingCSV` must match Git, `installedCSV` must equal `currentCSV`, the CSV phase must be `Succeeded`, and every Deployment the CSV declares must be owned by that CSV and available. The `deploy.sh` preflight (`preflight.py`) refuses existing Subscriptions that another owner tracks.
+`validate-native.py` renders the stage and requires exactly six Subscriptions. For each one, the live channel, source, approval and `startingCSV` must match Git, `installedCSV` must equal `currentCSV`, the CSV phase must be `Succeeded`, and every Deployment the CSV declares must be owned by that CSV and available. The `deploy.sh` preflight (`preflight.sh`) refuses existing Subscriptions that another owner tracks.
 
 By hand:
 

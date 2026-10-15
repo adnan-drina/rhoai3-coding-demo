@@ -20,7 +20,7 @@ export RHOAI_STAGE040_EXPECTED_REVISION="$revision"
 
 # Read-only: operator channels, prerequisites and ownership, serving state, node sizing.
 python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service"
-state=$(python3 "$SCRIPT_DIR/preflight.py")
+state=$("$SCRIPT_DIR/preflight.sh")
 if [[ -n "$(python3 "$STAGE_APPS" names 040 | xargs oc --request-timeout=10s get applications.argoproj.io -n openshift-gitops --ignore-not-found -o name)" ]]; then
   python3 "$REPO_ROOT/scripts/platform/validate-serving-update.py" 040
 else

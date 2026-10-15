@@ -446,8 +446,8 @@ def preflight(stage, repo_url, root=ROOT, skip_kinds=(), separate=False):
     """Read-only adoption guard before a stage's first write; returns problems (empty = safe to deploy).
 
     Each existing component Application must have this repository's identity (no owner, single source, project,
-    destination and path as in Git). Each object a component renders must be absent, or unowned and carry the
-    exact tracking id of its component; a Namespace may also be untracked. Kinds whose CRD is not installed yet
+    destination and path as in Git). Each object a component renders must be absent, carry the exact tracking id of
+    its component (an operator may co-own it), or be an untracked, unowned Namespace. Kinds whose CRD is not installed yet
     cannot exist and are skipped; skip_kinds leaves kinds to a stage-specific check (Stage 020 MachineSets)."""
     problems = []
     for desired in _deployed(stage, str(root), separate):
@@ -475,9 +475,13 @@ def preflight(stage, repo_url, root=ROOT, skip_kinds=(), separate=False):
             if not result.stdout.strip():
                 continue
             live = json.loads(result.stdout)
+            # Already ours: the exact tracking id (an operator may co-own it, e.g. Kuadrant's Authorino). Otherwise it
+            # must be an untracked, unowned Namespace; anything else needs a reviewed adoption.
+            if tracked(stage, live, root):
+                continue
             if live["metadata"].get("ownerReferences"):
-                problems.append(suffix(obj) + ": owned by another object")
-            elif not (tracked(stage, live, root) or (obj["kind"] == "Namespace" and not tracking_id(live))):
+                problems.append(suffix(obj) + ": owned by another object and not tracked by this stage")
+            elif not (obj["kind"] == "Namespace" and not tracking_id(live)):
                 problems.append(suffix(obj) + ": exists without this stage's tracking id (needs a reviewed adoption)")
     return problems
 

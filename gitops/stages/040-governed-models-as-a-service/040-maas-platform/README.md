@@ -6,7 +6,7 @@ This Application turns Models-as-a-Service (MaaS) on in OpenShift AI. It enables
 |---|---|
 | Argo CD Application | `040-maas-platform` ([manifest](../../../applications/040-maas-platform.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 4). `deploy.sh` re-runs the Sync hooks of this component once if `genAiTracing` is still not `true` after the stage is reconciled |
-| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.py` ("Current native KServe/AIGateway/OGX components and feature flags"; namespace admission labels); `preflight.py` (exact RBAC of the namespace-label helper; Stage 010 field delegation) |
+| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.py` ("Current native KServe/AIGateway/OGX components and feature flags"; namespace admission labels); `preflight.sh` (exact RBAC of the namespace-label helper; Stage 010 field delegation) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `ServerSideDiff`, `RespectIgnoreDifferences`; compare-option `ServerSideDiff=true`; no `ignoreDifferences` |
 | Depends on | `010-rhoai-platform` (DataScienceCluster `default-dsc` and `odh-dashboard-config`, with `/spec/components/aigateway`, `/spec/components/ogx` and the dashboard fields delegated); `040-maas-database` (namespace `models-as-a-service`, database); `040-gateway-governance` (Gateway and Kuadrant) |
 | Used by | `040-local-models`, `040-external-models`, `040-model-access`, `040-genai-studio`; Stage 050 and 070 MaaS consumers; platform administrators (Observability page) |
@@ -72,7 +72,7 @@ Moved on 2026-10-14 to `040-local-models` (`monitoring/`): the vLLM serving rule
   4. Waits up to about 8 minutes each for `default-aigateway` and `default-ogx` to report a current generation and `Ready`.
   5. Checks that `default-tenant` has exactly one owner, MaaS Config `default`, and no Argo CD tracking id. It then patches `spec.telemetry` with a UID and resourceVersion guard.
 - **Telemetry choices.** The Job sets `enabled: true`, `captureOrganization: true`, `captureUser: true`, `captureGroup: false` and `captureModelUsage: true`. The guide's default for `captureUser` is `false`, for privacy and to keep Prometheus small with many users [1]. The demo turns it on so the Usage dashboard, the Cost per token tab and `export-maas-usage.sh` can attribute tokens to a user.
-- **Field delegation.** `preflight.py` refuses to deploy unless `010-rhoai-platform` delegates `/spec/components/aigateway`, `/spec/components/ogx` and the dashboard fields. Stage 010's Application also delegates `/spec/dashboardConfig/aiAssetCustomEndpoints` and `/spec/genAiStudioConfig`, but the preflight does not check those two. Because the Job runs only when a sync runs it [3], `deploy.sh` forces a hook sync of this component if `genAiTracing` is not `true`.
+- **Field delegation.** `preflight.sh` refuses to deploy unless `010-rhoai-platform` delegates `/spec/components/aigateway`, `/spec/components/ogx` and the dashboard fields. Stage 010's Application also delegates `/spec/dashboardConfig/aiAssetCustomEndpoints` and `/spec/genAiStudioConfig`, but the preflight does not check those two. Because the Job runs only when a sync runs it [3], `deploy.sh` forces a hook sync of this component if `genAiTracing` is not `true`.
 - **Namespace admission.** The Gateway in `040-gateway-governance` admits route namespaces only when they carry `maas-gateway-access=true`. `redhat-ods-applications` and `redhat-ai-gateway-infra` are operator-owned, so the `prepare-maas-route-access` Job adds only that label.
 - **GPU utilization ServiceMonitor.** Moved to `020-nvidia-gpu-operator` (`rhoai-monitoring/`) on 2026-10-14.
 - **Custom dashboards.** The guide says the built-in dashboards show a curated subset of metrics and points to Prometheus queries or external tools for anything else [2]. The two custom PersesDashboards follow the `dashboard-*` naming in `redhat-ods-monitoring` that, according to the generator's header comment, the Observability page renders as tabs (not described in the guide; the UI was not checked for this README). Prices and GPU cost are dashboard variables, not invoices. The Tokenomics default GPU price (2.24 $/h) is labelled as an AWS g6e.2xlarge (one L40S). The default model now runs on g7e.2xlarge (RTX PRO 6000).
@@ -90,7 +90,7 @@ Moved on 2026-10-14 to `040-local-models` (`monitoring/`): the vLLM serving rule
 - Nine dashboard flags are `true`. `aiAssetCustomEndpoints` is not checked.
 - `maas-gateway-access=true` is set on `models-as-a-service`, `internal-models`, `external-models`, `redhat-ai-gateway-infra` and `redhat-ods-applications`.
 
-`preflight.py` checks the namespace-label helper's exact ClusterRole and ClusterRoleBinding. Telemetry, dashboards, alerts and the ServiceMonitor have no automated check in this component's validation.
+`preflight.sh` checks the namespace-label helper's exact ClusterRole and ClusterRoleBinding. Telemetry, dashboards, alerts and the ServiceMonitor have no automated check in this component's validation.
 
 By hand:
 
