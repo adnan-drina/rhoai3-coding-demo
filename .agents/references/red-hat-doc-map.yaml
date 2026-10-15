@@ -25,6 +25,7 @@ docs_url_template: "https://docs.redhat.com/en/documentation/{docs_slug}/{docs_v
 # docs-version). The checker fails on findings in these families and only
 # reports findings in the others.
 converted_families:
+  - mta
   - ocp_pipelines
   - odf
   - rhcl
@@ -1379,39 +1380,160 @@ products:
           - book: release_notes
             status: active
             skill: mta-release-notes
+            sections:
+              - mta-8-3_release-notes
+              - mta-8-3-0_mta-8-3
+              - new-features-and-enhancements-8-3-0_mta-8-3-0
+              - mta_agents
+              - mta_ops_command_line_interface
+              - tech-previews-8-3-0_mta-8-3-0
+              - known-issues-8-3-0_mta-8-3-0
+              - fixed-issues-8-3-0_mta-8-3-0
+              - mta-8-2-1_mta-8-2
+            reviewed: { version: "8.3", date: 2026-10-15, note: "the book describes 8.3.0 only; the repo pins operator 8.3.1" }
       install:
         description: Operator installation, Tackle CR, CLI zip install, disconnected install.
         routes:
           - book: installing_the_migration_toolkit_for_applications
             status: active
             skill: mta-install
+            sections:
+              - installing-mta-operator_installing-mta-ui
+              - creating-mta-instance_installing-mta-ui
+              - custom-resource-settings_installing-mta-ui
+              - persistent-volume-requirements_installing-mta-ui
+              - hub-oidc-authentication_installing-mta-title
+              - enable-authentication-cr_hub-oidc-authentication
+              - red-hat-build-of-keycloak_installing-mta-title
+              - roles-personas-users-permissions_red-hat-build-of-keycloak
+              - create-secret-idp-client_identity-provider-authentication
+              - configure-identity-provider-cr_identity-provider-authentication
+              - authentication-fields-tackle-cr_installing-mta-title
+              - uri-templating-wildcard-patterns_installing-mta-title
+              - installing-mta-cli_installing-mta-title
+            reviewed: { version: "8.3", date: 2026-10-15 }
       ai:
         description: Developer Lightspeed AI-assisted code migration, LLM providers, Solution Server, Agent AI mode.
         routes:
           - book: configuring_and_using_red_hat_developer_lightspeed_for_mta
             status: active
             skill: mta-lightspeed
+            sections:
+              - how-developerlightspeed-works_intro-to-the-developer-lightspeed
+              - solution-server_dl-context
+              - agent-ai_solution-server
+              - enabling-agent-mode_agent-ai
+              - prerequisites_getting-started
+              - llm-proxy-workflow_getting-started
+              - tackle-llm-secret_getting-started
+              - tackle-enable-llm-proxy_getting-started
+              - supported-large-language-models-and-providers_configuring-llm
+              - ip-protection-risk-disclosure_configuring-llm
+              - ip-protection-mitigation_configuring-llm
+              - llm-service-openshift-ai_configuring-llm
+              - llm-provider-settings_configuring-llm
+              - configuring-developer-lightspeed-ide-settings_configuring-dev-lightspeed-ide
+              - configuring-developer-lightspeed-profile-settings_configuring-dev-lightspeed-ide
+              - developer-lightspeed-logs_mta-developer-lightspeed
+              - llm-proxy-log-access_assembly-llm-proxy-interaction-monitoring
+              - llm-proxy-shutdown-overview_assembly-emergency-llm-proxy-shutdown
+              - disable-llm-proxy-cli_assembly-emergency-llm-proxy-shutdown
+              - reenable-llm-proxy_assembly-emergency-llm-proxy-shutdown
+            reviewed: { version: "8.3", date: 2026-10-15 }
       using_tools:
         description: CLI, web UI, VS Code extension, and IntelliJ IDEA plugin for analysis and modernization.
         routes:
           - book: using_the_migration_toolkit_for_applications_command-line_interface
             status: active
             skill: mta-cli
+            sections:
+              - cli-command-structure_about-the-command-line-tool
+              - deprecated-commands-and-options_about-the-command-line-tool
+              - analyzing-single-app-wth-mta-cli_analyzing-applications-mta-cli
+              - running-the-containerless-mta-cli_analyzing-applications-mta-cli
+              - mta-cli-analyze-flags_analyzing-applications-mta-cli
+              - provider-and-rules-command-options_analyzing-nonjava-applications
+              - connect-cli-hub_analyzing-apps-profiles
+              - analyzing-app-with-profile_analyzing-apps-profiles
+              - analysis-report-sections_reviewing-analysis-reports
+              - reviewing-analysis-issues-and-incidents_reviewing-analysis-reports
+              - cli-known-issues_cli-guide
+              - transforming-application-source-code_performing-transformation
+            reviewed: { version: "8.3", date: 2026-10-15, note: "also cites the install book anchors installing-cli-zip_installing-mta-cli and installing-mta-disconnected-environment_installing-mta-cli" }
           - book: configuring_and_managing_the_migration_toolkit_for_applications_user_interface
             status: active
             skill: mta-ui
+            sections:
+              - agent-workflow_configuring-and-using-mta-agents
+              - agent-prerequisites_configuring-and-using-mta-agents
+              - enable-agent-in-tackle_cluster-configuration
+              - llm-gateway-secret_cluster-configuration
+              - llm-gateway-configuration_cluster-configuration
+              - deploy-large-language-model-gateways_cluster-configuration
+              - agents-skills-and-workflow-configuration_configuring-and-using-mta-agents
+              - configuring-and-using-agent-and-workflow-runs_configuring-and-using-mta-agents
+              - troubleshooting-agents_configuring-and-using-mta-agents
+              - configuring-and-running-an-application-analysis_analyzing-applications
+              - centralized-configurations_user-interface-guide
+              - reviewing-a-task-log_controlling-tasks-with-task-manager
+              - configuring-credentials_configuring-mta-instance-environment
+              - creating-custom-migration-targets_configuring-mta-instance-environment
+              - assessing-an-application_assessing-applications
+            reviewed: { version: "8.3", date: 2026-10-15 }
           - book: configuring_and_using_the_visual_studio_code_extension_for_mta
             status: active
             skill: mta-vscode
+            sections:
+              - intro-to-vscode-for-mta_vsc-extension-guide
+              - installing-vscode-extension_vsc-extension-guide
+              - installing-analyzer-rpc_vsc-extension-guide
+              - configuring-lighstspeed-ide-settings_vsc-extension-guide
+              - configuring-profile-settings_vsc-extension-guide
+              - vscode-analyzing-application_vsc-extension-guide
+              - configure-oidc-authentication-ide-extension_vsc-extension-guide
+              - analyzing-application-profiles_vsc-extension-guide
+              - vscode-reviewing-and-resolving-issues_vsc-extension-guide
+            reviewed: { version: "8.3", date: 2026-10-15, note: "the book exposes chapter anchors only" }
           - book: intellij_idea_plugin_guide
             status: active
             skill: mta-intellij
+            sections:
+              - about-ide-addons_idea-plugin-guide
+              - intellij-idea-plugin-extension_idea-plugin-guide
+              - intellij-idea-plugin-run-configuration_idea-plugin-guide
+              - intellij-idea-plugin-reviewing-issues_idea-plugin-guide
+              - intellij-resolving-issues_idea-plugin-guide
+              - using-quick-fix_intellij-resolving-issues
+            reviewed: { version: "8.3", date: 2026-10-15, note: "stub: not used in this repo" }
       rules_development:
         description: Custom rule authoring, YAML rules, providers, conditions, rulesets.
         routes:
           - book: configuring_and_using_rules_for_an_mta_analysis
             status: active
             skill: mta-rules
+            sections:
+              - about-rules_rules-introduction
+              - how_mta_performs_an_analysis
+              - yaml-rule-structure-syntax_rules-introduction
+              - yaml-rule-metadata-structure_rule-yaml-metadata
+              - yaml-rule-labels_rule-yaml-metadata
+              - reserved-label_rule-yaml-metadata
+              - yaml-rule-categories_rule-yaml-metadata
+              - external-providers_rules-prov-cond
+              - yaml-provider-conditions_rules-prov-cond
+              - yaml-builtin-provider_rules-prov-cond
+              - yaml-java-provider_rules-prov-cond
+              - yaml-java-locations_java-conditions-capabilities
+              - yaml-annotation-inspection_java-conditions-capabilities
+              - yaml-and-condition_logical-chaining-custom-variables
+              - yaml-or-condition_logical-chaining-custom-variables
+              - yaml-chaining-condition-variables_logical-chaining-custom-variables
+              - yaml-custom-variables_logical-chaining-custom-variables
+              - yaml-tag-actions_rule-yaml-actions
+              - yaml-message-actions_rule-yaml-actions
+              - create-first-yaml-rule_creating-rule
+              - yaml-rulesets_rule-rulesets
+            reviewed: { version: "8.3", date: 2026-10-15 }
 
   rhdh:
     name: Red Hat Developer Hub

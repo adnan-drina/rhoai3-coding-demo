@@ -2,154 +2,105 @@
 name: mta-ui
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "mta"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: mta
+  docs-version: "8.3"
   skill-group: "Application Modernization"
 description: >
-  Use when using the MTA web UI for application assessment, analysis,
-  migration waves, and issue management. Do NOT use for CLI (use mta-cli),
-  VS Code (use mta-vscode), IntelliJ (use mta-intellij), or AI features
-  (use mta-lightspeed).
+  Use when working with the MTA 8.3 Hub and web UI in this demo: Hub analysis,
+  analysis profiles, assessments, task logs, and the native MTA Agents
+  (Developer Preview) wired to MaaS through the konveyor.io Gateway maas-qwen,
+  the agentic_enabled Tackle flag and the agentic-controller. Do NOT use for
+  the install, SSO or storage (use mta-install), the Lightspeed proxy (use
+  mta-lightspeed), workspace CLI analysis (use mta-cli), or rule authoring
+  (use mta-rules).
 ---
 
-# MTA User Interface
+# MTA user interface and Hub Agents
 
-Use this skill to ground Migration Toolkit for Applications (MTA) 8.3
-web UI guidance in the official Configuring and Managing the MTA User
-Interface guide. The MTA UI enables portfolio-level and application-level
-assessment, analysis, tagging, migration wave management, and deployment
-asset generation.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+MTA 8.3 UI guide. Native Agents are Developer Preview. Detailed record:
+`gitops/stages/070-advanced-app-platform/mta/README.md`.
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **MTA 8.3**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A change touches `agentic_enabled`/`agentic_steer_enabled` in the Tackle CR
+  or the Gateway `maas-qwen` in `mta/jobs/configure-ai.yaml`.
+- Native Agents or the `agentic-controller` fail; Hub analysis or task logs
+  need review.
+- A workspace or Stage 130 run cannot find the Hub (`MTA_HUB_URL`).
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product behavior. Official
-Red Hat documentation is product authority.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Native Agents on: `agentic_enabled: true`, `agentic_steer_enabled: false` | `gitops/stages/070-advanced-app-platform/mta/mta-instance/tackle.yaml` | [Enable agent in Tackle][enable] |
+| Gateway `maas-qwen` (`konveyor.io/v1alpha1`): provider `openai`, `credentialRef` → `kai-api-keys`/`OPENAI_API_KEY` (not the doc example Secret), model `publishers/internal-models/models/qwen3-8-27b`, `contextWindow: 262144`, tier `efficient` | `mta/jobs/configure-ai.yaml` | [LLM gateway secret][gwsecret], [Gateway configuration][gwconf] |
+| Gateway `endpoint` is a placeholder in Git; hook `configure-mta-ai` (wave 11, after the Gateway) writes the bare MaaS origin; Argo CD ignores `/spec/endpoint` | `mta/jobs/configure-ai.py`, Application `ignoreDifferences` | [Gateway configuration][gwconf] |
+| Prerequisite Agent Sandbox controller comes from Stage 060 | `gitops/stages/060-agent-runtime-and-agentops/` | [Agent prerequisites][prereq] |
+| `agentic-controller` memory sized by VPA (`mta/controller-sizing/`) | `mta/controller-sizing/agentic-memory.yaml` | see `mta-install` |
+| Hub URL for workspaces: ConfigMap `mta-hub-config` (`MTA_HUB_URL`) in `wksp-*` | `mta/jobs/mta-hub-workspace-config.yaml` | [Connect the CLI to the Hub][hub] |
+| Personas: `ai-admin` → `role.admin`, `ai-developer` → `role.architect` | `mta/jobs/configure-mta-platform-sso.yaml` | see `mta-install` |
 
-## Key UI Capabilities
+## Procedure
 
-### Instance Configuration (Ch 2)
+1. Change the Tackle flags or Gateway in Git; keep the endpoint out of Git.
+2. Validate after the OpenShift safety guard in `AGENTS.md`:
 
-Configure the MTA environment before running assessments or analyses:
+   ```bash
+   ./stages/070-advanced-app-platform/validate.sh          # "MTA 8.3 native Agents" rows
+   ./stages/070-advanced-app-platform/validate.sh --static # product-schemas, stage070-upgrade tests
+   ```
 
-- **Credentials**: source control (username/password or SCM key),
-  Maven settings file, proxy, Jira (basic auth or bearer token)
-- **Repositories**: Git or Subversion for source code and custom rules
-- **Proxy**: HTTP/HTTPS proxy settings with exclusion lists
-- **Custom migration targets**: reusable targets with custom rulesets
-- **Issue management**: Jira integration for tracking migration issues
-- **Assessment questionnaires**: import/export YAML questionnaires
+3. Read-only checks:
 
-### Instance Setup (Ch 3)
+   ```bash
+   oc get gateways.konveyor.io maas-qwen -n openshift-mta -o jsonpath='{.spec.endpoint}{"\n"}'
+   oc get deployment agentic-controller -n openshift-mta
+   oc get route mta -n openshift-mta -o jsonpath='{.spec.host}{"\n"}'
+   ```
 
-Create organizational entities: stakeholders, stakeholder groups,
-business services, job functions, and tag categories/tags.
+4. Agent, workflow and skill-card configuration happen in the UI
+   ([Agents, skills and workflows][skills]); none is stored in Git.
 
-### Jira Integration (Ch 4)
+## Pitfalls
 
-Connect MTA to Jira instances (Cloud, Server, or Datacenter) for
-migration wave issue tracking. Supports basic auth and bearer token.
+- Endpoint contract: Gateway endpoint without `/v1` (the controller appends
+  `/v1/models`); Tackle `kai_llm_baseurl` with `/v1`:
+  `docs/TROUBLESHOOTING.md#mta-83-solution-server-crashes-or-its-agentic-controller-oomkills`.
+- Native Agents do not need the Solution Server; a disabled Solution Server
+  is reported as deferred, not broken.
+- The controller can show 128Mi in its Deployment while running larger: the
+  VPA acts on pods (`docs/OPERATIONS.md#mta-native-agents-and-controller-memory-sizing`).
+- Missing Hub endpoint refuses the migration template:
+  `docs/TROUBLESHOOTING.md#stage-070-workspace-tools-or-mta-ai-are-unavailable`.
 
-### Application Management (Ch 5)
+## Official documentation (MTA 8.3)
 
-- Add applications manually or import via CSV
-- Assign credentials and configure source code / binary locations
-- Create migration waves with stakeholder groups and date ranges
-- Create Jira issues for migration wave tracking
+| Topic | Section |
+|---|---|
+| Agents | [Workflow][flow], [Prerequisites][prereq], [Enable in Tackle][enable], [Gateway secret][gwsecret], [Gateway configuration][gwconf], [Deploy gateways][gwdeploy], [Skills and workflows][skills], [Runs][runs], [Troubleshooting][ts] |
+| Hub analysis | [Run an analysis][analysis], [Analysis profiles][profiles], [Task logs][tasklog] |
+| Instance setup | [Credentials][creds], [Custom migration targets][targets] |
+| Assessment | [Assess an application][assess] |
 
-### Assessment (Ch 6)
+## Related skills
 
-- Legacy Pathfinder default questionnaire (5 sections, risk-based)
-- Custom YAML questionnaires with conditional questions, auto-tagging,
-  and automated answers
-- Assessment reports: identified risks, adoption candidate distribution,
-  suggested adoption plan, application confidence
+`mta-install`, `mta-lightspeed`, `mta-cli`, `mta-rules`, `rhoai-maas-governance`.
 
-### Tagging (Ch 7)
-
-- Manual and automatic tagging; tag categories and tags
-- Analysis-based auto-tagging from language and technology discovery
-
-### Archetypes (Ch 8)
-
-Group applications by shared characteristics (criteria tags,
-archetype tags, stakeholders). Applications inherit assessment and
-review from assigned archetypes.
-
-### Analysis Profiles (Ch 9, Technology Preview)
-
-Centralized configuration management for analysis profiles with
-custom rules, migration targets, and scope settings. Profiles sync
-from the MTA Hub to UI, CLI, and VS Code extension.
-
-### Application Analysis (Ch 10)
-
-- Analysis modes: binary, source code, source code + dependencies,
-  local binary upload
-- Migration targets: JBoss EAP 7/8, containerization, Quarkus,
-  OpenJDK 11/17/21, Linux, Jakarta EE 9, Spring Boot, Open Liberty,
-  Camel, Azure App Service
-- Scope: app only, app + dependencies, manual package list, exclude
-- Custom rules: manual upload or Git/Subversion repository
-- Reports: issues by category, effort estimates, affected files
-
-### Task Manager (Ch 11)
-
-View, filter, cancel, and review logs for analysis and language/
-technology discovery tasks.
-
-### Platform Awareness (Ch 12)
-
-Import applications from Cloud Foundry source platform instances.
-Discover applications by organization, space, and name filters.
-Generate discovery manifests for imported applications.
-
-### Asset Generation (Ch 13)
-
-Generate deployment assets (Helm-based) for migrating CF applications
-to OpenShift or Kubernetes. Requires: generators (template repos),
-target profiles, archetypes, and discovery manifests.
-
-## UI Views
-
-| View | Purpose |
-|------|---------|
-| Migration | Application inventory, assessment, analysis, migration waves |
-| Administration | Credentials, repositories, proxy, stakeholders, tags, Jira, generators, source platforms |
-
-## Native MTA Agents
-
-Chapter 14 in the 8.3 UI guide adds sandboxed single-agent and multistage
-workflows as Developer Preview. See the current-update section of the
-extraction for prerequisites, Tackle agentic fields and Gateway configuration.
-This is distinct from an analysis task or the existing Hermes migration loop.
-
-## Workflow
-
-1. Confirm the target MTA version (8.3) and deployment type.
-2. Read `references/official-doc-extraction.md` for UI procedures.
-3. Identify the task: configuration, assessment, analysis, migration
-   wave, platform awareness, or asset generation.
-4. Follow the documented procedure; verify prerequisites.
-5. Validate with `references/source-capture.md` boundaries.
-
-## Related Skills
-
-- Use `mta-vscode` for the VS Code extension.
-- Use `mta-cli` for the MTA command-line interface.
-- Use `mta-intellij` for the IntelliJ plugin.
-- Use `mta-lightspeed` for Developer Lightspeed AI features.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[flow]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#agent-workflow_configuring-and-using-mta-agents
+[prereq]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#agent-prerequisites_configuring-and-using-mta-agents
+[enable]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#enable-agent-in-tackle_cluster-configuration
+[gwsecret]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#llm-gateway-secret_cluster-configuration
+[gwconf]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#llm-gateway-configuration_cluster-configuration
+[gwdeploy]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#deploy-large-language-model-gateways_cluster-configuration
+[skills]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#agents-skills-and-workflow-configuration_configuring-and-using-mta-agents
+[runs]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#configuring-and-using-agent-and-workflow-runs_configuring-and-using-mta-agents
+[ts]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#troubleshooting-agents_configuring-and-using-mta-agents
+[analysis]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#configuring-and-running-an-application-analysis_analyzing-applications
+[profiles]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#centralized-configurations_user-interface-guide
+[tasklog]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#reviewing-a-task-log_controlling-tasks-with-task-manager
+[creds]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#configuring-credentials_configuring-mta-instance-environment
+[targets]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#creating-custom-migration-targets_configuring-mta-instance-environment
+[assess]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#assessing-an-application_assessing-applications
+[hub]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index#connect-cli-hub_analyzing-apps-profiles
