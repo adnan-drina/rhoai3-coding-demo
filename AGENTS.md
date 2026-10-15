@@ -212,7 +212,7 @@ Skills are invoked workflows. Rules are always-on behavior constraints.
 
 ### Product documentation links
 
-Product skills link to official Red Hat documentation instead of copying it. Each product's single documentation version, the Git pin it must match (Subscription channel, `startingCSV` or operator policy), and the book → skill routes live in `.agents/references/red-hat-doc-map.yaml`. `scripts/shared/check-doc-links.py` checks skill frontmatter (`metadata.product`, `metadata.docs-version`), docs.redhat.com link versions in skills and component READMEs, pins and skill references; it fails only for the map's `converted_families` (currently `odf`, `rhcl`) and for skills listed in `converted_skills` (a family converted skill by skill), and reports the rest. Author or convert product skills with `project-red-hat-doc-skill-authoring`.
+Product skills link to official Red Hat documentation instead of copying it. Each product's single documentation version, the Git pin it must match (Subscription channel, `startingCSV` or operator policy), and the book → skill routes live in `.agents/references/red-hat-doc-map.yaml`. `scripts/shared/check-doc-links.py` checks skill frontmatter (`metadata.product`, `metadata.docs-version`), docs.redhat.com link versions in skills and component READMEs, pins and skill references; it fails only for the map's `converted_families` (currently `mta`, `ocp_devspaces`, `ocp_pipelines`, `odf`, `rhcl`, `rhdh`) and for skills listed in `converted_skills` (a family converted skill by skill), and reports the rest. Author or convert product skills with `project-red-hat-doc-skill-authoring`.
 
 ## Subagents
 
@@ -229,10 +229,10 @@ When deploying, validating, or changing a stage, consult the matching doc-ground
 | 030 serving | `rhoai-model-serving-platform`, `rhoai-model-deployment`, `rhoai-model-registry`, `rhoai-model-registry-workflows`, `ocp-grafana-operator` |
 | 040 MaaS | `rhoai-maas-governance`, `rhoai-distributed-inference-llmd`, `rhoai-gen-ai-playground`, `rhoai-model-catalog-sources`, `ocp-ingress-gateway-routes` |
 | 050 evaluation | `rhoai-mlflow`, `rhoai-evaluation`, `rhoai-monitoring-trustyai`, `rhoai-dsci-dsc-configuration` |
-| 070 advanced platform | `rhoai-data-science-ide-workflows`, `rhoai-gen-ai-playground`, `manage-devspaces`, `rhdh-getting-started-setup`, `rhdh-getting-started-navigate`, `rhdh-dynamic-plugins-reference`, `rhdh-dynamic-plugins-configure`, `rhdh-dynamic-plugins-install`, `rhdh-dynamic-plugins-usage`, `rhdh-helm-reference`, `ocp-authentication-identity-providers`, `ocp-web-console` |
+| 070 advanced platform | `rhoai-data-science-ide-workflows`, `rhoai-gen-ai-playground`, `manage-devspaces`, `ocp-devspaces-install`, `ocp-devspaces-admin`, `ocp-pipelines-install-config`, `ocp-pipelines-cicd`, `ocp-pipelines-security`, `mta-install`, `mta-lightspeed`, `mta-ui`, `rhdh-install-ocp`, `rhdh-configure`, `rhdh-authentication`, `rhdh-authorization`, `rhdh-git-integration`, `rhdh-getting-started-setup`, `rhdh-getting-started-navigate`, `rhdh-dynamic-plugins-reference`, `rhdh-dynamic-plugins-configure`, `rhdh-dynamic-plugins-install`, `rhdh-dynamic-plugins-usage`, `rhdh-helm-reference`, `ocp-authentication-identity-providers`, `ocp-web-console` |
 | 110 assisted dev | `rhoai-maas-governance` (key consumption), `manage-devspaces` |
 | 120 agentic dev | `rhoai-maas-governance`, workspace-repo skills |
-| 130 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), MTA product docs |
+| 130 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), `mta-cli`, `mta-rules`, `mta-vscode`, `ocp-devspaces-user-guide` |
 
 Skill project-default sections were authored in rhoai3-demo; where this repo deliberately diverges (no GPU time-slicing, two GPU workers, two private models), the stage README is the source of truth and the skill defaults have been updated to match.
 
