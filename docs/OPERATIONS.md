@@ -148,12 +148,14 @@ The deploy scripts do not imperatively install every component themselves. They 
 
 Stage 080 authoring lives in
 `stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/`
-on `main`. The Stage 050 `app-migration` template fetches GitHub
-`quarkus-migration-scaffold-v2`. Publish both workshop goldens with
-`scripts/demo/bootstrap-scaffold-repos.sh` (force-push reset). A Stage 080 release
-publishes only its own golden: `SCAFFOLD_REPOS=migration` (or `agentic` for
-Stage 070 only; the default `all` is the demo reset). Do not
-GitHub-rename historical `quarkus-migration-scaffold`. Do not dest-complete
+on `main`. The Stage 070 `app-migration` template fetches the golden from the
+in-cluster GitLab (`rhoai-platform/quarkus-migration-scaffold-v2`). The
+`070-gitlab` integration hub publishes both goldens as one ordinary commit from
+the Application's reviewed platform revision on every sync; the GitHub copies
+only seed the first import and need no push. To publish a golden change, merge
+it to `main` and deploy Stage 070. `scripts/demo/bootstrap-scaffold-repos.sh`
+prints the published golden URLs (`SCAFFOLD_REPOS=migration` or `agentic` for
+one). Do not GitHub-rename historical `quarkus-migration-scaffold`. Do not dest-complete
 Operator ack gates or run `kanban daemon --force`. Factory isolation: Stage 080
 [SOLUTION-ARCHITECTURE.md](../stages/130-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
 §8.
