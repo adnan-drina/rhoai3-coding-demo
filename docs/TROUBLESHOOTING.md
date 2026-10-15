@@ -2299,11 +2299,11 @@ For browser access failures, verify the platform realm's GitLab client, the subj
 
 ## References
 
-- [OpenShift troubleshooting documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/support/troubleshooting)
+- [OpenShift troubleshooting documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/support/index#troubleshooting)
 - [OpenShift GitOps documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/)
 - [Red Hat OpenShift AI documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/)
-- [Red Hat Developer Hub documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
-- [Migration Toolkit for Applications documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1)
+- [Red Hat Developer Hub documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10)
+- [Migration Toolkit for Applications documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3)
 
 ## EvalHub Lighteval Job Completes With Score 0.0 And `BadGatewayError`
 
@@ -2870,7 +2870,7 @@ If the publisher rejects an additional `description` property, inspect the insta
 
 If a successful project's CI view asks for `kubernetes.clusters.read` and `kubernetes.resources.read`, the portal user lacks delivery-view authorization. Include the Kubernetes plugin in RBAC permission discovery and grant these two `read` permissions to the developer role through the Git-managed policy. The existing backend reader still bounds API access; verify it cannot read Secrets or mutate workloads. The `kubernetes.proxy` permission is separate and is not granted for this list-view correction. See [RHDH Kubernetes, Topology and Tekton permissions](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/authorization_in_red_hat_developer_hub/permission-policies-reference_authorization-in-rhdh).
 
-If a full sync appears stuck on a deleted catalog hook, inspect the application controller's restart count and last termination reason. During Stage 070 validation the controller exceeded its 4 GiB memory limit and repeatedly restarted before reconciliation completed. The declared bootstrap configuration now reserves 4 GiB with an 8 GiB limit. Apply resource changes through the `ArgoCD` owner, not its generated StatefulSet, and verify the original operation completes. This provides headroom; continued growth needs separate diagnosis. See [supported Argo CD resource configuration](https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.19/html-single/managing_resource_use/index).
+If a full sync appears stuck on a deleted catalog hook, inspect the application controller's restart count and last termination reason. During Stage 070 validation the controller exceeded its 4 GiB memory limit and repeatedly restarted before reconciliation completed. The declared bootstrap configuration now reserves 4 GiB with an 8 GiB limit. Apply resource changes through the `ArgoCD` owner, not its generated StatefulSet, and verify the original operation completes. This provides headroom; continued growth needs separate diagnosis. See [supported Argo CD resource configuration](https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/managing_resource_use/index).
 
 Sonar token generation takes `projectKey`, but current token search reports its binding as `project.key`. Validate the actual server response shape. If first generation succeeds but independent readback fails before the Secret is created, preserve the server record and hold enrollment. Only an exact newly created, unissued token may be explicitly reconciled after confirming no project Secret, mount, or initial build exists; ordinary retries never revoke or rotate a lost credential.
 

@@ -290,7 +290,7 @@ actually shipped.
 | Hermes Agent documentation                    | [https://hermes-agent.nousresearch.com/docs](https://hermes-agent.nousresearch.com/docs)                                                                             |
 | Hermes Agent — configuring models             | [https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models](https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models)                 |
 | OpenClaw documentation (compared alternative) | [https://docs.openclaw.ai/](https://docs.openclaw.ai/)                                                                                                               |
-| MTA 8.2 documentation                         | [https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/) |
+| MTA 8.3 documentation                         | [https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/) |
 | OpenRewrite documentation                     | [https://docs.openrewrite.org/](https://docs.openrewrite.org/)                                                                                                       |
 | MaaS code assistant quickstart                | [https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)                     |
 

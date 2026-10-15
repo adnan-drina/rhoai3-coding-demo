@@ -145,6 +145,33 @@ class CheckDocLinksTest(unittest.TestCase):
                       "https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/x\n")
         self.assertIn(("LINK-VERSION", "rhcl"), self.fx.codes())
 
+    def test_stage_readme_and_docs_links_are_checked(self):
+        old = "https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.20/html/x\n"
+        self.fx.write("stages/010-x/README.md", old)
+        self.fx.write("docs/OPERATIONS.md", old)
+        findings = [(c, f, w) for c, f, w in self._findings() if c == "LINK-VERSION"]
+        self.assertEqual(sorted(w.split(":")[0] for _, _, w in findings),
+                         ["docs/OPERATIONS.md", "stages/010-x/README.md"])
+        self.assertTrue(all(f == "odf" for _, f, _ in findings))
+        self.assertEqual(self.fx.run()[0], 1)  # odf is a converted family
+
+    def test_docs_links_of_unconverted_product_report_only(self):
+        self.fx.write("docs/TROUBLESHOOTING.md",
+                      "https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/x\n")
+        self.assertIn(("LINK-VERSION", "rhcl"), self.fx.codes())
+        self.assertEqual(self.fx.run()[0], 0)
+
+    def test_docs_migration_and_nested_stage_files_are_skipped(self):
+        old = "https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.20/html/x\n"
+        self.fx.write("docs/migration/old-plan.md", old)
+        self.fx.write("stages/010-x/notes/README.md", old)
+        self.assertNotIn("LINK-VERSION", [c for c, _ in self.fx.codes()])
+
+    def _findings(self):
+        checker = cdl.Checker(self.fx.root)
+        checker.check_links()
+        return [(code, family, where) for code, family, where, _ in checker.findings]
+
     def test_placeholder_links_are_ignored(self):
         self.fx.write(".agents/skills/odf-object-bucket-claims/references/t.md",
                       "https://docs.redhat.com/en/documentation/<slug>/<version>/\n")

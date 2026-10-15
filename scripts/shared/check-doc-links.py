@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check product skills and component READMEs against the Red Hat doc map.
+"""Check product skills and READMEs against the Red Hat doc map.
 
 The map (.agents/references/red-hat-doc-map.yaml) holds one docs_version per
 product and the Git pin that must agree with it. This checker reports:
@@ -18,8 +18,11 @@ product and the Git pin that must agree with it. This checker reports:
   SKILL-SIZE        SKILL.md longer than the thin-skill target
   LIVE-BROKEN       (--live) URL answered 404/410 or the #anchor is missing
 
-Static mode needs no network. Findings are attributed to a product family
-and, when they come from a skill, to that skill. Default exit status is 1
+Links are read from skills, component READMEs (gitops/stages/*/*/README.md),
+stage READMEs (stages/*/README.md) and top-level docs (docs/*.md, not
+docs/migration/). Static mode needs no network. Findings are attributed to
+a product family and, when they come from a skill, to that skill; a README or
+doc link belongs to the family of the product it links to. Default exit status is 1
 when a finding belongs to a family in converted_families or to a skill in
 converted_skills (a family converted skill by skill; pin findings of such a
 family fail too); --report always exits 0. --live fetches each URL sequentially with a
@@ -213,6 +216,9 @@ class Checker:
             if path.is_file() and path.suffix in TEXT_SUFFIXES:
                 yield path
         yield from sorted((self.root / "gitops" / "stages").glob("*/*/README.md"))
+        # Stage READMEs and top-level operations docs; docs/migration/ is history.
+        yield from sorted((self.root / "stages").glob("*/README.md"))
+        yield from sorted((self.root / "docs").glob("*.md"))
 
     def file_family(self, path: Path) -> str | None:
         parts = path.relative_to(self.root).parts
