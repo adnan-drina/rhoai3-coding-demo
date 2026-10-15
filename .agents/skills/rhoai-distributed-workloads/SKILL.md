@@ -1,93 +1,92 @@
 ---
 name: rhoai-distributed-workloads
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for installing RHOAI distributed-workload components: Red Hat build of Kueue, cert-
-  manager, DSC kueue/ray/trainingoperator/aipipelines/dashboard/workbenches states,
-  GPU/RDMA and CA prerequisites, and component-pod validation. Do NOT use for Kueue day-2
-  enforcement, embedded migration, administrator queues/RDMA, user Ray/PyTorchJob/TrainJob
-  workflows, general installation, KFP authoring, SparkApplication activation or live
-  troubleshooting; use the corresponding rhoai and environment skills.
+  Use when deciding whether to enable the OpenShift AI distributed workloads
+  components in this demo: the default-dsc ray, trainingoperator and trainer
+  states (all Removed in Stage 010), their Kueue and cert-manager prerequisites
+  (already provided by Stage 020), and how a stage would delegate those DSC
+  fields. Do NOT use for the Kueue integration and queues (use
+  rhoai-kueue-workload-management), quota examples, RDMA or Ray administrator
+  troubleshooting (use rhoai-distributed-workload-operations), user Ray or
+  training jobs (use rhoai-distributed-workload-workflows), or Spark (use
+  rhoai-kubeflow-spark-operator).
 ---
 
 # RHOAI Distributed Workloads
 
-Use this skill to install and review the RHOAI distributed workloads component
-set for the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`
+(DSC components and delegated fields).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product configuration details.
-Official Red Hat documentation is product authority. This skill adapts the
-official component installation guidance to this repo's GitOps operating model.
+- A stage proposes Ray, Kubeflow Training Operator or Trainer workloads.
+- A change touches `ray`, `trainingoperator` or `trainer` in
+  `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml`.
 
-## Installation Model
+## Repo decisions
 
-Distributed workloads require both external Operators and
-`DataScienceCluster` component state:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Distributed workloads are not part of this demo: `ray`, `trainingoperator`, `trainer` and `sparkoperator` are `Removed` in `default-dsc` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Install the distributed workloads components][dw-install] |
+| The Kueue prerequisite is met for other reasons: Red Hat build of Kueue Operator, DSC `kueue: Unmanaged`, `autoCreateQueues: false` (GPU quota for model serving and workbenches) | `gitops/stages/020-gpu-infrastructure-private-ai/kueue/` | [Install the distributed workloads components][dw-install]; see `rhoai-kueue-workload-management` |
+| cert-manager is a cluster prerequisite checked by Stage 020 `deploy.sh` (`cert-manager-operator.v1.20.*`), not declared in Git | `stages/020-gpu-infrastructure-private-ai/deploy.sh` | [Install the distributed workloads components][dw-install] |
+| `dashboard` and `workbenches` are `Managed` in Stage 010; `aipipelines` is enabled by Stage 050 through a delegated field | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml`, `.../README.md` | [Install the distributed workloads components][dw-install] |
+| A DSC component is turned on only by the owning stage's hook Job after the field is delegated in the Stage 010 Application (`ignoreDifferences` + `RespectIgnoreDifferences`) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md` | [Install and manage components][components] |
 
-- Red Hat build of Kueue Operator must be installed separately.
-- cert-manager Operator must be installed.
-- `spec.components.kueue.managementState` must be `Unmanaged`, so the Red Hat
-  build of Kueue Operator manages Kueue.
-- `ray.managementState` is `Managed` when Ray/KubeRay workloads are needed.
-- `trainingoperator.managementState` is `Managed` when Kubeflow Training
-  Operator workloads are needed.
-- `dashboard`, `aipipelines`, and `workbenches` states depend on whether
-  distributed workloads are launched from pipelines, workbenches, or both.
+## Procedure
 
-## GitOps Policy
+To introduce distributed workloads in a future stage:
 
-For this repo:
+1. Read the component prerequisites for the release: the install chapter
+   lists the per-launch-surface states, and [Component requirements][comp-req]
+   lists extra operators (for example the JobSet Operator for `trainer`).
+2. Delegate the field in the Stage 010 Application, add an enablement hook in
+   the new stage (pattern: `gitops/stages/020-gpu-infrastructure-private-ai/kueue/dsc-enablement/`),
+   and add the Kueue frameworks' queues and flavors with
+   `rhoai-distributed-workload-operations`.
+3. Validate Stage 010 (`./stages/010-openshift-ai-platform-foundation/validate.sh`,
+   which requires the non-delegated 3.5 components `Removed`) and the new stage.
+4. Read-only check after the OpenShift safety guard in `AGENTS.md`:
 
-- Derive component state from the official table, but apply it through ArgoCD
-  Applications and GitOps manifests.
-- Keep prerequisite Operators in earlier or separate GitOps layers so
-  `DataScienceCluster` does not enable distributed workload components before
-  dependencies are available.
-- Keep Kueue integration, namespace queue enforcement, dashboard Kueue
-  enablement, and workload management policy in
-  `rhoai-kueue-workload-management`.
-- Keep `ResourceFlavor`, `ClusterQueue`, `LocalQueue`, RDMA, and Ray
-  administrator troubleshooting in `rhoai-distributed-workload-operations`.
-- Keep Ray, PyTorchJob, TrainJob, fine-tuning, checkpointing, monitoring, and
-  user troubleshooting in `rhoai-distributed-workload-workflows`.
-- Keep Kubeflow Spark Operator activation and `SparkApplication` resources in
-  `rhoai-kubeflow-spark-operator`.
-- If GPU-backed distributed workloads are part of the demo, pair this skill
-  with accelerator/GPU skills and verify GPU support before enabling workloads.
+   ```bash
+   oc get datasciencecluster default-dsc \
+     -o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}{"\n"}'
+   oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.ray}{"\n"}{.spec.components.trainingoperator}{"\n"}'
+   ```
 
-## Workflow
+## Pitfalls
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Confirm RHOAI is installed with `rhoai-self-managed-installation`.
-3. Verify prerequisites from `references/official-doc-extraction.md`.
-4. Choose the launch surface:
-   - pipelines only
-   - workbenches only
-   - pipelines and workbenches
-5. Set the required `DataScienceCluster` component states from the official
-   matrix.
-6. Apply manifests through ArgoCD/GitOps.
-7. Validate Kueue, KubeRay, and Kubeflow Training Operator deployments with
-   `references/validation-checklist.md`.
-8. Continue with `rhoai-kueue-workload-management` for queue enforcement,
-   dashboard Kueue enablement, and migration.
-9. Continue with `rhoai-distributed-workload-operations` for distributed
-   workload quota resources, RDMA, and Ray administrator troubleshooting.
-10. Continue with `rhoai-distributed-workload-workflows` for user-facing Ray,
-    Training Operator, Kubeflow Trainer v2, checkpointing, and monitoring
-    workflows.
+- Never edit `default-dsc` by hand: Argo CD restores the Git value
+  (`Removed`) for any field that is not delegated, which uninstalls it.
+- Removing a delegated pointer from `ignoreDifferences` also reverts the field
+  to `Removed`.
+- GPU-backed distributed jobs would compete with the model servers for the two
+  exclusive GPUs per ClusterQueue; plan quota before enabling them.
+- The live `Kueue` CR already lists Ray and training frameworks; that does not
+  mean the operators behind them are installed.
 
-## References
+## Official documentation (OpenShift AI 3.5)
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/dsc-distributed-workloads-states.md`
+| Topic | Section |
+|---|---|
+| Distributed workloads install | [Install the distributed workloads components][dw-install] |
+| Component prerequisites | [Component requirements][comp-req] |
+| Component management | [Install and manage components][components] |
+
+## Related skills
+
+`rhoai-kueue-workload-management`, `rhoai-distributed-workload-operations`,
+`rhoai-distributed-workload-workflows`, `rhoai-kubeflow-spark-operator`,
+`rhoai-dsci-dsc-configuration`, `ocp-ai-workloads`.
+
+[dw-install]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#installing-the-distributed-workloads-components_install
+[comp-req]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#component_requirements
+[components]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#installing-and-managing-openshift-ai-components_component-install

@@ -35,9 +35,13 @@ converted_families:
 # of the family is converted.
 converted_skills:
   - rhoai-distributed-inference-llmd
+  - rhoai-distributed-workloads
   - rhoai-dsci-dsc-configuration
+  - rhoai-hardware-profiles
+  - rhoai-kueue-workload-management
   - rhoai-model-deployment
   - rhoai-model-serving-platform
+  - rhoai-nvidia-gpu-accelerators
   - rhoai-observability
   - rhoai-self-managed-installation
   - rhoai-update-channels
@@ -113,6 +117,7 @@ products:
           - book: red_hat_ai_validated_models
             status: active
             skill: rhoai-nvidia-gpu-accelerators
+            reviewed: { version: "3.5", date: 2026-10-15, note: "HTTP 404 at 3.5 on 2026-10-15 and the product root answered 503; not cited by the skill; re-route (probably Red Hat AI docs) or retire" }
       install:
         description: Install, upgrade-channel, accelerator, certificate, logs, troubleshooting, and uninstall workflows.
         routes:
@@ -173,12 +178,20 @@ products:
               - distributed_workloads_components
             status: active
             skill: rhoai-distributed-workloads
+            sections:
+              - installing-the-distributed-workloads-components_install
+              - component_requirements
+              - installing-and-managing-openshift-ai-components_component-install
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: installing_and_uninstalling_openshift_ai_self-managed
             topics:
               - accelerators
               - nvidia_gpus
             status: active
             skill: rhoai-nvidia-gpu-accelerators
+            sections:
+              - enabling-accelerators_install
+            reviewed: { version: "3.5", date: 2026-10-15, note: "no NVIDIA-specific section in the 3.5 install book; NVIDIA enablement lives in working_with_accelerators" }
           - book: installing_and_uninstalling_openshift_ai_self-managed
             topics:
               - certificates
@@ -216,6 +229,15 @@ products:
       administer:
         description: Administrator workflows for RHOAI access, dashboard, resources, workloads, and observability.
         routes:
+          - book: working_with_accelerators
+            status: active
+            skill: rhoai-nvidia-gpu-accelerators
+            sections:
+              - overview-of-accelerators_accelerators
+              - enabling-accelerators_accelerators
+              - enabling-nvidia-gpus_accelerators
+              - about-gpu-time-slicing_accelerators
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: managing_resources
             status: active
             skill: rhoai-users-groups-access
@@ -266,6 +288,18 @@ products:
               - kueue
             status: active
             skill: rhoai-kueue-workload-management
+            sections:
+              - overview-of-managing-workloads-with-kueue_kueue
+              - kueue-workflow_kueue
+              - configuring-workload-management-with-kueue_kueue
+              - enabling-kueue-in-the-dashboard_kueue
+              - managing-queues-outside-the-operator_kueue
+              - troubleshooting-common-problems-with-Kueue_kueue
+              - a_user_receives_a_failed_to_call_webhook_error_message_for_kueue
+              - a_user_receives_a_local_queue_provided_does_not_exist_error_message
+              - the_pod_provisioned_by_kueue_is_terminated_before_the_image_is_pulled
+              - migrating-to-the-rhbok-operator_kueue
+            reviewed: { version: "3.5", date: 2026-10-15, note: "chapter URL answered 503; verified through html-single" }
           - book: managing_openshift_ai
             topics:
               - distributed_workloads
@@ -306,6 +340,15 @@ products:
               - recommended_accelerators
             status: active
             skill: rhoai-hardware-profiles
+            sections:
+              - working-with-hardware-profiles_accelerators
+              - creating-a-hardware-profile_accelerators
+              - updating-a-hardware-profile_accelerators
+              - deleting-a-hardware-profile_accelerators
+              - configuring-a-recommended-accelerator-for-workbench-images_accelerators
+              - configuring-a-recommended-accelerator-for-serving-runtimes_accelerators
+              - about-gpu-time-slicing_accelerators
+            reviewed: { version: "3.5", date: 2026-10-15, note: "the guide names the HardwareProfile kind but not its API group infrastructure.opendatahub.io/v1; the skill defers to oc explain" }
           - book: managing_resources
             topics:
               - admin_groups
