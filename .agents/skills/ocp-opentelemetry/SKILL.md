@@ -1,126 +1,85 @@
 ---
 name: ocp-opentelemetry
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat build of
-  OpenTelemetry on OpenShift from official Red Hat documentation:
-  OpenTelemetry Operator installation, OpenTelemetryCollector custom
-  resources, Collector deployment modes, receivers, processors, exporters,
-  connectors, extensions, Instrumentation custom resources,
-  auto-instrumentation annotations, metrics integration with the OpenShift
-  monitoring stack, telemetry forwarding, telemetry receiving, Collector
-  metrics, and troubleshooting. Do NOT use for generic OCP observability
-  overview, logging, or default monitoring posture; use ocp-observability. Do
-  NOT use for RHOAI-specific observability stack behavior or guardrails
-  telemetry semantics; use the relevant rhoai-* skill. Do NOT invent
-  OpenTelemetry Collector component fields or Technology Preview support
-  posture from upstream docs.
+  Use when reviewing or changing the Red Hat build of OpenTelemetry in this
+  repo: the opentelemetry-product Subscription in Stage 010
+  observability-operators/opentelemetry/, its channel bound in
+  check-operator-policy.py, the RHOAI-generated data-science-collector in
+  redhat-ods-monitoring, or the OTLP round trip in
+  validate-foundation-services.sh. Do NOT use for Tempo storage and trace
+  read/write RBAC (use ocp-distributed-tracing) or the DSCI monitoring block
+  (use rhoai-observability).
 ---
 
 # OCP OpenTelemetry
 
-Use this skill to ground Red Hat build of OpenTelemetry work on OpenShift in
-the official product documentation pinned in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+Red Hat build of OpenTelemetry 3.11 sections. Detailed record:
+`gitops/stages/010-openshift-ai-platform-foundation/observability-operators/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill captures the Red Hat build
-of OpenTelemetry 3.9 product docs and adapts them to the repo's OCP platform
-skill model.
+- A change touches `observability-operators/opentelemetry/` or the
+  `opentelemetry-product` entries in `scripts/platform/check-operator-policy.py`.
+- Someone proposes an own `OpenTelemetryCollector`, `Instrumentation` or
+  auto-instrumentation annotation.
+- The collector rejects spans or `validate-foundation-services.sh` fails.
 
-OpenTelemetry is adjacent to, but not the same as, OCP default monitoring,
-logging, or RHOAI observability. Use this skill for the Red Hat build of
-OpenTelemetry Operator, Collector, and instrumentation resources. Use
-`ocp-observability` for the broader OCP observability model.
+## Repo decisions
 
-## Demo OpenTelemetry Posture
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Operator only: namespace `openshift-opentelemetry-operator` (cluster-monitoring label), AllNamespaces OperatorGroup `opentelemetry-product`, Subscription `opentelemetry-product`, `stable`, Automatic | `observability-operators/opentelemetry/` | [Installing (CLI)][install] |
+| Rolling `stable` bounded fail-closed: minimum `0.158.0-2` (operator 0.158 = product 3.11) | `scripts/platform/check-operator-policy.py` | [Installing (CLI)][install] |
+| No collector or `Instrumentation` in Git: RHOAI generates `OpenTelemetryCollector` `data-science-collector` in `redhat-ods-monitoring` from the DSCI | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/dsc-init.yaml` | [Installing (CLI)][install] |
+| Collector SA gets Tempo write access from a repo ClusterRole (not in the generated RBAC) | `observability-operators/trace-roles/` | see `ocp-distributed-tracing` |
+| No external telemetry sinks or exporters | — | — |
 
-For this AWS-hosted RHOAI demo:
+Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unless they start with `gitops/` or `scripts/`.
 
-- Treat OpenTelemetry as a platform observability integration layer for
-  traces, metrics, and logs from demo workloads, guardrails, MaaS, and
-  application components.
-- Keep Operator installation, Collector instances, `Instrumentation`
-  resources, RBAC, routes, secrets, and service accounts GitOps-managed once
-  active implementation artifacts exist.
-- Prefer one clearly named demo Collector namespace unless a component needs a
-  dedicated Collector for isolation, tenancy, or routing.
-- Do not claim telemetry delivery, storage, querying, dashboards, or alerts
-  unless the receiving backend and validation path are implemented.
-- Do not commit backend credentials, bearer tokens, API keys, or sensitive
-  telemetry samples.
-- Treat Technology Preview Collector components and auto-instrumentation modes
-  as demo-only unless a future baseline documents a different support posture.
+## Procedure
 
-## Product Model
+1. Change the Subscription and policy minimum together in Git; never patch
+   the generated collector (the RHOAI operator reconciles it).
+2. Deploy and validate:
+   `./stages/010-openshift-ai-platform-foundation/deploy.sh`,
+   `./stages/010-openshift-ai-platform-foundation/validate.sh` (CSV
+   `Succeeded`, `check-operator-policy.py --verify`) and
+   `./stages/010-openshift-ai-platform-foundation/validate-foundation-services.sh`
+   (writer SubjectAccessReview, one OTLP span read back from Tempo).
+3. By hand, after the OpenShift safety guard in `AGENTS.md`:
 
-Use the official docs to frame:
+   ```bash
+   oc get subscription,csv -n openshift-opentelemetry-operator
+   oc get opentelemetrycollector -n redhat-ods-monitoring
+   ```
 
-- Red Hat build of OpenTelemetry is based on the upstream OpenTelemetry
-  project and provides support for deploying and managing the Collector and
-  simplifying workload instrumentation.
-- The Collector can receive, process, and forward telemetry data in multiple
-  formats and provides a unified path for metrics, traces, and logs.
-- The Collector is a telemetry pipeline made from receivers, processors,
-  exporters, connectors, and extensions.
-- The `OpenTelemetryCollector` custom resource uses `opentelemetry.io/v1beta1`
-  in the captured examples.
-- Supported Collector deployment modes include `deployment`, `daemonset`,
-  `statefulset`, and `sidecar`.
-- OpenTelemetry does not guarantee telemetry delivery and does not provide
-  built-in storage or query capabilities.
-- Collector metrics require user-defined project monitoring when scraped by
-  the OpenShift monitoring stack.
+## Pitfalls
 
-## Workflow
+- A new operator minor on `stable` makes `deploy.sh` fail closed until the
+  policy minimum and the map's `opentelemetry` docs_version are updated.
+- The repo OperatorGroup name differs from the guide's example name; behavior
+  is the same (README alignment table).
+- Stage 040 GenAI Studio tracing is a separate, opt-in Technology Preview
+  capability (`stages/040-governed-models-as-a-service/README.md`), not this
+  collector.
 
-1. Confirm the active OCP and Red Hat build of OpenTelemetry baselines in
-   `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - Operator installation or upgrade
-   - Collector namespace, mode, pipeline, service account, RBAC, or SCC
-   - Collector receivers, processors, exporters, connectors, or extensions
-   - `Instrumentation` custom resources and injection annotations
-   - metrics integration with Prometheus, `ServiceMonitor`, or `PodMonitor`
-   - telemetry forwarding to TempoStack, LokiStack, AWS, Google Cloud, or
-     third-party systems
-   - Collector diagnostics, logs, metrics, or must-gather
-   - RHOAI-specific telemetry semantics, which belong in the relevant
-     `rhoai-*` skill
-4. Verify API versions, CRDs, fields, namespaces, Operator channel, RBAC,
-   service accounts, secrets, endpoints, and Technology Preview posture before
-   authoring manifests.
-5. For live operations, use the repo environment guard and pair this skill with
-   `env-troubleshoot`, `env-manage-resources`, or `env-deploy-and-evaluate`.
-6. Validate the output with `references/validation-checklist.md`.
+## Official documentation (Red Hat build of OpenTelemetry 3.11)
 
-## Related Skills
+| Topic | Section |
+|---|---|
+| Install | [Installing the Red Hat build of OpenTelemetry][install] |
+| Architecture (OCP 4.22 entry) | [OpenTelemetry architecture][arch] |
 
-- Use `ocp-observability` for the broad OCP observability model, default
-  monitoring stack, logging overview, and COO boundary.
-- Use `ocp-distributed-tracing` for Tempo Operator, `TempoStack`,
-  `TempoMonolithic`, trace tenants, query RBAC, Jaeger UI, and distributed
-  tracing backend behavior.
-- Use `rhoai-observability` for RHOAI observability stack enablement and
-  dashboard behavior.
-- Use `rhoai-guardrails-safety` for guardrails-specific OpenTelemetry fields,
-  spans, detector metrics, and guardrails telemetry semantics.
-- Use `rhoai-maas-governance` for MaaS usage export and telemetry behavior.
-- Use `project-gitops-authoring` for repo-specific GitOps implementation.
-- Use `project-manifest-review` for structural and security review of
-  Kubernetes and OpenShift manifests.
+## Related skills
 
-## References
+`ocp-distributed-tracing`, `ocp-observability`, `rhoai-observability`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/opentelemetry-review-patterns.md`
+[install]: https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/3.11/html-single/installing_red_hat_build_of_opentelemetry/index#install-otel
+[arch]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/red_hat_build_of_opentelemetry/index#otel-architecture

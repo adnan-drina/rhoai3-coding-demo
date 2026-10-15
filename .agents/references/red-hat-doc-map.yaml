@@ -26,6 +26,7 @@ docs_url_template: "https://docs.redhat.com/en/documentation/{docs_slug}/{docs_v
 # reports findings in the others.
 converted_families:
   - mta
+  - ocp
   - ocp_devspaces
   - ocp_pipelines
   - odf
@@ -770,12 +771,16 @@ products:
       file: scripts/platform/check-operator-policy.py
       field: minimum['nfd']
       pattern: "'nfd':'(\\d+\\.\\d+)\\.\\d+'"
+    # Routes whose book belongs to a separately versioned cited product carry
+    # `cited_product`; their links are checked against that product's docs_version.
     categories:
       configure:
         routes:
           - book: etcd
             status: active
             skill: ocp-etcd
+            sections: [etcd-overview, etcd-practices, etcd-performance, backing-up-and-restoring-etcd-data, backing-up-etcd-data_etcd-backup, replace-unhealthy-etcd-member, etcd-disaster-recovery, etcd-encrypt]
+            reviewed: { version: "4.22", date: 2026-10-15, note: "repo deploys nothing for etcd; read-only and escalation skill" }
       update_and_migrate:
         routes:
           - book: updating_clusters
@@ -786,83 +791,178 @@ products:
           - book: authentication_and_authorization
             status: active
             skill: ocp-authentication-identity-providers
+            sections: [understanding-authentication, configuring-internal-oauth, configuring-oauth-clients, managing-oauth-access-tokens, understanding-identity-provider, configuring-identity-providers, configuring-oidc-identity-provider, external-auth, removing-kubeadmin, ldap-syncing]
+            reviewed: { version: "4.22", date: 2026-10-15 }
+          - book: server_administration_guide
+            cited_product: keycloak
+            status: active
+            skill: ocp-authentication-identity-providers
+            sections: [identity_broker]
+            reviewed: { version: "26.4", date: 2026-10-15 }
           - book: authentication_and_authorization
-            topics:
-              - rbac
-              - scc
+            topics: [rbac, scc]
             status: active
             skill: ocp-security-rbac-scc
+            sections: [using-rbac, understanding-and-creating-service-accounts, using-service-accounts, bound-service-account-tokens, managing-pod-security-policies, default-sccs_configuring-internal-oauth, role-based-access-to-ssc_configuring-internal-oauth, understanding-and-managing-pod-security-admission]
+            reviewed: { version: "4.22", date: 2026-10-15 }
       observability:
         routes:
           - book: observability_overview
             status: active
             skill: ocp-observability
+            sections: [observability-overview]
+            reviewed: { version: "4.22", date: 2026-10-15 }
           - book: monitoring
             status: active
             skill: ocp-observability
-          - book: logging
+            sections: [about-ocp-monitoring]
+            reviewed: { version: "4.22", date: 2026-10-15, note: "stub book; content lives in monitoring_stack_for_red_hat_openshift; also linked by ocp-web-console and ocp-grafana-operator" }
+          - book: configuring_core_platform_monitoring
+            cited_product: monitoring_stack
             status: active
             skill: ocp-observability
-          - book: cluster_observability_operator
+            sections: [storing-and-recording-data]
+            reviewed: { version: "4.22", date: 2026-10-15 }
+          - book: configuring_user_workload_monitoring
+            cited_product: monitoring_stack
             status: active
             skill: ocp-observability
+            sections: [preparing-to-configure-the-monitoring-stack-uwm, storing-and-recording-data-uwm]
+            reviewed: { version: "4.22", date: 2026-10-15 }
+          - book: accessing_metrics
+            cited_product: monitoring_stack
+            status: active
+            skill: ocp-observability
+            sections: [accessing-monitoring-apis-by-using-the-cli]
+            reviewed: { version: "4.22", date: 2026-10-15 }
+          - book: installing_red_hat_openshift_cluster_observability_operator
+            cited_product: cluster_observability_operator
+            status: active
+            skill: ocp-observability
+            sections: [installing-cluster-observability-operators]
+            reviewed: { version: "1-latest", date: 2026-10-15 }
+          - book: ui_plugins_for_red_hat_openshift_cluster_observability_operator
+            cited_product: cluster_observability_operator
+            status: active
+            skill: ocp-observability
+            sections: [monitoring-ui-plugin, perses-dashboard]
+            reviewed: { version: "1-latest", date: 2026-10-15, note: "also linked by ocp-web-console and ocp-grafana-operator" }
           - book: grafana_operator_gitops
             source_type: repo_specific
-            source_url: https://github.com/redhat-cop/gitops-catalog/tree/main/grafana-operator
-            topics:
-              - grafana_operator
-              - grafana_instance
-              - grafana_datasource
-              - grafana_dashboard
-              - openshift_oauth_proxy
-              - monitoring_datasource
             status: active
             skill: ocp-grafana-operator
+            reviewed: { version: "4.22", date: 2026-10-15, note: "Grafana is not deployed; the skill routes dashboard work to the console and Perses paths; the community catalog source is retired" }
           - book: red_hat_build_of_opentelemetry
-            source_type: external_redhat_product_docs
             status: active
             skill: ocp-opentelemetry
-          - book: red_hat_openshift_distributed_tracing_platform
-            source_type: external_redhat_product_docs
+            sections: [otel-architecture]
+            reviewed: { version: "4.22", date: 2026-10-15, note: "OCP stub book" }
+          - book: installing_red_hat_build_of_opentelemetry
+            cited_product: opentelemetry
+            status: active
+            skill: ocp-opentelemetry
+            sections: [install-otel]
+            reviewed: { version: "3.11", date: 2026-10-15 }
+          - book: distributed_tracing
             status: active
             skill: ocp-distributed-tracing
+            sections: [distr-tracing-tempo-architecture]
+            reviewed: { version: "4.22", date: 2026-10-15, note: "OCP stub book" }
+          - book: installing_distributed_tracing
+            cited_product: distributed_tracing
+            status: active
+            skill: ocp-distributed-tracing
+            sections: [distr-tracing-tempo-installing]
+            reviewed: { version: "3.11", date: 2026-10-15 }
+          - book: configuring_distributed_tracing
+            cited_product: distributed_tracing
+            status: active
+            skill: ocp-distributed-tracing
+            sections: [distr-tracing-tempo-configuring, distr-tracing-tempo-configuring-query-rbac_distr-tracing-tempo-configuring]
+            reviewed: { version: "3.11", date: 2026-10-15, note: "the trace writer ClusterRole is a repo deviation, not documented" }
       ai_workloads:
         routes:
           - book: ai_workloads
             status: active
             skill: ocp-ai-workloads
+            sections: [ai-workloads-about, red-hat-build-of-kueue, leader-worker-set-operator, jobset-operator]
+            reviewed: { version: "4.22", date: 2026-10-15 }
       cicd_gitops_and_builds:
         routes:
           - book: cicd_overview
             status: active
             skill: ocp-cicd-builds
+            sections: [ci-cd-overview]
+            reviewed: { version: "4.22", date: 2026-10-15 }
           - book: builds_using_shipwright
             status: active
             skill: ocp-cicd-builds
+            sections: [overview-openshift-builds]
+            reviewed: { version: "4.22", date: 2026-10-15, note: "Shipwright not used by the repo" }
           - book: builds_using_buildconfig
             status: active
             skill: ocp-cicd-builds
+            sections: [understanding-buildconfigs, builds-binary-source_creating-build-inputs, build-strategies, managing-build-output, basic-build-operations, securing-builds-by-strategy, troubleshooting-builds_build-configuration]
+            reviewed: { version: "4.22", date: 2026-10-15 }
           - book: gitops
             status: active
             skill: ocp-gitops-operator
+            sections: [about-redhat-openshift-gitops]
+            reviewed: { version: "4.22", date: 2026-10-15, note: "OCP stub book; product docs are red_hat_openshift_gitops 1.21" }
+          - book: installing_gitops
+            cited_product: openshift_gitops
+            status: active
+            skill: ocp-gitops-operator
+            sections: [installing-openshift-gitops, installing-gitops-operator-using-cli_installing-openshift-gitops]
+            reviewed: { version: "1.21", date: 2026-10-15 }
+          - book: argo_cd_instance
+            cited_product: openshift_gitops
+            status: active
+            skill: ocp-gitops-operator
+            sections: [setting-up-argocd-instance, argo-cd-properties_argo-cd-cr-component-properties, con-enabling-annotation-based-resource-tracking-in-argo-cd_argo-cd-cr-component-properties]
+            reviewed: { version: "1.21", date: 2026-10-15 }
+          - book: access_control_and_user_management
+            cited_product: openshift_gitops
+            status: active
+            skill: ocp-gitops-operator
+            sections: [configuring-argo-cd-rbac, configuring-sso-for-argo-cd-using-dex, gitops-dex-role-mappings_configuring-sso-for-argo-cd-using-dex, managing-local-users-in-argo-cd]
+            reviewed: { version: "1.21", date: 2026-10-15 }
+          - book: declarative_cluster_configuration
+            cited_product: openshift_gitops
+            status: active
+            skill: ocp-gitops-operator
+            sections: [default-permissions-of-an-argocd-instance_configuring-an-openshift-cluster-by-deploying-an-application-with-cluster-configurations, gitops-installing-olm-operators-using-gitops_configuring-an-openshift-cluster-by-deploying-an-application-with-cluster-configurations, creating-an-application-by-using-the-oc-tool_configuring-an-openshift-cluster-by-deploying-an-application-with-cluster-configurations, synchronizing-your-application-application-with-your-git-repository_configuring-an-openshift-cluster-by-deploying-an-application-with-cluster-configurations]
+            reviewed: { version: "1.21", date: 2026-10-15 }
       machine_management_configuration_and_nodes:
         routes:
           - book: machine_management
             status: active
             skill: ocp-machine-management
+            sections: [overview-of-machine-management, managing-compute-machines-with-the-machine-api, manually-scaling-machineset, modifying-machineset, machine-phases-lifecycle, deleting-machine, applying-autoscaling, deploying-machine-health-checks, managing-control-plane-machines]
+            reviewed: { version: "4.22", date: 2026-10-15 }
           - book: machine_configuration
             status: active
             skill: ocp-machine-configuration
+            sections: [machine-config-index, machine-configs-configure, machine-config-node-disruption_machine-configs-configure, machine-configs-custom, machine-config-pin-preload-images-about, machine-config-creating-custom-mcp, mco-coreos-layering, machine-config-daemon-metrics]
+            reviewed: { version: "4.22", date: 2026-10-15, note: "repo declares no MCO resources" }
           - book: nodes
             status: active
             skill: ocp-nodes
+            sections: [overview-of-nodes, working-with-pods, controlling-pod-placement-onto-nodes-scheduling, working-with-nodes, working-with-containers, working-with-clusters, nodes-dashboard-using]
+            reviewed: { version: "4.22", date: 2026-10-15 }
       specialized_hardware_and_driver_enablement:
         routes:
           - book: specialized_hardware_and_driver_enablement
-            topics:
-              - node_feature_discovery
+            topics: [node_feature_discovery]
             status: active
             skill: ocp-node-feature-discovery
+            sections: [about-hardware-enablement, psap-node-feature-discovery-operator, driver-toolkit, kernel-module-management-operator]
+            reviewed: { version: "4.22", date: 2026-10-15 }
+          - book: hardware_accelerators
+            status: active
+            skill: ocp-node-feature-discovery
+            sections: [about-hardware-accelerators, nvidia-gpu-architecture]
+            reviewed: { version: "4.22", date: 2026-10-15 }
           - book: specialized_hardware_and_driver_enablement
             topics:
               - kernel_module_management
@@ -877,20 +977,35 @@ products:
           - book: web_console
             status: active
             skill: ocp-web-console
+            sections: [web-console-overview, dynamic-plugins, configuring-web-console, customizing-web-console, using-dashboard-to-get-cluster-info, web-terminal, creating-quick-start-tutorials, disabling-web-console]
+            reviewed: { version: "4.22", date: 2026-10-15 }
       networking:
         routes:
-          - book: networking
-            topics:
-              - ingress
-              - routes
-              - gateway_api
+          - book: ingress_and_load_balancing
+            topics: [ingress, routes, gateway_api]
             status: active
             skill: ocp-ingress-gateway-routes
+            sections: [configuring-gateway-api, enable-gateway-api_understand-gateway-api, gateway-api-implementation-specifics_understand-gateway-api, controlling-incoming-traffic-gateway-listeners, assigning-network-addresses-gateways, securing-client-connections-edge-tls_securing-httproutes, verifying-gateway-infrastructure-status, routes, nw-ingress-creating-an-edge-route-with-a-custom-certificate_securing-routes, nw-configuring-route-timeouts_configuring-routes, configuring-ingress-cluster-traffic, nw-configuring-elb-timeouts-aws-classic_configuring-ingress-cluster-traffic-aws]
+            reviewed: { version: "4.22", date: 2026-10-15, note: "replaces the 4.20 networking book, which 4.22 split" }
+          - book: security_and_compliance
+            topics: [certificates]
+            status: active
+            skill: ocp-ingress-gateway-routes
+            sections: [replacing-default-ingress, add-service-serving]
+            reviewed: { version: "4.22", date: 2026-10-15 }
+          - book: network_security
+            topics: [admin_network_policy]
+            status: active
+            skill: ocp-ingress-gateway-routes
+            sections: [ovn-k-anp]
+            reviewed: { version: "4.22", date: 2026-10-15 }
       storage:
         routes:
           - book: storage
             status: active
             skill: ocp-storage
+            sections: [storage-overview, understanding-persistent-storage, understanding-ephemeral-storage, persistent-storage-csi, persistent-storage-csi-ebs, persistent-storage-csi-snapshots, dynamic-provisioning, dynamic-provisioning-defining-storage-class_dynamic-provisioning, persistent-storage-csi-sc-manage, persistent-storage-csi-sc-multiple-none_persistent-storage-csi-sc-manage, expanding-persistent-volumes]
+            reviewed: { version: "4.22", date: 2026-10-15 }
           - book: storage
             topics:
               - aws_ebs_csi
@@ -903,17 +1018,19 @@ products:
           - book: images
             status: active
             skill: ocp-image-registry-and-mirroring
+            sections: [managing-image-streams, using-imagestreams-with-kube-resources, image-configuration-classic, using-images]
+            reviewed: { version: "4.22", date: 2026-10-15 }
           - book: registry
             status: active
             skill: ocp-image-registry-and-mirroring
+            sections: [registry-overview, configuring-registry-operator, setting-up-and-configuring-the-registry, accessing-the-registry, securing-exposing-registry]
+            reviewed: { version: "4.22", date: 2026-10-15 }
           - book: disconnected_environments
-            topics:
-              - oc_mirror
-              - mirroring
-              - imagedigestmirrorset
-              - imagetagmirrorset
+            topics: [oc_mirror, mirroring, imagedigestmirrorset, imagetagmirrorset]
             status: active
             skill: ocp-image-registry-and-mirroring
+            sections: [about-disconnected-environments, installing-mirroring-disconnected]
+            reviewed: { version: "4.22", date: 2026-10-15, note: "repo does no mirroring" }
 
   ocp_devspaces:
     name: Red Hat OpenShift Dev Spaces
@@ -2209,6 +2326,14 @@ cited_products:
     docs_version: "3.11"
     pin:
       none: Rolling `stable` channel; Tempo operator 0.22 maps to product 3.11 (bundle CPE metadata).
+  openshift_gitops:
+    name: Red Hat OpenShift GitOps
+    docs_slug: red_hat_openshift_gitops
+    docs_version: "1.21"
+    pin:
+      # JSON patch on the bootstrap Subscription; the operator policy repeats the channel.
+      file: gitops/bootstrap/overlays/operator/patch-channel.yaml
+      pattern: 'gitops-(\d+\.\d+)'
   keycloak:
     name: Red Hat build of Keycloak
     docs_slug: red_hat_build_of_keycloak

@@ -1,118 +1,101 @@
 ---
 name: ocp-node-feature-discovery
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding OpenShift Container Platform
-  Node Feature Discovery guidance from official OCP documentation: specialized
-  hardware discovery, NFD Operator installation, NodeFeatureDiscovery custom
-  resources, operand.image handling, NFD worker configuration, feature labels,
-  NodeFeatureRule labels and taints, NFD Topology Updater, NodeResourceTopology,
-  PCI, USB, kernel, and custom feature sources, and accelerator node label
-  validation, and the Red Hat CoP NFD GitOps catalog pattern. Do NOT use for
-  provisioning GPU workers; use ocp-machine-management. Do NOT use for NVIDIA
-  GPU Operator, ClusterPolicy, or RHOAI hardware profiles; use
-  rhoai-nvidia-gpu-accelerators. Do NOT run live NFD changes without the env
-  safety guard and explicit approval.
+  Use when reviewing or changing the Stage 020 Node Feature Discovery component
+  in gitops/stages/020-gpu-infrastructure-private-ai/node-feature-discovery/
+  (nfd Subscription on stable, NodeFeatureDiscovery nfd-instance, PCI worker
+  config, pinned operand image), the nfd minimum in
+  scripts/platform/check-operator-policy.py, or diagnosing missing
+  feature.node.kubernetes.io labels that the NVIDIA GPU Operator and
+  validate.sh depend on. Do NOT use for the GPU Operator, ClusterPolicy and
+  accelerator profiles (use rhoai-nvidia-gpu-accelerators) or node taints and
+  placement (use ocp-nodes).
 ---
 
 # OCP Node Feature Discovery
 
-Use this skill to ground OpenShift Node Feature Discovery (NFD) installation,
-configuration, feature-label review, and topology updater guidance in the
-official OpenShift Container Platform Specialized hardware and driver
-enablement guide for the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift Container Platform 4.22 sections. Detailed record:
+`gitops/stages/020-gpu-infrastructure-private-ai/node-feature-discovery/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers NFD and NFD-created
-hardware metadata; it does not replace Machine API, MachineSet, NVIDIA GPU
-Operator, Kernel Module Management, Driver Toolkit, or RHOAI accelerator
-skills.
+- A change touches `node-feature-discovery/*.yaml` or the `020-node-feature-discovery`
+  Application.
+- The NFD release family moves (the `nfd` minimum in the operator policy is
+  also the doc-map pin for the whole `ocp` product).
+- GPU nodes lack `feature.node.kubernetes.io/pci-10de.present` or the RHCOS
+  `system-os_release.OSTREE_VERSION` label.
 
-## Demo NFD Posture
+## Repo decisions
 
-For this AWS-hosted RHOAI demo:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| NFD installed before the NVIDIA GPU Operator, as its own Application (deploy-order 1) | `gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai/node-feature-discovery.yaml` | [Node Feature Discovery Operator][nfd] |
+| Namespace `openshift-nfd`, OperatorGroup targeting it, Subscription `nfd` on `stable` from `redhat-operators`, Automatic approval, no `startingCSV` | `node-feature-discovery/namespace.yaml`, `operatorgroup.yaml`, `subscription.yaml` | [Node Feature Discovery Operator][nfd] |
+| Release family bounded by policy: offered version must stay on 4.22 and be at least `4.22.0` | `scripts/platform/check-operator-policy.py` (`minimum['nfd']`) | [About specialized hardware and driver enablement][about] |
+| One `NodeFeatureDiscovery` `nfd-instance`; Subscription and instance both sync-wave 1, carried by `SkipDryRunOnMissingResource` and retry until OLM installs the CRD | `node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
+| `spec.operand.image` pinned by digest (`ose-node-feature-discovery-rhel9`); recorded deviation: Automatic operator updates no longer move the operand | `node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
+| Worker config: `sleepInterval: 60s`, PCI `deviceClassWhitelist: ["0200", "03", "12"]`, `deviceLabelFields: [vendor]` (vendor-only labels such as `pci-10de.present`) | `node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |
+| Namespace has no `openshift.io/cluster-monitoring` label (recorded gap: NFD metrics not scraped) | `node-feature-discovery/namespace.yaml` | [Node Feature Discovery Operator][nfd] |
+| No `NodeFeatureRule`, topology updater, Kernel Module Management or Driver Toolkit use | (none declared) | [Kernel Module Management Operator][kmm], [Driver Toolkit][dtk] |
 
-- Use NFD as the OpenShift hardware-discovery layer that publishes feature
-  labels used by accelerator and workload-placement workflows.
-- Treat NFD as a prerequisite gate for NVIDIA GPU enablement, not as the source
-  of `nvidia.com/gpu` capacity. GPU capacity is exposed by the NVIDIA GPU
-  Operator and device plugin and is handled in `rhoai-nvidia-gpu-accelerators`.
-- Use the Red Hat CoP `nfd` catalog as a local curation pattern only. Reuse its
-  operator/channel layout, aggregate overlay shape, and NVIDIA-focused instance
-  overlay idea; do not commit remote Kustomize references.
-- For the NVIDIA-only demo path, prefer an `only-nvidia` NFD instance overlay
-  that limits PCI label publication to the accelerator-relevant class/vendor
-  signal after the active CRD schema and official docs are verified.
-- Verify feature labels from the live cluster or official CRD/schema before
-  writing placement rules, hardware-profile assumptions, or README claims.
-- Use `NodeFeatureRule` only for intentional vendor-specific or
-  application-specific labels and taints. Do not create broad scheduling taints
-  unless the scheduling impact is documented.
-- Enable NFD Topology Updater only when the implementation requires
-  topology-aware placement or NUMA/resource-zone information.
+Paths are relative to `gitops/stages/020-gpu-infrastructure-private-ai/` unless they start with `gitops/` or `scripts/`.
 
-## NFD Model
+## Procedure
 
-Use the official docs to frame:
+1. Edit the manifests in Git; `stages/020-gpu-infrastructure-private-ai/deploy.sh`
+   runs the operator policy check before it applies the Applications.
+2. When a new NFD minor ships with a new OpenShift minor, update
+   `minimum['nfd']` in `scripts/platform/check-operator-policy.py` together
+   with the `ocp` docs_version in `.agents/references/red-hat-doc-map.yaml`
+   (the checker reports `PIN-MISMATCH` until both agree), and re-pin the
+   operand digest from the installed CSV.
+3. Validate: `./stages/020-gpu-infrastructure-private-ai/validate.sh`
+   (Subscription Automatic, current CSV `Succeeded`, `nfd-instance`
+   `Available` with ready `nfd-worker` and `nfd-master`). By hand, after the
+   OpenShift safety guard in `AGENTS.md`:
 
-- **NFD Operator**: installs and manages Node Feature Discovery in OpenShift.
-- **NodeFeatureDiscovery**: the custom resource that configures NFD operands,
-  worker behavior, enabled feature sources, label filtering, and optional
-  topology updater workers.
-- **Feature labels**: node labels generated from hardware and OS discovery
-  sources such as PCI, USB, kernel, CPU, and custom hooks.
-- **NodeFeatureRule**: rule-based custom labeling and optional tainting based
-  on discovered node features.
-- **NFD Topology Updater**: per-node daemon that reports per-zone resource
-  availability and causes `NodeResourceTopology` custom resources to be
-  created.
+   ```bash
+   oc get subscription nfd -n openshift-nfd -o jsonpath='{.status.installedCSV}{"\n"}'
+   oc get nodefeaturediscovery nfd-instance -n openshift-nfd -o jsonpath='{.status.conditions[?(@.type=="Available")].status}{"\n"}'
+   oc get nodes -L feature.node.kubernetes.io/pci-10de.present
+   ```
 
-## Workflow
+## Pitfalls
 
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Read `references/gitops-catalog-nfd-pattern.md` when rebuilding NFD
-   operator, instance, aggregate overlays, or NVIDIA-only discovery posture.
-4. Identify whether the task concerns:
-   - NFD Operator installation or subscription review
-   - `NodeFeatureDiscovery` custom resource configuration
-   - feature sources, label filtering, or no-publish behavior
-   - PCI, USB, kernel, CPU, or custom feature labels
-   - `NodeFeatureRule` labels or taints
-   - NFD Topology Updater and `NodeResourceTopology`
-   - GPU accelerator discovery handoff to RHOAI/NVIDIA skills
-5. For GitOps manifests, verify CR fields against the active cluster schema or
-   official docs before committing.
-6. For live operations, use the repo environment guard and pair this skill with
-   `env-troubleshoot`, `env-manage-resources`, or `env-deploy-and-evaluate`.
-7. Validate the output with `references/validation-checklist.md`.
+- The pinned operand digest can differ from the image in the installed CSV;
+  after an operator update compare them before blaming NFD.
+- The default PCI whitelist differs from the repo's; keep class `03`
+  (display controllers) or GPU detection breaks.
+- The `nfd-worker` DaemonSet runs on every node including control plane; a
+  node without the worker has no labels.
+- With GPU pools at zero there are no GPU labels to check; resume a pool
+  first (`resume-gpu-demo`).
 
-## Related Skills
+## Official documentation (OpenShift Container Platform 4.22)
 
-- Use `ocp-machine-management` for GPU worker MachineSets and node creation.
-- Use `ocp-nodes` for node scheduling, labels, taints, tolerations, and
-  placement mechanics after hardware labels exist.
-- Use `ocp-machine-configuration` for Machine Config Operator, KubeletConfig,
-  ContainerRuntimeConfig, and node operating-system configuration.
-- Use `rhoai-nvidia-gpu-accelerators` for NVIDIA GPU Operator, ClusterPolicy,
-  RHOAI accelerator profiles, and GPU serving intent.
-- Create separate future `ocp-driver-toolkit` or `ocp-kernel-module-management`
-  skills for Driver Toolkit and Kernel Module Management guidance from the same
-  OCP documentation family.
-- Use `project-gitops-authoring` and `project-manifest-review` for manifests.
+| Topic | Section |
+|---|---|
+| Overview | [About specialized hardware and driver enablement][about] |
+| NFD | [Node Feature Discovery Operator][nfd] |
+| Not used here | [Driver Toolkit][dtk], [Kernel Module Management Operator][kmm] |
+| GPUs on OpenShift | [About hardware accelerators][accel], [NVIDIA GPU architecture][nvidia] |
 
-## References
+## Related skills
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/gitops-catalog-nfd-pattern.md`
-- `references/validation-checklist.md`
-- `examples/nfd-review-patterns.md`
+`rhoai-nvidia-gpu-accelerators`, `ocp-nodes`, `ocp-machine-management`,
+`resume-gpu-demo`.
+
+[about]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/specialized_hardware_and_driver_enablement/index#about-hardware-enablement
+[nfd]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/specialized_hardware_and_driver_enablement/index#psap-node-feature-discovery-operator
+[dtk]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/specialized_hardware_and_driver_enablement/index#driver-toolkit
+[kmm]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/specialized_hardware_and_driver_enablement/index#kernel-module-management-operator
+[accel]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/hardware_accelerators/index#about-hardware-accelerators
+[nvidia]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/hardware_accelerators/index#nvidia-gpu-architecture

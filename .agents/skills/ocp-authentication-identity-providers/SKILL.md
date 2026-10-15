@@ -1,85 +1,104 @@
 ---
 name: ocp-authentication-identity-providers
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding OpenShift Container Platform
-  authentication and identity-provider guidance from official OCP
-  documentation: OAuth cluster configuration, identity provider mapping,
-  htpasswd, LDAP, OIDC, GitHub, GitLab, Keystone, request-header providers,
-  direct external OIDC authentication, kubeadmin removal, users, identities,
-  groups, LDAP group sync, and cluster-admin access continuity. Do NOT use for
-  Red Hat OpenShift AI dashboard administrator or user group selection; use
-  rhoai-users-groups-access and rhoai-access-group-selection. Do NOT use for
-  RBAC, service-account permissions, or SecurityContextConstraints; use
-  ocp-security-rbac-scc.
+  Use when reviewing or changing OpenShift authentication as this repo uses it:
+  the provisioned OpenID identity provider rhbk (environment Keycloak, sso
+  realm) in OAuth cluster, persona identities ai-admin and ai-developer, group
+  membership set by setup-access.sh, persona kubeconfigs from
+  refresh-persona-logins.sh, the platform-keycloak OAuthClient in Stage 070
+  identity, the Stage 060 openshell realm that brokers OpenShift login, or
+  login failures. Do NOT use for RBAC bindings and SCCs (use
+  ocp-security-rbac-scc), OpenShift AI admin and user groups (use
+  rhoai-users-groups-access), Argo CD SSO (use ocp-gitops-operator), or
+  Developer Hub sign-in (use rhdh-authentication).
 ---
 
-# OCP Authentication Identity Providers
+# Authentication and identity providers
 
-Use this skill to keep OpenShift authentication and identity-provider work
-grounded in the official OCP authentication and authorization documentation for
-the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift Container Platform 4.22 and Red Hat build of Keycloak 26.4 sections.
+Detailed records: `gitops/stages/010-openshift-ai-platform-foundation/access/README.md`,
+`gitops/stages/070-advanced-app-platform/identity/README.md` and
+`docs/OPERATIONS.md` (shared base-platform SSO).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers identity-provider
-selection and configuration boundaries, not application-level authorization or
-RHOAI dashboard group policy.
+- A persona cannot log in, is missing from a group, or a persona check in
+  Stage 010 `validate.sh` warns or fails.
+- A change touches `OAuth/cluster`, an `OAuthClient`, `setup-access.sh` or a
+  Keycloak realm import.
+- Someone proposes adding htpasswd users, removing `kubeadmin`, or LDAP group sync.
 
-## Demo Authentication Posture
+## Repo decisions
 
-For this AWS-hosted RHOAI demo:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| The cluster identity provider is provisioned, not Git-owned: one OpenID provider `rhbk` backed by Keycloak `keycloak/keycloak`, realm `sso`; the repo never edits `OAuth/cluster` | `stages/010-openshift-ai-platform-foundation/validate.sh` (checks `rhbk` type `OpenID` and Keycloak Ready) | [Configuring an OpenID Connect identity provider][oidc] |
+| Personas are existing provider users named in the local `.env` (`RHOAI_ADMIN_USER`, `RHOAI_DEVELOPER_USER`); no passwords or users are created | `stages/010-openshift-ai-platform-foundation/setup-access.sh`, `env.example` | [Understanding identity provider configuration][idp-about] |
+| Group membership is runtime data: `setup-access.sh` adds personas to `rhods-admins` and `rhoai-developers`; Argo CD ignores `/users` of `rhoai-developers` | `stages/010-openshift-ai-platform-foundation/setup-access.sh`, `gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/access.yaml` | [Understanding authentication][understanding] |
+| Persona acceptance uses real browser logins written to separate kubeconfigs, never impersonation | `scripts/platform/refresh-persona-logins.sh` | [Managing OAuth access tokens][tokens] |
+| OAuthClient `platform-keycloak` in Git with placeholder secret and redirect; a Sync Job writes the real values (kept for rollback of the older OpenShift-brokered path) | `gitops/stages/070-advanced-app-platform/identity/rhbk-instance/oauthclient.yaml` | [Configuring OAuth clients][oauth-clients] |
+| Stage 070 application realm `platform` brokers directly to the base `sso` realm; OpenShift, OpenShift AI, Dev Spaces and Argo CD keep native OpenShift login | `gitops/stages/070-advanced-app-platform/identity/`, `docs/OPERATIONS.md` | [Keycloak identity brokering][kc-broker] |
+| Stage 060 realm `openshell` brokers OpenShift login and refuses identities not enrolled in advance | `gitops/stages/060-agent-runtime-and-agentops/openshell-identity/realm-openshell.yaml`, `stages/060-agent-runtime-and-agentops/setup-identity.py` | [Keycloak identity brokering][kc-broker] |
+| `kubeadmin` is not removed by the repo; installation and admin setup use a non-`kubeadmin` privileged account | `docs/OPERATIONS.md` | [Removing the kubeadmin user][kubeadmin] |
 
-- Treat the underlying OpenShift cluster identity provider as pre-existing
-  unless the implementation explicitly includes identity-provider GitOps.
-- Preserve a cluster-admin recovery path before proposing OAuth or direct OIDC
-  changes.
-- Keep RHOAI-specific administrator and user group selection in the RHOAI
-  skills; this skill only establishes the OpenShift user, group, and identity
-  substrate.
-- Do not use htpasswd as a production enterprise recommendation. It is useful
-  for development clusters and small demo environments only when documented as
-  such.
-- Treat direct external OIDC authentication as high-impact because it replaces
-  the built-in OpenShift OAuth flow and changes available OAuth/user APIs.
+## Procedure
 
-## Workflow
+1. Never commit provider secrets, client secrets or user passwords; OAuthClient
+   and realm secrets are written by Sync hooks.
+2. After the OpenShift safety guard in `AGENTS.md`, assign groups and refresh
+   persona sessions:
 
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - identity-provider review or selection
-   - `OAuth` cluster resource configuration
-   - identity-to-user mapping behavior
-   - direct external OIDC authentication
-   - `kubeadmin` removal or emergency access
-   - users, identities, groups, or LDAP group sync
-4. For GitOps authoring, verify every API version, field, secret reference,
-   namespace, and supported provider option against official docs and cluster
-   schema.
-5. For live operations, follow the OpenShift safety guard and pair this skill
-   with the relevant `env-*` skill.
-6. Validate with `references/validation-checklist.md`.
+   ```bash
+   ./stages/010-openshift-ai-platform-foundation/setup-access.sh
+   ./scripts/platform/refresh-persona-logins.sh
+   ./stages/010-openshift-ai-platform-foundation/validate.sh
+   oc get oauth cluster -o jsonpath='{.spec.identityProviders[*].name}{"\n"}'
+   oc get group rhods-admins rhoai-developers
+   ```
 
-## Related Skills
+## Pitfalls
 
-- Use `ocp-security-rbac-scc` for RBAC, service accounts, and SCCs.
-- Use `rhoai-users-groups-access` for OpenShift AI user and administrator
-  access behavior.
-- Use `rhoai-access-group-selection` for dashboard workflows that select
-  OpenShift groups for RHOAI access.
-- Use `env-troubleshoot` for live login or OAuth failures.
+- A User object appears only after the first provider login; group membership
+  can be set earlier but stays unverified until then.
+- OAuth access tokens expire; a missing or expired persona session is a
+  warning (exit 2), a wrong user or cluster a failure.
+- Username or email equality never authorizes linking an application account
+  to an OpenShift identity; the Stage 070 identity hook checks the subject.
+- Reverting a realm or hook change in Git does not undo Keycloak database
+  state; use the Keycloak Admin API for rollback.
+- Known symptoms: `docs/TROUBLESHOOTING.md#stage-070-shared-sso-refuses-a-user-or-sonarqube-login`,
+  `docs/TROUBLESHOOTING.md#mta-openshift-login-does-not-appear`.
 
-## References
+## Official documentation
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/identity-provider-review.md`
+| Topic | Section |
+|---|---|
+| Concepts (OCP 4.22) | [Understanding authentication][understanding], [Identity provider configuration][idp-about] |
+| Providers (OCP 4.22) | [Configuring identity providers][idps], [OpenID Connect][oidc], [Direct external authentication][external-auth] |
+| OAuth (OCP 4.22) | [Internal OAuth server][internal-oauth], [OAuth clients][oauth-clients], [Access tokens][tokens] |
+| Users and groups (OCP 4.22) | [Removing kubeadmin][kubeadmin], [Syncing LDAP groups][ldap] |
+| Keycloak 26.4 | [Identity brokering][kc-broker] |
+
+## Related skills
+
+`ocp-security-rbac-scc`, `rhoai-users-groups-access`, `rhoai-access-group-selection`,
+`ocp-gitops-operator`, `rhdh-authentication`, `ocp-devspaces-admin`.
+
+[understanding]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/authentication_and_authorization/index#understanding-authentication
+[internal-oauth]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/authentication_and_authorization/index#configuring-internal-oauth
+[oauth-clients]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/authentication_and_authorization/index#configuring-oauth-clients
+[tokens]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/authentication_and_authorization/index#managing-oauth-access-tokens
+[idp-about]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/authentication_and_authorization/index#understanding-identity-provider
+[idps]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/authentication_and_authorization/index#configuring-identity-providers
+[oidc]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/authentication_and_authorization/index#configuring-oidc-identity-provider
+[external-auth]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/authentication_and_authorization/index#external-auth
+[kubeadmin]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/authentication_and_authorization/index#removing-kubeadmin
+[ldap]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/authentication_and_authorization/index#ldap-syncing
+[kc-broker]: https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.4/html-single/server_administration_guide/index#identity_broker

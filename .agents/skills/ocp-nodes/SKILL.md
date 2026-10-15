@@ -1,109 +1,106 @@
 ---
 name: ocp-nodes
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding OpenShift Container Platform
-  node guidance from official OCP documentation: node and pod overview,
-  containers, pod autoscaling, pod scheduling and placement, scheduler
-  profiles, pod affinity and anti-affinity, node affinity, node selectors,
-  taints and tolerations, topology spread constraints, descheduler, secondary
-  scheduler, jobs, daemon sets, viewing nodes and pods on nodes, node labels,
-  cordon/drain/unschedulable behavior, node deletion, node modification,
-  control-plane schedulability, kernel arguments, swap, image pulls, maximum
-  pods per node, Node Tuning Operator, node rebooting, garbage collection, node
-  metrics, remote workers, single-node OpenShift worker behavior, and sigstore.
-  Do NOT use for MachineSet or cloud instance provisioning; use future
-  ocp-machine-management-aws. Do NOT use for RHOAI GPU hardware profiles or
-  accelerator component behavior; use rhoai-nvidia-gpu-accelerators. Do NOT run
-  live cluster operations without the env safety guard.
+  Use when reviewing node labels, taints, tolerations and pod placement in this
+  repo (GPU node label cluster-api/accelerator, taint nvidia-gpu-only:NoSchedule,
+  Kueue ResourceFlavor nodeLabels and tolerations, ClusterPolicy tolerations),
+  node sizing checks in scripts/platform/require-node-sizing.sh, or diagnosing
+  DiskPressure, KubeNodeEviction and ephemeral-storage evictions on CPU or GPU
+  workers. Do NOT use for MachineSet lifecycle and scaling (use
+  ocp-machine-management), host OS or kubelet configuration (use
+  ocp-machine-configuration), or Kueue quota design (use
+  rhoai-kueue-workload-management).
 ---
 
-# OCP Nodes
+# OCP nodes
 
-Use this skill to ground OpenShift node, pod placement, node operations,
-resource review, and node-health runbooks in the official OpenShift Container
-Platform Nodes guide for the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift Container Platform 4.22 sections. Detailed records:
+`gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/README.md` and
+`gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers OCP node and
-scheduling behavior; it does not replace Machine API, MachineSet, Node Feature
-Discovery, GPU Operator, or RHOAI accelerator skills.
+- A workload must land on, or stay off, the GPU workers.
+- A change touches a taint, toleration, `nodeSelector` or Kueue flavor
+  `nodeLabels`.
+- Nodes report `DiskPressure`, pods are `Evicted`, or a deploy stops in
+  `require-node-sizing.sh`.
 
-## Demo Node Posture
+## Repo decisions
 
-For this AWS-hosted RHOAI demo:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| GPU workers carry `cluster-api/accelerator` (`nvidia-rtxpro6000` or `nvidia-gpu`), `node-role.kubernetes.io/gpu` and `demo.rhoai.io/gpu-pool` labels from the MachineSet template | `gpu-machinesets/` | [Controlling pod placement onto nodes (scheduling)][placement] |
+| GPU workers are tainted `nvidia-gpu-only:NoSchedule` so non-GPU pods stay off them | `gpu-machinesets/` | [Controlling pod placement onto nodes (scheduling)][placement] |
+| Tolerations live with the GPU consumers: NVIDIA `ClusterPolicy`, each Kueue GPU `ResourceFlavor` (which also selects its pool by `nodeLabels`), and the Qwen `LLMInferenceService` | `nvidia-gpu-operator/cluster-policy.yaml`, `gpu-quotas/queues/gpu-rtxpro6000.yaml`, `gpu-quotas/queues/gpu-l40s.yaml`, `gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-llminferenceservice.yaml` | [Controlling pod placement onto nodes (scheduling)][placement] |
+| Workloads reach a GPU pool through a Kueue flavor, not a hand-written `nodeSelector` | `gpu-quotas/queues/` | [Controlling pod placement onto nodes (scheduling)][placement] |
+| Control-plane and CPU workers must be at least 16 vCPU / 60 GiB (GPU nodes exempt); every stage `deploy.sh` checks it first | `scripts/platform/require-node-sizing.sh` | [Working with nodes][nodes] |
+| Platform and user-workload Prometheus use PVCs instead of `emptyDir`, to keep TSDB growth off node ephemeral storage | `gitops/stages/010-openshift-ai-platform-foundation/observability-operators/cluster-monitoring/` | [Working with nodes][nodes] |
+| No custom scheduler profile, `PriorityClass`, node tuning or descheduler | (none declared) | [Controlling pod placement onto nodes (scheduling)][placement] |
 
-- Discover node labels, taints, capacity, allocatable resources, and conditions
-  from the target cluster before writing placement rules.
-- Keep GPU node lifecycle and AWS instance provisioning in future
-  `ocp-machine-management-aws` and existing `rhoai-nvidia-gpu-accelerators`
-  handoffs.
-- Use node selectors, node affinity, taints, tolerations, and topology spread
-  intentionally; avoid over-constraining pods so they cannot schedule.
-- Treat node drain, reboot, deletion, control-plane schedulability, kernel
-  arguments, swap, maximum-pods-per-node, and Node Tuning Operator changes as
-  live platform operations that require explicit approval.
-- Keep RHOAI component resource requests and limits in `rhoai-*` skills; use
-  this skill for the OpenShift scheduling and node mechanics around them.
+Paths are relative to `gitops/stages/020-gpu-infrastructure-private-ai/` unless they start with `gitops/` or `scripts/`.
 
-## OCP Node Model
+## Procedure
 
-Use the official docs to frame:
+1. Change labels and taints only in the MachineSet template (regenerate with
+   `generate-gpu-machineset.sh`, see `ocp-machine-management`); add a
+   matching toleration to every GPU consumer in the same change.
+2. Validate: `./stages/020-gpu-infrastructure-private-ai/validate.sh` checks
+   that each Ready GPU node allocates one `nvidia.com/gpu`, has its pool's GPU
+   product label and the `nvidia-gpu-only` taint, and that each GPU flavor
+   selects exactly its own pool.
+3. Read-only checks after the OpenShift safety guard in `AGENTS.md`:
 
-- **Nodes**: worker or control-plane machines that run pods and expose
-  capacity, allocatable resources, labels, taints, conditions, and metrics.
-- **Pods**: the unit scheduled onto nodes, with scheduling shaped by resource
-  requests, affinity, selectors, tolerations, topology spread, and scheduler
-  behavior.
-- **Containers**: application runtime units inside pods, with operations such
-  as logs, exec, file copy, and port forwarding.
-- **Scheduling controls**: cluster scheduler profiles, pod affinity, node
-  affinity, taints/tolerations, node selectors, topology spread constraints,
-  descheduler, and secondary scheduler.
-- **Node operations**: listing, inspecting, cordoning, draining, labeling,
-  deleting, rebooting, garbage collection, and resource monitoring.
+   ```bash
+   oc get nodes -L cluster-api/accelerator,demo.rhoai.io/gpu-pool
+   oc get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
+   oc describe node <node> | grep -A6 Conditions:
+   oc get --raw /api/v1/nodes/<node>/proxy/stats/summary   # per-pod ephemeral storage
+   ```
 
-## Workflow
+## Pitfalls
 
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - node inventory and health
-   - pod scheduling or placement
-   - labels, taints, tolerations, or selectors
-   - autoscaling, jobs, daemon sets, or pod lifecycle
-   - node maintenance, drain, reboot, deletion, or tuning
-   - node metrics and troubleshooting
-4. For GitOps manifests, verify all labels, taints, scheduler names, and
-   topology keys against the target cluster before committing placement rules.
-5. For live operations, use the repo environment guard and pair this skill with
-   `env-troubleshoot`, `env-manage-resources`, or `env-deploy-and-evaluate`.
-6. Validate the output with `references/validation-checklist.md`.
+- Node labels and taints set by `oc label`/`oc adm taint` are lost when the
+  Machine is replaced; only the MachineSet template is durable.
+- llm-d router-scheduler pods run on CPU workers and pin the full modelcar
+  image (~30-37 GiB); `LLMInferenceService.spec.router.scheduler` exposes no
+  placement fields, so they cannot be moved to GPU nodes
+  (`docs/TROUBLESHOOTING.md#worker-nodes-evict-pods-after-a-cluster-resume-kubenodeeviction`).
+- Image pruning (`crictl rmi --prune`) never removes an in-use modelcar
+  (`docs/TROUBLESHOOTING.md#pipeline-or-workspace-pods-evicted-for-ephemeral-storage`).
+- A 100 GB GPU root disk hits DiskPressure while pulling a large modelcar
+  (`docs/TROUBLESHOOTING.md#model-image-pull-stalls-on-a-gpu-node`).
+- `TaintManagerEviction` events right after a sandbox resume are benign.
+- Node drain, reboot, cordon and taint changes on a live cluster are
+  live-environment operations (`.agents/rules/ocp.md`).
 
-## Related Skills
+## Official documentation (OpenShift Container Platform 4.22)
 
-- Use `ocp-storage` for node-related volume attachment and storage behavior.
-- Use future `ocp-machine-management-aws` for AWS MachineSets, node creation,
-  and instance lifecycle.
-- Use `ocp-node-feature-discovery` for NFD-specific labels and
-  specialized hardware detection.
-- Use `rhoai-nvidia-gpu-accelerators` for NVIDIA GPU enablement and RHOAI
-  hardware profile intent.
-- Use `rhoai-component-resource-customization` for RHOAI component resource
-  requests and limits.
-- Use `project-gitops-authoring` and `project-manifest-review` for manifests.
+| Topic | Section |
+|---|---|
+| Overview | [Overview of nodes][overview] |
+| Placement | [Controlling pod placement onto nodes (scheduling)][placement] |
+| Nodes | [Working with nodes][nodes], [Node metrics dashboard][dashboard] |
+| Pods and containers | [Working with pods][pods], [Working with containers][containers] |
+| Cluster-wide | [Working with clusters][clusters] |
 
-## References
+## Related skills
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/node-placement-patterns.md`
+`ocp-machine-management`, `ocp-machine-configuration`,
+`ocp-node-feature-discovery`, `rhoai-kueue-workload-management`,
+`rhoai-hardware-profiles`, `rhoai-nvidia-gpu-accelerators`.
+
+[overview]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/nodes/index#overview-of-nodes
+[pods]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/nodes/index#working-with-pods
+[placement]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/nodes/index#controlling-pod-placement-onto-nodes-scheduling
+[nodes]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/nodes/index#working-with-nodes
+[containers]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/nodes/index#working-with-containers
+[clusters]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/nodes/index#working-with-clusters
+[dashboard]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/nodes/index#nodes-dashboard-using

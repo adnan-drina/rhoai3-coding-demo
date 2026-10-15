@@ -1,121 +1,90 @@
 ---
 name: ocp-distributed-tracing
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding Red Hat OpenShift distributed
-  tracing platform on OpenShift from official Red Hat documentation: Tempo
-  Operator installation, TempoStack, TempoMonolithic, object storage secrets,
-  tenants, read/write RBAC, gateway authentication and authorization, Jaeger
-  UI, distributed tracing UI plugin, TempoStack sizing, retention, receiver
-  TLS, query RBAC, monitoring and alerts, Tempo Operator upgrades, removal,
-  and must-gather troubleshooting. Do NOT use for OpenTelemetry Collector or
-  workload instrumentation configuration; use ocp-opentelemetry. Do NOT use
-  for generic OCP observability, logging, or default monitoring posture; use
-  ocp-observability. Do NOT invent Tempo CR fields, storage settings, tenant
-  configuration, or Technology Preview support posture.
+  Use when reviewing or changing the Tempo Operator (distributed tracing
+  platform) in this repo: the tempo-product Subscription in Stage 010
+  observability-operators/tempo/, the trace reader/writer ClusterRoles in
+  trace-roles/, the RHOAI-generated TempoMonolithic tenant
+  redhat-ods-monitoring, or trace read-back failures in
+  validate-foundation-services.sh. Do NOT use for the collector and
+  instrumentation (use ocp-opentelemetry) or the DSCI traces block (use
+  rhoai-observability).
 ---
 
-# OCP Distributed Tracing
+# OCP distributed tracing
 
-Use this skill to ground Red Hat OpenShift distributed tracing platform work in
-the official product documentation pinned in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+Red Hat OpenShift distributed tracing platform 3.11 sections. Detailed record:
+`gitops/stages/010-openshift-ai-platform-foundation/observability-operators/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill captures Red Hat OpenShift
-distributed tracing platform 3.9 and adapts it to the repo's OCP observability
-skill model.
+- A change touches `observability-operators/tempo/` or `trace-roles/`.
+- Someone proposes a `TempoStack`, object storage for traces, or wider trace
+  read access.
+- Spans are rejected, unauthorized, or cannot be read back.
 
-Distributed tracing is adjacent to, but not the same as, OpenTelemetry
-collection. Use this skill for Tempo Operator, `TempoStack`,
-`TempoMonolithic`, trace storage, tenants, trace query/read/write RBAC,
-Jaeger UI, distributed tracing UI plugin, and Tempo troubleshooting. Use
-`ocp-opentelemetry` for sending telemetry to Tempo.
+## Repo decisions
 
-## Demo Distributed Tracing Posture
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Operator only: namespace `openshift-tempo-operator` (cluster-monitoring label), AllNamespaces OperatorGroup, Subscription `tempo-product`, `stable`, Automatic | `observability-operators/tempo/` | [Installing the Tempo Operator][install] |
+| Rolling `stable` bounded fail-closed: minimum `0.22.0-2` (operator 0.22 = product 3.11) | `scripts/platform/check-operator-policy.py` | [Installing the Tempo Operator][install] |
+| No `TempoStack`/`TempoMonolithic` in Git: RHOAI generates a `TempoMonolithic` in `redhat-ods-monitoring` (multitenancy `openshift`, tenant `redhat-ods-monitoring`), PV storage, retention `2160h0m0s` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/dsc-init.yaml` | [Configuring Tempo][configure] |
+| Read access: ClusterRole `rhoai-monitoring-traces-reader` (`get` on `tempo.grafana.com` / tenant / `traces`) bound to group `rhods-admins` only | `trace-roles/tempo-traces-reader-*.yaml` | [Configuring query RBAC][query-rbac] |
+| Write access: ClusterRole `rhoai-monitoring-traces-writer` (`create`) bound to SA `redhat-ods-monitoring/data-science-collector-collector`; not in the 3.11 docs (upstream-backed deviation, recorded in the README) | `trace-roles/tempo-traces-writer-*.yaml` | [Configuring Tempo][configure] |
+| No object storage secret (PV backend) | — | [Configuring Tempo][configure] |
 
-For this AWS-hosted RHOAI demo:
+Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/observability-operators/` unless they start with `gitops/` or `scripts/`.
 
-- Prefer `TempoStack` for GitOps-managed distributed tracing back ends.
-- Treat `TempoMonolithic` as Technology Preview and use it only for small
-  demonstrations, tests, or proof-of-concept paths where non-production status
-  is explicit.
-- Do not deploy a `TempoStack` without object storage, object storage
-  credentials, tenants, and tenant read/write RBAC.
-- Do not claim tracing is available until a backend, Collector/export path,
-  tenant authorization, and validation path are implemented.
-- Keep object storage credentials, cloud role details, and trace data samples
-  out of Git.
-- Use Red Hat build of OpenTelemetry to forward traces to Tempo; do not
-  duplicate Collector configuration in this skill.
-- Treat Jaeger UI and distributed tracing UI plugin exposure as access-control
-  surfaces that require explicit tenant and route review.
+## Procedure
 
-## Product Model
+1. Change the Subscription, policy minimum and trace roles in Git; never
+   patch the generated `TempoMonolithic`.
+2. Deploy and validate:
+   `./stages/010-openshift-ai-platform-foundation/deploy.sh`,
+   `./stages/010-openshift-ai-platform-foundation/validate.sh` and
+   `./stages/010-openshift-ai-platform-foundation/validate-foundation-services.sh`
+   (SubjectAccessReview for `create` as the collector SA, then one span
+   written and read back by trace ID through the `tempo-datasource`).
+3. By hand, after the OpenShift safety guard in `AGENTS.md`:
 
-Use the official docs to frame:
+   ```bash
+   oc get subscription,csv -n openshift-tempo-operator
+   oc get tempomonolithic -n redhat-ods-monitoring
+   oc get clusterrolebinding rhoai-monitoring-traces-writer rhoai-monitoring-traces-reader -o wide
+   ```
 
-- Distributed tracing records the path of requests through microservices and
-  presents them as traces made of spans.
-- A span represents a logical unit of work with operation name, start time,
-  duration, and potentially tags and logs.
-- Distributed tracing supports monitoring distributed transactions,
-  optimizing performance and latency, and root cause analysis.
-- Red Hat build of OpenTelemetry forwards traces to `TempoStack`.
-- The distributed tracing UI plugin of the Cluster Observability Operator can
-  provide a UI for distributed tracing.
-- `TempoStack` is the scalable Tempo deployment path and is configured to
-  receive Jaeger Thrift over HTTP and OTLP.
-- `TempoMonolithic` runs Tempo components in one container, does not scale
-  horizontally, and is Technology Preview in the captured docs.
+## Pitfalls
 
-## Workflow
+- The writer binding names a service account created later by the
+  OpenTelemetry Operator; a binding to a missing subject is valid, so check
+  the SubjectAccessReview, not the binding.
+- The guide's query RBAC example binds `system:authenticated`; the repo
+  narrows reads to `rhods-admins` on purpose. Do not widen it casually.
+- A new operator minor on `stable` fails `deploy.sh` closed until the policy
+  minimum and the map's `distributed_tracing` docs_version are updated.
 
-1. Confirm the active OCP and distributed tracing baselines in
-   `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - Tempo Operator installation or upgrade
-   - object storage prerequisites and storage secrets
-   - tenant definition and read/write RBAC
-   - `TempoStack` installation, sizing, retention, gateway, Jaeger UI, or
-     monitoring
-   - `TempoMonolithic` Technology Preview demo/test usage
-   - receiver TLS, query RBAC, taints, tolerations, monitoring, or alerts
-   - distributed tracing UI plugin integration
-   - Tempo removal or troubleshooting
-   - OpenTelemetry Collector forwarding, which belongs in `ocp-opentelemetry`
-4. Verify API versions, CRDs, fields, namespaces, Operator channel, object
-   storage settings, secrets, RBAC, tenants, routes, TLS, and Technology
-   Preview posture before authoring manifests.
-5. For live operations, use the repo environment guard and pair this skill with
-   `env-troubleshoot`, `env-manage-resources`, or `env-deploy-and-evaluate`.
-6. Validate the output with `references/validation-checklist.md`.
+## Official documentation (distributed tracing platform 3.11)
 
-## Related Skills
+| Topic | Section |
+|---|---|
+| Install | [Installing the Tempo Operator][install] |
+| Configure | [Configuring Tempo][configure], [Configuring query RBAC][query-rbac] |
+| Architecture (OCP 4.22 entry) | [Tempo architecture][arch] |
 
-- Use `ocp-opentelemetry` for OpenTelemetry Collector, `Instrumentation`,
-  workload annotations, and telemetry forwarding into Tempo.
-- Use `ocp-observability` for the broad OCP observability model, default
-  monitoring stack, logging overview, and COO boundary.
-- Use `rhoai-observability` for RHOAI observability stack enablement and
-  dashboard behavior.
-- Use `rhoai-guardrails-safety` for guardrails-specific spans, detector
-  metrics, and guardrails telemetry semantics.
-- Use `project-gitops-authoring` for repo-specific GitOps implementation.
-- Use `project-manifest-review` for structural and security review of
-  Kubernetes and OpenShift manifests.
+## Related skills
 
-## References
+`ocp-opentelemetry`, `ocp-observability`, `rhoai-observability`,
+`ocp-security-rbac-scc`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/distributed-tracing-review-patterns.md`
+[install]: https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.11/html-single/installing_distributed_tracing/index#distr-tracing-tempo-installing
+[configure]: https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.11/html-single/configuring_distributed_tracing/index#distr-tracing-tempo-configuring
+[query-rbac]: https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.11/html-single/configuring_distributed_tracing/index#distr-tracing-tempo-configuring-query-rbac_distr-tracing-tempo-configuring
+[arch]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/distributed_tracing/index#distr-tracing-tempo-architecture

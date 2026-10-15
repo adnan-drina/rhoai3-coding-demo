@@ -1,127 +1,94 @@
 ---
 name: ocp-web-console
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding OpenShift Container Platform
-  web console guidance from official OCP documentation: console access,
-  dashboard information, user preferences, Console configuration, logout
-  redirects, quick start visibility, custom branding, console links, console
-  and download routes, login-page customization, external log links,
-  notification banners, CLI downloads, YAML examples, perspectives, developer
-  catalog customization, dynamic plugins, ConsolePlugin resources, web
-  terminal, DevWorkspace behavior, disabling the web console, and quick start
-  tutorial content. Do NOT use as a replacement for RHOAI dashboard behavior;
-  use rhoai-dashboard-* skills. Do NOT run live console changes without the env
-  safety guard and explicit approval.
+  Use when reviewing or changing OpenShift web console configuration in this
+  repo: the full console plugin list on consoles.operator.openshift.io/cluster
+  (Stage 010 console-observability/console-plugins.yaml, Application
+  010-console-observability), the COO monitoring UIPlugin, ConsoleLink
+  application-menu entries for RHDH and MTA, console dashboard ConfigMaps, or
+  a plugin that shows Disabled. Do NOT use for dashboard content and metrics
+  (use ocp-observability) or Dev Spaces and its web IDE (use
+  ocp-devspaces-admin).
 ---
 
-# OCP Web Console
+# OCP web console
 
-Use this skill to ground OpenShift web console access, administration,
-customization, dynamic plugins, web terminal, and quick start guidance in the
-official OpenShift Container Platform Web console guide for the active baseline
-in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift Container Platform 4.22 sections. Detailed record:
+`gitops/stages/010-openshift-ai-platform-foundation/console-observability/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers the OpenShift
-Container Platform web console and Console Operator resources; it does not
-replace RHOAI dashboard skills, application UI implementation skills, or
-general OpenShift authentication guidance.
+- A stage installs an operator that ships a `ConsolePlugin`.
+- A change touches `console-observability/`, a `consolelink.yaml`, or a
+  ConfigMap labelled `console.openshift.io/dashboard`.
+- A console plugin, menu link or dashboard is missing.
 
-## Demo Posture
+## Repo decisions
 
-For this AWS-hosted RHOAI demo:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Complete `spec.plugins` list declared in Git (`monitoring-plugin`, `networking-console-plugin`, `monitoring-console-plugin`, `gitops-plugin`, `odf-console`, `kuadrant-console-plugin`, `lightspeed-console-plugin`, `pipelines-console-plugin`), owned by server-side apply on this one object, restored by self-heal; deviation from the documented append patch | `gitops/stages/010-openshift-ai-platform-foundation/console-observability/console-plugins.yaml` | [Dynamic plugins][plugins] |
+| `Console/cluster` carries `ServerSideApply=true,Prune=false,Delete=false`: Git owns only `spec.plugins`, never deletes the singleton | same file | — |
+| Own deploy and validate scripts for the plugin list and UIPlugin | `stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh`, `stages/010-openshift-ai-platform-foundation/validate-console-observability.sh` | — |
+| Perses dashboards in Observe through the COO `UIPlugin` `monitoring` | `gitops/stages/010-openshift-ai-platform-foundation/console-observability/monitoring-uiplugin.yaml` | [COO UI plugins][coo-ui] |
+| Application-menu links `rhdh` and `mta`: placeholder `href` in Git, patched to the live Route by Sync hooks; `ignoreDifferences` on `href`/`imageURL` | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/consolelink.yaml`, `gitops/stages/070-advanced-app-platform/mta/mta-instance/consolelink.yaml` | [Customizing the web console][customize] |
+| GPU dashboard as a console dashboard ConfigMap in `openshift-config-managed` | `gitops/stages/020-gpu-infrastructure-private-ai/nvidia-gpu-operator/console-dashboard/` | [About OpenShift monitoring][monitoring] |
+| Not configured: console route/branding customization, quick starts, web terminal, disabling the console | — | [Configuring the web console][configure] |
 
-- Use the OpenShift web console primarily for cluster visibility, guided
-  operator workflows, console URL discovery, dashboard checks, and human
-  validation steps.
-- Keep persistent console configuration in GitOps only after verifying the
-  `Console`, `ConsoleLink`, `ConsolePlugin`, `ConsoleQuickStart`, route, and
-  related API shapes against the active cluster or official docs.
-- Treat console customization, dynamic plugin enablement, web terminal
-  installation, and disabling the console as live cluster changes that require
-  the repo environment guard and explicit user approval.
-- Do not confuse OpenShift console customization with RHOAI dashboard
-  customization. Use `rhoai-dashboard-customization`,
-  `rhoai-dashboard-applications`, and related RHOAI skills for OpenShift AI
-  dashboard behavior.
-- Do not claim a console quick start, plugin, or web terminal workflow exists
-  until it is implemented and validated in the active environment.
+## Procedure
 
-## Web Console Model
+1. Add a plugin by adding its name to `console-plugins.yaml` and publishing;
+   a listed plugin whose `ConsolePlugin` is not installed yet is skipped.
+2. Deploy and validate:
+   `./stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh`
+   (also run by Stage 010 `deploy.sh`), then
+   `./stages/010-openshift-ai-platform-foundation/validate-console-observability.sh`.
+3. By hand, after the OpenShift safety guard in `AGENTS.md`:
 
-Use the official docs to frame:
+   ```bash
+   oc get console.operator.openshift.io cluster -o jsonpath='{.spec.plugins}{"\n"}'
+   oc get consoleplugins; oc get consolelinks
+   ```
 
-- **Access**: the web console is browser-accessible and can be discovered from
-  installer output or with `oc whoami --show-console` on existing clusters.
-- **Console workload**: the console runs as a pod and serves static assets
-  needed for the web UI.
-- **Dashboard**: Home > Overview gives high-level cluster details, inventory,
-  status, utilization, and activity.
-- **User preferences**: theme, default project, topology view, form or YAML
-  editing preference, language, notifications, and default resource type are
-  user-level settings.
-- **Console configuration**: `console.config.openshift.io/cluster` controls
-  configuration such as logout redirect, while
-  `consoles.operator.openshift.io/cluster` controls operator-managed console
-  behavior and customization.
-- **Customization**: administrators can configure branding, links, routes,
-  login page, log links, banners, CLI downloads, YAML examples, perspectives,
-  and developer catalog visibility.
-- **Dynamic plugins**: `ConsolePlugin` resources register runtime UI
-  extensions, and cluster administrators enable plugins in the Console Operator
-  configuration.
-- **Web terminal**: the Web Terminal Operator provides an embedded terminal and
-  installs DevWorkspace Operator as a dependency.
-- **Quick starts**: quick starts are guided tutorials with tasks, steps, and
-  check-your-work content available from the Help menu.
+## Pitfalls
 
-## Workflow
+- `spec.plugins` is replaced whole by any writer; never `oc patch` it, self-heal
+  reverts the patch and a rewrite elsewhere drops entries
+  (`docs/TROUBLESHOOTING.md#console-plugins-disappear-from-the-web-console`).
+- `validate-console-observability.sh` fails when an installed `ConsolePlugin`
+  is missing from Git, so a new operator plugin needs a Git change.
+- ConsoleLink `href` drift is expected (hook-patched); do not "fix" it in Git.
+- `ServerSideApply=true` is allowed on the `Console` resource only;
+  `.agents/rules/gitops.md` forbids it at Application level.
 
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - console URL discovery or access validation
-   - dashboard or user preference documentation
-   - `Console` config or operator customization
-   - custom branding, links, routes, login page, banners, downloads, YAML
-     examples, perspectives, or developer catalog settings
-   - dynamic plugin registration, proxy, CSP, or troubleshooting
-   - web terminal installation, configuration, use, troubleshooting, or removal
-   - disabling the web console
-   - quick start tutorial authoring or visibility
-4. For GitOps manifests, verify the API group and field shape before writing
-   resources.
-5. For live console operations, use the repo environment guard and pair this
-   skill with `env-deploy-and-evaluate`, `env-troubleshoot`, or
-   `env-manage-resources`.
-6. Validate the output with `references/validation-checklist.md`.
+## Official documentation (OCP 4.22)
 
-## Related Skills
+| Topic | Section |
+|---|---|
+| Overview | [Web console overview][overview] |
+| Plugins | [Dynamic plugins][plugins] |
+| Configure and customize | [Configuring the web console][configure], [Customizing the web console][customize] |
+| Dashboards | [Using the dashboard to get cluster information][dashboards], [About OpenShift monitoring][monitoring], [COO UI plugins (COO 1-latest)][coo-ui] |
+| Not used here | [Web terminal][terminal], [Quick start tutorials][quickstart], [Disabling the web console][disable] |
 
-- Use `ocp-authentication-identity-providers` when console access depends on
-  OAuth, identity provider, user, or group configuration.
-- Use `ocp-ingress-gateway-routes` for general route, ingress, and TLS
-  behavior outside console-specific component routes.
-- Use `ocp-observability` for monitoring, metrics, logging, and cluster
-  observability beyond console dashboard interpretation.
-- Use `rhoai-dashboard-customization`, `rhoai-dashboard-applications`, and
-  `rhoai-users-groups-access` for OpenShift AI dashboard behavior.
-- Use `project-documentation-authoring` for demo README and operator-facing
-  documentation content.
-- Use `project-gitops-authoring` and `project-manifest-review` for manifests.
+## Related skills
 
-## References
+`ocp-observability`, `ocp-gitops-operator`, `rhdh-configure`, `mta-install`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/console-review-patterns.md`
+[overview]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/web_console/index#web-console-overview
+[plugins]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/web_console/index#dynamic-plugins
+[configure]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/web_console/index#configuring-web-console
+[customize]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/web_console/index#customizing-web-console
+[dashboards]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/web_console/index#using-dashboard-to-get-cluster-info
+[terminal]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/web_console/index#web-terminal
+[quickstart]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/web_console/index#creating-quick-start-tutorials
+[disable]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/web_console/index#disabling-web-console
+[monitoring]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/monitoring/index#about-ocp-monitoring
+[coo-ui]: https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/html-single/ui_plugins_for_red_hat_openshift_cluster_observability_operator/index#monitoring-ui-plugin

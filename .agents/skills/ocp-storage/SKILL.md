@@ -1,105 +1,96 @@
 ---
 name: ocp-storage
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding OpenShift Container Platform
-  storage guidance from official OCP documentation: ephemeral storage,
-  persistent storage, PV/PVC lifecycle, access modes, reclaim policies,
-  StorageClass behavior, dynamic provisioning, provider-backed storage,
-  AWS EBS storage classes and PVCs, CSI architecture and drivers, CSI snapshots,
-  volume group snapshots, cloning, volume populators, generic ephemeral
-  volumes, volume expansion, local storage, LVM Storage, and detach behavior
-  after non-graceful node shutdown. Do NOT use for RHOAI dashboard storage
-  settings; use rhoai-storage-classes or rhoai-cluster-pvc-size. Do NOT use for
-  ODF Ceph, NooBaa, or StorageCluster behavior; use odf-* skills once created.
-  Do NOT run live cluster operations without the env safety guard.
+  Use when reviewing or changing block storage in this repo: PVCs and
+  volumeClaimTemplates that name storageClassName gp3-csi (cluster monitoring,
+  MaaS database, MLflow and EvalHub PostgreSQL, SonarQube, the Stage 070 Git
+  server), the requirement that gp3-csi is the default StorageClass, PVC
+  expansion, or nodes evicting pods for ephemeral storage. Do NOT use for ODF,
+  NooBaa or ObjectBucketClaims (use odf-storagecluster, odf-storage-classes,
+  odf-object-bucket-claims) or OpenShift AI workbench storage settings (use
+  rhoai-storage-classes, rhoai-cluster-pvc-size).
 ---
 
-# OCP Storage
+# OpenShift storage
 
-Use this skill to ground OpenShift storage documentation, GitOps review notes,
-runbooks, and demo implementation planning in the official OpenShift Container
-Platform Storage guide for the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift Container Platform 4.22 sections. The repo creates no StorageClass:
+block storage is the AWS EBS CSI class `gp3-csi` the installer provides, and
+object storage is ODF Multicloud Object Gateway (see the `odf-*` skills).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers OCP storage
-foundations and handoffs; it does not replace provider-specific storage docs,
-ODF docs, or RHOAI component-specific storage guidance.
+- A manifest adds or changes a PVC, a `volumeClaimTemplate`, or a
+  `storageClassName`.
+- A component expects the default StorageClass.
+- A pod is evicted for ephemeral storage or a PVC stays `Pending`.
 
-## Demo Storage Posture
+## Repo decisions
 
-For this AWS-hosted RHOAI demo, treat OCP storage as the platform substrate:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| No StorageClass is defined in Git; RWO block volumes name `gp3-csi` explicitly (AWS EBS CSI driver, installer-created) | `gitops/stages/040-governed-models-as-a-service/maas-database/statefulset.yaml`, `gitops/stages/050-model-evaluation/mlflow/postgresql-pvc.yaml`, `gitops/stages/050-model-evaluation/evalhub/postgresql-pvc.yaml`, `gitops/stages/070-advanced-app-platform/sonarqube/` | [AWS EBS CSI Driver Operator][ebs], [Defining a storage class][define-sc] |
+| `gp3-csi` must be the default StorageClass: Stage 070 `deploy.sh` fails otherwise, because MTA 8.3 creates default-class RWO claims | `stages/070-advanced-app-platform/deploy.sh` | [Managing the default storage class][default-sc] |
+| Platform and user-workload monitoring persist on `gp3-csi` (40Gi and 20Gi); `stages/030-private-model-serving/validate.sh` checks the reviewed class and size | `gitops/stages/010-openshift-ai-platform-foundation/observability-operators/cluster-monitoring/` | [Understanding persistent storage][pv] |
+| Object storage is ODF MCG (`openshift-storage.noobaa.io` ObjectBucketClaims), owned by the `odf-*` skills | `gitops/stages/010-openshift-ai-platform-foundation/odf/` | see `odf-storagecluster` |
+| GPU worker root disks are 200 GB encrypted gp3, set in the generated MachineSets (node image cache for modelcars) | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/` | [Understanding ephemeral storage][ephemeral] |
 
-- Use cluster-discovered `StorageClass` objects; do not hard-code a default
-  class without verifying it on the target cluster.
-- Prefer CSI-backed dynamic provisioning for normal PVC-backed workloads.
-- Treat AWS EBS as RWO block storage; do not imply RWX file semantics from EBS.
-- Use ODF skills for Ceph, NooBaa, object buckets, RWX storage services, and
-  data-service behavior once the ODF baseline is pinned.
-- Keep RHOAI dashboard storage visibility and default PVC size decisions in
-  RHOAI skills.
-- Do not store application data, model data, or pipeline artifacts in Git.
+## Procedure
 
-## OCP Storage Model
+1. New stateful component: add a PVC with `storageClassName: gp3-csi` and an
+   explicit size next to the component; do not rely on the default unless the
+   operator gives no choice (then record it, as Stage 070 does for MTA).
+2. Validate the owning stage with its `validate.sh`; the default-class check
+   runs at the start of `./stages/070-advanced-app-platform/deploy.sh`.
+3. Read-only checks, after the OpenShift safety guard in `AGENTS.md`:
 
-Use the official docs to frame storage as:
+   ```bash
+   oc get storageclass
+   oc get storageclass gp3-csi -o jsonpath='{.metadata.annotations.storageclass\.kubernetes\.io/is-default-class}{"\n"}'
+   oc get pvc -A | grep -v Bound
+   oc get clustercsidriver ebs.csi.aws.com
+   ```
 
-- **Ephemeral storage**: temporary pod/container storage that does not outlive
-  the pod lifecycle and affects scheduling and eviction through requests and
-  limits.
-- **Persistent storage**: PV/PVC-backed storage that can survive pod lifecycle
-  events and abstracts provider details from application teams.
-- **StorageClass**: an administrator-defined class of storage and provisioning
-  parameters that users request through PVCs.
-- **CSI**: the standard interface for vendor and cloud storage drivers,
-  snapshots, cloning, resizing, and selected ephemeral volume workflows.
-- **Dynamic provisioning**: on-demand volume creation using a StorageClass
-  instead of requiring administrators to pre-create every PV.
+## Pitfalls
 
-## Workflow
+- Absent or multiple default StorageClasses leave default-class claims
+  `Pending` or bound to the wrong class ([Absent or multiple defaults][multi-default]).
+- EBS volumes are zonal and RWO: a pod moved to another zone cannot attach its
+  volume; keep stateful replicas at one or use zone-aware placement.
+- PVC expansion needs `allowVolumeExpansion` on the class and is one-way
+  ([Expanding persistent volumes][expand]).
+- Node disk pressure from cached modelcar and build images evicts pods for
+  ephemeral storage:
+  `docs/TROUBLESHOOTING.md#pipeline-or-workspace-pods-evicted-for-ephemeral-storage`.
 
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify the storage layer involved:
-   - pod ephemeral storage
-   - PVC/PV lifecycle
-   - StorageClass and dynamic provisioning
-   - CSI driver/operator behavior
-   - snapshots, clones, expansion, or volume attachment recovery
-   - local storage, LVM Storage, or provider-specific storage
-4. For AWS demo implementation, verify live StorageClass names, provisioners,
-   default annotation, reclaim policy, expansion support, and binding mode
-   before writing manifests.
-5. For RHOAI-facing docs, describe why the storage capability matters and map
-   it to OCP/RHOAI components without duplicating provider-specific procedure
-   details.
-6. For any live `oc` command, use the repo environment guard and the relevant
-   `env-*` skill.
-7. Validate the result with `references/validation-checklist.md`.
+## Official documentation (OpenShift Container Platform 4.22)
 
-## Related Skills
+| Topic | Section |
+|---|---|
+| Overview | [Storage overview][overview], [Understanding persistent storage][pv], [Understanding ephemeral storage][ephemeral] |
+| CSI | [Configuring CSI volumes][csi], [AWS EBS CSI Driver Operator][ebs], [CSI volume snapshots][snapshots] |
+| Storage classes | [Dynamic provisioning][dynamic], [Defining a storage class][define-sc], [Managing the default storage class][default-sc], [Absent or multiple defaults][multi-default] |
+| Expansion | [Expanding persistent volumes][expand] |
 
-- Use `rhoai-storage-classes` for OpenShift AI dashboard storage-class
-  visibility and defaults.
-- Use `rhoai-cluster-pvc-size` for OpenShift AI cluster default PVC size.
-- Use `rhoai-s3-object-storage-data` for RHOAI workbench access to
-  S3-compatible object storage.
-- Use `odf-*` skills for OpenShift Data Foundation implementation.
-- Use `project-gitops-authoring` and `project-manifest-review` for GitOps
-  manifests.
-- Use `env-troubleshoot` for live PVC, pod, or node storage diagnostics.
+## Related skills
 
-## References
+`odf-storagecluster`, `odf-storage-classes`, `odf-object-bucket-claims`,
+`rhoai-storage-classes`, `rhoai-cluster-pvc-size`, `ocp-machine-management`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/storage-review-patterns.md`
+[overview]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/storage/index#storage-overview
+[pv]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/storage/index#understanding-persistent-storage
+[ephemeral]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/storage/index#understanding-ephemeral-storage
+[csi]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/storage/index#persistent-storage-csi
+[ebs]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/storage/index#persistent-storage-csi-ebs
+[snapshots]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/storage/index#persistent-storage-csi-snapshots
+[dynamic]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/storage/index#dynamic-provisioning
+[define-sc]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/storage/index#dynamic-provisioning-defining-storage-class_dynamic-provisioning
+[default-sc]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/storage/index#persistent-storage-csi-sc-manage
+[multi-default]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/storage/index#persistent-storage-csi-sc-multiple-none_persistent-storage-csi-sc-manage
+[expand]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/storage/index#expanding-persistent-volumes

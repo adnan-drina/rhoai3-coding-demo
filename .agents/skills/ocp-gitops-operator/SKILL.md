@@ -1,104 +1,110 @@
 ---
 name: ocp-gitops-operator
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding OpenShift Container Platform
-  GitOps platform guidance from official OCP documentation: Red Hat OpenShift
-  GitOps, OpenShift GitOps Operator, Argo CD as the declarative GitOps engine,
-  multicluster GitOps workflows, OpenShift integration, enterprise support
-  boundaries, release-cadence boundaries, and the handoff to separate Red Hat
-  OpenShift GitOps documentation. Do NOT use for repo-specific Argo CD
-  Application layout, Kustomize step authoring, demo sync-wave conventions, or
-  manifest edits; use project-gitops-authoring. Do NOT invent ArgoCD,
-  Application, AppProject, RBAC, or Operator CR fields from the OCP overview
-  page alone.
+  Use when reviewing or changing how this repo installs and configures Red Hat
+  OpenShift GitOps: the Subscription and gitops-1.21 channel patch in
+  gitops/bootstrap/overlays/operator, the openshift-gitops ArgoCD CR, AppProject
+  rhoai-demo, controller cluster-admin binding and rhoai-gitops-admins group in
+  gitops/bootstrap/overlays/demo, Dex OpenShift SSO and RBAC policy, custom
+  health checks, or component Applications under gitops/argocd/app-of-apps.
+  Do NOT use for manifest authoring rules (read .agents/rules/gitops.md), for
+  moving Applications (use gitops-move-applications), or for reviewing a
+  GitOps diff (use review-gitops-change).
 ---
 
-# OCP GitOps Operator
+# OpenShift GitOps operator
 
-Use this skill to ground OpenShift GitOps platform guidance in the official OCP
-GitOps overview for the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+Red Hat OpenShift GitOps 1.21 sections. Authoring rules for Applications live
+in `.agents/rules/gitops.md`; the bootstrap is run by
+`stages/010-openshift-ai-platform-foundation/deploy.sh`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill captures the OCP-level
-GitOps definition and product boundary. Detailed Red Hat OpenShift GitOps
-installation, Argo CD instance configuration, Application schema, RBAC, and
-operational procedures must come from the separate Red Hat OpenShift GitOps
-documentation set and active cluster schema.
+- A change touches `gitops/bootstrap/` (operator channel, ArgoCD CR, AppProject,
+  controller RBAC, Argo CD admin group).
+- Argo CD access, SSO group mapping, health assessment or controller sizing is
+  in question.
+- A component Application is added under `gitops/argocd/app-of-apps/<stage>/`.
 
-## Demo GitOps Posture
+## Repo decisions
 
-For this AWS-hosted RHOAI demo:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Operator from `redhat-operators`, `installPlanApproval: Automatic`, channel `gitops-1.21` set by an overlay patch (the base holds a placeholder channel and is never applied alone); minimum `1.21.5` in the operator policy | `gitops/bootstrap/base/subscription.yaml`, `gitops/bootstrap/overlays/operator/patch-channel.yaml`, `scripts/platform/check-operator-policy.py` | [Installing the GitOps Operator using CLI][install-cli] |
+| Two-phase bootstrap: overlay `operator`, wait for the CSV, then overlay `demo` (needs the Argo CD CRDs) | `stages/010-openshift-ai-platform-foundation/deploy.sh`, `gitops/bootstrap/overlays/demo/kustomization.yaml` | [Installing OLM Operators using GitOps][olm] |
+| Default `openshift-gitops` instance reused; `resourceTrackingMethod: annotation` | `gitops/bootstrap/overlays/demo/argocd-instance.yaml` | [Annotation-based resource tracking][tracking] |
+| Controller sized 4Gi request / 8Gi limit after a Stage 070 OOMKill | `gitops/bootstrap/overlays/demo/argocd-instance.yaml` | [Argo CD CR properties][cr-props] |
+| Custom Lua health for PVC (`Pending` is healthy under WaitForFirstConsumer), OLM Subscription and MLflow | `gitops/bootstrap/overlays/demo/argocd-instance.yaml` (`extraConfig`) | [Argo CD CR properties][cr-props] |
+| Demo posture: application controller bound to `cluster-admin` (least privilege is backlog) | `gitops/bootstrap/overlays/demo/argocd-cluster-admin.yaml` | [Default permissions of an Argo CD instance][default-perms] |
+| SSO through Dex with OpenShift OAuth, `scopes: '[groups]'`; `system:cluster-admins`, `cluster-admins` and `rhoai-gitops-admins` map to `role:admin`; read-only local account `rhdh` (apiKey) for Developer Hub | `gitops/bootstrap/overlays/demo/argocd-instance.yaml`, `gitops/bootstrap/overlays/demo/argocd-admin-group.yaml` | [Dex role mappings][dex-roles], [Argo CD RBAC][rbac] |
+| One AppProject `rhoai-demo` for every Application | `gitops/bootstrap/overlays/demo/argocd-project.yaml` | [Setting up an Argo CD instance][instance] |
+| One Application per component, destination namespace `openshift-gitops`, Server-Side Diff by annotation; the Stage 060 Applications have no automated sync | `gitops/argocd/app-of-apps/`, `.agents/rules/gitops.md` | [Synchronizing your application][sync] |
+| Stage deploy scripts select, apply, sync and wait through `stage_apps.py` (no `argocd` CLI) | `scripts/shared/stage_apps.py` | [Creating an application by using the oc tool][app-oc] |
 
-- Use OpenShift GitOps as the platform-supported Argo CD distribution when the
-  new clean-slate GitOps implementation is introduced.
-- Treat Argo CD as the deployment reconciler for GitOps-managed resources; new
-  deployment automation must apply Argo CD Applications first.
-- Keep repo-specific Application layout, Kustomize structure, sync waves,
-  target revisions, and demo labels in `project-gitops-authoring`.
-- Keep `resourceTrackingMethod: annotation` as a project constraint unless a
-  future official-source review and implementation decision changes it.
-- Do not claim Operator install, channel, namespace, CR fields, RBAC, SSO, or
-  multi-cluster behavior from the OCP overview page alone.
+## Procedure
 
-## GitOps Model
+1. Change the channel only together with the `channels` and `minimum` entries
+   in `scripts/platform/check-operator-policy.py` and the `openshift_gitops`
+   pin in `.agents/references/red-hat-doc-map.yaml`.
+2. Change the ArgoCD CR in Git, never the generated `argocd-cm` or
+   `argocd-rbac-cm`; the operator reconciles them.
+3. Validate statically, then live after the OpenShift safety guard in `AGENTS.md`:
 
-Use the official docs to frame:
+   ```bash
+   ./scripts/platform/validate-stage-flow.sh
+   oc get subscription openshift-gitops-operator -n openshift-operators -o jsonpath='{.spec.channel} {.status.installedCSV}{"\n"}'
+   oc get argocd openshift-gitops -n openshift-gitops -o jsonpath='{.spec.resourceTrackingMethod}{"\n"}'
+   oc get applications.argoproj.io -n openshift-gitops
+   ```
 
-- **Red Hat OpenShift GitOps**: an Operator that uses Argo CD as the
-  declarative GitOps engine.
-- **Argo CD**: the engine used to implement declarative GitOps workflows.
-- **Workflow scope**: OpenShift GitOps enables workflows across multicluster
-  OpenShift and Kubernetes infrastructure.
-- **Operational value**: administrators can consistently configure and deploy
-  Kubernetes-based infrastructure and applications across clusters and
-  development lifecycles.
-- **Product boundary**: OpenShift GitOps is based on upstream Argo CD and adds
-  Red Hat OpenShift integration, automation, enterprise support, quality
-  assurance, and security focus.
-- **Documentation boundary**: Red Hat OpenShift GitOps releases on a different
-  cadence from OCP, so detailed documentation is maintained separately.
+## Pitfalls
 
-## Workflow
+- Never `oc apply -k gitops/bootstrap/base`: its channel is a placeholder.
+- An `oc apply` of a whole Application can drop annotations and delegated
+  fields; edit live Applications by patch and move them with
+  `scripts/platform/move-applications.py`.
+- After a group membership change, sign out of Argo CD and in again to refresh
+  the Dex token (`docs/TROUBLESHOOTING.md#argo-cd-applications-missing-after-openshift-sso-login`).
+- Synced at a new revision can still apply stale manifests; hard refresh
+  (`docs/TROUBLESHOOTING.md#argo-cd-reports-synced-but-the-cluster-has-stale-manifests`).
+- Merge-patching `.operation` inherits partial-sync filters and skips hooks
+  (`docs/TROUBLESHOOTING.md#manually-triggered-sync-finishes-in-seconds-and-skips-hooks`).
+- A new z-stream on `gitops-1.21` installs automatically; a new minor needs a
+  reviewed channel change.
 
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - OCP-level GitOps narrative or platform positioning
-   - OpenShift GitOps Operator source boundaries
-   - Argo CD as the OpenShift GitOps engine
-   - demo-specific GitOps authoring, which belongs in
-     `project-gitops-authoring`
-   - detailed Operator or Argo CD behavior, which requires separate Red Hat
-     OpenShift GitOps documentation and schema verification
-4. For GitOps manifests, verify all API versions, CRDs, fields, namespaces,
-   RBAC, cluster roles, and resource-tracking behavior before committing.
-5. For live operations, use the repo environment guard and pair this skill with
-   `env-troubleshoot`, `env-manage-resources`, or `env-deploy-and-evaluate`.
-6. Validate the output with `references/validation-checklist.md`.
+## Official documentation (OpenShift GitOps 1.21)
 
-## Related Skills
+| Topic | Section |
+|---|---|
+| Install | [Installing Red Hat OpenShift GitOps][install], [Using the CLI][install-cli] |
+| Instance | [Setting up an Argo CD instance][instance], [Argo CD CR properties][cr-props], [Annotation-based tracking][tracking] |
+| Access | [Configuring Argo CD RBAC][rbac], [SSO using Dex][dex], [Dex role mappings][dex-roles], [Local users][local-users] |
+| Cluster configuration | [Default permissions][default-perms], [Installing OLM Operators][olm], [Creating an application with oc][app-oc], [Synchronizing][sync] |
+| OCP 4.22 entry point | [About Red Hat OpenShift GitOps][ocp-gitops] |
 
-- Use `project-gitops-authoring` for repo-specific `gitops/**`,
-  Kustomize, Argo CD Application, sync-wave, targetRevision, label, and
-  app-of-apps authoring.
-- Use `project-manifest-review` for read-only review of Kubernetes, OpenShift,
-  Argo CD, and RHOAI manifests.
-- Use `ocp-cicd-builds` for OpenShift CI/CD overview and build workflows.
-- Create future detailed skills from the separate Red Hat OpenShift GitOps
-  documentation when the GitOps product baseline is pinned.
+## Related skills
 
-## References
+`review-gitops-change`, `gitops-move-applications`, `ocp-authentication-identity-providers`,
+`ocp-security-rbac-scc`, `rhoai-self-managed-installation`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/gitops-review-patterns.md`
+[install]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/installing_gitops/index#installing-openshift-gitops
+[install-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/installing_gitops/index#installing-gitops-operator-using-cli_installing-openshift-gitops
+[instance]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/argo_cd_instance/index#setting-up-argocd-instance
+[cr-props]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/argo_cd_instance/index#argo-cd-properties_argo-cd-cr-component-properties
+[tracking]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/argo_cd_instance/index#con-enabling-annotation-based-resource-tracking-in-argo-cd_argo-cd-cr-component-properties
+[rbac]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/access_control_and_user_management/index#configuring-argo-cd-rbac
+[dex]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/access_control_and_user_management/index#configuring-sso-for-argo-cd-using-dex
+[dex-roles]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/access_control_and_user_management/index#gitops-dex-role-mappings_configuring-sso-for-argo-cd-using-dex
+[local-users]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/access_control_and_user_management/index#managing-local-users-in-argo-cd
+[default-perms]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/declarative_cluster_configuration/index#default-permissions-of-an-argocd-instance_configuring-an-openshift-cluster-by-deploying-an-application-with-cluster-configurations
+[olm]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/declarative_cluster_configuration/index#gitops-installing-olm-operators-using-gitops_configuring-an-openshift-cluster-by-deploying-an-application-with-cluster-configurations
+[app-oc]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/declarative_cluster_configuration/index#creating-an-application-by-using-the-oc-tool_configuring-an-openshift-cluster-by-deploying-an-application-with-cluster-configurations
+[sync]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/declarative_cluster_configuration/index#synchronizing-your-application-application-with-your-git-repository_configuring-an-openshift-cluster-by-deploying-an-application-with-cluster-configurations
+[ocp-gitops]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/gitops/index#about-redhat-openshift-gitops

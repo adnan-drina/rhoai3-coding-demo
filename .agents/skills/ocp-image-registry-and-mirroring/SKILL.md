@@ -1,81 +1,98 @@
 ---
 name: ocp-image-registry-and-mirroring
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding OpenShift Container Platform
-  image, registry, and mirroring guidance from official OCP documentation:
-  Image Registry Operator, internal registry configuration, image streams,
-  image stream tags, image import, pull secrets, registry trust, image
-  configuration, allowed or blocked registries, disconnected mirroring,
-  oc-mirror plugin v2, ImageDigestMirrorSet, ImageTagMirrorSet, and Red Hat
-  image provenance review. Do NOT use for OpenShift build strategy details;
-  use ocp-cicd-builds. Do NOT invent RHOAI model image names or modelcar
-  sources; use the relevant rhoai-* skill and official RHOAI docs.
+  Use when reviewing or changing how this repo uses the OpenShift internal image
+  registry and image sources: the partial imageregistry Config that sets
+  defaultRoute in Stage 010 rhoai-platform, the Stage 050 oci-export pusher
+  ServiceAccount and registry Secret, the Stage 070 deploy.sh registry
+  precondition, internal-registry image references and ImageStreams, pinned
+  registry.redhat.io digests, or a question about mirroring and disconnected
+  installs. Do NOT use for BuildConfig builds (use ocp-cicd-builds), Tekton
+  image builds (use ocp-pipelines-cicd), or model images on GPU nodes (use
+  rhoai-model-deployment).
 ---
 
-# OCP Image Registry And Mirroring
+# Image registry and mirroring
 
-Use this skill to ground OpenShift image, registry, and mirroring decisions in
-official OCP documentation for the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift Container Platform 4.22 sections. Detailed records:
+`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`
+and `gitops/stages/050-model-evaluation/oci-export/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers OpenShift platform
-image distribution and registry configuration; component-specific image
-selection belongs in the relevant product skill.
+- A change touches `image-registry-default-route.yaml`, `oci-export/`, an
+  ImageStream, or an image reference to the internal registry.
+- A build or push to `image-registry.openshift-image-registry.svc:5000` fails.
+- Someone proposes mirroring, an `ImageDigestMirrorSet` or a disconnected install.
 
-## Demo Image Posture
+## Repo decisions
 
-For this AWS-hosted RHOAI demo:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| The internal registry, its storage and Managed state belong to the provisioned cluster, not to Git | `docs/OPERATIONS.md` (environment baseline) | [Image Registry Operator][operator] |
+| Only `spec.defaultRoute: true` is declared, as a partial Config with `Prune=false,Delete=false`; the operator owns the rest | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/image-registry-default-route.yaml` | [Exposing the registry][expose] |
+| Stage 050 exports evaluation results to ImageStream `evaluated-models/evaluation-results` through the default route; pusher SA `evalhub-oci-pusher` bound to `system:image-builder`; a Sync hook composes the `kubernetes.io/dockerconfigjson` Secret `evalhub-oci-registry` | `gitops/stages/050-model-evaluation/oci-export/oci-export.yaml` | [Accessing the registry][access] |
+| Stage 070 refuses to deploy unless the registry is Managed, Available and has persistent (not emptyDir) storage | `stages/070-advanced-app-platform/deploy.sh` | [Setting up and configuring the registry][setup] |
+| Application images are built into the internal registry of their project and deployed by `@sha256:` digest; no external-registry fallback | `gitops/stages/070-advanced-app-platform/pipelines/project-pipeline/imagestream.yaml` | [Managing image streams][imagestreams] |
+| Agent runtime images live in ImageStreams with `referencePolicy: Local`; pulls are granted per stream on `imagestreams/layers` | `gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/images/` | [Using image streams with Kubernetes resources][is-k8s] |
+| Red Hat images are pinned by tag or digest; `ose-cli` by digest because it publishes no `latest` | Stage 070 manifests, `docs/TROUBLESHOOTING.md#stage-070-jobs-cannot-pull-ose-cli-after-a-restart` | [Using images][using] |
+| No mirroring: connected cluster, no `ImageDigestMirrorSet`, `ImageTagMirrorSet` or oc-mirror in Git | none | [About disconnected environments][disconnected] |
 
-- Prefer official Red Hat product images and image references captured by the
-  relevant `rhoai-*`, `ocp-*`, or `odf-*` skill.
-- Treat the cluster image registry as an existing platform service unless the
-  implementation explicitly needs registry configuration.
-- Do not enable disconnected mirroring in the connected AWS demo by default,
-  but keep mirror guidance available for future regulated or disconnected
-  variants.
-- Verify image pull secrets and registry trust before changing manifests.
-- Do not commit pull-secret content or registry credentials.
+## Procedure
 
-## Workflow
+1. Declare only the fields the repo needs on operator-owned config objects,
+   with `Prune=false,Delete=false`.
+2. Keep credentials out of Git: registry Secrets are composed in cluster by
+   hooks from ServiceAccount tokens.
+3. Validate after the OpenShift safety guard in `AGENTS.md`:
 
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - Image Registry Operator state or storage
-   - image streams or image stream tags
-   - image imports from external or private registries
-   - pull secrets and registry credentials
-   - registry trust or allowed/blocked registries
-   - disconnected mirroring with `oc mirror`
-   - mirror-set resources generated by `oc mirror`
-4. For manifests, verify API versions and fields with official docs and active
-   cluster schema.
-5. For live operations, follow the OpenShift safety guard and pair this skill
-   with the relevant `env-*` skill.
-6. Validate with `references/validation-checklist.md`.
+   ```bash
+   oc get configs.imageregistry.operator.openshift.io cluster -o jsonpath='{.spec.managementState} {.spec.defaultRoute}{"\n"}'
+   oc get clusteroperator image-registry
+   oc get route default-route -n openshift-image-registry
+   ./stages/050-model-evaluation/validate.sh
+   ```
 
-## Related Skills
+## Pitfalls
 
-- Use `ocp-cicd-builds` for BuildConfig, Shipwright, build inputs, outputs,
-  and build strategy behavior.
-- Use `rhoai-nvidia-gpu-accelerators` and model-serving skills for RHOAI model
-  images and modelcars.
-- Use `project-red-hat-doc-alignment-review` for validating GitOps artifacts
-  against official Red Hat product images.
-- Use `env-troubleshoot` for live image pull and registry failures.
+- The default route serves the ingress certificate; that is why Stage 050 uses
+  it (the evaluation sidecar trusts only public roots). In-cluster clients use
+  the service address and the service CA.
+- `evalhub-oci-pusher-token` is long-lived; rotate by deleting it and
+  re-syncing Stage 050.
+- A Healthy Application does not prove later Jobs can pull their images; an
+  invalid tag hides behind node image caches until a node is replaced.
+- A Red Hat registry outage stalls project provisioning
+  (`docs/TROUBLESHOOTING.md#red-hat-registry-outage-starves-scaffolded-project-provisioning`).
+- Build refusals in Stage 070: `docs/TROUBLESHOOTING.md#stage-070-internal-registry-build-refuses`.
 
-## References
+## Official documentation (OCP 4.22)
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/image-source-review.md`
+| Topic | Section |
+|---|---|
+| Registry | [Registry overview][overview], [Image Registry Operator][operator], [Setting up and configuring][setup], [Accessing the registry][access], [Exposing the registry][expose] |
+| Images | [Managing image streams][imagestreams], [Image streams with Kubernetes resources][is-k8s], [Image configuration][image-config], [Using images][using] |
+| Mirroring | [About disconnected environments][disconnected], [Mirroring images for a disconnected installation][mirroring] |
+
+## Related skills
+
+`ocp-cicd-builds`, `ocp-pipelines-cicd`, `ocp-security-rbac-scc`, `rhoai-evaluation`.
+
+[overview]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/registry/index#registry-overview
+[operator]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/registry/index#configuring-registry-operator
+[setup]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/registry/index#setting-up-and-configuring-the-registry
+[access]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/registry/index#accessing-the-registry
+[expose]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/registry/index#securing-exposing-registry
+[imagestreams]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/images/index#managing-image-streams
+[is-k8s]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/images/index#using-imagestreams-with-kube-resources
+[image-config]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/images/index#image-configuration-classic
+[using]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/images/index#using-images
+[disconnected]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/disconnected_environments/index#about-disconnected-environments
+[mirroring]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/disconnected_environments/index#installing-mirroring-disconnected

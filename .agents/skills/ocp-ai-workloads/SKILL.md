@@ -1,110 +1,106 @@
 ---
 name: ocp-ai-workloads
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding OpenShift Container Platform AI
-  workload platform guidance from official OCP documentation: Red Hat build of
-  Kueue, Kueue custom resources, ClusterQueue, ResourceFlavor, LocalQueue,
-  Workload, queue labels, quotas, RBAC, cohorts, fair sharing, gang scheduling,
-  pending workload visibility, Leader Worker Set Operator, LeaderWorkerSet,
-  JobSet Operator, JobSet, and coordinated AI training or inference workload
-  scheduling. Do NOT use for RHOAI dashboard, DataScienceCluster, workbenches,
-  or OpenShift AI distributed workload component configuration; use the
-  relevant rhoai-* skill. Do NOT run live queue, quota, RBAC, or operator
-  changes without the env safety guard and explicit approval.
+  Use when reviewing the OpenShift AI-workload operators this repo installs: the
+  Red Hat build of Kueue Operator in
+  gitops/stages/020-gpu-infrastructure-private-ai/kueue/ (stable-v1.4,
+  openshift-kueue-operator, cert-manager prerequisite, DSC Unmanaged hook Job)
+  and the Leader Worker Set Operator in
+  gitops/stages/040-governed-models-as-a-service/maas-operators/lws/
+  (stable-v1.0, LeaderWorkerSetOperator cluster), or deciding whether JobSet is
+  needed. Do NOT use for ResourceFlavor, ClusterQueue, LocalQueue and hardware
+  profile design (use rhoai-kueue-workload-management and
+  rhoai-hardware-profiles) or llm-d serving (use
+  rhoai-distributed-inference-llmd).
 ---
 
-# OCP AI Workloads
+# OCP AI workloads
 
-Use this skill to ground OpenShift AI workload platform guidance in the
-official OpenShift Container Platform AI workloads guide for the active
-baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift Container Platform 4.22 sections. Detailed records:
+`gitops/stages/020-gpu-infrastructure-private-ai/kueue/README.md` and
+`gitops/stages/040-governed-models-as-a-service/maas-operators/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers OCP platform
-operators and Kubernetes APIs for AI workload scheduling and coordination; it
-does not replace RHOAI component skills, GPU enablement skills, or live
-environment skills.
+- A change touches the Kueue or LWS operator installation, their channel or
+  the minimums in `scripts/platform/check-operator-policy.py`.
+- Stage 020 sync hangs on `job-enable-dsc-kueue`, or the `Kueue` CR is not
+  `Available`.
+- Someone proposes multi-node serving (LWS) or JobSet.
 
-## Demo AI Workload Posture
+## Repo decisions
 
-For this AWS-hosted RHOAI demo:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Red Hat build of Kueue Operator: namespace `openshift-kueue-operator` with cluster-monitoring label, all-namespaces OperatorGroup, Subscription `kueue-operator` on `stable-v1.4`, Automatic; policy minimum `1.4.2` | `kueue/namespace.yaml`, `kueue/operatorgroup.yaml`, `kueue/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Red Hat build of Kueue][kueue] |
+| cert-manager Operator is a prerequisite but not declared here; `deploy.sh` refuses to continue without a `Succeeded` `cert-manager-operator.v1.20.*` CSV | `stages/020-gpu-infrastructure-private-ai/deploy.sh` | [Red Hat build of Kueue][kueue] |
+| `Kueue` CR (`cluster`) is not in Git: OpenShift AI creates it when the DSC sets kueue `Unmanaged` | (operator-created) | [Red Hat build of Kueue][kueue] |
+| DSC kueue subtree set to `Unmanaged`, `autoCreateQueues: false` by an Argo CD Sync hook Job with scoped RBAC, because Stage 010 owns `default-dsc` and delegates `/spec/components/kueue` | `kueue/dsc-enablement/` | [Red Hat build of Kueue][kueue] |
+| Leader Worker Set Operator: namespace `openshift-lws-operator`, own-namespace OperatorGroup, Subscription `leader-worker-set` on `stable-v1.0`, Automatic, `LeaderWorkerSetOperator` `cluster` `Managed`; policy minimum `1.0.1` | `gitops/stages/040-governed-models-as-a-service/maas-operators/lws/` | [Leader Worker Set Operator][lws] |
+| LWS is installed only as the llm-d multi-node prerequisite; current models are single-node, no `LeaderWorkerSet` objects | `gitops/stages/040-governed-models-as-a-service/maas-operators/README.md` | [Leader Worker Set Operator][lws] |
+| JobSet Operator not installed | (none declared) | [JobSet Operator][jobset] |
 
-- Treat Red Hat build of Kueue as an OpenShift platform scheduling and quota
-  layer for batch, distributed, and GPU-constrained workloads.
-- Use Kueue queues to make limited GPU capacity explicit before RHOAI or demo
-  workloads consume it.
-- Keep RHOAI component enablement in `rhoai-kueue-workload-management`,
-  `rhoai-distributed-workload-operations`, and related `rhoai-*` skills.
-- Use `ocp-node-feature-discovery`, `ocp-nodes`, and
-  `rhoai-nvidia-gpu-accelerators` before claiming that GPU queues map to real
-  GPU capacity.
-- Verify installed Operator versions, channels, CRDs, API groups, and support
-  posture before writing README claims or GitOps manifests.
+Paths are relative to `gitops/stages/020-gpu-infrastructure-private-ai/` unless they start with `gitops/`, `stages/` or `scripts/`.
 
-## OCP AI Workload Model
+## Procedure
 
-Use the official docs to frame:
+1. Change channels in Git and the matching entries in
+   `scripts/platform/check-operator-policy.py` (`channels` and `minimum`) in
+   the same commit; `deploy.sh` refuses an unreviewed channel.
+2. Deploy and validate Kueue with
+   `./stages/020-gpu-infrastructure-private-ai/deploy.sh` and `validate.sh`
+   (CSV current, DSC `Unmanaged` with `autoCreateQueues=false`, one `Kueue`
+   `Available` and `CertManagerAvailable`); LWS with
+   `./stages/040-governed-models-as-a-service/validate.sh`.
+3. Read-only checks after the OpenShift safety guard in `AGENTS.md`:
 
-- **Red Hat build of Kueue**: Kubernetes-native resource access management for
-  jobs, including waiting, admission, and preemption.
-- **Kueue custom resource**: cluster-level Kueue configuration, including
-  framework integrations, preemption policy, fair sharing, and gang scheduling.
-- **ClusterQueue**: cluster-scoped quota pool for covered resources and
-  resource flavors.
-- **ResourceFlavor**: named resource variation associated with node labels,
-  taints, and tolerations.
-- **LocalQueue**: namespaced queue that points workloads in a namespace to a
-  `ClusterQueue`.
-- **Workload**: Kueue representation of a submitted job or integrated workload.
-- **LeaderWorkerSet**: coordinated groups of leader and worker pods for
-  distributed inference or sharded model serving workloads.
-- **JobSet**: coordinated groups of Kubernetes Jobs for large-scale training,
-  HPC, and related batch workloads.
+   ```bash
+   oc get subscription kueue-operator -n openshift-kueue-operator -o jsonpath='{.status.installedCSV}{"\n"}'
+   oc get kueue cluster -o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}{"\n"}'
+   oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.kueue}{"\n"}'
+   oc get subscription leader-worker-set -n openshift-lws-operator -o jsonpath='{.status.installedCSV}{"\n"}'
+   ```
 
-## Workflow
+## Pitfalls
 
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - Red Hat build of Kueue installation, upgrade, or disconnected install
-   - `Kueue` custom resource configuration
-   - namespace opt-in with `kueue.openshift.io/managed=true`
-   - `ClusterQueue`, `ResourceFlavor`, `LocalQueue`, or `Workload` resources
-   - RBAC with `kueue-batch-admin-role` or `kueue-batch-user-role`
-   - quotas, cohorts, fair sharing, gang scheduling, or visibility API use
-   - Leader Worker Set Operator or `LeaderWorkerSet`
-   - JobSet Operator or `JobSet`
-4. For GitOps manifests, verify API versions and CR fields against official
-   docs or the active cluster schema before committing.
-5. For live operations, use the repo environment guard and pair this skill with
-   `env-troubleshoot`, `env-manage-resources`, or `env-deploy-and-evaluate`.
-6. Validate the output with `references/validation-checklist.md`.
+- Automatic approval renames the CSV; anything that waits for a fixed CSV
+  name hangs. The hook follows `status.installedCSV`
+  (`docs/TROUBLESHOOTING.md#stage-020-sync-hangs-on-job-enable-dsc-kueue-after-an-operator-update`).
+- `Managed` Kueue in the DSC is deprecated and incompatible with the Red Hat
+  build of Kueue Operator; do not switch back.
+- With `autoCreateQueues: false` nothing creates queues for a new namespace;
+  queues come from `020-gpu-quotas` and the consuming stages
+  (`docs/TROUBLESHOOTING.md#kueue-or-gpuaas-queue-resources-are-missing`).
+- A rolling update of a 1-replica GPU model with the GPU quota fully admitted
+  deadlocks in `SchedulingGated`
+  (`docs/TROUBLESHOOTING.md#model-rollout-deadlocks-with-the-new-pod-schedulinggated`).
+- Kueue `Workload` creation for `LLMInferenceService` is not a documented
+  integration; treat missing Workloads as a warning
+  (`docs/TROUBLESHOOTING.md#private-models-do-not-produce-kueue-workloads`).
 
-## Related Skills
+## Official documentation (OpenShift Container Platform 4.22)
 
-- Use `rhoai-kueue-workload-management` for RHOAI-managed Kueue component
-  enablement and RHOAI-specific dashboard behavior.
-- Use `rhoai-distributed-workload-operations` and
-  `rhoai-distributed-workload-workflows` for OpenShift AI distributed workload
-  administration and data scientist workflows.
-- Use `rhoai-distributed-inference-llmd` for llm-d and RHOAI distributed
-  inference.
-- Use `ocp-node-feature-discovery`, `ocp-machine-management`, `ocp-nodes`, and
-  `rhoai-nvidia-gpu-accelerators` for GPU worker capacity and placement.
-- Use `project-gitops-authoring` and `project-manifest-review` for manifests.
+| Topic | Section |
+|---|---|
+| Overview | [Overview of AI workloads on OpenShift Container Platform][about] |
+| Kueue | [Red Hat build of Kueue][kueue] |
+| LWS | [Leader Worker Set Operator][lws] |
+| Not used here | [JobSet Operator][jobset] |
 
-## References
+## Related skills
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/ai-workload-review-patterns.md`
+`rhoai-kueue-workload-management`, `rhoai-hardware-profiles`,
+`rhoai-distributed-workloads`, `rhoai-distributed-inference-llmd`,
+`rhoai-dsci-dsc-configuration`, `ocp-nodes`.
+
+[about]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/ai_workloads/index#ai-workloads-about
+[kueue]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/ai_workloads/index#red-hat-build-of-kueue
+[lws]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/ai_workloads/index#leader-worker-set-operator
+[jobset]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/ai_workloads/index#jobset-operator

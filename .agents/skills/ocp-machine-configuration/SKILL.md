@@ -1,121 +1,97 @@
 ---
 name: ocp-machine-configuration
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding OpenShift Container Platform
-  machine configuration guidance from official OCP documentation: Machine
-  Config Operator, MachineConfig, MachineConfigPool, MachineConfiguration,
-  KubeletConfig, ContainerRuntimeConfig, PinnedImageSet, node disruption
-  policies, boot image management, rendered machine config pruning, image mode
-  for OpenShift, MachineOSConfig, MachineOSBuild, Machine Config Daemon metrics,
-  systemd, CRI-O, kubelet, kernel, NetworkManager, and RHCOS host
-  configuration. Do NOT use for MachineSet or cloud machine lifecycle; use
-  ocp-machine-management. Do NOT use for pod scheduling and node operations;
-  use ocp-nodes. Do NOT run live MCO operations without the env safety guard
-  and explicit approval.
+  Use when someone proposes a MachineConfig, KubeletConfig,
+  ContainerRuntimeConfig, PinnedImageSet, custom MachineConfigPool or image
+  mode change for this demo, when MachineConfigPools are Degraded or not
+  Updated in the baseline health check, or when a node disk or image-GC
+  problem tempts a host-level fix. The repo declares no Machine Config
+  Operator resources. Do NOT use for MachineSet shape, disk size and scaling
+  (use ocp-machine-management) or labels, taints and evictions (use
+  ocp-nodes).
 ---
 
-# OCP Machine Configuration
+# OCP machine configuration
 
-Use this skill to ground OpenShift Machine Config Operator (MCO), RHCOS host
-configuration, and machine config pool rollout guidance in the official
-OpenShift Container Platform Machine configuration guide for the active
-baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift Container Platform 4.22 sections. The repo keeps the default host
+configuration; the Machine Config Operator (MCO) and its pools are owned by
+the cluster provisioner (`docs/OPERATIONS.md`, ownership table).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers node OS and runtime
-configuration after machines exist; it does not replace `ocp-machine-management`
-for MachineSet and cloud machine lifecycle, `ocp-nodes` for scheduling and node
-operations, or RHOAI skills for accelerator and OpenShift AI component
-configuration.
+- A change would add a `MachineConfig`, `KubeletConfig`,
+  `ContainerRuntimeConfig`, `PinnedImageSet`, `MachineConfiguration` or a
+  custom `MachineConfigPool` under `gitops/`.
+- The baseline core-health check finds master or worker MachineConfigPools
+  not `Updated` or `Degraded`.
+- Node disk pressure or GPU driver issues invite a host OS change.
 
-## Demo Posture
+## Repo decisions
 
-For this AWS-hosted RHOAI demo:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| No MCO resources in Git: no `MachineConfig`, `KubeletConfig`, `ContainerRuntimeConfig`, `PinnedImageSet`, custom pool or image mode | (none declared; checked by search on 2026-10-15) | [Machine configuration overview][overview] |
+| Control plane, workers and machine lifecycle are provisioner-owned; stages must not adopt or remove them without evidence | `docs/OPERATIONS.md` (ownership and stage boundaries) | [Machine configuration overview][overview] |
+| Baseline core health requires master and worker MachineConfigPools `Updated` and not `Degraded` | `docs/OPERATIONS.md` (core health) | [Machine configuration overview][overview] |
+| Node disk sizing is solved in the MachineSet (200 GB `gp3` GPU root volume), not by kubelet image-GC tuning | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets/`, `stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh` | [Pinning images to nodes][pin] |
+| GPU drivers come from the NVIDIA GPU Operator `ClusterPolicy`, not from host extensions or layered images | `gitops/stages/020-gpu-infrastructure-private-ai/nvidia-gpu-operator/cluster-policy.yaml` | [Image mode for OpenShift][layering] |
 
-- Treat MCO, `MachineConfig`, `MachineConfiguration`, `KubeletConfig`,
-  `ContainerRuntimeConfig`, `PinnedImageSet`, `MachineOSConfig`, and MCP changes
-  as high-risk platform changes because they can drain or reboot nodes, reload
-  CRI-O, affect upgrades, or block cluster operators.
-- Prefer the default OpenShift host configuration unless the demo has a clear,
-  official-doc-backed need for a node OS or runtime change.
-- Do not modify control plane machine config pools unless the user explicitly
-  requests a planned control plane operation and `ocp-etcd` review is included.
-- Keep GPU node behavior aligned with `rhoai-nvidia-gpu-accelerators`; do not
-  use ad hoc `MachineConfig` tuning as a substitute for NVIDIA GPU Operator,
-  Node Feature Discovery, or supported RHOAI hardware profile configuration.
-- Use GitOps only after verifying API shape and rollout impact. Do not invent
-  Ignition, Butane, CRI-O, kubelet, systemd, or kernel settings.
+## Procedure
 
-## Machine Configuration Model
+1. Before adding any MCO resource, read the linked sections for the
+   disruption it causes (drain, reboot or CRI-O reload) and record why the
+   default does not work in the component README. Treat it as a high-risk,
+   live-environment change (`.agents/rules/ocp.md`); pair control-plane pool
+   changes with `ocp-etcd`.
+2. Prefer a node disruption policy over a reboot when the change type allows
+   it; target a dedicated pool rather than `worker` when only GPU nodes need it.
+3. Read-only checks after the OpenShift safety guard in `AGENTS.md`:
 
-Use the official docs to frame:
+   ```bash
+   oc get machineconfigpool
+   oc get machineconfig --sort-by=.metadata.creationTimestamp | tail -5
+   oc get kubeletconfig,containerruntimeconfig
+   oc describe machineconfigpool worker | grep -A8 Conditions:
+   ```
 
-- **Machine Config Operator**: manages RHCOS host configuration and applies
-  changes to nodes through machine config pools.
-- **MachineConfig**: defines host-level configuration applied to a target role
-  or pool, including files, systemd units, kernel arguments, extensions, and
-  related RHCOS settings.
-- **MachineConfigPool**: groups nodes and tracks rendered machine config
-  rollout, update, degraded, and paused state.
-- **MachineConfiguration**: singleton operator configuration in the
-  `openshift-machine-config-operator` namespace, including node disruption
-  policy configuration.
-- **KubeletConfig** and **ContainerRuntimeConfig**: supported custom resources
-  for kubelet and CRI-O settings that generate machine configs.
-- **PinnedImageSet**: an official OCP resource for documented cases where
-  nodes must preload selected images and avoid garbage collection removing
-  them. Do not use it as a general repeatability mechanism for this demo.
-- **Image mode for OpenShift**: builds or applies custom layered RHCOS images
-  with `MachineOSConfig` and `MachineOSBuild` when the documented limitations
-  and registry requirements are acceptable.
-- **Machine Config Daemon metrics and logs**: indicate node-level update,
-  drain, pivot, reboot, kubelet, and degraded-state problems.
+## Pitfalls
 
-## Workflow
+- Any `worker` pool change rolls through every worker, GPU nodes included,
+  and can drain model servers holding the whole GPU quota.
+- GPU nodes are in the `worker` pool; a `MachineConfig` for them alone needs
+  a custom pool, which also changes how upgrades roll.
+- Kubelet image GC cannot reclaim an in-use modelcar; tuning thresholds does
+  not fix the router-scheduler disk cost
+  (`docs/TROUBLESHOOTING.md#worker-nodes-evict-pods-after-a-cluster-resume-kubenodeeviction`).
+- A Degraded pool blocks cluster upgrades; read the Machine Config Daemon
+  logs and metrics before deleting rendered configs.
 
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - `MachineConfig` files, systemd, kernel arguments, extensions, firmware, or
-     host access configuration
-   - node disruption policies through `MachineConfiguration`
-   - kubelet settings through `KubeletConfig`
-   - CRI-O settings through `ContainerRuntimeConfig`
-   - `PinnedImageSet` image preloading
-   - boot image management or rendered machine config pruning
-   - image mode with `MachineOSConfig` or `MachineOSBuild`
-   - Machine Config Daemon metrics, logs, drift, pool status, or degraded state
-4. For GitOps manifests, verify the target pool, labels, CRD fields, and
-   disruption behavior before writing resources.
-5. For live operations, use the repo environment guard and pair this skill with
-   `env-manage-resources`, `env-troubleshoot`, or `env-deploy-and-evaluate`.
-6. Validate the output with `references/validation-checklist.md`.
+## Official documentation (OpenShift Container Platform 4.22)
 
-## Related Skills
+| Topic | Section |
+|---|---|
+| Overview | [Machine configuration overview][overview] |
+| Configure | [Configuring MCO-related custom resources][configure], [Using node disruption policies][disruption], [Creating custom machine config pools][custom-mcp] |
+| Images | [Pinning images to nodes][pin], [Image mode for OpenShift][layering] |
+| Operate | [Using machine config objects to configure nodes][custom], [Machine Config Daemon metrics overview][metrics] |
 
-- Use `ocp-machine-management` for Machine API, MachineSet, autoscaling, and
-  cloud machine lifecycle.
-- Use `ocp-nodes` for labels, taints, drain, schedulability, node health, and
-  pod placement.
-- Use `ocp-etcd` before any control plane or cluster-wide change that could
-  affect quorum, upgrades, or cluster operator stability.
-- Use `ocp-node-feature-discovery` for specialized hardware labels.
-- Use `rhoai-nvidia-gpu-accelerators` for GPU workers, accelerator profiles,
-  NVIDIA GPU Operator handoff, and RHOAI GPU scheduling intent.
-- Use `project-gitops-authoring` and `project-manifest-review` for manifests.
+## Related skills
 
-## References
+`ocp-machine-management`, `ocp-nodes`, `ocp-etcd`,
+`rhoai-nvidia-gpu-accelerators`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/machine-config-review-patterns.md`
+[overview]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/machine_configuration/index#machine-config-index
+[configure]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/machine_configuration/index#machine-configs-custom
+[disruption]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/machine_configuration/index#machine-config-node-disruption_machine-configs-configure
+[custom]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/machine_configuration/index#machine-configs-configure
+[pin]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/machine_configuration/index#machine-config-pin-preload-images-about
+[custom-mcp]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/machine_configuration/index#machine-config-creating-custom-mcp
+[layering]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/machine_configuration/index#mco-coreos-layering
+[metrics]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/machine_configuration/index#machine-config-daemon-metrics

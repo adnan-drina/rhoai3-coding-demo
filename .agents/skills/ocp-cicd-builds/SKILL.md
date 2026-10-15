@@ -1,106 +1,103 @@
 ---
 name: ocp-cicd-builds
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: ocp
+  docs-version: "4.22"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or rebuilding OpenShift Container Platform
-  CI/CD build guidance from official OCP documentation: CI/CD overview,
-  OpenShift Builds, Builds using Shipwright, Builds using BuildConfig,
-  BuildConfig, Build, BuildRequest, BuildLog, Docker, Source-to-Image, custom
-  and pipeline build strategies, build inputs, outputs, triggers, hooks, logs,
-  resources, duration limits, node assignment, chained builds, pruning,
-  strategy RBAC, registry credentials, image streams, and subscription
-  entitlement build secrets. Do NOT use for Tekton/OpenShift Pipelines,
-  OpenShift GitOps/Argo CD, Jenkins, or live build execution without the env
-  safety guard and explicit approval.
+  Use when reviewing or changing OpenShift BuildConfig builds in this repo: the
+  Stage 060 binary Docker builds opencode-runtime and hermes-runtime-api in
+  ai-agents (and the older opencode-runtime in openshell), their ImageStream
+  outputs, image-pull Roles, and the build-opencode.sh / build-hermes.sh
+  scripts that start them; or when choosing between BuildConfig, Shipwright and
+  Tekton for a new image build. Do NOT use for Tekton pipelines, buildah Tasks
+  or Stage 070 project pipelines (use ocp-pipelines-cicd), for registry
+  exposure and image streams in general (use ocp-image-registry-and-mirroring),
+  or for workspace images (scripts/platform/build-stage070-workspace-image.sh).
 ---
 
-# OCP CI/CD Builds
+# OpenShift builds (BuildConfig)
 
-Use this skill to ground OpenShift Container Platform CI/CD build guidance in
-the official OCP CI/CD overview, Builds using Shipwright, and Builds using
-BuildConfig documentation for the active baseline in
-`docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift Container Platform 4.22 sections. Detailed record:
+`gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/README.md`
+(section on `images/`, `hermes-images/`, `compatibility-images/`).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers the OpenShift build
-surface. It does not replace future OpenShift Pipelines, OpenShift GitOps, or
-Jenkins skills.
+- A change touches a `buildconfig.yaml` or `imagestream.yaml` under
+  `gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/`.
+- `stages/060-agent-runtime-and-agentops/build-opencode.sh` or `build-hermes.sh`
+  fails, or a sandbox cannot pull the built image.
+- A new in-cluster image build is proposed.
 
-## Demo Build Posture
+## Repo decisions
 
-For this AWS-hosted RHOAI demo:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Agent runtime images are built in cluster with BuildConfig, `source.type: Binary`, `strategy.type: Docker`, `runPolicy: Serial`, one kept build each, 600 s deadline and bounded resources | `gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/images/buildconfig.yaml`, `.../hermes-images/buildconfig.yaml` | [Binary (local) source][binary], [Build strategies][strategies] |
+| Output to a versioned ImageStreamTag (`opencode-runtime:1.18.16`, `hermes-runtime-api:0.20.5-api`); the tag is an output handle, consumers pin the build digest | same files, `.../images/imagestream.yaml` | [Managing build output][output] |
+| ImageStreams carry `Delete=false,Prune=false` so a sync never removes built images; `referencePolicy: Local` | `.../images/imagestream.yaml`, `.../hermes-images/imagestream.yaml` | [Managing image streams][imagestreams] |
+| Sandbox ServiceAccount `openshell-sandbox` gets `get` on `imagestreams/layers` for one named stream only | `.../images/image-pull-role.yaml`, `.../images/image-pull-rolebinding.yaml` | [Using RBAC][rbac] |
+| Builds are started by scripts, not by triggers: they check the Application is Synced at the expected revision, fetch the release asset, verify its SHA-256, `oc start-build --from-dir`, wait, and print the output digest | `stages/060-agent-runtime-and-agentops/build-opencode.sh`, `stages/060-agent-runtime-and-agentops/build-hermes.sh` | [Basic build operations][basic-ops] |
+| Earlier build location `opencode-runtime` in `openshell` kept for `openshell-developer` sandboxes | `.../compatibility-images/` | [Understanding BuildConfigs][buildconfigs] |
+| Application images in Stage 070 are built by Tekton into the internal registry, not by BuildConfig; Shipwright is not used | `gitops/stages/070-advanced-app-platform/pipelines/` | [CI/CD overview][cicd] |
 
-- Prefer GitOps-managed build definitions and explicit image provenance when
-  active demo build workflows are introduced.
-- Use Shipwright-based Builds for modern Kubernetes-native build workflows only
-  after the separate Builds for Red Hat OpenShift documentation, installed
-  Operator, and active CRDs are verified.
-- Use `BuildConfig` only when a demo capability specifically needs classic
-  OpenShift build behavior such as ImageStream triggers, S2I examples, or
-  existing OpenShift build APIs.
-- Do not treat build pipelines as deployment automation. Deployment remains
-  ArgoCD/GitOps-managed unless the project explicitly changes that model.
-- Do not put secrets, registry credentials, subscription entitlement material,
-  or generated build output in Git.
+Paths starting with `...` are under `gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/`.
 
-## Build Model
+## Procedure
 
-Use the official docs to frame:
+1. Change Dockerfile or release inputs under
+   `stages/060-agent-runtime-and-agentops/images/` or `stages/060-agent-runtime-and-agentops/hermes/`,
+   and the BuildConfig output tag in Git; commit and push first (the scripts
+   refuse an unpublished revision or a dirty build context).
+2. Sync the `060-openshell-runtime` Application at that revision through the
+   Stage 060 scripts (it has no automated sync), then run the build script.
+3. Validate after the OpenShift safety guard in `AGENTS.md`:
 
-- **CI/CD overview**: OpenShift provides multiple CI/CD solutions: OpenShift
-  Builds, OpenShift Pipelines, OpenShift GitOps, and Jenkins.
-- **Builds using Shipwright**: an extensible Shipwright-based framework for
-  building container images on-cluster from source code and Dockerfiles, with
-  S2I and Buildah strategies and a Kubernetes-native API.
-- **BuildConfig**: the classic OpenShift declarative build process based on
-  `build.openshift.io/v1` objects.
-- **Build**: an instance created from a `BuildConfig`, with status, logs,
-  inputs, outputs, resource limits, and completion behavior.
-- **Build inputs**: inline Dockerfile, image source, Git, binary input, input
-  secrets, config maps, and external artifacts.
-- **Build strategies**: Docker, Source-to-Image, custom, and pipeline build
-  strategies as documented by the BuildConfig guide.
-- **Build controls**: triggers, hooks, resources, maximum duration, node
-  assignment, chained builds, pruning, run policy, and strategy RBAC.
+   ```bash
+   oc get buildconfig,imagestream -n ai-agents
+   oc get builds -n ai-agents --sort-by=.metadata.creationTimestamp
+   ./stages/060-agent-runtime-and-agentops/validate.sh
+   ```
 
-## Workflow
+## Pitfalls
 
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - CI/CD overview and solution routing
-   - Shipwright-based Builds
-   - `BuildConfig`, `Build`, `BuildRequest`, or `BuildLog`
-   - Docker, S2I, custom, or pipeline build strategy
-   - source inputs, secrets, config maps, registry credentials, or outputs
-   - build triggers, hooks, resources, duration, node placement, or pruning
-   - build strategy authorization or cluster build-controller configuration
-4. For GitOps manifests, verify all API versions, fields, image references,
-   strategy permissions, and secret references before committing.
-5. For live operations, use the repo environment guard and pair this skill with
-   `env-troubleshoot`, `env-manage-resources`, or `env-deploy-and-evaluate`.
-6. Validate the output with `references/validation-checklist.md`.
+- A Binary build has no source to rebuild from: a re-sync or `oc start-build`
+  without `--from-dir` does not reproduce the image. Always use the script.
+- The tag can move; the scripts read back the build's `imageDigest` and require
+  the ImageStreamTag to point at it. Pin consumers to the digest.
+- Builds need the internal registry Managed with persistent storage (Stage 070
+  `deploy.sh` checks this); see `ocp-image-registry-and-mirroring`.
+- Build pods run under the cluster's build SCC rules; do not grant privileged
+  SCCs to make a Docker build pass ([Securing builds by strategy][securing]).
 
-## Related Skills
+## Official documentation (OCP 4.22)
 
-- Use future `ocp-pipelines` for OpenShift Pipelines and Tekton behavior.
-- Use future `ocp-gitops-operator` for OpenShift GitOps Operator and Argo CD.
-- Use future `ocp-jenkins` only if the demo intentionally uses Jenkins.
-- Use `ocp-image-registry-and-mirroring` after it exists for image registry,
-  ImageStream, mirroring, and trusted registry depth beyond build references.
-- Use `project-gitops-authoring` and `project-manifest-review` for manifests.
+| Topic | Section |
+|---|---|
+| Overview | [CI/CD overview][cicd], [Understanding BuildConfigs][buildconfigs] |
+| Inputs and strategies | [Binary (local) source][binary], [Build strategies][strategies] |
+| Output and operations | [Managing build output][output], [Basic build operations][basic-ops], [Troubleshooting builds][troubleshooting] |
+| Security | [Securing builds by strategy][securing] |
+| Image streams | [Managing image streams][imagestreams] |
+| Shipwright (not used) | [Builds using Shipwright][shipwright] |
 
-## References
+## Related skills
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/build-review-patterns.md`
+`ocp-image-registry-and-mirroring`, `ocp-pipelines-cicd`, `ocp-security-rbac-scc`,
+`ocp-gitops-operator`.
+
+[cicd]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/cicd_overview/index#ci-cd-overview
+[buildconfigs]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/builds_using_buildconfig/index#understanding-buildconfigs
+[binary]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/builds_using_buildconfig/index#builds-binary-source_creating-build-inputs
+[strategies]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/builds_using_buildconfig/index#build-strategies
+[output]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/builds_using_buildconfig/index#managing-build-output
+[basic-ops]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/builds_using_buildconfig/index#basic-build-operations
+[securing]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/builds_using_buildconfig/index#securing-builds-by-strategy
+[troubleshooting]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/builds_using_buildconfig/index#troubleshooting-builds_build-configuration
+[imagestreams]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/images/index#managing-image-streams
+[rbac]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/authentication_and_authorization/index#using-rbac
+[shipwright]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/builds_using_shipwright/index#overview-openshift-builds
