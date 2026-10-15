@@ -1,208 +1,128 @@
 # Diagnostic Commands Reference
 
-Quick-reference commands organized by component for troubleshooting the RHOAI demo on OpenShift AI 3.3 with selected early-access MaaS resources.
+Read-only quick-reference commands, by component, for the RHOAI 3.5 demo on
+OpenShift 4.22. Run them after the OpenShift safety guard in `AGENTS.md`.
+Changes go through Git and the stage `deploy.sh`, not through these commands.
 
-## RHOAI Dependency Operators
+## Operators installed from Git
 
-RHOAI relies on external operators that must be installed and healthy before RHOAI components can function.
-This catalog is based on Red Hat's [odh-gitops](https://github.com/opendatahub-io/odh-gitops) reference repository.
-
-| Operator | Namespace | Required By | Depends On |
-|----------|-----------|-------------|-----------|
-| **cert-manager** | `cert-manager-operator` | Kueue, Ray, RHCL | — |
-| **Kueue** | `openshift-kueue-operator` | Distributed workloads, Trainer | cert-manager |
-| **Cluster Observability Operator** | `openshift-cluster-observability-operator` | Monitoring | — |
-| **OpenTelemetry** | `openshift-opentelemetry-operator` | Tracing | — |
-| **Leader Worker Set** | `openshift-lws-operator` | Distributed inference | cert-manager |
-| **JobSet Operator** | `openshift-jobset-operator` | Trainer | — |
-| **Custom Metrics Autoscaler (KEDA)** | `openshift-keda` | Model Serving autoscaling | — |
-| **Tempo Operator** | `openshift-tempo-operator` | Distributed tracing | — |
-| **Red Hat Connectivity Link (RHCL)** | `kuadrant-system` | KServe auth (Authorino) | LWS, cert-manager |
-| **Node Feature Discovery (NFD)** | `openshift-nfd` | GPU Operator, LlamaStack | — |
-| **NVIDIA GPU Operator** | `nvidia-gpu-operator` | Model Serving (GPU) | NFD |
-| **MariaDB Operator** | `mariadb-operator` | TrustyAI (database mode) | — |
-| **Service Mesh 3** | `openshift-operators` | RHOAI (auto-installed, Manual approval) | — |
-
-Not all dependencies are required for every deployment. Install only what your demo stages need.
+The operators this demo installs are the `Subscription` objects under
+`gitops/` (list them with `git grep -l "kind: Subscription" -- gitops`). Most
+use Automatic approval; MTA and Developer Hub (Stage 070) use Manual approval
+with a pinned `startingCSV`.
 
 ```bash
-# Quick health check: all dependency CSVs
-oc get csv -A --no-headers | grep -E "cert-manager|kueue|nfd|gpu-operator|servicemesh|observability|opentelemetry|tempo|keda|lws|jobset|mariadb|connectivity-link" | awk '{printf "%-50s %-30s %s\n", $2, $1, $NF}'
+# CSVs that are not Succeeded
+oc get csv -A --no-headers | grep -v Succeeded
 
-# Check dependency install order (operators with unmet dependencies)
-oc get csv -A | grep -v Succeeded | grep -v "^NAMESPACE"
+# Install plans and their approval state
+oc get installplan -A
+
+# Subscription and CatalogSource health
+oc get sub -n <namespace> -o yaml
+oc get catalogsource -n openshift-marketplace
 ```
 
 ## Argo CD
 
 ```bash
-# App status overview
-oc get application <app-name> -n openshift-gitops
+# All Applications: sync, health
+oc get applications -n openshift-gitops \
+  -o custom-columns='APP:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status'
 
-# Detailed sync status and health
-oc get application <app-name> -n openshift-gitops -o yaml | grep -A 20 'status:'
+# Components of one stage
+python3 scripts/shared/stage_apps.py names 040
 
-# Sync errors
+# Sync errors and non-healthy resources of one Application
 oc get application <app-name> -n openshift-gitops -o jsonpath='{.status.conditions[*].message}'
-
-# Resource health breakdown
 oc get application <app-name> -n openshift-gitops -o jsonpath='{range .status.resources[*]}{.kind}/{.name}: {.health.status} {.status}{"\n"}{end}'
 
-# Force sync
-oc patch application <app-name> -n openshift-gitops --type merge -p '{"operation":{"sync":{}}}'
+# Deployed revision (compare with the commit the stage deploy.sh published)
+oc get application <app-name> -n openshift-gitops -o jsonpath='{.status.sync.revision}{"\n"}'
 
-# Argo CD server logs
-oc logs deploy/openshift-gitops-server -n openshift-gitops --tail=50
+# Delegated fields of a shared object (Stage 010 DSC)
+python3 scripts/shared/stage_apps.py delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io
 
-# Verify AppProject usage (all apps should show rhoai-demo, not default)
+# Project and tracking method (expected: rhoai-demo, annotation)
 oc get applications -n openshift-gitops -o custom-columns=NAME:.metadata.name,PROJECT:.spec.project
-
-# Verify annotation tracking
 oc get argocd openshift-gitops -n openshift-gitops -o jsonpath='{.spec.resourceTrackingMethod}'
 
-# Check manifest-generate-paths coverage
-oc get applications -n openshift-gitops -o custom-columns='NAME:.metadata.name,PATHS:.metadata.annotations.argocd\.argoproj\.io/manifest-generate-paths'
-```
-
-## Operators (CSV, Subscription, InstallPlan)
-
-```bash
-# All CSVs across namespaces
-oc get csv -A | grep -v Succeeded
-
-# Subscription details
-oc get sub -n <namespace> -o yaml
-
-# InstallPlan status
-oc get installplan -n <namespace>
-oc describe installplan <name> -n <namespace>
-
-# CatalogSource health
-oc get catalogsource -n openshift-marketplace
-oc get pods -n openshift-marketplace
+# Argo CD controller and server logs
+oc logs statefulset/openshift-gitops-application-controller -n openshift-gitops --tail=50
+oc logs deploy/openshift-gitops-server -n openshift-gitops --tail=50
 ```
 
 ## Pods
 
 ```bash
-# Pod status with node placement
-oc get pods -n <namespace> -o wide
-
-# Describe pod (events, conditions, volumes)
+oc get pods -A | grep -E 'CrashLoopBackOff|ImagePullBackOff|Error|Pending'
 oc describe pod <pod-name> -n <namespace>
-
-# Current logs
 oc logs <pod-name> -n <namespace> [-c <container>] --tail=100
-
-# Previous container logs (after crash)
 oc logs <pod-name> -n <namespace> [-c <container>] --previous
-
-# Events in namespace (sorted by time)
 oc get events -n <namespace> --sort-by=.lastTimestamp | tail -20
-
-# Resource usage
 oc adm top pods -n <namespace>
 ```
 
-## GPU & Nodes
+## GPU and nodes
 
 ```bash
-# GPU node status
-oc get nodes -l node-role.kubernetes.io/gpu -o wide
-
-# Node labels (GPU, NFD)
-oc get nodes --show-labels | grep -E "gpu|nvidia|kernel-version"
-
-# Node taints
-oc get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints[*].key'
-
-# MachineSet status
 oc get machineset -n openshift-machine-api | grep gpu
-
-# Machine status (provisioning)
 oc get machines -n openshift-machine-api | grep gpu
-
-# GPU allocatable resources
 oc get nodes -l nvidia.com/gpu.present=true -o jsonpath='{range .items[*]}{.metadata.name}: {.status.allocatable.nvidia\.com/gpu} GPUs{"\n"}{end}'
+oc get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints[*].key'
+oc get workloads.kueue.x-k8s.io -A
 ```
 
-## KServe / InferenceService
+## Model serving (llm-d and KServe)
 
 ```bash
-# InferenceService status
-oc get inferenceservice -n <namespace>
+# Production model (Stage 040) and candidate (Stage 050)
+oc get llminferenceservice -n internal-models
+oc get inferenceservice -A
 
-# Detailed conditions
-oc get inferenceservice <name> -n <namespace> -o jsonpath='{range .status.conditions[*]}{.type}: {.status} ({.reason}){"\n"}{end}'
+# Conditions
+oc get llminferenceservice qwen3-8-27b -n internal-models -o jsonpath='{range .status.conditions[*]}{.type}={.status} ({.reason}){"\n"}{end}'
 
-# Predictor pod
-oc get pods -n <namespace> | grep <isvc-name>
-oc describe pod <predictor-pod> -n <namespace>
-oc logs <predictor-pod> -n <namespace> --tail=100
+# Serving pods
+oc get pods -n internal-models
+oc logs deploy/qwen3-8-27b-kserve -n internal-models --tail=100
 
-# ServingRuntime
-oc get servingruntime -n <namespace> -o yaml
-
-# Dashboard runtime recognition (check template annotations)
-oc get servingruntime -n <namespace> -o custom-columns='NAME:.metadata.name,TEMPLATE:.metadata.annotations.opendatahub\.io/template-name,DISPLAY:.metadata.annotations.opendatahub\.io/template-display-name'
+# MaaS publication
+oc get maasmodelref -n internal-models
 ```
 
-## Networking (Routes, Services)
+## Networking
 
 ```bash
-# Routes in namespace
 oc get route -n <namespace>
-
-# Test route externally
-curl -sk https://<route-host>/
-
-# Services and endpoints
-oc get svc -n <namespace>
-oc get endpoints -n <namespace>
+oc get svc,endpoints -n <namespace>
+oc get gateway -n openshift-ingress
+oc get httproute -A
 ```
 
-## Storage (PVC, MinIO)
+## Storage
 
 ```bash
-# PVC status
 oc get pvc -n <namespace>
-
-# StorageClass
 oc get storageclass
+oc get obc -A
 ```
 
-## RHOAI Platform
+## RHOAI platform
 
 ```bash
-# DataScienceCluster status
-oc get datasciencecluster default-dsc
-
-# DSCInitialization status
-oc get dscinitializations default-dsci -o yaml
-
-# RHOAI Dashboard pods
+oc get datasciencecluster default-dsc -o jsonpath='{.status.phase}{"\n"}'
+oc get dscinitializations default-dsci -o jsonpath='{.status.phase}{"\n"}'
+oc get csv -n redhat-ods-operator
 oc get pods -n redhat-ods-applications
-
-# RHOAI Operator CSV
-oc get csv -n redhat-ods-operator | grep "OpenShift AI"
-
-# Hardware Profiles
 oc get hardwareprofiles -n redhat-ods-applications
-
-# Service Mesh 3 operator (RHOAI auto-installs with Manual approval)
-oc get subscription servicemeshoperator3 -n openshift-operators
-oc get installplan -n openshift-operators | grep servicemesh
+oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o jsonpath='{.spec.dashboardConfig}{"\n"}'
 ```
 
-## Data Science Pipelines
+## AI pipelines
 
 ```bash
-# DSPA status
 oc get dspa -n <namespace>
-
-# Pipeline pods
-oc get pods -n <namespace> -l pipeline/runid --sort-by=.metadata.creationTimestamp | tail -10
-
-# Pipeline server
 oc get pods -n <namespace> | grep ds-pipeline
+oc get workflows.argoproj.io -n <namespace>
 ```

@@ -1,174 +1,110 @@
 ---
 name: rhoai-guardrails-safety
 metadata:
-  author: rhoai3-demo
-  version: 1.1.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for official RHOAI runtime guardrails: support posture, Guardrails
-  Orchestrator/GuardrailsOrchestrator CRs, FMS/NeMo services, detector and generation
-  models, request/response detection, routes/authentication, telemetry, configuration and
-  validation. Do NOT use for EvalHub/LM-Eval or automated risk assessment (rhoai-
-  evaluation), general model deployment, serving-platform setup, MaaS governance or
-  general observability; use the matching rhoai skills. Live changes require the OpenShift
-  safety guard.
+  Use when changing or reviewing runtime guardrails in this repo: the Stage 040
+  dashboard flag `guardrails`, the optional `studio-api.py
+  --initialize-guardrails` helper that asks the dashboard to create the
+  `NemoGuardrails` resource `nemoguardrails` in `demo-sandbox`, the TrustyAI
+  component it depends on (Stage 050), or a proposal to add NeMo or FMS
+  Guardrails, detectors, PII masking or prompt-injection rails. Do NOT use for
+  playground guardrail toggles (use rhoai-gen-ai-playground), Garak risk scans
+  and EvalHub (use rhoai-evaluation), TrustyAI bias and drift (use
+  rhoai-monitoring-trustyai), or the Hermes tool-loop guardrails of Stage 130.
 ---
 
 # RHOAI Guardrails Safety
 
-Use this skill for official Red Hat OpenShift AI guardrails and AI safety
-workflows on the active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. No guardrail resource is declared in Git; the
+dashboard creates one on request. Detailed record:
+`gitops/stages/040-governed-models-as-a-service/maas-platform/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Guardrails guide to this repo's GitOps and README review model.
+- The playground offers no guardrails, or guardrail initialization fails.
+- Someone proposes a `NemoGuardrails` or `GuardrailsOrchestrator` resource,
+  detector models, or guardrails in front of MaaS models.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Dashboard flag `guardrails: true` set by the `job-enable-dsc-maas` Sync hook on a delegated Stage 010 field; `validate-native.py` requires it | `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml` | [NeMo Guardrails][nemo] |
+| TrustyAI component `Managed` from Stage 050 (the `NemoGuardrails` API group is `trustyai.opendatahub.io`) | `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/` | [Basic deployment][basic] |
+| No guardrail CR in Git; `studio-api.py --initialize-guardrails` calls the dashboard's own initialization, refuses unless the flag is on, and refuses any guardrail resource other than one named `nemoguardrails` | `stages/040-governed-models-as-a-service/studio-api.py` | [CR configuration reference][crref] |
+| NeMo Guardrails only; no FMS `GuardrailsOrchestrator` (3.5 documents migrating from FMS to NeMo) | not in Git | [Migrate from FMS to NeMo][migrate] |
+| Guarded models are reached through MaaS; no detector or self-check model is deployed | `gitops/stages/040-governed-models-as-a-service/local-models/` | [Separate self-check model][selfcheck] |
 
-- NeMo Guardrails for new RHOAI guardrailing work
-- `NemoGuardrails` custom resources managed by the TrustyAI Operator
-- NeMo standalone built-in detector quickstart with no LLM calls
-- `/v1/guardrail/checks` validation-only workflows
-- `/v1/chat/completions` guarded generation workflows
-- Presidio sensitive-data detection and regex detection
-- service account and Secret-based authentication to internal model endpoints
-- ConfigMap-based NeMo configuration with `config.yaml`, `prompts.yml`, and
-  `rails.co`
-- custom Python actions, self-check input/output rails, and separate
-  self-check models
-- OpenTelemetry configuration and performance considerations for NeMo
-- NeMo library flows for input, output, retrieval, and statistics
-- common safety patterns: PII detection, PII masking, prompt injection,
-  jailbreak, hate speech, profanity, and combined guardrails
-- industry self-check examples for financial services, telecommunications,
-  and custom policies
-- legacy FMS Guardrails workflows when required by existing examples or
-  migration analysis
-- `GuardrailsOrchestrator`, built-in detectors, Hugging Face detector serving
-  runtimes, Guardrails Gateway, OpenTelemetry, and metrics for FMS
-- Llama Stack PII detection integration through FMS Guardrails
+## Procedure
 
-Use other skills for adjacent work:
+1. Enable or change the flag only through the Stage 040 Job, then:
 
-- `rhoai-model-serving-platform` for KServe, vLLM, `ServingRuntime`, and
-  `InferenceService` platform configuration
-- `rhoai-model-management-monitoring` for deployed model operations and model
-  metrics outside guardrails-specific metrics
-- `rhoai-llama-stack` for Llama Stack distributions, providers, RAG, OAuth,
-  ABAC, and OpenAI-compatible API behavior
-- `rhoai-gen-ai-playground` for product playground testing and prompt export
-  workflows
-- `rhoai-evaluation` for EvalHub, LM-Eval, automated risk assessment, Garak,
-  judge models, and formal safety evaluation
-- `rhoai-observability` for platform observability, OpenTelemetry Collector,
-  Prometheus, Alertmanager, and Tempo setup
-- `ocp-opentelemetry` for Red Hat build of OpenTelemetry Operator, Collector,
-  instrumentation, and telemetry-pipeline behavior below guardrails-specific
-  telemetry semantics
-- `ocp-distributed-tracing` for Tempo Operator, `TempoStack`, tenants, trace
-  RBAC, and distributed tracing backend behavior below guardrails-specific
-  telemetry semantics
-- `rhoai-api-tiers` for `trustyai.opendatahub.io/v1alpha1`,
-  `serving.kserve.io`, and Llama Stack API support posture
-- `rhoai-chatbot-customization` for repo-specific chatbot UI behavior and
-  prompt text after product guardrails are selected
+   ```bash
+   ./stages/040-governed-models-as-a-service/deploy.sh
+   ./stages/040-governed-models-as-a-service/validate.sh
+   ```
 
-## Demo Policy
+2. Optional initialization (no model calls), after the OpenShift safety guard
+   in `AGENTS.md`; `<sha>` is the deployed Stage 040 revision:
 
-For this repo:
+   ```bash
+   python3 stages/040-governed-models-as-a-service/studio-api.py --expected-revision <sha> --initialize-guardrails
+   oc get nemoguardrails.trustyai.opendatahub.io -n demo-sandbox
+   ```
 
-- Prefer NeMo Guardrails for new guardrailing and safety controls.
-- Treat FMS Guardrails as legacy; use it only when an official example or
-  migration need requires FMS-specific behavior.
-- Keep the TrustyAI component `Managed` before deploying either NeMo or FMS
-  guardrails resources.
-- Enable route authentication for shared demo guardrails services with
-  `security.opendatahub.io/enable-auth: 'true'`.
-- Store model API keys and service account tokens in Kubernetes Secrets. Do
-  not put real tokens or external API keys in ConfigMaps or committed files.
-- Use `/v1/guardrail/checks` for validation-only gates, including pre-LLM,
-  RAG retrieval, and tool payload validation.
-- Use `/v1/chat/completions` only when the guardrails service should proxy and
-  guard generation through a model endpoint.
-- Keep policy prompts, custom rails, and Python actions reviewed as code.
-- For European enterprise READMEs, frame guardrails as safety controls and
-  policy enforcement, not as proof that the system is compliant or risk-free.
-- Pair guardrails with `rhoai-evaluation` when the claim requires measured
-  evidence, adversarial testing, or benchmark results.
-- Verify detector images and model artifacts before committing them. Treat
-  testing registries or upstream examples as examples only unless product
-  provenance is documented.
+3. A Git-managed rail set (ConfigMap with `config.yaml` and rails, auth to a
+   MaaS model, Secrets from `.env` helpers) needs a new GitOps component with a
+   README and a validate check that sends one allowed and one blocked request.
 
-## Live-Verified Platform Behaviors (RHOAI 3.4, Stage 240, 2026-07-05)
+## Pitfalls
 
-These behaviors were verified on a live cluster and are not documented in
-the official guide; account for them before authoring NeMo configurations:
+- Initialization proves only that the resource exists; model-backed input and
+  output checks are separate and not automated (the helper says so).
+- A second, differently named guardrail resource in `demo-sandbox` makes the
+  helper refuse; remove it or adopt it deliberately.
+- NeMo authentication to a model needs a token or ServiceAccount; MaaS keys
+  are minted per subscription (`rhoai-maas-governance`). See
+  [Configure authentication][auth].
+- Guardrails on OGX Responses API traffic are a separate integration
+  ([OGX guardrails security][ogxguard]).
 
-- The RHOAI NeMo server does not substitute `${VAR}` placeholders in
-  `config.yaml`; it loads the raw YAML and merges `MAIN_MODEL_ENGINE` /
-  `MAIN_MODEL_BASE_URL` environment values over it per request. Never set
-  `api_key` in `config.yaml` — a literal placeholder is sent to the model
-  endpoint as the key (401). The OpenAI client falls back to the
-  `OPENAI_API_KEY` environment variable from the CR Secret, which works.
-- The request `model` field overrides the config main model at runtime, and
-  MaaS-governed endpoints authorize per model. Clients (including the Llama
-  Stack `remote::nvidia` shield provider, which sends `shield_id` as the
-  model) must use the governed model name.
-- The server wraps internal failures as HTTP 200: `status: "error"` on
-  `/v1/guardrail/checks` and an "Internal server error" assistant message
-  on `/v1/chat/completions`. The Llama Stack `remote::nvidia` provider
-  treats any non-"blocked" status as no violation, so LLM-rail failures
-  masquerade as passes. Always validate that a benign message returns
-  `status: "success"` — that is the canary that self-check rails actually
-  run.
-- Reasoning models (for example Nemotron) spend their first completion
-  tokens on the reasoning channel, and the nemoguardrails self-check
-  default of `max_tokens: 3` then yields an empty verdict that fails
-  closed, blocking everything that reaches the LLM rail. Set per-task
-  `max_tokens` (for example 512) in `prompts.yml`; prompt toggles such as
-  `/no_think` do not disable reasoning on the vLLM build tested.
-- With `security.opendatahub.io/enable-auth: 'true'`, the TrustyAI operator
-  fronts the NeMo container (plain HTTP :8000) with a kube-rbac-proxy
-  sidecar (Service 443→8443, bearer token required). Header-less in-cluster
-  consumers need an explicit internal Service targeting the container port;
-  record that as a demo exception and keep the external route
-  authenticated.
-- `/v1/guardrail/checks` with a `[user, assistant]` message pair runs input
-  rails over the user message and output rails over the assistant message —
-  this is how Llama Stack output shields work through the
-  `remote::nvidia` provider.
-- The TrustyAI component flip in the shared `DataScienceCluster` must be
-  protected from the DSC owner's Argo CD selfHeal via an
-  `ignoreDifferences` entry for `/spec/components/trustyai`, like every
-  other later-stage component flip.
+## Official documentation (OpenShift AI 3.5)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| NeMo Guardrails | [Overview][nemo], [Standalone quick start][quickstart], [Deploy with an LLM][withllm], [Basic deployment][basic] |
+| Authentication | [Configure authentication][auth] |
+| Rails | [Custom Python actions][actions], [Self-check rails][selfcheckrails], [Separate self-check model][selfcheck], [Check content without generation][checkonly] |
+| Reference | [CR configuration reference][crref], [Library flows][flows], [Common examples][examples] |
+| Observability | [OpenTelemetry for NeMo][otel] |
+| MCP gateway tool calls | [NeMo with MCP gateway][mcp] |
+| FMS (legacy) | [Migrate from FMS to NeMo][migrate], [FMS Guardrails][fms] |
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - NeMo standalone validation
-   - NeMo guarded model endpoint
-   - NeMo custom rails or policy prompts
-   - NeMo OpenTelemetry
-   - FMS legacy orchestrator, detector, or gateway work
-   - Llama Stack PII integration through FMS
-   - guardrails README or architecture narrative
-4. Use `examples/guardrails-safety-patterns.md` for compact review patterns.
-5. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-6. Validate with `references/validation-checklist.md`.
+## Related skills
 
-## References
+`rhoai-gen-ai-playground`, `rhoai-llama-stack`, `rhoai-evaluation`,
+`rhoai-monitoring-trustyai`, `rhoai-maas-governance`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/guardrails-safety-patterns.md`
+[nemo]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#enabling-ai-safety-with-nemo-guardrails_nemo-guardrails
+[quickstart]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#nemo-guardrails-standalone-quick-start_nemo-guardrails
+[withllm]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#deploying-the-nemo-guardrails-service-with-an-llm_nemo-guardrails
+[basic]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#configuring-nemo-guardrails-basic-deployment_nemo-guardrails
+[auth]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#configure-nemo-guardrails-authentication_nemo-guardrails
+[actions]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#adding-custom-rails-with-python-actions_nemo-guardrails
+[selfcheckrails]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#adding-llm-self-check-guardrails_nemo-guardrails
+[selfcheck]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#using-a-separate-model-for-self-check-guardrails_nemo-guardrails
+[checkonly]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#checking-content-against-guardrails-without-generating-responses_nemo-guardrails
+[crref]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#nemo-guardrails-custom-resource-configuration-reference_nemo-guardrails
+[flows]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#nemo-guardrails-library-flows-reference_nemo-guardrails
+[examples]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#common-guardrail-configuration-examples_nemo-guardrails
+[otel]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#configuring-observability-for-nemo-guardrails-with-opentelemetry_nemo-guardrails
+[mcp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#nemo-guardrails-mcp-gateway-integration-overview_nemo-guardrails
+[migrate]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#migrating-from-fms-to-nemo-guardrails_migrating-from-fms-to-nemo-guardrails
+[fms]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/enabling_ai_safety_with_guardrails/index#enabling-ai-safety-with-guardrails_safety
+[ogxguard]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#ogx-guardrails-security-int_rag

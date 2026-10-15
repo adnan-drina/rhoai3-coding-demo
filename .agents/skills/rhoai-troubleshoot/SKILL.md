@@ -2,78 +2,108 @@
 name: rhoai-troubleshoot
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "Demo Environment"
 description: >
-  Diagnose and fix issues with the RHOAI demo deployment. Use when ANY
-  deployment stage fails, validate.sh reports errors, pods are in
-  CrashLoopBackOff/Pending/Error/ImagePullBackOff, ArgoCD shows OutOfSync or
-  Degraded, operators are not installing, GPU nodes are not joining,
-  InferenceServices are not Ready, or the user reports any problem with their
-  OpenShift AI environment. Also use when the user asks "why isn't X working?"
-  for any demo component.
-  Do NOT use for resource scaling (use manage-resources skill).
+  Diagnose and fix problems in this RHOAI 3.5 demo. Use when a stage
+  deploy.sh or validate.sh fails, pods are CrashLoopBackOff, Pending, Error or
+  ImagePullBackOff, an Argo CD Application is OutOfSync, Degraded or stuck on
+  a hook, an operator CSV is not Succeeded, GPU nodes do not join, a model is
+  not Ready, or the user asks "why isn't X working?" for a demo component.
+  Do NOT use for scaling or parking resources (use manage-resources), GPU
+  resume (use resume-gpu-demo), or RHOAI operator install failures in depth
+  (use rhoai-installation-troubleshooting).
 ---
 
 # RHOAI Troubleshooting
 
-Structured diagnostic workflow for resolving issues with the RHOAI demo on OpenShift 4.20. The implemented manifests target OpenShift AI 3.4 with MaaS governance as the active model-access path.
+Repo-specific workflow for the demo on OpenShift AI 3.5 and OpenShift 4.22.
+The knowledge base is `docs/TROUBLESHOOTING.md`; this skill is the procedure
+around it. Command list: `references/diagnostic-commands.md`; symptom index:
+`references/diagnostic-patterns.md`.
 
-## When to Use
+## When to use
 
-- A `validate.sh` script reports failures
-- A `deploy.sh` script errors out or hangs
-- Pods are stuck in CrashLoopBackOff, Pending, or Error
-- ArgoCD shows OutOfSync, ComparisonError, or Degraded
-- Operators are not installing or CSV not Succeeded
+- A stage script fails or reports warnings.
+- Argo CD shows OutOfSync, Degraded, ComparisonError or a stuck operation.
+- Pods, operators, GPU nodes, models, MaaS or the playground misbehave.
 
-## Instructions
+## Rules
 
-**Never guess.** Every diagnosis must be backed by official documentation or observable cluster state.
+- **Never guess.** Every diagnosis rests on observed cluster state, a repo
+  file, or an official section of the versions in
+  `.agents/references/red-hat-doc-map.yaml`.
+- Before any `oc` command: `load_env` and `check_oc_logged_in` from
+  `scripts/shared/lib.sh` (OpenShift safety guard in `AGENTS.md`). Diagnosis
+  is read-only.
+- Fix in Git and redeploy with the stage `deploy.sh`; do not patch live
+  objects that Argo CD owns, and never edit a delegated field (DSC,
+  `odh-dashboard-config`) by hand.
+- Keep demo security simple (`.agents/rules/env.md`); record a security
+  finding instead of adding hardening during a fix.
 
-### Step 1: Run the Validation Script
+## Procedure
 
-```bash
-./stages/NNN-<name>/validate.sh
-```
-Check exit code: 0 = pass, 1 = failures, 2 = warnings only.
+1. Run the failing stage's validation; note the first failing check:
 
-### Step 2: Consult Official Product Documentation
+   ```bash
+   ./stages/<NNN-name>/validate.sh
+   ./scripts/platform/validate-stage-flow.sh --live
+   ```
 
-Use `@RHOAI 3.3` and `@OCP 4.20` docs in Cursor unless the manifest explicitly documents an early-access MaaS behavior. Focus on the relevant section:
+2. Find the owning component: `python3 scripts/shared/stage_apps.py names <NNN>`,
+   then read its README under `gitops/stages/<stage>/<component>/README.md`
+   (Validation, Alignment with official guidance).
+3. Gather state with `references/diagnostic-commands.md` for that component.
+4. Match the symptom in `references/diagnostic-patterns.md` and
+   `docs/TROUBLESHOOTING.md`; for product behavior use the product skill of
+   the area (stage skill map in `AGENTS.md`).
+5. Apply the smallest fix in Git, publish, redeploy the stage, re-run
+   `validate.sh`.
+6. A new issue gets a `docs/TROUBLESHOOTING.md` entry (symptom, cause,
+   diagnostic commands, recovery). Stage READMEs keep selection rationale,
+   not failure stories. A product workaround also goes to `BACKLOG.md`.
 
-| Steps | Doc Section |
-|-------|-------------|
-| 01 | Installing and Uninstalling |
-| GPU/NFD | Managing Resources |
-| Model Serving | Deploying Models |
-| Pipelines | Working with AI Pipelines |
-| Model Registry | Enabling Model Registry |
-| Evaluation | Evaluating AI Systems |
+## Pitfalls
 
-### Step 3: Gather Cluster State
+- Argo CD can report `Synced` at a new SHA with a stale render; compare the
+  rendered manifests before trusting it
+  (`docs/TROUBLESHOOTING.md#argo-cd-reports-synced-but-new-manifests-are-missing`).
+- A manual sync can skip Sync hooks; enablement Jobs then never run
+  (`docs/TROUBLESHOOTING.md#manually-triggered-sync-finishes-in-seconds-and-skips-hooks`).
+- Removing a pointer from `010-rhoai-platform` `ignoreDifferences` restores
+  the Git value `Removed` and uninstalls that component.
+- With GPU MachineSets at 0, model, evaluation and serving alerts fail by
+  design; check `resume-gpu-demo` before debugging serving.
+- Stage 130 dest Hermes issues follow the Stage 130 rules listed in
+  `AGENTS.md`, not this skill alone.
 
-Run diagnostic commands from `references/diagnostic-commands.md` for the failing component.
+## Escalation
 
-### Step 4: Match to Known Pattern
+If one diagnostic cycle does not resolve it: report what was tried, the exact
+errors and `oc` output, what could not be validated, and the next manual
+checks. Say "Not validated against a live cluster" when no cluster was used.
 
-Check `references/diagnostic-patterns.md` for the symptom. Common patterns cover ArgoCD, operators, pods, and RHOAI-specific issues.
+## Official documentation (OpenShift AI 3.5)
 
-### Step 5: Apply Fix and Verify
+| Area | Book |
+|---|---|
+| Known issues | [Release notes][relnotes] |
+| Install, components | [Installing and uninstalling][install] |
+| Serving | [Deploying models][deploying] |
+| MaaS | [Govern LLM access with MaaS][maas] |
+| Pipelines | [Working with AI pipelines][pipelines] |
 
-Execute the smallest change that fixes the issue. Re-run `validate.sh` to confirm.
+## Related skills
 
-### Step 6: Update Knowledge Base
+`rhoai-installation-troubleshooting`, `inspect-cluster`, `validate-demo-step`,
+`manage-resources`, `resume-gpu-demo`, `review-gitops-change`,
+`workaround-review`.
 
-If this was a new issue, update `docs/TROUBLESHOOTING.md` with the symptom, cause, diagnostic commands, and recovery command. Keep stage READMEs educational.
-
-## Escalation Protocol
-
-If unresolved after one diagnostic cycle:
-1. Document what was tried and observed
-2. Include exact error messages and `oc` output
-3. Suggest manual checks
-4. Report to the user with full context
+[relnotes]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/release_notes/index
+[install]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index
+[deploying]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploying_models/index
+[maas]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index
+[pipelines]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ai_pipelines/index

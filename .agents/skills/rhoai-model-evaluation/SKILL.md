@@ -1,169 +1,110 @@
 ---
 name: rhoai-model-evaluation
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for repo-specific or legacy evaluation implementation: EvalHub rebuild references,
-  RAGAS/RAG scoring, KFP/MLflow evidence, model benchmarks, judge prompts/questions,
-  pre/post-RAG comparisons and evaluation failures. Do NOT use for official product
-  EvalHub/LM-Eval/LMEvalJob/risk workflows (rhoai-evaluation), AutoRAG dashboard
-  optimization, MLflow platform installation, model customization, chatbot UI, deployment
-  troubleshooting or GuideLLM inference tuning; use the matching skills.
+  Use when deciding what "good enough" means for a coding model in this repo:
+  the evaluation-driven development criteria (versioned `agentic-coding-*`
+  collections and their gates), adding or changing a criterion as a new `-vN`
+  collection, the qualification leaderboard's PROMOTE or HOLD rule against the
+  production baseline, onboarding a candidate model such as
+  `qwen3-8-27b-int4`, or reading and recording qualification results. Do NOT
+  use for running and debugging EvalHub jobs, providers and access (use
+  rhoai-evaluation), pipeline code (use rhoai-kfp-pipeline-authoring), the
+  pipeline server and runs (use rhoai-ai-pipelines), or MLflow (use
+  rhoai-mlflow).
 ---
 
-# Model Evaluation
+# Model Evaluation (qualification design)
 
-Structured workflow for running model evaluations in the active-baseline RHOAI demo — both
-RAG quality assessment (LLM-as-judge) and standard benchmarks (LM-Eval).
+Repo-specific skill: how this demo decides whether a model qualifies for the
+coding tools. Running the jobs is `rhoai-evaluation`. Detailed record:
+`stages/050-model-evaluation/edd/README.md`,
+`gitops/stages/050-model-evaluation/model-qualification/README.md`,
+`stages/050-model-evaluation/README.md` ("Model qualification pipeline").
+The legacy RAG judge, LMEvalJob templates and `backup/` scripts of the old
+skill are not in this repo and are not used (LM-Eval is deprecated in 3.5).
 
-## Reimplementation Status
+## When to use
 
-The active implementation is being rewritten. No active evaluation scripts,
-EvalHub GitOps content, LMEvalJob templates, or Step 08 README exists yet.
-Treat the file paths and command examples in this skill as legacy reference
-material for rebuilding evaluation, not as active-project instructions.
+- Proposing a new benchmark, gate or threshold.
+- Onboarding or comparing a candidate model against production.
+- Explaining a HOLD, or why a dimension is its own collection.
 
-Do not run or modify scripts from `backup/legacy-implementation-2026-06-09/`
-unless the user explicitly asks to restore or inspect the legacy implementation.
+## Repo decisions
 
-## Two Evaluation Paths
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Criteria are defined before models are compared, as versioned EvalHub collections: capability (LiveCodeBench alone; MBPP + HumanEval), security (Garak quick per change, full nightly or pre-promotion), latency, throughput | `gitops/stages/050-model-evaluation/evaluation-content/edd/` | [Add a collection by ConfigMap][collcm] |
+| One dimension per collection, because a job score is one weighted average against one threshold and the metrics do not share scale or direction | `stages/050-model-evaluation/edd/README.md` | [Create a custom collection][custom] |
+| A changed criterion is a new `-vN` collection, never an in-place edit, so each MLflow run stays tied to the criteria that judged it; old versions stay registered | `gitops/stages/050-model-evaluation/evaluation-content/edd/` | [MLflow experiment tracking][mlflow] |
+| One model per pipeline run; the last step ranks every qualified model from EvalHub history (newest finished job per model and collection) and recommends PROMOTE or HOLD; capability combines 3:2:1 with gate 0.50 | `stages/050-model-evaluation/qualification/pipeline.py` | not product guidance |
+| Production records the baseline once; candidates are compared with that record and never re-run it | `stages/050-model-evaluation/qualification/pipeline.py` | not product guidance |
+| A candidate is a project `InferenceService` with the same revision and serving arguments as production, so a pass carries over on promotion; it is stopped in Git between runs | `gitops/stages/050-model-evaluation/model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Compare evaluation runs][compare] |
+| CI gating template uses the EvalHub CLI with a full job body | `stages/050-model-evaluation/edd/agentic-coding-capability.ci.yaml` | [Install the SDK and CLI][cli] |
 
-```
-Path A: RAG Evaluation (LLM-as-Judge)
-  ┌────────────┐    ┌──────────────┐    ┌────────────┐    ┌──────────┐
-  │ Test YAML  │ →  │ Generate     │ →  │ Judge with │ →  │ HTML     │
-  │ questions  │    │ answers via  │    │ approved   │    │ report   │
-  │ + expected │    │ Nemotron     │    │ MaaS judge │    │ → MinIO  │
-  └────────────┘    └──────────────┘    └────────────┘    └──────────┘
+## Procedure
 
-Path B: Standard Benchmarks (LM-Eval)
-  ┌────────────┐    ┌──────────────┐    ┌────────────┐
-  │ LMEvalJob  │ →  │ TrustyAI     │ →  │ Dashboard  │
-  │ CR applied │    │ runs tasks   │    │ results    │
-  │ on demand  │    │ via vLLM     │    │ + PVC logs │
-  └────────────┘    └──────────────┘    └────────────┘
-```
+1. New or changed criterion: add `agentic-coding-<dimension>-v<N+1>.yaml` under
+   `gitops/stages/050-model-evaluation/evaluation-content/edd/`, list it in the
+   EvalHub CR (`rhoai-evaluation`), update the table in
+   `stages/050-model-evaluation/edd/README.md`, and add a pipeline step only
+   through `rhoai-kfp-pipeline-authoring` (new PipelineVersion).
+2. Deploy and validate Stage 050 at one SHA:
 
-## When to Use
+   ```bash
+   ./stages/050-model-evaluation/deploy.sh
+   ./stages/050-model-evaluation/validate.sh
+   ```
 
-- Running RAG evaluation (pre-RAG vs post-RAG comparison)
-- Running LM-Eval standard benchmarks (hellaswag, arc_challenge, etc.)
-- Adding or modifying test questions
-- Changing the judge prompt or scoring scale
-- Interpreting evaluation reports
-- Debugging failed eval pipelines or stuck LMEvalJob pods
-- Creating custom LMEvalJob CRs for new models or tasks
+3. Qualify: start a pipeline run with `model_name` and MLflow experiment
+   `agentic-coding-qualification` (`docs/OPERATIONS.md#stage-050-model-qualification-pipeline-2026-10-12`);
+   a candidate on the L40S queue needs that GPU pool up (`resume-gpu-demo`).
+4. Record results on the model's registry version with
+   `stages/050-model-evaluation/record-evaluation.sh` and in
+   `docs/OPERATIONS.md`; a promotion is a Stage 040 change, not an evaluation
+   change.
 
-## Key Files
+## Pitfalls
 
-| File | Purpose |
-|------|---------|
-| `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/run-rag-eval.sh` | Run RAG eval via KFP pipeline |
-| `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/run-eval-report.sh` | Run RAG eval as pod (simpler debugging) |
-| `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/run-evalhub-smoke.sh` | Run EvalHub smoke evaluation |
-| `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/run-evalhub-rag-scenarios.sh` | Run EvalHub RAG scenario collection |
-| `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/materialize-evalhub-rag-mlflow.sh` | Materialize EvalHub RAG results into MLflow evidence |
-| `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/run-lmeval.sh` | Submit LMEvalJob CR |
-| `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/eval-configs/*.yaml` | Test question sets (4 scenarios) |
-| `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/eval-configs/scoring-templates/judge_prompt.txt` | Judge prompt template |
-| `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/kfp/eval_pipeline.py` | Optional KFP pipeline definition |
-| `backup/legacy-implementation-2026-06-09/gitops/step-08-model-evaluation/base/evalhub/` | EvalHub CR, PostgreSQL, route, tenant RBAC, and provider configuration |
-| `backup/legacy-implementation-2026-06-09/gitops/step-08-model-evaluation/base/lmeval/*.yaml` | LMEvalJob CR templates |
-| `backup/legacy-implementation-2026-06-09/gitops/step-08-model-evaluation/base/eval-configs/` | GitOps-managed test configs |
-| `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/README.md` | Design decisions, architecture |
+- The baseline through MaaS includes gateway latency; read latency and
+  throughput gates with the MaaS path in mind (`docs/OPERATIONS.md`, Qwen 3.6
+  results).
+- EvalHub runs a collection's benchmarks in parallel: never mix a saturation
+  benchmark with a single-session latency benchmark in one collection.
+- The leaderboard matches a primary metric by exact key; a wrong metric key
+  yields no pass/fail (the reason LiveCodeBench needed `-v2`).
+- `security-full-v2` is skipped by default (`skip_security_full`) because it
+  takes about two hours.
+- Deleting EvalHub jobs changes the leaderboard, which reads only remaining
+  jobs.
 
-## Instructions
+## Official documentation (OpenShift AI 3.5)
 
-### Read Before You Write
+| Topic | Section |
+|---|---|
+| Overview | [Evaluation of AI systems][overview], [Built-in collections][builtin] |
+| Collections | [Create a custom collection][custom], [Add a collection by ConfigMap][collcm] |
+| Results | [MLflow experiment tracking][mlflow], [Compare evaluation runs][compare], [Evaluation cards][cards] |
+| Agents and EDD | [MCP `edd_workflow` prompt][edd], [CLI][cli] |
+| Safety scans | [Automated risk assessment][risk] |
 
-1. Read `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/README.md`
-2. For RAG eval details, read `references/rag-eval-configs.md`
-3. For LM-Eval templates, read `references/lmeval-templates.md`
+## Related skills
 
-### Path A: Run RAG Evaluation
+`rhoai-evaluation`, `rhoai-kfp-pipeline-authoring`, `rhoai-ai-pipelines`,
+`rhoai-mlflow`, `rhoai-model-registry-workflows`, `run-guidellm-load-test`.
 
-**Prerequisites:** Steps 01-05 and 07 deployed. Vector stores populated with
-`acme_corporate` and `whoami` data.
-
-```bash
-# Via KFP pipeline (platform-native, uses DSPA)
-./backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/run-rag-eval.sh
-
-# Via pod (simpler, good for debugging)
-./backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/run-eval-report.sh
-```
-
-**Output:** HTML reports uploaded to MinIO at `s3://rhoai-storage/eval-results/{run_id}/`
-
-**Scoring scale:**
-| Grade | Meaning | Color |
-|-------|---------|-------|
-| A | Same key facts as expected | Green |
-| B | Superset of expected (more detail) | Green |
-| C | Subset of expected (partial) | Yellow |
-| D | Minor differences, no factual error | Grey |
-| E | Contradicts expected answer | Red |
-
-### Path B: Run LM-Eval Benchmark
-
-**Prerequisites:** Steps 01-05 deployed. Model InferenceService ready.
-
-```bash
-# Benchmark nemotron-3-nano-30b-a3b (default 50 samples/task)
-./backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/run-lmeval.sh nemotron-3-nano-30b-a3b
-
-# Benchmark with 200 samples
-./backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/run-lmeval.sh nemotron-3-nano-30b-a3b 200
-```
-
-**Tasks:** hellaswag, arc_challenge, winogrande, boolq
-
-**Results:** RHOAI Dashboard → Develop & train → Evaluations, or:
-```bash
-oc get lmevaljob -n private-ai
-oc get lmevaljob <name> -n private-ai -o yaml
-```
-
-### Adding New Test Questions
-
-1. Edit the relevant test YAML in `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/eval-configs/`
-2. Copy to `backup/legacy-implementation-2026-06-09/gitops/step-08-model-evaluation/base/eval-configs/` (files must match)
-3. Follow the test YAML structure documented in `references/rag-eval-configs.md`
-4. Re-run evaluation to verify
-
-### Modifying the Judge Prompt
-
-1. Edit `backup/legacy-implementation-2026-06-09/steps/step-08-model-evaluation/eval-configs/scoring-templates/judge_prompt.txt`
-2. Copy to `backup/legacy-implementation-2026-06-09/gitops/step-08-model-evaluation/base/eval-configs/scoring-templates/`
-3. The prompt uses placeholders: `{input_query}`, `{expected_answer}`, `{generated_answer}`
-4. Must end with "Answer: " to anchor the A-E extraction regex
-
-### Critical Constraints
-
-For the full set of constraints, read
-`references/evaluation-development-patterns.md`: judge model selection,
-test question integrity, on-demand LMEvalJob pattern, EvalHub/KFP/pod path
-selection, and judge prompt anchoring. Post-RAG eval depends on vector stores —
-run step-07 ingestion first.
-
-### Validation
-
-```bash
-# Check RAG eval pipeline runs
-oc get pipelinerun -n private-ai -l pipeline-name=rag-evaluation
-
-# Check LMEvalJob status
-oc get lmevaljob -n private-ai
-
-# Check eval reports in MinIO
-oc exec deploy/minio -n private-ai -- mc ls local/rhoai-storage/eval-results/
-```
-
-For detailed test YAML structure, see `references/rag-eval-configs.md`.
-For LMEvalJob CR patterns, see `references/lmeval-templates.md`.
-For development constraints, see `references/evaluation-development-patterns.md`.
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#overview-evaluating-ai-systems_evaluate
+[builtin]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-built-in-collections_evaluate
+[custom]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-create-a-custom-collection_evaluate
+[collcm]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-add-a-collection-configmap_evaluate
+[mlflow]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-configure-mlflow-experiment-tracking_evaluate
+[compare]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-evaluation-run-comparison_evaluate
+[cards]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-evalcard-overview_evaluate
+[edd]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#edd_workflow_prompt
+[cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#evalhub-install-the-evalhub-sdk-and-cli_evaluate
+[risk]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/evaluating_ai_systems/index#automated-risk-assessment-overview_evaluate

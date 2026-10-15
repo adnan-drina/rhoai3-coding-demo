@@ -1,131 +1,119 @@
 ---
 name: rhoai-llama-stack
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for RHOAI Llama Stack: server/component deployment, LlamaStackDistribution, provider
-  configuration, inference/vector IO/safety/telemetry APIs, external models, Milvus,
-  authentication, storage and troubleshooting. Do NOT use for playground-only usage,
-  AutoRAG optimization, enterprise RAG application design, general serving-platform
-  configuration or MaaS governance; use the matching rhoai skills. Live changes require
-  the OpenShift safety guard.
+  Use when working with OGX, the OpenShift AI 3.5 successor of Llama Stack, in
+  this repo: the DSC `ogx` component that the Stage 040 enable-maas Job turns
+  on, the `default-ogx` component CR, the playground `OGXServer`
+  `lsd-genai-playground` in `demo-sandbox` and its retained state PVC, the
+  deprecated `llamastackoperator` field kept Removed in Stage 010, or planning
+  an OGX server, vector store, OpenAI-compatible API, auth or ABAC change. Do
+  NOT use for playground user workflows, custom endpoints and MCP lists (use
+  rhoai-gen-ai-playground), AutoRAG runs (use rhoai-autorag), RAG application
+  design (use rhoai-enterprise-rag), or NeMo Guardrails (use
+  rhoai-guardrails-safety).
 ---
 
-# RHOAI Llama Stack
+# RHOAI Llama Stack (OGX)
 
-Use this skill for OpenShift AI Llama Stack platform work on the active product
-baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. In 3.5 the Llama Stack guide is replaced by "Build
+AI/Agentic Applications with OGX" (book `working_with_ogx`); the skill keeps
+its old name. Detailed record:
+`gitops/stages/040-governed-models-as-a-service/maas-platform/README.md` and
+`gitops/stages/040-governed-models-as-a-service/genai-studio/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Llama Stack guide to this repo's operations and GitOps review model.
+- `default-ogx` is not Ready, or the dashboard cannot create a playground.
+- Someone proposes enabling `llamastackoperator` or authoring an
+  `LlamaStackDistribution` from older material.
+- Planning a project OGX server, vector database, OpenAI-compatible client or
+  OAuth/ABAC setup beyond the playground.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `llamastackoperator` stays `Removed` and is not delegated, so Argo CD enforces it; the live 3.5 CRD marks it deprecated in favour of `ogx` | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Llama Stack to OGX migration][migration] |
+| `ogx` set `Managed` by the `job-enable-dsc-maas` Sync hook (delegated Stage 010 field); the Job waits for `default-ogx` Ready | `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml` | [Activate the OGX Operator][activate] |
+| No OGX server in Git: the only server is the playground `lsd-genai-playground`, created from the dashboard with its pgvector database | not in Git (dashboard-owned) | [Resources created with a playground][playres] |
+| `studio-api.py --install-model` attaches the retained PVC `genai-playground-state` to a freshly created playground through `spec.workload.overrides` | `stages/040-governed-models-as-a-service/studio-api.py`, `gitops/stages/040-governed-models-as-a-service/genai-studio/` | [Deploy an OGX server][deploy] |
+| Models reach OGX only through MaaS endpoints, never through provider keys in an OGX configuration | `gitops/stages/040-governed-models-as-a-service/` | [OGX API provider support][providers] |
 
-- Llama Stack support posture and architecture in OpenShift AI
-- native Llama Stack APIs and OpenAI-compatible APIs
-- `/v1` base URL rules for OpenAI SDKs and raw HTTP requests
-- file citation annotations returned by the Responses API with `file_search`
-- Llama Stack provider support, enablement environment variables, disconnected
-  support, and preview status
-- activation of the Llama Stack Operator through `DataScienceCluster`
-- `LlamaStackDistribution` CR structure and server configuration
-- PostgreSQL metadata storage and pgvector provider use
-- RAG stack design with inference, embedding, vector storage, retrieval, and
-  document ingestion
-- vector store options: inline Milvus, remote Milvus, inline FAISS, remote
-  PostgreSQL with pgvector, and remote Qdrant
-- `llama_stack_client` ingestion and query workflows
-- Responses API `file_search` workflows and keyword/vector/hybrid search modes
-- Docling document preparation pattern for RAG
-- RAG evaluation provider posture, including Ragas, BEIR, and TrustyAI
-- OAuth/OIDC authentication, ABAC access policy behavior, and bearer-token
-  request requirements
-- self-signed/private CA handling through `spec.server.tlsConfig.caBundle`
-- high availability and autoscaling fields on `LlamaStackDistribution`
+## Procedure
 
-Use other skills for adjacent work:
+1. Enablement changes go through the Stage 040 Job, never the live DSC:
 
-- `rhoai-chatbot-customization` for the Streamlit chatbot UI, prompts,
-  suggestions, and agent/direct mode behavior
-- `rhoai-gen-ai-playground` for product Gen AI studio playground RAG, MCP,
-  reusable prompt, and custom endpoint user workflows
-- `rhoai-enterprise-rag` for metadata-aware enterprise RAG application
-  patterns, hybrid search, reranking, provider selection such as pgvector or
-  Milvus, and RHOAI product-document ingestion
-- `rhoai-autorag` for product AutoRAG optimization runs, JSON evaluation data,
-  leaderboard review, and generated indexing/inference notebook handoff
-- `rhoai-guardrails-safety` for NeMo Guardrails, FMS Guardrails, detector
-  services, and PII detection workflows that use Guardrails with Llama Stack
-- `rhoai-model-serving-platform` for vLLM, KServe, and model-serving runtime
-  configuration
-- `rhoai-nvidia-gpu-accelerators` for NVIDIA GPU Operators and hardware
-  profiles
-- `rhoai-certificate-management` for broader RHOAI certificate management
-- `rhoai-kfp-pipeline-authoring` for pipeline implementation details
-- `rhoai-model-evaluation` for evaluation workflow implementation
-- `rhoai-maas-governance` for governed MaaS endpoint access and external model
-  provider access
+   ```bash
+   ./stages/040-governed-models-as-a-service/deploy.sh
+   ./stages/040-governed-models-as-a-service/validate.sh
+   ```
 
-## Demo Policy
+2. Inspect read-only, after the OpenShift safety guard in `AGENTS.md`:
 
-For this repo:
+   ```bash
+   oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.ogx.managementState} {.spec.components.llamastackoperator.managementState}{"\n"}'
+   oc get ogxs.components.platform.opendatahub.io default-ogx -o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}{"\n"}'
+   oc get ogxservers.ogx.io,pvc -n demo-sandbox
+   ```
 
-- Treat Llama Stack as Technology Preview unless the active baseline changes.
-  README and presentation material must label that support posture.
-- Use official examples as source-grounded patterns, not as the demo's default
-  model choices. The active private model direction is governed by the model
-  serving skill and project baseline.
-- Prefer remote embedding models for production-shaped RAG flows. Inline
-  embedding providers are development/testing options and must be enabled
-  explicitly.
-- Prefer PostgreSQL-backed metadata storage. PostgreSQL is required for Llama
-  Stack metadata persistence in OpenShift AI deployments.
-- Prefer remote PostgreSQL with pgvector when the demo needs durable,
-  production-shaped vector storage that aligns with existing PostgreSQL
-  operational models.
-- Use inline Milvus or inline FAISS only for development, testing, or small
-  single-node experiments.
-- Do not put provider API keys or database passwords directly in manifests;
-  use Secrets and repo secret-handling rules.
-- In disconnected environments, record which providers are supported and avoid
-  `websearch`, `wolfram_alpha`, or remote providers that are not available.
-- For OpenAI-compatible SDKs, include `/v1` in `base_url`. For
-  `LlamaStackClient`, do not append `/v1`.
-- Do not route external OpenAI access directly through Llama Stack unless the
-  project explicitly approves that path; prefer the governed MaaS design in
-  `rhoai-maas-governance`.
+3. A new OGX server outside the playground needs its own GitOps component and
+   README: server CR, PostgreSQL metadata store, vector provider, Secrets from
+   `.env` helpers, and a validate step. Read the [security reference][security]
+   first and keep the demo security posture in `.agents/rules/env.md`.
 
-## Workflow
+## Pitfalls
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - Llama Stack Operator activation
-   - `LlamaStackDistribution` authoring or review
-   - RAG stack architecture
-   - vector store/provider selection
-   - document ingestion and query workflow
-   - OpenAI-compatible API use
-   - OAuth/ABAC configuration
-   - certificate trust
-   - HA/autoscaling
-4. Use `examples/llama-stack-patterns.md` for focused review patterns.
-5. Validate with `references/validation-checklist.md`.
+- Older skills and examples use `LlamaStackDistribution` and the Llama Stack
+  operator; follow the [migration chapter][migration] instead of porting them.
+- Do not pre-author or patch the playground's generated pgvector resources;
+  they are service-owned (`docs/OPERATIONS.md`, Stage 040 GenAI Studio).
+- Moving existing playground state needs the backup and restore procedure in
+  `docs/OPERATIONS.md`; `studio-api.py` attaches the PVC only to a new
+  playground and refuses an existing one.
+- Playground answer or tool failures:
+  `docs/TROUBLESHOOTING.md#gen-ai-playground-gets-no-answer-from-external-models`,
+  `docs/TROUBLESHOOTING.md#gen-ai-playground-mcp-tools-fail-or-return-no-tools`.
+- The OGX book pages read state no support level for the OGX APIs; check API
+  stability with `rhoai-api-tiers` before promising it.
 
-## References
+## Official documentation (OpenShift AI 3.5)
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/llama-stack-patterns.md`
+| Topic | Section |
+|---|---|
+| Overview, migration from Llama Stack | [Overview][overview], [Migration][migration] |
+| Operator and server | [Activate the OGX Operator][activate], [Deploy an OGX server][deploy] |
+| APIs and providers | [OGX APIs][apis], [OpenAI-compatible APIs][openai], [Provider support][providers] |
+| Vector databases, PostgreSQL | [Select a vector database][vectordb], [PostgreSQL in OGX][postgres], [Custom PostgreSQL for playground RAG][playpg] |
+| Security, auth, ABAC | [Security reference][security], [OAuth][oauth], [ABAC][abac], [Self-signed certificates][certs] |
+| Multi-tenancy, HA | [Multi-tenancy][tenancy], [HA and autoscaling][ha] |
+
+## Related skills
+
+`rhoai-gen-ai-playground`, `rhoai-enterprise-rag`, `rhoai-autorag`,
+`rhoai-guardrails-safety`, `rhoai-maas-governance`, `rhoai-api-tiers`,
+`rhoai-dsci-dsc-configuration`.
+
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#overview-of-ogx_rag
+[migration]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#llama-stack-to-ogx-migration_rag
+[activate]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#activating-the-ogx-operator_rag
+[deploy]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#deploying-ogx-server_rag
+[apis]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#ogx-apis_rag
+[openai]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#openai-compatible-apis-in-ogx_rag
+[providers]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#ogx-provider-support_rag
+[vectordb]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#select-and-deploy-a-vector-database_rag
+[postgres]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#using-postgresql-in-ogx_rag
+[playres]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#resources-created-when-you-create-a-playground_rag
+[playpg]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#configuring-a-custom-postgresql-instance-for-playground-rag_rag
+[security]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#ogx-security-guide_rag
+[oauth]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#auth-on-ogx_rag
+[abac]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#ogx-core-access-control_rag
+[certs]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#about-using-self-signed-certificates-with-ogx_rag
+[tenancy]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#ogx-multi-tenancy_rag
+[ha]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#ogx-high-avail-and-auto_rag

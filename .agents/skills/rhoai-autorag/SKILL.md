@@ -1,123 +1,81 @@
 ---
 name: rhoai-autorag
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for official RHOAI AutoRAG workflows: Technology Preview posture, RAG optimization,
-  ground-truth JSON, English/file-format limits, Llama Stack/Milvus prerequisites,
-  dashboard runs, imported pipeline naming, leaderboard metrics, generated notebooks,
-  search spaces and embedding guidance. Do NOT use for Llama Stack configuration, general
-  playground workflows, AI Pipelines administration, generic S3 operations or unrelated
-  IDE workflows; use the matching rhoai skills. Live changes require the OpenShift safety
-  guard.
+  Use when someone asks to show, enable or review OpenShift AI AutoRAG
+  (Technology Preview RAG optimization runs, test data, leaderboard, generated
+  RAG pattern) in this repo, where the dashboard flag `autorag` is set to
+  false by Stage 010 and AutoRAG is not deployed. Do NOT use for OGX servers
+  and vector stores (use rhoai-llama-stack), RAG application design (use
+  rhoai-enterprise-rag), pipeline servers (use rhoai-ai-pipelines), or EvalHub
+  evaluations (use rhoai-evaluation).
 ---
 
 # RHOAI AutoRAG
 
-Use this skill for Red Hat OpenShift AI AutoRAG user workflows on the active
-product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill. **Not deployed in this demo.** Product behavior lives in the linked
+OpenShift AI 3.5 sections; this file records the repo state and what enabling
+it would touch.
 
-## Source Grounding
+## Repo state
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Working with AutoRAG guide to this repo's demo workflow and governance
-review model.
+| Fact | Where in Git |
+|---|---|
+| Dashboard flag `autorag: false` (the documented default), written down so `validate.sh` intent is visible | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` |
+| `/spec/dashboardConfig/autorag` is not in the `010-rhoai-platform` `ignoreDifferences`, so Argo CD restores `false` if it is changed live | `gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/rhoai-platform.yaml` |
+| Stage 010 README lists AutoRAG and AutoML as disabled | `stages/010-openshift-ai-platform-foundation/README.md` |
+| Building blocks a run could use do exist: OGX (Stage 040), AI pipelines (DSC `aipipelines` Managed by Stage 050), MLflow (Stage 050) | `gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml`, `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/` |
 
-## Scope
+No AutoRAG test data, run, vector database for AutoRAG, or notebook is in Git.
 
-This skill covers:
+## When it would apply
 
-- AutoRAG Technology Preview support posture
-- AutoRAG concept model, RAG patterns, and search space terminology
-- English-only document support and Technology Preview limitations
-- JSON evaluation data with questions, expected answers, and source document
-  IDs
-- Gen AI studio AutoRAG optimization run creation
-- Llama Stack connection, foundation model, embedding model, and remote Milvus
-  prerequisites
-- document source rules for S3-compatible storage and local upload
-- externally imported AutoRAG pipeline naming rules
-- leaderboard review and pattern detail interpretation
-- faithfulness, answer correctness, and context correctness metrics
-- generated indexing and inference notebook handoff to a workbench
-- user-configurable parameters and non-configurable search-space defaults
-- recommended embedding model guidance from the official docs
+- A workshop story that compares RAG patterns over a document corpus and hands
+  the chosen pattern to a developer.
+- Label it Technology Preview in every README and talk track
+  ([limitations][tplimits]).
 
-Use other skills for adjacent work:
+## If enabled
 
-- `rhoai-llama-stack` for Llama Stack Operator activation,
-  `LlamaStackDistribution`, providers, vector stores, Milvus registration,
-  model availability, API behavior, OAuth/ABAC, CA trust, and HA/autoscaling
-- `rhoai-gen-ai-playground` for product playground RAG uploads, prompt
-  management, MCP testing, custom endpoints, and AI asset endpoint workflows
-- `rhoai-ai-pipelines` for pipeline server configuration, imported pipeline
-  management, pipeline run lifecycle, logs, and DSPA troubleshooting
-- `rhoai-s3-object-storage-data` for object storage operations from
-  workbenches
-- `rhoai-project-workflows` for projects, workbenches, project connections,
-  access, and cluster storage
-- `rhoai-data-science-ide-workflows` for running generated indexing and
-  inference notebooks in a workbench
-- `rhoai-model-evaluation` for formal evaluation evidence outside the product
-  AutoRAG leaderboard
+1. Decide the owning stage and record the decision in that stage README (Why /
+   What / How, alignment table).
+2. Delegate `/spec/dashboardConfig/autorag` in the `010-rhoai-platform`
+   Application and set it from that stage's enablement Sync-hook Job, as Stage
+   040 does for `guardrails` (`gitops/stages/040-governed-models-as-a-service/maas-platform/jobs/enable-maas-job.yaml`).
+   Never edit the live `OdhDashboardConfig` by hand.
+3. Read the prerequisites in [Create an optimization run][createrun] and
+   [Configuration parameters][params] before choosing models; route the
+   foundation and embedding models through MaaS.
+4. Add a validate step to the stage's `validate.sh`; keep test data in Git
+   without customer content.
 
-## Demo Policy
+## Official documentation (OpenShift AI 3.5)
 
-For this repo:
+| Topic | Section |
+|---|---|
+| Overview, workflow, limitations | [AutoRAG overview][overview], [Workflow][workflow], [Technology Preview limitations][tplimits] |
+| Test data | [Prepare test data][testdata] |
+| Runs and results | [Create a run][createrun], [Evaluate results][evaluate], [Run the RAG pattern][runpattern] |
+| Metrics and parameters | [Evaluation metrics][metrics], [Configuration parameters][params], [Recommended embedding models][embed], [Recommended foundation models][foundation] |
 
-- Label AutoRAG as Technology Preview in READMEs, runbooks, presentations, and
-  demo scripts. Do not present it as production SLA-backed.
-- Treat AutoRAG as a product workflow for exploring and selecting RAG
-  configurations, not as a substitute for governed application implementation.
-- Require Gen AI studio, a data science project, Llama Stack connection, and
-  remote Milvus before promising an AutoRAG run.
-- Do not claim inline Milvus support for AutoRAG. The official AutoRAG guide
-  requires remote Milvus.
-- Use English-language documents for AutoRAG demos unless the active official
-  baseline changes.
-- Keep documents in supported formats: PDF, DOCX, PPTX, Markdown, HTML, or
-  TXT.
-- Do not claim OCR, embedded-image processing, or PDF table-structure
-  detection during Technology Preview.
-- Keep at most three foundation models and two embedding models selected for a
-  run.
-- Treat optimization runs as immutable after creation. Use AI Pipelines run
-  workflows to stop, archive, or delete the underlying pipeline run.
-- Use generated indexing and inference notebooks as reviewable handoff
-  artifacts. Do not treat them as the final production RAG application.
-- Use leaderboard scores together with sample Q&A review. Do not select a
-  pattern solely because one metric is high.
+## Related skills
 
-## Workflow
+`rhoai-llama-stack`, `rhoai-enterprise-rag`, `rhoai-ai-pipelines`,
+`rhoai-gen-ai-playground`, `rhoai-dashboard-customization`.
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Confirm Technology Preview posture is acceptable for the requested demo
-   surface.
-4. Decide whether the task is:
-   - AutoRAG concept or README authoring
-   - prerequisite review for Gen AI studio, Llama Stack, Milvus, S3, and
-     workbench access
-   - JSON evaluation data design
-   - optimization run design
-   - external AutoRAG pipeline import review
-   - leaderboard and pattern selection
-   - indexing or inference notebook handoff
-   - metric and search-space interpretation
-5. Use `examples/autorag-patterns.md` for focused review patterns.
-6. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-7. Validate with `references/validation-checklist.md`.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/autorag-patterns.md`
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index#autorag-overview_autorag
+[workflow]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index#autorag_workflow
+[tplimits]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index#technology_preview_limitations
+[testdata]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index#preparing-test-data-for-autorag_autorag
+[createrun]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index#creating-autorag-optimization-run_autorag
+[evaluate]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index#evaluating-autorag-results_autorag
+[runpattern]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index#running-rag-pattern_autorag
+[metrics]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index#autorag-evaluation-metrics_autorag
+[params]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index#autorag-configuration-parameters_autorag
+[embed]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index#recommended_embedding_models
+[foundation]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_autorag/index#recommended_foundation_models

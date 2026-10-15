@@ -1,118 +1,101 @@
 ---
 name: rhoai-model-catalog-workflows
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or operating data scientist and AI engineer
-  workflows in the Red Hat OpenShift AI model catalog: discovering generative
-  AI models, using catalog categories, searching and filtering by task,
-  provider, license, language, and tensor type, viewing model cards and
-  provider metadata, evaluating Red Hat AI validated model performance,
-  using Model performance view, interpreting latency and throughput filters,
-  comparing tensor variants, registering a catalog model into a model registry,
-  and deploying a catalog model through the model serving wizard. Do NOT use
-  for administrator catalog-source governance, model registry provisioning,
-  general model-serving platform configuration, deployment wizard details
-  after the catalog handoff (use rhoai-model-deployment), or live cluster
-  changes without the OpenShift safety guard.
+  Use when a user or demo script browses the OpenShift AI Model Catalog in
+  this repo: finding a model, reading its card, operational metrics,
+  performance view or tensor variants, safety and security insights, then
+  registering it into `demo-registry` or deploying it from the catalog into a
+  project such as `internal-models` with the Stage 040 hardware profile, queue
+  and llm-d templates. Do NOT use for catalog sources and the Agent Catalog
+  (use rhoai-model-catalog-sources), registry records (use
+  rhoai-model-registry-workflows), the GitOps-managed `qwen3-8-27b` deployment
+  (use rhoai-model-deployment), or EvalHub runs (use rhoai-evaluation).
 ---
 
 # RHOAI Model Catalog Workflows
 
-Use this skill for OpenShift AI model catalog workflows performed by data
-scientists and AI engineers: discover, evaluate, register, and deploy catalog
-models.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/030-private-model-serving/private-model-serving/README.md`
+("model-discovery") and
+`gitops/stages/040-governed-models-as-a-service/local-models/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Working with the model catalog guide to this repo's demo workflow and
-governance review model.
+- Walking the "discover, compare, register, deploy" story in the dashboard.
+- A catalog model registers or deploys into the wrong place, or the deploy
+  wizard offers no hardware profile, queue or topology.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Catalog and registry turned on by Stage 030 (`modelregistry` Managed, `disableModelCatalog: false`, `disableModelRegistry: false`) | `gitops/stages/030-private-model-serving/private-model-serving/model-discovery/enable-job.yaml` | [Model catalog and model registries][overview] |
+| One registry, `demo-registry` in `rhoai-model-registries`; both persona groups bound to `registry-user-demo-registry` | `gitops/stages/030-private-model-serving/private-model-serving/model-discovery/registry/` | [Register a model from the catalog][register] |
+| The production model `qwen3-8-27b` is deployed from Git (`LLMInferenceService`), not from the catalog; catalog deployment is a user demonstration | `gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-llminferenceservice.yaml` | [Deploy a model from the catalog][deploy] |
+| Catalog deployments into `internal-models` use hardware profile `gpu-rtxpro6000` or `gpu-reserved-demo`, LocalQueues `lq-gpu-rtxpro6000` / `lq-gpu-reserved-demo`, and the llm-d templates `single-node-exclusive-gpu` + `single-node-queue-router` | `gitops/stages/040-governed-models-as-a-service/local-models/` | [Deploy a model from the catalog][deploy] |
+| Safety and security insights need the EvalHub `get evaluations` grant in `rhoai-model-registries` | `gitops/stages/050-model-evaluation/evalhub/tenant/catalog-insights-role.yaml` | [Safety and security insights][safety] |
 
-- discovering available generative AI models in AI hub -> Models -> Catalog
-- model catalog categories such as All models, Red Hat AI models, Red Hat AI
-  validated models, Other models, and administrator-defined labeled categories
-- searching by model name, description, or provider
-- filtering by task, provider, license, language, and tensor type
-- reading model cards, intended use, limitations, training details, and
-  evaluation results
-- using Performance Insights for validated models
-- using Model performance view and workload/hardware constraints
-- interpreting validated-model performance metrics and tensor variants
-- registering a catalog model into an available model registry
-- deploying a catalog model through the model serving wizard
+## Procedure
 
-Use other skills for adjacent work:
+1. Check discovery is up (after the OpenShift safety guard in `AGENTS.md`):
 
-- `rhoai-model-catalog-sources` for administrator control over which catalog
-  sources and models are visible
-- `rhoai-model-registry` for registry provisioning, database choices, and
-  permissions
-- `rhoai-model-registry-workflows` for registry-side model and version
-  lifecycle after catalog registration
-- `rhoai-model-serving-platform` for serving runtime prerequisites, automatic
-  runtime selection prerequisites, and runtime platform configuration
-- `rhoai-model-deployment` for deployment wizard details, model storage
-  choices, runtime auto-selection behavior, routes, token authentication,
-  deployment strategies, and inference endpoint smoke tests
-- `rhoai-gen-ai-playground` for testing catalog-deployed generative models
-  after they are added as AI asset endpoints
-- `rhoai-model-management-monitoring` for operating deployed catalog models
-- `rhoai-api-tiers` for API support posture when automating catalog-related
-  workflows
+   ```bash
+   ./stages/030-private-model-serving/validate-model-discovery.sh
+   oc get modelregistry demo-registry -n rhoai-model-registries
+   ```
 
-## Demo Policy
+2. In the dashboard: find the model, compare variants by tensor type and the
+   performance view, check safety insights, then register it into
+   `demo-registry` and deploy into a project you own.
+3. To publish a catalog-deployed model to developers, move it to Git and MaaS
+   (`MaaSModelRef`, subscription) instead of keeping a dashboard-only
+   deployment; see `rhoai-model-deployment` and `rhoai-maas-governance`.
 
-For this repo:
+## Pitfalls
 
-- Treat the model catalog as the governed discovery and evaluation entry point
-  for model selection.
-- Prefer Red Hat AI and Red Hat AI validated categories for default demo
-  narratives.
-- Treat Red Hat AI validated performance data as deployment-selection evidence,
-  not a replacement for the demo's own validation.
-- Preserve catalog model card limitations and intended-use notes in README or
-  presentation claims.
-- Use Performance Insights and tensor variant comparisons when explaining
-  hardware, latency, throughput, or cost trade-offs.
-- Do not register catalog models on `s390x`; the official workflow says this
-  registration path is not supported there.
-- Do not claim broad catalog support on `s390x`; the official guide states only
-  `granite-3.3-8b-instruct` is supported there.
-- For catalog deployments, remember that model-serving deployments use the
-  global cluster pull secret to pull OCI-compliant ModelCar models from the
-  catalog.
-- Hand off model-serving runtime choices and advanced deployment settings to
-  `rhoai-model-serving-platform`.
-- Label `s390x` advanced deployment settings as unsupported.
+- A dashboard deployment in `internal-models` competes with `qwen3-8-27b`
+  for the GPU queues; check quota with `rhoai-kueue-workload-management`
+  before deploying.
+- A catalog-deployed model is not governed until it has a `MaaSModelRef`;
+  clients must not call its pod or route directly.
+- Validated-model performance data describes Red Hat's test hardware, not
+  this cluster's g7e/g6e nodes; measure with `run-guidellm-load-test`.
+- Safety insights show nothing without the EvalHub Role:
+  `rhoai-model-catalog-sources` and `rhoai-evaluation`.
 
-## Workflow
+## Official documentation (OpenShift AI 3.5)
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is discovery, performance evaluation, tensor variant
-   assessment, catalog registration, or catalog deployment.
-4. Use the dashboard paths and constraints in
-   `examples/model-catalog-workflow-patterns.md`.
-5. For registry registration, confirm access to an available model registry.
-6. For deployment, confirm model serving prerequisites and hand off deployment
-   workflow details to `rhoai-model-deployment`.
-7. Validate with `references/validation-checklist.md`.
+| Topic | Section |
+|---|---|
+| Concepts | [Model catalog and model registries][overview] |
+| Discover | [Discover models][discover], [Operational metrics][opmetrics] |
+| Performance | [Performance view][perfview], [Validated model performance][perfdata] |
+| Variants | [Tensor types and variants][tensor], [Filter by tensor type][tensorfilter] |
+| Safety | [Safety and security insights][safety], [View insights][viewsafety], [Filter results][filtersafety] |
+| Register, deploy | [Register a model][register], [Deploy a model][deploy] |
 
-## References
+## Related skills
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/model-catalog-workflow-patterns.md`
+`rhoai-model-catalog-sources`, `rhoai-model-registry`,
+`rhoai-model-registry-workflows`, `rhoai-model-deployment`,
+`rhoai-maas-governance`, `rhoai-evaluation`.
+
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#overview-of-model-registries_working-model-catalog
+[discover]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#viewing-models-in-the-catalog_working-model-catalog
+[opmetrics]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#about-model-catalog-operational-metrics_working-model-catalog
+[perfview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#about-the-model-performance-view_working-model-catalog
+[perfdata]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#viewing-performance-data-for-validated-models_working-model-catalog
+[tensor]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#about-tensor-type-model-variants_working-model-catalog
+[tensorfilter]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#filtering-model-catalog-tensor-type_working-model-catalog
+[safety]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#about-safety-and-security-insights_working-model-catalog
+[viewsafety]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#viewing-safety-and-security-insights_working-model-catalog
+[filtersafety]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#filtering-safety-and-security-evaluation-results_working-model-catalog
+[register]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#registering-a-model-from-the-model-catalog_working-model-catalog
+[deploy]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_the_model_catalog/index#deploying-a-model-from-the-model-catalog_working-model-catalog
