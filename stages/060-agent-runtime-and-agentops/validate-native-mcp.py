@@ -56,7 +56,7 @@ def app_identity(app, revision):
     spec = app["spec"]
     need(not app["metadata"].get("deletionTimestamp") and not app["metadata"].get("ownerReferences"), "Application is terminating or foreign-owned")
     need(not spec.get("sources") and spec.get("project") == "rhoai-demo", "Application project/multisource differs")
-    need(spec.get("source", {}).get("path") == PATH and spec["source"].get("repoURL") == "https://github.com/adnan-drina/rhoai3-coding-demo.git", "Application source differs")
+    need(spec.get("source", {}).get("path") == PATH and spec["source"].get("repoURL") == os.environ.get("GIT_REPO_URL","https://github.com/adnan-drina/rhoai3-coding-demo.git"), "Application source differs")
     need(spec.get("destination") == {"server": "https://kubernetes.default.svc", "namespace": APP_DESTINATION}, "Application destination differs")
     if revision:
         need(spec["source"].get("targetRevision") == revision, "Application desired revision differs")

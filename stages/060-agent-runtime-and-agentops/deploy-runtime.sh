@@ -27,7 +27,7 @@ if [[ "${1:-}" == '--finish' ]]; then
 fi
 # Fail closed on foreign App or resource ownership before the first component write.
 python3 - "$REVISION" <<'PY'
-import json,subprocess,sys
+import json,os,subprocess,sys
 app='060-openshell-runtime'
 def get(kind,name,ns):
  r=subprocess.run(['oc','--request-timeout=15s','get',kind,name,'-n',ns,'--ignore-not-found','-o','json'],capture_output=True,text=True)
@@ -36,7 +36,7 @@ def get(kind,name,ns):
 a=get('application',app,'openshift-gitops')
 if a:
  m=a['metadata'];s=a['spec'];assert not m.get('ownerReferences') and not m.get('deletionTimestamp') and not a.get('operation') and 'sources' not in s
- assert s['project']=='rhoai-demo' and s['source']['repoURL']=='https://github.com/adnan-drina/rhoai3-coding-demo.git' and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/openshell-runtime'
+ assert s['project']=='rhoai-demo' and s['source']['repoURL']==os.environ.get('GIT_REPO_URL','https://github.com/adnan-drina/rhoai3-coding-demo.git') and s['source']['path']=='gitops/stages/060-agent-runtime-and-agentops/openshell-runtime'
  assert s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'}
  assert a.get('status',{}).get('operationState',{}).get('phase') not in ('Running','Terminating')
 for kind,name,ns in [('Namespace',n,'openshell') for n in ('openshell','openshell-admin','openshell-developer','ai-agents','agent-sandbox-system')]+[('Subscription','agent-sandbox-operator','agent-sandbox-system'),('ConfigMap','openshell-identity','openshell'),('ConfigMap','openshell-runtime-ready','openshell'),('Secret','openshell-credentials','openshell')]:

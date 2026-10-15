@@ -11,7 +11,7 @@ def oc(*a,payload=None):
     return json.loads(r.stdout) if r.stdout.strip() else None
 def get(kind,name,namespace=NS):return oc('get',kind,name,'-n',namespace,'-o','json')
 app=get('application',APP,'openshift-gitops');m=app['metadata'];s=app['spec'];assert not m.get('ownerReferences') and not m.get('deletionTimestamp') and 'sources' not in s
-source={'repoURL':'https://github.com/adnan-drina/rhoai3-coding-demo.git','targetRevision':args.revision,'path':'gitops/stages/060-agent-runtime-and-agentops/openshell-runtime'}
+source={'repoURL':os.environ.get('GIT_REPO_URL','https://github.com/adnan-drina/rhoai3-coding-demo.git'),'targetRevision':args.revision,'path':'gitops/stages/060-agent-runtime-and-agentops/openshell-runtime'}
 assert s['source']==source and s['project']=='rhoai-demo' and s['destination']=={'server':'https://kubernetes.default.svc','namespace':'openshift-gitops'}
 operation=app['status']['operationState'];assert operation['phase'] in ('Running','Succeeded') and operation['syncResult']['revision']==args.revision and operation['syncResult']['source']==source
 assert 'RespectIgnoreDifferences=true' in s['syncPolicy']['syncOptions']
