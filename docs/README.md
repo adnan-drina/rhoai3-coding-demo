@@ -35,4 +35,4 @@ Shared rules, skills, and agent definitions live under [`../.agents/`](https://g
 
 Claims in user-facing documentation must stay aligned with manifests, scripts, validation checks, and official product documentation.
 
-Agent platform design: [Stage 060 runtime and AgentOps](migration/060-agent-runtime-and-agentops-plan.md) and [Stage 070 developer platform and SCM](migration/070-developer-platform-and-scm-plan.md). These documents record design scope; current implementation and validation status is in the [Stage 070 upgrade plan](migration/070-upgrade-and-gitlab-plan-20261013.md#implementation-status) and [BACKLOG.md](https://github.com/adnan-drina/rhoai3-coding-demo/blob/main/BACKLOG.md).
+Current implementation and validation status is in the stage READMEs and [BACKLOG.md](https://github.com/adnan-drina/rhoai3-coding-demo/blob/main/BACKLOG.md).

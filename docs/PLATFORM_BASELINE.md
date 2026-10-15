@@ -18,8 +18,7 @@ component README links to another documentation version. Upgrade a product by ch
 OpenShift itself, which is installed outside Git) carry the reason in the map.
 
 The live cluster inventory and the fresh-environment contract are in
-[OPERATIONS](OPERATIONS.md#fresh-environment-baseline-2026-10-05). Earlier baselines and stage
-qualification notes are kept in [platform baseline history](migration/platform-baseline-history.md).
+[OPERATIONS](OPERATIONS.md#fresh-environment-baseline-2026-10-05).
 
 ## Version match rule
 
