@@ -11,7 +11,7 @@ description: >
   OpenShift Pipelines: the openshift-pipelines-operator-rh Subscription on
   pipelines-1.24, the operator-owned TektonConfig singleton and the Sync-hook
   patches for the pruner, coschedule and createRbacResource, the
-  config-triggers-core-interceptors workaround, and upgrade checks. Do NOT use
+  retired config-triggers-core-interceptors workaround, and upgrade checks. Do NOT use
   for pipeline and trigger authoring (use ocp-pipelines-cicd), build security
   and SCCs (use ocp-pipelines-security), resource tuning (use
   ocp-pipelines-performance), or RHOAI data science pipelines (use
@@ -40,7 +40,7 @@ OpenShift Pipelines 1.24 sections. Detailed record:
 | Pruner: PipelineRuns only, keep 10, hourly (product default keep 100, daily at 08:00) | `pipelines/operators/configure-tekton-pruner.yaml` | [Configuring the pruner][pruner] |
 | `createRbacResource=false`: no per-namespace `pipeline` SA grants or `pipelines-scc-rolebinding`; one named SA gets one SCC | `pipelines/build/tektonconfig-affinity.yaml`, `pipelines/operators/image-builder-scc.yaml` | [Disabling automatic RBAC creation][rbac], [RBAC and Trusted CA flags][rbac-flags] |
 | `spec.pipeline.coschedule: pipelineruns` so one run can bind the source PVC and the `maven-cache` PVC | `pipelines/build/tektonconfig-affinity.yaml` | not in the 1.24 Red Hat guides (verified live on the operator; upstream Tekton field) |
-| `config-triggers-core-interceptors` applied from Git (upstream default) after a 1.22.6 update shipped without it | `pipelines/build/tekton-triggers-core-config.yaml` | operator-owned operand; see Pitfalls |
+| `config-triggers-core-interceptors` is operator-owned again on 1.24 (its `TektonInstallerSet`); the Git copy added for the 1.22.6 gap was removed on 2026-10-15 | — | operator-owned operand; see Pitfalls |
 
 ## Procedure
 

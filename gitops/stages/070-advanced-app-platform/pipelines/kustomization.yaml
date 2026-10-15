@@ -9,7 +9,6 @@ resources:
 - signing
 - build/persona-rbac.yaml
 - build/tektonconfig-affinity.yaml
-- build/tekton-triggers-core-config.yaml
 - build/task-provision-migration-run.yaml
 - build/pipeline-provision-migration-run.yaml
 - gitlab/reconciler.yaml
