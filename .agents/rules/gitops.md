@@ -32,7 +32,8 @@ SHA=$(python3 "$REPO_ROOT/scripts/shared/stage_apps.py" select NNN --ref "${GIT_
 python3 "$REPO_ROOT/scripts/shared/stage_apps.py" deploy NNN --revision "$SHA" --repo-url "$GIT_REPO_URL"
 ```
 - `select` refuses a checkout whose stage source differs from the commit, untracked stage files, and a commit `GIT_REPO_URL` does not advertise. Never hand-write the publish check.
-- `deploy` applies every deploy-order component, starts a sync only where this source has not been synced yet (carrying the Application's own `syncOptions` and prune), and waits for each to be Synced and Healthy. A stage whose own setup must run before its components can become healthy uses `--no-wait`, runs the setup, then `stage_apps.py wait`. Components that declare `demo.rhoai.io/deploy-mode: sequential` deploy one order group at a time (Stage 070). `--resync` re-runs every hook.
+- `deploy` applies every deploy-order component, starts a sync only where this source has not been synced yet (carrying the Application's own `syncOptions` and prune), and waits for each to be Synced and Healthy. A stage whose own setup must run before its components can become healthy uses `--no-wait`, runs the setup, then `stage_apps.py wait`. Components that declare `demo.rhoai.io/deploy-mode: sequential` deploy one order group at a time (Stage 070). `--resync` re-runs every hook. A cluster-specific value reaches one component as a Kustomize patch on its Application (`--kustomize-patches FILE`, Stage 040 Gateway hostnames), so Git stays cluster-neutral.
+- A `deploy-script` component's script uses the same commands for one component: `select`, its read-only preflight, `stage_apps.py apply NNN --app NAME`, `sync NNN --app NAME`, `wait NNN --app NAME`. No script calls the `argocd` CLI.
 - Each stage takes `deploy.sh [--revision REF]`; the default is `GIT_REPO_BRANCH`, then `HEAD`. No default repository URL in scripts.
 - `validate.sh` checks its Applications with `check_stage_applications NNN [SHA]` (bash, `validate-lib.sh`) or `stage_apps.stage_problems(NNN, ..., separate=True)` (Python): every component, never a subset. Exit 0 pass, 1 fail, 2 warnings or pending.
 
@@ -133,6 +134,8 @@ Every Application MUST use `destination: {server: https://kubernetes.default.svc
 | `retry.backoff` | `5s / factor 2 / max 3m` | Exponential backoff |
 | `SkipDryRunOnMissingResource` | `true` | CRDs may not exist at first sync |
 | `RespectIgnoreDifferences` | `true` | Sync also skips the ignored fields, not only the diff |
+
+Exception: the five Stage 060 Applications have no `automated` policy. A runtime sync gate (`openshell-runtime-prerequisites`) needs per-revision values that `deploy-runtime.sh` stamps during the sync, and an automatic sync of a new commit on `main` would start the agent runtime rollout unattended. Their scripts start each sync explicitly at the selected SHA.
 
 **Do NOT use:** `ServerSideApply=true` or `Replace=true`.
 

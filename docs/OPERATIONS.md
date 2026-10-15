@@ -565,10 +565,10 @@ Find which component Application owns an object:
 python3 scripts/shared/stage_apps.py owner 040 ConfigMap gen-ai-aa-mcp-servers redhat-ods-applications
 ```
 
-Force a sync from the CLI if needed:
+Force a sync (re-runs its hooks) if needed:
 
 ```bash
-argocd app sync 040-local-models
+python3 scripts/shared/stage_apps.py sync 040 --app 040-local-models --resync
 ```
 
 If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for automated sync. Most applications have automated sync enabled.

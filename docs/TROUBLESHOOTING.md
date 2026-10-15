@@ -460,7 +460,7 @@ oc rollout status deployment/maas-api -n redhat-ai-gateway-infra
 Then re-run:
 
 ```bash
-argocd app sync 040-maas-platform
+python3 scripts/shared/stage_apps.py sync 040 --app 040-maas-platform --resync
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
@@ -536,7 +536,7 @@ oc auth can-i create prometheuses/k8s --subresource=api \
 
 ```bash
 # Re-sync the component that owns the MaaS PersesDashboards and their enablement Jobs.
-argocd app sync 040-maas-platform
+python3 scripts/shared/stage_apps.py sync 040 --app 040-maas-platform --resync
 
 ts="$(date -u +%Y%m%d%H%M%S)"
 oc get persesdashboard -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' \
@@ -597,7 +597,7 @@ oc get secret prometheus-web-tls-ca -n redhat-ods-monitoring
 Re-sync Stage 010 so the GitOps hook creates the Secret from the injected ConfigMap:
 
 ```bash
-argocd app sync 010-rhoai-platform
+python3 scripts/shared/stage_apps.py sync 010 --app 010-rhoai-platform --resync
 ./stages/010-openshift-ai-platform-foundation/validate.sh
 ```
 
@@ -703,9 +703,8 @@ oc logs -n coding-assistant \
   -l app.kubernetes.io/instance=lsd-genai-playground --tail=200 | \
   grep -E "subscription .* does not include model|OpenAI response failed"
 
-oc get maassubscription demo-models-subscription \
-  -n models-as-a-service \
-  -o jsonpath='{.spec.modelRefs[*].name}{"\n"}'
+oc get maassubscription -A \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,MODELS:.spec.modelRefs[*].name'
 
 oc get maastenantconfig default-tenant \
   -n models-as-a-service \
@@ -714,16 +713,12 @@ oc get maastenantconfig default-tenant \
 
 **Recover:**
 
-- Re-sync Stage 040 so the product MaaS API route, `Tenant`, and `MaaSSubscription` are reconciled.
-- Re-sync Stage 040 so the external-model PostSync hook expands `demo-models-subscription` to include `qwen3-6-35b-a3b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini`.
+- Add the local model to the persona's subscription in Git (`gitops/stages/040-governed-models-as-a-service/model-access/`), then redeploy Stage 040.
 - Avoid adding a second broad subscription with overlapping model refs. The MaaS controller generates token-rate-limit policy names per model, so overlapping subscriptions can create policy conflicts.
 
 ```bash
-argocd app sync 040-maas-platform
-argocd app sync 050-approved-external-model-access
-
-GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
-./stages/050-approved-external-model-access/validate.sh
+./stages/040-governed-models-as-a-service/deploy.sh
+./stages/040-governed-models-as-a-service/validate.sh --readiness
 ```
 
 ## AI Asset Endpoints MaaS API Key Dialog Shows An Empty Key
@@ -751,7 +746,7 @@ The logs must show successful key creation, but must not print full API keys. On
 - Generate a new one-time key.
 
 ```bash
-argocd app sync 040-maas-platform
+python3 scripts/shared/stage_apps.py sync 040 --app 040-maas-platform --resync
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 

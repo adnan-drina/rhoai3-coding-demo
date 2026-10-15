@@ -301,6 +301,14 @@ while IFS= read -r gitops_path; do
     kustomize build "$REPO_ROOT/$gitops_path" >/dev/null
 done <"$TMP_PATHS"
 
+log_step "Checking that stage scripts deploy through stage_apps.py"
+# Applications are applied, synced and waited for by scripts/shared/stage_apps.py (.agents/rules/gitops.md), never by the
+# argocd CLI, whose core mode depends on the kube-context namespace and the client version.
+if git -C "$REPO_ROOT" grep -n -E '(^|[^A-Za-z_./-])argocd +(--core|app +(sync|wait|set|create))' -- 'stages/*.sh' 'stages/*.py' 'scripts/*.sh' 'scripts/*.py'; then
+  log_error "A stage script calls the argocd CLI; use stage_apps.py apply/sync/wait"
+  exit 1
+fi
+
 log_step "Checking Stage 010 delegations against hook Job declarations"
 python3 "$REPO_ROOT/scripts/shared/stage_apps.py" check-delegations
 
