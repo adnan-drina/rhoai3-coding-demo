@@ -60,7 +60,7 @@ class SecretLifecycle(unittest.TestCase):
   self.doc={'apiVersion':'v1','kind':'Secret','metadata':{'name':'credential','namespace':'test','labels':{'owned':'yes'}},'stringData':{'token':'synthetic-token'}}
  def test_first_write_does_not_copy_payload(self):
   api=SecretAPI();secret_writer.write_secret(self.doc,api)
-  self.assertEqual([a[0] for a,d in api.calls],['create'])  # no get: writers need only create and patch
+  self.assertEqual([a[0] for a,d in api.calls],['get','create'])
   self.assertNotIn(secret_writer.LAST_APPLIED,api.value['metadata'].get('annotations',{}))
  def test_update_removes_copy_and_preserves_foreign_fields(self):
   old=copy.deepcopy(self.doc);old['metadata']['uid']='retained';old['metadata']['annotations']={secret_writer.LAST_APPLIED:'old-token','foreign':'keep'};old['data']={'other':'dW5yZWxhdGVk'}
@@ -68,10 +68,18 @@ class SecretLifecycle(unittest.TestCase):
   for _ in range(2):secret_writer.write_secret(self.doc,api)
   self.assertEqual(self.doc,before);self.assertEqual(api.value['metadata']['uid'],'retained');self.assertEqual(api.value['data']['other'],'dW5yZWxhdGVk');self.assertEqual(api.value['metadata']['annotations'],{'foreign':'keep'})
   self.assertTrue(all('--force-conflicts' not in a for a,d in api.calls))
+ def test_writer_without_read_creates_then_patches(self):
+  for existing,calls in ((None,['get','create']),({'metadata':{'name':'credential','namespace':'test'},'stringData':{'token':'old'}},['get','create','patch'])):
+   api=SecretAPI(copy.deepcopy(existing));original=api.__call__
+   def no_read(*args,document=None):
+    if args[0]=='get':api.calls.append((args,document));raise subprocess.CalledProcessError(1,args,stderr='Error from server (Forbidden): secrets is forbidden')
+    return original(*args,document=document)
+   secret_writer.write_secret(self.doc,no_read)
+   self.assertEqual([a[0] for a,d in api.calls],calls);self.assertEqual(api.value['stringData']['token'],'synthetic-token')
  def test_forbidden_does_not_fall_back_or_expose_payload(self):
   api=SecretAPI();api.fail='(Forbidden) synthetic-token'
   with self.assertRaisesRegex(RuntimeError,'redacted') as caught:secret_writer.write_secret(self.doc,api)
-  self.assertNotIn('synthetic-token',str(caught.exception));self.assertEqual(len(api.calls),1)
+  self.assertNotIn('synthetic-token',str(caught.exception));self.assertEqual([c[0][0] for c in api.calls],['get','create'])  # never patch past a refused create
  def test_create_race_updates_existing(self):
   api=SecretAPI();original=api.__call__;first=True
   def race(*args,document=None):
