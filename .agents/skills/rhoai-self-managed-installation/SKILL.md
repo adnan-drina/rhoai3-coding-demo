@@ -27,7 +27,7 @@ OpenShift AI 3.5 sections. Detailed record:
 ## When to use
 
 - A change touches `gitops/stages/010-openshift-ai-platform-foundation/rhoai-operator/`
-  or `gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/rhoai-operator.yaml`.
+  or `gitops/applications/010-rhoai-operator.yaml`.
 - Stage 010 deploy stops before the `rhods-operator` CSV succeeds.
 - A fresh cluster is being prepared for Stage 010.
 
@@ -36,7 +36,7 @@ OpenShift AI 3.5 sections. Detailed record:
 | Decision | Where in Git | Official section |
 |---|---|---|
 | CLI install method in GitOps: Namespace `redhat-ods-operator`, OperatorGroup with no `targetNamespaces`, Subscription `rhods-operator` from `redhat-operators` | `rhoai-operator/namespace.yaml`, `operator-group.yaml`, `subscription.yaml` | [Install the Operator by using the CLI][op-cli] |
-| Operator lifecycle in its own Application (`010-rhoai-operator`); DSCI, DSC, `Auth` and dashboard config in `010-rhoai-platform`, so a channel change never re-syncs the DSC | `gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/` | [Install and manage components][comp] |
+| Operator lifecycle in its own Application (`010-rhoai-operator`); DSCI, DSC, `Auth` and dashboard config in `010-rhoai-platform`, so a channel change never re-syncs the DSC | `gitops/applications/010-rhoai-operator.yaml`, `gitops/applications/010-rhoai-platform.yaml` | [Install and manage components][comp] |
 | `DISABLE_DSC_CONFIG=true` in the Subscription `config.env`, so GitOps creates `default-dsci` (upstream Open Data Hub setting, not in the 3.5 guide) | `rhoai-operator/subscription.yaml` | not documented in the 3.5 install guide (recorded as a deviation in the README) |
 | Predefined namespaces (`redhat-ods-operator`, `redhat-ods-applications`, `rhods-notebooks`); no custom namespaces | `rhoai-platform/dsc-init.yaml`, `datasciencecluster.yaml` | [Configure custom namespaces][custom-ns] |
 | Catalog and install gated by the operator policy: channel `stable-3.5`, minimum `3.5.1` | `scripts/platform/check-operator-policy.py` (called by `deploy.sh` and `validate.sh`) | [Update channels][channels] |

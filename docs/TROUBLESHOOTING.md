@@ -2752,9 +2752,9 @@ The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` a
 **Likely cause:** Two separate causes, both seen on 2026-10-13:
 
 - An explicit sync started by patching `operation.sync` (for example `{"operation":{"sync":{"revision":"<sha>"}}}`) does not carry the Application's `syncPolicy.syncOptions`, so `RespectIgnoreDifferences=true` is not applied: the sync writes Git's empty `data` over the delegated ConfigMap fields and the playground loses its MCP entries. Automatic syncs keep the option.
-- The Application lost its `argocd.argoproj.io/compare-options: ServerSideDiff=true` annotation (and the other app-of-apps annotations) after `oc apply` of a JSON copy with bare metadata, so the delegated `data` fields show as a diff.
+- The Application lost its `argocd.argoproj.io/compare-options: ServerSideDiff=true` annotation (and the other annotations in its Git manifest) after `oc apply` of a JSON copy with bare metadata, so the delegated `data` fields show as a diff.
 
-**Recover:** Restore the annotations from the Application file in `gitops/argocd/app-of-apps/` (`oc annotate application ... --overwrite`, one key at a time) and hard-refresh. Republish the playground entries with Stage 040's own publisher, as `deploy.sh` does:
+**Recover:** Restore the annotations from the Application file in `gitops/applications/` (`oc annotate application ... --overwrite`, one key at a time) and hard-refresh. Republish the playground entries with Stage 040's own publisher, as `deploy.sh` does:
 
 ```bash
 RHOAI_STAGE040_EXPECTED_REVISION=<Stage 040 revision> RHOAI_STAGE060_EXPECTED_REVISION=<060-agent-tools revision> \

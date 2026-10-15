@@ -4,7 +4,7 @@ This Application connects the Stage 070 developer services to the Keycloak servi
 
 | | |
 |---|---|
-| Argo CD Application | `070-identity` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/identity.yaml)) |
+| Argo CD Application | `070-identity` ([manifest](../../../applications/070-identity.yaml)) |
 | Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 2) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (Keycloak and realm checks, `security-status.py`); `validate.sh --static` (`sso-alignment.test.py`, `correction-package.test.py`, `stage070-upgrade.test.py`) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on OAuthClient `platform-keycloak` (`/secret`, `/redirectURIs`) and on `/data` of the four provisioner Secrets |

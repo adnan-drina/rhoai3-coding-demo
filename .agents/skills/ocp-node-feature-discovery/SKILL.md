@@ -37,7 +37,7 @@ OpenShift Container Platform 4.22 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| NFD installed before the NVIDIA GPU Operator, as its own Application (deploy-order 1) | `gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai/node-feature-discovery.yaml` | [Node Feature Discovery Operator][nfd] |
+| NFD installed before the NVIDIA GPU Operator, as its own Application (deploy-order 1) | `gitops/applications/020-node-feature-discovery.yaml` | [Node Feature Discovery Operator][nfd] |
 | Namespace `openshift-nfd`, OperatorGroup targeting it, Subscription `nfd` on `stable` from `redhat-operators`, Automatic approval, no `startingCSV` | `node-feature-discovery/namespace.yaml`, `operatorgroup.yaml`, `subscription.yaml` | [Node Feature Discovery Operator][nfd] |
 | Release family bounded by policy: offered version must stay on 4.22 and be at least `4.22.0` | `scripts/platform/check-operator-policy.py` (`minimum['nfd']`) | [About specialized hardware and driver enablement][about] |
 | One `NodeFeatureDiscovery` `nfd-instance`; Subscription and instance both sync-wave 1, carried by `SkipDryRunOnMissingResource` and retry until OLM installs the CRD | `node-feature-discovery/nodefeaturediscovery.yaml` | [Node Feature Discovery Operator][nfd] |

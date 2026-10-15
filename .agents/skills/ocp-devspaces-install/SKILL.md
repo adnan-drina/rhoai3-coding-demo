@@ -40,7 +40,7 @@ Dev Spaces 3.30 topics. Detailed record:
 | Subscription `devspaces` in `openshift-operators` (AllNamespaces), as the guide shows; OLM adds the DevWorkspace operator there | `devspaces/subscription.yaml` | [Deploy using GitOps and Argo CD][gitops] |
 | Channel `stable`, `installPlanApproval: Automatic`; the operator policy refuses another channel or a version outside 3.30 (minimum 3.30.2) | `devspaces/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Update approval strategy][approval], [How the upgrade works][upgrade] |
 | Webhook-wait hook (wave 9) holds the CheCluster (wave 10) until operator endpoints answer admission | `devspaces/wait-for-operator-webhook.yaml` | [How the installation works][overview] |
-| Namespaces from `070-namespaces`; no OperatorGroup or Subscription ignore rules | `gitops/stages/070-advanced-app-platform/namespaces/`, `gitops/argocd/app-of-apps/070-advanced-app-platform/devspaces.yaml` | — |
+| Namespaces from `070-namespaces`; no OperatorGroup or Subscription ignore rules | `gitops/stages/070-advanced-app-platform/namespaces/`, `gitops/applications/070-devspaces.yaml` | — |
 
 ## Procedure
 

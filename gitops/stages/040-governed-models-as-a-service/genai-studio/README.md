@@ -8,7 +8,7 @@ dashboard.
 
 | | |
 |---|---|
-| Argo CD Application | `040-genai-studio` ([manifest](../../../argocd/app-of-apps/040-governed-models-as-a-service/genai-studio.yaml)) |
+| Argo CD Application | `040-genai-studio` ([manifest](../../../applications/040-genai-studio.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 7); `deploy.sh` then runs `publish-catalog-mcp.py` for the two MCP entries |
 | Validated by | `stages/040-governed-models-as-a-service/validate.sh --readiness` (`validate-native.py` runs `publish-catalog-mcp.py --validate` for `OpenShift-MCP` and `OpenShift-MCP-ReadWrite`, deferring while the Stage 060 MCP runtime is absent; `stage_apps.py status` for Synced/Healthy); `qualify-catalog-mcp.py` (model-free MCP qualification, run by hand) |
 | Sync | Automated, `prune` and `selfHeal`. Sync options `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences` (and a `ServerSideDiff=true` sync option that has no effect). Compare option `ServerSideDiff=true` (annotation). `ignoreDifferences` on ConfigMap `redhat-ods-applications/gen-ai-aa-mcp-servers`: `/data/OpenShift-MCP` and `/data/OpenShift-MCP-ReadWrite` |

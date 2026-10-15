@@ -51,7 +51,7 @@ import sys
 
 repo = Path(sys.argv[1])
 stages_root = repo / "stages"
-app_root = repo / "gitops" / "argocd" / "app-of-apps"
+app_root = repo / "gitops" / "applications"  # flat: <metadata.name>.yaml, name = NNN-<component>
 gitops_stages_root = repo / "gitops" / "stages"
 
 errors = []
@@ -133,10 +133,10 @@ def check_stage_app(stage_id, name, app_path, component):
     source = spec.get("source") or {}
     labels = metadata.get("labels") or {}
     annotations = metadata.get("annotations") or {}
-    expected_path = f"gitops/stages/{name}/{app_path.stem}"
+    expected_path = f"gitops/stages/{name}/{app_path.stem[len(stage_id) + 1:]}"
     if component:
-        if metadata.get("name") != f"{stage_id}-{app_path.stem}":
-            fail(f"{app_path.relative_to(repo)} must be named {stage_id}-{app_path.stem}")
+        if metadata.get("name") != app_path.stem or not app_path.stem.startswith(stage_id + "-"):
+            fail(f"{app_path.relative_to(repo)} must hold Application {app_path.stem} (file name = metadata.name, stage prefix {stage_id}-)")
         # Each component documents why/what/how and its alignment with official docs (.agents/rules/gitops.md).
         readme = repo / expected_path / "README.md"
         headings = ["## Why", "## What", "## How", "## Validation", "## Alignment with official guidance", "## References"]
@@ -187,8 +187,6 @@ for stage_dir in stage_dirs:
     elif not validate_path.stat().st_mode & 0o111:
         fail(f"stage {stage_id} validate.sh is not executable: {validate_path.relative_to(repo)}")
 
-    app_path = app_root / f"{name}.yaml"
-
     if not deploy_path.exists():
         continue
 
@@ -199,14 +197,11 @@ for stage_dir in stage_dirs:
 
     # One Application per component, each rendering gitops/stages/<stage>/<component>; the stage directory's
     # kustomization is their union (scripts/shared/stage_apps.py check-static below).
-    component_dir = app_root / name
     gitops_path = gitops_stages_root / name
     regrouped_stages.append(stage_id)
-    app_paths = sorted(component_dir.glob("*.yaml")) if component_dir.is_dir() else []
+    app_paths = sorted(app_root.glob(f"{stage_id}-*.yaml"))
     if not app_paths:
-        fail(f"stage {stage_id} has no component Applications in {component_dir.relative_to(repo)}/")
-    if app_path.exists():
-        fail(f"stage {stage_id} has a single-Application file {app_path.relative_to(repo)}; use component Applications")
+        fail(f"stage {stage_id} has no component Applications {app_root.relative_to(repo)}/{stage_id}-*.yaml")
     if not (gitops_path / "kustomization.yaml").exists():
         fail(
             f"stage {stage_id} gitops path has no kustomization.yaml: "
@@ -227,8 +222,10 @@ if stage_dirs and not gitops_stage_names:
     fail("no GitOps stages found: every workshop needs at least one stages/*/deploy.sh")
 
 if app_root.is_dir():
+    for extra in sorted(p for p in app_root.iterdir() if p.is_dir() or p.suffix != ".yaml"):
+        fail(f"{extra.relative_to(repo)}: {app_root.relative_to(repo)}/ holds only <Application name>.yaml files")
     deployed_names = set()
-    for app_path in sorted([*app_root.glob("*.yaml"), *app_root.glob("*/*.yaml")]):
+    for app_path in sorted(app_root.glob("*.yaml")):
         app = load_mapping(app_path)
         metadata = app.get("metadata") or {}
         source = (app.get("spec") or {}).get("source") or {}
@@ -257,7 +254,7 @@ if gitops_stages_root.is_dir():
 # annotation matches no commit (B3, 2026-09-24: stage 040 policy change not
 # refreshed). Each entry must be "." or start with "/" and exist.
 if app_root.is_dir():
-    for app_path in sorted([*app_root.glob("*.yaml"), *app_root.glob("*/*.yaml")]):
+    for app_path in sorted(app_root.glob("*.yaml")):
         text = app_path.read_text(encoding="utf-8")
         m = re.search(r"argocd\.argoproj\.io/manifest-generate-paths:\s*(\S+)", text)
         if not m:

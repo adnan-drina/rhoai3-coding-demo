@@ -8,7 +8,7 @@ deploy workloads into it.
 
 | | |
 |---|---|
-| Argo CD Application | `010-access` ([manifest](../../../argocd/app-of-apps/010-openshift-ai-platform-foundation/access.yaml)) |
+| Argo CD Application | `010-access` ([manifest](../../../applications/010-access.yaml)) |
 | Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 3). Group membership comes from [`setup-access.sh`](../../../../stages/010-openshift-ai-platform-foundation/setup-access.sh), a separate manual step |
 | Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (project label, `rhods-admins-admin` binding, persona group membership, optional persona `can-i` checks) |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation; `ignoreDifferences` on the Group's `/users` and one Namespace label |

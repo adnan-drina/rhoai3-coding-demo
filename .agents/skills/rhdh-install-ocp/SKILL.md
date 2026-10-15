@@ -39,7 +39,7 @@ Developer Hub 1.10 sections. Detailed record:
 | Subscription `rhdh`: channel `fast-1.10` (z-streams only), `installPlanApproval: Manual`, `startingCSV: rhdh-operator.v1.10.5`, `redhat-operators` | `rhdh/rhdh-operator/subscription.yaml` | [Install the Operator][install-op] |
 | Sync hook `approve-installplan` approves only InstallPlans whose CSVs are all on its allowlist, then waits for the CSV; its Role reaches only `rhdh-operator` InstallPlans and Subscription `rhdh` | `rhdh/rhdh-operator/approve-installplan.yaml` | — (repo control) |
 | Instance is the `Backstage` CR `developer-hub` in `rhdh` (wave 18), configured only through ConfigMaps, Secrets and the CR | `rhdh/rhdh-instance/` | [Provision custom configuration][provision], [Run with custom configuration][run-op] |
-| Namespaces `rhdh-operator` and `rhdh` come from `070-namespaces`; `070-rhdh` is deploy-order 8 (last) of Stage 070 | `gitops/stages/070-advanced-app-platform/namespaces/`, `gitops/argocd/app-of-apps/070-advanced-app-platform/rhdh.yaml` | — |
+| Namespaces `rhdh-operator` and `rhdh` come from `070-namespaces`; `070-rhdh` is deploy-order 8 (last) of Stage 070 | `gitops/stages/070-advanced-app-platform/namespaces/`, `gitops/applications/070-rhdh.yaml` | — |
 
 Paths are relative to `gitops/stages/070-advanced-app-platform/` unless absolute.
 

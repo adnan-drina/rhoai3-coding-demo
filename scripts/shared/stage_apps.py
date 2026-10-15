@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Component Applications of a regrouped stage.
 
-A regrouped stage keeps one Argo CD Application per component in
-gitops/argocd/app-of-apps/<NNN-stage>/<component>.yaml, rendering gitops/stages/<NNN-stage>/<component>/.
+A regrouped stage keeps one Argo CD Application per component in gitops/applications/<name>.yaml (the file is
+named after metadata.name, which starts with the stage number), rendering gitops/stages/<NNN-stage>/<component>/.
 Components with a demo.rhoai.io/deploy-order annotation are deployed together by the stage deploy.sh at
 one reviewed revision, in that order. Components with a demo.rhoai.io/deploy-script annotation instead are
 deployed by that script (their own revision and procedure). The kustomization at gitops/stages/<NNN-stage>/
@@ -55,24 +55,34 @@ def load_yaml_stream(text):
     return json.loads(result.stdout)
 
 
+APPLICATIONS = "gitops/applications"
+
+
 def stage_dir(stage, root=ROOT):
-    matches = [p for p in (Path(root) / "gitops/argocd/app-of-apps").glob(stage + "-*") if p.is_dir()]
+    """The stage's GitOps source directory, gitops/stages/<NNN-stage>."""
+    matches = [p for p in (Path(root) / "gitops/stages").glob(stage + "-*") if p.is_dir()]
     if len(matches) != 1:
-        raise RuntimeError("Stage " + stage + " has no component Application directory")
+        raise RuntimeError("Stage " + stage + " has no GitOps source directory")
     return matches[0]
 
 
+def application_files(stage, root=ROOT):
+    return sorted((Path(root) / APPLICATIONS).glob(stage + "-*.yaml"))
+
+
 def is_regrouped(stage, root=ROOT):
-    return any(p.is_dir() for p in (Path(root) / "gitops/argocd/app-of-apps").glob(stage + "-*"))
+    return bool(application_files(stage, root))
 
 
 @functools.lru_cache(maxsize=None)
 def _components(stage, root):
     apps = []
-    for path in sorted(stage_dir(stage, root).glob("*.yaml")):
+    for path in application_files(stage, root):
         docs = load_yaml_stream(path.read_text())
         if len(docs) != 1 or docs[0].get("kind") != "Application":
             raise RuntimeError(path.name + " must hold exactly one Application")
+        if path.name != docs[0]["metadata"]["name"] + ".yaml":
+            raise RuntimeError(path.name + " must be named after its Application (metadata.name + .yaml)")
         apps.append(docs[0])
     for app in apps:
         meta = app["metadata"]
@@ -309,7 +319,7 @@ def stage_revision(stage, root=ROOT):
 def scope(stage, root=ROOT):
     """Repository paths that make up a stage's deployed source."""
     name = stage_dir(stage, root).name
-    return ["gitops/stages/" + name, "gitops/argocd/app-of-apps/" + name, "stages/" + name, "scripts/shared"]
+    return ["gitops/stages/" + name, ":(glob)" + APPLICATIONS + "/" + stage + "-*.yaml", "stages/" + name, "scripts/shared"]
 
 
 def git(root, *args):
@@ -488,7 +498,7 @@ def check_delegations(root=ROOT):
     """Hook Jobs in later stages declare the shared-singleton fields they patch (annotation demo.rhoai.io/writes-delegated,
     "Kind:/json/pointer" entries); 010-rhoai-platform must delegate exactly those fields, each to one writer."""
     root = Path(root)
-    app = load_yaml_stream((root / "gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/rhoai-platform.yaml").read_text())[0]
+    app = load_yaml_stream((root / "gitops/applications/010-rhoai-platform.yaml").read_text())[0]
     delegated = {i["kind"] + ":" + p for i in app["spec"].get("ignoreDifferences", []) if i.get("kind") in DELEGATED_KINDS
                  for p in i.get("jsonPointers", [])}
     writers, problems = {}, []

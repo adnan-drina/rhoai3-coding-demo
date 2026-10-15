@@ -41,7 +41,7 @@ OpenShift AI 3.5 sections. Detailed record:
 | Artifacts in ODF bucket `rhoai-mlflow-artifacts` with `serveArtifacts: true`, so clients never hold S3 keys | `gitops/stages/050-model-evaluation/mlflow/objectbucketclaim.yaml` | [MLflow configuration parameters][params] |
 | `ai-curated-prompts` is a global prompt workspace (label `opendatahub.io/global-mlflow-workspace: mlflow`) listed in dashboard `globalMLflowNamespaces` | `gitops/stages/050-model-evaluation/mlflow/prompts/namespace.yaml` | [Cluster roles for global prompt registry namespaces][globalroles] |
 | One replica and one worker, automatic schema migration: demo sizing | `gitops/stages/050-model-evaluation/mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
-| All data objects (PVC, StatefulSet, bucket, CR) carry `Prune=false,Delete=false`, so MLflow is its own Argo CD Application `050-mlflow` | `gitops/argocd/app-of-apps/050-model-evaluation/mlflow.yaml` | not product guidance |
+| All data objects (PVC, StatefulSet, bucket, CR) carry `Prune=false,Delete=false`, so MLflow is its own Argo CD Application `050-mlflow` | `gitops/applications/050-mlflow.yaml` | not product guidance |
 
 ## Procedure
 

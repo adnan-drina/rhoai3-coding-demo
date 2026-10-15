@@ -7,7 +7,7 @@ reads the registry and catalog, and Stage 060 is the subject of the agent catalo
 
 | | |
 |---|---|
-| Argo CD Application | `030-private-model-serving` ([manifest](../../../argocd/app-of-apps/030-private-model-serving/private-model-serving.yaml)) |
+| Argo CD Application | `030-private-model-serving` ([manifest](../../../applications/030-private-model-serving.yaml)) |
 | Deployed by | [`stages/030-private-model-serving/deploy.sh`](../../../../stages/030-private-model-serving/deploy.sh) (own deploy script, `demo.rhoai.io/deploy-script`; pins the Application to the published commit SHA) |
 | Validated by | [`validate.sh`](../../../../stages/030-private-model-serving/validate.sh) (Application at its exact revision, DSC/KServe conditions, KServe-owned workloads, both Prometheus PVCs) and [`validate-model-discovery.sh`](../../../../stages/030-private-model-serving/validate-model-discovery.sh) (registry and catalog workloads, authenticated registry, Model Catalog and Agent Catalog APIs, dashboard flags) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff through the `compare-options` annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`, `CreateNamespace=true`. Retry 10 times, 5 s to 3 min backoff. |

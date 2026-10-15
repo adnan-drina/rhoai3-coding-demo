@@ -7,7 +7,7 @@ API to run the OpenShift MCP servers.
 
 | | |
 |---|---|
-| Argo CD Application | `060-mcp-platform` ([manifest](../../../argocd/app-of-apps/060-agent-runtime-and-agentops/mcp-platform.yaml)) |
+| Argo CD Application | `060-mcp-platform` ([manifest](../../../applications/060-mcp-platform.yaml)) |
 | Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh) (own deploy script) |
 | Validated by | [`stages/060-agent-runtime-and-agentops/validate-mcp-platform.sh`](../../../../stages/060-agent-runtime-and-agentops/validate-mcp-platform.sh) (Application at its pinned revision; DSC component `Managed`; `MCPLifecycleOperatorReady`; component CR owned by the DSC and Ready; one operator Deployment owned by the component, ready, running the image in `operator-source.json`; CRD `mcpservers.mcp.x-k8s.io` established and serving `v1alpha1`) |
 | Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/shared/stage_apps.py`. Sync option `RespectIgnoreDifferences=true`. |

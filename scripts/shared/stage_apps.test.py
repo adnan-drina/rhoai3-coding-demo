@@ -107,16 +107,32 @@ class StageProblems(unittest.TestCase):
             self.assertTrue(stage_apps.stage_problems("010", "3" * 40, REPO, separate=True))
 
 
+class FlatApplications(unittest.TestCase):
+    def test_file_name_must_equal_application_name(self):
+        app = ("apiVersion: argoproj.io/v1alpha1\nkind: Application\nmetadata:\n  name: 070-demo\n  labels: {demo.rhoai.io/stage: '070'}\n"
+               "  annotations: {demo.rhoai.io/deploy-order: '1'}\nspec: {source: {path: gitops/stages/070-demo/070-demo}}\n")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); (root / "gitops/applications").mkdir(parents=True)
+            (root / "gitops/applications/070-demo.yaml").write_text(app)
+            self.assertEqual(stage_apps.names("070", root), ["070-demo"])
+            (root / "gitops/applications/070-demo.yaml").rename(root / "gitops/applications/070-renamed.yaml")
+            stage_apps._components.cache_clear()
+            with self.assertRaisesRegex(RuntimeError, "named after its Application"):
+                stage_apps.names("070", root)
+
+
 class SelectRevision(unittest.TestCase):
     def test_refuses_edited_untracked_and_unpublished_stage_source(self):
         with tempfile.TemporaryDirectory() as temp:
             root, remote = Path(temp) / "repo", Path(temp) / "remote.git"
             def git(*a):
                 return subprocess.check_output(["git", "-C", str(root), *a], stderr=subprocess.DEVNULL, text=True).strip()
-            (root / "gitops/argocd/app-of-apps/070-demo").mkdir(parents=True)
+            (root / "gitops/stages/070-demo").mkdir(parents=True); (root / "gitops/applications").mkdir(parents=True)
             source = root / "stages/070-demo/deploy.sh"; source.parent.mkdir(parents=True); source.write_text("initial")
             git("init"); git("config", "user.name", "Fixture"); git("config", "user.email", "fixture@example.invalid")
-            (root / "gitops/argocd/app-of-apps/070-demo/.keep").write_text("")
+            (root / "gitops/stages/070-demo/.keep").write_text("")
+            app = root / "gitops/applications/070-demo-component.yaml"; app.write_text("initial")
+            other = root / "gitops/applications/040-other.yaml"; other.write_text("initial")
             git("add", "."); git("commit", "-m", "fixture"); sha = git("rev-parse", "HEAD")
             subprocess.run(["git", "init", "--bare", str(remote)], capture_output=True, check=True); git("push", str(remote), "HEAD:main")
             env = {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "url." + remote.as_uri() + ".insteadOf", "GIT_CONFIG_VALUE_0": REPO}
@@ -125,7 +141,14 @@ class SelectRevision(unittest.TestCase):
                 source.write_text("edited")
                 with self.assertRaisesRegex(RuntimeError, "differs"):
                     stage_apps.select_revision("070", "HEAD", REPO, root)
-                source.write_text("initial"); (source.parent / "extra").write_text("new")
+                source.write_text("initial")
+                # The stage's flat Application files are stage source; another stage's are not.
+                app.write_text("edited")
+                with self.assertRaisesRegex(RuntimeError, "differs"):
+                    stage_apps.select_revision("070", "HEAD", REPO, root)
+                app.write_text("initial"); other.write_text("edited")
+                self.assertEqual(stage_apps.select_revision("070", "HEAD", REPO, root), sha)
+                other.write_text("initial"); (source.parent / "extra").write_text("new")
                 with self.assertRaisesRegex(RuntimeError, "Untracked"):
                     stage_apps.select_revision("070", "HEAD", REPO, root)
                 git("add", "."); git("commit", "-m", "unpublished")

@@ -7,7 +7,7 @@ subscription inherit its models and limits.
 
 | | |
 |---|---|
-| Argo CD Application | `040-model-access` ([manifest](../../../argocd/app-of-apps/040-governed-models-as-a-service/model-access.yaml)) |
+| Argo CD Application | `040-model-access` ([manifest](../../../applications/040-model-access.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 6) |
 | Validated by | `scripts/shared/stage_apps.py status` through `validate.sh --readiness` (Synced and Healthy at the deployed revision); `validate-functional.py` (persona discovers its `personal-<user>` subscription, mints and revokes a temporary key, bounded requests) |
 | Sync | Automated, `prune` and `selfHeal`. Sync options `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences` (and a `ServerSideDiff=true` sync option that has no effect). Compare option `ServerSideDiff=true` (annotation). No `ignoreDifferences` |

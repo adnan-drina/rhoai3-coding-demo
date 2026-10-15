@@ -7,7 +7,7 @@ OpenShift identity broker and the enrolled personas are added afterwards by `set
 
 | | |
 |---|---|
-| Argo CD Application | `060-openshell-identity` ([manifest](../../../argocd/app-of-apps/060-agent-runtime-and-agentops/openshell-identity.yaml)) |
+| Argo CD Application | `060-openshell-identity` ([manifest](../../../applications/060-openshell-identity.yaml)) |
 | Deployed by | [`stages/060-agent-runtime-and-agentops/deploy.sh`](../../../../stages/060-agent-runtime-and-agentops/deploy.sh) (own deploy script, `demo.rhoai.io/deploy-script`); it then calls `deploy-runtime.sh` |
 | Validated by | No dedicated validator. `deploy.sh` waits for the import condition `Done` and `setup-identity.py` asserts the realm, clients, broker and personas. [`validate.sh`](../../../../stages/060-agent-runtime-and-agentops/validate.sh) reports the whole stage as pending (exit 2). |
 | Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/shared/stage_apps.py`. Annotation `compare-options: ServerSideDiff=true`. Sync options `CreateNamespace=true`, `SkipDryRunOnMissingResource=true`, `RespectIgnoreDifferences=true` (and a `ServerSideDiff=true` entry, which Argo CD ignores as a sync option). |

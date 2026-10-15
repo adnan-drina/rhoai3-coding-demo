@@ -4,7 +4,7 @@ This Application runs SonarQube Community Build with its own PostgreSQL database
 
 | | |
 |---|---|
-| Argo CD Application | `070-sonarqube` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/sonarqube.yaml)) |
+| Argo CD Application | `070-sonarqube` ([manifest](../../../applications/070-sonarqube.yaml)) |
 | Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 5) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (live checks "SonarQube ready" and "SonarQube reachable", plus `security-status.py`); `validate.sh --static` (`sonarqube-bootstrap.test.py`, `sso-alignment.test.py`, `chart-gitops.test.py`, `correction-package.test.py`) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on `/spec/volumeName` of PVCs `sonardb-data` and `sonarqube` |

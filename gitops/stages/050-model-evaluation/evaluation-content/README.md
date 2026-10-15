@@ -8,7 +8,7 @@ through `050-evalhub`. Criteria change more often than the service, so they are 
 
 | | |
 |---|---|
-| Argo CD Application | `050-evaluation-content` ([manifest](../../../argocd/app-of-apps/050-model-evaluation/evaluation-content.yaml)) |
+| Argo CD Application | `050-evaluation-content` ([manifest](../../../applications/050-evaluation-content.yaml)) |
 | Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 4, all Stage 050 components at one commit SHA) |
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced and Healthy at the stage revision); EvalHub start-up validates the ids (see How). No content-specific check. |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. |

@@ -9,7 +9,7 @@ security insights** tab read from it.
 
 | | |
 |---|---|
-| Argo CD Application | `050-evalhub` ([manifest](../../../argocd/app-of-apps/050-model-evaluation/evalhub.yaml)) |
+| Argo CD Application | `050-evalhub` ([manifest](../../../applications/050-evalhub.yaml)) |
 | Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 3), followed by [`setup-ai-services.sh`](../../../../stages/050-model-evaluation/setup-ai-services.sh) for the database Secret and MLflow address |
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh), [`validate-ai-services.sh`](../../../../stages/050-model-evaluation/validate-ai-services.sh) (database, EvalHub `Ready`, multi-tenant PostgreSQL, MLflow wiring, service RBAC) and [`service-api.py`](../../../../stages/050-model-evaluation/service-api.py) (authenticated API discovery) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. |

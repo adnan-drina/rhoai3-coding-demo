@@ -8,7 +8,7 @@ gateway, never through the pod.
 
 | | |
 |---|---|
-| Argo CD Application | `040-local-models` ([manifest](../../../argocd/app-of-apps/040-governed-models-as-a-service/local-models.yaml)) |
+| Argo CD Application | `040-local-models` ([manifest](../../../applications/040-local-models.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 5, together with `040-external-models`) |
 | Validated by | `stages/040-governed-models-as-a-service/validate.sh --readiness` (runs `validate-native.py`: model spec equals Git except delegated `replicas`, Ready condition unless parked, owned workloads, route listener set and canonical model header, `MaaSModelRef` Ready/GovernanceAttached/RuntimeReady, template spec and labels); `scripts/shared/stage_apps.py status` (Synced and Healthy at the deployed revision) |
 | Sync | Automated, `prune` and `selfHeal`. Sync options `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences` (and a `ServerSideDiff=true` sync option that has no effect). Compare option `ServerSideDiff=true` (annotation). `ignoreDifferences` on the `LLMInferenceService`: `/spec/replicas` and the three `modelregistry.opendatahub.io/*` id labels |

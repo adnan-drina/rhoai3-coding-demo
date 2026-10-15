@@ -84,7 +84,7 @@ Use a stage-owned GitOps path when the stage owns independent resources:
 ```text
 gitops/stages/NNN-descriptive-slug/kustomization.yaml               # union of the component folders
 gitops/stages/NNN-descriptive-slug/<component>/kustomization.yaml   # one folder per Argo CD Application
-gitops/argocd/app-of-apps/NNN-descriptive-slug/<component>.yaml     # Application NNN-<component>
+gitops/applications/NNN-<component>.yaml                            # Application NNN-<component>
 ```
 
 When the stage changes a field of a shared singleton another stage owns (DSC components, dashboard

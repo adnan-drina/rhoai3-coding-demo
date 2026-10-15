@@ -4,7 +4,7 @@ This Application installs the operators that OpenShift AI Models-as-a-Service (M
 
 | | |
 |---|---|
-| Argo CD Application | `040-maas-operators` ([manifest](../../../argocd/app-of-apps/040-governed-models-as-a-service/maas-operators.yaml)) |
+| Argo CD Application | `040-maas-operators` ([manifest](../../../applications/040-maas-operators.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 1) |
 | Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.py` ("Six selected operators and current workloads"); `scripts/platform/check-operator-policy.py --verify` (channel and minimum version); `check-operator-policy.py --wait` in `deploy.sh` (read-only wait for Automatic resolution) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `ServerSideDiff`, `RespectIgnoreDifferences`; compare-option `ServerSideDiff=true`; retry 10x with backoff 5s to 3m |

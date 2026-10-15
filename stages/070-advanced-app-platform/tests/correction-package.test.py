@@ -362,7 +362,8 @@ class NativeSyncAndIngress(unittest.TestCase):
   secrets=[d for d in docs if d and d['kind']=='Secret'];self.assertTrue(secrets)
   for d in secrets:
    self.assertEqual(d['metadata']['annotations']['argocd.argoproj.io/sync-options'],'ServerSideApply=true');self.assertNotIn('stringData',d)
-  for path in (ROOT/'gitops/argocd/app-of-apps/070-advanced-app-platform').glob('*.yaml'):
+  apps=sorted((ROOT/'gitops/applications').glob('070-*.yaml'));self.assertEqual(len(apps),8)
+  for path in apps:
    self.assertIn('ClientSideApplyMigration=false',yaml.safe_load(path.read_text())['spec']['syncPolicy']['syncOptions'])
  def test_chart_writer_refuses_unreviewed_upstream_shape(self):
   old='kubectl --validate=false --namespace=$namespace apply -f rails-secrets.yml'

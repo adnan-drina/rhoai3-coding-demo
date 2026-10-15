@@ -28,7 +28,7 @@ The Applications have no `resources-finalizer`, and tracking is by annotation: a
 
 ## Before the move (in Git)
 
-1. Write the new Application manifests in `gitops/argocd/app-of-apps/<NNN-stage>/<component>.yaml` and the folders they render (`.agents/rules/gitops.md`).
+1. Write the new Application manifests as `gitops/applications/<NNN>-<component>.yaml` (file name = `metadata.name` + `.yaml`) and the folders they render (`.agents/rules/gitops.md`).
 2. Prove the renders: every new Application renders exactly the objects the old one did, or every difference is intended and listed in the commit message. `python3 scripts/shared/stage_apps.py check-static NNN` and `./scripts/platform/validate-stage-flow.sh` must pass.
 3. Update every place that names an Application or a path, not only the manifests:
    - exact tracking-id checks (`'<app>:'+...`) in deploy, validate and setup scripts;

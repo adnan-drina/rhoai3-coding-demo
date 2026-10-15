@@ -461,7 +461,7 @@ Stage 010 `deploy.sh` performs these actions:
 - Applies `gitops/bootstrap/overlays/operator` (OpenShift GitOps operator Subscription).
 - Waits for the GitOps CSV and the default Argo CD instance.
 - Applies `gitops/bootstrap/overlays/demo` (annotation resource tracking, AppProject `rhoai-demo`, demo cluster-admin binding for the Argo CD application controller, custom health checks for PVCs and related resources).
-- Applies the Stage 010 Argo CD Application from `gitops/argocd/app-of-apps/`, substituting `GIT_REPO_URL` and `GIT_REPO_BRANCH` from `.env`.
+- Applies the Stage 010 Argo CD Applications from `gitops/applications/`, substituting `GIT_REPO_URL` and `GIT_REPO_BRANCH` from `.env`.
 
 This broad GitOps control is intentional for disposable demo clusters because the stages create cluster-scoped operators, CRDs, RBAC, Gateway API resources, and OpenShift platform configuration. Do not treat the bootstrap RBAC and wildcard AppProject as a production recommendation. For a shared or long-lived environment, scope Argo CD permissions, destinations, source repositories, and cluster resource allow-lists to the smallest workable set.
 
@@ -492,7 +492,7 @@ Stage 060 `deploy.sh` covers `060-openshell-identity` and `060-openshell-runtime
 
 Stages 110–130 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 070 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 070's deploy script creates no secrets from `.env`; it checks read-only preconditions (node sizing, a Managed and Available internal registry) and Sync hooks create the scoped GitLab, SonarQube and integration identities.
 
-Each script applies its stage's Applications from `gitops/argocd/app-of-apps/`. GitOps stages are the `stages/*/` directories that have `deploy.sh`; each of its Applications is one file in `gitops/argocd/app-of-apps/<directory-name>/<component>.yaml` and renders `gitops/stages/<directory-name>/<component>/`. Workflow-only stages omit `deploy.sh` and have no Application.
+Each script applies its stage's Applications from `gitops/applications/` (`<NNN>-*.yaml`). GitOps stages are the `stages/*/` directories that have `deploy.sh`; each of its Applications is one file `gitops/applications/<NNN>-<component>.yaml` and renders `gitops/stages/<directory-name>/<component>/`. Workflow-only stages omit `deploy.sh` and have no Application.
 
 | Stage | Argo CD app | Purpose |
 |------|-------------|---------|

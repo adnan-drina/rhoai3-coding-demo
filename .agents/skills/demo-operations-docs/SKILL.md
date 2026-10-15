@@ -36,7 +36,7 @@ Use this skill to maintain the runbook layer of the repository.
 
 1. Read `.agents/rules/docs.md`.
 2. Inspect the relevant `deploy.sh` and `validate.sh` scripts before documenting behavior.
-3. Inspect `gitops/argocd/app-of-apps/` before documenting Argo CD app names or sync behavior.
+3. Inspect `gitops/applications/` before documenting Argo CD app names or sync behavior.
 4. Keep commands copy-pastable and scoped.
 5. Prefer diagnostic commands before recovery commands.
 6. Run `git diff --check` after edits.

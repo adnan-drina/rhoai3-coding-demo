@@ -12,7 +12,7 @@ description: >
   gitops/bootstrap/overlays/operator, the openshift-gitops ArgoCD CR, AppProject
   rhoai-demo, controller cluster-admin binding and rhoai-gitops-admins group in
   gitops/bootstrap/overlays/demo, Dex OpenShift SSO and RBAC policy, custom
-  health checks, or component Applications under gitops/argocd/app-of-apps.
+  health checks, or component Applications under gitops/applications.
   Do NOT use for manifest authoring rules (read .agents/rules/gitops.md), for
   moving Applications (use gitops-move-applications), or for reviewing a
   GitOps diff (use review-gitops-change).
@@ -31,7 +31,7 @@ in `.agents/rules/gitops.md`; the bootstrap is run by
   controller RBAC, Argo CD admin group).
 - Argo CD access, SSO group mapping, health assessment or controller sizing is
   in question.
-- A component Application is added under `gitops/argocd/app-of-apps/<stage>/`.
+- A component Application is added as `gitops/applications/<NNN>-<component>.yaml`.
 
 ## Repo decisions
 
@@ -45,7 +45,7 @@ in `.agents/rules/gitops.md`; the bootstrap is run by
 | Demo posture: application controller bound to `cluster-admin` (least privilege is backlog) | `gitops/bootstrap/overlays/demo/argocd-cluster-admin.yaml` | [Default permissions of an Argo CD instance][default-perms] |
 | SSO through Dex with OpenShift OAuth, `scopes: '[groups]'`; `system:cluster-admins`, `cluster-admins` and `rhoai-gitops-admins` map to `role:admin`; read-only local account `rhdh` (apiKey) for Developer Hub | `gitops/bootstrap/overlays/demo/argocd-instance.yaml`, `gitops/bootstrap/overlays/demo/argocd-admin-group.yaml` | [Dex role mappings][dex-roles], [Argo CD RBAC][rbac] |
 | One AppProject `rhoai-demo` for every Application | `gitops/bootstrap/overlays/demo/argocd-project.yaml` | [Setting up an Argo CD instance][instance] |
-| One Application per component, destination namespace `openshift-gitops`, Server-Side Diff by annotation; the Stage 060 Applications have no automated sync | `gitops/argocd/app-of-apps/`, `.agents/rules/gitops.md` | [Synchronizing your application][sync] |
+| One Application per component, destination namespace `openshift-gitops`, Server-Side Diff by annotation; the Stage 060 Applications have no automated sync | `gitops/applications/`, `.agents/rules/gitops.md` | [Synchronizing your application][sync] |
 | Stage deploy scripts select, apply, sync and wait through `stage_apps.py` (no `argocd` CLI) | `scripts/shared/stage_apps.py` | [Creating an application by using the oc tool][app-oc] |
 
 ## Procedure

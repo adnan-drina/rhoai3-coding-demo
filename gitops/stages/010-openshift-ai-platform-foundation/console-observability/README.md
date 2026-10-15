@@ -7,7 +7,7 @@ stage that installs a console plugin (GitOps, ODF, Connectivity Link, Lightspeed
 
 | | |
 |---|---|
-| Argo CD Application | `010-console-observability` ([manifest](../../../argocd/app-of-apps/010-openshift-ai-platform-foundation/console-observability.yaml)) |
+| Argo CD Application | `010-console-observability` ([manifest](../../../applications/010-console-observability.yaml)) |
 | Deployed by | Its own script, [`stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy-console-observability.sh) (annotation `demo.rhoai.io/deploy-script`). Stage 010 `deploy.sh` calls it after the deploy-order components |
 | Validated by | [`validate-console-observability.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate-console-observability.sh) (called by `validate.sh` and by the deploy script) |
 | Sync | Automated, prune and self-heal; `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation. The `Console` object uses resource-level `ServerSideApply=true,Prune=false,Delete=false` |

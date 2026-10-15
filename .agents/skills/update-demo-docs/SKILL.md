@@ -46,7 +46,7 @@ Use this skill after any behavior change to ensure documentation stays consisten
 
 Verify the root README stage table matches:
 - Actual directories under `stages/`
-- Actual Argo CD applications under `gitops/argocd/app-of-apps/`
+- Actual Argo CD applications under `gitops/applications/`
 - Stage numbering and names
 
 ### 2. Deploy commands match scripts

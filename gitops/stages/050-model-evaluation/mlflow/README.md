@@ -8,7 +8,7 @@ workspace all write to this MLflow instance; EvalHub logs each benchmark as an M
 
 | | |
 |---|---|
-| Argo CD Application | `050-mlflow` ([manifest](../../../argocd/app-of-apps/050-model-evaluation/mlflow.yaml)) |
+| Argo CD Application | `050-mlflow` ([manifest](../../../applications/050-mlflow.yaml)) |
 | Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 1, all Stage 050 components at one commit SHA), followed by [`setup-ai-services.sh`](../../../../stages/050-model-evaluation/setup-ai-services.sh) for runtime credentials |
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Application Synced/Healthy at the stage revision) and [`validate-ai-services.sh`](../../../../stages/050-model-evaluation/validate-ai-services.sh) (dashboard settings, PostgreSQL, bucket, CA bundle, MLflow `Available`, workload Secret and TLS wiring) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`. `ignoreDifferences` on `ConfigMap/mlflow-service-ca` `/data/service-ca.crt` (injected by the service CA operator). |

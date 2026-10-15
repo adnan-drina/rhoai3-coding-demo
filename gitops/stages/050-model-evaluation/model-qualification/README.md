@@ -8,7 +8,7 @@ access. The Application reports **Suspended** by design while the candidate mode
 
 | | |
 |---|---|
-| Argo CD Application | `050-model-qualification` ([manifest](../../../argocd/app-of-apps/050-model-evaluation/model-qualification.yaml)) |
+| Argo CD Application | `050-model-qualification` ([manifest](../../../applications/050-model-qualification.yaml)) |
 | Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 2, all Stage 050 components at one commit SHA) |
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced, and Healthy or Suspended only by a stopped InferenceService) and [`validate-ai-services.sh`](../../../../stages/050-model-evaluation/validate-ai-services.sh) (tenant label, tenant discovery, job ServiceAccount, admin access, developer denial) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. Annotation `demo.rhoai.io/accepted-health: Suspended`. |

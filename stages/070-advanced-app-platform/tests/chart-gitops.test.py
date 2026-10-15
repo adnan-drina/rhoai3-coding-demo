@@ -37,7 +37,7 @@ class NativeDelivery(unittest.TestCase):
             self.assertNotIn(document['kind'], ('HelmRelease', 'HelmChart', 'GitLab'))
             self.assertNotIn('helm.sh/hook', document['metadata'].get('annotations', {}))
             self.assertNotEqual(document['metadata']['name'], 'gitlab-controller-manager')
-        app = yaml.safe_load((ROOT / 'gitops/argocd/app-of-apps/070-advanced-app-platform/gitlab.yaml').read_text())
+        app = yaml.safe_load((ROOT / 'gitops/applications/070-gitlab.yaml').read_text())
         self.assertNotIn('helm', app['spec']['source'])
         self.assertNotIn('--enable-helm', (ROOT / 'stages/070-advanced-app-platform/deploy.sh').read_text())
 
@@ -78,7 +78,7 @@ class NativeDelivery(unittest.TestCase):
     def test_derived_config_is_separate_from_canonical_chart(self):
         templates = next(d for d in self.resources if d['kind'] == 'ConfigMap'
                          and d['metadata']['name'] == 'gitlab-runtime-templates')
-        app = yaml.safe_load((ROOT / 'gitops/argocd/app-of-apps/070-advanced-app-platform/gitlab.yaml').read_text())
+        app = yaml.safe_load((ROOT / 'gitops/applications/070-gitlab.yaml').read_text())
         static = {r['metadata']['name']: r for r in self.resources if r['kind'] == 'ConfigMap'}
         for name, data in json.loads(templates['data']['templates.json']).items():
             if name != 'gitlab-runtime-buckets':

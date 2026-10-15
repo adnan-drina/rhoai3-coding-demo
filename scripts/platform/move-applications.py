@@ -7,7 +7,7 @@ One tool for three changes to a stage's Applications (docs/OPERATIONS.md "Moving
   rename   an Application gets a new name                 --stage 060 --app 060-agent-console --from agent-console
   repath   an Application renders a new source.path      --stage 010            (same names, no --from)
 
-The new Applications are the stage's manifests at --revision (gitops/argocd/app-of-apps/<NNN-stage>/*.yaml in that
+The new Applications are the stage's manifests at --revision (gitops/applications/<NNN>-*.yaml in that
 commit), pinned to that commit and GIT_REPO_URL. Objects are taken over by rewriting their argocd.argoproj.io/tracking-id
 annotation; the old Applications (no finalizer) are deleted without cascade at the end.
 

@@ -8,7 +8,7 @@ workbenches or deploy models from the sandbox.
 
 | | |
 |---|---|
-| Argo CD Application | `010-sandbox-storage` ([manifest](../../../argocd/app-of-apps/010-openshift-ai-platform-foundation/sandbox-storage.yaml)) |
+| Argo CD Application | `010-sandbox-storage` ([manifest](../../../applications/010-sandbox-storage.yaml)) |
 | Deployed by | Its own script, [`stages/010-openshift-ai-platform-foundation/deploy-sandbox-storage.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy-sandbox-storage.sh) (annotation `demo.rhoai.io/deploy-script`). Stage 010 `deploy.sh` calls it after the deploy-order components |
 | Validated by | [`validate-sandbox-storage.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate-sandbox-storage.sh) (called by `validate.sh` and by the deploy script) |
 | Sync | Automated, prune and self-heal; `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; Server-Side Diff via annotation; `ignoreDifferences` on `/data` of both connection Secrets |

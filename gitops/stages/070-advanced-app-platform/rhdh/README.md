@@ -4,7 +4,7 @@ This Application installs Red Hat Developer Hub 1.10 as the developer portal of 
 
 | | |
 |---|---|
-| Argo CD Application | `070-rhdh` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/rhdh.yaml)) |
+| Argo CD Application | `070-rhdh` ([manifest](../../../applications/070-rhdh.yaml)) |
 | Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 8, last) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (operator, portal, catalog and security checks); `validate.sh --static` (catalog renderer and template tests) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on OperatorGroup annotation `olm.providedAPIs` (OLM-owned), Subscription `startingCSV`, Secret `rhdh-secrets` `/data`, ConsoleLink `rhdh` `href`/`imageURL` |
@@ -130,4 +130,4 @@ oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotation
 11. Telemetry data collection and analysis, "Disable telemetry data collection by using the Operator", Red Hat Developer Hub 1.10. https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/telemetry_data_collection_and_analysis/index#disable-telemetry-data-collection-using-the-operator_disable-telemetry-data-collection-in-rhdh
 12. Kubernetes plugin configuration, "Role Based Access Control", Backstage (upstream). https://backstage.io/docs/features/kubernetes/configuration
 
-Repository: [Stage 070 README](../../../../stages/070-advanced-app-platform/README.md), [Application manifest](../../../argocd/app-of-apps/070-advanced-app-platform/rhdh.yaml), [stage validator](../../../../stages/070-advanced-app-platform/validate.sh).
+Repository: [Stage 070 README](../../../../stages/070-advanced-app-platform/README.md), [Application manifest](../../../applications/070-rhdh.yaml), [stage validator](../../../../stages/070-advanced-app-platform/validate.sh).

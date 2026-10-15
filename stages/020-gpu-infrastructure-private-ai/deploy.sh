@@ -16,7 +16,7 @@ STAGE_APPS="$ROOT_DIR/scripts/shared/stage_apps.py"
 revision=$(python3 "$STAGE_APPS" select 020 --ref "$ref" --repo-url "$GIT_REPO_URL" \
   --extra scripts/platform/require-node-sizing.sh --extra scripts/platform/check-operator-policy.py)
 stage_gitops="$ROOT_DIR/gitops/stages/020-gpu-infrastructure-private-ai"
-app_manifest="$ROOT_DIR/gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai/gpu-machinesets.yaml"
+app_manifest="$ROOT_DIR/gitops/applications/020-gpu-machinesets.yaml"
 [[ -f "$stage_gitops/gpu-machinesets/machineset-gpu.yaml" ]] || { echo 'ERROR: generate, review and publish the environment MachineSets first (generate-gpu-machineset.sh).' >&2; exit 1; }
 export REPO_ROOT
 # All prerequisites are read-only and run before the first Application write.

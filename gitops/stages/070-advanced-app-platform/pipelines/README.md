@@ -4,7 +4,7 @@ This Application installs Red Hat OpenShift Pipelines 1.24 and Red Hat Trusted A
 
 | | |
 |---|---|
-| Argo CD Application | `070-pipelines` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/pipelines.yaml)) |
+| Argo CD Application | `070-pipelines` ([manifest](../../../applications/070-pipelines.yaml)) |
 | Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 4) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (operator, TektonConfig, enrollment, Coolstore delivery, TAS checks), `security-status.py`, `validate.sh --static` tests |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on Subscription `startingCSV`, and Securesign `platform` `/spec/fulcio/config/oidcIssuers` |
@@ -142,4 +142,4 @@ oc get securesign platform -n trusted-artifact-signer -o jsonpath='{.status.cond
 8. Sync phases and waves, Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
 9. Projects, Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/projects/
 10. Validating Admission Policy, Kubernetes (upstream). https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/
-11. [Stage 070 README](../../../../stages/070-advanced-app-platform/README.md) and [Application manifest](../../../argocd/app-of-apps/070-advanced-app-platform/pipelines.yaml).
+11. [Stage 070 README](../../../../stages/070-advanced-app-platform/README.md) and [Application manifest](../../../applications/070-pipelines.yaml).

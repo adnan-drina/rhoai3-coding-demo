@@ -7,7 +7,7 @@ default route that `010-rhoai-platform` enables. `submit-evaluation.sh` adds the
 
 | | |
 |---|---|
-| Argo CD Application | `050-oci-export` ([manifest](../../../argocd/app-of-apps/050-model-evaluation/oci-export.yaml)) |
+| Argo CD Application | `050-oci-export` ([manifest](../../../applications/050-oci-export.yaml)) |
 | Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 4, all Stage 050 components at one commit SHA) |
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced and Healthy at the stage revision). No export-specific check. |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`. |

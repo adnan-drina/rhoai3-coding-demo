@@ -8,7 +8,7 @@ RHOAI administrators. [`010-rhoai-platform`](../rhoai-platform/README.md) (DSCI 
 
 | | |
 |---|---|
-| Argo CD Application | `010-observability-operators` ([manifest](../../../argocd/app-of-apps/010-openshift-ai-platform-foundation/observability-operators.yaml)) |
+| Argo CD Application | `010-observability-operators` ([manifest](../../../applications/010-observability-operators.yaml)) |
 | Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 1) |
 | Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (three CSVs `Succeeded`; `check-operator-policy.py --verify`); [`validate-foundation-services.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate-foundation-services.sh) (SubjectAccessReview for the writer role; trace written and read back) |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation |

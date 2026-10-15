@@ -4,7 +4,7 @@ This Application runs the private source-control service of the developer platfo
 
 | | |
 |---|---|
-| Argo CD Application | `070-gitlab` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/gitlab.yaml)) |
+| Argo CD Application | `070-gitlab` ([manifest](../../../applications/070-gitlab.yaml)) |
 | Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 7) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (GitLab release, readiness, bucket, Route, integration-Secret checks; `security-status.py`); `validate.sh --static` (`chart-gitops.test.py`, `stage070-upgrade.test.py`, `security-boundaries.test.py`) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on `/spec/volumeName` of PVCs `gitlab-postgresql-data` and `gitlab-valkey-data` |

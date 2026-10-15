@@ -6,7 +6,7 @@ deleted through the authenticated OpenShell CLI (`060-openshell-runtime`), never
 
 | | |
 |---|---|
-| Argo CD Application | `060-agent-console` ([manifest](../../../argocd/app-of-apps/060-agent-runtime-and-agentops/agent-console.yaml)) |
+| Argo CD Application | `060-agent-console` ([manifest](../../../applications/060-agent-console.yaml)) |
 | Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-console.sh [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy-console.sh) (own deploy script) |
 | Validated by | [`stages/060-agent-runtime-and-agentops/validate-console.sh`](../../../../stages/060-agent-runtime-and-agentops/validate-console.sh) (Application Synced and Healthy at its pinned revision; `agentOps` is `true`; `ai-admin` and `ai-developer` can get/list Sandboxes and Services in their own workspace, cannot create or delete Sandboxes there, and cannot list Sandboxes in the other workspace) |
 | Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/shared/stage_apps.py`. Sync option `RespectIgnoreDifferences=true`. |

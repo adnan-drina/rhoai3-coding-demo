@@ -35,7 +35,7 @@ Product behavior is in the linked OpenShift AI 3.5 sections.
 |---|---|---|
 | Groups are not selected in the dashboard. Git sets them in the `Auth` resource `auth` (`services.platform.opendatahub.io/v1alpha1`); the screen reflects that state | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/auth.yaml` | [Select admin and user groups][select-mr], [Dashboard configuration options][dash-options] |
 | Admin group `rhods-admins`; user groups `rhods-admins` and `rhoai-developers`. `system:authenticated` is not listed, so the default access for all authenticated users is replaced | same file; `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md` ("Auth") | [Select admin and user groups (Managing OpenShift AI)][select-mo] |
-| `Auth` is owned by Argo CD Application `010-rhoai-platform` (automated sync with self-heal; `ignoreDifferences` covers only the DSC and the dashboard config) | `gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/rhoai-platform.yaml` | — (repo GitOps rule) |
+| `Auth` is owned by Argo CD Application `010-rhoai-platform` (automated sync with self-heal; `ignoreDifferences` covers only the DSC and the dashboard config) | `gitops/applications/010-rhoai-platform.yaml` | — (repo GitOps rule) |
 | The dashboard `groupsConfig` field is not set; the 3.5 options table marks it read-only | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/odhdashboardconfig.yaml` (field absent) | [Dashboard configuration options][dash-options] |
 
 ## Procedure

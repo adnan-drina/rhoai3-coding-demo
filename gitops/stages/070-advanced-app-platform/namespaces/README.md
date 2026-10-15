@@ -4,7 +4,7 @@ This Application owns every namespace Stage 070 uses, and nothing else. It deplo
 
 | | |
 |---|---|
-| Argo CD Application | `070-namespaces` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/namespaces.yaml)) |
+| Argo CD Application | `070-namespaces` ([manifest](../../../applications/070-namespaces.yaml)) |
 | Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 1) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (component Applications Synced and Healthy); `scripts/shared/stage_apps.py check-static 070` |
 | Sync | Automated, `prune: true`, `selfHeal: true`; every Namespace carries `Prune=false`; compare-option `ServerSideDiff=true`; no `ignoreDifferences` |

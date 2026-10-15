@@ -4,7 +4,7 @@ This Application turns Models-as-a-Service (MaaS) on in OpenShift AI. It enables
 
 | | |
 |---|---|
-| Argo CD Application | `040-maas-platform` ([manifest](../../../argocd/app-of-apps/040-governed-models-as-a-service/maas-platform.yaml)) |
+| Argo CD Application | `040-maas-platform` ([manifest](../../../applications/040-maas-platform.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 4). `deploy.sh` re-runs the Sync hooks of this component once if `genAiTracing` is still not `true` after the stage is reconciled |
 | Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.py` ("Current native KServe/AIGateway/OGX components and feature flags"; namespace admission labels); `preflight.py` (exact RBAC of the namespace-label helper; Stage 010 field delegation) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `ServerSideDiff`, `RespectIgnoreDifferences`; compare-option `ServerSideDiff=true`; no `ignoreDifferences` |

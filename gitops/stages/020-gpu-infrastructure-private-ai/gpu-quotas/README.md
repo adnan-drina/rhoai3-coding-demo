@@ -8,7 +8,7 @@ against the queue and the flavor places it on the right GPU pool. Stage 040 and 
 
 | | |
 |---|---|
-| Argo CD Application | `020-gpu-quotas` ([manifest](../../../argocd/app-of-apps/020-gpu-infrastructure-private-ai/gpu-quotas.yaml)) |
+| Argo CD Application | `020-gpu-quotas` ([manifest](../../../applications/020-gpu-quotas.yaml)) |
 | Deployed by | [`stages/020-gpu-infrastructure-private-ai/deploy.sh`](../../../../stages/020-gpu-infrastructure-private-ai/deploy.sh) (deploy-order 3) |
 | Validated by | [`stages/020-gpu-infrastructure-private-ai/validate.sh`](../../../../stages/020-gpu-infrastructure-private-ai/validate.sh) (`Each GPU ResourceFlavor selects exactly its own pool`, ClusterQueue and LocalQueue `Active`, HardwareProfile queue identity) |
 | Sync | Automated, prune and self-heal; `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff by compare-options annotation; retry 10, 5s to 3m |

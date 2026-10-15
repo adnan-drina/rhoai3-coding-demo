@@ -4,7 +4,7 @@ This Application installs Migration Toolkit for Applications (MTA) 8.3.1 in `ope
 
 | | |
 |---|---|
-| Argo CD Application | `070-mta` ([manifest](../../../argocd/app-of-apps/070-advanced-app-platform/mta.yaml)) |
+| Argo CD Application | `070-mta` ([manifest](../../../applications/070-mta.yaml)) |
 | Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage_apps.py deploy 070` (deploy-order 6) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh`: operator rows plus the steps "MTA 8.3 native Agents", "MTA Developer Lightspeed proxy" and "Optional MTA Solution Server"; `security-status.py`; static `product-schemas.test.py`, `stage070-upgrade.test.py`, `correction-package.test.py` |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`. `ignoreDifferences`: OperatorGroup annotation `olm.providedAPIs` (OLM-owned); Subscription `startingCSV`; ConsoleLink `mta` `href`/`imageURL`; Tackle `mta` `/spec/kai_llm_baseurl`; Gateway `maas-qwen` `/spec/endpoint` |

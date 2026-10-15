@@ -4,7 +4,7 @@ This Application runs the PostgreSQL database that OpenShift AI Models-as-a-Serv
 
 | | |
 |---|---|
-| Argo CD Application | `040-maas-database` ([manifest](../../../argocd/app-of-apps/040-governed-models-as-a-service/maas-database.yaml)) |
+| Argo CD Application | `040-maas-database` ([manifest](../../../applications/040-maas-database.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 2); credentials from `setup-database.sh`, which `deploy.sh` calls |
 | Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.py` ("Current durable MaaS PostgreSQL and runtime credential presence"); `preflight.py` (retained-data and ownership checks before deploy) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `ServerSideDiff`, `RespectIgnoreDifferences` [6]; compare-option `ServerSideDiff=true` [5]; `ignoreDifferences` on `/data` of two runtime Secrets |

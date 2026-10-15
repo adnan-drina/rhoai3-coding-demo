@@ -37,7 +37,7 @@ OpenShift AI 3.5 sections. Detailed records:
 | Decision | Where in Git | Official section |
 |---|---|---|
 | Explicit groups replace the default access for every OpenShift user: `Auth` `adminGroups: [rhods-admins]`, `allowedGroups: [rhods-admins, rhoai-developers]` (API group `services.platform.opendatahub.io`; dashboard `groupsConfig` is read-only) | `rhoai-platform/auth.yaml` | [Select admin and user groups][select], [Dashboard configuration options][dash-options] |
-| Groups must exist first: `rhods-admins` comes from the operator, `rhoai-developers` from Git; `users` ignored by Argo CD | `access/group-rhoai-developers.yaml`, `gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation/access.yaml` | [Select admin and user groups][select] |
+| Groups must exist first: `rhods-admins` comes from the operator, `rhoai-developers` from Git; `users` ignored by Argo CD | `access/group-rhoai-developers.yaml`, `gitops/applications/010-access.yaml` | [Select admin and user groups][select] |
 | Membership is runtime data: `setup-access.sh` adds `RHOAI_ADMIN_USER` and `RHOAI_DEVELOPER_USER` from the local `.env` (CLI equivalent of the console procedure) | `stages/010-openshift-ai-platform-foundation/setup-access.sh` | [Add users to user groups][add-users] |
 | Project roles in `demo-sandbox`: `rhods-admins` get `admin`, `rhoai-developers` get `edit` | `access/rolebinding-admins-admin.yaml`, `access/rolebinding-developer-edit.yaml` | [User types][user-types] |
 | Admins only may read RHOAI traces (`rhoai-monitoring-traces-reader` bound to `rhods-admins`) | `observability-operators/trace-roles/` | see `rhoai-observability` |

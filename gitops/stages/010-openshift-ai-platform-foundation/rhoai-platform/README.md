@@ -8,7 +8,7 @@ described under [How](#how).
 
 | | |
 |---|---|
-| Argo CD Application | `010-rhoai-platform` ([manifest](../../../argocd/app-of-apps/010-openshift-ai-platform-foundation/rhoai-platform.yaml)) |
+| Argo CD Application | `010-rhoai-platform` ([manifest](../../../applications/010-rhoai-platform.yaml)) |
 | Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 2) |
 | Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (DSCI, DSC and Auth Ready; monitoring fields; `observabilityDashboard`; foundation component ownership; dashboard route); [`validate-foundation-services.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate-foundation-services.sh) (metrics query and one synthetic trace round trip) |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation; `ignoreDifferences` on the DSC and the OdhDashboardConfig |

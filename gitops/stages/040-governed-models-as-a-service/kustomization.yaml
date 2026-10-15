@@ -1,4 +1,4 @@
-# Stage 040 desired state: the union of its component Applications (gitops/argocd/app-of-apps/040-*/).
+# Stage 040 desired state: the union of its component Applications (gitops/applications/040-*.yaml).
 # Argo CD syncs each component from its folder; validators read this aggregate.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

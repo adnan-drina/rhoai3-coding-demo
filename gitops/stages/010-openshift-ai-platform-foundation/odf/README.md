@@ -8,7 +8,7 @@ later stages that need buckets.
 
 | | |
 |---|---|
-| Argo CD Application | `010-odf` ([manifest](../../../argocd/app-of-apps/010-openshift-ai-platform-foundation/odf.yaml)) |
+| Argo CD Application | `010-odf` ([manifest](../../../applications/010-odf.yaml)) |
 | Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 1) |
 | Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (Application Synced/Healthy; `odf-operator` CSV `Succeeded`; `NooBaa/noobaa` phase `Ready`); `check-operator-policy.py --verify` |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation; no `ignoreDifferences` |

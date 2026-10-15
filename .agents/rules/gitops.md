@@ -40,7 +40,7 @@ python3 "$REPO_ROOT/scripts/shared/stage_apps.py" deploy NNN --revision "$SHA" -
 Every GitOps stage (`stages/NNN-name/deploy.sh` present) MUST have:
 1. `gitops/stages/NNN-name/<component>/` - one folder per Argo CD Application (its `source.path`)
 2. `gitops/stages/NNN-name/kustomization.yaml` - the union of the component folders (validators and `check-static` read it)
-3. `gitops/argocd/app-of-apps/NNN-name/<component>.yaml` - one Application per component, named `NNN-<component>`
+3. `gitops/applications/NNN-<component>.yaml` - one Application per component in one flat directory; the file name is exactly `metadata.name` + `.yaml`
 4. `stages/NNN-name/deploy.sh` - applies the Applications
 5. `stages/NNN-name/validate.sh` - verifies deployment
 6. `stages/NNN-name/README.md` - educational narrative
@@ -65,7 +65,7 @@ Workflow-only stages omit `deploy.sh` and have no Argo CD Application. `./script
 ```text
 rhoai3-coding-demo/
 |-- gitops/
-|   |-- argocd/app-of-apps/NNN-name/<component>.yaml
+|   |-- applications/NNN-<component>.yaml  # flat; file name = Application name
 |   |-- bootstrap/
 |   `-- stages/NNN-name/
 |       |-- kustomization.yaml          # union of the component folders

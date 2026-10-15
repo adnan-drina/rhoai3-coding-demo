@@ -9,7 +9,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 WRITE=false
 SOURCE_MACHINESET="${RHOAI_SOURCE_WORKER_MACHINESET:-}"
 OUTPUT_DIR="gitops/stages/020-gpu-infrastructure-private-ai/gpu-machinesets"
-APP_MANIFEST="gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai/gpu-machinesets.yaml"
+APP_MANIFEST="gitops/applications/020-gpu-machinesets.yaml"
 
 # Reviewed GPU pools: pool|file|name infix|instance type|cluster-api/accelerator|demo.rhoai.io/gpu-pool label|zones|GPU:memoryMb:vCPU|file comment
 # zones "source" = the --source worker's zone only; "all" = every zone with one active CPU worker pool (a Machine API

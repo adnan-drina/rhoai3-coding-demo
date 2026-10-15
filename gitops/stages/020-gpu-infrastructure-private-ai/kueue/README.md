@@ -7,7 +7,7 @@ consume it.
 
 | | |
 |---|---|
-| Argo CD Application | `020-kueue` ([manifest](../../../argocd/app-of-apps/020-gpu-infrastructure-private-ai/kueue.yaml)) |
+| Argo CD Application | `020-kueue` ([manifest](../../../applications/020-kueue.yaml)) |
 | Deployed by | [`stages/020-gpu-infrastructure-private-ai/deploy.sh`](../../../../stages/020-gpu-infrastructure-private-ai/deploy.sh) (deploy-order 2) |
 | Validated by | [`stages/020-gpu-infrastructure-private-ai/validate.sh`](../../../../stages/020-gpu-infrastructure-private-ai/validate.sh) (operator policy, `kueue-operator current CSV Succeeded`, `Kueue delegated Unmanaged with autoCreateQueues=false`, `Native Kueue Available with fresh owned controller`) |
 | Sync | Automated, prune and self-heal; `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff by compare-options annotation; retry 10, 5s to 3m |

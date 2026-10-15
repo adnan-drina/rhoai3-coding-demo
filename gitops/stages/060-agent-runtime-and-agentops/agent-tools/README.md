@@ -8,7 +8,7 @@ agent tools.
 
 | | |
 |---|---|
-| Argo CD Application | `060-agent-tools` ([manifest](../../../argocd/app-of-apps/060-agent-runtime-and-agentops/agent-tools.yaml)) |
+| Argo CD Application | `060-agent-tools` ([manifest](../../../applications/060-agent-tools.yaml)) |
 | Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-native-mcp.sh [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy-native-mcp.sh) (own deploy script). It runs the preflight, applies the Application pinned to the SHA, syncs it and waits; protocol qualification is a separate step. `--publish-studio` runs Stage 040 `publish-catalog-mcp.py`. |
 | Validated by | [`stages/060-agent-runtime-and-agentops/validate-native-mcp.py`](../../../../stages/060-agent-runtime-and-agentops/validate-native-mcp.py) (Application Synced at the expected revision; ownership of every customer object; hosting project metadata and `ai-admin` binding; per server: Route presence or absence, effective `config.toml` policy, image pin, `Ready` condition, operator-owned Deployment/Service/NetworkPolicy, ServiceAccount, running pod image digest). Protocol and caller isolation are qualified separately by Stage 040 `qualify-catalog-mcp.py`. |
 | Sync | Manual. Annotation `compare-options: ServerSideDiff=true`; sync option `RespectIgnoreDifferences=true` (no `ignoreDifferences` defined). The Application carries `sync-wave: "60"`, which has no effect because no parent Application manages it. |

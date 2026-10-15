@@ -8,7 +8,7 @@ consumes the GPUs; administrators consume the dashboard.
 
 | | |
 |---|---|
-| Argo CD Application | `020-nvidia-gpu-operator` ([manifest](../../../argocd/app-of-apps/020-gpu-infrastructure-private-ai/nvidia-gpu-operator.yaml)) |
+| Argo CD Application | `020-nvidia-gpu-operator` ([manifest](../../../applications/020-nvidia-gpu-operator.yaml)) |
 | Deployed by | [`stages/020-gpu-infrastructure-private-ai/deploy.sh`](../../../../stages/020-gpu-infrastructure-private-ai/deploy.sh) (deploy-order 2) |
 | Validated by | [`stages/020-gpu-infrastructure-private-ai/validate.sh`](../../../../stages/020-gpu-infrastructure-private-ai/validate.sh) (metrics Role binding, pinned dashboard, CSV, `ClusterPolicy` ready, validator/DCGM DaemonSets, per-node driver; `--functional` adds CUDA vectorAdd and DCGM metrics) |
 | Sync | Automated, prune and self-heal; `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff by compare-options annotation; retry 10, 5s to 3m |

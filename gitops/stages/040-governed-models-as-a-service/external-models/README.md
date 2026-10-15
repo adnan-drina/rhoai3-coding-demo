@@ -8,7 +8,7 @@ private model; requests leave the cluster for the provider.
 
 | | |
 |---|---|
-| Argo CD Application | `040-external-models` ([manifest](../../../argocd/app-of-apps/040-governed-models-as-a-service/external-models.yaml)) |
+| Argo CD Application | `040-external-models` ([manifest](../../../applications/040-external-models.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 5, together with `040-local-models`); provider Secrets by `setup-provider-secret.sh`, called from `deploy.sh` |
 | Validated by | `stages/040-governed-models-as-a-service/validate.sh --readiness` (`validate-native.py`: providers and models Ready and equal to Git, provider Secret has a non-placeholder `api-key` and the `inference.llm-d.ai/ipp-managed` label, model route owned by the `ExternalModel` and attached to listener `api`, `MaaSModelRef` Ready with endpoint on the API hostname); `validate-functional.py` with `RHOAI_STAGE040_MODEL=<model>` for one bounded completion; `scripts/shared/stage_apps.py status` |
 | Sync | Automated, `prune` and `selfHeal`. Sync options `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences` (and a `ServerSideDiff=true` sync option that has no effect). Compare option `ServerSideDiff=true` (annotation). No `ignoreDifferences` |

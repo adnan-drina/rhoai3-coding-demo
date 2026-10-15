@@ -6,7 +6,7 @@ platform configuration (DSCInitialization, DataScienceCluster, Auth, dashboard c
 
 | | |
 |---|---|
-| Argo CD Application | `010-rhoai-operator` ([manifest](../../../argocd/app-of-apps/010-openshift-ai-platform-foundation/rhoai-operator.yaml)) |
+| Argo CD Application | `010-rhoai-operator` ([manifest](../../../applications/010-rhoai-operator.yaml)) |
 | Deployed by | [`stages/010-openshift-ai-platform-foundation/deploy.sh`](../../../../stages/010-openshift-ai-platform-foundation/deploy.sh) (deploy-order 1) |
 | Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (Application Synced/Healthy at the reviewed revision; `rhods-operator` CSV `Succeeded`); `scripts/platform/check-operator-policy.py --verify` (channel and minimum version) |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via the `compare-options` annotation |

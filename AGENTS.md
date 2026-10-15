@@ -37,7 +37,7 @@ Important paths:
 - `env.example` — non-secret environment variable template.
 - `scripts/` — `platform/` for platform setup/lifecycle and validation, `demo/` for Stage 110–130 use-case helpers, and `shared/` for common libraries.
 - `gitops/` — desired state for Argo CD and OpenShift resources.
-- `gitops/argocd/app-of-apps/` — Argo CD application structure.
+- `gitops/applications/` — one Argo CD Application per component, flat; each file is named after its Application.
 - `gitops/stages/` — desired state for stage-specific OpenShift resources.
 - `stages/` — ordered workshop path: stage READMEs and per-stage deploy/validate scripts. `validate.sh` is required; missing `deploy.sh` means workflow-only (no Argo CD app). Stage 130 keeps its own solution architecture in that stage directory (not workshop architecture; not dest execution).
 - `docs/` — operations, troubleshooting, architecture, and supporting documentation.

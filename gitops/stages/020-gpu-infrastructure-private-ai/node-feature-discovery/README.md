@@ -7,7 +7,7 @@ RHCOS version label to match each GPU node to its driver DaemonSet.
 
 | | |
 |---|---|
-| Argo CD Application | `020-node-feature-discovery` ([manifest](../../../argocd/app-of-apps/020-gpu-infrastructure-private-ai/node-feature-discovery.yaml)) |
+| Argo CD Application | `020-node-feature-discovery` ([manifest](../../../applications/020-node-feature-discovery.yaml)) |
 | Deployed by | [`stages/020-gpu-infrastructure-private-ai/deploy.sh`](../../../../stages/020-gpu-infrastructure-private-ai/deploy.sh) (deploy-order 1) |
 | Validated by | [`stages/020-gpu-infrastructure-private-ai/validate.sh`](../../../../stages/020-gpu-infrastructure-private-ai/validate.sh) (operator policy, `nfd current CSV Succeeded`, `NFD Available with fresh native worker/master`) |
 | Sync | Automated, prune and self-heal; `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff by compare-options annotation; retry 10, 5s to 3m |

@@ -43,7 +43,7 @@ OpenShift AI 3.5 sections. Detailed record:
 | The profiles' LocalQueues exist only in `demo-sandbox` (Stage 020), `internal-models` (Stage 040) and `evaluated-models` (Stage 050); recorded deviation from "a queue name that exists in all user projects" | `gpu-quotas/queues/lq-*.yaml`, `gpu-quotas/README.md` (Alignment table) | [Create a hardware profile][hwp-create] |
 | Stage 040 Qwen model names `gpu-rtxpro6000` plus label `kueue.x-k8s.io/queue-name: lq-gpu-rtxpro6000`; Stage 050 INT4 candidate names `gpu-reserved-demo` / `lq-gpu-reserved-demo` | `gitops/stages/040-governed-models-as-a-service/local-models/qwen38-27b-llminferenceservice.yaml`, `gitops/stages/050-model-evaluation/model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Kueue workflow][kueue-flow] |
 | ServingRuntime `vllm-cuda-runtime` carries `opendatahub.io/recommended-accelerators: '["nvidia.com/gpu"]'` | `gitops/stages/050-model-evaluation/model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Recommended accelerator for serving runtimes][rec-runtime] |
-| Profiles are GitOps objects of `020-gpu-quotas` at sync-wave 5 (after their ClusterQueues at wave 4), `SkipDryRunOnMissingResource` because the CRD comes from OpenShift AI | `gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai/gpu-quotas.yaml` | — (repo GitOps rule) |
+| Profiles are GitOps objects of `020-gpu-quotas` at sync-wave 5 (after their ClusterQueues at wave 4), `SkipDryRunOnMissingResource` because the CRD comes from OpenShift AI | `gitops/applications/020-gpu-quotas.yaml` | — (repo GitOps rule) |
 
 The `default-profile` HardwareProfile is created by OpenShift AI and is not in Git.
 
