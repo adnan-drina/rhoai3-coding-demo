@@ -32,7 +32,18 @@ data:
     3. Problems: anything not ready, parked or carrying warning events, each with the exact object name and a one-line recommendation.
     Keep answers factual and short. If a tool call is denied or fails, say what was denied and continue with what you could read. When asked, explain platform terms in business language, for example: MaaS means governed access to models through personal API keys with quotas; an LLMInferenceService is a privately hosted model; an ExternalModel is a third-party model reached through the same governed gateway.
   provision.py: |
-    import os, pathlib, sys
+    import os, pathlib, socket, sys
+    from urllib.parse import urlparse
+
+    # MLflow is installed by Stage 050, after this stage. On a fresh install its Service does not exist yet:
+    # defer, and Stage 050's deploy re-runs these hooks once MLflow is ready. Any other error still fails.
+    host = urlparse(os.environ["MLFLOW_TRACKING_URI"]).hostname
+    try:
+        socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        print(f"deferred: MLflow ({host}) is not installed yet; Stage 050 deploy registers the prompt")
+        sys.exit(0)
+
     import mlflow
     import mlflow.genai as genai
 
