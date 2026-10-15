@@ -152,28 +152,6 @@ fi
 
 echo "Runtime catalog generated from bundle ${BUNDLE_ID:0:16} at revision ${APP_SYNC_REVISION}"
 
-# Template Locations are pinned to the published revision (B2), so each
-# re-stamp registers one new Location; the ones for any OTHER revision are
-# superseded and pruned here (Lead:catalog-location-must-not-accumulate).
-# No catalog API token is provisioned; same postgres path as
-# scripts/demo/delete-scaffolded-project.sh. Best-effort: a missing postgres pod
-# must not fail catalog generate.
-PSQL_POD=$(oc get pods -n rhdh --no-headers 2>/dev/null \
-  | awk '/psql|postgres/ {print $1; exit}' || true)
-if [ -n "$PSQL_POD" ]; then
-  if oc exec -n rhdh "$PSQL_POD" -- psql -d backstage_plugin_catalog -v ON_ERROR_STOP=1 -c "
-    DELETE FROM locations
-    WHERE target ~ '/blob/[0-9a-f]{40}/gitops/stages/070-advanced-app-platform/(base/)?rhdh/templates/[^/]+/template\\.yaml'
-      AND target !~ '/blob/${APP_SYNC_REVISION}/';
-    DELETE FROM refresh_state
-    WHERE entity_ref LIKE 'location:%'
-      AND unprocessed_entity ~ '/blob/[0-9a-f]{40}/gitops/stages/070-advanced-app-platform/(base/)?rhdh/templates/'
-      AND unprocessed_entity !~ '/blob/${APP_SYNC_REVISION}/';
-  "; then
-    echo "Pruned template Locations of superseded revisions"
-  else
-    echo "WARN: Location prune failed; catalog generate already wrote the ConfigMap"
-  fi
-else
-  echo "No postgres pod in rhdh; skip superseded Location prune"
-fi
+# Template Locations are pinned to the published revision (B2). When the revision moves, the Location entities of
+# the previous revision are no longer emitted by the catalog file and the catalog deletes them as orphans
+# (catalog.orphanStrategy: delete in app-config); no database access is needed.
