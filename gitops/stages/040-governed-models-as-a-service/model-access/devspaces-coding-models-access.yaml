@@ -12,8 +12,10 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   owner:
+    # One key owner per Dev Spaces persona, so MaaS attributes usage to each persona (Stage 070 devspaces/maas-keys).
     users:
       - system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner
+      - system:serviceaccount:wksp-ai-admin:devspace-maas-key-provisioner-admin
   modelRefs:
     # Sized for agentic assistants: one agent turn carries system prompt, rules and file
     # context, so chat-era budgets (100K/h, 1M/h, 5M/h) all hit 429s mid-demo (2026-07).
@@ -52,6 +54,7 @@ spec:
   subjects:
     users:
       - system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner
+      - system:serviceaccount:wksp-ai-admin:devspace-maas-key-provisioner-admin
   modelRefs:
     - name: qwen3-8-27b
       namespace: internal-models

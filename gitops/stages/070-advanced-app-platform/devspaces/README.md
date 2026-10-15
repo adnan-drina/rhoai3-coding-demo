@@ -42,15 +42,16 @@ The operator, the instance and the workspace contract form one Application becau
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| ServiceAccount | `devspace-maas-key-provisioner` | `wksp-ai-developer` | MaaS key owner identity (wave 17) |
-| Role, RoleBinding | `devspace-maas-key-secret-manager` | `wksp-ai-developer` | Secret create/get/patch/update; read `workspace-maas-model-endpoint` |
-| Role, RoleBinding | `devspace-maas-gateway-reader` | `openshift-ingress` | `get` Gateways, to read the MaaS hostname |
-| Role, RoleBinding | `devspace-maas-key-reader` / `devspace-maas-key-workspace-readers` | `wksp-ai-developer` | Workspace service accounts of both persona namespaces may read the two key Secrets and the init ConfigMap by name |
-| ConfigMap | `workspace-maas-model-endpoint` | `wksp-ai-developer` | OpenAI path on the MaaS gateway (`/v1`) |
+| ServiceAccount | `devspace-maas-key-provisioner` / `devspace-maas-key-provisioner-admin` | `wksp-ai-developer` / `wksp-ai-admin` | MaaS key owner per persona, so MaaS attributes usage to each persona (wave 17; `maas-keys/developer`, `maas-keys/admin`) |
+| Role, RoleBinding | `devspace-maas-key-secret-manager[-admin]` | each persona namespace | Secret create; get/patch/update on its two key Secrets |
+| Role, RoleBinding | `devspace-maas-gateway-reader` | `openshift-ingress` | `get` Gateways, to read the MaaS hostname (both provisioners) |
+| Role, RoleBinding | `devspace-maas-key-reader[-admin]` / `devspace-maas-key-workspace-readers[-admin]` | each persona namespace | That namespace's workspace service accounts read its two key Secrets by name |
+| Role, RoleBinding | `devspace-ai-tools-init-reader` / `devspace-ai-tools-init-admin-readers` | `wksp-ai-developer` | `ai-admin`'s workspace service accounts read the shared init ConfigMap |
+| ConfigMap | `workspace-maas-model-endpoint[-admin]` | each persona namespace | OpenAI path on the MaaS gateway (`/v1`), mounted into the key Job |
 | ConfigMap | `devspace-ai-tools-init` | `wksp-ai-developer` | `init-ai-tools.sh`: the workspace postStart bootstrap for Kilo Code, OpenCode and the Stage 130 Hermes worker configuration |
 | ConfigMap (generated) | `migration-model-profiles` | `wksp-ai-developer` | `model-profiles.json`, the one model runtime profile table; mounted read-only at `/etc/rhoai3/model-profiles` with `mount-on-start` |
 | ConfigMap (generated) | `stage070-secret-writer-<hash>` | `wksp-ai-developer` | `secret_writer.py`, the typed Secret writer |
-| Job (not a hook) | `provision-devspace-maas-api-keys` | `wksp-ai-developer` | Mints or keeps MaaS keys and writes `maas-devspace-api-keys` and `workspace-maas-credentials` (wave 18; `Force=true,Replace=true` recreate it on each sync [12]) |
+| Job (not a hook) | `provision-devspace-maas-api-keys[-admin]` | each persona namespace | Mints or keeps MaaS keys and writes `maas-devspace-api-keys` and `workspace-maas-credentials` (wave 18; `Force=true,Replace=true` recreate it on each sync [12]) |
 | NetworkPolicy | `migration-workspace-maas-egress` | `wksp-ai-developer` | Egress for workspace pods: DNS, Dev Spaces, MaaS/ingress, RHOAI, MTA, same namespace, and TCP 80/443 (wave 20) |
 | AdminNetworkPolicy | `workspace-allow-kapi-egress` | cluster | Allows workspace namespaces to reach the API server on control-plane nodes, TCP 6443 (wave 19, priority 50) |
 
@@ -83,7 +84,7 @@ Not in Git: the GitLab OAuth Secret `gitlab-oauth-config`, the CheCluster `gitSe
 
 **Persona namespaces.** The three `wksp-*` namespaces (from `070-namespaces`) carry the documented pre-provisioning labels and username annotation [4], so Dev Spaces uses them instead of `<username>-devspaces`. Editor settings are per-namespace `vscode-editor-configurations` ConfigMaps, the documented per-project form [5].
 
-**MaaS credentials.** The key Job reads the Gateway hostname, authenticates to the MaaS API with its own service-account token, and creates keys on the `devspaces-coding-models` subscription. An existing key is kept only if the API confirms the same owner and subscription and an `active` status; any other answer stops the Job without revoking anything. Keys go into `maas-devspace-api-keys` and into `workspace-maas-credentials`, an env-mounted Secret with `MAAS_API_KEY`, `MAAS_API_BASE_URL` and the canonical model ID [6]. `secret_writer.py` creates or merge-patches each Secret without a `last-applied-configuration` copy. `ai-admin` workspaces read the same Secrets across namespaces, so both personas share one key owner.
+**MaaS credentials.** Each persona namespace has its own key Job and key owner (`maas-keys/base`, overlays `developer` and `admin`), so MaaS usage is attributed per persona; the Stage 040 `devspaces-coding-models` subscription lists both owners. The key Job reads the Gateway hostname, authenticates to the MaaS API with its own service-account token, and creates keys on the `devspaces-coding-models` subscription. An existing key is kept only if the API confirms the same owner and subscription and an `active` status; any other answer stops the Job without revoking anything. Keys go into `maas-devspace-api-keys` and into `workspace-maas-credentials`, an env-mounted Secret with `MAAS_API_KEY`, `MAAS_API_BASE_URL` and the canonical model ID [6]. `secret_writer.py` creates or merge-patches each Secret without a `last-applied-configuration` copy. `ai-admin` workspaces read the same Secrets across namespaces, so both personas share one key owner.
 
 **Workspace bootstrap.** `agentic-coolstore` runs `init-ai-tools.sh` from the ConfigMap at postStart, through the Kubernetes API. The AdminNetworkPolicy allows that API path; the namespaced policy cannot, because the API server runs on host network.
 

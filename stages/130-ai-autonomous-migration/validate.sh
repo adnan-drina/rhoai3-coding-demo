@@ -349,6 +349,8 @@ check "080 golden has no dest .hermes/checks tree" \
 
 SCAFFOLD_PROFILES="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/config/profiles"
 GITOPS_INIT="${REPO_ROOT}/gitops/stages/070-advanced-app-platform/devspaces/maas-api-key-provisioning.yaml"
+# The per-persona key Job and its endpoint ConfigMap (Stage 070 devspaces/maas-keys/base).
+GITOPS_KEYS="${REPO_ROOT}/gitops/stages/070-advanced-app-platform/devspaces/maas-keys/base"
 check "080 GitOps does not invoke golden assert-agent-pin.py" \
   "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -c 'assert-agent-pin.py' || echo 0" \
   "0"
@@ -374,16 +376,16 @@ check "080 GitOps dest-init prefers env MAAS_API_BASE_URL then gateway MAAS_BASE
   "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'os.environ.get(\"MAAS_API_BASE_URL\")' >/dev/null && grep -qF 'os.environ.get(\"MAAS_BASE_URL\")' '${GITOPS_INIT}' && grep -qF '/v1' '${GITOPS_INIT}' && grep -qF '/v1' '${GITOPS_INIT}' && echo 1 || echo 0" \
   "1"
 check "080 GitOps ConfigMap is the MaaS gateway path (not KServe host)" \
-  "grep -qF 'MAAS_API_PATH: /v1' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/devspaces/workspace-maas-model-endpoint.yaml' && grep -qF 'MAAS_API_PATH_QWEN36: /v1' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/devspaces/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/devspaces/workspace-maas-model-endpoint.yaml' && ! grep -q 'kserve-workload-svc' '${REPO_ROOT}/gitops/stages/070-advanced-app-platform/devspaces/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
+  "grep -qF 'MAAS_API_PATH: /v1' '${GITOPS_KEYS}/workspace-maas-model-endpoint.yaml' && grep -qF 'MAAS_API_PATH_QWEN36: /v1' '${GITOPS_KEYS}/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${GITOPS_KEYS}/workspace-maas-model-endpoint.yaml' && ! grep -q 'kserve-workload-svc' '${GITOPS_KEYS}/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
   "1"
 check "080 GitOps derives workspace-maas-credentials from QWEN27B key + ConfigMap URL" \
-  "grep -qF '\"name\": \"workspace-maas-credentials\"' '${GITOPS_INIT}' && grep -q 'workspace-maas-model-endpoint' '${GITOPS_INIT}' && grep -q 'field-manager=devspace-maas-key-provisioner' '${GITOPS_INIT}' && echo 1 || echo 0" \
+  "grep -qF '\"name\": \"workspace-maas-credentials\"' '${GITOPS_KEYS}/maas-key-provisioner.yaml' && grep -q 'workspace-maas-model-endpoint' '${GITOPS_KEYS}/maas-key-provisioner.yaml' && grep -q 'secret_writer.py' '${GITOPS_KEYS}/maas-key-provisioner.yaml' && echo 1 || echo 0" \
   "1"
 check "080 GitOps MaaS env derive does not bounce Running dest pods" \
-  "awk '/workspace-maas-credentials derived/,0' '${GITOPS_INIT}' | grep -c 'oc delete pod' || echo 0" \
+  "grep -q 'workspace-maas-credentials derived' '${GITOPS_KEYS}/maas-key-provisioner.yaml' && awk '/workspace-maas-credentials derived/,0' '${GITOPS_KEYS}/maas-key-provisioner.yaml' | grep -c 'oc delete pod' || echo missing" \
   "0"
 check "080 GitOps dest-init derives worker base from gateway MAAS_BASE_URL" \
-  "grep -c 'MaaS gateway base from MAAS_BASE_URL' '${GITOPS_INIT}' || echo 0" \
+  "grep -c 'MaaS gateway base from MAAS_BASE_URL' '${GITOPS_KEYS}/maas-key-provisioner.yaml' || echo 0" \
   "1"
 check "080 GitOps dest-init pin files do not label the gateway as KServe" \
   "grep -c 'in-cluster-kserve' '${GITOPS_INIT}' || echo 0" \

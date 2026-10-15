@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: wksp-ai-admin
+# The suffix keeps names distinct from the developer overlay (Kustomize cannot resolve two same-named
+# ServiceAccounts from one base); the Secrets the Job writes keep their names (they are not declared here).
+nameSuffix: -admin
+resources:
+  - ../base
+patches:
+  - target:
+      kind: RoleBinding
+      name: devspace-maas-key-workspace-readers.*
+    patch: |-
+      - op: replace
+        path: /subjects/0/name
+        value: system:serviceaccounts:wksp-ai-admin

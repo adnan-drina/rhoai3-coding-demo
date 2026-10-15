@@ -327,36 +327,24 @@ class SourcePromotion(unittest.TestCase):
 
 
 class SecretWriteScope(unittest.TestCase):
-    """Every principal that may create Secrets without a name limit has an admission policy naming what it may write,
-    and none of them can read other Secrets in the namespaces it writes to."""
+    """Writers whose Secret names are known read and patch only those names (plain RBAC; demo posture)."""
     def docs(self, *files):
         return [d for f in files for d in yaml.safe_load_all((BASE / f).read_text()) if d]
-
-    def policy(self, file, principal):
-        docs = self.docs(file)
-        vap = next(d for d in docs if d['kind'] == 'ValidatingAdmissionPolicy')
-        binding = next(d for d in docs if d['kind'] == 'ValidatingAdmissionPolicyBinding')
-        self.assertIn("'" + principal + "'", vap['spec']['matchConditions'][0]['expression'])
-        self.assertEqual((binding['spec']['policyName'], binding['spec']['validationActions']), (vap['metadata']['name'], ['Deny']))
-        self.assertEqual(vap['spec']['failurePolicy'], 'Fail')
 
     def secret_rules(self, file, kind, name):
         role = next(d for d in self.docs(file) if d['kind'] == kind and d['metadata']['name'] == name)
         return [r for r in role['rules'] if 'secrets' in r['resources']]
 
-    def test_coordinator_writes_only_workspace_scanner_mirrors(self):
-        self.policy('pipelines/gitlab/workspace-secret-policy.yaml', 'system:serviceaccount:app-platform-build:project-provisioner')
+    def test_coordinator_writes_workspace_mirrors_without_update(self):
         for role in self.docs('devspaces/workspace-sonar-credentials.yaml'):
             if role['kind'] == 'Role':
-                self.assertEqual([r['verbs'] for r in role['rules'] if 'secrets' in r['resources']], [['get', 'create', 'patch']])  # no update
+                self.assertEqual([r['verbs'] for r in role['rules'] if 'secrets' in r['resources']], [['get', 'create', 'patch']])
 
-    def test_key_provisioner_reads_only_its_key_secret(self):
-        self.policy('devspaces/maas-key-secret-policy.yaml', 'system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner')
-        rules = self.secret_rules('devspaces/maas-api-key-provisioning.yaml', 'Role', 'devspace-maas-key-secret-manager')
+    def test_key_provisioner_reads_only_its_key_secrets(self):
+        rules = self.secret_rules('devspaces/maas-keys/base/maas-key-provisioner.yaml', 'Role', 'devspace-maas-key-secret-manager')
         self.assertTrue(all(r['verbs'] == ['create'] or r.get('resourceNames') == ['maas-devspace-api-keys', 'workspace-maas-credentials'] for r in rules))
 
     def test_integration_hub_reads_only_named_credentials(self):
-        self.policy('gitlab/integrations-secret-policy.yaml', 'system:serviceaccount:gitlab-system:gitlab-integrations-bootstrap')
         rules = self.secret_rules('gitlab/integrations-bootstrap.yaml', 'ClusterRole', 'gitlab-integrations-bootstrap')
         self.assertTrue(all(r['verbs'] == ['create'] or r.get('resourceNames') for r in rules))
         self.assertNotIn('openshift-gitops-cluster', (BASE / 'gitlab/integrations-bootstrap.yaml').read_text())

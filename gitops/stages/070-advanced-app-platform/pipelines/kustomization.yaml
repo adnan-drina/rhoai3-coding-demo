@@ -19,6 +19,5 @@ resources:
 - gitlab/application-policy-binding.yaml
 - gitlab/bootstrap-secret-policy.yaml
 - gitlab/bootstrap-secret-policy-binding.yaml
-- gitlab/workspace-secret-policy.yaml
 - gitlab/provisioning-policy.yaml
 - gitlab/provisioning-policy-binding.yaml

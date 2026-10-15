@@ -20,8 +20,7 @@ rules:
   - create
   - patch
   - update
-# Secrets: read and merge-patch only the hub's named credentials in the four bound namespaces. create cannot be
-# limited by name; the stage070-integrations-secrets admission policy admits only these names.
+# Secrets: read and merge-patch only the hub's named credentials in the four bound namespaces.
 - apiGroups:
   - ''
   resources:
