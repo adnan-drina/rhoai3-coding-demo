@@ -274,7 +274,9 @@ def leaderboard(
     for (model, _), job in latest.items():
         targets[model] = tag(job, "target") or "candidate"
     order = ["latency", "throughput", "livecodebench", "python", "capability", "security-quick", "security-full"]
-    collections = sorted({cid for _, cid in latest},
+    # Every required collection, not only those with history: a collection that never ran scores None for every
+    # model, so its benchmarks miss their gates and the verdict cannot be PROMOTE.
+    collections = sorted(set(collection_ids),
                          key=lambda c: order.index(next((k for k in order if k in c), "capability")))
     models = sorted(targets, key=lambda m: (targets[m] != "production", m != model_name, m))
     production = next((m for m in models if targets[m] == "production"), None)

@@ -85,7 +85,7 @@ ready.
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | Pipeline | `agentic-coding-model-qualification` | `evaluated-models` | Wave 16 (kustomize patch), `SkipDryRunOnMissingResource`. |
-| PipelineVersion | `agentic-coding-model-qualification-v11` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. Steps 0 to 7: resolve model, latency, throughput, LiveCodeBench, Python tasks, security quick, security full, leaderboard. |
+| PipelineVersion | `agentic-coding-model-qualification-v12` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. Steps 0 to 7: resolve model, latency, throughput, LiveCodeBench, Python tasks, security quick, security full, leaderboard. |
 
 ### `storage/`
 
@@ -130,8 +130,10 @@ the generated server config, sets the MLflow plugin's `insecureSkipVerify` to `t
 **Pipeline tasks.** Each task uses the pinned `odh-pipeline-runtime-minimal-cpu-py312-rhel9` image and installs
 `eval-hub-sdk[cli]==1.0.5` and `kfp==2.16.1` from `pypi.org` at run time, so tasks need egress to PyPI.
 
-**Candidate serving arguments.** Same model revision and serving arguments as the Stage 040 profile, so a passing result
-applies on promotion: 262,144-token context, FP8 KV cache, 16 sequences, 16,384 batched tokens, async scheduling, MTP
+**Candidate serving arguments.** The candidate shares the Stage 040 serving arguments but not its format or hardware:
+it is INT4 on an L40S, while production is NVFP4 on an RTX PRO 6000. A passing result therefore qualifies this candidate
+configuration only; a different quantization, runtime or GPU must be evaluated again before promotion. Shared arguments:
+262,144-token context, FP8 KV cache, 16 sequences, 16,384 batched tokens, async scheduling, MTP
 speculative decoding with three draft tokens, the model card's non-thinking sampling, Qwen3 reasoning and XML tool-call
 parsers. The runtime comes from the platform vLLM NVIDIA GPU template and token authentication is on [4].
 

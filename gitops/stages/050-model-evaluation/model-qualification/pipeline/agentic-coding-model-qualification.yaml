@@ -11,12 +11,12 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v11
+  name: agentic-coding-model-qualification-v12
   namespace: evaluated-models
 spec:
   description: Evaluates one model on the agentic coding EvalHub collections and ranks
     it on the qualification leaderboard.
-  displayName: agentic-coding-model-qualification v11
+  displayName: agentic-coding-model-qualification v12
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -1242,9 +1242,12 @@ spec:
               \ cid)] = job\n    targets = {}\n    for (model, _), job in latest.items():\n\
               \        targets[model] = tag(job, \"target\") or \"candidate\"\n  \
               \  order = [\"latency\", \"throughput\", \"livecodebench\", \"python\"\
-              , \"capability\", \"security-quick\", \"security-full\"]\n    collections\
-              \ = sorted({cid for _, cid in latest},\n                         key=lambda\
-              \ c: order.index(next((k for k in order if k in c), \"capability\")))\n\
+              , \"capability\", \"security-quick\", \"security-full\"]\n    # Every\
+              \ required collection, not only those with history: a collection that\
+              \ never ran scores None for every\n    # model, so its benchmarks miss\
+              \ their gates and the verdict cannot be PROMOTE.\n    collections =\
+              \ sorted(set(collection_ids),\n                         key=lambda c:\
+              \ order.index(next((k for k in order if k in c), \"capability\")))\n\
               \    models = sorted(targets, key=lambda m: (targets[m] != \"production\"\
               , m != model_name, m))\n    production = next((m for m in models if\
               \ targets[m] == \"production\"), None)\n\n    def describe(cid):\n \

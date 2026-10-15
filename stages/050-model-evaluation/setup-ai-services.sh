@@ -131,7 +131,10 @@ def ensure_database_secret(feature, namespace):
     database = get("statefulset", feature + "-postgresql", namespace)
     if storage is None or database is None:
         raise RuntimeError("Cannot inspect retained PostgreSQL resources; refusing credential generation.")
-    if storage or database:
+    # deploy.sh's preflight saw neither storage, workload nor Secret before it created the Applications, so storage
+    # that appears now is this deploy's own (PostgreSQL cannot initialize without this Secret). Anything else is
+    # retained data whose original credentials must be restored, never replaced.
+    if (storage or database) and feature not in fresh_databases:
         raise RuntimeError("Existing PostgreSQL storage/workload lacks its Secret; restore original credentials instead of generating a password.")
     password = secrets.token_hex(24)
     uri_key = "backend-store-uri" if feature == "mlflow" else "db-url"
