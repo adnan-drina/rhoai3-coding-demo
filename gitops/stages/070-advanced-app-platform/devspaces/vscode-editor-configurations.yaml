@@ -1,3 +1,25 @@
+# Che Code editor configuration for demo workspace namespaces.
+#
+# Red Hat OpenShift Dev Spaces applies this ConfigMap at workspace startup.
+# It keeps namespace-wide editor recommendations and terminal defaults
+# platform-managed. Workspace-specific VSIX extensions, such as Kilo Code
+# or the MTA pack, are configured on that DevWorkspace with
+# DEFAULT_EXTENSIONS — do not recommend kilocode.kilo-code here or factory
+# (OpenCode) workspaces will also install it.
+#
+# Workspace Trust: these namespaces only run platform-provisioned repos, and
+# the demo runs a relaxed security posture (.agents/rules/env.md).
+# settings.json is copied to Machine/settings.json. That is not enough on a
+# first factory start: Che Code writes recommended extensions into
+# /projects/.code-workspace, then the web workbench prompts
+# "Enabling this extension requires a trusted workspace" before Machine
+# settings are consulted. product.json configurationDefaults are merged
+# into the editor product before server-main.js starts (Dev Spaces
+# Administration Guide, Configure Visual Studio Code - Open Source).
+# kilo-code.new.model.* must match the canonical model key that
+# init-ai-tools.sh writes into kilo.jsonc (provider qwen38, model
+# publishers/internal-models/models/qwen3-8-27b), not Kilo Gateway defaults.
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,11 +29,40 @@ metadata:
     app.kubernetes.io/part-of: che.eclipse.org
     app.kubernetes.io/component: workspaces-config
   annotations:
-    argocd.argoproj.io/sync-wave: '17'
+    argocd.argoproj.io/sync-wave: "17"
 data:
-  extensions.json: "{\n  \"recommendations\": [\n    \"redhat.fabric8-analytics\",\n    \"redhat.vscode-openshift-connector\"\n  ]\n}\n"
-  settings.json: "{\n  \"terminal.integrated.shellIntegration.enabled\": true,\n  \"terminal.integrated.defaultProfile.linux\": \"bash\",\n  \"terminal.integrated.profiles.linux\": {\n    \"bash\": {\n      \"path\": \"/usr/bin/bash\",\n      \"icon\": \"terminal-bash\"\n    }\n  },\n  \"terminal.integrated.automationProfile.linux\": {\n    \"path\": \"/usr/bin/bash\"\n  },\n  \"terminal.integrated.inheritEnv\": true,\n  \"kilo-code.new.model.providerID\": \"qwen38\",\n  \"kilo-code.new.model.modelID\": \"qwen3-8-27b\"\n}\n"
-  product.json: "{\n  \"configurationDefaults\": {}\n}\n"
+  extensions.json: |
+    {
+      "recommendations": [
+        "redhat.fabric8-analytics",
+        "redhat.vscode-openshift-connector"
+      ]
+    }
+  settings.json: |
+    {
+      "terminal.integrated.shellIntegration.enabled": true,
+      "terminal.integrated.defaultProfile.linux": "bash",
+      "terminal.integrated.profiles.linux": {
+        "bash": {
+          "path": "/usr/bin/bash",
+          "icon": "terminal-bash"
+        }
+      },
+      "terminal.integrated.automationProfile.linux": {
+        "path": "/usr/bin/bash"
+      },
+      "terminal.integrated.inheritEnv": true,
+      "security.workspace.trust.enabled": false,
+      "kilo-code.new.model.providerID": "qwen38",
+      "kilo-code.new.model.modelID": "publishers/internal-models/models/qwen3-8-27b"
+    }
+  product.json: |
+    {
+      "configurationDefaults": {
+        "security.workspace.trust.enabled": false,
+        "security.workspace.trust.startupPrompt": "never"
+      }
+    }
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -22,11 +73,39 @@ metadata:
     app.kubernetes.io/part-of: che.eclipse.org
     app.kubernetes.io/component: workspaces-config
   annotations:
-    argocd.argoproj.io/sync-wave: '17'
+    argocd.argoproj.io/sync-wave: "17"
 data:
-  extensions.json: "{\n  \"recommendations\": [\n    \"redhat.vscode-openshift-connector\"\n  ]\n}\n"
-  settings.json: "{\n  \"terminal.integrated.shellIntegration.enabled\": true,\n  \"terminal.integrated.defaultProfile.linux\": \"bash\",\n  \"terminal.integrated.profiles.linux\": {\n    \"bash\": {\n      \"path\": \"/usr/bin/bash\",\n      \"icon\": \"terminal-bash\"\n    }\n  },\n  \"terminal.integrated.automationProfile.linux\": {\n    \"path\": \"/usr/bin/bash\"\n  },\n  \"terminal.integrated.inheritEnv\": true,\n  \"kilo-code.new.model.providerID\": \"qwen38\",\n  \"kilo-code.new.model.modelID\": \"qwen3-8-27b\"\n}\n"
-  product.json: "{\n  \"configurationDefaults\": {}\n}\n"
+  extensions.json: |
+    {
+      "recommendations": [
+        "redhat.vscode-openshift-connector"
+      ]
+    }
+  settings.json: |
+    {
+      "terminal.integrated.shellIntegration.enabled": true,
+      "terminal.integrated.defaultProfile.linux": "bash",
+      "terminal.integrated.profiles.linux": {
+        "bash": {
+          "path": "/usr/bin/bash",
+          "icon": "terminal-bash"
+        }
+      },
+      "terminal.integrated.automationProfile.linux": {
+        "path": "/usr/bin/bash"
+      },
+      "terminal.integrated.inheritEnv": true,
+      "security.workspace.trust.enabled": false,
+      "kilo-code.new.model.providerID": "qwen38",
+      "kilo-code.new.model.modelID": "publishers/internal-models/models/qwen3-8-27b"
+    }
+  product.json: |
+    {
+      "configurationDefaults": {
+        "security.workspace.trust.enabled": false,
+        "security.workspace.trust.startupPrompt": "never"
+      }
+    }
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -37,8 +116,36 @@ metadata:
     app.kubernetes.io/part-of: che.eclipse.org
     app.kubernetes.io/component: workspaces-config
   annotations:
-    argocd.argoproj.io/sync-wave: '17'
+    argocd.argoproj.io/sync-wave: "17"
 data:
-  extensions.json: "{\n  \"recommendations\": [\n    \"redhat.vscode-openshift-connector\"\n  ]\n}\n"
-  settings.json: "{\n  \"terminal.integrated.shellIntegration.enabled\": true,\n  \"terminal.integrated.defaultProfile.linux\": \"bash\",\n  \"terminal.integrated.profiles.linux\": {\n    \"bash\": {\n      \"path\": \"/usr/bin/bash\",\n      \"icon\": \"terminal-bash\"\n    }\n  },\n  \"terminal.integrated.automationProfile.linux\": {\n    \"path\": \"/usr/bin/bash\"\n  },\n  \"terminal.integrated.inheritEnv\": true,\n  \"kilo-code.new.model.providerID\": \"qwen38\",\n  \"kilo-code.new.model.modelID\": \"qwen3-8-27b\"\n}\n"
-  product.json: "{\n  \"configurationDefaults\": {}\n}\n"
+  extensions.json: |
+    {
+      "recommendations": [
+        "redhat.vscode-openshift-connector"
+      ]
+    }
+  settings.json: |
+    {
+      "terminal.integrated.shellIntegration.enabled": true,
+      "terminal.integrated.defaultProfile.linux": "bash",
+      "terminal.integrated.profiles.linux": {
+        "bash": {
+          "path": "/usr/bin/bash",
+          "icon": "terminal-bash"
+        }
+      },
+      "terminal.integrated.automationProfile.linux": {
+        "path": "/usr/bin/bash"
+      },
+      "terminal.integrated.inheritEnv": true,
+      "security.workspace.trust.enabled": false,
+      "kilo-code.new.model.providerID": "qwen38",
+      "kilo-code.new.model.modelID": "publishers/internal-models/models/qwen3-8-27b"
+    }
+  product.json: |
+    {
+      "configurationDefaults": {
+        "security.workspace.trust.enabled": false,
+        "security.workspace.trust.startupPrompt": "never"
+      }
+    }

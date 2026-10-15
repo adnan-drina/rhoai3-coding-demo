@@ -53,7 +53,7 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'kilo-code.new.model.providerID.: .qwen38' && echo present || echo missing" \
         "present"
     check "Che Code editor configuration defaults Kilo to qwen3-8-27b: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'kilo-code.new.model.modelID.: .qwen3-8-27b' && echo present || echo missing" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'kilo-code.new.model.modelID.: .publishers/internal-models/models/qwen3-8-27b.' && echo present || echo missing" \
         "present"
     check "Che Code editor configuration disables Workspace Trust so Kilo activates: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | contains 'security.workspace.trust.enabled.: false' && echo present || echo missing" \
@@ -142,7 +142,7 @@ check "DevWorkspace AI tools init ConfigMap exists" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
     "devspace-ai-tools-init"
 check "Init script defaults Kilo to qwen3-8-27b" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'qwen38/qwen3-8-27b' && echo present || echo missing" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | contains 'qwen38/publishers/internal-models/models/qwen3-8-27b' && echo present || echo missing" \
     "present"
 # the generated provider's SHAPE (enabled, OpenAI-compatible, MaaS route, key, model), not a string anywhere
 check "Init script configures Kilo provider qwen38 (qwen3-8-27b)" \
