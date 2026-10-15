@@ -19,13 +19,16 @@ open|payload-pre-processing|payload-pre-processing.openshift-ingress.svc.cluster
 open|maas-api|maas-api.redhat-ai-gateway-infra.svc.cluster.local|8443
 open|public https (api.openai.com)|api.openai.com|443
 open|public https (api.anthropic.com)|api.anthropic.com|443
+open|public https (integrate.api.nvidia.com)|integrate.api.nvidia.com|443
 blocked|kube-apiserver on node|$kapi_node|6443
 blocked|kubelet on node|$kapi_node|10250
 blocked|limitador http port (only grpc 8081 needed)|limitador-limitador.kuadrant-system.svc.cluster.local|8080
 blocked|authorino oidc port (only 50051 needed)|authorino-authorino-authorization.kuadrant-system.svc.cluster.local|5001
 blocked|public http (example.com:80)|example.com|80"
 rc=0
-for pod in $(oc --request-timeout=10s get pods -n openshift-ingress -l gateway.networking.k8s.io/gateway-name=maas-default-gateway -o jsonpath='{.items[*].metadata.name}'); do
+pods=$(oc --request-timeout=10s get pods -n openshift-ingress -l gateway.networking.k8s.io/gateway-name=maas-default-gateway --field-selector=status.phase=Running -o jsonpath='{.items[*].metadata.name}')
+[[ -n "$pods" ]] || { echo "FAIL no running maas-default-gateway pod to probe from"; exit 1; }
+for pod in $pods; do
   echo "== $pod"
   printf '%-8s %-8s %s\n' EXPECT RESULT TARGET
   while IFS='|' read -r expect label host port; do
