@@ -2,125 +2,76 @@
 name: ocp-lightspeed-about
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_lightspeed
+  docs-version: "1.0"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or explaining OpenShift Lightspeed concepts,
-  architecture, AI assistant capabilities, and supported LLM providers from the
-  official OpenShift Lightspeed 1.0 documentation. Do NOT use for installing
-  (use ocp-lightspeed-install), configuring (use ocp-lightspeed-configure),
-  operations (use ocp-lightspeed-operate), or troubleshooting
-  (use ocp-lightspeed-troubleshoot).
+  Use when explaining what OpenShift Lightspeed is on this demo cluster: the
+  console AI assistant preinstalled by the environment provisioner (not managed
+  in Git), its relation to the demo's private models and MaaS (none today), LLM
+  provider and data-handling questions, and which documentation set covers the
+  installed 1.1.x operator. Do NOT use for installing (use
+  ocp-lightspeed-install), OLSConfig changes (use ocp-lightspeed-configure),
+  chat or REST API use (use ocp-lightspeed-operate), or failures (use
+  ocp-lightspeed-troubleshoot).
 ---
 
-# OCP Lightspeed About
+# OpenShift Lightspeed: what it is here
 
-Use this skill to ground OpenShift Lightspeed conceptual guidance in the
-official Red Hat OpenShift Lightspeed 1.0 about guide for the active
-baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions here, product concepts in the linked OpenShift
+Lightspeed documentation. The version lives in
+`.agents/references/red-hat-doc-map.yaml` (`products.ocp_lightspeed`).
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+- Someone asks whether Lightspeed is part of the demo or uses its models.
+- Deciding whether a Lightspeed question belongs to this repo or to the
+  environment provisioner.
 
-## What Is OpenShift Lightspeed
+## Repo decisions
 
-Red Hat OpenShift Lightspeed is a generative AI service that provides
-context-aware recommendations for OpenShift Container Platform. It runs as a
-virtual assistant inside the OpenShift web console, accepting plain English
-queries from developers and administrators.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Lightspeed is a provisioner add-on, not a demo stage; no Subscription, OLSConfig or Secret for it exists in Git | `docs/OPERATIONS.md` (Fresh environment baseline) | [OpenShift Lightspeed overview][overview] |
+| The only Git touch point is the plugin name `lightspeed-console-plugin` in the Console `spec.plugins` list | `gitops/stages/010-openshift-ai-platform-foundation/console-observability/console-plugins.yaml` | [Supported interfaces][interfaces] |
+| Lightspeed does not use the demo's private models or MaaS; its provider (Azure OpenAI on the observed cluster) is set by the provisioner | not in Git; `docs/TROUBLESHOOTING.md` | [LLM requirements][llm] |
+| Not done: an OpenShift AI provider for Lightspeed. The docs list Red Hat OpenShift AI as a provider; routing it through MaaS would be a new, unvalidated decision | — | [Red Hat OpenShift AI][llm-rhoai] |
 
-The service answers questions using official OCP documentation. For products not
-fully covered by OCP docs (GitOps, Pipelines, Service Mesh 3.x, ACS, ACM,
-Quay, and others), the configured LLM generates answers directly.
+## Pitfalls
 
-## Supported Interfaces
+- Version naming: the installed operator is 1.1.x (1.1.5 observed on
+  2026-10-15, channel `stable`, Automatic), but Red Hat publishes one
+  documentation set labelled "1.0". Its release notes cover 1.1 to 1.1.4. Link
+  `/1.0/`; no other set was published on 2026-10-15.
+- Operator `Succeeded` is not service health. On the observed cluster the
+  OLSConfig was NotReady; see `ocp-lightspeed-troubleshoot`.
+- Questions leave the cluster to the configured provider. Read
+  [data flow][dataflow] and [how data is used][datause] before pointing
+  sensitive demo content at the assistant.
 
-- **REST API** (`/v1/`): stable, supported interface for programmatic use.
-- **Gradio UI** (`/ui`) and internal endpoints: development and debugging only;
-  unstable and unsupported for programmatic use.
+## Official documentation (OpenShift Lightspeed, "1.0" set)
 
-## Supported LLM Providers
+| Topic | Section |
+|---|---|
+| Overview | [OpenShift Lightspeed overview][overview] |
+| Cluster requirements | [OpenShift requirements][ocpreq] |
+| LLM providers | [Large language model (LLM) requirements][llm] |
+| Disconnected clusters | [Restricted networks][disconnected] |
+| Data flow | [Data flow architecture][dataflow] |
+| Data use and telemetry | [How your data is used][datause], [telemetry and transcripts][telemetry] |
 
-The service does not include an LLM. You must configure one before installing
-the operator.
+## Related skills
 
-**SaaS providers:**
-- OpenAI
-- Microsoft Azure OpenAI
-- IBM watsonx
+`ocp-lightspeed-release-notes`, `ocp-lightspeed-configure`,
+`ocp-lightspeed-troubleshoot`, `rhoai-maas-governance`, `ocp-web-console`.
 
-**Self-hosted providers:**
-- Red Hat OpenShift AI (single-model serving platform, vLLM runtime, vLLM 0.8.4+)
-- Red Hat Enterprise Linux AI (OpenAI API-compatible, vLLM 0.8.4+)
-
-Both self-hosted options are OpenAI API-compatible. When running in a different
-cluster than the Lightspeed deployment, expose via route or secure endpoint.
-
-## Resource Requirements
-
-| Component | Min CPU | Min Memory | Max Memory |
-|-----------|---------|------------|------------|
-| Application server | 0.5 cores | 1 GB | 4 Gi |
-| PostgreSQL database | 0.3 cores | 300 Mi | 2 Gi |
-| OCP web console | 0.1 cores | 50 Mi | 100 Mi |
-| Lightspeed operator | 0.1 cores | 64 Mi | 256 Mi |
-
-## Platform Requirements
-
-- Architecture: x86_64
-- FIPS mode supported
-- Disconnected clusters supported (mirror images with `oc mirror`)
-
-## Data Handling and Telemetry
-
-Lightspeed adds cluster and environment details to user messages before sending
-to the LLM. A redaction layer filters data before sharing or logging.
-
-- Transcripts sent to Red Hat every two hours by default (via Red Hat Insights)
-- Opt-in feedback collection (score, text, query, LLM response)
-- Disable via `OLSConfig` CR (`feedbackDisabled`, `transcriptsDisabled`)
-- Full opt-out requires disabling cluster remote health monitoring
-
-## OLSConfig CR
-
-The only CR documented in the About guide:
-
-```yaml
-apiVersion: ols.openshift.io/v1alpha1
-kind: OLSConfig
-metadata:
-  name: cluster
-```
-
-Key data-collection fields under `spec.ols.userDataCollection`:
-- `feedbackDisabled`: stops feedback collection
-- `transcriptsDisabled`: stops transcript collection
-
-## Workflow
-
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify the relevant concept (LLM providers, data handling, requirements).
-4. For GitOps manifests involving OLSConfig, verify fields against the
-   extraction before committing.
-5. For live operations, use the repo environment guard.
-6. Validate with `references/source-capture.md` boundaries.
-
-## Related Skills
-
-- Use `ocp-lightspeed-install` for installing the operator and deploying the service.
-- Use `ocp-lightspeed-configure` for OLSConfig CR configuration and LLM setup.
-- Use `ocp-lightspeed-operate` for day-2 operations and administration.
-- Use `ocp-lightspeed-troubleshoot` for diagnosing and resolving issues.
-- Use `rhoai-model-serving-platform` for RHOAI single-model serving (self-hosted LLM).
-- Use `rhoai-model-deployment` for deploying models on RHOAI (self-hosted LLM).
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/about/index#ols-openshift-lightspeed-overview_ols-about-openshift-lightspeed
+[interfaces]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/about/index#ols-con-supported-interfaces_ols-about-openshift-lightspeed
+[ocpreq]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/about/index#ols-openshift-requirements_ols-about-openshift-lightspeed
+[llm]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/about/index#ols-large-language-model-requirements_ols-about-openshift-lightspeed
+[llm-rhoai]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/about/index#rhoai_ols-large-language-model-requirements
+[disconnected]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/about/index#about-running-openshift-lightspeed-in-disconnected-mode_ols-large-language-model-requirements
+[dataflow]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/about/index#ols-data-flow-architecture_ols-large-language-model-requirements
+[datause]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/about/index#ols-about-data-use_ols-large-language-model-requirements
+[telemetry]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/about/index#ols-about-data-telemetry-transcript-and-feedback-collection_ols-large-language-model-requirements

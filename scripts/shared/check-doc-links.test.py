@@ -120,6 +120,14 @@ class CheckDocLinksTest(unittest.TestCase):
         code, out = self.fx.run()
         self.assertEqual(code, 0, out)
 
+    def test_unpinned_converted_family_does_not_fail(self):
+        self.fx.write(".agents/references/red-hat-doc-map.yaml",
+                      MAP.replace("converted_families: [odf]", "converted_families: [odf, keycloak]"))
+        self.assertIn(("UNPINNED", "keycloak"), self.fx.codes())
+        code, out = self.fx.run()
+        self.assertEqual(code, 0, out)
+        self.assertIn("failing=0", out)
+
     def test_stale_skill_version_fails_converted_family(self):
         self.fx.write(".agents/skills/odf-object-bucket-claims/SKILL.md",
                       skill("odf-object-bucket-claims", "odf", "4.20"))

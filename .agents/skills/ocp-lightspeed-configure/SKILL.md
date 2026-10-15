@@ -2,134 +2,93 @@
 name: ocp-lightspeed-configure
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_lightspeed
+  docs-version: "1.0"
   skill-group: "OpenShift Platform"
 description: >
-  Use when configuring Red Hat OpenShift Lightspeed 1.0, including OLSConfig
-  customization, LLM provider settings, conversation history, telemetry,
-  TLS certificates, RBAC, and user access controls. Do NOT use for concepts
-  (use ocp-lightspeed-about), installing (use ocp-lightspeed-install),
-  operations (use ocp-lightspeed-operate), or troubleshooting
-  (use ocp-lightspeed-troubleshoot).
+  Use when someone wants to change OpenShift Lightspeed's OLSConfig on the demo
+  cluster: LLM provider and credentials Secret, user access (RBAC), query
+  filters, custom knowledge (RAG), cluster interaction and MCP servers, token
+  quotas, conversation persistence, or audit logging. Do NOT use for concepts
+  (use ocp-lightspeed-about), installation (use ocp-lightspeed-install), or an
+  unready service (use ocp-lightspeed-troubleshoot).
 ---
 
-# OCP Lightspeed Configure
+# OpenShift Lightspeed configuration
 
-Use this skill to configure Red Hat OpenShift Lightspeed 1.0 grounded in
-official product documentation.
+Thin skill: repo decisions here, OLSConfig fields and procedures in the linked
+sections. Take field names from the OLSConfig API reference, never from memory.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers OLSConfig CR
-customization, LLM provider credential and endpoint setup, TLS configuration,
-RBAC, query filtering, RAG databases, cluster interaction (MCP), token quotas,
-and PostgreSQL persistence.
+- A request to point Lightspeed at another provider or model.
+- Granting users access, or limiting what Lightspeed sends or can do.
 
-## Key Configuration Areas
+## Repo decisions
 
-1. **Credentials secrets** — API token secrets per LLM provider in
-   `openshift-lightspeed` namespace (OpenAI, RHOAI, RHELAI, Azure, watsonx,
-   Google Vertex AI).
-2. **OLSConfig CR** — Single cluster-scoped resource (`ols.openshift.io/v1alpha1`,
-   name: `cluster`) that drives the entire service deployment.
-3. **LLM provider configuration** — Provider type, URL, models, and
-   credential references under `spec.llm.providers[]`.
-4. **TLS certificates** — Custom TLS for the backend endpoint
-   (`spec.ols.tlsConfig`) and trusted CA for LLM providers
-   (`spec.ols.additionalCAConfigMapRef`).
-5. **RBAC and user access** — ClusterRole `lightspeed-operator-query-access`
-   bound to users or groups.
-6. **Query filters** — Regex-based sensitive data redaction before LLM
-   submission (`spec.ols.queryFilters`).
-7. **BYO Knowledge (RAG)** — Custom RAG databases via container images
-   (`spec.ols.rag`).
-8. **Cluster interaction (MCP)** — Observability MCP server for cluster
-   introspection (`spec.ols.introspectionEnabled`), custom MCP servers
-   (`spec.mcpServers`, feature gate `MCPServer`).
-9. **Token quotas** — Per-user and per-cluster token limits
-   (`spec.ols.quotaHandlersConfig`).
-10. **PostgreSQL persistence** — Conversation history storage
-    (`spec.ols.storage`).
-11. **Google Vertex AI** — `google_vertex` and `google_vertex_anthropic`
-    provider types with GCP service account authentication.
-12. **Tool filtering** — Query-based tool selection for MCP
-    (`spec.olsConfig.toolFilteringConfig`, feature gate `ToolFiltering`).
+| Decision | Where in Git | Official section |
+|---|---|---|
+| The OLSConfig and the provider credentials Secret are provisioner-owned and not in Git; the repo changes neither | not in Git; `docs/OPERATIONS.md` (Fresh environment baseline) | [Configuring and deploying][configure] |
+| Provider credentials are corrected only by their owner through the native Secret path; never rotated blindly or committed | `docs/TROUBLESHOOTING.md` (Lightspeed API unready) | [Create the credentials secret (CLI)][secret-cli] |
+| No MaaS or private-model provider is configured; doing so is an open design question (MaaS API keys, TLS trust of the MaaS gateway, token quotas on both sides) | — | [OLSConfig `.spec.llm.providers[]`][api-providers] |
 
-## OLSConfig CR Summary
+## Procedure
 
-- **apiVersion:** `ols.openshift.io/v1alpha1`
-- **kind:** `OLSConfig`
-- **metadata.name:** `cluster` (singleton, cluster-scoped)
-- **Required spec fields:** `spec.llm` and `spec.ols`
-- **Key spec.ols fields:** `defaultModel`, `defaultProvider`,
-  `additionalCAConfigMapRef`, `byokRAGOnly`, `conversationCache`,
-  `deployment`, `introspectionEnabled`, `logLevel`, `proxyConfig`,
-  `queryFilters`, `quotaHandlersConfig`, `rag`, `storage`, `tlsConfig`,
-  `tlsSecurityProfile`, `userDataCollection`
+1. Confirm who owns the change: anything in the OLSConfig is the
+   provisioner's unless a decision moves Lightspeed into Git
+   (`ocp-lightspeed-install`).
+2. For a sanctioned change, follow the linked section and the API reference;
+   then verify per [Verifying the deployment][verify].
+3. Treat provider credentials, RBAC and MCP server settings as sensitive
+   (`AGENTS.md`, Security and privacy): placeholders only in Git and chat.
 
-See `references/official-doc-extraction.md` for complete field reference and
-YAML examples.
+## Pitfalls
 
-## LLM Provider Configuration
+- Access is not granted to every authenticated user; see the
+  [RBAC framework][rbac] before announcing Lightspeed to workshop users.
+- Cluster interaction and MCP servers let the assistant read live cluster
+  state with the user's identity; read [cluster interaction][cluster] and
+  [authentication flow][introspection-auth] before enabling them on the demo.
+- A provider behind a private CA needs the trusted-CA configuration; see
+  [trusted CA for the LLM][trusted-ca].
 
-Supported provider types:
-- `openai` — OpenAI API
-- `azure_openai` — Microsoft Azure OpenAI (supports Entra ID auth)
-- `watsonx` — IBM watsonx (requires `projectID`)
-- `rhelai_vllm` — Red Hat Enterprise Linux AI vLLM
-- `rhoai_vllm` — Red Hat OpenShift AI vLLM
-- `google_vertex` — Google Vertex AI (Gemini)
-- `google_vertex_anthropic` — Anthropic on Google Vertex AI
+## Official documentation (OpenShift Lightspeed, "1.0" set)
 
-All providers require a credentials Secret in namespace `openshift-lightspeed`.
-The secret key is always `apitoken` (except Google Vertex AI which uses a GCP
-service account JSON key via `credentialKey`).
+| Topic | Section |
+|---|---|
+| Credentials and custom resource | [Secret (CLI)][secret-cli], [custom resource (CLI)][cr-cli] |
+| TLS | [Trusted CA for the LLM][trusted-ca], [custom TLS certificates][tls] |
+| Access | [RBAC framework][rbac], [route and user access][route] |
+| Data redaction | [Filtering and redacting information][filters] |
+| Custom knowledge | [Custom documentation (BYO knowledge)][byok] |
+| Cluster interaction, MCP | [Live cluster state][cluster], [custom MCP server][mcp], [tool approvals][approvals] |
+| Quotas | [Token quota limits][quotas] |
+| Persistence | [Conversation history][postgres] |
+| Field reference | [OLSConfig API][api], [`.spec.llm.providers[]`][api-providers] |
+| Audit | [Audit logging and tracing][audit] |
 
-## RBAC and Access Control
+## Related skills
 
-OpenShift Lightspeed RBAC is binary — the Operator creates a ClusterRole
-`lightspeed-operator-query-access`. Grant access via:
+`ocp-lightspeed-about`, `ocp-lightspeed-troubleshoot`, `rhoai-maas-governance`,
+`ocp-security-rbac-scc`.
 
-```bash
-oc adm policy add-cluster-role-to-user lightspeed-operator-query-access <user>
-oc adm policy add-cluster-role-to-group lightspeed-operator-query-access <group>
-```
-
-The `kubeadmin` account always has access. Cluster introspection uses MCP
-server authentication (file-based secrets or Kubernetes passthrough).
-
-## Workflow
-
-1. Read `references/official-doc-extraction.md` for exact YAML patterns.
-2. Identify the configuration task:
-   - Initial OLSConfig creation for a specific LLM provider
-   - Adding/changing TLS certificates
-   - Granting user or group access (RBAC)
-   - Configuring query filters for data redaction
-   - Enabling BYO Knowledge RAG databases
-   - Enabling/disabling cluster interaction (MCP)
-   - Configuring token quotas
-   - Enabling PostgreSQL persistence
-   - Exposing the service via a Route
-   - Configuring Google Vertex AI
-3. Use the exact `apiVersion`, field names, and namespace from the extraction.
-4. Validate with the verification commands documented per section.
-5. Never invent CR fields not documented in the OLSConfig API reference.
-
-## Related Skills
-
-- `ocp-lightspeed-about` — OpenShift Lightspeed concepts and architecture
-- `ocp-lightspeed-install` — Operator installation procedures
-- `ocp-lightspeed-operate` — Day-2 operations and maintenance
-- `ocp-lightspeed-troubleshoot` — Diagnostics and recovery
-- `ocp-lightspeed-upgrade` — Upgrade procedures
-- `ocp-lightspeed-uninstall` — Removal procedures
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[configure]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-configuring-openshift-lightspeed
+[secret-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-creating-the-credentials-secret-using-cli_ols-configuring-openshift-lightspeed
+[cr-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-creating-lightspeed-custom-resource-file-using-cli_ols-configuring-openshift-lightspeed
+[trusted-ca]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-configuring-lightspeed-with-a-trusted-ca-certificate-for-the-llm_ols-configuring-openshift-lightspeed
+[tls]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#configuring-custom-tls-certificates_ols-configuring-openshift-lightspeed
+[verify]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-verifying-openshift-lightspeed-deployment_ols-configuring-openshift-lightspeed
+[rbac]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-about-lightspeed-and-role-based-access-control_ols-configuring-openshift-lightspeed
+[route]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-proc-expose-the-ols-service-by-using-a-route_ols-configuring-openshift-lightspeed
+[filters]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-filtering-and-redacting-information_ols-configuring-openshift-lightspeed
+[byok]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#about-the-byo-knowledge-tool_ols-configuring-openshift-lightspeed
+[cluster]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#about-cluster-interaction_ols-configuring-openshift-lightspeed
+[mcp]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-enabling-mcp-server_ols-configuring-openshift-lightspeed
+[introspection-auth]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-con-authentication-flow-for-cluster-introspection_ols-configuring-openshift-lightspeed
+[approvals]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-about-operation-approvals_ols-configuring-openshift-lightspeed
+[quotas]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-tokens-and-token-quota-limits_ols-configuring-openshift-lightspeed
+[postgres]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#about-postgresql-persistence_ols-configuring-openshift-lightspeed
+[api]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#olsconfig-api
+[api-providers]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#spec-llm-providers-2
+[audit]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-configuring-audit-logging-tracing

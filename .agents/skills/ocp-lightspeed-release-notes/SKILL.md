@@ -2,94 +2,72 @@
 name: ocp-lightspeed-release-notes
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_lightspeed
+  docs-version: "1.0"
   skill-group: "OpenShift Platform"
 description: >
-  Use when checking OpenShift Lightspeed 1.0 release notes, new features,
-  bug fixes, known issues, deprecated features, and version compatibility
-  information. Do NOT use for concepts (use ocp-lightspeed-about), installing
-  (use ocp-lightspeed-install), configuring (use ocp-lightspeed-configure),
-  operations (use ocp-lightspeed-operate), or troubleshooting
-  (use ocp-lightspeed-troubleshoot).
+  Use when checking which OpenShift Lightspeed release the cluster runs, what
+  changed between 1.1.x z-streams, their known issues, or whether the doc
+  map's documentation set still fits the installed operator. Do NOT use for
+  product concepts (use ocp-lightspeed-about) or failures on the cluster (use
+  ocp-lightspeed-troubleshoot).
 ---
 
-# OCP Lightspeed Release Notes
+# OpenShift Lightspeed release notes
 
-Use this skill to ground OpenShift Lightspeed release information in the
-official Red Hat OpenShift Lightspeed 1.0 release notes for the active
-baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo facts here, release content in the linked release notes.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+- The provisioner's Automatic `stable` subscription moved the operator to a
+  new z-stream and someone asks what changed.
+- Reviewing whether `products.ocp_lightspeed.docs_version` in the doc map is
+  still the right documentation set.
 
-## FIPS Compliance
+## Repo decisions
 
-Red Hat OpenShift Lightspeed is designed for FIPS. When running on OpenShift
-Container Platform in FIPS mode, it uses Red Hat Enterprise Linux cryptographic
-libraries submitted (or planned to be submitted) to NIST for FIPS validation on
-`x86_64`, `ppc64le`, and `s390X` architectures only.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| No Git pin: the subscription belongs to the provisioner; observed versions are recorded with dates (1.1.4 on 2026-10-05, 1.1.5 on 2026-10-15) | `docs/OPERATIONS.md`, `.agents/references/red-hat-doc-map.yaml` | [Release notes][relnotes] |
+| The documentation set labelled "1.0" is used for the 1.1.x operator: it is the only published set and its notes include 1.1 to 1.1.4 | `.agents/references/red-hat-doc-map.yaml` | [Version 1.1][v11] |
 
-## Release History
+## Procedure
 
-OpenShift Lightspeed 1.0 has the following sub-releases documented:
+1. Read the installed CSV version (read-only, after the OpenShift safety guard
+   in `AGENTS.md`), then the matching release-notes section below.
+2. If Red Hat publishes another documentation set (for example `/1.1/`),
+   follow `route_update_rules.when_upgrading_product` in the doc map and
+   `project-red-hat-doc-skill-authoring`.
 
-- **1.1.1** — security fix release addressing CVE-2026-48710 and
-  CVE-2026-44432; stability improvements for OCP 4.16+
-- **1.1** — feature release with MCP server enhancements, Google Vertex AI
-  provider support, TLS hardening, rich text clipboard, Prometheus alert
-  attachment, and expandable code blocks
-- **1.0** — initial GA release with cluster interaction, PostgreSQL
-  persistence, token quota, Technology Preview features, and known issues
+## Pitfalls
 
-## Key Topics
+- 1.1.5 had no release-notes section on 2026-10-15; do not cite one.
+- Each z-stream has its own known-issues list; read the one for the installed
+  version, not only the newest.
 
-- FIPS compliance posture
-- New features: cluster interaction, PostgreSQL persistence, token quota
-  (1.0); Kubernetes MCP server read/write with human-in-the-loop, Google
-  Vertex AI and Vertex AI Anthropic providers, strong TLS cipher enforcement,
-  rich text clipboard copy, Prometheus alert attachment, expandable code
-  blocks (1.1)
-- Security fixes: CVE-2026-48710, CVE-2026-44432 (1.1.1)
-- Technology Preview features in 1.0 (cluster interaction, PostgreSQL
-  persistence, token quota)
-- Known issues: Lightspeed icon disappearing on namespace/project creation
-  (OLS-1815), quota parameter changes not taking effect until period expiry
-  (OLS-1826), postgres pod restart breaking service connectivity (OLS-1835)
+## Official documentation (OpenShift Lightspeed, "1.0" set)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| All releases | [Release notes][relnotes] |
+| 1.1.4 | [Version 1.1.4][v114], [its known issues][v114-known] |
+| 1.1.3 | [Version 1.1.3][v113] |
+| 1.1.2 | [Version 1.1.2][v112] |
+| 1.1.1 | [Version 1.1.1][v111] |
+| 1.1 | [Version 1.1][v11] |
+| 1.0 | [Version 1.0][v10] |
 
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the question concerns:
-   - new features in a specific sub-release
-   - Technology Preview capabilities
-   - security fixes (CVEs)
-   - known issues and workarounds
-   - supported OCP versions
-   - FIPS compliance
-4. Use exact version numbers and feature names from the extraction.
-5. When advising on upgrades, cross-reference known issues and security fixes.
+## Related skills
 
-## Related Skills
+`ocp-lightspeed-about`, `ocp-lightspeed-install`,
+`project-red-hat-doc-skill-authoring`.
 
-- Use `ocp-lightspeed-about` for OpenShift Lightspeed concepts and
-  architecture.
-- Use `ocp-lightspeed-install` for installing the OpenShift Lightspeed
-  Operator.
-- Use `ocp-lightspeed-configure` for configuring OLSConfig custom resources
-  and providers.
-- Use `ocp-lightspeed-operate` for day-2 operations and administration.
-- Use `ocp-lightspeed-troubleshoot` for diagnosing and resolving Lightspeed
-  issues.
-- Use `ocp-lightspeed-release-notes` (this skill) for version-specific
-  release information.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[relnotes]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/release_notes/index#ols-release-notes
+[v114]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/release_notes/index#ols-1-1-4-release-notes_ols-release-notes
+[v114-known]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/release_notes/index#ols-1-1-4-known-issues_ols-release-notes
+[v113]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/release_notes/index#ols-1-1-3-release-notes_ols-release-notes
+[v112]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/release_notes/index#ols-1-1-2-release-notes_ols-release-notes
+[v111]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/release_notes/index#ols-1-1-1-release-notes_ols-release-notes
+[v11]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/release_notes/index#ols-1-1-release-notes_ols-release-notes
+[v10]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/release_notes/index#ols-1-0-release-notes_ols-release-notes

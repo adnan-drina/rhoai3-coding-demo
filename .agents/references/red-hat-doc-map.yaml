@@ -27,6 +27,7 @@ docs_url_template: "https://docs.redhat.com/en/documentation/{docs_slug}/{docs_v
 converted_families:
   - mta
   - ocp_devspaces
+  - ocp_lightspeed
   - ocp_pipelines
   - odf
   - rhcl
@@ -1063,41 +1064,87 @@ products:
     docs_version: "1.0"
     deployed: true
     pin:
-      none: Preinstalled on the cluster, not managed in Git (live 1.1.5 on 2026-10-15; a 1.1 documentation set is unverified).
+      none: >-
+        Preinstalled by the environment provisioner (channel stable, Automatic), not
+        managed in Git; live operator 1.1.5 observed 2026-10-15 (1.1.4 on 2026-10-05).
+        The "1.0" documentation set covers the 1.1.x releases.
+    note: >
+      Red Hat publishes a single documentation set labelled "1.0" (checked
+      2026-10-15: the product page lists only 1.0 books). Its release notes
+      cover 1.0, 1.1 and 1.1.1 to 1.1.4, so it is the set for the installed
+      1.1.x operator. The only Git touch point is the lightspeed-console-plugin
+      entry in Stage 010 console-observability.
     categories:
       about:
-        description: Product overview, supported LLM providers, resource requirements, data handling, and OLSConfig CR concepts.
+        description: Product overview, supported LLM providers, resource requirements, data handling.
         routes:
           - book: about
             status: active
             skill: ocp-lightspeed-about
+            sections:
+              - ols-openshift-lightspeed-overview_ols-about-openshift-lightspeed
+              - ols-large-language-model-requirements_ols-about-openshift-lightspeed
+              - rhoai_ols-large-language-model-requirements
+              - ols-data-flow-architecture_ols-large-language-model-requirements
+              - ols-about-data-use_ols-large-language-model-requirements
+            reviewed: { version: "1.0", date: 2026-10-15 }
           - book: release_notes
             status: active
             skill: ocp-lightspeed-release-notes
+            sections:
+              - ols-release-notes
+              - ols-1-1-4-release-notes_ols-release-notes
+              - ols-1-1-4-known-issues_ols-release-notes
+              - ols-1-1-release-notes_ols-release-notes
+            reviewed: { version: "1.0", date: 2026-10-15 }
       installing:
         description: Operator installation via OperatorHub or software catalog.
         routes:
           - book: install
             status: active
             skill: ocp-lightspeed-install
+            sections:
+              - ols-about-adding-operators-to-a-cluster_ols-installing-openshift-lightspeed
+              - ols-installing-operator-from-software-catalog_ols-installing-openshift-lightspeed
+              - about-subscription-requirements_ols-installing-openshift-lightspeed
+            reviewed: { version: "1.0", date: 2026-10-15 }
       configuring:
-        description: OLSConfig CR customization, LLM provider secrets, TLS, RBAC, query filters, RAG, MCP, token quotas, and PostgreSQL persistence.
+        description: OLSConfig CR customization, LLM provider secrets, TLS, RBAC, query filters, RAG, MCP, token quotas, PostgreSQL persistence, audit logging.
         routes:
           - book: configure
             status: active
             skill: ocp-lightspeed-configure
+            sections:
+              - ols-configuring-openshift-lightspeed
+              - ols-creating-the-credentials-secret-using-cli_ols-configuring-openshift-lightspeed
+              - ols-about-lightspeed-and-role-based-access-control_ols-configuring-openshift-lightspeed
+              - about-cluster-interaction_ols-configuring-openshift-lightspeed
+              - olsconfig-api
+              - spec-llm-providers-2
+            reviewed: { version: "1.0", date: 2026-10-15 }
       operations:
-        description: Chat usage, conversation management, resource attachments, feedback, REST API, and day-2 operations.
+        description: Chat usage, conversations, resource attachments, feedback, data collection, REST API.
         routes:
           - book: operate
             status: active
             skill: ocp-lightspeed-operate
+            sections:
+              - ols-initiating-chat-using-chat-window_ols-using-openshift-lightspeed
+              - ols-disabling-data-collection-operator_ols-using-openshift-lightspeed
+              - ols-interacting-with-the-api
+              - ols-api-authentication-matrix_ols-interacting-with-the-api
+            reviewed: { version: "1.0", date: 2026-10-15 }
       troubleshoot:
-        description: 502 errors, OperatorHub visibility, API auth failures, prompt-too-long, truncated responses, and Google Vertex AI validation.
+        description: 502 errors, OperatorHub visibility, API auth failures, prompt-too-long, truncated responses, conversation history.
         routes:
           - book: troubleshoot
             status: active
             skill: ocp-lightspeed-troubleshoot
+            sections:
+              - ols-troubleshooting-openshift-lightspeed
+              - ols-502-bad-gateway-errors_ols-troubleshooting-openshift-lightspeed
+              - ols-troubleshoot-api-authentication-failures_ols-troubleshooting-openshift-lightspeed
+            reviewed: { version: "1.0", date: 2026-10-15 }
 
   ocp_pipelines:
     name: Red Hat OpenShift Pipelines
