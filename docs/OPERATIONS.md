@@ -958,8 +958,9 @@ The Argo CD Applications intentionally do not include finalizers. Deleting an Ap
 
 For a full cleanup, cascade-delete the Applications in reverse deployment order: stages from 070 down to 010, and
 inside each stage its components last-deployed first (`stage_apps.py names NNN --all --reverse`). A cascade delete
-removes every resource of the Application, including namespaces, databases and PVCs: `Prune=false` only protects a
-resource from pruning during sync, not from Application deletion. To keep data (GitLab, SonarQube and catalog
+removes every resource of the Application, including databases and PVCs: `Prune=false` only protects a
+resource from pruning during sync, not from Application deletion. The Stage 070 namespaces also carry `Delete=false`,
+so they survive the cascade and are deleted by hand. To keep data (GitLab, SonarQube and catalog
 databases, workspace PVCs), back it up first, or delete the Application without cascade and remove resources
 selectively.
 
