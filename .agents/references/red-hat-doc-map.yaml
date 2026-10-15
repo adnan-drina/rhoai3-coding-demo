@@ -25,6 +25,7 @@ docs_url_template: "https://docs.redhat.com/en/documentation/{docs_slug}/{docs_v
 # docs-version). The checker fails on findings in these families and only
 # reports findings in the others.
 converted_families:
+  - ocp_pipelines
   - odf
   - rhcl
 
@@ -1016,42 +1017,119 @@ products:
           - book: release_notes
             status: active
             skill: ocp-pipelines-release-notes
+            sections:
+              - op-release-notes-1-24
+              - compatibility-support-matrix_op-release-notes-1-24
+              - op-release-notes-1-24-1_op-release-notes-1-24
+              - breaking-changes-1-24-1_op-release-notes-1-24
+              - op-release-notes-1-24-0_op-release-notes-1-24
+              - new-features-and-enhancements-1-24-0_op-release-notes-1-24
+              - deprecated-features-1-24-0_op-release-notes-1-24
+              - removed-features-1-24-0_op-release-notes-1-24
+            reviewed: { version: "1.24", date: 2026-10-15 }
           - book: about_openshift_pipelines
             status: active
             skill: ocp-pipelines-about
+            sections:
+              - about-pipelines
+              - op-key-features_understanding-openshift-pipelines
+              - op-pipelines-concepts_understanding-openshift-pipelines
+              - about-tasks_understanding-openshift-pipelines
+              - about-pipelines_understanding-openshift-pipelines
+              - about-pipelinerun_understanding-openshift-pipelines
+              - about-workspaces_understanding-openshift-pipelines
+              - about-podtemplate_understanding-openshift-pipelines
+              - about-triggers_understanding-openshift-pipelines
+              - op-about-must-gather_op-proc-gathering-diagnostic-information
+            reviewed: { version: "1.24", date: 2026-10-15 }
       installing_and_configuring:
         description: Operator installation, TektonConfig customization, pruner, resolvers, and performance tuning.
         routes:
           - book: installing_and_configuring
             status: active
             skill: ocp-pipelines-install-config
+            sections:
+              - op-installing-pipelines-operator-using-the-cli_installing-pipelines
+              - customizing-configurations-in-the-tektonconfig-cr
+              - op-disabling-automatic-creation-of-rbac-resources_customizing-configurations-in-the-tektonconfig-cr
+              - op-configuration-rbac-trusted-ca-flags.adoc_customizing-configurations-in-the-tektonconfig-cr
+              - default-pruner-configuration_customizing-configurations-in-the-tektonconfig-cr
+              - op-disabling-pipeline-triggers_customizing-configurations-in-the-tektonconfig-cr
+              - uninstalling-pipelines
+            reviewed: { version: "1.24", date: 2026-10-15, note: "coschedule and disable-affinity-assistant appear in no 1.24 Red Hat book (install, release notes, about, performance, cicd checked); the repo relies on upstream Tekton behaviour verified live" }
           - book: managing_performance_and_resource_use
             status: active
             skill: ocp-pipelines-performance
+            sections:
+              - improving-performance_managing-pipelines-performance
+              - op-override-step-resources-pipelinerun_reducing-pipelines-resource-consumption
+              - op-setting-compute-resources-for-a-task-step_reducing-pipelines-resource-consumption
+              - alternative-approaches-compute-resource-quota-pipelines_setting-compute-resource-quota-for-openshift-pipelines
+              - specifying-pipelines-resource-quota-using-priority-class_setting-compute-resource-quota-for-openshift-pipelines
+              - protecting-tekton-workloads-from-eviction-during-node-drains
+              - configuring-multicluster-support
+            reviewed: { version: "1.24", date: 2026-10-15 }
       security:
         description: Tekton Chains, supply chain security, signing, authentication, and security contexts.
         routes:
           - book: securing_openshift_pipelines
             status: active
             skill: ocp-pipelines-security
+            sections:
+              - using-tekton-chains-for-openshift-pipelines-supply-chain-security
+              - using-tekton-chains-to-sign-and-verify-image-and-provenance_using-tekton-chains-for-openshift-pipelines-supply-chain-security
+              - configuring-security-context-for-pods
+              - op-running-pipeline-run-and-task-run-with-custom-scc-and-service-account_configuring-security-context-for-pods
+              - unprivileged-building-of-container-images-using-buildah
+              - nonroot-buildah-user-namespaces_unprivileged-building-of-container-images-using-buildah
+              - using-buildah-ns-tekton-task
+              - op-providing-secure-connection_securing-webhooks-with-event-listeners
+              - providing-secrets-using-workspaces_authenticating-pipelines-repos-using-secrets
+            reviewed: { version: "1.24", date: 2026-10-15, note: "the guide's user-namespace methods use CRI-O annotations; the repo uses hostUsers false with the OpenShift nested-container SCC" }
       observability:
         description: Tekton Results, metrics, log forwarding, and opc CLI queries.
         routes:
           - book: observability_in_openshift_pipelines
             status: active
             skill: ocp-pipelines-observability
+            sections:
+              - using-tekton-results-for-openshift-pipelines-observability
+              - configuring-results_using-tekton-results-for-openshift-pipelines-observability
+              - querying-using-opc_using-tekton-results-for-openshift-pipelines-observability
+              - understanding-the-tekton-results-retention-policy
+              - op-observability-metrics-reference
+            reviewed: { version: "1.24", date: 2026-10-15, note: "stub: Tekton Results not used in this repo" }
       pipelines_as_code:
         description: Repository CR, GitHub App, webhooks, .tekton conventions, CEL expressions, and PAC administration.
         routes:
           - book: pipelines_as_code
             status: active
             skill: ocp-pipelines-as-code
+            sections:
+              - about-pipelines-as-code
+              - install-config-pipelines-as-code
+              - using-pipelines-as-code-with-gitlab_using-pipelines-as-code-repos
+              - using-repository-crd
+              - creating-pipeline-runs-pac
+              - pipelines-as-code-resolver-annotations_creating-pipeline-runs-pac
+              - pipelines-as-code-command-reference_pac-command-reference
+            reviewed: { version: "1.24", date: 2026-10-15, note: "stub: not used in this repo (plain Triggers)" }
       creating_cicd_pipelines:
         description: CI/CD solution creation, triggers, resolvers, pipeline templates, and image mirroring.
         routes:
           - book: creating_cicd_pipelines
             status: active
             skill: ocp-pipelines-cicd
+            sections:
+              - creating-pipeline-tasks_creating-applications-with-cicd-pipelines
+              - assembling-a-pipeline_creating-applications-with-cicd-pipelines
+              - running-a-pipeline_creating-applications-with-cicd-pipelines
+              - adding-triggers_creating-applications-with-cicd-pipelines
+              - creating-webhooks_creating-applications-with-cicd-pipelines
+              - gitlab-cluster-trigger-bindings_using-clustertriggerbindings
+              - remote-pipelines-tasks-resolvers
+              - migrate-from-clustertask-to-cluster-resolver
+            reviewed: { version: "1.24", date: 2026-10-15, note: "no GitLab-interceptor section in 1.24; CEL is linked through the GitHub interceptor section" }
       custom_tekton_hub_instance:
         description: Legacy TektonHub retirement; current 1.24 migration to Artifact Hub.
         routes:
@@ -1060,12 +1138,25 @@ products:
               - tekton-hub-removal
             status: active
             skill: ocp-pipelines-tekton-hub
+            sections:
+              - removed-features-1-24-0_op-release-notes-1-24
+              - deprecated-features-1-24-0_op-release-notes-1-24
+            reviewed: { version: "1.24", date: 2026-10-15, note: "stub: not used in this repo; also links the Artifact Hub migration (installing_and_configuring), the hub resolver (creating_cicd_pipelines) and tkn hub (pipelines_cli_tkn_reference)" }
       reference:
         description: tkn CLI command reference and opc Technology Preview CLI.
         routes:
           - book: pipelines_cli_tkn_reference
             status: active
             skill: ocp-pipelines-cli-reference
+            sections:
+              - installing-tkn
+              - op-configuring-tkn
+              - op-tkn-reference
+              - op-tkn-pipeline-run_op-tkn-reference
+              - op-tkn-task-run_op-tkn-reference
+              - op-tkn-trigger-management_op-tkn-reference
+              - op-tkn-hub-interaction_op-tkn-reference
+            reviewed: { version: "1.24", date: 2026-10-15, note: "stub: repo automation uses oc, not tkn" }
 
   odf:
     name: Red Hat OpenShift Data Foundation

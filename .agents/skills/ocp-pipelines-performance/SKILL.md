@@ -2,177 +2,85 @@
 name: ocp-pipelines-performance
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_pipelines
+  docs-version: "1.24"
   skill-group: "OpenShift Platform"
 description: >
-  Use when managing OpenShift Pipelines performance, resource consumption,
-  compute resource quotas, pod eviction protection, step-level resource
-  overrides, priority class resource quotas, LimitRange configuration, and
-  multicluster pipeline support (hub-spoke architecture, Kueue, MultiKueue,
-  spoke cluster setup) for OpenShift Pipelines 1.24. Do NOT use for installing
-  or configuring the operator (use ocp-pipelines-install-config), creating
-  CI/CD pipelines (use ocp-pipelines-cicd), Pipelines as Code (use
-  ocp-pipelines-as-code), or pipeline concepts (use ocp-pipelines-about).
+  Use when tuning resource use of this demo's Tekton runs: step compute
+  resources, co-scheduling of PVC workspaces, pruning volume, TaskRun pod
+  evictions, resource quotas and priority classes, and whether multicluster
+  (hub/spoke, MultiKueue) pipelines apply. Do NOT use for operator install or
+  TektonConfig field ownership (use ocp-pipelines-install-config), pipeline
+  authoring (use ocp-pipelines-cicd), or GPU Kueue queues (use
+  rhoai-kueue-workload-management).
 ---
 
-# OCP Pipelines Performance
+# OpenShift Pipelines performance in this repo
 
-Use this skill to ground OpenShift Pipelines performance and resource
-management guidance in the official Red Hat OpenShift Pipelines 1.24
-managing performance and resource use guide for the active baseline in
-`docs/PLATFORM_BASELINE.md`.
+Thin skill: the few repo decisions here, product guidance in the linked
+OpenShift Pipelines 1.24 sections. The repo sets no quota, priority class or
+multicluster configuration for pipelines.
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **OpenShift Pipelines 1.24**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A TaskRun is OOMKilled, evicted, or waits to be scheduled.
+- Someone proposes ResourceQuota, LimitRange, priority classes or
+  multicluster pipelines for the build namespaces.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Project Tasks set no step `computeResources`; namespace defaults apply | `gitops/stages/070-advanced-app-platform/pipelines/project-pipeline/task-*.yaml` | [Step compute resources][step] |
+| Migration provisioning step: requests 256Mi, limit 1Gi (an earlier 256Mi limit OOMKilled at CLI start) | `gitops/stages/070-advanced-app-platform/pipelines/build/task-provision-migration-run.yaml` | [Override step resources][override] |
+| `coschedule: pipelineruns` keeps all pods of a run on one node so RWO workspaces do not reattach | `gitops/stages/070-advanced-app-platform/pipelines/build/tektonconfig-affinity.yaml` | not in the 1.24 Red Hat guides (upstream Tekton field) |
+| Pruner keep 10 hourly limits completed-pod and PVC buildup | `gitops/stages/070-advanced-app-platform/pipelines/operators/configure-tekton-pruner.yaml` | see `ocp-pipelines-install-config` |
+| No ResourceQuota, priority class or multicluster (hub/spoke) setup for pipelines | — | [Quota alternatives][quota-alt], [Multicluster][multi] |
 
-## Performance Management
+## Procedure
 
-OpenShift Pipelines can degrade under high concurrency. Red Hat benchmarks show
-up to 60 simple pipelines running concurrently on a 3-node AWS m6a.2xlarge
-cluster without significant failures or delays. Beyond that threshold, failed
-runs, average duration, pod creation latency, work queue depth, and pending
-pods all increase.
+Read-only, after the OpenShift safety guard in `AGENTS.md`:
 
-Improving performance:
+```bash
+oc get taskrun -n <namespace> -o custom-columns=NAME:.metadata.name,REASON:.status.conditions[0].reason
+oc get pod -n <namespace> -l tekton.dev/taskRun=<taskrun> -o jsonpath='{.items[0].status.containerStatuses[*].state}{"\n"}'
+oc get resourcequota,limitrange -n <namespace>
+```
 
-- Monitor node resource usage and scale out when high.
-- Enable high-availability mode via `TektonConfig` CR:
-  - `pipeline.performance.disable-ha: false`
-  - `pipeline.performance.buckets`: 5–10
-  - `pipeline.performance.replicas`: >2 and <= buckets value
+Change step resources in the Task in Git, then
+`./stages/070-advanced-app-platform/validate.sh --static`.
 
-Read `references/official-doc-extraction.md` for exact settings and benchmark
-context.
+## Pitfalls
 
-## Resource Consumption
+- Evictions for ephemeral storage come from node image caches (modelcars),
+  not from the TaskRun: `docs/TROUBLESHOOTING.md#pipeline-or-workspace-pods-evicted-for-ephemeral-storage`.
+- A quota on a build namespace needs requests on every step, which the
+  project Tasks do not set; read [Quota alternatives][quota-alt] first.
+- Priority classes also apply to the affinity-assistant pod ([priority class quota][prio]).
 
-Each task runs as a pod; each step runs as a container within that pod. Step
-resource requests default to BestEffort (zero) or to the project LimitRange
-minimums if set. When a LimitRange defines container minimums, OpenShift
-Pipelines uses those minimums instead of zero.
+## Official documentation (OpenShift Pipelines 1.24)
 
-Pipelines request the maximum CPU, memory, and ephemeral storage of any single
-step for the pod, setting all other step requests to zero. This keeps one-step-
-at-a-time execution efficient but can over-allocate when LimitRange minimums
-apply across many steps.
+| Topic | Section |
+|---|---|
+| Performance and resource consumption | [Improving performance][improve], [Resource consumption][consumption], [Mitigating extra consumption][mitigate] |
+| Step resources | [Override step resources][override], [Step compute resources][step] |
+| Quotas | [Quota alternatives][quota-alt], [Priority class quota][prio] |
+| Node drains | [Eviction protection][eviction] |
+| Multicluster (not used) | [Multicluster support][multi] |
+| Controller tuning | [TektonConfig performance tuning][tuning] |
 
-Mitigation strategies:
+## Related skills
 
-- Consolidate steps in a single task using script blocks and a shared image.
-- Distribute independent steps across multiple tasks so pods are smaller.
+`ocp-pipelines-install-config`, `ocp-pipelines-cicd`, `ocp-nodes`.
 
-Step-level compute resource overrides in a `PipelineRun` allow adjusting CPU
-and memory for specific steps in referenced tasks without modifying the original
-Task definition, via `spec.taskRunSpecs[*].stepSpecs`.
-
-Read `references/official-doc-extraction.md` for LimitRange interaction
-examples and step override YAML.
-
-## Resource Quotas
-
-`ResourceQuota` objects control total resource consumption per namespace.
-OpenShift Pipelines does not support per-pipeline resource quotas directly.
-Alternative approaches:
-
-- Set requests/limits on each step in a task.
-- Use project-level `LimitRange` defaults.
-- Use `PriorityClass`-based `ResourceQuota` scoping as a workaround.
-
-The PriorityClass approach:
-
-1. Create a `PriorityClass` for the pipeline.
-2. Create a `ResourceQuota` scoped to that PriorityClass via `scopeSelector`.
-3. Set `taskRunTemplate.podTemplate.priorityClassName` in the `PipelineRun`.
-
-Since OpenShift Pipelines 1.17, the priority class applies to all pods created
-for a task, including affinity assistant pods.
-
-Read `references/official-doc-extraction.md` for full procedure and YAML.
-
-## Pod Eviction Protection
-
-During node drains or upgrades, Tekton workload pods can be evicted. Labels on
-a `PipelineRun` propagate automatically to `TaskRun` resources and their pods.
-A `PodDisruptionBudget` (PDB) targeting those labels prevents voluntary eviction
-while the protected pods are running.
-
-Key behavior:
-
-- While a labeled Tekton pod runs, node drains and voluntary evictions are
-  blocked.
-- After the pod completes, the PDB no longer blocks disruption operations.
-- The PDB is a one-time namespace configuration reusable across runs.
-
-Read `references/official-doc-extraction.md` for PDB YAML and verification.
-
-## Multicluster Support (Technology Preview)
-
-Multicluster support distributes pipeline workloads across multiple OpenShift
-Pipelines clusters using a hub-and-spoke architecture. This is a Technology
-Preview feature in OpenShift Pipelines 1.24; Red Hat does not recommend
-production use.
-
-Architecture:
-
-- **Hub cluster**: central control plane; runs Kueue with MultiKueue,
-  Tekton Kueue plugin, proxy-aee, and syncer-service; does not execute
-  pipeline workloads.
-- **Spoke clusters**: execute pipeline runs; run Kueue with MultiKueue
-  disabled; report status back to the hub.
-- **Kueue/MultiKueue**: Kubernetes-native job queuing and cross-cluster
-  workload scheduling using ResourceFlavor, ClusterQueue, LocalQueue,
-  AdmissionCheck, MultiKueueConfig, and MultiKueueCluster resources.
-
-Hub cluster setup requires:
-
-- Red Hat Build of Kueue operator 1.3+
-- RBAC for Kueue controller to manage Tekton PipelineRuns
-- Spoke kubeconfig secrets in `openshift-kueue-operator` namespace
-- NetworkPolicy allowing egress from Kueue pods
-- TektonConfig: `spec.scheduler.multi-cluster-role: Hub`
-
-Spoke cluster setup requires:
-
-- Red Hat Build of Kueue operator 1.3+
-- Service account and RBAC for MultiKueue
-- NetworkPolicy allowing egress from Kueue pods
-- TektonConfig: `spec.scheduler.multi-cluster-role: Spoke`
-- Generated kubeconfig for hub cluster authentication
-
-Known limitations:
-
-- Stop/Cancel actions in web console do not work for multicluster runs
-- `tkn` CLI has limited functionality on hub clusters
-- Pipeline names must not exceed 45 characters
-- Namespaces must be pre-created on spoke clusters
-- `pipelineRef`/`taskRef` with cluster resolver not supported; use embedded
-  specs or remote resolvers (Git, HTTP, Bundle)
-- Only `tekton.dev/v1` API version is supported
-
-Read `references/official-doc-extraction.md` for full configuration procedures,
-Kueue resource definitions, verification commands, and known limitations.
-
-## Related Skills
-
-- Use `ocp-pipelines-release-notes` for OpenShift Pipelines 1.24 release
-  notes, compatibility matrix, and known issues.
-- Use `ocp-cicd-builds` for OpenShift build strategies and BuildConfig.
-- Use `ocp-gitops-operator` for OpenShift GitOps and Argo CD behavior.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[improve]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/managing_performance_and_resource_use/index#improving-performance_managing-pipelines-performance
+[consumption]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/managing_performance_and_resource_use/index#op-understanding-pipelines-resource-consumption_reducing-pipelines-resource-consumption
+[mitigate]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/managing_performance_and_resource_use/index#op-mitigating-extra-pipeline-resource-consumption_reducing-pipelines-resource-consumption
+[override]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/managing_performance_and_resource_use/index#op-override-step-resources-pipelinerun_reducing-pipelines-resource-consumption
+[step]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/managing_performance_and_resource_use/index#op-setting-compute-resources-for-a-task-step_reducing-pipelines-resource-consumption
+[quota-alt]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/managing_performance_and_resource_use/index#alternative-approaches-compute-resource-quota-pipelines_setting-compute-resource-quota-for-openshift-pipelines
+[prio]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/managing_performance_and_resource_use/index#specifying-pipelines-resource-quota-using-priority-class_setting-compute-resource-quota-for-openshift-pipelines
+[eviction]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/managing_performance_and_resource_use/index#protecting-tekton-workloads-from-eviction-during-node-drains
+[multi]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/managing_performance_and_resource_use/index#configuring-multicluster-support
+[tuning]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-performance-tuning-using-tektonconfig-cr_customizing-configurations-in-the-tektonconfig-cr

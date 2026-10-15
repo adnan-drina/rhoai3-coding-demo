@@ -2,189 +2,81 @@
 name: ocp-pipelines-about
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_pipelines
+  docs-version: "1.24"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or explaining OpenShift Pipelines concepts,
-  architecture, and Tekton CRDs: Task, TaskRun, Pipeline, PipelineRun,
-  Workspace, StepAction, Trigger, TriggerBinding, TriggerTemplate,
-  EventListener, when expressions, finally tasks, and pod templates from the
-  official OpenShift Pipelines 1.24 documentation. Do NOT use for installing or
-  configuring pipelines (use ocp-pipelines-install-config), creating CI/CD
-  pipelines (use ocp-pipelines-cicd), Pipelines as Code (use
+  Use when explaining OpenShift Pipelines concepts (Task, TaskRun, Pipeline,
+  PipelineRun, Workspace, pod template, StepAction, Triggers) and mapping them
+  to this demo's objects, or when collecting must-gather data for Pipelines
+  support. Do NOT use for installation (use ocp-pipelines-install-config),
+  pipeline authoring (use ocp-pipelines-cicd), Pipelines as Code (use
   ocp-pipelines-as-code), security (use ocp-pipelines-security), or
   observability (use ocp-pipelines-observability).
 ---
 
-# OCP Pipelines About
+# OpenShift Pipelines concepts
 
-Use this skill to ground OpenShift Pipelines conceptual guidance in the
-official Red Hat OpenShift Pipelines 1.24 about guide for the active
-baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: where each Tekton concept appears in this repo; definitions in
+the linked OpenShift Pipelines 1.24 sections.
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **OpenShift Pipelines 1.24**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- Explaining the Stage 070 delivery path to a reader new to Tekton.
+- Gathering diagnostic data for a Red Hat support case.
 
-## Source Grounding
+## Repo decisions (concept → repo object)
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+| Concept | Repo object | Official section |
+|---|---|---|
+| Task | `gitlab-clone`, `maven-build`, `sonar-scan`, `build-internal-image`, `promote-gitlab-runtime`, `resolve-image-registry` in `gitops/stages/070-advanced-app-platform/pipelines/project-pipeline/` | [Tasks][tasks] |
+| Pipeline / PipelineRun | `app-push` per `<project>-dev`; runs named `gitlab-<project-id>-<sha>` by `pipelines/gitlab/reconcile.py` | [Pipelines][pipelines], [Pipeline run][pipelinerun] |
+| Workspace | `source` (per-run claim), `maven-cache` (PVC), `basic-auth` (Secret) | [Workspaces][workspaces] |
+| Pod template | per-task `podTemplate` (`hostUsers: false`) for the image build | [Pod templates][podtemplate] |
+| Triggers | per-project `EventListener` `gitlab` + `TriggerTemplate` `gitlab-push` | [Triggers][triggers] |
+| When expressions, finally, StepActions | not used | [When][when], [Finally][finally], [Step actions][stepactions] |
 
-## Pipelines Concepts
+## Procedure
 
-### Tasks
+Read-only, after the OpenShift safety guard in `AGENTS.md`:
 
-A `Task` resource defines a set of sequentially executed steps. Each task runs
-as a pod; each step runs as a container within that pod. Steps share the same
-volumes for caching files, config maps, and secrets. Tasks are reusable across
-many pipelines and can run individually or as part of a pipeline.
+```bash
+oc api-resources --api-group=tekton.dev
+oc api-resources --api-group=triggers.tekton.dev
+oc get pipeline,task -n coolstore-dev
+```
 
-Key fields: `apiVersion: tekton.dev/v1`, `kind: Task`, `spec.steps`,
-`spec.workspaces`, `spec.params`.
+For a support case use the documented must-gather ([must-gather][mustgather]).
 
-### Steps
+## Pitfalls
 
-Steps are the sequential commands within a task. Each step specifies a container
-image and commands to execute. Since OpenShift Pipelines 1.6, steps no longer
-default `HOME` to `/tekton/home` or `workingDir` to `/workspace`.
+- RHOAI "AI pipelines" are Kubeflow Pipelines, a different product; use
+  the `rhoai-ai-pipelines` skill for them.
+- ClusterTask is gone; the repo uses namespaced Tasks only.
 
-### When Expressions
+## Official documentation (OpenShift Pipelines 1.24)
 
-When expressions guard task execution. Components:
+| Topic | Section |
+|---|---|
+| Overview | [About OpenShift Pipelines][about], [Key features][features], [Concepts][concepts] |
+| Diagnostics | [Must-gather][mustgather], [Collecting debugging data][debug] |
 
-- `input`: static inputs or variables (parameter, task result, execution status)
-- `operator`: `in` or `notin`
-- `values`: array of string values (static values, parameters, results, workspace bound state)
+## Related skills
 
-Evaluation: `True` runs the task; `False` skips it. When expressions also work
-in `finally` tasks.
+`ocp-pipelines-cicd`, `ocp-pipelines-install-config`, `rhoai-ai-pipelines`.
 
-### Finally Tasks
-
-Tasks specified in the `finally` field always execute after all pipeline tasks
-complete, regardless of success or failure. Finally tasks run in parallel with
-each other. They can consume results from earlier tasks and use when expressions
-for conditional execution.
-
-### TaskRun
-
-A `TaskRun` instantiates a task for execution with specific inputs, outputs, and
-execution parameters. It runs steps in order until all succeed or a failure
-occurs. A `PipelineRun` automatically creates a `TaskRun` for each task.
-
-Key fields: `apiVersion: tekton.dev/v1`, `kind: TaskRun`, `spec.taskRef`,
-`spec.workspaces`, `spec.podTemplate`.
-
-### Pipelines
-
-A `Pipeline` arranges a collection of tasks in a specific execution order. Each
-pipeline definition must contain at least one task. Pipelines can include
-workspaces, parameters, and conditions.
-
-Key fields: `apiVersion: tekton.dev/v1`, `kind: Pipeline`, `spec.tasks`,
-`spec.workspaces`, `spec.params`, `spec.finally`.
-
-Task ordering uses `runAfter` to define sequential dependencies. Result references also create dependencies. Tasks run in parallel only when
-the complete DAG and runtime constraints permit.
-
-### PipelineRun
-
-A `PipelineRun` binds a pipeline to workspaces, credentials, and parameter
-values for execution. It creates a `TaskRun` for each task. The `status` field
-tracks progress for monitoring and auditing.
-
-Key fields: `apiVersion: tekton.dev/v1`, `kind: PipelineRun`, `spec.pipelineRef`,
-`spec.params`, `spec.workspaces`, `spec.taskRunTemplate`.
-
-### Pod Templates
-
-Define a pod template in `PipelineRun` or `TaskRun` to configure every pod
-created during execution. Any `Pod` spec parameter is available.
-
-- PipelineRun: `spec.taskRunTemplate.podTemplate`
-- TaskRun: `spec.podTemplate`
-
-Common use: security context (`runAsNonRoot`, `runAsUser`), scheduler name.
-
-### Workspaces
-
-Workspaces declare shared storage volumes needed at runtime. They separate
-volume declaration from runtime storage, making tasks reusable.
-
-Workspace capabilities:
-- Store task inputs and outputs
-- Share data among tasks
-- Mount credentials (secrets), configurations (config maps), and tools
-- Cache build artifacts
-
-Backing storage options:
-- Read-only ConfigMap or Secret
-- Existing PersistentVolumeClaim
-- PVC from volumeClaimTemplate
-- `emptyDir` (discarded after task run)
-
-### StepActions
-
-A `StepAction` CR defines a reusable action that a step performs. Steps
-reference `StepAction` objects via `ref`. StepActions can be resolved from
-external sources using resolvers.
-
-Key fields: `apiVersion: tekton.dev/v1`, `kind: StepAction`, `spec.params`,
-`spec.results`, `spec.image`, `spec.script`, `spec.env`.
-
-Security: parameter values must NOT appear directly in `script`. Use `env:` to
-pass parameter values to the script as environment variables.
-
-### Triggers
-
-Triggers capture external events and process them to create pipeline resources.
-
-Components:
-- **TriggerBinding**: extracts fields from event payload as parameters
-- **TriggerTemplate**: creates resources (e.g., PipelineRun) from parameters
-- **Trigger**: combines TriggerBinding + TriggerTemplate + optional interceptors
-- **EventListener**: HTTP endpoint that receives JSON payloads and dispatches to triggers
-
-Interceptor types: Webhook, GitHub, GitLab, Bitbucket, CEL.
-
-All trigger resources use `apiVersion: triggers.tekton.dev/v1`.
-
-## Key Features
-
-- Serverless CI/CD running pipelines in isolated containers
-- Designed for decentralized teams and microservice architectures
-- Standard CI/CD definitions extensible and integrable with Kubernetes tools
-- Image building with S2I, Buildah, Buildpacks, and Kaniko
-- OpenShift Developer console integration for Tekton resource management
-
-## Workflow
-
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify the relevant concept (Task, Pipeline, Trigger, etc.).
-4. For GitOps manifests, verify all API versions and fields against the
-   extraction before committing.
-5. For live operations, use the repo environment guard.
-6. Validate with `references/source-capture.md` boundaries.
-
-## Related Skills
-
-- Use `ocp-pipelines-install-config` for installation and configuration.
-- Use `ocp-pipelines-cicd` for creating CI/CD solutions with pipelines.
-- Use `ocp-pipelines-as-code` for Pipelines as Code workflows.
-- Use `ocp-pipelines-security` for pipeline security concerns.
-- Use `ocp-pipelines-observability` for pipeline monitoring.
-- Use `ocp-cicd-builds` for OpenShift Builds (BuildConfig, Shipwright).
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[about]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#about-pipelines
+[features]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#op-key-features_understanding-openshift-pipelines
+[concepts]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#op-pipelines-concepts_understanding-openshift-pipelines
+[tasks]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#about-tasks_understanding-openshift-pipelines
+[when]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#about-whenexpression_understanding-openshift-pipelines
+[finally]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#about-finally_tasks_understanding-openshift-pipelines
+[pipelines]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#about-pipelines_understanding-openshift-pipelines
+[pipelinerun]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#about-pipelinerun_understanding-openshift-pipelines
+[podtemplate]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#about-podtemplate_understanding-openshift-pipelines
+[workspaces]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#about-workspaces_understanding-openshift-pipelines
+[stepactions]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#about-stepactions_understanding-openshift-pipelines
+[triggers]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#about-triggers_understanding-openshift-pipelines
+[mustgather]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#op-about-must-gather_op-proc-gathering-diagnostic-information
+[debug]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/about_openshift_pipelines/index#op-collecting-pipelines-debugging-data_op-proc-gathering-diagnostic-information

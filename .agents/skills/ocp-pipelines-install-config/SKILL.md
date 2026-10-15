@@ -2,131 +2,110 @@
 name: ocp-pipelines-install-config
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_pipelines
+  docs-version: "1.24"
   skill-group: "OpenShift Platform"
 description: >
-  Use when installing, uninstalling, or configuring Red Hat OpenShift Pipelines
-  Operator: TektonConfig CR customization, installation profiles (Lite, Basic,
-  All), operator Subscription, pipeline resolvers, pruner configuration,
-  event-driven pruner, RBAC resource creation, service monitor, webhook
-  options, Tekton Hub migration to Artifact Hub, performance tuning, HA mode,
-  and restricted environment setup for OpenShift Pipelines 1.24. Do NOT use for
-  Pipelines concepts (use ocp-pipelines-about), creating CI/CD pipelines (use
-  ocp-pipelines-cicd), Pipelines as Code (use ocp-pipelines-as-code), security
-  (use ocp-pipelines-security), or performance and resource management (use
-  ocp-pipelines-performance).
+  Use when reviewing or changing how this demo installs and configures Red Hat
+  OpenShift Pipelines: the openshift-pipelines-operator-rh Subscription on
+  pipelines-1.24, the operator-owned TektonConfig singleton and the Sync-hook
+  patches for the pruner, coschedule and createRbacResource, the
+  config-triggers-core-interceptors workaround, and upgrade checks. Do NOT use
+  for pipeline and trigger authoring (use ocp-pipelines-cicd), build security
+  and SCCs (use ocp-pipelines-security), resource tuning (use
+  ocp-pipelines-performance), or RHOAI data science pipelines (use
+  rhoai-ai-pipelines).
 ---
 
-# OCP Pipelines Install Config
+# OpenShift Pipelines install and configuration
 
-Use this skill to ground OpenShift Pipelines installation and configuration
-guidance in the official Red Hat OpenShift Pipelines 1.24 installing and
-configuring guide for the active baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product procedure in the linked
+OpenShift Pipelines 1.24 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/pipelines/README.md`.
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **OpenShift Pipelines 1.24**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A change touches `gitops/stages/070-advanced-app-platform/pipelines/operators/`
+  or `.../pipelines/build/` (TektonConfig hooks, Triggers settings).
+- The Pipelines channel moves, or `TektonConfig` is not Ready after an update.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers the Operator
-installation lifecycle, uninstallation, and TektonConfig CR customization
-surface. It does not cover pipeline authoring, Pipelines as Code, Tekton
-Chains, Tekton Results, or pipeline security topics.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Subscription `openshift-pipelines-operator-rh` in `openshift-operators`, channel `pipelines-1.24`, Automatic; `startingCSV` v1.24.0 is an install floor (1.24.1 runs live) | `pipelines/operators/pipelines-subscription.yaml` | [Install by using the CLI][install-cli] |
+| Automatic approval because `openshift-operators` is shared (RHTAS too); Dev Spaces, RHDH and MTA use Manual approval with their own approver hooks | same; `stages/070-advanced-app-platform/validate.sh` (minor check) | [Install by using the CLI][install-cli] |
+| `TektonConfig` `config` is operator-owned: Sync-hook Jobs patch single fields, never declare the CR | `pipelines/operators/configure-tekton-pruner.yaml`, `pipelines/build/tektonconfig-affinity.yaml` | [Customizing TektonConfig][tektonconfig] |
+| Pruner: PipelineRuns only, keep 10, hourly (product default keep 100, daily at 08:00) | `pipelines/operators/configure-tekton-pruner.yaml` | [Configuring the pruner][pruner] |
+| `createRbacResource=false`: no per-namespace `pipeline` SA grants or `pipelines-scc-rolebinding`; one named SA gets one SCC | `pipelines/build/tektonconfig-affinity.yaml`, `pipelines/operators/image-builder-scc.yaml` | [Disabling automatic RBAC creation][rbac], [RBAC and Trusted CA flags][rbac-flags] |
+| `spec.pipeline.coschedule: pipelineruns` so one run can bind the source PVC and the `maven-cache` PVC | `pipelines/build/tektonconfig-affinity.yaml` | not in the 1.24 Red Hat guides (verified live on the operator; upstream Tekton field) |
+| `config-triggers-core-interceptors` applied from Git (upstream default) after a 1.22.6 update shipped without it | `pipelines/build/tekton-triggers-core-config.yaml` | operator-owned operand; see Pitfalls |
 
-## Installation
+## Procedure
 
-The Operator can be installed through the web console or CLI:
+1. Change Subscriptions and hooks in Git only; keep the channel equal to the
+   doc map pin (`python3 scripts/shared/check-doc-links.py --family ocp_pipelines`).
+2. Deploy and validate through the stage scripts:
+   `./stages/070-advanced-app-platform/deploy.sh`, then
+   `./stages/070-advanced-app-platform/validate.sh` (checks
+   `openshift-pipelines-operator-rh stays on selected minor` and `TektonConfig ready`).
+3. Read-only, after the OpenShift safety guard in `AGENTS.md`:
 
-- **Web console**: Navigate to Operators > OperatorHub, search for Red Hat
-  OpenShift Pipelines, choose an update channel (`latest` or
-  `pipelines-<version>`), select All namespaces. This project uses reviewed Manual approval
-  strategy, then verify with `oc get tektonconfig config`.
-- **CLI**: Create a `Subscription` in the `openshift-operators` namespace with
-  `name: openshift-pipelines-operator-rh`, `source: redhat-operators`, and the
-  desired channel. Apply with `oc apply -f`.
-- **Restricted environment**: The Operator configures proxy settings
-  automatically via a proxy webhook. Disable per-namespace with the
-  `operator.tekton.dev/disable-proxy: true` label.
+   ```bash
+   oc get subscription openshift-pipelines-operator-rh -n openshift-operators \
+     -o custom-columns=CHANNEL:.spec.channel,CSV:.status.installedCSV
+   oc get tektonconfig config -o jsonpath='{.spec.pruner}{"\n"}{.spec.pipeline.coschedule}{"\n"}{.spec.params}{"\n"}'
+   oc get deploy -n openshift-pipelines
+   ```
 
-### Installation Profiles
+4. For a minor upgrade follow `route_update_rules.when_upgrading_product` in
+   `.agents/references/red-hat-doc-map.yaml` and read the removed and
+   deprecated features in the [release notes][relnotes] before moving the channel.
 
-The TektonConfig CR supports three profiles:
+## Pitfalls
 
-- **Lite**: Tekton Pipelines only.
-- **Basic**: Tekton Pipelines, Triggers, Chains, and Results.
-- **All** (default): All Tekton components including Pipelines, Triggers,
-  Chains, Results, Pipelines as Code, and Tekton add-ons.
+- An operator update can drop an operand ConfigMap: Triggers crash-loops and
+  webhooks never start provisioning
+  (`docs/TROUBLESHOOTING.md#pipelines-1226-template-publishes-but-provisioning-never-starts`).
+  On 1.24.1 the ConfigMap is owned by the operator's `TektonInstallerSet`
+  again; the Git copy is a recorded Gap. Remove it only after the checks in
+  the manifest comment pass.
+- Declaring `TektonConfig` in Git fights the operator; patch fields from a hook.
+- With `createRbacResource=false` new namespaces get no `pipeline` SA: each
+  project's ServiceAccounts come from `pipelines/project-pipeline/serviceaccounts.yaml`.
+- `startingCSV` is ignored after install (`ignoreDifferences`); the validator
+  enforces the minor, not the patch.
 
-## Uninstallation
+## Official documentation (OpenShift Pipelines 1.24)
 
-Uninstallation requires three ordered steps:
+| Topic | Section |
+|---|---|
+| Install (console, CLI, restricted network) | [Web console][install-console], [CLI][install-cli], [Restricted environment][install-restricted] |
+| TektonConfig fields | [Customizing TektonConfig][tektonconfig], [Modifiable fields][fields], [HA mode][ha] |
+| RBAC and SCC defaults | [Disabling automatic RBAC creation][rbac], [RBAC and Trusted CA flags][rbac-flags] |
+| Pruning | [Automatic pruning][pruning], [Configuring the pruner][pruner], [Event-driven pruner][event-pruner] |
+| Triggers and resolvers | [Disabling Triggers][triggers-off], [Configuring resolvers][resolvers] |
+| Uninstall | [Uninstalling OpenShift Pipelines][uninstall] |
+| Version status | [Release notes][relnotes] |
 
-1. Only for an authorized uninstall: preserve required evidence/data, then follow
-   the current guide for TektonResult and TektonConfig removal.
-2. Uninstall the Operator from OperatorHub.
-3. Delete CRDs in the `operator.tekton.dev` group.
+## Related skills
 
-Skipping optional CR deletion before uninstalling the Operator prevents later
-removal of those components.
+`ocp-pipelines-cicd`, `ocp-pipelines-security`, `ocp-pipelines-performance`,
+`ocp-pipelines-release-notes`, `ocp-gitops-operator`.
 
-## TektonConfig Customization
-
-All customization is performed through the `TektonConfig` CR named `config`.
-Read `references/official-doc-extraction.md` for the full configuration
-surface, including:
-
-- Performance tuning (HA mode, buckets, replicas, threads-per-controller,
-  kube-api-qps, kube-api-burst)
-- Control plane configuration (modifiable fields with defaults and optional
-  fields)
-- Default service account for pipelines and triggers
-- Namespace labels and annotations for `openshift-pipelines`
-- Resync period for the pipelines controller
-- Service monitor toggle
-- Pipeline resolvers (bundles, cluster, git, hub) and resolver-specific config
-- Resolver tasks and pipeline templates
-- Tekton Triggers toggle
-- Tekton Hub integration and migration to Artifact Hub
-- RBAC resource creation and Trusted CA bundle config map
-- Inline specification controls
-- Job-based pruner (schedule, keep, keep-since, prune-per-resource)
-- Event-driven pruner (TTL, history limits, namespace-level, resource-level,
-  selectors, observability metrics)
-- Webhook configuration options for pipelines, triggers, Pipelines as Code,
-  controllers; Hub is not a current 1.24 component
-
-## Workflow
-
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns installation, uninstallation, or a
-   specific TektonConfig customization area.
-4. For GitOps manifests, verify all API versions, fields, and CRD names before
-   committing.
-5. For live operations, use the repo environment guard.
-6. Validate the output with `references/validation-checklist.md` when present.
-
-## Related Skills
-
-- Use future `ocp-pipelines-about` for Pipelines conceptual overview.
-- Use future `ocp-pipelines-cicd` for creating and running CI/CD pipelines.
-- Use future `ocp-pipelines-as-code` for Pipelines as Code configuration.
-- Use future `ocp-pipelines-security` for Tekton Chains and supply chain
-  security.
-- Use future `ocp-pipelines-performance` for performance and resource
-  management beyond TektonConfig tuning.
-- Use `ocp-cicd-builds` for OpenShift Builds and BuildConfig topics.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[install-console]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-installing-pipelines-operator-in-web-console_installing-pipelines
+[install-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-installing-pipelines-operator-using-the-cli_installing-pipelines
+[install-restricted]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-pipelines-operator-in-restricted-environment_installing-pipelines
+[tektonconfig]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#customizing-configurations-in-the-tektonconfig-cr
+[fields]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-modifiable-fields-with-default-values_customizing-configurations-in-the-tektonconfig-cr
+[ha]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-ha-mode-options_customizing-configurations-in-the-tektonconfig-cr
+[rbac]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-disabling-automatic-creation-of-rbac-resources_customizing-configurations-in-the-tektonconfig-cr
+[rbac-flags]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-configuration-rbac-trusted-ca-flags.adoc_customizing-configurations-in-the-tektonconfig-cr
+[pruning]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-automatic-pruning-taskrun-pipelinerun_customizing-configurations-in-the-tektonconfig-cr
+[pruner]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#default-pruner-configuration_customizing-configurations-in-the-tektonconfig-cr
+[event-pruner]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#event-pruner-configuration_customizing-configurations-in-the-tektonconfig-cr
+[triggers-off]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-disabling-pipeline-triggers_customizing-configurations-in-the-tektonconfig-cr
+[resolvers]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-configuring-pipeline-resolvers_customizing-configurations-in-the-tektonconfig-cr
+[uninstall]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#uninstalling-pipelines
+[relnotes]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#op-release-notes-1-24

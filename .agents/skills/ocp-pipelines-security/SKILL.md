@@ -2,160 +2,101 @@
 name: ocp-pipelines-security
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_pipelines
+  docs-version: "1.24"
   skill-group: "OpenShift Platform"
 description: >
-  Use when securing OpenShift Pipelines: Tekton Chains supply chain security,
-  SLSA provenance, image signing, OCI storage, transparency logs, secret
-  management, Git SSH authentication, pipeline authentication with repositories,
-  and security contexts for OpenShift Pipelines 1.24. Do NOT use for installing
-  pipelines (use ocp-pipelines-install-config), creating CI/CD pipelines (use
-  ocp-pipelines-cicd), or Pipelines as Code (use ocp-pipelines-as-code).
+  Use when reviewing or changing the security posture of this demo's Tekton
+  builds: non-root Buildah in a pod user namespace with the nested-container
+  SCC bound only to the image-builder ServiceAccount, Git and registry
+  credentials passed through workspaces and projected tokens, TLS and token
+  validation of the per-project GitLab EventListener, and the open Tekton
+  Chains signing gap. Do NOT use for Trusted Artifact Signer installation
+  (Stage 070 pipelines README, signing/), operator install (use
+  ocp-pipelines-install-config), general SCC administration (use
+  ocp-security-rbac-scc), or pipeline authoring (use ocp-pipelines-cicd).
 ---
 
-# OCP Pipelines Security
+# OpenShift Pipelines security in this repo
 
-Use this skill to ground OpenShift Pipelines security guidance in the
-official Red Hat OpenShift Pipelines 1.24 securing guide for the active
-baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift Pipelines 1.24 sections. Detailed record:
+`gitops/stages/070-advanced-app-platform/pipelines/README.md` ("Image builds",
+"Credentials", Alignment table).
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **OpenShift Pipelines 1.24**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A change touches the build Task, project ServiceAccounts or SCC bindings
+  under `gitops/stages/070-advanced-app-platform/pipelines/`.
+- Someone proposes `privileged`, `anyuid`, a pipeline-wide SCC, or image signing.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Buildah runs as UID 1000 in a pod user namespace (`hostUsers: false`) with OCP's default `nested-container` SCC, not the guide's CRI-O annotation or custom-SCC method | `pipelines/project-pipeline/task-build-image.yaml`, `pipelines/gitlab/reconcile.py` (`taskRunSpecs`) | [Non-root Buildah][nonroot] (method differs; see Alignment in the README) |
+| `use` on `nested-container` only through ClusterRole `pipeline-userns-builder`, bound only to SA `image-builder`; the task refuses a non-mapped `uid_map` | `pipelines/operators/image-builder-scc.yaml`, `pipelines/project-pipeline/rbac-image-build-scc.yaml` | [Custom SCC and SA for runs][custom-scc] |
+| Operator RBAC auto-creation off (`createRbacResource=false`), so no namespace gets `pipelines-scc-rolebinding` | `pipelines/build/tektonconfig-affinity.yaml` | see `ocp-pipelines-install-config` |
+| Git credentials as a Secret workspace (`basic-auth` ← `gitlab-read-source`, read-only deploy token); registry login with the TaskRun's projected SA token | `pipelines/project-pipeline/task-git-clone.yaml`, `task-build-image.yaml` | [Secrets using workspaces][ws-secrets] |
+| Webhook: Route `gitlab-webhook` edge TLS with redirect; `gitlab` interceptor checks the `gitlab-webhook` token before CEL filtering | `pipelines/gitlab/reconcile.py` | [Secure connection with routes][el-tls] |
+| Pushes only to its own project's internal-registry path, full commit tag, digest returned; no external registry fallback | `pipelines/project-pipeline/task-build-image.yaml`, `registry-policy.yaml` | — (repo policy) |
+| Tekton Chains signing not wired into `app-push` (Gap; TAS `Securesign` exists for later use) | `pipelines/signing/securesign.yaml`; `BACKLOG.md` | [Tekton Chains][chains], [Sign image and provenance][chains-sign] |
 
-## Tekton Chains Supply Chain Security
+## Procedure
 
-Tekton Chains is a CRD controller installed by default with the OpenShift
-Pipelines Operator. It observes task run and pipeline run executions, takes
-snapshots on completion, converts them to standard payload formats (in-toto /
-SLSA), signs the artifacts, and stores them. Configuration is managed via the
-`TektonConfig` CR in the `chain:` section.
+1. Keep the SCC binding per ServiceAccount; never bind an SCC to all project SAs.
+2. Static and live checks:
 
-Key configuration areas:
-- Task run, pipeline run, and OCI artifact format, storage, and signer
-- KMS signer integration (HashiVault, AWS, GCP, Azure)
-- Transparency log uploads (Rekor)
-- x509 keyless signing with Fulcio
-- Docstore and Grafeas storage backends
-- Namespace scoping to limit Chains to specific namespaces
+   ```bash
+   ./stages/070-advanced-app-platform/validate.sh --static   # security-boundaries.test.py: builder SCC, cross-namespace reads
+   ./stages/070-advanced-app-platform/validate.sh            # "Pipeline may push its own images", "... cannot push another project image"
+   ```
 
-Read `references/official-doc-extraction.md` for full parameter tables.
+3. Read-only, after the OpenShift safety guard in `AGENTS.md`:
 
-## Signing Secrets
+   ```bash
+   oc get rolebinding pipeline-userns-builder -n <project>-dev -o jsonpath='{.subjects}{"\n"}'
+   oc get pod -n <project>-dev -l tekton.dev/pipelineTask=build-and-push \
+     -o jsonpath='{.items[*].metadata.annotations.openshift\.io/scc}{"\n"}'
+   ```
 
-Tekton Chains requires a `signing-secrets` secret in the `openshift-pipelines`
-namespace. Supports `x509` and `cosign` schemes (use only one).
+## Pitfalls
 
-Key pair generation methods:
-- **Automated**: Set `generateSigningSecret: true` in `TektonConfig` CR
-- **Manual cosign**: `cosign generate-key-pair k8s://openshift-pipelines/signing-secrets`
-- **Manual skopeo**: `skopeo generate-sigstore-key` with base64 encoding
+- The 1.24 guide's user-namespace methods use CRI-O annotations; the repo
+  uses `hostUsers: false` plus `nested-container`. Do not "fix" the Task to
+  the annotation form without qualifying it on OpenShift 4.22.
+- Authentication or SCC errors in the build need installed-version
+  qualification: `docs/TROUBLESHOOTING.md#stage-070-internal-registry-build-refuses`.
+- Never add Quay or other external registry credentials to bypass a refusal.
+- Enabling Chains also needs signing secrets ([cosign key pair][cosign]); the
+  backlog item still names the old pipeline `app-platform-push` (now `app-push`).
 
-## OCI Registry Authentication
+## Official documentation (OpenShift Pipelines 1.24)
 
-Configure a service account with Docker config credentials for Tekton Chains to
-push signatures to OCI registries. Best practice: create a dedicated service
-account rather than patching the default `pipeline` SA.
+| Topic | Section |
+|---|---|
+| Supply chain | [Tekton Chains][chains], [Signing secrets][chains-secrets], [Sign image and provenance][chains-sign], [Cosign key in TektonConfig][cosign] |
+| Pod security | [Security context for pods][scc], [Custom SCC and SA][custom-scc] |
+| Non-root builds | [Non-root Buildah][nonroot], [User namespaces][userns], [Limitations][limits], [buildah-ns task][buildah-ns] |
+| Webhooks and credentials | [Secure event listeners][el-sec], [Secure connection with routes][el-tls], [Repository secrets][repo-secrets], [Secrets using workspaces][ws-secrets] |
 
-## Image and Provenance Signing and Verification
+## Related skills
 
-End-to-end workflow for signing images with Tekton Chains and verifying with
-cosign. Includes Rekor transparency log integration for provenance discovery.
+`ocp-pipelines-install-config`, `ocp-pipelines-cicd`, `ocp-security-rbac-scc`,
+`ocp-image-registry-and-mirroring`, `rhads-cicd-tekton`.
 
-## Software Supply Chain Security in the Web Console
-
-- **Vulnerability viewing**: PipelineRun details show vulnerabilities by severity
-  when tasks produce `SCAN_OUTPUT` results (available from OCP 4.15+)
-- **SBOM viewing/downloading**: Tasks produce `LINK_TO_SBOM` results; download
-  via `cosign download sbom`
-- **Signed badge**: Displayed next to PipelineRun names when Tekton Chains is
-  configured
-
-## Security Context for Pods
-
-Configure SCCs for pipeline-created pods:
-- **Cluster-wide**: Set `default` and `maxAllowed` SCC in `TektonConfig` CR
-  under `spec.platforms.openshift.scc`
-- **Per-namespace**: Set `operator.tekton.dev/scc` annotation on namespace
-- **Custom SCC**: Create custom SCC with `fsGroup.type: RunAsAny` to avoid pod
-  timeouts, associate with a custom service account
-
-## Secure Webhooks with Event Listeners
-
-- Label namespace with `operator.tekton.dev/enable-annotation=enabled` for HTTPS
-- Create re-encrypted TLS routes for external access
-- Configure pod-level and container-level security context in EventListener CR
-
-## Pipeline Authentication with Repositories
-
-Two approaches for providing credentials:
-
-### Service Account Method
-- Git: `kubernetes.io/basic-auth` or `kubernetes.io/ssh-auth` with
-  `tekton.dev/git-*` annotations
-- Container registry: `kubernetes.io/basic-auth` (with `tekton.dev/docker-*`
-  annotations), `kubernetes.io/dockercfg`, or `kubernetes.io/dockerconfigjson`
-- Associate secrets with a service account, then reference in TaskRun/PipelineRun
-
-### Workspace Method
-- No annotations required
-- Bind secrets to named workspaces at runtime
-- Can limit secret access to specific steps by defining workspace in both task
-  and step specs
-
-## Non-Root Buildah Builds
-
-Two approaches:
-- **User namespace method**: Add CRI-O user namespace annotations; simpler but
-  some images may not build
-- **Custom SA/SCC method**: Create SCC with `allowPrivilegeEscalation: true`
-  and `runAsUser.uid: 1000`; more compatible but elevated privileges
-
-The `buildah-ns` task provides user namespace isolation out of the box with
-`io.kubernetes.cri-o.userns-mode: "auto"` annotation.
-
-Limitations: `--mount=type=cache` and `--mount=type=secret` may fail in
-unprivileged builds.
-
-## Workflow
-
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the question concerns:
-   - Tekton Chains configuration and supply chain security
-   - Signing secrets and key management
-   - OCI registry authentication for Chains
-   - Image signing and provenance verification
-   - SBOM and vulnerability viewing in the web console
-   - Security context constraints for pipeline pods
-   - Secure webhook event listeners
-   - Git or container registry authentication for pipelines
-   - Non-root Buildah image builds
-4. Use exact parameter names, API versions, and procedures from the extraction.
-5. When advising on security configuration, note the trust boundaries between
-   signing keys, storage backends, and transparency logs.
-
-## Related Skills
-
-- Use `ocp-pipelines-release-notes` for OpenShift Pipelines 1.24 release notes,
-  version compatibility, and known issues.
-- Use `ocp-cicd-builds` for OpenShift build strategies and BuildConfig.
-- Use `ocp-gitops-operator` for OpenShift GitOps and Argo CD behavior.
-- Use `ocp-security-rbac-scc` for general OpenShift RBAC and SCC guidance.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[chains]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#using-tekton-chains-for-openshift-pipelines-supply-chain-security
+[chains-secrets]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#signing-secrets-in-tekton-chains_using-tekton-chains-for-openshift-pipelines-supply-chain-security
+[chains-sign]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#using-tekton-chains-to-sign-and-verify-image-and-provenance_using-tekton-chains-for-openshift-pipelines-supply-chain-security
+[cosign]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-generating-cosign-key-pairs_customizing-configurations-in-the-tektonconfig-cr
+[scc]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#configuring-security-context-for-pods
+[custom-scc]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#op-running-pipeline-run-and-task-run-with-custom-scc-and-service-account_configuring-security-context-for-pods
+[nonroot]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#unprivileged-building-of-container-images-using-buildah
+[userns]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#nonroot-buildah-user-namespaces_unprivileged-building-of-container-images-using-buildah
+[limits]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#limitations-of-unprivileged-builds_unprivileged-building-of-container-images-using-buildah
+[buildah-ns]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#using-buildah-ns-tekton-task
+[el-sec]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#securing-webhooks-with-event-listeners
+[el-tls]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#op-providing-secure-connection_securing-webhooks-with-event-listeners
+[repo-secrets]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#authenticating-pipelines-repos-using-secrets
+[ws-secrets]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#providing-secrets-using-workspaces_authenticating-pipelines-repos-using-secrets

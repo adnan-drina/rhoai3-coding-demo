@@ -2,154 +2,58 @@
 name: ocp-pipelines-observability
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_pipelines
+  docs-version: "1.24"
   skill-group: "OpenShift Platform"
 description: >
-  Use when configuring OpenShift Pipelines observability: Tekton Results for
-  log and result storage, metrics collection, ServiceMonitor configuration,
-  log forwarding, pipeline run result aggregation, database configuration,
-  and observability dashboards for OpenShift Pipelines 1.24. Do NOT use for
-  installing pipelines (use ocp-pipelines-install-config), creating CI/CD
-  pipelines (use ocp-pipelines-cicd), or security (use
-  ocp-pipelines-security).
+  Use when someone asks about Tekton Results (long-term run and log storage,
+  retention policies, opc queries) or the OpenShift Pipelines component
+  metrics for OpenShift Pipelines 1.24. Tekton Results is not configured in
+  this repo; this stub records that and links the official sections. Do NOT
+  use for cluster monitoring (use ocp-observability), pruning (use
+  ocp-pipelines-install-config), or reading a failed run (use
+  ocp-pipelines-cicd).
 ---
 
-# OCP Pipelines Observability
+# OpenShift Pipelines observability (not used in this repo)
 
-Use this skill to ground OpenShift Pipelines observability guidance in the
-official Red Hat OpenShift Pipelines 1.24 observability guide for the active
-baseline in `docs/PLATFORM_BASELINE.md`.
+Link-only stub. Product guidance lives in the linked OpenShift Pipelines 1.24
+sections.
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **OpenShift Pipelines 1.24**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- Someone needs run history beyond the pruner window, or Pipelines metrics.
 
-## Source Grounding
+## Not used in this repo
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill captures the Tekton Results
-architecture, LokiStack log forwarding configuration, external database setup,
-retention policies, observability metrics, and the `opc` CLI for querying
-results, records, and logs.
+Tekton Results is not configured, and no Pipelines dashboard or alert is in
+Git. Run history is short by design: the pruner keeps the last 10
+PipelineRuns per namespace
+(`gitops/stages/070-advanced-app-platform/pipelines/operators/configure-tekton-pruner.yaml`).
+Durable evidence of a delivery is the digest in the delivery repository and
+the Argo CD runtime Application (`docs/OPERATIONS.md#stage-070--coolstore-dev-environment`).
+Developer Hub shows live PipelineRuns through the Tekton plugin
+(`rhdh-dynamic-plugins-configure`).
 
-## Tekton Results Architecture
+## Official documentation (OpenShift Pipelines 1.24)
 
-Tekton Results archives completed `PipelineRun` and `TaskRun` CRs as results
-and records in a PostgreSQL database. Key concepts:
+| Topic | Section |
+|---|---|
+| Tekton Results | [Using Tekton Results][results], [Concepts][concepts], [Configuring][configure], [Querying with opc][query] |
+| Retention | [Retention policy][retention], [Fine-grained retention][fine] |
+| Metrics | [Component metrics reference][metrics] |
+| Service monitor | [Disabling the service monitor][sm] |
 
-- A **result** corresponds to a pipeline run and includes records for the
-  `PipelineRun` CR and all `TaskRun` CRs it started.
-- A **record** contains the full YAML manifest of a `TaskRun` or `PipelineRun`
-  CR as it existed after completion.
-- Result name format: `<namespace>/results/<parent_run_uuid>`
-- Record name format: `<namespace>/results/<parent_run_uuid>/records/<run_uuid>`
-- Tekton Results preserves manifests after CR deletion and makes them available
-  for viewing and searching via CEL queries.
-- Log forwarding to `LokiStack` is optional but required for log queries.
+## Related skills
 
-## Configuring Tekton Results
+`ocp-pipelines-install-config`, `ocp-observability`, `ocp-pipelines-cli-reference`.
 
-Installing OpenShift Pipelines enables Tekton Results by default. Additional
-configuration is available for:
-
-- **LokiStack forwarding** — requires OpenShift Logging and `LokiStack`;
-  configure a `ClusterLogForwarder` CR (v6 or v5 API) and set
-  `spec.result.loki_stack_name` and `spec.result.loki_stack_namespace` in
-  `TektonConfig`.
-- **External database** — for production, configure `spec.result.is_external_db`,
-  `spec.result.db_host`, and `spec.result.db_port` in `TektonConfig` and create
-  a `tekton-results-postgres` Secret in `openshift-pipelines`.
-- **Retention policy** — configure via
-  `spec.result.options.configMaps.config-results-retention-policy` with `runAt`
-  (cron schedule) and `maxRetention` (days).
-
-## Observability Metrics
-
-The `tekton-results-watcher` exposes metrics on port `9090` at `/metrics`.
-Prometheus Operator discovers these via `ServiceMonitor` resources.
-
-Metric categories:
-
-- **Storage performance**: `watcher_run_storage_latency_seconds` (histogram)
-- **Storage failures**: `runs_not_stored_count` (counter)
-- **Deletion duration**: `watcher_pipelinerun_delete_duration_seconds`,
-  `watcher_taskrun_delete_duration_seconds` (histograms)
-- **Deletion count**: `watcher_pipelinerun_delete_count`,
-  `watcher_taskrun_delete_count` (counters)
-
-Common labels: `kind`, `namespace`, `pipeline`, `status`, `task`, `taskrun`.
-
-## Querying Tekton Results
-
-Use the matching standalone `opc` CLI (Technology Preview) to query results and
-records:
-
-- **By name**: `opc results result list`, `opc results records list`,
-  `opc results records get`, `opc results logs get`
-- **By CEL query**: `--filter="<cel_query>"` on result and record list commands
-- **By pipeline/task run name** (Technology Preview): `opc results pipelinerun
-  list`, `opc results taskrun list`, `opc results pipelinerun describe`,
-  `opc results taskrun describe`, `opc results pipelinerun logs`,
-  `opc results taskrun logs`
-
-Environment setup requires setting `RESULTS_API` to the Tekton Results API
-route and creating an authentication token via `oc create token`.
-
-## Retention Policy
-
-Fine-grained retention policies are configured via the
-`tekton-results-config-results-retention-policy` ConfigMap in
-`openshift-pipelines`:
-
-- `runAt` — cron schedule for pruning
-- `defaultRetention` — fallback retention period (days or duration string)
-- `maxRetention` — deprecated, use `defaultRetention`
-- `policies` — ordered list of fine-grained rules with `name`, `selector`
-  (`matchNamespaces`, `matchLabels`, `matchAnnotations`, `matchStatuses`), and
-  `retention`
-
-Policies are evaluated in order; first match wins.
-
-## Workflow
-
-1. Confirm the active OpenShift Pipelines baseline in
-   `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - Tekton Results architecture and concepts
-   - LokiStack log forwarding configuration
-   - external database configuration for production
-   - retention policy configuration
-   - observability metrics and ServiceMonitor setup
-   - querying results and records via `opc` CLI
-   - querying by pipeline/task run names (Technology Preview)
-   - fine-grained retention policies
-4. For `TektonConfig` changes, verify the exact `spec.result` fields against
-   the official documentation or active cluster schema.
-5. For `ClusterLogForwarder` configuration, match the OpenShift Logging version
-   (v5 vs v6 API).
-6. Validate the output with `references/source-capture.md`.
-
-## Related Skills
-
-- Use `ocp-pipelines-release-notes` for OpenShift Pipelines 1.24 release notes,
-  version compatibility, and breaking changes.
-- Use `ocp-observability` for OCP platform observability, monitoring stack, and
-  logging architecture.
-- Use `ocp-cicd-builds` for OpenShift build strategies and BuildConfig.
-- Use `ocp-grafana-operator` for Grafana Operator, instances, datasources, and
-  dashboards.
-- Use `ocp-pipelines-install-config` for general OpenShift Pipelines
-  installation and configuration.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[results]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/observability_in_openshift_pipelines/index#using-tekton-results-for-openshift-pipelines-observability
+[concepts]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/observability_in_openshift_pipelines/index#results-concepts_using-tekton-results-for-openshift-pipelines-observability
+[configure]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/observability_in_openshift_pipelines/index#configuring-results_using-tekton-results-for-openshift-pipelines-observability
+[query]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/observability_in_openshift_pipelines/index#querying-using-opc_using-tekton-results-for-openshift-pipelines-observability
+[retention]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/observability_in_openshift_pipelines/index#understanding-the-tekton-results-retention-policy
+[fine]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/observability_in_openshift_pipelines/index#op-fine-grained-retention-policies_understanding-the-tekton-results-retention-policy
+[metrics]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/observability_in_openshift_pipelines/index#op-observability-metrics-reference
+[sm]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/installing_and_configuring/index#op-disabling-the-service-monitor_customizing-configurations-in-the-tektonconfig-cr
