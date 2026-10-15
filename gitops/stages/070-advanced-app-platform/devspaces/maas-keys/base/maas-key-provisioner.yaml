@@ -1,0 +1,290 @@
+# Per-persona MaaS key provisioning: one provisioner ServiceAccount, key Secret and workspace env mount per persona
+# namespace (overlays developer/ and admin/), so MaaS attributes usage to each persona's own key owner
+# (system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner and
+# system:serviceaccount:wksp-ai-admin:devspace-maas-key-provisioner-admin).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: devspace-maas-key-provisioner
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: devspace-maas-key-secret-manager
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - maas-devspace-api-keys
+      - workspace-maas-credentials
+    verbs:
+      - get
+      - patch
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: devspace-maas-key-provisioner-secret-manager
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: devspace-maas-key-secret-manager
+subjects:
+  - kind: ServiceAccount
+    name: devspace-maas-key-provisioner
+    namespace: wksp-ai-developer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: devspace-maas-key-reader
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - maas-devspace-api-keys
+      - workspace-maas-credentials
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    resourceNames:
+      - devspace-ai-tools-init
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: devspace-maas-key-workspace-readers
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: devspace-maas-key-reader
+subjects:
+  - kind: Group
+    name: system:serviceaccounts:wksp-ai-developer
+    apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: provision-devspace-maas-api-keys
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: '18'
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: devspace-maas-key-provisioner
+      containers:
+      - name: provision
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        command:
+        - /bin/bash
+        - -ceu
+        - |
+          SECRET_NAME="maas-devspace-api-keys"
+          # One key owner per persona namespace (per-persona MaaS usage attribution): this Job runs in each.
+          SECRET_NAMESPACE="$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)"
+          # Developer-tier subscription from the migrated MaaS governance (Stage 040).
+          SUBSCRIPTION="devspaces-coding-models"
+          SA_PRINCIPAL="$(oc whoami)"  # system:serviceaccount:<namespace>:<this provisioner>
+          MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
+
+          if [ -z "${MAAS_HOST}" ] || echo "${MAAS_HOST}" | grep -q "placeholder"; then
+            echo "ERROR: MaaS Gateway hostname is not ready"
+            exit 1
+          fi
+
+          MAAS_BASE_URL="https://${MAAS_HOST}"
+          SA_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+          SECRET_FILE="$(mktemp)"
+          trap 'rm -f "${SECRET_FILE}"' EXIT
+          chmod 600 "${SECRET_FILE}"
+
+          secret_value() {
+            local key="$1"
+            oc get secret "${SECRET_NAME}" -n "${SECRET_NAMESPACE}" \
+              -o "jsonpath={.data.${key}}" 2>/dev/null | base64 -d 2>/dev/null || true
+          }
+
+          validate_subscription() {
+            local id="$1" response status
+            [ -n "$id" ] || { echo 'Existing MaaS key has no owner-visible ID; preserve it for review' >&2; return 1; }
+            response=$(mktemp)
+            status=$(curl -fsS --max-time 30 -o "$response" -w '%{http_code}' \
+              -H "Authorization: Bearer ${SA_TOKEN}" \
+              "${MAAS_BASE_URL}/maas-api/v1/api-keys/${id}") || {
+                rm -f "$response"
+                echo 'Owner key lookup failed; no key will be revoked or minted' >&2
+                return 1
+              }
+            python3 - "$response" "$SUBSCRIPTION" "$SA_PRINCIPAL" <<'PYKEY'
+          import json, sys
+          with open(sys.argv[1]) as stream:
+              row = json.load(stream)
+          if row.get('subscription') != sys.argv[2] or row.get('username') != sys.argv[3]:
+              raise SystemExit('MaaS key ownership or subscription binding differs; preserve for review')
+          if row.get('status') not in ('active', 'expired', 'revoked'):
+              raise SystemExit('Unknown MaaS key status; preserve for review')
+          print(sys.argv[2] if row['status'] == 'active' else 'ROTATE')
+          PYKEY
+            status=$?
+            rm -f "$response"
+            return "$status"
+          }
+
+          create_key() {
+            local name="$1"
+            local response key id expires_at
+            response="$(mktemp)"
+            curl -fsS --max-time 30 -X POST \
+              -H "Authorization: Bearer ${SA_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\":\"${name}\",\"subscription\":\"${SUBSCRIPTION}\"}" \
+              "${MAAS_BASE_URL}/maas-api/v1/api-keys" > "${response}"
+
+            key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("key",""))' "${response}" 2>/dev/null || true)"
+            id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "${response}" 2>/dev/null || true)"
+            expires_at="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("expiresAt",""))' "${response}" 2>/dev/null || true)"
+            rm -f "${response}"
+
+            if [ -z "${key}" ] || ! echo "${key}" | grep -q '^sk-oai-'; then
+              echo "ERROR: MaaS API did not return a valid key for ${name}"
+              exit 1
+            fi
+            printf '%s\n%s\n%s\n' "${key}" "${id}" "${expires_at}"
+          }
+
+          write_model_key() {
+            local suffix="$1"
+            local model="$2"
+            local name="${3:-devspace-ai-developer-${model}}"
+            local key id expires_at current_key current_id current_subscription
+
+            current_key="$(secret_value "MAAS_API_KEY_${suffix}")"
+            current_id="$(secret_value "MAAS_API_KEY_${suffix}_ID")"
+            current_subscription=""
+            if [ -n "${current_key}" ]; then
+              current_subscription="$(validate_subscription "${current_id}")"
+            fi
+
+            if [ "${current_subscription}" = "${SUBSCRIPTION}" ]; then
+              key="${current_key}"
+              id="${current_id}"
+              expires_at="$(secret_value "MAAS_API_KEY_${suffix}_EXPIRES_AT")"
+              echo "Keeping existing MaaS API key for ${model}"
+            else
+              mapfile -t created < <(create_key "${name}")
+              key="${created[0]}"
+              id="${created[1]}"
+              expires_at="${created[2]}"
+              echo "Provisioned MaaS API key for ${model}"
+            fi
+
+            # Never revoke a predecessor before the replacement Secret is persisted.
+            # Expired/revoked keys are left to their server-side lifecycle.
+
+            {
+              printf 'MAAS_API_KEY_%s=%s\n' "${suffix}" "${key}"
+              printf 'MAAS_API_KEY_%s_ID=%s\n' "${suffix}" "${id}"
+              printf 'MAAS_API_KEY_%s_EXPIRES_AT=%s\n' "${suffix}" "${expires_at}"
+            } >> "${SECRET_FILE}"
+          }
+
+          {
+            printf 'MAAS_BASE_URL=%s\n' "${MAAS_BASE_URL}"
+            printf 'MAAS_SUBSCRIPTION=%s\n' "${SUBSCRIPTION}"
+          } > "${SECRET_FILE}"
+
+          # MAAS_API_KEY_QWEN27B keeps its historical variable name; it serves
+          # Qwen 3.8. Access comes from the
+          # devspaces-coding-models subscription, not from the key name.
+          write_model_key "QWEN27B" "qwen3-8-27b"
+          write_model_key "DEVSPACE" "qwen3-8-27b" "devspace-ai-developer"
+
+          oc create secret generic "${SECRET_NAME}" \
+            -n "${SECRET_NAMESPACE}" \
+            --from-env-file="${SECRET_FILE}" \
+            --dry-run=client -o json | python3 /secret-writer/secret_writer.py
+          echo "MaaS API key Secret ${SECRET_NAMESPACE}/${SECRET_NAME} is ready"
+
+          # Derived env-mount Secret for Hermes ${env:MAAS_API_*} names.
+          # URL = Secret MAAS_BASE_URL + ConfigMap MAAS_API_PATH.
+          # Typed create/patch avoids a last-applied credential copy and retains
+          # unrelated Secret fields. Do not bounce Running DevWorkspace pods.
+          # workspace-maas-model-endpoint is mounted at /maas-endpoint (the volume follows the overlay's name).
+          MAAS_API_PATH="$(cat /maas-endpoint/MAAS_API_PATH 2>/dev/null || true)"
+          MAAS_API_PATH_QWEN36="$(cat /maas-endpoint/MAAS_API_PATH_QWEN36 2>/dev/null || true)"
+          if [ -z "${MAAS_API_PATH}" ]; then
+            MAAS_API_PATH="/v1"
+          fi
+          if [ -z "${MAAS_API_PATH_QWEN36}" ]; then
+            MAAS_API_PATH_QWEN36="/v1"
+          fi
+          python3 - "${SECRET_FILE}" "${MAAS_BASE_URL}" "${MAAS_API_PATH}" "${MAAS_API_PATH_QWEN36}" "${SECRET_NAMESPACE}" <<'DERIVEEOF' | python3 /secret-writer/secret_writer.py
+          import json
+          import sys
+          path, base, api_path, alt_path, ns = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+          key = ""
+          with open(path, encoding="utf-8") as fh:
+              for line in fh:
+                  if line.startswith("MAAS_API_KEY_QWEN27B="):
+                      key = line.split("=", 1)[1].rstrip("\n")
+                      break
+          if not key:
+              raise SystemExit("ERROR: MAAS_API_KEY_QWEN27B missing; cannot derive workspace-maas-credentials")
+          if not (base or "").strip():
+              raise SystemExit("ERROR: MAAS_BASE_URL missing; cannot derive workspace-maas-credentials")
+          def join_url(suffix):
+              rel = suffix if suffix.startswith("/") else "/" + suffix
+              return base.rstrip("/") + rel
+          json.dump({"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "workspace-maas-credentials", "namespace": ns, "labels": {"controller.devfile.io/mount-to-devworkspace": "true", "controller.devfile.io/watch-secret": "true", "app.kubernetes.io/part-of": "maas", "app.kubernetes.io/name": "workspace-maas-credentials", "app.kubernetes.io/component": "credentials", "demo.rhoai.io/stage": "070"}, "annotations": {"controller.devfile.io/mount-as": "env"}}, "type": "Opaque", "stringData": {"MAAS_API_KEY": key, "MAAS_API_BASE_URL": join_url(api_path), "MAAS_API_BASE_URL_QWEN36": join_url(alt_path), "MAAS_MODEL_NAME": "publishers/internal-models/models/qwen3-8-27b"}}, sys.stdout)
+          DERIVEEOF
+          echo "workspace-maas-credentials derived (MaaS gateway base from MAAS_BASE_URL)"
+        volumeMounts:
+        - name: secret-writer
+          mountPath: /secret-writer
+          readOnly: true
+        - name: maas-endpoint
+          mountPath: /maas-endpoint
+          readOnly: true
+      volumes:
+      - name: secret-writer
+        configMap:
+          name: stage070-secret-writer
+      - name: maas-endpoint
+        configMap:
+          name: workspace-maas-model-endpoint
