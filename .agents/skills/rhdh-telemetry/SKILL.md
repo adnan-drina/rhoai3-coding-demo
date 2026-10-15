@@ -31,17 +31,16 @@ Developer Hub 1.10 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Telemetry is left at the product default (enabled): `analytics-provider-segment` is not listed, so it is neither disabled nor customized | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Telemetry data collection][about] |
+| Telemetry is disabled: `analytics-provider-segment` is listed with `disabled: true` (2026-10-15) | `gitops/stages/070-advanced-app-platform/rhdh/rhdh-instance/dynamic-plugins-configmap.yaml` | [Telemetry data collection][about] |
 | Plugins are configured only through the `dynamic-plugins-rhdh` ConfigMap referenced by the `Backstage` CR (Operator path, not Helm) | `.../rhdh-instance/backstage.yaml` (`dynamicPluginsConfigMapName`) | [Disable with the Operator][off-op] |
 
-The component README's alignment table does not list telemetry yet; record
-a decision there when this changes.
+The component README's alignment table records this decision.
 
 ## Procedure
 
-1. To disable: add `analytics-provider-segment` to the plugin list in
-   `dynamic-plugins-configmap.yaml` with `disabled: true`, as the
-   [Operator procedure][off-op] describes; to change the destination, follow
+1. To re-enable: set `disabled: false` on the `analytics-provider-segment`
+   entry in `dynamic-plugins-configmap.yaml` ([Operator procedure][on-op]);
+   to change the destination, follow
    [Customize the Segment source][seg-op]. Never put a write key in Git; use
    `rhdh-secrets` (written by the configure hook) or a new Secret.
 2. Sync through the stage: `./stages/070-advanced-app-platform/deploy.sh`,
@@ -55,8 +54,8 @@ a decision there when this changes.
 
 ## Pitfalls
 
-- Default-on means "not mentioned in Git" still sends data; review the
-  ConfigMap, not the README, to know the state.
+- The plugin is default-on: removing the entry from Git turns telemetry back
+  on. Review the ConfigMap, not the README, to know the state.
 - Expect a portal rollout after a plugin change; with `maxSurge: 0`
   (`backstage.yaml`) the old pod stops first, so the portal is briefly
   unavailable.

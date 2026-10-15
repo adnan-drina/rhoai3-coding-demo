@@ -84,7 +84,7 @@ OpenShift Pipelines 1.24 sections. Detailed record:
 ## Related skills
 
 `ocp-pipelines-install-config`, `ocp-pipelines-cicd`, `ocp-security-rbac-scc`,
-`ocp-image-registry-and-mirroring`, `rhads-cicd-tekton`.
+`ocp-image-registry-and-mirroring`.
 
 [chains]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#using-tekton-chains-for-openshift-pipelines-supply-chain-security
 [chains-secrets]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index#signing-secrets-in-tekton-chains_using-tekton-chains-for-openshift-pipelines-supply-chain-security

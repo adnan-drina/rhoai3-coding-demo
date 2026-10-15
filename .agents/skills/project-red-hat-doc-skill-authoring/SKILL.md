@@ -7,7 +7,7 @@ metadata:
 description: >
   Create, update, or convert a Red Hat product skill (rhoai-*, ocp-*,
   ocp-devspaces-*, ocp-lightspeed-*, ocp-pipelines-*, odf-*, rhcl-*, rhdh-*,
-  mta-*, rhads-*, tpa-*) under the thin-skill contract: repo decisions with
+  mta-*) under the thin-skill contract: repo decisions with
   manifest paths, repo procedure, pitfalls, and links to versioned official
   sections, with versions and provenance in .agents/references/red-hat-doc-map.yaml.
   Use when adding a product skill, converting a family away from copied
