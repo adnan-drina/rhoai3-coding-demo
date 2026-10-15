@@ -83,6 +83,20 @@ class Wait(unittest.TestCase):
                                     clock=lambda: now[0], sleep=lambda s: now.__setitem__(0, now[0] + s))
 
 
+class StageProblems(unittest.TestCase):
+    def test_script_deployed_components_keep_their_own_revision(self):
+        apps = {a["metadata"]["name"]: a for a in stage_apps.components("010", separate=True)}
+        def live(name):
+            app = application("070-gitlab", revision=("2" * 40 if ORDER_FREE(apps[name]) else SHA), path=apps[name]["spec"]["source"]["path"])
+            app["metadata"]["name"] = name
+            app["spec"]["destination"] = apps[name]["spec"]["destination"]
+            return app
+        ORDER_FREE = lambda a: stage_apps.ORDER not in a["metadata"].get("annotations", {})
+        with patch.object(stage_apps, "get_application", side_effect=live):
+            self.assertEqual(stage_apps.stage_problems("010", SHA, REPO, separate=True), [])
+            self.assertTrue(stage_apps.stage_problems("010", "3" * 40, REPO, separate=True))
+
+
 class SelectRevision(unittest.TestCase):
     def test_refuses_edited_untracked_and_unpublished_stage_source(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -222,9 +222,11 @@ def stage_problems(stage, revision=None, repo_url=None, root=ROOT, separate=Fals
         if not app:
             problems.append(name + ": missing")
             continue
-        revisions.add(app["spec"].get("source", {}).get("targetRevision"))
-        problems += app_problems(app, revision, repo_url, desired["spec"]["source"]["path"], accepted_health(desired),
-                                 desired["spec"]["destination"])
+        # Deploy-order components share the stage's one revision; a script-deployed one has its own.
+        if ORDER in desired["metadata"].get("annotations", {}):
+            revisions.add(app["spec"].get("source", {}).get("targetRevision"))
+        problems += app_problems(app, revision if ORDER in desired["metadata"].get("annotations", {}) else None, repo_url,
+                                 desired["spec"]["source"]["path"], accepted_health(desired), desired["spec"]["destination"])
     if len(revisions) > 1:
         problems.append("components are at different revisions")
     return problems
