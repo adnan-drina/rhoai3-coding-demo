@@ -39,7 +39,7 @@ Queues (`queues/`):
 | ResourceFlavor | `gpu-l40s` | cluster-scoped | `nodeLabels: cluster-api/accelerator=nvidia-gpu` (L40S pool), tolerates `nvidia-gpu-only:NoSchedule` (wave 4) |
 | ResourceFlavor | `gpu-rtxpro6000` | cluster-scoped | `nodeLabels: cluster-api/accelerator=nvidia-rtxpro6000`, tolerates `nvidia-gpu-only:NoSchedule` (wave 4) |
 | ClusterQueue | `cq-cpu-default` | cluster-scoped | 40 CPU, 128Gi on `default-flavor` (wave 4) |
-| ClusterQueue | `cq-gpu-reserved-demo` | cluster-scoped | 12 CPU, 48Gi, 2 `nvidia.com/gpu` on `gpu-l40s` (wave 4) |
+| ClusterQueue | `cq-gpu-reserved-demo` | cluster-scoped | 14 CPU, 112Gi, 2 `nvidia.com/gpu` on `gpu-l40s` (wave 4) |
 | ClusterQueue | `cq-gpu-rtxpro6000` | cluster-scoped | 14 CPU, 112Gi, 2 `nvidia.com/gpu` on `gpu-rtxpro6000` (wave 4) |
 | LocalQueue | `lq-cpu-default` | `demo-sandbox` | Points to `cq-cpu-default` (wave 5) |
 | LocalQueue | `lq-gpu-reserved-demo` | `demo-sandbox` | Points to `cq-gpu-reserved-demo` (wave 5) |
@@ -50,7 +50,7 @@ Hardware profiles (`hardware-profiles/`):
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | HardwareProfile | `cpu-default` | `redhat-ods-applications` | "CPU Default": CPU 1-8 (default 2), memory 2-64Gi (default 8Gi), queue `lq-cpu-default` (wave 5) |
-| HardwareProfile | `gpu-reserved-demo` | `redhat-ods-applications` | "NVIDIA L40S (48 GB) - Demo Team": CPU 1-8, memory 2-64Gi, 1 `nvidia.com/gpu`, queue `lq-gpu-reserved-demo` (wave 5) |
+| HardwareProfile | `gpu-reserved-demo` | `redhat-ods-applications` | "NVIDIA L40S (48 GB) - Demo Team": CPU 1-7, memory 2-56Gi, 1 `nvidia.com/gpu`, queue `lq-gpu-reserved-demo` (wave 5) |
 | HardwareProfile | `gpu-rtxpro6000` | `redhat-ods-applications` | "NVIDIA RTX PRO 6000 Blackwell (96 GB)": CPU 1-7, memory 2-56Gi (default 16Gi), 1 `nvidia.com/gpu`, queue `lq-gpu-rtxpro6000` (wave 5) |
 
 All objects carry `SkipDryRunOnMissingResource=true` because their CRDs come from operators.
@@ -109,7 +109,7 @@ oc get localqueue -A
 | ResourceFlavor | Flavors can match node types by labels, taints and tolerations [3] | `nodeLabels` plus tolerations per GPU type | Aligned |
 | ClusterQueue scope | Empty `namespaceSelector` lets all namespaces use the queue [3] | `{}` on all three | Aligned |
 | API version | `v1beta2` current, `v1beta1` deprecated [3] | `v1beta2` | Aligned |
-| L40S profile limits | Maximum allowed is the largest amount a user can request [2] | `gpu-reserved-demo` allows 8 CPU / 64Gi on an 8 vCPU / 64 GiB instance | Gap (maximum request cannot be scheduled on one L40S worker) |
+| L40S profile limits | Maximum allowed is the largest amount a user can request [2] | `gpu-reserved-demo` allows at most 7 CPU / 56Gi, which fits one 8 vCPU / 64 GiB worker; `cq-gpu-reserved-demo` admits two such workloads (14 CPU / 112Gi) | Aligned |
 
 ## References
 

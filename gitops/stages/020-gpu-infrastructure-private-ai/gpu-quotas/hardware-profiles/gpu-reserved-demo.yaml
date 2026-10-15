@@ -20,13 +20,14 @@ spec:
     resourceType: CPU
     defaultCount: 2
     minCount: 1
-    maxCount: 8
+    # One g6e.2xlarge (8 vCPU / 64 GiB) minus system reservations, as for the RTX profile.
+    maxCount: 7
   - identifier: memory
     displayName: Memory
     resourceType: Memory
     defaultCount: 8Gi
     minCount: 2Gi
-    maxCount: 64Gi
+    maxCount: 56Gi
   - identifier: nvidia.com/gpu
     displayName: NVIDIA GPU
     resourceType: Accelerator
