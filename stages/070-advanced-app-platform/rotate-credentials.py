@@ -242,6 +242,9 @@ class Rotation:
         _, admin = data('sonarqube', 'sonarqube-admin')
         host = 'https://' + oc('get', 'route', 'sonarqube', '-n', 'sonarqube')['spec']['host']
         auth = {'Authorization': 'Basic ' + base64.b64encode(('admin:' + admin['password']).encode()).decode()}
+        # SonarQube mints a project analysis token only for the calling user: authenticate as the provisioner.
+        _, control = data('app-platform-build', 'sonarqube-credentials')
+        provisioner = {'Authorization': 'Basic ' + base64.b64encode((control['token'] + ':').encode()).decode()}
         def tokens(login):
             return {t['name']: t for t in request(host, 'GET', '/api/user_tokens/search?' + urllib.parse.urlencode({'login': login}),
                                                   headers=auth)['userTokens']}
@@ -259,8 +262,8 @@ class Rotation:
             if name not in admin_tokens:
                 checks[meta['namespace'] + '_already_migrated'] = name in tokens(PROVISIONER) and bool(valid(old))
                 continue
-            new = request(host, 'POST', '/api/user_tokens/generate', {'login': PROVISIONER, 'name': name,
-                          'type': 'PROJECT_ANALYSIS_TOKEN', 'projectKey': key}, auth, form=True)
+            new = request(host, 'POST', '/api/user_tokens/generate', {'name': name,
+                          'type': 'PROJECT_ANALYSIS_TOKEN', 'projectKey': key}, provisioner, form=True)
             if new.get('type') != 'PROJECT_ANALYSIS_TOKEN' or not new.get('token'):
                 raise ValueError('SonarQube did not emit a project analysis token')
             update(meta['namespace'], 'sonarqube-credentials', {'token': new['token']})

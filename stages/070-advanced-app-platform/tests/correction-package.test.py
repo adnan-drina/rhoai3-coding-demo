@@ -203,11 +203,13 @@ class RotationSafety(unittest.TestCase):
    if path.startswith('/api/user_tokens/search'):
     login=path.split('login=')[1];return {'userTokens':[{'name':n,'type':'PROJECT_ANALYSIS_TOKEN'} for n in owned[login]]}
    if path=='/api/user_tokens/generate':
-    self.assertEqual((payload['login'],payload['projectKey'],payload['type']),('platform-provisioner','coolstore','PROJECT_ANALYSIS_TOKEN'))
+    self.assertEqual(base64.b64decode(headers['Authorization'].split()[1]).decode(),'control:')  # minted as the provisioner
+    self.assertEqual((payload.get('login'),payload['projectKey'],payload['type']),(None,'coolstore','PROJECT_ANALYSIS_TOKEN'))
     owned['platform-provisioner'].add(payload['name']);live.add('new5');return {'token':'new5','type':'PROJECT_ANALYSIS_TOKEN'}
    if path=='/api/user_tokens/revoke':self.assertEqual(payload['login'],'admin');owned['admin'].discard(payload['name']);live.discard('old5');return
    token=base64.b64decode(headers['Authorization'].split()[1]).decode().split(':')[0];return {'valid':token in live}
-  with patch.object(rotation,'data',return_value=({}, {'password':'admin'})),patch.object(rotation,'oc',side_effect=oc),patch.object(rotation,'request',side_effect=api),patch.object(rotation,'update',side_effect=lambda *a:writes.append(a)):
+  creds=lambda ns,name:({}, {'password':'admin'} if name=='sonarqube-admin' else {'token':'control'})
+  with patch.object(rotation,'data',side_effect=creds),patch.object(rotation,'oc',side_effect=oc),patch.object(rotation,'request',side_effect=api),patch.object(rotation,'update',side_effect=lambda *a:writes.append(a)):
    self.assertTrue(all(r.sonar_projects().values()))
   self.assertEqual(writes,[('coolstore-dev','sonarqube-credentials',{'token':'new5'}),('wksp-ai-developer','coolstore-sonar-credentials',{'SONAR_TOKEN':'new5'})])
  def test_gitlab_renewal_uses_documented_response_and_preserves_authority(self):
