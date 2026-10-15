@@ -22,16 +22,13 @@ def write_secret(document, call=oc):
         raise ValueError('An explicitly named, namespaced Secret is required')
     annotations = meta.setdefault('annotations', {})
     annotations.pop(LAST_APPLIED, None)
+    # Create first and merge-patch only when it exists, so a writer needs create and patch, never get: RBAC cannot
+    # limit create by name, and a get grant would expose every other Secret in the namespace.
     try:
-        call('get', 'secret', meta['name'], '-n', meta['namespace'], '-o', 'json')
+        return call('create', '-f', '-', '-o', 'json', document=doc)
     except subprocess.CalledProcessError as error:
-        if '(NotFound)' not in (error.stderr or ''):
-            raise RuntimeError('Secret lookup refused; payload redacted') from None
-        try:
-            return call('create', '-f', '-', '-o', 'json', document=doc)
-        except subprocess.CalledProcessError as error:
-            if '(AlreadyExists)' not in (error.stderr or ''):
-                raise RuntimeError('Secret creation refused; payload redacted') from None
+        if '(AlreadyExists)' not in (error.stderr or ''):
+            raise RuntimeError('Secret creation refused; payload redacted') from None
     # Merge only the supplied keys, retaining unrelated data and metadata.
     annotations[LAST_APPLIED] = None
     patch = {k: doc[k] for k in ('data', 'stringData', 'type') if k in doc}

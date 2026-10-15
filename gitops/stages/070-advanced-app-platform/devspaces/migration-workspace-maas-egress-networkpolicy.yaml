@@ -1,7 +1,7 @@
 # MaaS egress NetworkPolicy for Dev Spaces workspaces (AD-H / W2).
 #
 # Managed Scope cannot restrict egress. This policy is the platform control:
-# DevWorkspace pods in wksp-ai-developer may reach in-cluster DNS, the API,
+# DevWorkspace pods in both persona namespaces (wksp-ai-developer, wksp-ai-admin) may reach in-cluster DNS, the API,
 # MTA, the MaaS / gateway namespaces, and OpenShift ingress (MaaS routes),
 # plus TCP 80/443 for build/git tooling.
 #
@@ -88,6 +88,71 @@ spec:
     - to:
         - podSelector: {}
     # Build / git / VSIX / kantra download — tighten when egress gateway exists
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+---
+# Same policy for the admin persona's workspaces (identical except the namespace).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: migration-workspace-maas-egress
+  namespace: wksp-ai-admin
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+  labels:
+    app.kubernetes.io/name: migration-workspace-maas-egress
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "070"
+spec:
+  podSelector:
+    matchExpressions:
+      - key: controller.devfile.io/devworkspace_name
+        operator: Exists
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-dns
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-devspaces
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: internal-models
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-ingress
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: redhat-ods-applications
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: redhat-ods-monitoring
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-mta
+    - to:
+        - podSelector: {}
     - ports:
         - protocol: TCP
           port: 443

@@ -14,13 +14,34 @@ rules:
 - apiGroups:
   - ''
   resources:
-  - secrets
   - configmaps
   verbs:
   - get
   - create
   - patch
   - update
+# Secrets: read and merge-patch only the hub's named credentials in the four bound namespaces. create cannot be
+# limited by name; the stage070-integrations-secrets admission policy admits only these names.
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  verbs:
+  - create
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - stage070-scm-provisioner
+  - gitlab-publisher
+  - gitlab-catalog-reader
+  - rhdh-gitlab
+  - gitlab-enroller
+  - gitlab-oauth-config
+  verbs:
+  - get
+  - patch
 - apiGroups:
   - route.openshift.io
   resources:

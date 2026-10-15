@@ -150,6 +150,11 @@ class IntegratedContract(unittest.TestCase):
         self.assertTrue(all(', get,' in r or r.startswith('g, ') for r in reader.RULES))
         self.assertNotIn("'patch'", (BASE / 'gitlab/configure-argocd-reader.py').read_text())
 
+    def test_both_persona_workspace_namespaces_get_the_same_egress_policy(self):
+        docs = [d for d in yaml.safe_load_all((BASE / 'devspaces/migration-workspace-maas-egress-networkpolicy.yaml').read_text()) if d]
+        self.assertEqual(sorted(d['metadata']['namespace'] for d in docs), ['wksp-ai-admin', 'wksp-ai-developer'])
+        self.assertEqual(docs[0]['spec'], docs[1]['spec'])
+
     def test_argo_plugins_follow_110_oci_packaging(self):
         plugins = yaml.safe_load(yaml.safe_load((BASE / 'rhdh/rhdh-instance/dynamic-plugins-configmap.yaml').read_text())['data']['dynamic-plugins.yaml'])['plugins']
         packages = [p['package'] for p in plugins if 'argocd' in p['package'] or 'argo-cd' in p['package']]

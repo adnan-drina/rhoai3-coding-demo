@@ -60,7 +60,7 @@ class SecretLifecycle(unittest.TestCase):
   self.doc={'apiVersion':'v1','kind':'Secret','metadata':{'name':'credential','namespace':'test','labels':{'owned':'yes'}},'stringData':{'token':'synthetic-token'}}
  def test_first_write_does_not_copy_payload(self):
   api=SecretAPI();secret_writer.write_secret(self.doc,api)
-  self.assertEqual([a[0] for a,d in api.calls],['get','create'])
+  self.assertEqual([a[0] for a,d in api.calls],['create'])  # no get: writers need only create and patch
   self.assertNotIn(secret_writer.LAST_APPLIED,api.value['metadata'].get('annotations',{}))
  def test_update_removes_copy_and_preserves_foreign_fields(self):
   old=copy.deepcopy(self.doc);old['metadata']['uid']='retained';old['metadata']['annotations']={secret_writer.LAST_APPLIED:'old-token','foreign':'keep'};old['data']={'other':'dW5yZWxhdGVk'}

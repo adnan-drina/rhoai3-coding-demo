@@ -12,6 +12,7 @@ resources:
   - operatorgroup.yaml
   - subscription.yaml
   - approve-installplan.yaml
+  - maas-key-secret-policy.yaml
   - wait-for-operator-webhook.yaml
   - checluster.yaml
   - repair-devworkspace-sync-options.yaml
