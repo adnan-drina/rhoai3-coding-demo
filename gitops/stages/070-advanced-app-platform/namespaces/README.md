@@ -19,7 +19,7 @@ Sync waves order resources only inside one Application. Several components place
 
 When each component created its own namespace, a fresh install failed at the first component that wrote into a namespace created later. One namespace owner deployed first removes that ordering problem. It also keeps the boundary in one reviewable file.
 
-`Prune=false` on every namespace means removing a namespace from Git never deletes it. GitLab repositories and databases, SonarQube data and developer workspaces live in these namespaces. Deleting a namespace is an explicit operator action ([OPERATIONS: Cleanup Guidance](../../../../docs/OPERATIONS.md#cleanup-guidance)).
+Every namespace carries `Prune=false,Delete=false`: removing it from Git never deletes it (`Prune=false`), and deleting the `070-namespaces` Application, even with cascade, leaves it in place (`Delete=false`) [1]. GitLab repositories and databases, SonarQube data and developer workspaces live in these namespaces. Deleting a namespace is an explicit operator action ([OPERATIONS: Cleanup Guidance](../../../../docs/OPERATIONS.md#cleanup-guidance)).
 
 ## What
 
@@ -67,7 +67,7 @@ oc get namespaces app-platform-build coolstore-dev gitlab-system openshift-devsp
 
 ## References
 
-1. Sync options (`CreateNamespace`, `Prune=false`, `RespectIgnoreDifferences`), Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/
+1. Sync options (`CreateNamespace`, `Prune=false`, `Delete=false`, `RespectIgnoreDifferences`), Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/
 2. Sync phases and waves, Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
 3. Understanding and managing pod security admission, OpenShift Container Platform 4.22. https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/authentication_and_authorization/understanding-and-managing-pod-security-admission
 

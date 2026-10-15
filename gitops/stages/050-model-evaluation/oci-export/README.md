@@ -2,8 +2,8 @@
 
 This Application lets EvalHub jobs in the `evaluated-models` tenant push their result artifacts and evaluation cards as
 immutable OCI artifacts to the cluster's internal image registry (repository `evaluated-models/evaluation-results`). It
-creates a pusher ServiceAccount, exposes the registry's default route, and composes the registry credential Secret that
-jobs reference. `submit-evaluation.sh` adds the export to every job it submits unless `--no-oci-export` is given.
+creates a pusher ServiceAccount and composes the registry credential Secret that jobs reference, using the registry's
+default route that `010-rhoai-platform` enables. `submit-evaluation.sh` adds the export to every job it submits unless `--no-oci-export` is given.
 
 | | |
 |---|---|
@@ -48,9 +48,10 @@ configuration [2].
 
 **Ordering.** RBAC and the token Secret at wave 12, then the hook at wave 13 [3].
 
-**Registry exposure.** The hook patches the cluster image registry configuration rather than declaring it, because that
-object is cluster-wide and not owned by this repository. Turning the route on exposes the internal registry outside the
-cluster for every namespace; access still requires a token with registry rights [2].
+**Registry exposure.** `010-rhoai-platform` declares `spec.defaultRoute: true` on the cluster image registry
+configuration [2]; this component only reads the resulting Route `default-route` (a namespaced `get` on that one Route) to
+learn the host. The route exposes the internal registry outside the cluster for every namespace; access still requires a
+token with registry rights.
 
 **Credentials.** The pusher's long-lived token is the password in the docker config (`evalhub-oci-pusher:<token>`). Rotate
 by deleting `evalhub-oci-pusher-token` and syncing; the hook rewrites `evalhub-oci-registry`. No credential is stored in
@@ -76,10 +77,10 @@ oc get secret evalhub-oci-registry -n evaluated-models -o jsonpath='{.type}{"\n"
 |---|---|---|---|
 | Export mechanism | `exports.oci` with host, repository and a `kubernetes.io/dockerconfigjson` Secret [1] | Secret `evalhub-oci-registry`, repository `evaluated-models/evaluation-results` | Aligned |
 | Registry exposure | `defaultRoute: true` creates `default-route` [2] | Declared in Git by `010-rhoai-platform` | Aligned |
-| Least privilege | Narrow RBAC | Cluster-wide `get` on Routes and `patch` on the registry config for the hook | Gap (see findings) |
+| Least privilege | Narrow RBAC | The hook reads one named Route and writes its own two Secrets | Aligned |
 | Credential lifetime | Short-lived tokens preferred | Long-lived ServiceAccount token Secret | Deviation (justified: the export Secret must stay valid between syncs; rotation documented) |
-| Hook bounds | Bounded Jobs | No `activeDeadlineSeconds` | Gap (see findings) |
-| Labels | Repository rule: `app.kubernetes.io/name` and `component` on every object | Only the kustomization's `part-of`, `managed-by`, stage labels | Gap (see findings) |
+| Hook bounds | Bounded Jobs | `activeDeadlineSeconds: 600`, `backoffLimit: 3` | Aligned |
+| Labels | Repository rule: `app.kubernetes.io/name` and `component` on every object | Set by the kustomization on every object | Aligned |
 | Argo CD | Server-Side Diff by annotation [4] | Annotation present | Aligned |
 
 ## References

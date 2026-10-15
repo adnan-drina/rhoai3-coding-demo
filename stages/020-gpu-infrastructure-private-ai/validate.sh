@@ -59,6 +59,12 @@ for ns,name in [('openshift-nfd','nfd'),('nvidia-gpu-operator','gpu-operator-cer
   return s['spec']['installPlanApproval']=='Automatic' and installed==s['status'].get('currentCSV') and c['status']['phase']=='Succeeded'
  check(name+' current CSV Succeeded',operator)
 nfd=get('nodefeaturediscovery','nfd-instance','openshift-nfd')
+def nfd_operand_matches_operator():
+ # The operand image is pinned in Git (the NFD CLI guide sets operand.image); it must be the installed operator's own.
+ s=get('subscription','nfd','openshift-nfd');c=get('csv',s['status']['installedCSV'],'openshift-nfd')
+ want=[e.get('value') for d in c['spec']['install']['spec']['deployments'] for ct in d['spec']['template']['spec']['containers'] for e in ct.get('env',[]) if e['name']=='NODE_FEATURE_DISCOVERY_IMAGE']
+ return want and nfd['spec']['operand']['image']==want[0]
+check('NFD operand image is the installed operator\'s own (update the Git pin after an operator update)',nfd_operand_matches_operator)
 def native_workload(kind,name,ns,owner):
  x=get(kind,name,ns);assert any(o.get('uid')==owner for o in x['metadata'].get('ownerReferences',[]));assert current(x)
  if kind=='daemonset':assert x['status'].get('desiredNumberScheduled',0)>0 and x['status'].get('numberReady')==x['status']['desiredNumberScheduled'] and x['status'].get('updatedNumberScheduled')==x['status']['desiredNumberScheduled']

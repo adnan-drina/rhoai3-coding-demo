@@ -83,8 +83,8 @@ oc get nodes -L feature.node.kubernetes.io/pci-10de.present
 | Namespace and OperatorGroup | `openshift-nfd`, OperatorGroup targeting `openshift-nfd` [2] | Same | Aligned |
 | Subscription | `nfd`, channel `stable`, `redhat-operators` [2] | Same, Automatic approval | Aligned |
 | Namespace monitoring label | Example Namespace sets `openshift.io/cluster-monitoring: "true"` [2] | Label not set | Gap (NFD metrics are not scraped by platform monitoring) |
-| Operand image | Mandatory; OLM sets it automatically [2] | Pinned digest in Git; differs from the image in the installed CSV | Deviation (not justified: Automatic updates no longer reach the operand) |
-| PCI whitelist | Default `["03", "0b40", "12"]` [2] | `["0200", "03", "12"]` | Deviation (reason not recorded in the repository; GPU class `03` is kept, so GPU detection is unaffected) |
+| Operand image | The CLI install example sets `operand.image` [2] | Pinned digest in Git, equal to the installed CSV's operand image; Stage 020 validate fails when they differ, so an Automatic operator update means updating the pin | Aligned |
+| PCI whitelist | The CLI install example uses `["0200", "03", "12"]` [2] | Same | Aligned |
 | Re-detection interval | Default `60s` [2] | `60s` | Aligned |
 
 ## References

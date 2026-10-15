@@ -10,6 +10,12 @@ metadata:
     argocd.argoproj.io/sync-wave: "18"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
+  # No LLM provider is configured for Developer Lightspeed: disable its flavour, which removes the chat UI and stops
+  # the Operator from injecting the unconfigured lightspeed-core sidecar (RHDH 1.10, "Disable Developer Lightspeed for
+  # RHDH by using the Operator").
+  flavours:
+    - name: lightspeed
+      enabled: false
   # Prevent the RHDH first-boot migration surge-race. The operator's default
   # Deployment uses RollingUpdate with maxSurge 25% — which rounds UP to 1 extra
   # pod for this single replica. On a fresh/empty database that surge brings up

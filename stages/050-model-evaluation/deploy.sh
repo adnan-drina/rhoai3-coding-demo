@@ -34,6 +34,12 @@ until "$SCRIPT_DIR/validate-ai-services.sh"; do
   sleep 10
 done
 
+# Stage 040's Studio hook registers the Ops Assistant prompt in MLflow, which this stage installs; on a fresh install
+# that hook deferred. Re-run 040-genai-studio's hooks at Stage 040's deployed revision now that MLflow is ready.
+studio_revision=$(oc --request-timeout=10s get applications.argoproj.io 040-genai-studio -n openshift-gitops -o jsonpath='{.spec.source.targetRevision}')
+python3 "$STAGE_APPS" sync 040 --app 040-genai-studio --resync
+python3 "$STAGE_APPS" wait 040 --app 040-genai-studio --revision "$studio_revision" --repo-url "$GIT_REPO_URL" --timeout 600
+
 # Service foundation is complete; running an evaluation is a separate, authorized step.
 export RHOAI_STAGE050_EXPECTED_REVISION="$revision"
 set +e

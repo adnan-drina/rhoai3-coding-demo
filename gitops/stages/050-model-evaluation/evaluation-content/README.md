@@ -1,6 +1,6 @@
 # Evaluation content (`050-evaluation-content`)
 
-This Application holds the evaluation definitions EvalHub serves: eleven versioned `agentic-coding-*` collections (the
+This Application holds the evaluation definitions EvalHub serves: nine versioned `agentic-coding-*` collections (the
 evaluation-driven development criteria for coding models), two bounded custom providers (`inspect-coding`,
 `garak-coding`), and the staged SWE-bench provider with the RBAC, agent configuration and S3 test-data Secret its runs
 need. The qualification pipeline (`050-model-qualification`), `submit-evaluation.sh` and `swebench-run.sh` consume it
@@ -117,7 +117,7 @@ oc get configmap -n redhat-ods-applications -l trustyai.opendatahub.io/evalhub-p
 | Topic | Official guidance (link) | This repository | Status |
 |---|---|---|---|
 | Custom providers | ConfigMap with type/name labels, discovered by the operator, id in `spec.providers` [1] | Three providers, ids listed in `050-evalhub` | Aligned |
-| Custom collections | ConfigMap with type/name labels, id in `spec.collections`; pass criteria and weights [1] | Eleven collections | Aligned |
+| Custom collections | ConfigMap with type/name labels, id in `spec.collections`; pass criteria and weights [1] | Nine collections | Aligned |
 | ConfigMap namespace | Guide says "Operator namespace" in the introduction and "EvalHub custom resource namespace" in the procedure [1] | Operator namespace `redhat-ods-applications`, where the built-in provider ConfigMaps live | Aligned (doc is inconsistent; behaviour verified on the cluster) |
 | Image provenance | Red Hat registry images or a documented exception | `garak-coding` uses a Red Hat image; `inspect-coding` and `swebench` use `quay.io/evalhub` community images pinned by digest | Deviation (justified: the operator's own built-in `inspect` provider uses `quay.io/evalhub/community-inspect:v0.5.0`; SWE-bench has no built-in) |
 | S3 test data | Documented credential Secret for custom S3 data [1] | Composed by a hook | Aligned |

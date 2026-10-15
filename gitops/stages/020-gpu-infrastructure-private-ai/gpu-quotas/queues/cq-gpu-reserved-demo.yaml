@@ -19,10 +19,11 @@ spec:
     flavors:
     - name: default-flavor
       resources:
+      # Two L40S workers at the profile maximum (7 CPU / 56Gi each), as for cq-gpu-rtxpro6000.
       - name: cpu
-        nominalQuota: '12'
+        nominalQuota: '14'
       - name: memory
-        nominalQuota: 48Gi
+        nominalQuota: 112Gi
   - coveredResources:
     - nvidia.com/gpu
     flavors:
