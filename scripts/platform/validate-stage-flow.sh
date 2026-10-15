@@ -132,9 +132,8 @@ def check_stage_app(stage_id, name, app_path, component):
     source = spec.get("source") or {}
     labels = metadata.get("labels") or {}
     annotations = metadata.get("annotations") or {}
-    expected_path = f"gitops/stages/{name}/" + ("overlays/environment" if stage_id == "020" else "base")
+    expected_path = f"gitops/stages/{name}/{app_path.stem}"
     if component:
-        expected_path = f"gitops/stages/{name}/{app_path.stem}"
         if metadata.get("name") != f"{stage_id}-{app_path.stem}":
             fail(f"{app_path.relative_to(repo)} must be named {stage_id}-{app_path.stem}")
         # Each component documents why/what/how and its alignment with official docs (.agents/rules/gitops.md).
@@ -188,7 +187,6 @@ for stage_dir in stage_dirs:
         fail(f"stage {stage_id} validate.sh is not executable: {validate_path.relative_to(repo)}")
 
     app_path = app_root / f"{name}.yaml"
-    gitops_path = gitops_stages_root / name / ("overlays/environment" if stage_id == "020" else "base")
 
     if not deploy_path.exists():
         continue
@@ -198,21 +196,16 @@ for stage_dir in stage_dirs:
     if not deploy_path.stat().st_mode & 0o111:
         fail(f"stage {stage_id} deploy.sh is not executable: {deploy_path.relative_to(repo)}")
 
+    # One Application per component, each rendering gitops/stages/<stage>/<component>; the stage directory's
+    # kustomization is their union (scripts/shared/stage_apps.py check-static below).
     component_dir = app_root / name
-    if component_dir.is_dir():
-        # Regrouped stage: one Application per component, each rendering gitops/stages/<stage>/<component>;
-        # the stage directory's kustomization is their union (scripts/shared/stage_apps.py check-static below).
-        regrouped_stages.append(stage_id)
-        gitops_path = gitops_stages_root / name
-        app_paths = sorted(component_dir.glob("*.yaml"))
-        if not app_paths:
-            fail(f"stage {stage_id} component directory has no Applications: {component_dir.relative_to(repo)}")
-        if app_path.exists():
-            fail(f"stage {stage_id} has both {app_path.relative_to(repo)} and component Applications")
-    else:
-        app_paths = [app_path]
-    if not component_dir.is_dir() and not app_path.exists():
-        fail(f"stage {stage_id} Argo CD app does not exist: {app_path.relative_to(repo)}")
+    gitops_path = gitops_stages_root / name
+    regrouped_stages.append(stage_id)
+    app_paths = sorted(component_dir.glob("*.yaml")) if component_dir.is_dir() else []
+    if not app_paths:
+        fail(f"stage {stage_id} has no component Applications in {component_dir.relative_to(repo)}/")
+    if app_path.exists():
+        fail(f"stage {stage_id} has a single-Application file {app_path.relative_to(repo)}; use component Applications")
     if not (gitops_path / "kustomization.yaml").exists():
         fail(
             f"stage {stage_id} gitops path has no kustomization.yaml: "
@@ -223,7 +216,7 @@ for stage_dir in stage_dirs:
 
     for app_path in app_paths:
         if app_path.exists():
-            check_stage_app(stage_id, name, app_path, component_dir.is_dir())
+            check_stage_app(stage_id, name, app_path, True)
 
 
 if seen_ids != sorted(seen_ids):

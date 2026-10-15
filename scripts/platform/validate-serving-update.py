@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
 import stage_apps  # noqa: E402
 
-STAGES = {"030": "030-private-model-serving", "040": None}  # 040 is checked through its component Applications
+STAGES = ("030", "040")  # checked through their component Applications
 ENV = dict(os.environ)
 
 
@@ -29,19 +29,8 @@ def get(kind, name, namespace=None):
 
 
 def validate(stage):
-    if stage_apps.is_regrouped(stage):
-        problems = stage_apps.stage_problems(stage, repo_url=ENV["GIT_REPO_URL"])
-        assert not problems, "Existing serving source must be reconciled before update: " + "; ".join(problems)
-        return validate_platform()
-    name = STAGES[stage]
-    app = get("application", name, "openshift-gitops")
-    spec, status, metadata = app["spec"], app["status"], app["metadata"]
-    source = spec["source"]
-    operation = status.get("operationState", {})
-    result = operation.get("syncResult", {})
-    assert not metadata.get("ownerReferences") and not metadata.get("deletionTimestamp"), "Foreign/terminating Application"
-    assert not spec.get("sources") and spec["project"] == "rhoai-demo" and spec["destination"] == {"server": "https://kubernetes.default.svc", "namespace": "openshift-gitops"} and source.get("repoURL") == ENV["GIT_REPO_URL"] and source.get("path") == "gitops/stages/" + name + "/base", "Existing serving Application identity differs"
-    assert status["sync"]["status"] == "Synced" and status["sync"]["revision"] == source["targetRevision"] and status["health"]["status"] == "Healthy" and operation.get("phase") == "Succeeded" and result.get("revision") == source["targetRevision"] and result.get("source", {}).get("path") == source["path"], "Existing serving source must be reconciled before update"
+    problems = stage_apps.stage_problems(stage, repo_url=ENV["GIT_REPO_URL"], separate=True)
+    assert not problems, "Existing serving source must be reconciled before update: " + "; ".join(problems)
     validate_platform()
 
 
