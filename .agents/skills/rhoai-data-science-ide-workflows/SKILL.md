@@ -1,122 +1,103 @@
 ---
 name: rhoai-data-science-ide-workflows
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use when documenting, reviewing, or operating Red Hat OpenShift AI data
-  science IDE workflows from the Working in your data science IDE guide:
-  accessing a workbench IDE; using JupyterLab to create, upload, clone, pull,
-  push, and package notebooks; using code-server to work with notebooks, Git,
-  Python packages, and extensions; handling user-facing Jupyter/workbench
-  errors such as 403, startup failures, and no-space errors; and deciding when
-  code-server is inappropriate for Elyra-based pipelines. Do NOT use for
-  project/workbench lifecycle provisioning (use rhoai-project-workflows),
-  custom workbench image authoring (use rhoai-workbenches-custom-images),
-  dashboard import of workbench images (use rhoai-workbench-image-import),
-  S3-compatible object operations from notebooks (use
-  rhoai-s3-object-storage-data), AI Pipelines authoring (use
-  rhoai-kfp-pipeline-authoring), or live cluster changes without the OpenShift
-  safety guard.
+  Use when a user works inside an OpenShift AI workbench IDE (JupyterLab or
+  code-server) in demo-sandbox or evaluated-models: opening the IDE, Git
+  clone/pull/push, installing Python packages, using the Workbench S3
+  connection, calling a MaaS model from a notebook, or a user-side 403, start
+  failure or no-space error; also R workflows after the 3.5 RStudio removal.
+  Do NOT use for developer coding workspaces (use manage-devspaces), workbench
+  creation and storage (use rhoai-project-workflows), custom images (use
+  rhoai-workbenches-custom-images), or pipelines (use rhoai-ai-pipelines).
 ---
 
 # RHOAI Data Science IDE Workflows
 
-Use this skill for user-facing OpenShift AI IDE workflows inside running
-workbenches on the active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/README.md`
+(Workbenches component) and
+`gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Working in your data science IDE guide to this repo's demo workflow
-and documentation model.
+- A workbench user in a demo project needs Git, packages, data or a model
+  endpoint from JupyterLab or code-server.
+- A user reports a workbench IDE error and an administrator needs the handoff.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Workbenches component Managed with `workbenchNamespace: rhods-notebooks`; no workbench objects in Git (users create them) | `gitops/stages/010-openshift-ai-platform-foundation/rhoai-platform/datasciencecluster.yaml` | [Access your workbench IDE][access] |
+| Developer coding happens in Dev Spaces (Stage 070), not in workbenches; workbenches serve notebook and data work | `stages/070-advanced-app-platform/README.md` | [Working in code-server][codeserver] |
+| `demo-sandbox` gets S3 connections "Models" and "Workbench" with credentials written at runtime | `gitops/stages/010-openshift-ai-platform-foundation/sandbox-storage/` | [Access your workbench IDE][access] |
+| `evaluated-models` has its own Models, Workbench and Pipelines connections | `gitops/stages/050-model-evaluation/model-qualification/storage/` | see `rhoai-ai-pipelines` |
+| Developers are project Contributors (`edit`), administrators project Admins | `gitops/stages/010-openshift-ai-platform-foundation/access/` | [Troubleshooting for users][ts] |
+| CPU workbenches use hardware profile `cpu-default` on non-preemptive `cq-cpu-default` (workbenches cannot be suspended) | `gitops/stages/020-gpu-infrastructure-private-ai/gpu-quotas/hardware-profiles/cpu-default.yaml` | see `rhoai-hardware-profiles` |
+| Notebooks call governed models through MaaS with a personal API key, never a pod URL | `gitops/stages/040-governed-models-as-a-service/model-access/README.md` | see `rhoai-maas-governance` |
 
-- accessing a running workbench IDE from the OpenShift AI dashboard
-- JupyterLab notebook creation and local notebook upload
-- JupyterLab Git workflows: clone, pull, commit, and push
-- JupyterLab Python package inspection and `requirements.txt` installation
-- user-facing JupyterLab and workbench troubleshooting signals
-- code-server notebook upload and Git workflows
-- code-server Python package inspection and `requirements.txt` installation
-- code-server extension installation
-- IDE support boundaries, including RStudio Server Technology Preview and
-  code-server lack of Elyra-based pipeline support
+## Procedure
 
-Use other skills for adjacent work:
+1. Open the IDE from the project in the dashboard (AI Coding Sandbox =
+   `demo-sandbox`); attach the Workbench connection at creation so the S3
+   variables are present.
+2. Keep notebooks and `requirements.txt` in Git; pin versions. Packages
+   needed by many workbenches belong in a custom image
+   (`rhoai-workbenches-custom-images`).
+3. For a MaaS model, create a personal key in the dashboard and use the
+   OpenAI-compatible base `https://maas.<cluster-domain>/v1`; keep the key out
+   of notebooks committed to Git.
+4. Administrator checks after the OpenShift safety guard in `AGENTS.md`:
 
-- `rhoai-project-workflows` for project and workbench creation, update,
-  deletion, connections, and cluster storage
-- `rhoai-connected-applications` for Start basic workbench access from
-  Applications -> Enabled and connected application endpoint handling
-- `rhoai-workbenches-custom-images` for custom workbench image design and
-  image-stream-backed workbench manifests
-- `rhoai-workbench-image-import` for dashboard import of existing custom images
-- `rhoai-s3-object-storage-data` for notebook access to S3-compatible object
-  storage
-- `rhoai-ai-pipelines` for AI Pipelines product workflows, Elyra runtime
-  configuration, pipeline runs, exports, and logs
-- `rhoai-automl` for saved AutoML prediction notebooks and AutoML-specific
-  workbench handoff
-- `rhoai-autorag` for generated AutoRAG indexing and inference notebooks in a
-  workbench
-- `rhoai-mlflow` for MLflow SDK installation, authentication, and experiment
-  tracking from notebooks or pods
-- `rhoai-model-customization-training` for model customization workbench setup,
-  Red Hat Python index package use, Docling, SDG Hub, Training Hub, and ITS
-  notebooks
-- `rhoai-kfp-pipeline-authoring` for repo-specific KFP Python and runner code
-- `rhoai-users-groups-access` for OpenShift AI user group membership issues
-- `rhoai-basic-workbenches` and `env-troubleshoot` for administrator-side
-  workbench and cluster troubleshooting
+   ```bash
+   ./stages/010-openshift-ai-platform-foundation/validate.sh
+   oc get notebooks.kubeflow.org -n demo-sandbox
+   oc get events -n demo-sandbox --sort-by=.lastTimestamp | tail -20
+   ```
 
-## Demo Policy
+## Pitfalls
 
-For this repo:
+- RStudio Server images are removed in 3.5; existing RStudio workbenches need
+  the R alternatives ([R after RStudio removal][rstudio]).
+- Elyra pipelines are not available in code-server; use JupyterLab
+  ([Working in code-server][codeserver]).
+- 403 on login, workbench not starting, no space left: the user-side list is
+  [Troubleshooting for users][ts]; group membership comes from
+  `stages/010-openshift-ai-platform-foundation/setup-access.sh`.
+- Never commit Git tokens, S3 credentials or MaaS keys from notebook output.
 
-- Use Git as the durable collaboration path for notebooks, prompts, scripts,
-  requirements, and examples. Treat local upload as a demo convenience, not a
-  source-of-truth workflow.
-- Prefer `requirements.txt` with exact package versions for reproducible IDE
-  demos. If packages are required across many workbenches, move the dependency
-  into a custom workbench image workflow.
-- Do not commit Git credentials, tokens, storage credentials, or generated
-  notebook outputs that expose secrets.
-- Use JupyterLab when the demo depends on notebook-native or Elyra-based
-  pipeline workflows.
-- Use code-server when the demo benefits from a VS Code-like editor,
-  extensions, terminal-centric work, or multi-file application development.
-- Label RStudio Server as Technology Preview and do not rely on it for
-  disconnected environment demos.
-- User-facing troubleshooting should capture the visible symptom, then hand
-  off admin-side checks to `rhoai-basic-workbenches`, `env-troubleshoot`, or
-  `rhoai-users-groups-access` as appropriate.
+## Official documentation (OpenShift AI 3.5)
 
-## Workflow
+| Topic | Section |
+|---|---|
+| Access the IDE | [Access your workbench IDE][access] |
+| JupyterLab notebooks, Git, packages | [JupyterLab][jupyter], [Git][jgit], [Python packages][jpkg] |
+| code-server Git, packages, extensions | [Working in code-server][codeserver], [Git][cgit], [Packages][cpkg], [Extensions][ext] |
+| User troubleshooting | [Troubleshooting for users][ts] |
+| R workflows | [R after RStudio removal][rstudio] |
+| MaaS from a notebook | [Test MaaS models in a notebook][maasnb] |
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - accessing a workbench IDE
-   - JupyterLab notebook, Git, package, or troubleshooting workflow
-   - code-server notebook, Git, package, extension, or troubleshooting workflow
-   - IDE support-boundary review
-4. Use `examples/ide-workflow-patterns.md` for focused review patterns.
-5. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-6. Validate with `references/validation-checklist.md`.
+## Related skills
 
-## References
+`manage-devspaces`, `rhoai-project-workflows`, `rhoai-basic-workbenches`,
+`rhoai-workbenches-custom-images`, `rhoai-s3-object-storage-data`,
+`rhoai-ai-pipelines`, `rhoai-maas-governance`, `rhoai-users-groups-access`.
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/ide-workflow-patterns.md`
+[access]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index#accessing-your-workbench-ide_ide
+[jupyter]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index#working_in_jupyterlab
+[jgit]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index#collaborating-on-jupyter-notebooks-by-using-git_ide
+[jpkg]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index#managing-python-packages_ide
+[ts]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index#troubleshooting-common-problems-in-workbenches-for-users_ide
+[codeserver]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index#working_in_code_server
+[cgit]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index#collaborating-on-workbenches-in-code-server-by-using-git_ide
+[cpkg]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index#managing-python-packages-in-code-server_ide
+[ext]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index#installing-extensions-with-code-server_ide
+[rstudio]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_in_your_data_science_ide/index#r_language_workflows_after_rstudio_removal
+[maasnb]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#test-maas-models-in-notebook_maas-user

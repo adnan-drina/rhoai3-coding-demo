@@ -34,11 +34,15 @@ converted_families:
 # the family to converted_families and drop its entries here once every skill
 # of the family is converted.
 converted_skills:
+  - rhoai-data-science-ide-workflows
   - rhoai-distributed-inference-llmd
   - rhoai-distributed-workloads
   - rhoai-dsci-dsc-configuration
+  - rhoai-gen-ai-playground
   - rhoai-hardware-profiles
   - rhoai-kueue-workload-management
+  - rhoai-maas-governance
+  - rhoai-model-catalog-sources
   - rhoai-model-deployment
   - rhoai-model-serving-platform
   - rhoai-nvidia-gpu-accelerators
@@ -415,6 +419,27 @@ products:
           - book: experimenting_with_models_in_the_gen_ai_playground
             status: active
             skill: rhoai-gen-ai-playground
+            sections:
+              - playground-overview_rhoai-user
+              - playground-prerequisites_rhoai-user
+              - configuring-model-context-protocol-servers_rhoai-user
+              - model-and-runtime-requirements-for-the-playground_rhoai-user
+              - About-the-ai-assets-endpoints-page_rhoai-user
+              - configuring-a-playground-for-your-project_rhoai-user
+              - enable-custom-endpoints-for-the-playground_rhoai-user
+              - create-and-use-custom-endpoints-in-the-playground_rhoai-user
+              - testing-your-model-with-rag_rhoai-user
+              - resources-created-when-you-create-a-playground_rhoai-user
+              - configure-guardrails-in-the-playground_rhoai-user
+              - how-tracing-works-in-the-playground_rhoai-user
+              - reusable-system-instructions_rhoai-user
+              - testing-with-model-context-protocol-servers_rhoai-user
+              - saved-agents-in-the-gen-ai-playground_rhoai-user
+              - exporting-your-playground-configuration_rhoai-user
+              - updating-your-playground-configuration_rhoai-user
+              - Deleting-a-playground-from-your-project_rhoai-user
+              - troubleshooting-playground-issues_rhoai-user
+            reviewed: { version: "3.5", date: 2026-10-15, note: "the gen-ai-aa-custom-model-endpoints ConfigMap format is not documented (dashboard backend internal)" }
           - book: working_with_distributed_workloads
             status: active
             skill: rhoai-distributed-workload-workflows
@@ -427,6 +452,18 @@ products:
           - book: working_in_your_data_science_ide
             status: active
             skill: rhoai-data-science-ide-workflows
+            sections:
+              - accessing-your-workbench-ide_ide
+              - working_in_jupyterlab
+              - collaborating-on-jupyter-notebooks-by-using-git_ide
+              - managing-python-packages_ide
+              - troubleshooting-common-problems-in-workbenches-for-users_ide
+              - working_in_code_server
+              - collaborating-on-workbenches-in-code-server-by-using-git_ide
+              - managing-python-packages-in-code-server_ide
+              - installing-extensions-with-code-server_ide
+              - r_language_workflows_after_rstudio_removal
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: working_with_ai_pipelines
             status: active
             skill: rhoai-ai-pipelines
@@ -448,6 +485,12 @@ products:
       deploy_and_operate_ai:
         description: Model serving, registries, catalog governance, MaaS, Llama Stack, llm-d, monitoring, safety, and evaluation.
         routes:
+          - book: govern_llm_access_with_models-as-a-service
+            status: active
+            skill: rhoai-data-science-ide-workflows
+            sections:
+              - test-maas-models-in-notebook_maas-user
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: configuring_your_model-serving_platform
             status: active
             skill: rhoai-model-serving-platform
@@ -479,6 +522,17 @@ products:
           - book: manage_and_govern_model_catalog_sources
             status: active
             skill: rhoai-model-catalog-sources
+            sections:
+              - manage-model-catalog-sources-in-dashboard_manage-govern-model-catalog-sources
+              - view_model_catalog_sources
+              - enable_or_disable_catalog_sources
+              - configure_model_visibility_settings_to_allow_and_disallow_models
+              - limitations_for_hugging_face_model_sources
+              - add-model-catalog-source_manage-govern-model-catalog-sources
+              - manage-model-catalog-source_manage-govern-model-catalog-sources
+              - delete-model-catalog-source_manage-govern-model-catalog-sources
+              - configuring-model-catalog-sources-in-openshift_manage-govern-model-catalog-sources
+            reviewed: { version: "3.5", date: 2026-10-15, note: "agent catalog sources are not documented at 3.5; the s390x limitation section was not pinned to an anchor" }
           - book: managing_model_registries
             status: active
             skill: rhoai-model-registry
@@ -522,6 +576,29 @@ products:
           - book: govern_llm_access_with_models-as-a-service
             status: active
             skill: rhoai-maas-governance
+            sections:
+              - maas-prerequisites_maas-deploy
+              - maas-gateway-requirements_maas-deploy
+              - configure-tls-for-maas_maas-deploy
+              - configure-postgresql-secret-for-maas_maas-deploy
+              - maas-configuration_maas-deploy
+              - maas-dashboard-configuration_maas-deploy
+              - deploy-models-using-dashboard-wizard_maas-deploy
+              - maas-subscriptions_maas-deploy
+              - priority_levels
+              - maas-authorization-policies_maas-deploy
+              - managing-admin-api-keys_maas-deploy
+              - configure-api-key-expiration-limit_maas-deploy
+              - access-maas-api_maas-deploy
+              - enable-kuadrant-observability-maas_maas-deploy
+              - enable-maas-telemetry_maas-deploy
+              - export-maas-usage-data_maas-deploy
+              - managing-maas-multi-tenancy
+              - configuring-maas-external-models_maas-deploy
+              - apiformat_field_values
+              - maas-administration-troubleshooting_maas-deploy
+              - maas-user-access-troubleshooting_maas-user
+            reviewed: { version: "3.5", date: 2026-10-15, note: "highest-priority-wins on a multi-match not confirmed by the fetch; the personal-subscription priority decision relies on the model-access README" }
           - book: govern_llm_access_with_models-as-a-service
             topics:
               - maas_telemetry
