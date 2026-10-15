@@ -11,9 +11,11 @@
   "sandboxControllerStartingCSV": "agent-sandbox-operator.v0.9.0",
   "controllerQualification": "native 0.9.0 bundle reviewed and installed; exact current CSV/controller gate remains required",
   "releaseStatus": "pinned development build, not a tagged or supported release; isolated existing-cluster qualification passed",
-  "cliArtifactId": 11390640802,
-  "cliArtifactZipSha256": "8ba077cd95dd708a3e45a2049460c812ded4c72ff29dea0ddc4a0db18a94b154",
-  "cliBinarySha256": "6323f7749fd6291bb3c96d13a54274c01a84f3f9f509dba5800fa5d2e1424c42",
+  "cliRelease": "v0.1.3",
+  "cliReleaseNote": "Tagged OpenShell release, 37 commits after sourceCommit (the dev-build CLI artifact 11390640802 was deleted upstream); operator workstation macOS arm64 build",
+  "cliArchive": "openshell-aarch64-apple-darwin.tar.gz",
+  "cliArchiveSha256": "2eda3676aa85ff60551b403847090942e119c89f37c84d1635ac166c6b879826",
+  "cliBinarySha256": "18263d5083bfcac277d79074984b0a3218ba05f3d96d58acfdf2311edd7f9fcb",
   "images": {
     "gateway": {
       "repository": "ghcr.io/nvidia/openshell/gateway",
