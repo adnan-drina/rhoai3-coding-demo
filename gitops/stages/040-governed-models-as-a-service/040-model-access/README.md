@@ -9,7 +9,7 @@ subscription inherit its models and limits.
 |---|---|
 | Argo CD Application | `040-model-access` ([manifest](../../../applications/040-model-access.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 6) |
-| Validated by | `scripts/shared/stage_apps.py status` through `validate.sh --readiness` (Synced and Healthy at the deployed revision); `validate-functional.py` (persona discovers its `personal-<user>` subscription, mints and revokes a temporary key, bounded requests) |
+| Validated by | `scripts/shared/stage_apps.py status` through `validate.sh --readiness` (Synced and Healthy at the deployed revision); `validate-functional.sh` (persona discovers its `personal-<user>` subscription, mints and revokes a temporary key, bounded requests) |
 | Sync | Automated, `prune` and `selfHeal`. Sync options `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences` (and a `ServerSideDiff=true` sync option that has no effect). Compare option `ServerSideDiff=true` (annotation). No `ignoreDifferences` |
 | Depends on | `040-maas-database` (namespace `models-as-a-service`), `040-maas-platform` (MaaS controllers and CRDs), `040-local-models` and `040-external-models` (the referenced `MaaSModelRef`s); the owner ServiceAccounts: `wksp-ai-developer/devspace-maas-key-provisioner` (Stage 070), `demo-sandbox/playground-maas-key-provisioner` (`040-genai-studio`), `evaluated-models/evalhub-maas-key-provisioner` (Stage 050) |
 | Used by | Personal API keys (dashboard and Gen AI playground), Stage 070 Dev Spaces key provisioning, `040-genai-studio` endpoint Job, Stage 050 EvalHub jobs |
@@ -44,7 +44,7 @@ Every subscription sets `tokenMetadata` (`organizationId: rhoai3-coding-demo`, `
 
 | Object | Owner |
 |---|---|
-| API keys (stored in the MaaS PostgreSQL database) | Users (dashboard), Stage 070 Dev Spaces provisioner, `040-genai-studio` Job `provision-playground-endpoint`, Stage 050 provisioner, `validate-functional.py` (temporary) |
+| API keys (stored in the MaaS PostgreSQL database) | Users (dashboard), Stage 070 Dev Spaces provisioner, `040-genai-studio` Job `provision-playground-endpoint`, Stage 050 provisioner, `validate-functional.sh` (temporary) |
 | Generated Kuadrant `AuthPolicy` and `TokenRateLimitPolicy` objects | MaaS controller |
 | Other subscriptions in the same namespace: `hermes-private-qwen38`, `opencode-private-qwen38` | `060-openshell-runtime` |
 | Subscription and auth policy `mta-migration-ai` | `070-mta` |
@@ -81,7 +81,7 @@ users.
 
 ## Validation
 
-`validate.sh --readiness` requires this Application to be Synced and Healthy at the deployed revision; `validate-native.py`
+`validate.sh --readiness` requires this Application to be Synced and Healthy at the deployed revision; `validate-native.sh`
 does not read the subscriptions or auth policies individually. `validate.sh --functional` (with
 `RHOAI_STAGE040_PERSONA_KUBECONFIG`) checks that the persona can discover `personal-<user>`, mints a temporary key for
 it, sends bounded requests and revokes the key.
@@ -104,7 +104,7 @@ oc get maassubscription personal-ai-developer -n models-as-a-service -o jsonpath
 | Token metering | Subscription token limits apply only to OpenAI Chat Completions [1] | All referenced models use Chat Completions | Aligned |
 | API key lifetime | Default and maximum 90 days, configurable per tenant [1] | Product default | Aligned |
 | Support status | Core MaaS governance (subscriptions, authorization policies, API keys, rate limits) is generally available; external model egress and provider passthrough, the MaaS observability dashboard and Loki showback are Technology Preview (3.4 and 3.5 release notes) [2] | Subscriptions, policies and keys are core MaaS; the external-model subscriptions use Technology Preview egress | Aligned |
-| Readiness validation | Not prescribed | Only Argo CD health; no per-object `Active` phase check | Gap (subscription or auth policy phase not checked by `validate-native.py`) |
+| Readiness validation | Not prescribed | Only Argo CD health; no per-object `Active` phase check | Gap (subscription or auth policy phase not checked by `validate-native.sh`) |
 
 ## References
 

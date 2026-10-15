@@ -6,7 +6,7 @@ This Application installs the operators that OpenShift AI Models-as-a-Service (M
 |---|---|
 | Argo CD Application | `040-maas-operators` ([manifest](../../../applications/040-maas-operators.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 1) |
-| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.py` ("Six selected operators and current workloads"); `scripts/platform/check-operator-policy.py --verify` (channel and minimum version); `check-operator-policy.py --wait` in `deploy.sh` (read-only wait for Automatic resolution) |
+| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.sh` ("Six selected operators and current workloads"); `scripts/platform/check-operator-policy.py --verify` (channel and minimum version); `check-operator-policy.py --wait` in `deploy.sh` (read-only wait for Automatic resolution) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `ServerSideDiff`, `RespectIgnoreDifferences`; compare-option `ServerSideDiff=true`; retry 10x with backoff 5s to 3m |
 | Depends on | Stage 010 (OpenShift AI 3.5.1 and the `redhat-operators` catalog) |
 | Used by | `040-gateway-governance` (Kuadrant and Authorino CRs), the OpenShift AI MaaS controller (generated AuthPolicy and TokenRateLimitPolicy), `040-local-models` (llm-d serving through the MaaS Gateway) |
@@ -66,7 +66,7 @@ Live installed CSVs (read 2026-10-14): `rhcl-operator.v1.4.3`, `authorino-operat
 
 ## Validation
 
-`validate-native.py` renders the stage and requires exactly six Subscriptions. For each one, the live channel, source, approval and `startingCSV` must match Git, `installedCSV` must equal `currentCSV`, the CSV phase must be `Succeeded`, and every Deployment the CSV declares must be owned by that CSV and available. The `deploy.sh` preflight (`preflight.sh`) refuses existing Subscriptions that another owner tracks.
+`validate-native.sh` renders the stage and requires exactly six Subscriptions. For each one, the live channel, source, approval and `startingCSV` must match Git, `installedCSV` must equal `currentCSV`, the CSV phase must be `Succeeded`, and every Deployment the CSV declares must be owned by that CSV and available. The `deploy.sh` preflight (`preflight.sh`) refuses existing Subscriptions that another owner tracks.
 
 By hand:
 

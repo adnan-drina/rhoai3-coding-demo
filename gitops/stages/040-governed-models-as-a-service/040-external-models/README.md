@@ -10,7 +10,7 @@ private model; requests leave the cluster for the provider.
 |---|---|
 | Argo CD Application | `040-external-models` ([manifest](../../../applications/040-external-models.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 5, together with `040-local-models`); provider Secrets by `setup-provider-secret.sh`, called from `deploy.sh` |
-| Validated by | `stages/040-governed-models-as-a-service/validate.sh --readiness` (`validate-native.py`: providers and models Ready and equal to Git, provider Secret has a non-placeholder `api-key` and the `inference.llm-d.ai/ipp-managed` label, model route owned by the `ExternalModel` and attached to listener `api`, `MaaSModelRef` Ready with endpoint on the API hostname); `validate-functional.py` with `RHOAI_STAGE040_MODEL=<model>` for one bounded completion; `scripts/shared/stage_apps.py status` |
+| Validated by | `stages/040-governed-models-as-a-service/validate.sh --readiness` (`validate-native.sh`: providers and models Ready and equal to Git, provider Secret has a non-placeholder `api-key` and the `inference.llm-d.ai/ipp-managed` label, model route owned by the `ExternalModel` and attached to listener `api`, `MaaSModelRef` Ready with endpoint on the API hostname); `validate-functional.sh` with `RHOAI_STAGE040_MODEL=<model>` for one bounded completion; `scripts/shared/stage_apps.py status` |
 | Sync | Automated, `prune` and `selfHeal`. Sync options `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences` (and a `ServerSideDiff=true` sync option that has no effect). Compare option `ServerSideDiff=true` (annotation). No `ignoreDifferences` |
 | Depends on | `040-maas-platform` (MaaS and the external-model controller enabled; `externalModels` dashboard flag), `040-gateway-governance` (Gateway `maas-default-gateway`, listener `api` admits `external-models`), Stage 010 (`rhods-admins` group); provider API keys in the private `.env` |
 | Used by | `040-model-access` (personal, qualification and playground subscriptions), `040-genai-studio` (GPT-6 Luna playground endpoint), Stage 050 evaluations (models under test and judges), Gen AI playground and OpenAI-compatible IDE clients |
@@ -113,7 +113,7 @@ patches into `040-gateway-governance`.
 spec, each provider Secret has a non-empty, non-placeholder `api-key` and the discovery label, each model's route is owned
 by the model and attached to the `api` listener, and each `MaaSModelRef` is Ready with `GovernanceAttached` and
 `RuntimeReady` and reports the API hostname as endpoint. It does not prove provider entitlement or inference;
-`validate-functional.py` with a persona kubeconfig sends one bounded completion per selected model with a temporary key.
+`validate-functional.sh` with a persona kubeconfig sends one bounded completion per selected model with a temporary key.
 
 By hand (read-only; never print the Secrets):
 

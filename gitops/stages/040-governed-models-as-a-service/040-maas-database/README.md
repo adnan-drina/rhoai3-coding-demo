@@ -6,7 +6,7 @@ This Application runs the PostgreSQL database that OpenShift AI Models-as-a-Serv
 |---|---|
 | Argo CD Application | `040-maas-database` ([manifest](../../../applications/040-maas-database.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 2); credentials from `setup-database.sh`, which `deploy.sh` calls |
-| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.py` ("Current durable MaaS PostgreSQL and runtime credential presence"); `preflight.sh` (retained-data and ownership checks before deploy) |
+| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.sh` ("Current durable MaaS PostgreSQL and runtime credential presence"); `preflight.sh` (retained-data and ownership checks before deploy) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `ServerSideDiff`, `RespectIgnoreDifferences` [6]; compare-option `ServerSideDiff=true` [5]; `ignoreDifferences` on `/data` of two runtime Secrets |
 | Depends on | Stage 010 (OpenShift AI with `aigateway` delegated, which creates `redhat-ai-gateway-infra`); the `gp3-csi` StorageClass |
 | Used by | `maas-api` (via `maas-db-config`); `040-maas-platform` (RoleBindings in `models-as-a-service`); the MaaS controller (tenant resources in `models-as-a-service`) |
@@ -61,7 +61,7 @@ The `models-as-a-service` namespace sits here for the same reason. It is the Maa
 
 ## Validation
 
-`validate-native.py` requires the StatefulSet to be available, PVC `data-maas-postgres-0` to be Bound on `gp3-csi`, and both runtime Secrets to have their keys. It reads key names only. `preflight.sh` checks retained database state and ownership before every deploy.
+`validate-native.sh` requires the StatefulSet to be available, PVC `data-maas-postgres-0` to be Bound on `gp3-csi`, and both runtime Secrets to have their keys. It reads key names only. `preflight.sh` checks retained database state and ownership before every deploy.
 
 By hand:
 

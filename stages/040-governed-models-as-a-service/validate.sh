@@ -10,7 +10,7 @@ mode="${1:---readiness}"
   echo 'Usage: validate.sh [--readiness|--functional]' >&2; exit 1;
 }
 result=0
-python3 "$SCRIPT_DIR/validate-native.py" || result=$?
+"$SCRIPT_DIR/validate-native.sh" || result=$?
 if [[ "$result" == 0 ]]; then marker=pass; else marker=fail; fi
 check 'Current native Stage040 readiness' "printf '%s' '$marker'" 'pass'
 boundary=0
@@ -19,7 +19,7 @@ if [[ "$boundary" == 0 ]]; then marker=pass; else marker=fail; fi
 check 'MaaS gateway AdminNetworkPolicy boundary (validate-gateway-boundary.sh)' "printf '%s' '$marker'" 'pass'
 validation_summary || exit 1
 if [[ "$mode" == --functional ]]; then
-  python3 "$SCRIPT_DIR/validate-functional.py"
+  "$SCRIPT_DIR/validate-functional.sh"
 else
   echo 'Scope: native readiness only; authenticated inference, streaming, traffic and user Studio acceptance remain separate.'
 fi

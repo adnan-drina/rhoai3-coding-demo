@@ -6,7 +6,7 @@ This Application turns Models-as-a-Service (MaaS) on in OpenShift AI. It enables
 |---|---|
 | Argo CD Application | `040-maas-platform` ([manifest](../../../applications/040-maas-platform.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 4). `deploy.sh` re-runs the Sync hooks of this component once if `genAiTracing` is still not `true` after the stage is reconciled |
-| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.py` ("Current native KServe/AIGateway/OGX components and feature flags"; namespace admission labels); `preflight.sh` (exact RBAC of the namespace-label helper; Stage 010 field delegation) |
+| Validated by | `stages/040-governed-models-as-a-service/validate.sh` → `validate-native.sh` ("Current native KServe/AIGateway/OGX components and feature flags"; namespace admission labels); `preflight.sh` (exact RBAC of the namespace-label helper; Stage 010 field delegation) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `ServerSideDiff`, `RespectIgnoreDifferences`; compare-option `ServerSideDiff=true`; no `ignoreDifferences` |
 | Depends on | `010-rhoai-platform` (DataScienceCluster `default-dsc` and `odh-dashboard-config`, with `/spec/components/aigateway`, `/spec/components/ogx` and the dashboard fields delegated); `040-maas-database` (namespace `models-as-a-service`, database); `040-gateway-governance` (Gateway and Kuadrant) |
 | Used by | `040-local-models`, `040-external-models`, `040-model-access`, `040-genai-studio`; Stage 050 and 070 MaaS consumers; platform administrators (Observability page) |
@@ -82,7 +82,7 @@ Moved on 2026-10-14 to `040-local-models` (`monitoring/`): the vLLM serving rule
 
 ## Validation
 
-`validate-native.py` requires the following:
+`validate-native.sh` requires the following:
 
 - `default-dsc` is current and `Ready`.
 - `aigateway`, `ogx` and `kserve` are `Managed`, and each component CR is current, `Ready` and in phase `Ready`.
