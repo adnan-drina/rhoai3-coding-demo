@@ -48,7 +48,7 @@ Before live cluster work, load the repo-local environment, verify the expected A
 
 ## Self-Signed Certificates
 
-Use `--insecure-skip-tls-verify=true` (oc) and `-k` (curl) freely. Do not implement production PKI for this demo.
+The demo cluster uses self-signed certificates. Skipping TLS verification is fine everywhere: `--insecure-skip-tls-verify=true` (oc), `-k` (curl), `verify=False` / unverified SSL contexts (Python), `insecureSkipTLSVerify` or `skipTLSVerify` in product config. Do not implement production PKI, CA distribution or certificate rotation for this demo. Keep CA trust that already works; do not add more.
 
 ## Secrets Handling
 
@@ -59,6 +59,21 @@ Use `--insecure-skip-tls-verify=true` (oc) and `-k` (curl) freely. Do not implem
 - Never commit real credentials.
 
 ### Security Posture (Demo Context)
+
+**Keep security configuration simple.** This is a demo environment. Use the product's default or documented basic
+security setup and do not add hardening layers that the demo does not need. Do not implement, unless the user asks
+or a stage's story is about that control:
+- extra ValidatingAdmissionPolicies, per-object `resourceNames` scoping or other least-privilege refinement beyond
+  a plain namespaced Role;
+- token expiry guards, automated credential rotation or rotation tooling;
+- extra NetworkPolicies, egress restrictions or egress proxies;
+- certificate handling beyond what already works.
+Prefer the simplest configuration that works and is documented by the product. When a security finding comes up,
+record it (component README or BACKLOG) instead of building a control, and say so.
+
+This does not relax the controls the demo *shows*: MaaS identity, API keys, quotas and rate limits (Stage 040),
+persona separation between `ai-admin` and `ai-developer`, and governed model access stay as designed. Do not remove
+an existing, working control just to simplify; simplify it when you are changing that area anyway.
 
 What we accept for the demo:
 - Self-signed certs with TLS verification bypassed

@@ -157,9 +157,9 @@ Every Job that runs as an Argo CD hook (or is created by a deploy script) follow
 - `activeDeadlineSeconds` and a small `backoffLimit`, so a hook cannot block a sync indefinitely; `oc` calls use `--request-timeout`.
 - Images pinned by digest.
 - A restricted `securityContext` (no privilege escalation, all capabilities dropped, non-root, `RuntimeDefault` seccomp) and `resources`; size memory for the `oc` client (256Mi request, 1Gi limit for `ose-cli`).
-- TLS is verified: no `curl -k`/`--insecure`, no `--trusted-host`; use the image trust store for public certificates or mount the service CA for cluster services.
-- Secrets are written with server-side apply (`oc apply --server-side --field-manager=<job>`), never `oc apply -f` of a rendered Secret: client-side apply copies every value into the `kubectl.kubernetes.io/last-applied-configuration` annotation. Remove a legacy annotation idempotently after writing.
-- RBAC names the exact objects (`resourceNames`) wherever the verb allows it; `create` is the only verb that cannot be limited by name. Prefer a namespaced Role over a ClusterRole.
+- TLS verification may be skipped for cluster and demo endpoints (self-signed certificates; `.agents/rules/env.md`). Downloads from the internet still verify a pinned checksum (below).
+- Secrets are written with the component's `secret_writer.py` (create, or merge-patch when it exists), never `oc apply -f` of a rendered Secret: client-side apply copies every value into the `kubectl.kubernetes.io/last-applied-configuration` annotation.
+- RBAC: a namespaced Role with the verbs the Job uses is enough; prefer it over a ClusterRole. Naming objects (`resourceNames`) is optional (demo posture, `.agents/rules/env.md`).
 - `hook-delete-policy: BeforeHookCreation,HookSucceeded` unless the completed Job is kept as evidence (say so in a comment).
 - No remote installer piped into a shell; download a pinned release and verify its published checksum.
 

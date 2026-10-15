@@ -144,6 +144,8 @@ Sensitive areas include:
 
 For these areas, include explicit validation notes in the PR.
 
+This is a demo environment with self-signed certificates: skipping TLS verification is fine, and platform components run with a simple, documented security configuration. Do not build extra hardening (admission policies, token-rotation tooling, egress restrictions, PKI) unless asked; see the demo security posture in `.agents/rules/env.md`.
+
 ## Agent workflow
 
 For non-trivial tasks, follow this workflow:
