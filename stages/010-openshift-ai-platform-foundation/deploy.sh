@@ -26,28 +26,15 @@ STAGE_APPS="$ROOT_DIR/scripts/shared/stage_apps.py"
 # The reviewed, published commit; Applications are pinned to it even when the input was a branch.
 selected_commit=$(python3 "$STAGE_APPS" select 010 --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" \
   --extra gitops/bootstrap --extra scripts/platform/require-node-sizing.sh --extra scripts/platform/check-operator-policy.py)
-command -v python3 >/dev/null || { echo "ERROR: python3 is required for native operator checks" >&2; exit 1; }
-
-
 # Read-only preflight runs before the first bootstrap/Application write.
-python3 - <<'PY_GUARD'
-import json, subprocess, sys
-def read(args):
-    result = subprocess.run(["oc", "--request-timeout=10s", *args], capture_output=True, text=True)
-    if result.returncode:
-        raise RuntimeError("Preflight could not inspect cluster ownership")
-    return result.stdout.strip()
-def tracked_by(obj, app):
-    return obj.get("metadata", {}).get("annotations", {}).get("argocd.argoproj.io/tracking-id", "").startswith(app + ":")
-try:
-    # The model registry belongs to Stage 030; never let a foundation component take it back.
-    text = read(["get", "namespace", "rhoai-model-registries", "--ignore-not-found", "-o", "json"])
-    if text and not tracked_by(json.loads(text), "030-private-model-serving"):
-        raise RuntimeError("Registry namespace exists but is not owned by Stage 030")
-except (RuntimeError, ValueError) as error:
-    print("ERROR: " + str(error), file=sys.stderr)
-    sys.exit(1)
-PY_GUARD
+# The model registry namespace belongs to Stage 030; never let a foundation component take it back.
+registry_ns=$(oc --request-timeout=10s get namespace rhoai-model-registries --ignore-not-found -o json)
+if [[ -n "$registry_ns" ]] && ! jq -e \
+    '.metadata.annotations["argocd.argoproj.io/tracking-id"] // "" | startswith("030-private-model-serving:")' \
+    <<<"$registry_ns" >/dev/null; then
+  echo "ERROR: Registry namespace exists but is not owned by Stage 030" >&2
+  exit 1
+fi
 
 # Fail fast if the nodes are too small for the demo stack, before any changes.
 "$ROOT_DIR/scripts/platform/require-node-sizing.sh"

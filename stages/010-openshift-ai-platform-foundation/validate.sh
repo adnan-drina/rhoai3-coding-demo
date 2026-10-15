@@ -38,9 +38,13 @@ warn() {
 
 # Dex emits OpenShift Group membership; direct Kubernetes role bindings do not
 # grant Argo CD permissions. Verify the operator-reconciled policy, not just CR intent.
-GITOPS_ACCESS=$(oc --request-timeout=10s get group rhoai-gitops-admins -o json | python3 -c 'import json,sys; print("pass" if "admin" in (json.load(sys.stdin).get("users") or []) else "admin membership missing")' 2>/dev/null || echo "group inspection failed")
+GITOPS_ACCESS=$(oc --request-timeout=10s get group rhoai-gitops-admins -o json 2>/dev/null |
+  jq -r 'if (.users // []) | index("admin") then "pass" else "admin membership missing" end' || echo "group inspection failed")
 check "GitOps SSO administrator group" "$GITOPS_ACCESS"
-GITOPS_POLICY=$(oc --request-timeout=10s get configmap argocd-rbac-cm -n openshift-gitops -o json | python3 -c 'import json,sys; d=json.load(sys.stdin).get("data",{}); lines={"".join(x.split()) for x in d.get("policy.csv","").splitlines()}; print("pass" if "g,rhoai-gitops-admins,role:admin" in lines and "groups" in d.get("scopes", "") and not d.get("policy.default","").strip() else "mapping missing or broad default policy")' 2>/dev/null || echo "policy inspection failed")
+GITOPS_POLICY=$(oc --request-timeout=10s get configmap argocd-rbac-cm -n openshift-gitops -o json 2>/dev/null |
+  jq -r '.data // {} | if ((."policy.csv" // "") | split("\n") | map(gsub("\\s"; "")) | index("g,rhoai-gitops-admins,role:admin"))
+      and ((.scopes // "") | contains("groups")) and ((."policy.default" // "") | test("^\\s*$"))
+    then "pass" else "mapping missing or broad default policy" end' || echo "policy inspection failed")
 check "GitOps reconciled group policy with empty default" "$GITOPS_POLICY"
 
 csv_phase_from_subscription() {
@@ -58,13 +62,12 @@ csv_phase_from_subscription() {
 
 native_ready() {
   local kind="$1" name="$2" require_generation="$3"
-  oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get "$kind" "$name" -o json | python3 -c '
-import json,sys
-obj=json.load(sys.stdin); status=obj.get("status",{})
-ready=any(c.get("type")=="Ready" and c.get("status")=="True" for c in status.get("conditions",[]))
-current=sys.argv[1]=="false" or status.get("observedGeneration",0)>=obj.get("metadata",{}).get("generation",1)
-print("pass" if status.get("phase")=="Ready" and ready and current else "native Ready/current-generation contract not satisfied")
-' "$require_generation" 2>/dev/null || echo "native status unavailable"
+  oc --request-timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}" get "$kind" "$name" -o json 2>/dev/null |
+    jq -r --arg gen "$require_generation" '(.status // {}) as $s
+      | if $s.phase == "Ready" and any($s.conditions[]?; .type == "Ready" and .status == "True")
+          and ($gen == "false" or ($s.observedGeneration // 0) >= (.metadata.generation // 1))
+        then "pass" else "native Ready/current-generation contract not satisfied" end' ||
+    echo "native status unavailable"
 }
 
 # ── 1. OpenShift GitOps operator ─────────────────────────────────────────────
@@ -192,16 +195,15 @@ fi
 # Native Auth and foundation component ownership.
 check "Native Auth Ready at current generation" "$(native_ready auth.services.platform.opendatahub.io auth true)"
 # Later stages enable components 010-rhoai-platform delegates through ignoreDifferences.
-COMPONENT_CHECK=$(SHARED="$ROOT_DIR/scripts/shared" python3 -c '
-import json,os,subprocess,sys
-sys.path.insert(0,os.environ["SHARED"]);import stage_apps
-get=lambda *a: json.loads(subprocess.run(["oc","--request-timeout=15s","get",*a,"-o","json"],capture_output=True,text=True,check=True).stdout)
-c=get("datasciencecluster","default-dsc")["spec"]["components"]
-delegated={p.rsplit("/",1)[1] for p in stage_apps.delegated("010","DataScienceCluster","default-dsc",group="datasciencecluster.opendatahub.io") if p.startswith("/spec/components/")}
-managed=["dashboard","workbenches"]
-removed=[k for k in ["ogx","aigateway","mcplifecycleoperator","sparkoperator","trainer"] if k not in delegated]
-print("pass" if all(c.get(k,{}).get("managementState")=="Managed" for k in managed) and all(c.get(k,{}).get("managementState")=="Removed" for k in removed) else "component ownership mismatch")
-' 2>/dev/null || echo "component inspection failed")
+# Dashboard and workbenches are Managed; the listed components stay Removed unless Stage 010 delegated the field.
+delegated=$(python3 "$ROOT_DIR/scripts/shared/stage_apps.py" delegated 010 DataScienceCluster default-dsc \
+  --group datasciencecluster.opendatahub.io 2>/dev/null | sed -n 's#^/spec/components/##p' | jq -R . | jq -s -c . || echo '[]')
+COMPONENT_CHECK=$(oc --request-timeout=15s get datasciencecluster default-dsc -o json 2>/dev/null |
+  jq -r --argjson delegated "$delegated" '.spec.components as $c
+    | ["ogx", "aigateway", "mcplifecycleoperator", "sparkoperator", "trainer"] - $delegated | . as $removed
+    | if all(("dashboard", "workbenches"); $c[.].managementState == "Managed")
+        and all($removed[]; $c[.].managementState == "Removed")
+      then "pass" else "component ownership mismatch" end' || echo "component inspection failed")
 check "Foundation component ownership" "$COMPONENT_CHECK"
 
 # Existing provider authentication and explicit group membership.
