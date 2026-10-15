@@ -258,6 +258,6 @@ When available locally:
 
 - [How to manage RHOAI dependencies with Kustomize and Argo CD](https://developers.redhat.com/articles/2026/03/13/manage-openshift-ai-dependencies-kustomize-argo-cd)
 - [odh-gitops repository](https://github.com/opendatahub-io/odh-gitops)
-- [OCP 4.20 - OpenShift GitOps](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/cicd/gitops)
+- [Red Hat OpenShift GitOps 1.21 documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21) (version per `.agents/references/red-hat-doc-map.yaml`)
 - [Kubernetes Recommended Labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
 - [Guidelines for Labels and Annotations for OpenShift Applications](https://github.com/redhat-developer/app-labels/blob/master/labels-annotation-for-openshift.adoc)
