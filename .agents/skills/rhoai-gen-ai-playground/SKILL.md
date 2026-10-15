@@ -43,7 +43,7 @@ OpenShift AI 3.5 sections. Detailed record:
 | MCP servers published to every playground: Git owns an empty `gen-ai-aa-mcp-servers` in `redhat-ods-applications`; `publish-catalog-mcp.sh` writes the two keys from Stage 060, protected by `ignoreDifferences` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/mcp/`, `stages/040-governed-models-as-a-service/publish-catalog-mcp.sh` | [Configuring MCP servers][mcp] |
 | Saved agent "OpenShift Ops Assistant" (Developer Preview) as an `AgentProfile` ConfigMap on `qwen3-8-27b`, with an `allowedTools` list on `OpenShift-MCP` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/agent-profile-openshift-ops-assistant.yaml` | [Saved agents][agents] |
 | Agent system prompt registered in the project's MLflow prompt registry by a hook Job | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/openshift-ops-assistant-prompt.yaml`, `agent-prompt-provisioner-job.yaml` | [Reusable system instructions][prompts] |
-| Retained 1 Gi state PVC `genai-playground-state`, attached only to a newly created playground by `studio-api.py` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/genai-playground-state-pvc.yaml` | [Resources created][resources] |
+| Retained 1 Gi state PVC `genai-playground-state`, attached only to a newly created playground by `studio-api.sh` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/genai-playground-state-pvc.yaml` | [Resources created][resources] |
 | Tracing (Technology Preview) only per session, by explicit user choice | `stages/040-governed-models-as-a-service/README.md` ("Optional Studio Tracing") | [How tracing works][tracing] |
 
 ## Procedure

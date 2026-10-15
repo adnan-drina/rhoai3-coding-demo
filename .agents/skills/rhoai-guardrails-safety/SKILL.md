@@ -8,7 +8,7 @@ metadata:
   skill-group: "RHOAI Platform"
 description: >
   Use when changing or reviewing runtime guardrails in this repo: the Stage 040
-  dashboard flag `guardrails`, the optional `studio-api.py
+  dashboard flag `guardrails`, the optional `studio-api.sh
   --initialize-guardrails` helper that asks the dashboard to create the
   `NemoGuardrails` resource `nemoguardrails` in `demo-sandbox`, the TrustyAI
   component it depends on (Stage 050), or a proposal to add NeMo or FMS
@@ -37,7 +37,7 @@ dashboard creates one on request. Detailed record:
 |---|---|---|
 | Dashboard flag `guardrails: true` set by the `job-enable-dsc-maas` Sync hook on a delegated Stage 010 field; `validate-native.sh` requires it | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [NeMo Guardrails][nemo] |
 | TrustyAI component `Managed` from Stage 050 (the `NemoGuardrails` API group is `trustyai.opendatahub.io`) | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/` | [Basic deployment][basic] |
-| No guardrail CR in Git; `studio-api.py --initialize-guardrails` calls the dashboard's own initialization, refuses unless the flag is on, and refuses any guardrail resource other than one named `nemoguardrails` | `stages/040-governed-models-as-a-service/studio-api.py` | [CR configuration reference][crref] |
+| No guardrail CR in Git; `studio-api.sh --initialize-guardrails` calls the dashboard's own initialization, refuses unless the flag is on, and refuses any guardrail resource other than one named `nemoguardrails` | `stages/040-governed-models-as-a-service/studio-api.sh` | [CR configuration reference][crref] |
 | NeMo Guardrails only; no FMS `GuardrailsOrchestrator` (3.5 documents migrating from FMS to NeMo) | not in Git | [Migrate from FMS to NeMo][migrate] |
 | Guarded models are reached through MaaS; no detector or self-check model is deployed | `gitops/stages/040-governed-models-as-a-service/040-local-models/` | [Separate self-check model][selfcheck] |
 
@@ -54,7 +54,7 @@ dashboard creates one on request. Detailed record:
    in `AGENTS.md`; `<sha>` is the deployed Stage 040 revision:
 
    ```bash
-   python3 stages/040-governed-models-as-a-service/studio-api.py --expected-revision <sha> --initialize-guardrails
+   ./stages/040-governed-models-as-a-service/studio-api.sh --expected-revision <sha> --initialize-guardrails
    oc get nemoguardrails.trustyai.opendatahub.io -n demo-sandbox
    ```
 

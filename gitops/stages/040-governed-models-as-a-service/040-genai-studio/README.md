@@ -13,7 +13,7 @@ dashboard.
 | Validated by | `stages/040-governed-models-as-a-service/validate.sh --readiness` (`validate-native.sh` runs `publish-catalog-mcp.sh --validate` for `OpenShift-MCP` and `OpenShift-MCP-ReadWrite`, deferring while the Stage 060 MCP runtime is absent; `stage_apps.py status` for Synced/Healthy); `qualify-catalog-mcp.sh` (model-free MCP qualification, run by hand) |
 | Sync | Automated, `prune` and `selfHeal`. Sync options `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences` (and a `ServerSideDiff=true` sync option that has no effect). Compare option `ServerSideDiff=true` (annotation). `ignoreDifferences` on ConfigMap `redhat-ods-applications/gen-ai-aa-mcp-servers`: `/data/OpenShift-MCP` and `/data/OpenShift-MCP-ReadWrite` |
 | Depends on | Stage 010 (namespace `demo-sandbox`, OpenShift AI); Stage 050 (MLflow, for the Ops Assistant prompt: on a fresh install the prompt hook defers and Stage 050 `deploy.sh` re-runs this component's hooks once MLflow is ready), `040-maas-platform` (MaaS API; its `enable-maas` Job enables the OGX component and the dashboard flags `genAiStudio`, `aiAssetCustomEndpoints`, `agentConfigManagement`, `promptManagement`, and declares the cluster ingress domain internal for custom endpoints), `040-gateway-governance` (Gateway `maas-default-gateway` listener `api`), `040-model-access` (subscription `playground-sandbox`), `040-local-models` (`qwen3-8-27b` for the agent), `040-external-models` (`gpt-6-luna`), Stage 060 `agent-tools` (MCP servers `openshift-mcp-server`, `openshift-mcp-server-rw`; published later by `publish-catalog-mcp.sh --defer-if-absent`, so their absence does not block this stage) |
-| Used by | Playground users in `demo-sandbox`; every playground (MCP list from `gen-ai-aa-mcp-servers`); Stage 050 helpers that import `studio-api.py` |
+| Used by | Playground users in `demo-sandbox`; every playground (MCP list from `gen-ai-aa-mcp-servers`); Stage 050 helpers that import `studio-api.sh` |
 
 ## Why
 
@@ -47,7 +47,7 @@ Application holds them because they all change with the playground experience an
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| PersistentVolumeClaim | `genai-playground-state` | `demo-sandbox` | 1 Gi RWO volume for the playground's SQLite state. `studio-api.py` mounts it into a newly created playground (`OGXServer` workload override). Wave 8, `Prune=false,Delete=false` |
+| PersistentVolumeClaim | `genai-playground-state` | `demo-sandbox` | 1 Gi RWO volume for the playground's SQLite state. `studio-api.sh` mounts it into a newly created playground (`OGXServer` workload override). Wave 8, `Prune=false,Delete=false` |
 
 ### MCP server discovery (`mcp/`)
 
@@ -109,7 +109,7 @@ Argo CD from removing them [6][7]. `publish-catalog-mcp.sh` refuses to write unl
 at the expected revision, and needs `--replace` to change a published value.
 
 **Retained state PVC.** `Prune=false,Delete=false` keeps playground history when the Application or object is removed
-[6]. `studio-api.py` attaches it only to a freshly created playground; moving existing state needs the backup and
+[6]. `studio-api.sh` attaches it only to a freshly created playground; moving existing state needs the backup and
 restore procedure in `docs/OPERATIONS.md`.
 
 **Secrets.** No secret values in Git. The only Secret is the endpoint key, minted at runtime.

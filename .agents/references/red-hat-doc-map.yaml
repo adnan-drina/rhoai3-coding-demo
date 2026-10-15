@@ -1061,7 +1061,7 @@ products:
               - nemo-guardrails-mcp-gateway-integration-overview_nemo-guardrails
               - migrating-from-fms-to-nemo-guardrails_migrating-from-fms-to-nemo-guardrails
               - enabling-ai-safety-with-guardrails_safety
-            reviewed: { version: "3.5", date: 2026-10-15, note: "also links working_with_ogx#ogx-guardrails-security-int_rag; the book pages read state no support level and do not use the word deprecated for FMS, so the skill says only that 3.5 documents migrating from FMS to NeMo; no guardrail CR in Git, only the Stage 040 dashboard flag and the studio-api.py initialization helper" }
+            reviewed: { version: "3.5", date: 2026-10-15, note: "also links working_with_ogx#ogx-guardrails-security-int_rag; the book pages read state no support level and do not use the word deprecated for FMS, so the skill says only that 3.5 documents migrating from FMS to NeMo; no guardrail CR in Git, only the Stage 040 dashboard flag and the studio-api.sh initialization helper" }
           - book: monitoring_your_ai_systems
             status: active
             skill: rhoai-monitoring-trustyai
@@ -1198,7 +1198,7 @@ products:
               - about-using-self-signed-certificates-with-ogx_rag
               - ogx-multi-tenancy_rag
               - ogx-high-avail-and-auto_rag
-            reviewed: { version: "3.5", date: 2026-10-15, note: "working_with_llama_stack 404 at 3.5, replaced by working_with_ogx; anchors from the multi-page TOC (chapter slugs used as html-single anchors); the TOC states no support level for OGX APIs and the OGXServer kind name was taken from the repo (studio-api.py), not the docs; DSC llamastackoperator deprecation is from the live CRD per the Stage 010 README" }
+            reviewed: { version: "3.5", date: 2026-10-15, note: "working_with_llama_stack 404 at 3.5, replaced by working_with_ogx; anchors from the multi-page TOC (chapter slugs used as html-single anchors); the TOC states no support level for OGX APIs and the OGXServer kind name was taken from the repo (studio-api.sh), not the docs; DSC llamastackoperator deprecation is from the live CRD per the Stage 010 README" }
       repo_specific_extensions:
         description: Skills grounded in official docs but specialized for this repo implementation.
         routes:
