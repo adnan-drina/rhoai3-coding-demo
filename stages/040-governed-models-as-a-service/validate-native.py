@@ -415,7 +415,8 @@ def main():
     governed = [o for o in desired if o["kind"] in ("MaaSSubscription", "MaaSAuthPolicy")]
     need(governed, "No MaaS subscriptions or auth policies declared")
     for d in governed:
-        live = get(d["kind"].lower() + "s.maas.opendatahub.io", d["metadata"]["name"], d["metadata"]["namespace"])
+        resource = {"MaaSSubscription": "maassubscriptions", "MaaSAuthPolicy": "maasauthpolicies"}[d["kind"]]
+        live = get(resource + ".maas.opendatahub.io", d["metadata"]["name"], d["metadata"]["namespace"])
         need(not live["metadata"].get("deletionTimestamp"), "MaaS governance object is being deleted")
         need(live.get("status", {}).get("phase") == "Active", d["kind"] + " " + d["metadata"]["name"] + " is not Active")
         condition(live, "Ready")
