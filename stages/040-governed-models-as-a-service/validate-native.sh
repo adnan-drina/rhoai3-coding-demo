@@ -300,8 +300,8 @@ governance() {
     echo yes
 }
 studio_catalog() {
-    python3 "$SCRIPT_DIR/publish-catalog-mcp.py" --validate --defer-if-absent >/dev/null 2>&1 &&
-        python3 "$SCRIPT_DIR/publish-catalog-mcp.py" --key OpenShift-MCP-ReadWrite --validate --defer-if-absent >/dev/null 2>&1 &&
+    "$SCRIPT_DIR/publish-catalog-mcp.sh" --validate --defer-if-absent >/dev/null 2>&1 &&
+        "$SCRIPT_DIR/publish-catalog-mcp.sh" --key OpenShift-MCP-ReadWrite --validate --defer-if-absent >/dev/null 2>&1 &&
         echo yes || echo no
 }
 

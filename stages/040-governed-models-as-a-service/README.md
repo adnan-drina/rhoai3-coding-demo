@@ -104,7 +104,7 @@ In **Gen AI studio → Playground → MCP**, select **OpenShift-MCP** (read-only
 
 This follows the [documented MCP connection procedure](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/experimenting_with_models_in_the_gen_ai_playground/index). It is a direct HTTPS connection, not MCP Gateway aggregation or MaaS API-key/quota governance. Gateway qualification is tracked separately.
 
-Both discovery fields are published with `publish-catalog-mcp.py` (`--key`); exact Argo field delegation preserves them, regular deploy republishes/validates them, validation detects drift, and a reviewed change of a published field needs `--replace`. This is customer-managed field publication, not operator synchronization from the Registry. Retain its private UID-scoped ownership journal for repeated deployment. Stage040 does not require Stage060 on a fresh foundation: publication defers while the catalog runtime is absent, and Stage060 explicitly publishes once ready.
+Both discovery fields are published with `publish-catalog-mcp.sh` (`--key`); exact Argo field delegation preserves them, regular deploy republishes/validates them, validation detects drift, and a reviewed change of a published field needs `--replace`. This is customer-managed field publication, not operator synchronization from the Registry. Retain its private UID-scoped ownership journal for repeated deployment. Stage040 does not require Stage060 on a fresh foundation: publication defers while the catalog runtime is absent, and Stage060 explicitly publishes once ready.
 
 ### Playground Agent: OpenShift Ops Assistant
 
@@ -113,7 +113,7 @@ A saved playground agent is the 3.5 self-service agent for end users: a project-
 Model-free qualification is reproducible without saved acceptance artifacts:
 
 ```bash
-python3 ./stages/040-governed-models-as-a-service/qualify-catalog-mcp.py \
+./stages/040-governed-models-as-a-service/qualify-catalog-mcp.sh \
   --bootstrap-kubeconfig "$KUBECONFIG" \
   --admin-kubeconfig "$AI_ADMIN_KUBECONFIG" \
   --developer-kubeconfig "$AI_DEVELOPER_KUBECONFIG" \

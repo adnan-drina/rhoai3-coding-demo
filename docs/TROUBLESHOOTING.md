@@ -688,7 +688,7 @@ curl -sS -H "Authorization: Bearer $(oc whoami -t)" -H 'Content-Type: applicatio
 
 - Read-write entry: in the playground's MCP tab click the Auth icon, paste `oc whoami -t`, **Authorize**; repeat after closing the browser, and use it only for actions you intend to run, because the server acts with your permissions. Read-only entry: no token needed; authorize with your token only when you need to read beyond the demo projects.
 - Use Qwen 3.8, Claude Sonnet 5.5 or Nemotron 3 Ultra for tool use; GPT-6 Luna returns `400 Function tools with reasoning_effort are not supported` and the gateway holds that error body until the client times out (wasm-shim #425).
-- If a server is missing from the MCP tab, check the `gen-ai-aa-mcp-servers` ConfigMap in `redhat-ods-applications` (both keys are published by `publish-catalog-mcp.py`) and the Route in `mcp-servers`.
+- If a server is missing from the MCP tab, check the `gen-ai-aa-mcp-servers` ConfigMap in `redhat-ods-applications` (both keys are published by `publish-catalog-mcp.sh`) and the Route in `mcp-servers`.
 
 ## Gen AI Playground External Model Works But Local Models Fail
 
@@ -2758,7 +2758,7 @@ The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` a
 
 ```bash
 RHOAI_STAGE040_EXPECTED_REVISION=<Stage 040 revision> RHOAI_STAGE060_EXPECTED_REVISION=<060-agent-tools revision> \
-  python3 stages/040-governed-models-as-a-service/publish-catalog-mcp.py --key OpenShift-MCP --defer-if-absent
+  ./stages/040-governed-models-as-a-service/publish-catalog-mcp.sh --key OpenShift-MCP --defer-if-absent
 # repeat with --key OpenShift-MCP-ReadWrite
 ```
 

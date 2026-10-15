@@ -24,7 +24,7 @@ pending() { echo "[PENDING] $*"; exit 2; }
 
 PERSONA="${RHOAI_STAGE040_PERSONA_KUBECONFIG:-}"
 [[ -n "$PERSONA" ]] || pending "Set RHOAI_STAGE040_PERSONA_KUBECONFIG to an existing private ai-admin or ai-developer login"
-[[ -f "$PERSONA" && -z "$(find "$PERSONA" -perm -004 -o -perm -040 -o -perm -002 -o -perm -020)" ]] ||
+[[ -f "$PERSONA" && -z "$(find "$PERSONA" -maxdepth 0 \( -perm -001 -o -perm -002 -o -perm -004 -o -perm -010 -o -perm -020 -o -perm -040 \))" ]] ||
     fail "Persona kubeconfig must be a private existing login"
 KUBECONFIG="$PERSONA" bash -c 'source "$1/scripts/shared/lib.sh"; load_env; check_oc_logged_in' guard "$REPO_ROOT" >/dev/null 2>&1 ||
     fail "Persona cluster guard failed"

@@ -40,7 +40,7 @@ OpenShift AI 3.5 sections. Detailed record:
 | Playground and MaaS dashboard flags are set by the Stage 040 enablement Job, not in the Stage 010 manifest | same Job | [Prerequisites][prereq] |
 | Custom endpoints on, `externalProviders: false`, cluster ingress domain in `clusterDomains`, so endpoints may target the MaaS hostname but not third-party providers | same Job | [Enable custom endpoints][customon] |
 | GPT-6 Luna reached through a Job-provisioned custom endpoint (`gen-ai-aa-custom-model-endpoints`, Secret `endpoint-api-key-gpt-6-luna-maas`) on subscription `playground-sandbox`: workaround for RHOAIENG-90257 (`max_tokens`) in 3.5.1 | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/playground-endpoint-provisioner-job.yaml` | [Create custom endpoints][customuse] |
-| MCP servers published to every playground: Git owns an empty `gen-ai-aa-mcp-servers` in `redhat-ods-applications`; `publish-catalog-mcp.py` writes the two keys from Stage 060, protected by `ignoreDifferences` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/mcp/`, `stages/040-governed-models-as-a-service/publish-catalog-mcp.py` | [Configuring MCP servers][mcp] |
+| MCP servers published to every playground: Git owns an empty `gen-ai-aa-mcp-servers` in `redhat-ods-applications`; `publish-catalog-mcp.sh` writes the two keys from Stage 060, protected by `ignoreDifferences` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/mcp/`, `stages/040-governed-models-as-a-service/publish-catalog-mcp.sh` | [Configuring MCP servers][mcp] |
 | Saved agent "OpenShift Ops Assistant" (Developer Preview) as an `AgentProfile` ConfigMap on `qwen3-8-27b`, with an `allowedTools` list on `OpenShift-MCP` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/agent-profile-openshift-ops-assistant.yaml` | [Saved agents][agents] |
 | Agent system prompt registered in the project's MLflow prompt registry by a hook Job | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/openshift-ops-assistant-prompt.yaml`, `agent-prompt-provisioner-job.yaml` | [Reusable system instructions][prompts] |
 | Retained 1 Gi state PVC `genai-playground-state`, attached only to a newly created playground by `studio-api.py` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/genai-playground-state-pvc.yaml` | [Resources created][resources] |
@@ -49,14 +49,14 @@ OpenShift AI 3.5 sections. Detailed record:
 ## Procedure
 
 1. Change files under `gitops/stages/040-governed-models-as-a-service/040-genai-studio/`;
-   MCP entries change only through `publish-catalog-mcp.py` (needs `--replace`
+   MCP entries change only through `publish-catalog-mcp.sh` (needs `--replace`
    to change a published value).
 2. Deploy and validate after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash
    ./stages/040-governed-models-as-a-service/deploy.sh
    ./stages/040-governed-models-as-a-service/validate.sh --readiness
-   # model-free MCP check, by hand: qualify-catalog-mcp.py --bootstrap-kubeconfig/--admin-kubeconfig/--developer-kubeconfig/--receipt
+   # model-free MCP check, by hand: qualify-catalog-mcp.sh --bootstrap-kubeconfig/--admin-kubeconfig/--developer-kubeconfig/--receipt
    ```
 
    Readiness checks the Application and the two MCP keys only; the custom

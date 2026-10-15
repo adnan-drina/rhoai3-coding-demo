@@ -110,8 +110,8 @@ The authenticated control plane and native sandbox controller are available. A w
 After the catalog runtime is ready, publish its Studio entry without redeploying Stage040:
 
 ```bash
-python3 ./stages/040-governed-models-as-a-service/publish-catalog-mcp.py --bootstrap-kubeconfig "$KUBECONFIG"
-python3 ./stages/040-governed-models-as-a-service/publish-catalog-mcp.py --bootstrap-kubeconfig "$KUBECONFIG" --validate
+./stages/040-governed-models-as-a-service/publish-catalog-mcp.sh --bootstrap-kubeconfig "$KUBECONFIG"
+./stages/040-governed-models-as-a-service/publish-catalog-mcp.sh --bootstrap-kubeconfig "$KUBECONFIG" --validate
 ```
 
 The existing Stage040 Application must already delegate the exact `OpenShift-MCP` data field; the initial reviewed handoff uses `--delegate`. No other discovery fields or playground state change. The private ownership journal is keyed by the current ConfigMap UID; keep it for idempotent repeat publication. Regular Stage040 deployment defers when the separately owned catalog runtime is absent.

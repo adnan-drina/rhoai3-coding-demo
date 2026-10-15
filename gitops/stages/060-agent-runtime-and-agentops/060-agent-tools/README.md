@@ -9,11 +9,11 @@ agent tools.
 | | |
 |---|---|
 | Argo CD Application | `060-agent-tools` ([manifest](../../../applications/060-agent-tools.yaml)) |
-| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-native-mcp.sh [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy-native-mcp.sh) (own deploy script). It runs the preflight, applies the Application pinned to the SHA, syncs it and waits; protocol qualification is a separate step. `--publish-studio` runs Stage 040 `publish-catalog-mcp.py`. |
-| Validated by | [`stages/060-agent-runtime-and-agentops/validate-native-mcp.py`](../../../../stages/060-agent-runtime-and-agentops/validate-native-mcp.py) (Application Synced at the expected revision; ownership of every customer object; hosting project metadata and `ai-admin` binding; per server: Route presence or absence, effective `config.toml` policy, image pin, `Ready` condition, operator-owned Deployment/Service/NetworkPolicy, ServiceAccount, running pod image digest). Protocol and caller isolation are qualified separately by Stage 040 `qualify-catalog-mcp.py`. |
+| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-native-mcp.sh [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy-native-mcp.sh) (own deploy script). It runs the preflight, applies the Application pinned to the SHA, syncs it and waits; protocol qualification is a separate step. `--publish-studio` runs Stage 040 `publish-catalog-mcp.sh`. |
+| Validated by | [`stages/060-agent-runtime-and-agentops/validate-native-mcp.py`](../../../../stages/060-agent-runtime-and-agentops/validate-native-mcp.py) (Application Synced at the expected revision; ownership of every customer object; hosting project metadata and `ai-admin` binding; per server: Route presence or absence, effective `config.toml` policy, image pin, `Ready` condition, operator-owned Deployment/Service/NetworkPolicy, ServiceAccount, running pod image digest). Protocol and caller isolation are qualified separately by Stage 040 `qualify-catalog-mcp.sh`. |
 | Sync | Manual. Annotation `compare-options: ServerSideDiff=true`; sync option `RespectIgnoreDifferences=true` (no `ignoreDifferences` defined). The Application carries `sync-wave: "60"`, which has no effect because no parent Application manages it. |
 | Depends on | `060-mcp-platform` (MCPServer API and lifecycle operator). Namespaces `demo-sandbox`, `internal-models`, `external-models`, `models-as-a-service` for the read-only RoleBindings (Stages 030/040). |
-| Used by | Stage 040 `040-genai-studio`: discovery entries `OpenShift-MCP` and `OpenShift-MCP-ReadWrite` in ConfigMap `gen-ai-aa-mcp-servers`, written by `publish-catalog-mcp.py`, and the OpenShift Ops Assistant agent profile. Stage 070 Dev Spaces workspaces (in-cluster read-only URL). MLflow MCP Registry entry, written by `publish-mcp-registry.py`. |
+| Used by | Stage 040 `040-genai-studio`: discovery entries `OpenShift-MCP` and `OpenShift-MCP-ReadWrite` in ConfigMap `gen-ai-aa-mcp-servers`, written by `publish-catalog-mcp.sh`, and the OpenShift Ops Assistant agent profile. Stage 070 Dev Spaces workspaces (in-cluster read-only URL). MLflow MCP Registry entry, written by `publish-mcp-registry.py`. |
 
 ## Why
 
@@ -118,7 +118,7 @@ ServiceAccount's permissions without a token. Keep its grants limited to non-sen
 - Registry: the RHOAI 3.5.1 catalog has no Register action next to Deploy, so `publish-mcp-registry.py` registers the
   server through the installed MLflow MCP registry API, in workspace `mcp-servers`. Catalog discovery, registry entry
   and runtime lifecycle are separate contracts; there is no automatic catalog-to-registry-to-Studio sync.
-- Studio publication: Stage 040 `publish-catalog-mcp.py` writes the `OpenShift-MCP` (read-only, no token) and
+- Studio publication: Stage 040 `publish-catalog-mcp.sh` writes the `OpenShift-MCP` (read-only, no token) and
   `OpenShift-MCP-ReadWrite` (caller token) keys into the documented `gen-ai-aa-mcp-servers` ConfigMap [10]. Stage 040's
   Application must already delegate those data keys. In the playground, users authorize the read-write entry with
   their own OpenShift token, not a MaaS key; no shared token is stored. This path does not use MaaS keys or quotas.

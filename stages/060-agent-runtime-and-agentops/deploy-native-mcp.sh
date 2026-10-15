@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Stage 060 agent tools: the native OpenShift MCP servers (060-agent-tools). Protocol qualification is separate.
 #   deploy-native-mcp.sh [--revision REF] [--publish-studio]
-#     --publish-studio  only publish the servers to the Gen AI Studio catalog (Stage 040 publish-catalog-mcp.py)
+#     --publish-studio  only publish the servers to the Gen AI Studio catalog (Stage 040 publish-catalog-mcp.sh)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$ROOT/scripts/shared/lib.sh"
@@ -20,10 +20,10 @@ while [[ $# -gt 0 ]]; do
 done
 STAGE_APPS="$ROOT/scripts/shared/stage_apps.py"
 sha=$(python3 "$STAGE_APPS" select 060 --ref "$ref" --repo-url "$GIT_REPO_URL" \
-  --extra stages/040-governed-models-as-a-service/publish-catalog-mcp.py --extra stages/040-governed-models-as-a-service/qualify-catalog-mcp.py)
+  --extra stages/040-governed-models-as-a-service/publish-catalog-mcp.sh --extra stages/040-governed-models-as-a-service/qualify-catalog-mcp.sh)
 export RHOAI_STAGE060_EXPECTED_REVISION="$sha"
 if [[ "$publish" == true ]]; then
-  python3 "$ROOT/stages/040-governed-models-as-a-service/publish-catalog-mcp.py"
+  "$ROOT/stages/040-governed-models-as-a-service/publish-catalog-mcp.sh"
   exit 0
 fi
 python3 "$ROOT/stages/060-agent-runtime-and-agentops/validate-native-mcp.py" --preflight

@@ -61,8 +61,8 @@ if [[ "$(oc --request-timeout=10s get odhdashboardconfig odh-dashboard-config -n
 fi
 
 # Publish the OpenShift MCP servers to the AI asset catalog (deferred while Stage 060 has not deployed them).
-python3 "$SCRIPT_DIR/publish-catalog-mcp.py" --defer-if-absent
-python3 "$SCRIPT_DIR/publish-catalog-mcp.py" --key OpenShift-MCP-ReadWrite --defer-if-absent
+"$SCRIPT_DIR/publish-catalog-mcp.sh" --defer-if-absent
+"$SCRIPT_DIR/publish-catalog-mcp.sh" --key OpenShift-MCP-ReadWrite --defer-if-absent
 
 deadline=$((SECONDS + 900))
 until "$SCRIPT_DIR/validate.sh" --readiness; do
