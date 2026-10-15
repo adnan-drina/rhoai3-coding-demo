@@ -2,136 +2,74 @@
 name: ocp-lightspeed-operate
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_lightspeed
+  docs-version: "1.0"
   skill-group: "OpenShift Platform"
 description: >
-  Use when using or operating Red Hat OpenShift Lightspeed 1.0, including
-  accessing the AI assistant, asking questions, understanding responses,
-  conversation management, and day-2 operations. Do NOT use for concepts
-  (use ocp-lightspeed-about), installing (use ocp-lightspeed-install),
-  configuring (use ocp-lightspeed-configure), or troubleshooting
-  (use ocp-lightspeed-troubleshoot).
+  Use when using OpenShift Lightspeed on the demo cluster: the console chat,
+  attaching resources or alerts to a question, feedback and data collection,
+  or calling the Lightspeed REST API. Do NOT use for OLSConfig changes (use
+  ocp-lightspeed-configure) or errors and unready pods (use
+  ocp-lightspeed-troubleshoot).
 ---
 
-# OCP Lightspeed Operate
+# Operating OpenShift Lightspeed
 
-Use this skill to ground OpenShift Lightspeed operational and usage guidance
-in the official Red Hat OpenShift Lightspeed 1.0 Operate guide.
+Thin skill: repo posture here, usage and API details in the linked sections.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. This skill covers end-user interaction
-patterns, conversation management, resource attachments, alert troubleshooting,
-and REST API access; it does not replace installation, configuration, concept,
-or troubleshooting skills.
+- Showing the console assistant during a session, or answering how a user
+  reaches it.
+- Calling the REST API from a script or tool.
 
-## Using the Chat Window
+## Repo decisions
 
-- Access Lightspeed by clicking the OpenShift Lightspeed icon in the
-  lower-right corner of the OpenShift web console.
-- Enter a question in the "Send a message" field and click Submit.
-- Lightspeed answers questions about OpenShift, Kubernetes, and specialized
-  components (OpenShift Virtualization, OpenShift Service Mesh, etc.).
-- Questions unrelated to target topics are ignored. Rephrase for clarity if
-  results are poor.
-- Use specific language (e.g., "How do I start a virtual machine in OpenShift
-  Virtualization?" rather than "How do I start a virtual machine?").
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Lightspeed is not part of any workshop stage path; demo flows use the governed MaaS models, not Lightspeed | `README.md` (stages); `docs/OPERATIONS.md` | [Using the chat window][chat] |
+| No repo script or tool calls the Lightspeed REST API | — | [Interacting with the API][api] |
 
-## Conversation Management
+## Procedure
 
-- Conversation history provides context for follow-up questions within the
-  same chat session.
-- Ask follow-up questions in the same chat to refine results and build context.
-- History does not persist across console page reloads. Reloading acts the same
-  as clicking "New Chat".
-- Restarting the Lightspeed service erases all conversation history.
-- Click "Clear chat" to start a new conversation without prior context
-  influencing replies.
+1. Check service health first (`ocp-lightspeed-troubleshoot`); a Succeeded
+   operator with an unready API returns errors in the chat.
+2. Use the chat or the API per the linked sections. For API calls, take the
+   token and endpoint from the documented authentication flow; never paste
+   tokens into Git or chat.
 
-## Resource Attachments and Alert Analysis
+## Pitfalls
 
-- Navigate to a supported resource (e.g., Workloads > Pods > pod name), then
-  open Lightspeed and click "Add" to attach the resource object.
-- Attachments give Lightspeed specific context for data-driven troubleshooting.
-- For alerts: navigate to Observe > Alerting, expand and select an alert, open
-  Lightspeed, click "Attach context" and select "Alert", then ask about the
-  alert.
+- Feedback and transcripts may be collected; check
+  [disabling data collection][datacollection] before demoing with sensitive
+  content.
+- An API call can fail for authentication or RBAC reasons that look like
+  service faults; read [API authentication requirements][authmatrix] and
+  [error handling][errors].
 
-## Feedback
+## Official documentation (OpenShift Lightspeed, "1.0" set)
 
-- Click thumbs up or thumbs down on any response to rate it.
-- Optionally enter text feedback before submitting.
-- The rating, text, question, and response are sent to Red Hat for review.
+| Topic | Section |
+|---|---|
+| Chat | [Using the chat window][chat], [conversations and context][conversations] |
+| Attaching context | [Attaching a resource][attach], [troubleshooting alerts][alerts] |
+| Data collection | [Disabling data collection][datacollection] |
+| API access | [Authenticate API requests][apiauth], [authentication requirements][authmatrix] |
+| API reference | [Endpoints][endpoints], [error handling][errors], [REST API specifications][spec] |
 
-## REST API Access
+## Related skills
 
-Direct API access supports up to 100 concurrent connections. All versioned
-endpoints use the `/v1` path. Authentication uses bearer tokens validated
-through Kubernetes `TokenReview` and `SubjectAccessReview` against `/ols-access`.
+`ocp-lightspeed-configure`, `ocp-lightspeed-troubleshoot`, `ocp-web-console`.
 
-Key endpoints:
-
-- `POST /v1/query` — send a prompt (required: `query`; optional:
-  `conversation_id`, `provider`, `model`, `attachments`)
-- `POST /v1/streaming_query` — SSE stream (types: `text`, `tool_call`,
-  `tool_result`, `approval_required`, `reasoning`, `end`)
-- `GET /v1/conversations` — list conversation IDs, summaries, message counts
-- `GET /v1/conversations/{id}` — retrieve specific conversation history
-- `DELETE /v1/conversations/{id}` — delete a conversation
-- `POST /v1/feedback` — submit sentiment (`1` or `-1`) or text feedback
-- Unauthenticated endpoints: `/metrics`, `/readiness`, `/liveness`
-
-MCP server proxy authentication uses `GET /v1/mcp/client-auth-headers` to
-discover required headers, then passes credentials in the `mcp_headers` field
-of the request body.
-
-Attachment formats: `text/plain` for logs, `application/yaml` for
-configurations (YAML with `kind` and `metadata.name` is treated as a named
-Kubernetes resource).
-
-See `references/official-doc-extraction.md` for full API details, error codes,
-authentication procedures, and OpenAPI specification access.
-
-## Day-2 Operations
-
-- Grant API access: `oc adm policy add-cluster-role-to-user ols-user <user>`
-- Obtain token: `TOKEN=$(oc whoami -t)` or
-  `TOKEN=$(oc create token <sa> -n <ns>)`
-- Verify token: `curl -k -X POST "https://${OLS_HOST}/authorized" -H "Authorization: Bearer ${TOKEN}"`
-- Access Swagger UI at `/docs`, ReDoc at `/redoc`, raw OpenAPI at `/openapi.json`
-- Restrict `/docs` and `/redoc` access in production environments.
-- Do not expose the service to the public internet without `kube-rbac-proxy`
-  authentication.
-
-## Workflow
-
-1. Read `references/official-doc-extraction.md`.
-2. Identify whether the task concerns:
-   - Chat window usage and conversation patterns
-   - Resource attachment or alert troubleshooting workflows
-   - Feedback submission
-   - REST API authentication and token management
-   - API endpoint usage, MCP proxy headers, or attachments
-   - OpenAPI specification access or regeneration
-3. For API integration, verify the Lightspeed service route and authentication
-   before calling endpoints.
-4. For live operations, use the repo environment guard and confirm cluster
-   context with `oc whoami`.
-
-## Related Skills
-
-- `ocp-lightspeed-about` — Lightspeed concepts, architecture, and capabilities
-- `ocp-lightspeed-install` — Operator installation and service deployment
-- `ocp-lightspeed-configure` — OLSConfig, providers, models, and integrations
-- `ocp-lightspeed-operate` — this skill (usage, conversations, API access)
-- `ocp-lightspeed-troubleshoot` — diagnostics and recovery
-- `ocp-lightspeed-release-notes` — version history and known issues
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[chat]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-initiating-chat-using-chat-window_ols-using-openshift-lightspeed
+[conversations]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-about-lightspeed-conversations_ols-using-openshift-lightspeed
+[attach]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-attaching-a-resource-object-to-your-query_ols-using-openshift-lightspeed
+[alerts]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-using-lightspeed-to-troubleshoot-alerts_ols-using-openshift-lightspeed
+[datacollection]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-disabling-data-collection-operator_ols-using-openshift-lightspeed
+[api]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-interacting-with-the-api
+[apiauth]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-authenticate-api-requests_ols-interacting-with-the-api
+[authmatrix]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-api-authentication-matrix_ols-interacting-with-the-api
+[endpoints]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-ref-api-endpoints-reference_ols-interacting-with-the-api
+[errors]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-ref-api-error-handling_ols-interacting-with-the-api
+[spec]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-con-openshift-lightspeed-rest-api-specifications_ols-interacting-with-the-openshift-lightspeed-rest-api

@@ -2,129 +2,74 @@
 name: ocp-lightspeed-troubleshoot
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_lightspeed
+  docs-version: "1.0"
   skill-group: "OpenShift Platform"
 description: >
-  Use when troubleshooting Red Hat OpenShift Lightspeed 1.0 issues, including
-  must-gather data collection, pod failures, LLM provider connectivity,
-  authentication errors, and known issues. Do NOT use for concepts
-  (use ocp-lightspeed-about), installing (use ocp-lightspeed-install),
-  configuring (use ocp-lightspeed-configure), or operations
-  (use ocp-lightspeed-operate).
+  Use when OpenShift Lightspeed on the demo cluster misbehaves: OLSConfig
+  NotReady or ApiReady=False, unready API pods, provider authentication
+  failures (for example Azure AADSTS700016), 502 errors in the console, API
+  401/403, prompt-too-long or truncated answers, or the operator missing from
+  the catalog. Do NOT use for concepts (use ocp-lightspeed-about) or planned
+  configuration changes (use ocp-lightspeed-configure).
 ---
 
-# OCP Lightspeed Troubleshoot
+# OpenShift Lightspeed troubleshooting
 
-Use this skill to ground OpenShift Lightspeed troubleshooting guidance in the
-official Red Hat OpenShift Lightspeed 1.0 troubleshoot guide for the active
-baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo findings and routing here, product fixes in the linked
+sections. Repo records: `docs/TROUBLESHOOTING.md` and `docs/OPERATIONS.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+- The fresh-environment baseline or a user reports Lightspeed not answering.
 
-## 502 Bad Gateway Errors
+## Repo decisions
 
-After deploying OpenShift Lightspeed, the web console interface may return
-502 Bad Gateway errors while service pods are still starting. Wait a few minutes
-and retry. No configuration change is required.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Lightspeed faults are routed to the provisioner (owner of the operator, OLSConfig and provider Secret); the repo does not mutate them | `docs/TROUBLESHOOTING.md` ("A fresh cluster is available but the baseline has exceptions") | [Troubleshooting][troubleshoot] |
+| Recorded finding (2026-10-05, 1.1.4): API unready, readiness 503, Azure OpenAI provider failing Entra authentication with `AADSTS700016` | `docs/TROUBLESHOOTING.md` ("Lightspeed API unready: Azure application identity not found") | [API authentication failures][apiauth] |
 
-## Operator Not Visible in OperatorHub
+## Procedure
 
-The OpenShift Lightspeed Operator only appears in OperatorHub on supported
-architectures. It is filtered out on anything other than `x86_64`.
+1. Pass the OpenShift safety guard in `AGENTS.md`, then read status only:
+   the OLSConfig conditions and the API deployment, using the read-only
+   commands in `docs/TROUBLESHOOTING.md`. Do not read Secret values.
+2. Match the symptom to a section below; for provider identity errors, follow
+   the repo record and hand the owner the finding.
+3. After the owner's fix, verify `ApiReady=True`, an available API deployment
+   and one bounded authenticated question.
 
-## Reasoning Model Delineator Prompt
+## Pitfalls
 
-Reasoning models may emit tags such as `THOUGHT` or `reasoning` to separate
-inner logic from the final answer. OpenShift Lightspeed does not control these
-tags. To suppress them:
+- A Succeeded CSV and nonempty Secret keys prove neither credential validity
+  nor service health.
+- 502 errors right after a configuration change can be a pod still starting;
+  see [502 Bad Gateway][502] before changing anything.
+- Do not switch providers, bypass readiness or patch the operator-generated
+  deployment to hide a failure.
 
-- Use a model-specific keyword in your prompt (e.g., `/nothink`).
-- Disable the delineator feature in the inference server configuration.
+## Official documentation (OpenShift Lightspeed, "1.0" set)
 
-Consult the model or inference server documentation for specifics.
+| Symptom | Section |
+|---|---|
+| 502 in the console | [502 Bad Gateway errors][502] |
+| Operator not in the catalog | [Operator missing from OperatorHub][operatorhub] |
+| Reasoning tags in answers | [Delineator prompt][delineator] |
+| API 401/403 | [API authentication failures][apiauth] |
+| Prompt too long, cut answers | [Prompt is too long][toolong], [truncated responses][truncated] |
+| Lost history | [Conversation history issues][history] |
 
-## API Authentication Failures
+## Related skills
 
-Use status codes to diagnose authentication issues with the OpenShift
-Lightspeed API:
+`ocp-lightspeed-configure`, `ocp-lightspeed-release-notes`, `inspect-cluster`.
 
-| Status | Cause | Example Detail |
-|--------|-------|----------------|
-| 401 | Missing, malformed, or non-Bearer `Authorization` header | `Unauthorized: No auth header found` |
-| 403 | Invalid/expired token or missing RBAC for `/ols-access` | `Forbidden: User does not have access` |
-| 500 | Unexpected error in Kubernetes `TokenReview` | `Forbidden: Unable to Review Token` |
-
-## Prompt Too Long Errors
-
-The `Prompt is too long` error occurs when total tokens (input query, RAG
-context, expected response) exceed the model context window.
-
-1. Verify the context window value is correct for the model and provider.
-2. Lower the maximum response tokens to leave room for input and context.
-3. Shorten the query or reduce attached file size.
-
-## Truncated Responses
-
-Truncated or incomplete responses occur when the model reaches its response
-token limit.
-
-1. Verify the model supports a higher response token limit.
-2. Increase the token limit in the OLSConfig CR.
-3. Type `continue` as a follow-up query to retrieve remaining text.
-
-Set the response token value in reasonable proportion to the context window;
-too high a value limits input query size.
-
-## Conversation History Issues
-
-Earlier dialogue may be truncated when the model reaches its context limit.
-
-1. Verify the context window is correctly set for the model and provider.
-2. Lower the max response tokens to increase space for conversation history.
-
-## Google Vertex AI Configuration Errors
-
-Common `OLSConfig` CR validation errors for Google Vertex AI:
-
-| Error | Resolution |
-|-------|------------|
-| `googleVertexConfig is required for google_vertex provider` | Provide the `googleVertexConfig` object with `projectID` and `location`. |
-| `googleVertexConfig may only be set when type is google_vertex` | Remove `googleVertexConfig`; for `google_vertex_anthropic`, use `googleVertexAnthropicConfig`. |
-| `credentialKey must not be empty or whitespace` | Provide a valid key name, or omit the field to default to `apitoken`. |
-
-## Workflow
-
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify the troubleshooting category:
-   - 502 Bad Gateway or pod startup delays
-   - Operator visibility in OperatorHub
-   - Reasoning model delineator output
-   - API authentication failures (401, 403, 500)
-   - Prompt too long errors
-   - Truncated or incomplete responses
-   - Conversation history truncation
-   - Google Vertex AI OLSConfig validation errors
-4. Use exact error messages, status codes, and procedures from the extraction.
-5. If the issue is not covered here, check the official documentation URL in
-   `references/source-capture.md` for updates.
-
-## Related Skills
-
-- Use `ocp-lightspeed-about` for OpenShift Lightspeed concepts and architecture.
-- Use `ocp-lightspeed-install` for installing the OpenShift Lightspeed Operator.
-- Use `ocp-lightspeed-configure` for OLSConfig CR and provider configuration.
-- Use `ocp-lightspeed-operate` for operational procedures and day-2 management.
-- Use `ocp-lightspeed-release-notes` for release notes and known issues.
-- Use `ocp-lightspeed-troubleshoot` (this skill) for diagnostics and resolution.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[troubleshoot]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-troubleshooting-openshift-lightspeed
+[502]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-502-bad-gateway-errors_ols-troubleshooting-openshift-lightspeed
+[operatorhub]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-operator-missing-from-operatorhub-list_ols-troubleshooting-openshift-lightspeed
+[delineator]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-reasoning-model-generates-delineator-prompt_ols-troubleshooting-openshift-lightspeed
+[apiauth]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-troubleshoot-api-authentication-failures_ols-troubleshooting-openshift-lightspeed
+[toolong]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-proc-error-prompt-is-too-long_ols-troubleshooting-openshift-lightspeed
+[truncated]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-proc-resolving-truncated-responses_ols-troubleshooting-openshift-lightspeed
+[history]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-proc-resolving-issues-with-conversation-history_ols-troubleshooting-openshift-lightspeed

@@ -25,7 +25,8 @@ a product family and, when they come from a skill, to that skill; a README or
 doc link belongs to the family of the product it links to. Default exit status is 1
 when a finding belongs to a family in converted_families or to a skill in
 converted_skills (a family converted skill by skill; pin findings of such a
-family fail too); --report always exits 0. --live fetches each URL sequentially with a
+family fail too); UNPINNED never fails, because pin.none records a reviewed
+reason (for example a provisioner-owned operator). --report always exits 0. --live fetches each URL sequentially with a
 delay; 403, 429 and 5xx answers are INCONCLUSIVE, never failures.
 
 Usage:
@@ -105,6 +106,8 @@ class Checker:
 
     def failing(self, index: int) -> bool:
         code, family = self.findings[index][:2]
+        if code == "UNPINNED":
+            return False
         if family in self.converted or self.finding_skills[index] in self.converted_skills:
             return True
         return code.startswith("PIN-") and family in self.partial_families()
