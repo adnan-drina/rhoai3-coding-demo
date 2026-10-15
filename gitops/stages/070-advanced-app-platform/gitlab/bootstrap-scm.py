@@ -316,22 +316,8 @@ def main():
                 'immutable': True, 'data': {'seeds.json': json.dumps([seed])}})
         publish_token = base64.b64decode(publish_secret['data']['token']).decode()
         apply('Secret', 'rhdh-gitlab', 'rhdh', {'GITLAB_HOST': host, 'GITLAB_BASE_URL': base, 'GITLAB_PUBLISHER_TOKEN': publish_token})
+        # Developer Hub's Argo CD token is the operator-managed local user (openshift-gitops/rhdh-local-user).
         argo_host = oc('get', 'route', 'openshift-gitops-server', '-n', 'openshift-gitops', '-o', 'json')['spec']['host']
-        try:
-            oc('get', 'secret', 'rhdh-argocd-reader', '-n', 'openshift-gitops', '-o', 'json')
-        except subprocess.CalledProcessError as error:
-            if '(NotFound)' not in error.stderr: raise
-            admin = oc('get', 'secret', 'openshift-gitops-cluster', '-n', 'openshift-gitops', '-o', 'json')
-            password = base64.b64decode(admin['data']['admin.password']).decode()
-            argo_base = 'https://' + argo_host
-            def argo(method, path, payload, bearer=None):
-                headers = {'Content-Type': 'application/json'}
-                if bearer: headers['Authorization'] = 'Bearer ' + bearer
-                request = urllib.request.Request(argo_base + '/api/v1/' + path, json.dumps(payload).encode(), headers, method=method)
-                with urllib.request.urlopen(request, timeout=30) as response: return json.load(response)
-            session = argo('POST', 'session', {'username': 'admin', 'password': password})['token']
-            read_token = argo('POST', 'account/rhdh/token', {'expiresIn': 7776000}, session)['token']
-            apply('Secret', 'rhdh-argocd-reader', 'openshift-gitops', {'token': read_token})
         synced = oc('get', 'application', '070-gitlab', '-n', 'openshift-gitops', '-o', 'json')
         platform_sha = synced['spec']['source']['targetRevision']
         if not platform_sha or not re.fullmatch('[0-9a-f]{40}', platform_sha): raise RuntimeError('Stage 070 has no immutable source revision')

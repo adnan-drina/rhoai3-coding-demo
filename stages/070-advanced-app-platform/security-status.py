@@ -1,16 +1,18 @@
 """Read-only live checks for the Stage 070 correction's explicit boundaries."""
 import argparse
 import base64
+import datetime
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
-SECRETS = [('rhdh', 'rhdh-gitlab'), ('openshift-gitops', 'rhdh-argocd-reader'),
+SECRETS = [('rhdh', 'rhdh-gitlab'), ('openshift-gitops', 'rhdh-local-user'),
            ('gitlab-system', 'gitlab-oidc'), ('openshift-mta', 'kai-api-keys'),
            ('app-platform-build', 'sonarqube-credentials'),
            ('openshift-devspaces', 'gitlab-oauth-config'), ('gitlab-system', 'stage070-scm-provisioner')]
@@ -27,6 +29,11 @@ def command(*args):
 
 def oc(*args):
     return json.loads(command('oc', '--request-timeout=15s', *args, '-o', 'json'))
+
+
+def token_claims(token):
+    payload = token.split('.')[1]
+    return json.loads(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))
 
 
 def denied(verb, resource, namespace, principal):
@@ -101,6 +108,22 @@ def main():
                     raise
                 refused = True
             checks['scoped_client_cannot_administer:' + secret + '/' + realm] = refused
+    # Developer Hub reads Argo CD with the operator-managed rhdh local user; its copy must match and stay valid.
+    now = time.time()
+    reader = base64.b64decode(oc('get', 'secret', 'rhdh-local-user', '-n', 'openshift-gitops')['data']['apiToken']).decode()
+    copy = base64.b64decode(oc('get', 'secret', 'rhdh-secrets', '-n', 'rhdh')['data'].get('RHDH_ARGOCD_TOKEN', '')).decode()
+    claims = token_claims(reader)
+    checks['argo_reader_is_the_operator_local_user'] = claims.get('sub') == 'rhdh:apiKey' and copy == reader
+    checks['argo_reader_valid_beyond_7_days'] = not claims.get('exp') or claims['exp'] - now > 7 * 86400
+    checks['hub_cannot_read_argo_admin_password'] = denied('get', 'secret/openshift-gitops-cluster', 'openshift-gitops',
+        'system:serviceaccount:gitlab-system:gitlab-integrations-bootstrap')
+    for writer in oc('get', 'secret', '-A', '--field-selector', 'metadata.name=gitlab-delivery-writer')['items']:
+        expiry = base64.b64decode(writer['data'].get('expires_at', '')).decode()
+        left = (datetime.date.fromisoformat(expiry) - datetime.date.today()).days if expiry else -1
+        checks['delivery_writer_valid_beyond_14_days:' + writer['metadata']['namespace']] = left > 14
+    # The pipeline control token belongs to the platform-provisioner technical user, never the SonarQube admin.
+    control = oc('get', 'secret', 'sonarqube-credentials', '-n', 'app-platform-build')['metadata'].get('annotations', {})
+    checks['sonar_control_token_is_the_provisioners'] = control.get('rhoai3.io/control-token-owner') == 'platform-provisioner'
     for ns in ('gitlab-system', 'sonarqube', 'rhdh', 'app-platform-build', 'trusted-artifact-signer'):
         policies = oc('get', 'networkpolicy', 'platform-ingress', '-n', ns)
         checks['ingress_policy_installed:' + ns] = policies['spec'].get('policyTypes') == ['Ingress']

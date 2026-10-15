@@ -26,6 +26,7 @@ configMapGenerator:
       - secret_writer.py
       - bootstrap-admin.py
       - configure-sso.py
+      - ensure-provisioner.py
     options:
       annotations:
         argocd.argoproj.io/sync-wave: "10"

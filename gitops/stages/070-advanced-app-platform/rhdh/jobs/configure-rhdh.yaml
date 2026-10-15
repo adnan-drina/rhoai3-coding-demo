@@ -61,7 +61,7 @@ rules:
   resources:
   - secrets
   resourceNames:
-  - rhdh-argocd-reader
+  - rhdh-local-user
   verbs:
   - get
 ---
@@ -301,8 +301,9 @@ spec:
           ARGOCD_HOST=$(oc get route openshift-gitops-server -n openshift-gitops \
             -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
           ARGOCD_URL="https://${ARGOCD_HOST}"
-          ARGOCD_TOKEN=$(oc get secret rhdh-argocd-reader -n openshift-gitops \
-            -o jsonpath='{.data.token}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          # Operator-managed local user (Stage 010 argocd-instance.yaml spec.localUsers).
+          ARGOCD_TOKEN=$(oc get secret rhdh-local-user -n openshift-gitops \
+            -o jsonpath='{.data.apiToken}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
           if [ -z "$ARGOCD_HOST" ] || [ -z "$ARGOCD_TOKEN" ]; then
             echo "WARNING: Argo CD route or reader token not found"
           fi

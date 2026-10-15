@@ -142,13 +142,13 @@ class IntegratedContract(unittest.TestCase):
         self.assertEqual(tackle['spec']['kai_llm_model'], alias)
         self.assertEqual(gateway['spec']['model']['name'], alias)
 
-    def test_argo_reader_keeps_existing_policy_and_is_idempotent(self):
-        current = 'g, system:cluster-admins, role:admin\np, role:other, applications, get, other/*, allow\n'
-        updated = reader.policy(current)
-        self.assertTrue(updated.startswith(current))
-        self.assertEqual(reader.policy(updated), updated)
-        self.assertEqual([r for r in updated.splitlines() if 'rhdh' in r], reader.RULES)
+    def test_argo_reader_account_and_rules_are_declared_on_the_instance(self):
+        instance = yaml.safe_load((ROOT / 'gitops/bootstrap/overlays/demo/argocd-instance.yaml').read_text())['spec']
+        self.assertEqual(instance['localUsers'], [{'name': 'rhdh', 'apiKey': True, 'tokenLifetime': '2160h', 'autoRenewToken': True}])
+        self.assertNotIn('accounts.rhdh', instance.get('extraConfig', {}))  # extraConfig would override localUsers
+        self.assertTrue(set(reader.RULES) <= set(instance['rbac']['policy'].splitlines()))
         self.assertTrue(all(', get,' in r or r.startswith('g, ') for r in reader.RULES))
+        self.assertNotIn("'patch'", (BASE / 'gitlab/configure-argocd-reader.py').read_text())
 
     def test_argo_plugins_follow_110_oci_packaging(self):
         plugins = yaml.safe_load(yaml.safe_load((BASE / 'rhdh/rhdh-instance/dynamic-plugins-configmap.yaml').read_text())['data']['dynamic-plugins.yaml'])['plugins']

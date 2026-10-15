@@ -388,15 +388,6 @@ rules:
   resources:
   - secrets
   resourceNames:
-  - rhdh-argocd-reader
-  - openshift-gitops-cluster
-  verbs:
-  - get
-- apiGroups:
-  - ''
-  resources:
-  - secrets
-  resourceNames:
   - gitlab-platform-reader
   verbs:
   - get
