@@ -13,7 +13,7 @@ workspace all write to this MLflow instance; EvalHub logs each benchmark as an M
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Application Synced/Healthy at the stage revision) and [`validate-ai-services.sh`](../../../../stages/050-model-evaluation/validate-ai-services.sh) (dashboard settings, PostgreSQL, bucket, CA bundle, MLflow `Available`, workload Secret and TLS wiring) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`. `ignoreDifferences` on `ConfigMap/mlflow-service-ca` `/data/service-ca.crt` (injected by the service CA operator). |
 | Depends on | `010-rhoai-platform` (delegated DSC and dashboard fields); `030-private-model-serving` (the hook requires KServe `Managed`); ODF Multicloud Object Gateway (`openshift-storage.noobaa.io`); `gp3-csi`. |
-| Used by | `050-evalhub` (tracking URI, curated prompts namespace), `050-model-qualification` (pipeline-run tracking, AI Pipelines component), EvalHub TrustyAI component, Stage 040 GenAI Studio tracing. |
+| Used by | `050-evalhub` (tracking URI), `050-model-qualification` (pipeline-run tracking, AI Pipelines component), EvalHub TrustyAI component, Stage 040 GenAI Studio tracing. |
 
 ## Why
 
@@ -83,7 +83,7 @@ MLflow `Available` at the current generation, and publishes the MLflow HTTPS add
 | same | `/spec/components/aipipelines` | `managementState: Managed` | `050-model-qualification` | `Removed` in the Stage 010 manifest |
 | `OdhDashboardConfig/odh-dashboard-config` | `/spec/dashboardConfig/disableLMEval` | `false` (show Eval Hub pages) | `050-evalhub` | `true` [3] |
 | same | `/spec/dashboardConfig/globalProjectPrompts` | `true` | curated prompts | `false`, Technology Preview [3] |
-| same | `/spec/globalMLflowNamespaces` | `["ai-curated-prompts"]` | `050-evalhub` `prompts/` namespace | unset |
+| same | `/spec/globalMLflowNamespaces` | `["ai-curated-prompts"]` | `prompts/` namespace (this component) | unset |
 
 The DSC patch is a JSON patch that also tests the KServe state, so it fails instead of enabling evaluation on a cluster
 without Stage 030. The dashboard patch refuses to merge with a foreign `globalMLflowNamespaces` value.
