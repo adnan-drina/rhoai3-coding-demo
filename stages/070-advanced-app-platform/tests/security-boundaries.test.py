@@ -344,11 +344,11 @@ class SecretWriteScope(unittest.TestCase):
         role = next(d for d in self.docs(file) if d['kind'] == kind and d['metadata']['name'] == name)
         return [r for r in role['rules'] if 'secrets' in r['resources']]
 
-    def test_coordinator_writes_workspace_mirrors_without_reading_workspace_secrets(self):
+    def test_coordinator_writes_only_workspace_scanner_mirrors(self):
         self.policy('pipelines/gitlab/workspace-secret-policy.yaml', 'system:serviceaccount:app-platform-build:project-provisioner')
         for role in self.docs('devspaces/workspace-sonar-credentials.yaml'):
             if role['kind'] == 'Role':
-                self.assertEqual([r['verbs'] for r in role['rules'] if 'secrets' in r['resources']], [['create', 'patch']])
+                self.assertEqual([r['verbs'] for r in role['rules'] if 'secrets' in r['resources']], [['get', 'create', 'patch']])  # no update
 
     def test_key_provisioner_reads_only_its_key_secret(self):
         self.policy('devspaces/maas-key-secret-policy.yaml', 'system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner')

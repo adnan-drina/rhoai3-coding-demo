@@ -770,6 +770,21 @@ deploys the moved Subscription: Argo CD prunes the old Subscription and Operator
 OLM-created DevWorkspace Subscription in `openshift-devspaces` so OLM can install in `openshift-operators`. The operator
 is briefly absent; running workspaces keep running. The switch never deletes CRDs or the CheCluster.
 
+The 2026-10-15 switch needed three more steps, in this order (scripts in that day's `tmp/morning-20261015/`):
+
+1. Remove the old CSVs and the OLM-created DevWorkspace Subscription in `openshift-devspaces` once the new
+   Subscription exists (`move-devspaces-operator.sh`).
+2. The new DevWorkspace controller refuses to start while the `controller.devfile.io` webhooks point at the old
+   webhook server ("conflicting webhook definition"). Delete both webhook configurations and the old
+   `devworkspace-webhook-server` Deployment and `devworkspace-webhookserver` Service in `openshift-devspaces` in one pass;
+   the controller recreates them in `openshift-operators` (`move-devworkspace-webhooks.sh`). This is only the webhook
+   step of OpenShift's "Removing the DevWorkspace Operator"; never delete the CRDs or DevWorkspaces.
+3. The Dev Spaces InstallPlan fails validating the existing CheCluster when the CRD's conversion webhook points at a
+   missing Service (`eclipse-che/che-operator-service`). With `storedVersions: ["v2"]`, set the CRD conversion strategy
+   to `None`; OLM does not retry a failed InstallPlan, so delete the Pending CSV and the Subscription and let Argo CD
+   recreate it (`finish-devspaces-install.sh`, `retry-devspaces-install.sh`). The installed CSV restores the
+   conversion webhook to `openshift-operators/devspaces-operator-service`.
+
 Factory links specify `?revision=main&existing=<project>` so reopening matches
 the branch in the workspace. Migration workspace creation also requires its
 Kubernetes name to equal the devfile's `MIGRATION_RUN_NAME`. Kubernetes rejects
