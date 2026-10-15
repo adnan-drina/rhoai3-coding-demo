@@ -1,130 +1,117 @@
 ---
 name: rhoai-mlflow
 metadata:
-  author: rhoai3-demo
-  version: 1.0.0
-  platform-family: "rhoai"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  author: rhoai3-coding-demo
+  version: 2.0.0
+  product: rhoai
+  docs-version: "3.5"
   skill-group: "RHOAI Platform"
 description: >
-  Use for official RHOAI MLflow tracking: deployment/configuration, authentication and
-  RBAC, SDK clients, experiments/runs, metrics/parameters/tags, artifact storage,
-  persistence, model evaluation integration and validation. Do NOT use for EvalHub or
-  benchmark configuration (rhoai-evaluation), repo-specific evaluation glue (rhoai-model-
-  evaluation), model registry/catalog management, AutoRAG/AutoML optimization, pipeline-
-  server administration or general model deployment. Live changes require the OpenShift
-  safety guard.
+  Use when changing, reviewing or debugging the shared OpenShift AI MLflow
+  tracking server of Stage 050: the cluster-scoped MLflow CR `mlflow`, its
+  PostgreSQL StatefulSet `mlflow-postgresql`, the ODF artifact bucket
+  `rhoai-mlflow-artifacts`, the `mlflowoperator`/`trustyai`/`aipipelines`
+  enable hook, the `ai-curated-prompts` global prompt workspace, MLflow SDK
+  authentication, or EvalHub and pipeline runs that fail to log to MLflow
+  (gitops/stages/050-model-evaluation/mlflow/). Do NOT use for EvalHub jobs,
+  providers and collections (use rhoai-evaluation), AI pipeline servers (use
+  rhoai-ai-pipelines), or registry records (use rhoai-model-registry-workflows).
 ---
 
 # RHOAI MLflow
 
-Use this skill for Red Hat OpenShift AI MLflow platform and SDK workflows on
-the active product baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: repo decisions and pitfalls here, product behavior in the linked
+OpenShift AI 3.5 sections. Detailed record:
+`gitops/stages/050-model-evaluation/mlflow/README.md`.
 
-## Source Grounding
+## When to use
 
-Read `references/source-capture.md` before using product workflow details.
-Official Red Hat documentation is product authority. This skill adapts the
-official Working with MLflow guide to this repo's demo workflow and GitOps
-review model.
+- The MLflow CR is not `Available`, or EvalHub, the qualification pipeline or
+  GenAI Studio tracing cannot write runs.
+- Changing the MLflow database, artifact storage, CA trust or sizing.
+- Adding a global prompt workspace or reviewing who may read MLflow data.
 
-## Scope
+## Repo decisions
 
-This skill covers:
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `mlflowoperator`, `trustyai` and `aipipelines` set `Managed` by a Sync hook into fields Stage 010 delegates (one shared DSC) | `gitops/stages/050-model-evaluation/mlflow/dsc-enablement/` | [Enable the MLflow Operator component][enable] |
+| One cluster-scoped `MLflow` named `mlflow`; Secret and ConfigMap references resolve in `redhat-ods-applications` | `gitops/stages/050-model-evaluation/mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
+| PostgreSQL 16 metadata store via `backendStoreUriFrom` (Secret `mlflow-db-credentials`, created by `setup-ai-services.sh`); no SQLite | `gitops/stages/050-model-evaluation/mlflow/postgresql-statefulset.yaml` | [Install and configure MLflow][install], [Storage and database compatibility][storage] |
+| Artifacts in ODF bucket `rhoai-mlflow-artifacts` with `serveArtifacts: true`, so clients never hold S3 keys | `gitops/stages/050-model-evaluation/mlflow/objectbucketclaim.yaml` | [MLflow configuration parameters][params] |
+| `ai-curated-prompts` is a global prompt workspace (label `opendatahub.io/global-mlflow-workspace: mlflow`) listed in dashboard `globalMLflowNamespaces` | `gitops/stages/050-model-evaluation/mlflow/prompts/namespace.yaml` | [Cluster roles for global prompt registry namespaces][globalroles] |
+| One replica and one worker, automatic schema migration: demo sizing | `gitops/stages/050-model-evaluation/mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
+| All data objects (PVC, StatefulSet, bucket, CR) carry `Prune=false,Delete=false`, so MLflow is its own Argo CD Application `050-mlflow` | `gitops/argocd/app-of-apps/050-model-evaluation/mlflow.yaml` | not product guidance |
 
-- MLflow concept model in OpenShift AI
-- single shared MLflow instance deployed through the MLflow Operator
-- one-to-one mapping from OpenShift projects to MLflow workspaces
-- Kubernetes RBAC authorization through MLflow pseudo-resources
-- enabling the `mlflowoperator` component on the `DataScienceCluster`
-- cluster-scoped `MLflow` custom resource named `mlflow`
-- namespace-scoped `MLflowConfig` custom resource named `mlflow`
-- development/test storage with SQLite and PVC-backed artifacts
-- production-oriented storage with PostgreSQL and S3-compatible object storage
-- aggregate `mlflow-view`, `mlflow-edit`, and `mlflow-integration` roles
-- MLflow SDK installation and `kubernetes-namespaced` authentication
-- local workstation and in-cluster pod SDK configuration
-- compatible MLflow server and SDK versions
-- experiment tracking with parameters, metrics, and artifacts
-- project-specific S3 artifact storage overrides
-- common MLflow SDK troubleshooting signals
+## Procedure
 
-Use other skills for adjacent work:
+1. Change manifests under `gitops/stages/050-model-evaluation/mlflow/`, commit,
+   publish, then deploy all Stage 050 Applications at one SHA:
 
-- `rhoai-project-workflows` for project lifecycle, workbench lifecycle,
-  project access, project connections, and connection creation
-- `rhoai-s3-object-storage-data` for Boto3 and general object operations from
-  workbenches
-- `rhoai-model-registry` for OpenShift AI model registry administrator
-  provisioning
-- `rhoai-model-registry-workflows` for OpenShift AI model registry user
-  workflows
-- `rhoai-gen-ai-playground` for product prompt workflows that rely on MLflow
-  availability
-- `rhoai-model-customization-training` for Training Hub MLflow tracking
-  parameters, run evidence, and rank-0 distributed logging context
-- `rhoai-evaluation` for official EvalHub MLflow tracking and evaluation
-  result evidence workflows
-- `rhoai-model-evaluation` for custom EvalHub, LM-Eval, RAGAS, and
-  MLflow-backed evidence workflows outside the MLflow product guide
-- `rhoai-dashboard-customization` for dashboard feature flags and application
-  visibility
-- `rhoai-api-tiers` for MLflow REST API and `mlflows.opendatahub.io/v1`
-  support posture
+   ```bash
+   ./stages/050-model-evaluation/deploy.sh      # runs setup-ai-services.sh
+   ./stages/050-model-evaluation/validate.sh
+   ./stages/050-model-evaluation/validate-ai-services.sh
+   ```
 
-## Demo Policy
+2. Inspect read-only, after the OpenShift safety guard in `AGENTS.md`:
 
-For this repo:
+   ```bash
+   oc get mlflows.mlflow.opendatahub.io mlflow -o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}{"\n"}'
+   oc get statefulset,pvc,obc -n redhat-ods-applications | grep -i mlflow
+   ```
 
-- Treat MLflow as the tracking and evidence store for experiments, runs,
-  metrics, artifacts, prompts, datasets, traces, and registered model records
-  when the demo needs those lifecycle records.
-- Manage project and workspace lifecycle through OpenShift AI projects. Do not
-  claim the MLflow API creates, updates, or deletes workspaces.
-- Use GitOps for the cluster-level `MLflow` deployment once active manifests
-  exist, but verify fields with official docs or `oc explain` before authoring.
-- Use SQLite and file/PVC artifacts only for development, testing, or small
-  demo flows. Label this as non-production.
-- Use PostgreSQL and S3-compatible artifact storage for production-shaped
-  enterprise narratives.
-- Store database URIs with credentials in Secrets referenced by
-  `backendStoreUriFrom`; do not commit database credentials.
-- Keep S3 credentials in project-scoped connections or Secrets. Never commit
-  access keys, secret keys, session tokens, or bucket-specific credentials.
-- When `serveArtifacts` is enabled, do not set `defaultArtifactRoot` to a
-  direct `s3://` URI that bypasses the MLflow server artifact proxy.
-- For per-project artifact overrides, use a project Secret named
-  `mlflow-artifact-connection` and an `MLflowConfig` named `mlflow`.
-- Prefer `MLFLOW_TRACKING_AUTH=kubernetes-namespaced` over manual token
-  exports. Treat manual `MLFLOW_TRACKING_TOKEN` use as local troubleshooting,
-  not production guidance.
-- Use `MLFLOW_TRACKING_INSECURE_TLS=true` only for the demo's accepted
-  self-signed certificate posture.
+3. SDK clients authenticate with `MLFLOW_TRACKING_AUTH=kubernetes-namespaced`
+   and use their OpenShift project as the MLflow workspace ([SDK][sdk]).
+   Grant access with the aggregate `mlflow-view` / `mlflow-edit` roles
+   ([aggregate roles][roles]).
 
-## Workflow
+## Pitfalls
 
-1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/source-capture.md` and
-   `references/official-doc-extraction.md`.
-3. Decide whether the task is:
-   - MLflow concept or README authoring
-   - cluster-level MLflow Operator enablement
-   - `MLflow` custom resource review
-   - storage and database configuration
-   - RBAC and API authorization review
-   - SDK installation and authentication
-   - local workstation or in-pod SDK setup
-   - experiment tracking code review
-   - project-specific artifact storage override
-   - troubleshooting MLflow SDK errors
-4. Use `examples/mlflow-patterns.md` for focused review patterns.
-5. For live cluster work, follow the OpenShift safety guard in `AGENTS.md`.
-6. Validate with `references/validation-checklist.md`.
+- `setup-ai-services.sh` refuses to regenerate `mlflow-db-credentials` while
+  the database PVC or StatefulSet exists; a lost Secret means restoring it,
+  not re-running the helper.
+- `caBundleConfigMap` (trust for the ODF S3 service) is in the repo CR but was
+  not found in the 3.5 parameter text; verify with
+  `oc explain mlflows.spec.caBundleConfigMap` before relying on it elsewhere.
+- Pipeline step MLflow calls ignore the service CA on 3.5.1; the qualification
+  project uses `insecureSkipVerify` in a copied server config. See
+  `docs/TROUBLESHOOTING.md#qualification-pipeline-run-shows-no-logs-empty-inputs-or-unopenable-artifacts`.
+- A deleted MLflow experiment keeps its name reserved; delete runs, not the
+  experiment, when it will be reused
+  (`docs/OPERATIONS.md#stage-050-model-qualification-pipeline-2026-10-12`).
+- The database URI uses `sslmode=disable`; the NetworkPolicy still lets every
+  pod in `redhat-ods-applications` reach port 5432.
 
-## References
+## Official documentation (RHOAI 3.5)
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
-- `references/validation-checklist.md`
-- `examples/mlflow-patterns.md`
+| Topic | Section |
+|---|---|
+| Concepts, projects as workspaces | [MLflow for experiment tracking][about] |
+| Install, CR and MLflowConfig fields | [Install and configure MLflow][install], [Parameters][params] |
+| Roles and API authorization | [Aggregate cluster roles][roles], [RBAC model][rbac] |
+| SDK setup and errors | [Install and authenticate the SDK][sdk], [Pods][sdkpods], [Troubleshooting][sdktrouble], [Version compatibility][versions] |
+| Per-project artifact storage | [Project-specific S3 artifact storage][s3project] |
+| Workbench integration | [Track experiments in workbenches][workbench] |
+| Trace archival | [Trace archival][archival] |
+
+## Related skills
+
+`rhoai-evaluation`, `rhoai-ai-pipelines`, `rhoai-gen-ai-playground`,
+`rhoai-dsci-dsc-configuration`, `odf-object-bucket-claims`.
+
+[about]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#about-mlflow_mlflow
+[install]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#installing-mlflow_mlflow
+[params]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#mlflow-configuration-parameters_mlflow
+[roles]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#reference-aggregate-cluster-roles_mlflow
+[globalroles]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#cluster_roles_for_global_prompt_registry_namespaces
+[rbac]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#rbac-model-api-usage_mlflow
+[sdk]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#installing-and-authenticating-mlflow-sdk_mlflow
+[sdkpods]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#configuring-mlflow-sdk-environment-variables-for-pods_mlflow
+[sdktrouble]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#troubleshooting-mlflow-sdk_mlflow
+[versions]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#mlflow-version-compatibility_mlflow
+[storage]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#mlflow-storage-database-compatibility_mlflow
+[s3project]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#configuring-project-specific-s3-artifact-storage_mlflow
+[enable]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#enabling-mlflow-component_mlflow
+[workbench]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#tracking-experiments-with-mlflow-in-workbenches
+[archival]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_mlflow/index#mlflow-trace-archival-overview_mlflow

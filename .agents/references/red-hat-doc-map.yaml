@@ -38,13 +38,18 @@ converted_skills:
   - rhoai-distributed-inference-llmd
   - rhoai-distributed-workloads
   - rhoai-dsci-dsc-configuration
+  - rhoai-evaluation
   - rhoai-gen-ai-playground
   - rhoai-hardware-profiles
   - rhoai-kueue-workload-management
   - rhoai-maas-governance
+  - rhoai-mlflow
   - rhoai-model-catalog-sources
   - rhoai-model-deployment
+  - rhoai-model-registry
+  - rhoai-model-registry-workflows
   - rhoai-model-serving-platform
+  - rhoai-monitoring-trustyai
   - rhoai-nvidia-gpu-accelerators
   - rhoai-observability
   - rhoai-self-managed-installation
@@ -413,6 +418,26 @@ products:
           - book: working_with_model_registries
             status: active
             skill: rhoai-model-registry-workflows
+            sections:
+              - working-with-model-registries_model-registry
+              - registering-a-model_model-registry
+              - registering-a-model-version_model-registry
+              - registering-model-as-oci-image_model-registry
+              - monitoring-model-transfer-jobs_model-registry
+              - retrying-failed-model-transfer-job_model-registry
+              - deleting-model-transfer-job_model-registry
+              - viewing-registered-models_model-registry
+              - viewing-registered-model-versions_model-registry
+              - editing-model-metadata-in-a-model-registry_model-registry
+              - editing-model-version-metadata-in-a-model-registry_model-registry
+              - deploying-a-model-version-from-a-model-registry_model-registry
+              - editing-the-deployment-properties-of-a-model-deployed-by-using-the-model-serving-platform_model-registry
+              - deleting-a-deployed-model-version-from-a-model-registry_model-registry
+              - archiving-a-model_model-registry
+              - archiving-a-model-version_model-registry
+              - restoring-a-model_model-registry
+              - restoring-a-model-version_model-registry
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: working_with_the_model_catalog
             status: active
             skill: rhoai-model-catalog-workflows
@@ -482,6 +507,23 @@ products:
           - book: working_with_mlflow
             status: active
             skill: rhoai-mlflow
+            sections:
+              - about-mlflow_mlflow
+              - installing-mlflow_mlflow
+              - mlflow-configuration-parameters_mlflow
+              - reference-aggregate-cluster-roles_mlflow
+              - cluster_roles_for_global_prompt_registry_namespaces
+              - rbac-model-api-usage_mlflow
+              - installing-and-authenticating-mlflow-sdk_mlflow
+              - configuring-mlflow-sdk-environment-variables-for-pods_mlflow
+              - troubleshooting-mlflow-sdk_mlflow
+              - mlflow-version-compatibility_mlflow
+              - mlflow-storage-database-compatibility_mlflow
+              - configuring-project-specific-s3-artifact-storage_mlflow
+              - enabling-mlflow-component_mlflow
+              - tracking-experiments-with-mlflow-in-workbenches
+              - mlflow-trace-archival-overview_mlflow
+            reviewed: { version: "3.5", date: 2026-10-15, note: "caBundleConfigMap (used by the repo MLflow CR) not found in the read 3.5 parameter text; last ~5K characters of the book not read" }
       deploy_and_operate_ai:
         description: Model serving, registries, catalog governance, MaaS, Llama Stack, llm-d, monitoring, safety, and evaluation.
         routes:
@@ -536,6 +578,15 @@ products:
           - book: managing_model_registries
             status: active
             skill: rhoai-model-registry
+            sections:
+              - overview-of-model-registries_managing-model-registries
+              - model_registry
+              - enabling-the-model-registry-component_managing-model-registries
+              - creating-a-model-registry_managing-model-registries
+              - editing-a-model-registry_managing-model-registries
+              - managing-model-registry-permissions_managing-model-registries
+              - deleting-a-model-registry_managing-model-registries
+            reviewed: { version: "3.5", date: 2026-10-15, note: "guide names the Role registry-users-<name>; the live operator created registry-user-demo-registry" }
           - book: working_with_llama_stack
             status: active
             skill: rhoai-llama-stack
@@ -545,12 +596,64 @@ products:
           - book: evaluating_ai_systems
             status: active
             skill: rhoai-evaluation
+            sections:
+              - overview-evaluating-ai-systems_evaluate
+              - evalhub-overview_evaluate
+              - evalhub-architecture-overview_evaluate
+              - evalhub-deploy-with-the-trustyai-operator_evaluate
+              - evalhub-install-the-evalhub-sdk-and-cli_evaluate
+              - evalhub-route-evaluation-jobs-through-kueue_evaluate
+              - evalhub-submit-an-evaluation-job_evaluate
+              - evalhub-track-evaluation-jobs-and-results_evaluate
+              - evalhub-cancel-and-delete-jobs_evaluate
+              - evalhub-built-in-collections_evaluate
+              - evalhub-configure-api-key-authentication_evaluate
+              - evalhub-use-custom-data-from-s3_evaluate
+              - evalhub-provide-evaluation-test-data-from-pvc_evaluate
+              - evalhub-export-evaluation-results-to-oci-registry_evaluate
+              - evalhub-configure-mlflow-experiment-tracking_evaluate
+              - evalhub-add-a-custom-provider-configmap_evaluate
+              - evalhub-add-a-collection-configmap_evaluate
+              - job_submission_fields
+              - database_configuration
+              - evalhub-multi-tenancy-and-rbac_evaluate
+              - evalhub-set-up-a-tenant-namespace_evaluate
+              - evalhub-grant-access-to-evalhub_evaluate
+              - evalhub-roles-reference_evaluate
+              - evalhub-use-the-dashboard-to-evaluate-your-system_evaluate
+              - prerequisites
+              - evalhub-deploy-mcp-server_evaluate
+              - evalhub-evaluation-cards_evaluate
+              - test-model-safety-with-automated-risk-assessment_evaluate
+            reviewed: { version: "3.5", date: 2026-10-15, note: "no GA/TP status stated for EvalHub as a whole (Kueue integration is TP); docs name disableEvalHub but the 3.5.1 CRD has only disableLMEval (live oc explain)" }
           - book: enabling_ai_safety_with_guardrails
             status: active
             skill: rhoai-guardrails-safety
           - book: monitoring_your_ai_systems
             status: active
             skill: rhoai-monitoring-trustyai
+            sections:
+              - overview-of-monitoring-your-ai-systems_monitor
+              - configuring-trustyai_monitor
+              - configuring-monitoring-for-your-model-serving-platform_monitor
+              - enabling-trustyai-component_monitor
+              - configuring-trustyai-with-a-database_monitor
+              - installing-trustyai-service_monitor
+              - installing-trustyai-service-using-cli_monitor
+              - enabling-trustyai-kserve-integration_monitor
+              - setting-up-trustyai-for-your-project_monitor
+              - authenticating-trustyai-service_monitor
+              - uploading-training-data-to-trustyai_monitor
+              - labeling-data-fields_monitor
+              - monitoring-model-bias_bias-monitoring
+              - creating-a-bias-metric_bias-monitoring
+              - viewing-bias-metrics_bias-monitoring
+              - using-bias-metrics_bias-monitoring
+              - monitoring-data-drift_drift-monitoring
+              - creating-a-drift-metric_drift-monitoring
+              - viewing-drift-metrics_drift-monitoring
+              - using-drift-metrics_drift-monitoring
+            reviewed: { version: "3.5", date: 2026-10-15 }
           - book: deploying_models
             status: active
             skill: rhoai-model-deployment
