@@ -15,7 +15,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "17"
 rules:
-  # create cannot be limited by name; the stage070-workspace-maas-key-secrets policy admits only the key Secret.
+  # create cannot be limited by name; the stage070-workspace-maas-key-secrets policy admits only the key Secret and its derived env mount.
   - apiGroups:
       - ""
     resources:
@@ -28,6 +28,7 @@ rules:
       - secrets
     resourceNames:
       - maas-devspace-api-keys
+      - workspace-maas-credentials
     verbs:
       - get
       - patch

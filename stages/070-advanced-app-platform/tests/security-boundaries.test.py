@@ -353,7 +353,7 @@ class SecretWriteScope(unittest.TestCase):
     def test_key_provisioner_reads_only_its_key_secret(self):
         self.policy('devspaces/maas-key-secret-policy.yaml', 'system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner')
         rules = self.secret_rules('devspaces/maas-api-key-provisioning.yaml', 'Role', 'devspace-maas-key-secret-manager')
-        self.assertTrue(all(r['verbs'] == ['create'] or r.get('resourceNames') == ['maas-devspace-api-keys'] for r in rules))
+        self.assertTrue(all(r['verbs'] == ['create'] or r.get('resourceNames') == ['maas-devspace-api-keys', 'workspace-maas-credentials'] for r in rules))
 
     def test_integration_hub_reads_only_named_credentials(self):
         self.policy('gitlab/integrations-secret-policy.yaml', 'system:serviceaccount:gitlab-system:gitlab-integrations-bootstrap')
