@@ -759,7 +759,16 @@ Useful checks:
 oc get checluster devspaces -n openshift-devspaces
 oc get devworkspace -A
 oc get pods -n openshift-devspaces
+oc get subscription devspaces -n openshift-operators -o jsonpath='{.status.installedCSV}{"\n"}'
 ```
+
+**Operator install location (moved 2026-10-15).** The Dev Spaces Subscription lives in `openshift-operators` with
+Automatic approval on `stable`, as the Dev Spaces 3.30 GitOps guide shows; OLM installs the DevWorkspace operator
+there too. The CheCluster, workspaces and PVCs stay in their namespaces. An existing install from before the move
+(Subscription, OperatorGroup and the two CSVs in `openshift-devspaces`) needs a one-time switch while Stage 070
+deploys the moved Subscription: Argo CD prunes the old Subscription and OperatorGroup, then remove the old CSVs and the
+OLM-created DevWorkspace Subscription in `openshift-devspaces` so OLM can install in `openshift-operators`. The operator
+is briefly absent; running workspaces keep running. The switch never deletes CRDs or the CheCluster.
 
 Factory links specify `?revision=main&existing=<project>` so reopening matches
 the branch in the workspace. Migration workspace creation also requires its

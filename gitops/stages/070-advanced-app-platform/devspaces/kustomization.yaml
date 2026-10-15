@@ -9,9 +9,7 @@ kind: Kustomization
 # Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/
 
 resources:
-  - operatorgroup.yaml
   - subscription.yaml
-  - approve-installplan.yaml
   - maas-key-secret-policy.yaml
   - wait-for-operator-webhook.yaml
   - checluster.yaml

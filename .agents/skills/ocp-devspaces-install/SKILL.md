@@ -9,8 +9,7 @@ metadata:
 description: >
   Use when reviewing or changing how this demo installs or upgrades Red Hat
   OpenShift Dev Spaces 3.30 through Argo CD: the devspaces Subscription in
-  openshift-devspaces (Manual approval, startingCSV devspacesoperator.v3.30.2),
-  the InstallPlan approver that also admits devworkspace-operator.v0.43.0, the
+  openshift-operators (Automatic, stable, policy minimum 3.30.2), the
   webhook-wait hook before the CheCluster, install verification, and
   z-stream upgrades. Do NOT use for CheCluster field choices (use
   ocp-devspaces-admin), devfiles and workspace usage (use
@@ -27,8 +26,9 @@ Dev Spaces 3.30 topics. Detailed record:
 
 ## When to use
 
-- A change touches `devspaces/subscription.yaml`, `operatorgroup.yaml`,
-  `approve-installplan.yaml` or `wait-for-operator-webhook.yaml`.
+- A change touches `devspaces/subscription.yaml` or
+  `wait-for-operator-webhook.yaml`, or the `devspaces` entries in
+  `scripts/platform/check-operator-policy.py`.
 - `070-devspaces` stalls before the CheCluster, or a Dev Spaces z-stream is
   reviewed.
 
@@ -37,17 +37,17 @@ Dev Spaces 3.30 topics. Detailed record:
 | Decision | Where in Git | Official section |
 |---|---|---|
 | GitOps install: Subscription, `CheCluster` (`org.eclipse.che/v2`) and Kustomization in Git, reconciled by Argo CD Application `070-devspaces` | `gitops/stages/070-advanced-app-platform/devspaces/kustomization.yaml` | [Deploy using GitOps and Argo CD][gitops] |
-| Subscription `devspaces` in `openshift-devspaces` with an empty-spec (AllNamespaces) OperatorGroup; the guide places it in `openshift-operators` (recorded Gap) | `devspaces/subscription.yaml`, `devspaces/operatorgroup.yaml` | [Deploy using GitOps and Argo CD][gitops] |
-| Channel `stable`, `installPlanApproval: Manual`, `startingCSV: devspacesoperator.v3.30.2` | `devspaces/subscription.yaml` | [Update approval strategy][approval] |
-| Approver hook allowlist `devworkspace-operator.v0.43.0`, `devspacesoperator.v3.30.2`; Role limited to this namespace's InstallPlans and Subscription `devspaces` | `devspaces/approve-installplan.yaml` | [How the upgrade works][upgrade] |
+| Subscription `devspaces` in `openshift-operators` (AllNamespaces), as the guide shows; OLM adds the DevWorkspace operator there | `devspaces/subscription.yaml` | [Deploy using GitOps and Argo CD][gitops] |
+| Channel `stable`, `installPlanApproval: Automatic`; the operator policy refuses another channel or a version outside 3.30 (minimum 3.30.2) | `devspaces/subscription.yaml`, `scripts/platform/check-operator-policy.py` | [Update approval strategy][approval], [How the upgrade works][upgrade] |
 | Webhook-wait hook (wave 9) holds the CheCluster (wave 10) until operator endpoints answer admission | `devspaces/wait-for-operator-webhook.yaml` | [How the installation works][overview] |
-| Namespaces from `070-namespaces`; Argo CD ignores Subscription `startingCSV` and OperatorGroup `olm.providedAPIs` | `gitops/stages/070-advanced-app-platform/namespaces/`, `gitops/argocd/app-of-apps/070-advanced-app-platform/devspaces.yaml` | — |
+| Namespaces from `070-namespaces`; no OperatorGroup or Subscription ignore rules | `gitops/stages/070-advanced-app-platform/namespaces/`, `gitops/argocd/app-of-apps/070-advanced-app-platform/devspaces.yaml` | — |
 
 ## Procedure
 
-1. A z-stream update changes `startingCSV`, the approver allowlist and the
-   validator expectation in one commit; check the matching DWO version in
-   the release notes (`ocp-devspaces-release-notes`).
+1. Automatic approval takes z-streams on `stable`. A minor update (3.31)
+   changes the policy `minimum`/`channels` entries, the map's `docs_version`
+   and the validator expectation in one commit; check the matching DWO version
+   in the release notes (`ocp-devspaces-release-notes`).
 2. Deploy and validate after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash
@@ -58,16 +58,17 @@ Dev Spaces 3.30 topics. Detailed record:
 3. Read-only checks:
 
    ```bash
-   oc get subscription devspaces -n openshift-devspaces -o jsonpath='{.status.installedCSV}{"\n"}'
-   oc get csv -n openshift-devspaces
+   oc get subscription devspaces -n openshift-operators -o jsonpath='{.status.installedCSV}{"\n"}'
+   oc get csv -n openshift-operators | grep -E 'devspaces|devworkspace'
    oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.status.chePhase} {.status.cheVersion}{"\n"}'
    ```
 
 ## Pitfalls
 
 - OLM creates a second Subscription for DWO (`devworkspace-operator-fast-…`,
-  channel `fast`) in `openshift-devspaces`; it rides the same InstallPlan, so
-  an unlisted DWO CSV stops the approver.
+  channel `fast`) in `openshift-operators`; it is not in Git.
+- All Subscriptions in `openshift-operators` resolve together; a Manual one
+  there would hold the others' updates, so every one is Automatic.
 - A duplicate DWO after a cluster upgrade has a product repair procedure:
   [Fix a duplicate DWO][dwo].
 - Applying the CheCluster before the webhook answers fails admission; keep
