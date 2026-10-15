@@ -26,6 +26,7 @@ docs_url_template: "https://docs.redhat.com/en/documentation/{docs_slug}/{docs_v
 # reports findings in the others.
 converted_families:
   - mta
+  - ocp_devspaces
   - ocp_pipelines
   - odf
   - rhcl
@@ -933,27 +934,125 @@ products:
           - book: discover-assembly_architecture
             status: active
             skill: ocp-devspaces-about
+            sections:
+              - discover-con_what_is_devspaces
+              - discover-con_what_problems_devspaces_solves
+              - discover-con_cloud_vs_local_development
+              - discover-assembly_architecture
+              - discover-con_architecture_overview
+              - discover-con_server_components
+              - discover-con_devspaces_operator
+              - discover-con_devworkspace_operator
+              - discover-con_gateway
+              - discover-con_dashboard
+              - discover-con_devspaces_server
+              - discover-con_plugin_registry
+              - discover-con_user_workspaces
+              - discover-ref_roles_and_tasks
+              - plan-supported_platforms_ref
+            reviewed: { version: "3.30", date: 2026-10-15, note: "3.30 documentation is topic pages; sections are page slugs" }
       whats_new:
         description: Release notes, new features, bug fixes, known issues for 3.30.x sub-releases.
         routes:
           - book: whats_new-ref_release_notes
             status: active
             skill: ocp-devspaces-release-notes
+            sections:
+              - whats_new-ref_release_notes
+              - whats_new-ref_new_features
+              - whats_new-ref_patch_releases
+              - whats_new-dev_spaces_3_30_patch_release_september_18__2026__3_30_1_
+              - whats_new-dev_spaces_3_30_patch_release_september_30__2026
+              - whats_new-ref_deprecated_functionalities
+              - whats_new-ref_removed_functionalities
+              - whats_new-ref_changed_features
+              - whats_new-ref_technology_preview
+              - whats_new-ref_known_issues
+              - whats_new-ref_bug_fixes
+              - whats_new-ref_cve_fixes
+              - whats_new-ref_differences_between_devspaces_and_che
+              - whats_new-ref_frequently_asked_questions
+            reviewed: { version: "3.30", date: 2026-10-15, note: "3.30 is based on Che 7.120/7.121, DevWorkspace Operator 0.43 and OpenShift 4.16-4.22; the patch pages do not name the DevWorkspace Operator version" }
       install:
         description: Operator installation, dsc CLI, CheCluster CR, restricted network, Keycloak OIDC.
         routes:
           - book: install-proc_deploying_devspaces_using_gitops
             status: active
             skill: ocp-devspaces-install
+            sections:
+              - install-proc_deploying_devspaces_using_gitops
+              - install-con_installation_overview
+              - install-proc_installing_dev_spaces_using_cli
+              - install-proc_verifying_the_installation
+              - install-proc_finding_the_fqdn
+              - install-proc_deploying_devspaces_using_gitops_in_a_restricted_environment
+              - install-proc_installing_dev_spaces_on_openshift_with_keycloak_as_oidc
+              - install-proc_uninstalling_dev_spaces
+              - plan-supported_platforms_ref
+              - plan-proc_calculating_resource_requirements
+              - upgrade-con_upgrade_overview
+              - upgrade-proc_specifying_update_approval_strategy
+              - upgrade-ref_pre_upgrade_checklist
+              - upgrade-proc_verify_upgrade_completed
+              - upgrade-proc_repairing_devworkspace_operator
+            reviewed: { version: "3.30", date: 2026-10-15, note: "the guide says the Subscription must target openshift-operators; the repo uses openshift-devspaces (recorded Gap in the devspaces README)" }
       usage_and_administration:
         description: CheCluster CR customization, storage, workspace limits, RBAC, networking, user workflows, devfiles, Git integration.
         routes:
           - book: configure-ref_checluster_custom_resource_fields
             status: active
             skill: ocp-devspaces-admin
+            sections:
+              - configure-con_understanding_the_checluster_custom_resource
+              - configure-ref_checluster_custom_resource_fields
+              - configure-ref_devworkspace_operator_custom_resources
+              - configure-con_configuring_projects
+              - configure-proc_provisioning_projects_in_advance
+              - configure-proc_limiting_workspaces_per_user
+              - configure-proc_enabling_multiple_workspaces_simultaneously
+              - configure-proc_configuring_allowed_urls_for_cde
+              - configure-proc_enabling_container_run_capabilities
+              - configure-con_storage_requirements
+              - configure-proc_configuring_storage_strategy
+              - configure-proc_configuring_storage_sizes
+              - configure-con_persistent_user_home
+              - configure-proc_configuring_network_policies
+              - configure-proc_importing_untrusted_tls_certificates
+              - secure-proc_configuring_cluster_roles_for_users
+              - secure-proc_configuring_advanced_authorization
+              - integrate-proc_setting_up_the_gitlab_authorized_application
+              - integrate-proc_applying_the_gitlab_authorized_application_secret
+              - extend-proc_applying_editor_configurations
+              - extend-proc_configuring_open_vsx_registry_url
+              - observe-proc_enabling_devspaces_metrics
+              - observe-ref_collecting_logs_using_dsc
+            reviewed: { version: "3.30", date: 2026-10-15 }
           - book: develop-con_devfile_introduction
             status: active
             skill: ocp-devspaces-user-guide
+            sections:
+              - develop-con_devfile_introduction
+              - develop-con_customizing_workspace_components
+              - troubleshoot-ref_troubleshooting_devfile_issues
+              - get_started-proc_starting_a_workspace_from_a_git_repository_url
+              - develop-proc_starting_a_workspace_from_a_raw_devfile_url
+              - develop-ref_url_parameter_for_the_existing_workspace_name
+              - develop-proc_adding_factory_badge_for_contributors
+              - develop-con_using_credentials_and_configurations_in_workspaces
+              - develop-proc_mounting_secrets
+              - develop-proc_mounting_configmaps
+              - develop-proc_mounting_git_configuration
+              - extend-proc_configuring_default_extensions
+              - develop-proc_automating_installation_of_vscode_extensions
+              - extend-proc_adding_or_removing_extensions_in_a_workspace
+              - develop-con_using_ai_assistants_in_workspaces
+              - extend-proc_configuring_ai_providers
+              - develop-proc_preventing_workspace_idling_for_long_running_commands
+              - develop-con_requesting_persistent_storage_for_workspaces
+              - troubleshoot-proc_viewing_workspace_logs_in_cli
+              - troubleshoot-proc_debugging_a_workspace
+              - troubleshoot-ref_troubleshooting_workspace_startup_failures
+            reviewed: { version: "3.30", date: 2026-10-15, note: "the Technology Preview page lists only the managed Open VSX registry; AI-provider support status is not stated" }
 
   ocp_lightspeed:
     name: Red Hat OpenShift Lightspeed

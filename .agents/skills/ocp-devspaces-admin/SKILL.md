@@ -2,153 +2,122 @@
 name: ocp-devspaces-admin
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_devspaces
+  docs-version: "3.30"
   skill-group: "OpenShift Platform"
 description: >
-  Use when administering Red Hat OpenShift Dev Spaces 3.30, including
-  CheCluster CR customization, storage configuration, workspace limits,
-  user management, RBAC, networking, TLS certificates, and monitoring.
-  Do NOT use for concepts (use ocp-devspaces-about), installing (use
-  ocp-devspaces-install), user workflows (use ocp-devspaces-user-guide),
-  or release notes (use ocp-devspaces-release-notes).
+  Use when changing or reviewing the Dev Spaces 3.30 administration choices in
+  this demo: CheCluster devspaces fields (per-workspace 20Gi gp3-csi storage,
+  persistUserHome, idling disabled, 1200 s start timeout, running-workspace
+  and container caps, allowedSources, Open VSX URL, metrics), pre-provisioned
+  wksp-* projects, per-namespace editor configurations, the GitLab OAuth
+  integration written by 070-gitlab, workspace RBAC and network policies. Do
+  NOT use for the operator install or upgrades (use ocp-devspaces-install),
+  devfiles, mounted Secrets and extensions inside a workspace (use
+  ocp-devspaces-user-guide), or workspace lifecycle operations (use
+  manage-devspaces).
 ---
 
-# OCP Dev Spaces Administration
+# Dev Spaces administration
 
-Use this skill to ground OpenShift Dev Spaces administration guidance in the
-official Red Hat OpenShift Dev Spaces 3.30 Configure and Integrate topics.
+Thin skill: repo decisions and pitfalls here, field reference in the linked
+Dev Spaces 3.30 topics. Detailed record:
+`gitops/stages/070-advanced-app-platform/devspaces/README.md` (How, Alignment).
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **Dev Spaces 3.30**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A change touches `devspaces/checluster.yaml`, `vscode-editor-configurations.yaml`,
+  the `wksp-*` namespaces in `070-namespaces`, or the workspace network policies.
+- Workspaces do not get storage, are idled, cannot start from a URL, or lose
+  GitLab OAuth.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority. Detailed CheCluster CR field values,
-storage strategies, networking, RBAC, monitoring, and troubleshooting procedures
-come from the current Configure topics reviewed in
-`references/official-doc-extraction.md`.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| `pvcStrategy: per-workspace`, `claimSize: 20Gi`, `storageClass: gp3-csi`, `persistUserHome.enabled: true` (default is `per-user`) | `gitops/stages/070-advanced-app-platform/devspaces/checluster.yaml` | [Storage strategy][storage], [Persistent home][home], [CheCluster fields][fields] |
+| `secondsOfInactivityBeforeIdling: -1`, `startTimeoutSeconds: 1200` for unattended agent runs and a large image | same | [CheCluster fields][fields] |
+| `maxNumberOfRunningWorkspacesPerUser: 3`; `containerResourceCaps` 6 CPU / 12Gi | same | [Multiple running workspaces][multi], [CheCluster fields][fields] |
+| `allowedSources.urls` is an `.invalid` placeholder in Git; `070-gitlab` writes the GitLab group URLs and `gitServices`; Argo CD ignores both | same; `gitops/stages/070-advanced-app-platform/gitlab/README.md` | [Restrict allowed URLs][allowed] |
+| GitLab OAuth Secret `gitlab-oauth-config` with the documented labels and annotations, created by the `070-gitlab` hub | `gitops/stages/070-advanced-app-platform/gitlab/` | [GitLab OAuth app][gitlabapp], [Apply the GitLab Secret][gitlabsecret] |
+| `pluginRegistry.openVSXURL: https://open-vsx.org`; `metrics.enable: true` | `devspaces/checluster.yaml` | [Alternative extension registry][openvsx], [Server metrics][metrics] |
+| Persona projects `wksp-ai-developer`, `wksp-ai-admin`, `wksp-kubeadmin` pre-provisioned (labels `part-of: che.eclipse.org`, `component: workspaces-namespace`, annotation `che.eclipse.org/username`); `autoProvision: true` for others | `gitops/stages/070-advanced-app-platform/namespaces/namespaces.yaml` | [Provision projects in advance][preprov] |
+| Editor settings per persona project: ConfigMap `vscode-editor-configurations` (label `workspaces-config`) | `devspaces/vscode-editor-configurations.yaml` | [Apply IDE settings][editorcfg] |
+| Persona RoleBindings `wksp-edit-<user>` (ClusterRole `edit`) | `devspaces/workspaces.yaml` | [Grant permissions][roles] |
+| Workspace egress: NetworkPolicy `migration-workspace-maas-egress`, AdminNetworkPolicy `workspace-allow-kapi-egress` (API server, TCP 6443) | `devspaces/migration-workspace-maas-egress-networkpolicy.yaml`, `devspaces/workspace-api-egress-adminnetworkpolicy.yaml` | [Network policies][netpol] |
 
-## Key Administration Areas
+## Procedure
 
-### CheCluster Custom Resource
+1. Edit the CheCluster in Git; never patch fields that `070-gitlab` owns.
+2. Validate after the OpenShift safety guard in `AGENTS.md`:
 
-The `CheCluster` CR (`apiVersion: org.eclipse.che/v2`) is the central
-configuration object. The Operator translates it into ConfigMaps consumed by
-each component. Key top-level spec sections:
+   ```bash
+   ./stages/070-advanced-app-platform/validate.sh          # "Existing identity and Dev Spaces"
+   ./stages/070-advanced-app-platform/validate.sh --static
+   python3 scripts/demo/check-workspace-creation.py --live  # admission dry runs
+   ```
 
-- `spec.components` — cheServer, dashboard, pluginRegistry, devfileRegistry,
-  imagePuller, metrics
-- `spec.devEnvironments` — workspace defaults, storage, limits, defaultEditor,
-  defaultNamespace, security, nodeSelector
-- `spec.networking` — hostname, TLS, auth, proxy, domain, labels, annotations
+3. Read-only checks:
 
-For this project edit the Git-managed CheCluster and reconcile with Argo CD;
-inspect the resulting CR to validate the change.
+   ```bash
+   oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.spec.devEnvironments.storage}{"\n"}{.spec.devEnvironments.allowedSources}{"\n"}'
+   oc get ns -l app.kubernetes.io/component=workspaces-namespace
+   ```
 
-### Storage Configuration
+## Pitfalls
 
-Three strategies controlled by `spec.devEnvironments.storage.pvcStrategy`:
+- A per-user RWO claim cannot attach to two running workspaces; that is why
+  the repo uses `per-workspace`:
+  `docs/TROUBLESHOOTING.md#factory-workspace-failedmount-while-agentic-coolstore-is-running`.
+- `gitServices.gitlab[].endpoint` is deprecated in favour of the Secret
+  annotation ([CheCluster fields][fields]); keep both until removed.
+- A running workspace keeps an expired GitLab token until restarted:
+  `docs/TROUBLESHOOTING.md#stage-070-running-workspace-retains-an-expired-gitlab-credential`.
+- Injected DevWorkspace attributes cause drift; Argo CD ignores them
+  (`docs/TROUBLESHOOTING.md#stage-070-stays-outofsync-after-a-successful-workspace-sync`).
+- Namespace-wide Secret writers remain in `wksp-ai-developer` (README
+  Alignment table, "Least privilege").
 
-- `per-user` (default) — shared user PVC; inspect its access mode and
-  concurrent-workspace restrictions rather than assuming RWX
-- `per-workspace` — each workspace gets its own PVC; size it explicitly
-- `ephemeral` — no persistent storage; changes lost on stop
+## Official documentation (Dev Spaces 3.30)
 
-Storage classes set via `perUserStrategyPvcConfig.storageClass` and
-`perWorkspaceStrategyPvcConfig.storageClass`.
-Configure home persistence through `spec.devEnvironments.persistUserHome`;
-verify its schema, mounts and restart behavior rather than assuming a default.
+| Topic | Section |
+|---|---|
+| Central configuration | [How it works][cfg], [CheCluster fields][fields], [DWO custom resources][dwocr] |
+| Projects | [How namespaces are organized][projects], [Provision in advance][preprov] |
+| Workspace policies | [Limit per user][limituser], [Multiple running][multi], [Allowed URLs][allowed], [Container run][containers] |
+| Storage | [Requirements][storagereq], [Storage strategy][storage], [Sizes][sizes], [Persistent home][home] |
+| Networking and TLS | [Network policies][netpol], [Untrusted TLS][tls] |
+| Identity and RBAC | [Grant permissions][roles], [Restrict users][authz] |
+| Git OAuth | [GitLab OAuth app][gitlabapp], [Apply the GitLab Secret][gitlabsecret] |
+| Editors and extensions | [Apply IDE settings][editorcfg], [Alternative registry][openvsx] |
+| Observe | [Server metrics][metrics], [Collect logs][logs] |
 
-### Workspace Limits and Quotas
+## Related skills
 
-- `maxNumberOfWorkspacesPerUser` — total workspaces per user (default -1,
-  unlimited)
-- `maxNumberOfRunningWorkspacesPerUser` — concurrent running per user (default
-  1)
-- `maxNumberOfRunningWorkspacesPerCluster` — cluster-wide running limit
-- `containerResourceCaps` — cap container resource requests/limits
-- `defaultContainerResources` — default resources for containers without specs
-- Memory limit override via `CHE_WORKSPACE_DEFAULT__MEMORY__LIMIT__MB`
+`ocp-devspaces-install`, `ocp-devspaces-user-guide`, `manage-devspaces`,
+`ocp-security-rbac-scc`, `rhdh-git-integration`.
 
-### Project and Namespace Configuration
-
-Default namespace template: `<username>-devspaces`. Configured via
-`spec.devEnvironments.defaultNamespace.template`. Supports `<username>` and
-`<userid>` placeholders. Auto-provisioning controlled by
-`defaultNamespace.autoProvision`.
-
-### Identity and Authorization
-
-- Cluster roles for users: `spec.devEnvironments.user.clusterRoles` and
-  `spec.components.cheServer.clusterRoles`
-- Advanced authorization:
-  `spec.networking.auth.advancedAuthorization.{allowUsers,allowGroups,denyUsers,denyGroups}`
-- Default RBAC: Operator creates `<namespace>-cheworkspaces-clusterrole` and
-  `<namespace>-cheworkspaces-devworkspace-clusterrole`
-- Git OAuth: GitHub App/OAuth, GitLab, Bitbucket, Microsoft Entra ID
-
-### Networking
-
-- Hostname: `spec.networking.hostname`
-- TLS: `spec.networking.tlsSecretName`; custom CA certs via labeled ConfigMap
-  (`app.kubernetes.io/component=ca-bundle`)
-- Network policies for Dev Workspace webhook, workspace namespaces, and
-  OpenShift API server
-- Router Sharding: `spec.networking.{labels,domain,annotations}`
-- Proxy: `spec.components.cheServer.proxy.{url,port,nonProxyHosts,
-  credentialsSecretName}`
-
-### Monitoring and Observability
-
-- Dev Workspace Operator metrics on port 8443 (`/metrics`):
-  `devworkspace_started_total`, `devworkspace_started_success_total`,
-  `devworkspace_fail_total`, `devworkspace_startup_time`
-- Server JVM metrics on port 8087 via `spec.components.metrics.enable`
-- ServiceMonitor for Prometheus scraping; label namespace with
-  `openshift.io/cluster-monitoring=true`
-- Server logging: `CHE_LOGGER_CONFIG` in
-  `spec.components.cheServer.extraProperties`
-- Log collection with `dsc` CLI tool
-
-### Security Best Practices
-
-- Per-user project isolation (`<username>-devspaces`)
-- SCC constraints; container build/run capabilities control
-- Resource Quotas and LimitRanges
-- Network policies for ingress restriction
-- Extension management and secret handling
-
-## Workflow
-
-1. Read `references/source-capture.md` and confirm the Dev Spaces version.
-2. Read `references/official-doc-extraction.md` for specific procedures.
-3. Identify the administration area (CheCluster CR, storage, networking, RBAC,
-   monitoring, upgrade, troubleshooting).
-4. For CheCluster CR changes, verify fields with
-   `oc explain checluster.spec --recursive` on the target cluster.
-5. For networking changes, check TLS, Route, and NetworkPolicy resources.
-6. For monitoring, verify ServiceMonitor and namespace labeling.
-7. For troubleshooting, check workspace startup errors, OAuth errors, and
-   DevWorkspace Operator logs.
-
-## Related Skills
-
-- `ocp-devspaces-about` — Dev Spaces concepts and architecture
-- `ocp-devspaces-install` — installing and upgrading Dev Spaces
-- `ocp-devspaces-user-guide` — user workflows, devfiles, workspaces
-- `ocp-devspaces-release-notes` — release notes and known issues
-- `ocp-devspaces-admin` — this skill (administration guide)
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[cfg]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-con_understanding_the_checluster_custom_resource
+[fields]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-ref_checluster_custom_resource_fields
+[dwocr]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-ref_devworkspace_operator_custom_resources
+[projects]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-con_configuring_projects
+[preprov]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_provisioning_projects_in_advance
+[limituser]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_limiting_workspaces_per_user
+[multi]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_enabling_multiple_workspaces_simultaneously
+[allowed]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_configuring_allowed_urls_for_cde
+[containers]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_enabling_container_run_capabilities
+[storagereq]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-con_storage_requirements
+[storage]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_configuring_storage_strategy
+[sizes]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_configuring_storage_sizes
+[home]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-con_persistent_user_home
+[netpol]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_configuring_network_policies
+[tls]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_importing_untrusted_tls_certificates
+[roles]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/secure-proc_configuring_cluster_roles_for_users
+[authz]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/secure-proc_configuring_advanced_authorization
+[gitlabapp]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_setting_up_the_gitlab_authorized_application
+[gitlabsecret]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_applying_the_gitlab_authorized_application_secret
+[editorcfg]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_applying_editor_configurations
+[openvsx]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_configuring_open_vsx_registry_url
+[metrics]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/observe-proc_enabling_devspaces_metrics
+[logs]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/observe-ref_collecting_logs_using_dsc

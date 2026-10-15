@@ -2,131 +2,89 @@
 name: ocp-devspaces-about
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_devspaces
+  docs-version: "3.30"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting, reviewing, or explaining OpenShift Dev Spaces concepts,
-  architecture, DevWorkspace operator, workspace lifecycle, supported IDEs,
-  and cloud development environment capabilities from the official OpenShift
-  Dev Spaces 3.30 documentation. Do NOT use for installing (use
-  ocp-devspaces-install), administration (use ocp-devspaces-admin), user
-  workflows (use ocp-devspaces-user-guide), or release notes (use
+  Use when explaining OpenShift Dev Spaces 3.30 concepts as this demo uses
+  them: the Dev Spaces operator and CheCluster, the Dev Workspace Operator and
+  workspace pods, gateway, dashboard and server, user namespaces, the plug-in
+  registry, and why workspaces are the developer entry point for Stages
+  110-130. Do NOT use for installing (use ocp-devspaces-install),
+  administration (use ocp-devspaces-admin), devfiles and workspace usage
+  (use ocp-devspaces-user-guide), or release notes (use
   ocp-devspaces-release-notes).
 ---
 
-# OCP Dev Spaces About
+# Dev Spaces concepts
 
-Use this skill to ground OpenShift Dev Spaces conceptual guidance in the
-official Red Hat OpenShift Dev Spaces 3.30 "Discover" guide for the active
-baseline in `docs/PLATFORM_BASELINE.md`.
+Thin skill: how the product's architecture maps onto this repo, with links to
+the Dev Spaces 3.30 Discover topics. Detailed record:
+`gitops/stages/070-advanced-app-platform/devspaces/README.md` (Why).
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **Dev Spaces 3.30**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- Explaining where a workspace runs, who owns which object, or why the demo
+  uses cloud development environments.
+- Orienting before an install, admin or devfile change.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+| Concept in this repo | Where in Git | Official section |
+|---|---|---|
+| One `CheCluster` `devspaces` in `openshift-devspaces` drives server, dashboard, gateway and plug-in registry | `gitops/stages/070-advanced-app-platform/devspaces/checluster.yaml` | [Operator and lifecycle][operator], [Server components][components] |
+| DevWorkspaces are reconciled by the Dev Workspace Operator (0.43.0), installed with Dev Spaces | `devspaces/approve-installplan.yaml` | [Dev Workspace Operator][dwo] |
+| Each persona works in a pre-provisioned project (`wksp-ai-developer`, `wksp-ai-admin`, `wksp-kubeadmin`) | `gitops/stages/070-advanced-app-platform/namespaces/namespaces.yaml` | [Server and namespace provisioning][server] |
+| Users sign in with native OpenShift login; Git access through GitLab OAuth | `gitops/stages/070-advanced-app-platform/gitlab/README.md` | [Gateway and routing][gateway] |
+| Extensions come from `open-vsx.org` or baked VSIX files | `devspaces/checluster.yaml`, `stages/070-advanced-app-platform/workspace-image/` | [Plug-in registry][registry] |
+| Source and AI assistance stay in the cluster: workspaces call the governed MaaS gateway | `devspaces/maas-api-key-provisioning.yaml` | [What developers get][workspaces] |
+| Stages 110-130 consume workspaces; Developer Hub templates create them | `stages/110-ai-assisted-development/`, `stages/120-ai-agentic-development/`, `stages/130-ai-autonomous-migration/` | [Roles and tasks][roles] |
 
-## Key Concepts
+## Procedure
 
-### What Is OpenShift Dev Spaces
+Read-only orientation after the OpenShift safety guard in `AGENTS.md`:
 
-Red Hat OpenShift Dev Spaces is an OpenShift-native platform that provides
-cloud development environments (CDEs) to development teams. Developers get
-on-demand workspaces — container-based environments with tools, dependencies,
-and IDE access — without configuring local machines.
+```bash
+oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.status.cheURL}{"\n"}'
+oc get pods -n openshift-devspaces
+oc get devworkspace -A
+```
 
-Core goals:
-- Accelerate project and developer onboarding (zero-install, browser-based)
-- Remove inconsistency between developer environments (devfile-defined)
-- Provide built-in security and enterprise readiness (source on cluster, RBAC, OIDC)
+## Pitfalls
 
-### Architecture
+- "Workspace" in this repo means a DevWorkspace in a `wksp-*` project; the
+  Stage 130 Hermes worker runs inside it, it is not a separate runtime.
+- Dev Spaces, OpenShift AI and Argo CD keep native OpenShift login; only the
+  application tools use the Keycloak `platform` realm
+  (`docs/OPERATIONS.md#stage-070--identity-identity-component`).
 
-OpenShift Dev Spaces runs on three groups of components that communicate through
-Dev Workspace custom resources:
+## Official documentation (Dev Spaces 3.30)
 
-1. **Server components** — manage multi-tenancy and workspace lifecycle
-   (Operator, gateway, dashboard, server, plug-in registry)
-2. **Dev Workspace Operator** — provisions workspace pods, services, and PVs
-3. **User workspaces** — container-based development environments with IDE
+| Topic | Section |
+|---|---|
+| What and why | [What is Dev Spaces][what], [Problems it solves][problems], [Cloud vs local][when] |
+| Architecture | [How it works][how], [Overview][arch], [Server components][components], [Operator][operator], [Dev Workspace Operator][dwo], [Gateway][gateway], [Dashboard][dashboard], [Server][server], [Plug-in registry][registry] |
+| Users | [What developers get][workspaces], [Roles and tasks][roles] |
+| Planning | [Supported platforms][platforms] |
 
-OpenShift RBAC controls access to all resources. The `CheCluster` CR is the
-central configuration object.
+## Related skills
 
-### DevWorkspace Operator (DWO)
+`ocp-devspaces-install`, `ocp-devspaces-admin`, `ocp-devspaces-user-guide`,
+`ocp-devspaces-release-notes`, `manage-devspaces`.
 
-DWO extends OpenShift to manage workspace pods by reconciling Dev Workspace CRs.
-CRDs provided:
-- `DevWorkspace` — workspace definition (devfile + editor + attributes)
-- `DevWorkspaceTemplate` — reusable spec.template content (e.g., editor definitions)
-- `DevWorkspaceOperatorConfig` (DWOC) — operator configuration (global and non-global)
-- `DevWorkspaceRouting` — workspace endpoint definitions
-
-DWO operands: controller-manager deployment and webhook-server deployment.
-
-### Supported IDEs and Editors
-
-- Microsoft Visual Studio Code - Open Source (browser-based, default)
-- JetBrains IntelliJ IDEA (via JetBrains Gateway for native desktop)
-- Extensible through devfiles, VS Code extensions from Open VSX registries,
-  and AI coding assistants
-
-### Workspace Lifecycle
-
-1. User opens Git repository URL in the Dev Spaces dashboard
-2. Dashboard sends repository URL to server, receives devfile
-3. Dashboard collects editor metadata from plug-in registry
-4. Dashboard converts devfile + editor into a Dev Workspace CR
-5. Dev Workspace CR created in user project via OpenShift API
-6. DWO reconciles the CR, creating pod, services, routes, secrets, PVs
-7. User is redirected to the running workspace IDE
-
-Workspace containers are recreated on start. Persistence depends on the
-selected PVC strategy, mounted volumes and persistUserHome configuration.
-
-### Gateway
-
-The `che-gateway` Deployment routes requests, authenticates users with OIDC
-(OAuth2 Proxy), and enforces OpenShift RBAC (kube-rbac-proxy). Uses Traefik
-for request routing.
-
-### Server Components
-
-- **OpenShift Dev Spaces Operator** — lifecycle management via CheCluster CR
-- **Gateway** — routing, OIDC auth, RBAC enforcement
-- **Dashboard** — user-facing workspace creation and management UI
-- **Server** — Java web service for namespace provisioning, Git integration
-- **Plug-in registry** — editor and extension catalog (Devfile v2 format)
-
-## Workflow
-
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify the relevant concept (architecture, DWO CRDs, workspace model, etc.).
-4. For GitOps manifests, verify all API versions and fields against the
-   extraction before committing.
-5. For live operations, use the repo environment guard.
-6. Validate with `references/source-capture.md` boundaries.
-
-## Related Skills
-
-- Use `ocp-devspaces-about` (this skill) for concepts and architecture.
-- Use `ocp-devspaces-install` for installation procedures.
-- Use `ocp-devspaces-admin` for administration and CheCluster configuration.
-- Use `ocp-devspaces-user-guide` for developer workspace workflows.
-- Use `ocp-devspaces-release-notes` for version-specific changes.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[what]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_what_is_devspaces
+[problems]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_what_problems_devspaces_solves
+[when]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_cloud_vs_local_development
+[how]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-assembly_architecture
+[arch]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_architecture_overview
+[components]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_server_components
+[operator]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_devspaces_operator
+[dwo]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_devworkspace_operator
+[gateway]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_gateway
+[dashboard]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_dashboard
+[server]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_devspaces_server
+[registry]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_plugin_registry
+[workspaces]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-con_user_workspaces
+[roles]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/discover-ref_roles_and_tasks
+[platforms]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/plan-supported_platforms_ref

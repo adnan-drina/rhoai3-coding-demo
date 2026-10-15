@@ -2,196 +2,117 @@
 name: ocp-devspaces-user-guide
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
-  platform-family: "ocp"
-  platform-baseline: "repo"
-  ocp-baseline: "repo"
+  version: 2.0.0
+  product: ocp_devspaces
+  docs-version: "3.30"
   skill-group: "OpenShift Platform"
 description: >
-  Use when documenting or explaining OpenShift Dev Spaces 3.30 user workflows,
-  including starting workspaces, devfile authoring, IDE customization, Git
-  integration, VS Code extensions, credential management, and workspace
-  configuration. Do NOT use for concepts (use ocp-devspaces-about), installing
-  (use ocp-devspaces-install), administration (use ocp-devspaces-admin), or
-  release notes (use ocp-devspaces-release-notes).
+  Use when authoring or reviewing what runs inside Dev Spaces 3.30 workspaces
+  in this demo: the agentic-coolstore DevWorkspaces and the Developer Hub
+  template devfiles, factory URLs with revision and existing parameters,
+  DEFAULT_EXTENSIONS and baked VSIX files, mounted Secrets and ConfigMaps
+  (workspace-maas-credentials, migration-model-profiles with mount-on-start),
+  the postStart tool bootstrap, and governed MaaS access instead of the
+  product AI-provider feature. Do NOT use for CheCluster or project
+  administration (use ocp-devspaces-admin), the operator install (use
+  ocp-devspaces-install), MTA extension specifics (use mta-vscode), or
+  creating, deleting and debugging live workspaces (use manage-devspaces).
 ---
 
-# OCP Dev Spaces User Guide
+# Dev Spaces workspaces and devfiles
 
-Use this skill to ground OpenShift Dev Spaces user workflow guidance in the
-official Red Hat OpenShift Dev Spaces 3.30 Develop and Integrate topics.
+Thin skill: repo decisions and pitfalls here, devfile and workspace behavior
+in the linked Dev Spaces 3.30 topics. Detailed record:
+`gitops/stages/070-advanced-app-platform/devspaces/README.md`.
 
-## Current Product Guidance (2026-10-13)
+## When to use
 
-Documentation target: **Dev Spaces 3.30**. Read the current-update section
-in `references/official-doc-extraction.md` and its source ledger before using
-configuration details. It supersedes the retained earlier reference material.
-`docs/PLATFORM_BASELINE.md` distinguishes documentation, selected deployment
-pins and live qualification. This refresh does not upgrade an existing run.
+- A change touches `devspaces/agentic-workspace.yaml`, the template devfiles
+  under `gitops/stages/070-advanced-app-platform/rhdh/templates/*/skeleton/devfile.yaml`,
+  or the mounted MaaS credentials and bootstrap ConfigMaps.
+- A workspace starts without its tools, extensions or model credentials.
 
-## Source Grounding
+## Repo decisions
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+| Decision | Where in Git | Official section |
+|---|---|---|
+| Standing DevWorkspace `agentic-coolstore` (`started: false`) in `wksp-ai-developer` and `wksp-ai-admin`, UDI image pinned by digest; `070-gitlab` patches its remote | `gitops/stages/070-advanced-app-platform/devspaces/agentic-workspace.yaml` | [Devfile in Dev Spaces][devfile] |
+| New workspaces come from Developer Hub templates as factory URLs `…#<gitlab repo>?revision=main&existing=<name>` | `gitops/stages/070-advanced-app-platform/rhdh/templates/app-migration/template.yaml` | [Start from a Git URL][fromurl], [Existing workspace name][existing] |
+| Kilo Code VSIX downloaded at postStart and loaded through `DEFAULT_EXTENSIONS`; migration workspaces load baked MTA VSIX files | `agentic-workspace.yaml`; `.../app-migration/skeleton/devfile.yaml` | [Pre-install extensions][defext], [Automate VS Code extensions][autoext] |
+| MaaS credentials: Secret `workspace-maas-credentials` mounted as env (`MAAS_API_KEY`, `MAAS_API_BASE_URL`, model id), written by the key Job | `devspaces/maas-api-key-provisioning.yaml` | [Mount Secrets][secrets] |
+| Model profile table `migration-model-profiles` mounted as file at `/etc/rhoai3/model-profiles` with `mount-on-start` | `devspaces/kustomization.yaml`, `devspaces/model-profiles.json` | [Mount ConfigMaps][configmaps] |
+| Tool bootstrap `init-ai-tools.sh` from ConfigMap `devspace-ai-tools-init` at postStart (Kilo Code, OpenCode, Hermes) | `devspaces/maas-api-key-provisioning.yaml` | [Customize workspace components][components] |
+| Model access goes through governed MaaS keys, not the product AI-provider registration | Stage 040, `devspaces/maas-api-key-provisioning.yaml` | [AI assistants][ai], [Register an AI provider][aiprov] |
+| A DevWorkspace that sets `MIGRATION_RUN_NAME` must be named exactly that (ValidatingAdmissionPolicy) | `devspaces/migration-workspace-name-policy.yaml` | — |
 
-## Starting Workspaces
+## Procedure
 
-Workspaces are started by entering a URL in the browser:
+1. Change devfiles and workspace manifests in Git; template changes reach
+   developers through the Developer Hub catalog (`rhdh` component), and
+   existing workspaces keep their devfile.
+2. Validate after the OpenShift safety guard in `AGENTS.md`:
 
-```
-https://<openshift_dev_spaces_fqdn>#<git_repository_url>
-```
+   ```bash
+   ./stages/070-advanced-app-platform/validate.sh --static
+   python3 scripts/demo/check-workspace-creation.py --live
+   ```
 
-Three starting methods are supported:
-- **Git repository URL** — clones the repo and applies its devfile (or UDI default)
-- **Raw devfile URL** — uses a devfile hosted at any HTTP(S) URL
-- **Dashboard** — Create Workspace page with the Git Repo URL field
+3. Inspect a workspace read-only:
 
-Optional URL parameters customize workspace creation: IDE selection
-(`che-editor=`), IDE image override (`editor-image=`), duplicate workspace
-(`new`), storage type (`storageType=`), devfile path (`devfilePath=`), container
-image (`image=`), memory limit (`memoryLimit=`), CPU limit (`cpuLimit=`), and
-additional remotes (`remotes=`).
+   ```bash
+   oc get devworkspace -n wksp-ai-developer
+   oc get secret workspace-maas-credentials -n wksp-ai-developer -o jsonpath='{.metadata.labels}{"\n"}'
+   ```
 
-## Workspace Management
+## Pitfalls
 
-Basic workspace actions via the dashboard Workspaces page:
-- Reopen, restart, stop, start, delete workspaces
-- View workspace status and unique URL
+- A `mount-to-devworkspace` Secret or ConfigMap without `mount-on-start`
+  restarts running workspaces when it changes; only the model profiles carry
+  it (README Alignment table "Mounted credentials").
+- postStart output lives on the workspace PVC
+  (`/projects/.platform/poststart.log`):
+  `docs/TROUBLESHOOTING.md#red-hat-openshift-dev-spaces-workspace-does-not-start`.
+- Missing Kilo Code: `docs/TROUBLESHOOTING.md#kilo-code-is-missing-from-a-dev-spaces-workspace`.
+- Interrupted factory creation leaves a suffixed duplicate:
+  `docs/TROUBLESHOOTING.md#factory-creates-a-suffixed-duplicate-workspace`.
+- Ephemeral-storage evictions:
+  `docs/TROUBLESHOOTING.md#pipeline-or-workspace-pods-evicted-for-ephemeral-storage`.
+- The UDI image is 3.29.1 under Dev Spaces 3.30.2 (recorded Gap).
 
-CLI management via `oc` and DevWorkspace CRs:
-- `oc get devworkspaces` — list workspaces
-- `oc patch devworkspace <name> -p '{"spec":{"started":true}}'` — start
-- `oc patch devworkspace <name> -p '{"spec":{"started":false}}'` — stop
-- `oc delete devworkspace <name>` — remove
+## Official documentation (Dev Spaces 3.30)
 
-## Devfile Authoring
+| Topic | Section |
+|---|---|
+| Devfiles | [Devfile in Dev Spaces][devfile], [Customize components][components], [Fix devfile errors][devfileerr] |
+| Starting workspaces | [From a Git URL][fromurl], [From a raw devfile URL][rawdevfile], [Existing workspace name][existing], [Factory badge][badge] |
+| Credentials and config | [How it works][credcon], [Mount Secrets][secrets], [Mount ConfigMaps][configmaps], [Mount Git configuration][gitcfg] |
+| Extensions | [Pre-install extensions][defext], [Automate VS Code extensions][autoext], [Add or remove extensions][addext] |
+| AI assistants (not used) | [AI assistants][ai], [Register an AI provider][aiprov] |
+| Idling and storage | [Prevent idling][idle], [Persistent storage][pvc] |
+| Troubleshooting | [Workspace logs (CLI)][logs], [Debug a workspace][debug], [Startup failures][startup] |
 
-Devfiles (`devfile.yaml` or `.devfile.yaml`) customize workspace components,
-commands, and environment. Key fields: `schemaVersion: 2.2.2`, `metadata`,
-`components`, `commands`, `projects`.
+## Related skills
 
-Without a devfile, workspaces start with the Universal Developer Image (UDI)
-and VS Code - Open Source.
+`manage-devspaces`, `ocp-devspaces-admin`, `mta-vscode`, `rhoai-maas-governance`.
 
-Volume components request persistent storage. Container components define
-workspace containers with `image`, `memoryLimit`, `cpuLimit`, `env`,
-`endpoints`, and `volumeMounts`.
-
-## IDE Customization
-
-Default IDE: Microsoft Visual Studio Code - Open Source
-(`che-incubator/che-code/latest`).
-
-Supported IDEs:
-- VS Code - Open Source (`che-incubator/che-code/latest` or `insiders`)
-- JetBrains IntelliJ IDEA Ultimate over Gateway
-  (`che-incubator/che-idea-server/latest` or `next`)
-- JetBrains IDEs over Toolbox (`che-incubator/che-idea-server/toolbox`)
-
-Repository-level IDE selection: `/.che/che-editor.yaml` with `id`, `reference`,
-or `inline` definitions. The `override` field customizes container resources.
-
-## VS Code Extensions
-
-Automate extension installation by adding `/.vscode/extensions.json` to the
-repository:
-
-```json
-{
-  "recommendations": [
-    "<publisher>.<extension>"
-  ]
-}
-```
-
-Extensions are installed from the Open VSX registry. In restricted environments,
-use a private Open VSX registry or install from `.vsix` files.
-
-For Copilot Chat, verify the integration extension version against the current
-editor; do not carry forward an old fixed extension pin.
-authenticate via Device Authentication, then refresh.
-
-## Git Integration
-
-Git authentication methods:
-- **OAuth** (admin-configured) — GitHub, GitLab, Bitbucket, Azure DevOps
-- **Personal access token** — user-created Secret with
-  `app.kubernetes.io/component: scm-personal-access-token` label
-- **SSH keys** — propagated via User Preferences
-
-Automatic OpenShift token injection: `oc` and `kubectl` commands authenticate
-automatically inside workspace containers.
-
-## Credential and Configuration Management
-
-Mount credentials and configs into workspaces using Kubernetes resources:
-
-- **Secrets** — label `controller.devfile.io/mount-to-devworkspace: 'true'`,
-  annotate with `mount-as: file|subpath|env` and `mount-path`
-- **ConfigMaps** — same labeling pattern, use for non-sensitive data (Git
-  config, IDE settings, storage driver config)
-- **Image pull Secrets** — label
-  `controller.devfile.io/devworkspace_pullsecret: 'true'`
-
-## Persistent Storage
-
-Workspaces are ephemeral by default. Persist data by:
-- Adding `volume` components in the devfile
-- Applying a PVC with `controller.devfile.io/mount-to-devworkspace: 'true'`
-
-Storage types: `ephemeral`, `per-user` (default), `per-workspace`.
-
-## Container Tooling
-
-UDI includes Podman and Buildah. fuse-overlayfs improves performance over the
-default `vfs` driver. Kubedock provides a Podman-like experience for running
-containers in workspaces (useful for Testcontainers, Quarkus Dev Services).
-
-## Workspace Idling Prevention
-
-Place a `.noidle` file in the workspace to keep long-running commands from
-triggering idle timeout. Configurable `watchedCommands` and `checkPeriodSeconds`.
-
-## OpenShift Integration
-
-- DevWorkspace CR (`workspace.devfile.io/v1alpha2`) represents each workspace
-- OpenShift Developer Perspective integration via ConsoleLink
-- Edit application source code from Topology view
-- Red Hat Applications menu link to Dev Spaces dashboard
-
-## Restricted Environment Support
-
-Configure artifact repositories (Maven, Gradle, npm, Python, Go, NuGet) in
-restricted environments by mounting ConfigMaps and Secrets with repository
-mirrors and TLS certificates.
-
-## Troubleshooting
-
-Workspace logs: `oc logs` with
-`--selector='controller.devfile.io/devworkspace_name=<name>'`. Common issues:
-OOMKilled, CrashLoopBackOff, devfile syntax errors, WebSocket failures.
-
-## Workflow
-
-1. Confirm the active OpenShift baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify the relevant workflow area (workspace lifecycle, devfile, IDE,
-   credentials, storage, OpenShift integration).
-4. For YAML examples, verify all fields against the extraction before
-   committing.
-5. For live operations, use the repo environment guard.
-6. Validate with `references/source-capture.md` boundaries.
-
-## Related Skills
-
-- Use `ocp-devspaces-about` for Dev Spaces concepts and architecture.
-- Use `ocp-devspaces-install` for installing and upgrading Dev Spaces.
-- Use `ocp-devspaces-admin` for administration and CheCluster configuration.
-- Use `ocp-devspaces-release-notes` for version-specific changes.
-- Use `ocp-devspaces-user-guide` (this skill) for user workflows.
-
-## References
-
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+[devfile]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_devfile_introduction
+[components]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_customizing_workspace_components
+[devfileerr]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/troubleshoot-ref_troubleshooting_devfile_issues
+[fromurl]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/get_started-proc_starting_a_workspace_from_a_git_repository_url
+[rawdevfile]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_starting_a_workspace_from_a_raw_devfile_url
+[existing]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-ref_url_parameter_for_the_existing_workspace_name
+[badge]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_adding_factory_badge_for_contributors
+[credcon]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_using_credentials_and_configurations_in_workspaces
+[secrets]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_mounting_secrets
+[configmaps]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_mounting_configmaps
+[gitcfg]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_mounting_git_configuration
+[defext]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_configuring_default_extensions
+[autoext]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_automating_installation_of_vscode_extensions
+[addext]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_adding_or_removing_extensions_in_a_workspace
+[ai]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_using_ai_assistants_in_workspaces
+[aiprov]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_configuring_ai_providers
+[idle]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_preventing_workspace_idling_for_long_running_commands
+[pvc]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_requesting_persistent_storage_for_workspaces
+[logs]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/troubleshoot-proc_viewing_workspace_logs_in_cli
+[debug]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/troubleshoot-proc_debugging_a_workspace
+[startup]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/troubleshoot-ref_troubleshooting_workspace_startup_failures
