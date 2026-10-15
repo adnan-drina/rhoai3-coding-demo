@@ -9,7 +9,7 @@ agent tools.
 | | |
 |---|---|
 | Argo CD Application | `060-agent-tools` ([manifest](../../../argocd/app-of-apps/060-agent-runtime-and-agentops/agent-tools.yaml)) |
-| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-native-mcp.sh <branch>`](../../../../stages/060-agent-runtime-and-agentops/deploy-native-mcp.sh) (own deploy script). It runs the preflight and applies the Application pinned to the SHA; the exact-revision sync is a separate manual step. `--publish-studio` runs Stage 040 `publish-catalog-mcp.py`. |
+| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-native-mcp.sh [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy-native-mcp.sh) (own deploy script). It runs the preflight, applies the Application pinned to the SHA, syncs it and waits; protocol qualification is a separate step. `--publish-studio` runs Stage 040 `publish-catalog-mcp.py`. |
 | Validated by | [`stages/060-agent-runtime-and-agentops/validate-native-mcp.py`](../../../../stages/060-agent-runtime-and-agentops/validate-native-mcp.py) (Application Synced at the expected revision; ownership of every customer object; hosting project metadata and `ai-admin` binding; per server: Route presence or absence, effective `config.toml` policy, image pin, `Ready` condition, operator-owned Deployment/Service/NetworkPolicy, ServiceAccount, running pod image digest). Protocol and caller isolation are qualified separately by Stage 040 `qualify-catalog-mcp.py`. |
 | Sync | Manual. Annotation `compare-options: ServerSideDiff=true`; sync option `RespectIgnoreDifferences=true` (no `ignoreDifferences` defined). The Application carries `sync-wave: "60"`, which has no effect because no parent Application manages it. |
 | Depends on | `060-mcp-platform` (MCPServer API and lifecycle operator). Namespaces `demo-sandbox`, `internal-models`, `external-models`, `models-as-a-service` for the read-only RoleBindings (Stages 030/040). |
@@ -113,8 +113,8 @@ ServiceAccount's permissions without a token. Keep its grants limited to non-sen
 - GitOps owns only the MCPServers and their customer configuration (ConfigMaps, ServiceAccounts, RBAC, Route). The
   lifecycle operator owns the workloads. Restart, scale and delete go through the MCPServer (UID-bound cleanup) [2].
 - `deploy-native-mcp.sh` refuses unpublished source, runs `validate-native-mcp.py --preflight` (never adopts an
-  existing Service without an MCPServer), then applies the Application at the exact SHA. Sync it explicitly at that
-  revision, then run the validator.
+  existing Service without an MCPServer), then applies the Application at the exact SHA, syncs it and waits. Then run
+  the validator.
 - Registry: the RHOAI 3.5.1 catalog has no Register action next to Deploy, so `publish-mcp-registry.py` registers the
   server through the installed MLflow MCP registry API, in workspace `mcp-servers`. Catalog discovery, registry entry
   and runtime lifecycle are separate contracts; there is no automatic catalog-to-registry-to-Studio sync.

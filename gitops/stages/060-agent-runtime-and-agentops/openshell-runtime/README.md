@@ -10,8 +10,8 @@ through the OpenShell CLI; the AgentOps console (`060-agent-console`) only reads
 |---|---|
 | Argo CD Application | `060-openshell-runtime` ([manifest](../../../argocd/app-of-apps/060-agent-runtime-and-agentops/openshell-runtime.yaml)) |
 | Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-runtime.sh`](../../../../stages/060-agent-runtime-and-agentops/deploy-runtime.sh) (own deploy script; also called at the end of `deploy.sh`) |
-| Validated by | No component validator. `deploy-runtime.sh` gates on `setup-runtime.py`, `check-operator-policy.py` and `argocd app wait --sync --health`; opt-in qualifiers `qualify-host.sh`, `qualify-opencode.py`, `qualify-hermes.py`, `owner-client.py --check`. [`validate.sh`](../../../../stages/060-agent-runtime-and-agentops/validate.sh) reports the stage as pending (exit 2). |
-| Sync | Manual. Pinned to a published SHA; `argocd --core app sync --strategy hook`. Annotation `compare-options: ServerSideDiff=true`. Sync option `RespectIgnoreDifferences=true`; `ignoreDifferences` on `/data` of three runtime-owned objects. |
+| Validated by | No component validator. `deploy-runtime.sh` gates on `setup-runtime.py`, `check-operator-policy.py` and `stage_apps.py wait` (Synced and Healthy at the SHA); opt-in qualifiers `qualify-host.sh`, `qualify-opencode.py`, `qualify-hermes.py`, `owner-client.py --check`. [`validate.sh`](../../../../stages/060-agent-runtime-and-agentops/validate.sh) reports the stage as pending (exit 2). |
+| Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/shared/stage_apps.py`. Annotation `compare-options: ServerSideDiff=true`. Sync option `RespectIgnoreDifferences=true`; `ignoreDifferences` on `/data` of three runtime-owned objects. |
 | Depends on | `060-openshell-identity` (realm `openshell` must exist for the issuer check). Stage 040 MaaS (`MaaSSubscription` API, model `internal-models/qwen3-8-27b`). Stage 050 MLflow (`mlflow.kubeflow.org` authorization). Group `rhods-admins` (Stage 010). The `redhat-operators` catalog with package `agent-sandbox-operator`. |
 | Used by | `060-agent-console` (needs this Application Healthy and the Sandbox CRD). OpenCode and Hermes sandboxes in `ai-agents`, created through the gateway by `setup-opencode.py` / `setup-hermes.py`. `owner-client.py` and `selected_task_trace.py` (MLflow experiment `agent-runtime-traces`). |
 
@@ -123,7 +123,7 @@ All at wave 10.
   RBAC and workspace RBAC -20; certgen Job -10; prerequisites Job -5; gateway 0; image objects 10; subscriptions and
   contracts 18. Hooks run in the Sync phase in wave order [13].
 - **The startup gate.** The gateway Pod needs the issuer, the KEK and a ready Sandbox API, and none of these can be in
-  Git. `deploy-runtime.sh` therefore runs the sync asynchronously and works alongside it:
+  Git. `deploy-runtime.sh` therefore starts the sync and works alongside it:
   1. applies the Application pinned to the published SHA and starts the sync;
   2. waits for the three placeholders, then runs `setup-runtime.py --prepare-only`, which writes `issuer` (derived
      from the `keycloak` Route and checked against the realm's OIDC discovery) and a 32-byte KEK. It reuses an existing
@@ -164,7 +164,7 @@ All at wave 10.
 ## Validation
 
 There is no read-only validator for this component; `validate.sh` deliberately reports the stage as pending.
-`deploy-runtime.sh` ends with `argocd app wait --sync --health`, `setup-ai-agents.py` checks the `ai-agents`
+`deploy-runtime.sh` ends with `stage_apps.py wait` (Synced and Healthy at the SHA), `setup-ai-agents.py` checks the `ai-agents`
 workspace and its `ai-admin` membership. By hand:
 
 ```bash

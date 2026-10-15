@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install native Automatic prerequisites; runtime functional gates remain separate.
+# Stage 060 runtime component: native Automatic prerequisites, then the OpenShell runtime; functional gates are separate.
+#   deploy-runtime.sh [--finish]   REVISION comes from RHOAI_STAGE060_EXPECTED_REVISION (set by deploy.sh), else GIT_REPO_BRANCH/HEAD.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -9,16 +10,15 @@ check_oc_logged_in
 python3 "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/controller"
 # Use the caller-selected Python interpreter for native readiness checks.
 PYTHON="${RHOAI_STAGE060_PYTHON:-python3}"
-# Core-mode Argo CD reads its settings from the kube-context namespace; refuse before any write.
-argocd app sync --help 2>&1 | grep -q -- '--core' || { echo 'An argocd client with --core support is required' >&2; exit 1; }
-[[ "$(oc config view --minify -o jsonpath='{.contexts[0].context.namespace}')" == openshift-gitops ]] || { echo 'Set the kube-context namespace to openshift-gitops for argocd --core' >&2; exit 1; }
-REVISION="${RHOAI_STAGE060_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
-[[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || exit 1
-[[ "$(git -C "$REPO_ROOT" ls-remote origin "refs/heads/${GIT_REPO_BRANCH:-main}" | awk '{print $1}')" == "$REVISION" ]] || { echo 'Published revision mismatch' >&2; exit 1; }
-git -C "$REPO_ROOT" diff --exit-code "$REVISION" -- gitops/stages/060-agent-runtime-and-agentops gitops/argocd/app-of-apps/060-agent-runtime-and-agentops/openshell-runtime.yaml "$SCRIPT_DIR" scripts/platform/check-operator-policy.py >/dev/null
+require_env GIT_REPO_URL "reviewed Stage 060 source repository"
+assert_required_env
+STAGE_APPS="$REPO_ROOT/scripts/shared/stage_apps.py"
+REVISION=$(python3 "$STAGE_APPS" select 060 --ref "${RHOAI_STAGE060_EXPECTED_REVISION:-${GIT_REPO_BRANCH:-HEAD}}" \
+  --repo-url "$GIT_REPO_URL" --extra scripts/platform/check-operator-policy.py)
+wait_runtime() { python3 "$STAGE_APPS" wait 060 --app 060-openshell-runtime --revision "$REVISION" --repo-url "$GIT_REPO_URL" --timeout "$1"; }
 if [[ "${1:-}" == '--finish' ]]; then
   python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"
-  ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait 060-openshell-runtime --app-namespace openshift-gitops --sync --operation --timeout 360
+  wait_runtime 360
   "$PYTHON" "$SCRIPT_DIR/setup-ai-agents.py" --revision "$REVISION"
   if [[ "${RHOAI_STAGE060_PROVISION_OPENCODE:-false}" == true ]]; then
     "$PYTHON" "$SCRIPT_DIR/setup-opencode.py" --revision "$REVISION" --apply --expected-policy-hash "${RHOAI_STAGE060_EXPECTED_POLICY_HASH:?Reviewed policy baseline hash required}"
@@ -46,18 +46,14 @@ for kind,name,ns in [('Namespace',n,'openshell') for n in ('openshell','openshel
   assert not m.get('ownerReferences') and not m.get('deletionTimestamp')
   assert m.get('annotations',{}).get('argocd.argoproj.io/tracking-id')==app+':'+group+'/'+o['kind']+':'+m.get('namespace','openshift-gitops')+'/'+name,'Foreign prerequisite'
 PY
-python3 - "$REPO_ROOT" "$REVISION" <<'PY' | oc --request-timeout=15s apply -f -
-import json,pathlib,sys
-p=pathlib.Path(sys.argv[1])/'gitops/argocd/app-of-apps/060-agent-runtime-and-agentops/openshell-runtime.yaml'
-a=json.loads(p.read_text());a['spec']['source']['targetRevision']=sys.argv[2];print(json.dumps(a))
-PY
-ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 060-openshell-runtime --app-namespace openshift-gitops --strategy hook --revision "$REVISION" --async --timeout 300
+python3 "$STAGE_APPS" apply 060 --app 060-openshell-runtime --revision "$REVISION" --repo-url "$GIT_REPO_URL"
+python3 "$STAGE_APPS" sync 060 --app 060-openshell-runtime
 DEADLINE=$((SECONDS+180))
 until oc --request-timeout=10s get secret/openshell-credentials configmap/openshell-identity configmap/openshell-runtime-ready -n openshell >/dev/null 2>&1; do
   (( SECONDS < DEADLINE )) || { echo 'Runtime prerequisite creation timed out' >&2; exit 1; }
   sleep 5
 done
-# Async CLI submission precedes status population; wait only for the exact current operation.
+# The sync request precedes status population; wait only for the exact current operation.
 python3 - "$REVISION" <<'PYWAIT'
 import json,subprocess,sys,time
 end=time.monotonic()+60
@@ -72,7 +68,7 @@ PYWAIT
 python3 "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION" --prepare-only
 "$PYTHON" "$REPO_ROOT/scripts/platform/check-operator-policy.py" "$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/openshell-runtime/chart/controller" --wait 900
 "$PYTHON" "$SCRIPT_DIR/setup-runtime.py" --revision "$REVISION"
-ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait 060-openshell-runtime --app-namespace openshift-gitops --sync --health --operation --timeout 600
+wait_runtime 600
 
 "$PYTHON" "$SCRIPT_DIR/setup-ai-agents.py" --revision "$REVISION"
 

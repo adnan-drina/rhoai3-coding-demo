@@ -6,14 +6,13 @@ source "$ROOT_DIR/scripts/shared/lib.sh"
 REPO_ROOT="${RHOAI_ENV_ROOT:-$ROOT_DIR}"
 load_env
 check_oc_logged_in
-argocd app sync --help 2>&1 | grep -q -- '--core' || { echo 'ERROR: argocd --core is required'; exit 1; }
-[[ "$(oc config view --minify -o jsonpath='{.contexts[0].context.namespace}')" == openshift-gitops ]] || { echo 'ERROR: use a private kubeconfig context namespace openshift-gitops'; exit 1; }
-revision="${1:?Pass the reviewed published branch}"
-sha=$(git ls-remote "${GIT_REPO_URL:?}" "$revision" "refs/heads/$revision" | awk '{print $1}' | sort -u)
-[[ "$sha" =~ ^[0-9a-f]{40}$ && "$sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published source differs'; exit 1; }
-paths=(gitops/stages/060-agent-runtime-and-agentops/mcp-platform gitops/argocd/app-of-apps/060-agent-runtime-and-agentops/mcp-platform.yaml stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh stages/060-agent-runtime-and-agentops/validate-mcp-platform.sh)
-[[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish reviewed MCP platform source first'; exit 1; }
-export MCP_PLATFORM_SHA="$sha" MCP_PLATFORM_ROOT="$ROOT_DIR"
+require_env GIT_REPO_URL "reviewed Stage 060 source repository"
+assert_required_env
+ref="${GIT_REPO_BRANCH:-HEAD}"
+if [[ "${1:-}" == --revision && $# -eq 2 ]]; then ref="$2"; elif [[ $# -ne 0 ]]; then echo "Usage: $0 [--revision REF]" >&2; exit 1; fi
+STAGE_APPS="$ROOT_DIR/scripts/shared/stage_apps.py"
+sha=$(python3 "$STAGE_APPS" select 060 --ref "$ref" --repo-url "$GIT_REPO_URL")
+export MCP_PLATFORM_ROOT="$ROOT_DIR"
 python3 - <<'PY'
 import json,os,subprocess
 def get(kind,name,ns=None):
@@ -35,11 +34,9 @@ for kind,ns,trackingkind in [('serviceaccount','redhat-ods-applications','/Servi
   m=x['metadata'];assert app and not m.get('ownerReferences') and not m.get('deletionTimestamp') and m.get('annotations',{}).get('argocd.argoproj.io/tracking-id')=='060-mcp-platform:'+trackingkind+':'+(ns or 'openshift-gitops')+'/enable-mcp-platform','Foreign MCP prerequisite resource'
   if kind=='clusterrole':assert x['rules']==[{'apiGroups':['datasciencecluster.opendatahub.io'],'resources':['datascienceclusters'],'resourceNames':['default-dsc'],'verbs':['get','patch']}],'MCP prerequisite permissions differ'
   if kind=='clusterrolebinding':assert x['roleRef']=={'apiGroup':'rbac.authorization.k8s.io','kind':'ClusterRole','name':'enable-mcp-platform'} and x['subjects']==[{'kind':'ServiceAccount','name':'enable-mcp-platform','namespace':'redhat-ods-applications'}],'MCP prerequisite binding differs'
-p=json.loads(subprocess.check_output(['oc','create','--dry-run=client','-f',os.environ['MCP_PLATFORM_ROOT']+'/gitops/argocd/app-of-apps/060-agent-runtime-and-agentops/mcp-platform.yaml','-o','json']))
-p['spec']['source']['targetRevision']=os.environ['MCP_PLATFORM_SHA']
-r=subprocess.run(['oc','apply','-f','-'],input=json.dumps(p),capture_output=True,text=True,timeout=20);assert r.returncode==0,'MCP platform Application apply failed'
 print('PASS Narrow native MCP prerequisite source/ownership guards')
 PY
-ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 060-mcp-platform --app-namespace openshift-gitops --strategy hook --revision "$sha" --timeout 180
-ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait 060-mcp-platform --app-namespace openshift-gitops --health --sync --timeout 180
+python3 "$STAGE_APPS" apply 060 --app 060-mcp-platform --revision "$sha" --repo-url "$GIT_REPO_URL"
+python3 "$STAGE_APPS" sync 060 --app 060-mcp-platform
+python3 "$STAGE_APPS" wait 060 --app 060-mcp-platform --revision "$sha" --repo-url "$GIT_REPO_URL" --timeout 300
 bash "$ROOT_DIR/stages/060-agent-runtime-and-agentops/validate-mcp-platform.sh"

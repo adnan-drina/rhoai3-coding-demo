@@ -8,9 +8,9 @@ API to run the OpenShift MCP servers.
 | | |
 |---|---|
 | Argo CD Application | `060-mcp-platform` ([manifest](../../../argocd/app-of-apps/060-agent-runtime-and-agentops/mcp-platform.yaml)) |
-| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh <branch>`](../../../../stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh) (own deploy script) |
+| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy-mcp-platform.sh) (own deploy script) |
 | Validated by | [`stages/060-agent-runtime-and-agentops/validate-mcp-platform.sh`](../../../../stages/060-agent-runtime-and-agentops/validate-mcp-platform.sh) (Application at its pinned revision; DSC component `Managed`; `MCPLifecycleOperatorReady`; component CR owned by the DSC and Ready; one operator Deployment owned by the component, ready, running the image in `operator-source.json`; CRD `mcpservers.mcp.x-k8s.io` established and serving `v1alpha1`) |
-| Sync | Manual. Pinned to the published SHA; `argocd --core app sync --strategy hook`. Default (client-side) comparison; no sync options. |
+| Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/shared/stage_apps.py`. Sync option `RespectIgnoreDifferences=true`. |
 | Depends on | `010-rhoai-platform`: owns DSC `default-dsc` and delegates `/spec/components/mcplifecycleoperator` through `ignoreDifferences`; dashboard flag `mcpCatalog` must already be `true`, set by the Stage 030 model-discovery hook (the deploy script refuses otherwise). |
 | Used by | `060-agent-tools` (`MCPServer` resources in `mcp-servers`); the dashboard MCP Catalog deploy action. |
 
@@ -47,8 +47,8 @@ Objects not in Git, created by the RHOAI operator: the `MCPLifecycleOperator` co
 - **Delegation.** Stage 010 writes `mcplifecycleoperator: Removed` in Git and lists the field in its
   `ignoreDifferences`. This Job sets the live value to `Managed`. `deploy-mcp-platform.sh` asserts that the
   delegation exists (`stage_apps.delegated`) before it writes anything.
-- **Guards.** The script requires an `argocd` client with `--core` and the kube-context namespace `openshift-gitops`,
-  checks that the branch head equals the local commit and that the component files have no local changes, refuses
+- **Guards.** The script selects the reviewed commit (`stage_apps.py select`: the stage source is clean and the
+  repository advertises the commit), refuses
   a foreign or busy Application and foreign-owned prerequisite objects, and checks the RBAC rules match exactly.
 - **Hook lifecycle.** Only `BeforeHookCreation`, so the completed Job and its pod stay until the next sync [6].
 - **Dashboard flag.** `mcpCatalog` is required by the docs for the catalog deploy action [1]; it is set by the

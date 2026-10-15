@@ -7,9 +7,9 @@ deleted through the authenticated OpenShell CLI (`060-openshell-runtime`), never
 | | |
 |---|---|
 | Argo CD Application | `060-agent-console` ([manifest](../../../argocd/app-of-apps/060-agent-runtime-and-agentops/agent-console.yaml)) |
-| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-console.sh <branch>`](../../../../stages/060-agent-runtime-and-agentops/deploy-console.sh) (own deploy script) |
+| Deployed by | [`stages/060-agent-runtime-and-agentops/deploy-console.sh [--revision REF]`](../../../../stages/060-agent-runtime-and-agentops/deploy-console.sh) (own deploy script) |
 | Validated by | [`stages/060-agent-runtime-and-agentops/validate-console.sh`](../../../../stages/060-agent-runtime-and-agentops/validate-console.sh) (Application Synced and Healthy at its pinned revision; `agentOps` is `true`; `ai-admin` and `ai-developer` can get/list Sandboxes and Services in their own workspace, cannot create or delete Sandboxes there, and cannot list Sandboxes in the other workspace) |
-| Sync | Manual. Pinned to the published SHA; `argocd --core app sync --strategy hook`. Default (client-side) comparison; no sync options. |
+| Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/shared/stage_apps.py`. Sync option `RespectIgnoreDifferences=true`. |
 | Depends on | `060-openshell-runtime` Synced and Healthy, with the `sandboxes.agents.x-k8s.io` CRD established and namespaces `openshell-admin` and `openshell-developer` present. `010-rhoai-platform` delegating `/spec/dashboardConfig/agentOps` of `odh-dashboard-config`. |
 | Used by | Dashboard users `ai-admin` and `ai-developer` (AgentOps / agent deployments view). |
 
@@ -50,8 +50,8 @@ the `admin` binding for group `rhods-admins` in `060-openshell-runtime`; `ai-dev
 
 - **Delegation.** Stage 010 lists `/spec/dashboardConfig/agentOps` in its `ignoreDifferences`. `deploy-console.sh`
   checks this with `stage_apps.delegated` before any write.
-- **Guards.** The script requires `argocd --core` and kube-context namespace `openshift-gitops`, checks that the
-  branch head equals the local commit and the component files are clean, requires the runtime Application to be
+- **Guards.** The script selects the reviewed commit (`stage_apps.py select`: the stage source is clean and the
+  repository advertises the commit), requires the runtime Application to be
   Healthy and Synced and the Sandbox CRD to be established, and refuses foreign-owned objects with the same names.
 - **Hook lifecycle.** `BeforeHookCreation` only, so the completed Job stays until the next sync [3].
 - **Least privilege.** Read verbs only, two resources, one user per namespace, bound by exact user name. Sandbox

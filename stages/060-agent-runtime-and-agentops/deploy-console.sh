@@ -6,14 +6,13 @@ source "$ROOT_DIR/scripts/shared/lib.sh"
 REPO_ROOT="${RHOAI_ENV_ROOT:-$ROOT_DIR}"
 load_env
 check_oc_logged_in
-argocd app sync --help 2>&1 | grep -q -- '--core' || { echo 'ERROR: argocd --core is required'; exit 1; }
-[[ "$(oc config view --minify -o jsonpath='{.contexts[0].context.namespace}')" == openshift-gitops ]] || { echo 'ERROR: use a private kubeconfig context namespace openshift-gitops'; exit 1; }
-revision="${1:?Pass a published branch pointing to the reviewed checkout}"
-sha=$(git ls-remote "${GIT_REPO_URL:?}" "$revision" "refs/heads/$revision" | awk '{print $1}' | sort -u)
-[[ "$sha" =~ ^[0-9a-f]{40}$ && "$sha" == "$(git -C "$ROOT_DIR" rev-parse HEAD)" ]] || { echo 'ERROR: published revision differs'; exit 1; }
-paths=(gitops/stages/060-agent-runtime-and-agentops/agent-console gitops/stages/060-agent-runtime-and-agentops/agent-console/console-discovery gitops/argocd/app-of-apps/060-agent-runtime-and-agentops/agent-console.yaml stages/060-agent-runtime-and-agentops/deploy-console.sh)
-[[ -z $(git -C "$ROOT_DIR" status --porcelain -- "${paths[@]}") ]] || { echo 'ERROR: publish reviewed console source first'; exit 1; }
-export CONSOLE_SHA="$sha" CONSOLE_ROOT="$ROOT_DIR"
+require_env GIT_REPO_URL "reviewed Stage 060 source repository"
+assert_required_env
+ref="${GIT_REPO_BRANCH:-HEAD}"
+if [[ "${1:-}" == --revision && $# -eq 2 ]]; then ref="$2"; elif [[ $# -ne 0 ]]; then echo "Usage: $0 [--revision REF]" >&2; exit 1; fi
+STAGE_APPS="$ROOT_DIR/scripts/shared/stage_apps.py"
+sha=$(python3 "$STAGE_APPS" select 060 --ref "$ref" --repo-url "$GIT_REPO_URL")
+export CONSOLE_ROOT="$ROOT_DIR"
 python3 - <<'PY'
 import json,os,subprocess
 def get(kind,name,ns=None):
@@ -40,11 +39,8 @@ for kind,name,ns,tracking in objects:
  x=get(kind,name,ns)
  if x:
   m=x['metadata'];assert app and not m.get('ownerReferences') and not m.get('deletionTimestamp') and m.get('annotations',{}).get('argocd.argoproj.io/tracking-id')=='060-agent-console:'+tracking+':'+ns+'/'+name,'Foreign console resource'
-payload=json.loads(subprocess.check_output(['oc','create','--dry-run=client','-f',os.environ['CONSOLE_ROOT']+'/gitops/argocd/app-of-apps/060-agent-runtime-and-agentops/agent-console.yaml','-o','json']))
-payload['spec']['source']['targetRevision']=os.environ['CONSOLE_SHA']
-r=subprocess.run(['oc','apply','-f','-'],input=json.dumps(payload),text=True,capture_output=True,timeout=20)
-assert r.returncode==0,'Console Application apply failed'
 print('PASS Console prerequisites and exact source ownership')
 PY
-ARGOCD_NAMESPACE=openshift-gitops argocd --core app sync 060-agent-console --app-namespace openshift-gitops --strategy hook --revision "$sha" --timeout 180
-ARGOCD_NAMESPACE=openshift-gitops argocd --core app wait 060-agent-console --app-namespace openshift-gitops --health --sync --timeout 180
+python3 "$STAGE_APPS" apply 060 --app 060-agent-console --revision "$sha" --repo-url "$GIT_REPO_URL"
+python3 "$STAGE_APPS" sync 060 --app 060-agent-console
+python3 "$STAGE_APPS" wait 060 --app 060-agent-console --revision "$sha" --repo-url "$GIT_REPO_URL" --timeout 300
