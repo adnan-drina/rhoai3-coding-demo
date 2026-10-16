@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "scenario_id": "three-team-showback-v1",
+  "policy_version": "model-window-token-share-v1",
+  "status": "offline-unqualified",
+  "organization_id": "rhoai3-coding-demo",
+  "models": {
+    "qwen3-8-27b": {
+      "name": "Qwen3.8 27B FP8",
+      "namespace": "internal-models",
+      "quantization": "FP8",
+      "qualification": "pending",
+      "rate_id": "aws-ohio-g7e-2xlarge-20261015"
+    },
+    "mistral-small4-119b": {
+      "name": "Mistral Small 4 119B NVFP4",
+      "namespace": "internal-models",
+      "quantization": "NVFP4",
+      "qualification": "pending",
+      "rate_id": "aws-ohio-g7e-2xlarge-20261015"
+    }
+  },
+  "teams": {
+    "engineering": {
+      "user": "showback-engineering",
+      "subscription": "team-engineering",
+      "key_env": "SHOWBACK_ENGINEERING_KEY",
+      "models": {
+        "qwen3-8-27b": {
+          "token_limit": 700000,
+          "window": "1h",
+          "weight": 1
+        }
+      },
+      "input_target_tokens": 4096,
+      "max_output_tokens": 512,
+      "spacing_seconds": 12,
+      "concurrency": 1
+    },
+    "marketing": {
+      "user": "showback-marketing",
+      "subscription": "team-marketing",
+      "key_env": "SHOWBACK_MARKETING_KEY",
+      "models": {
+        "mistral-small4-119b": {
+          "token_limit": 700000,
+          "window": "1h",
+          "weight": 1
+        }
+      },
+      "input_target_tokens": 1024,
+      "max_output_tokens": 1024,
+      "spacing_seconds": 20,
+      "concurrency": 1
+    },
+    "support": {
+      "user": "showback-support",
+      "subscription": "team-support",
+      "key_env": "SHOWBACK_SUPPORT_KEY",
+      "models": {
+        "qwen3-8-27b": {
+          "token_limit": 300000,
+          "window": "1h",
+          "weight": 1
+        },
+        "mistral-small4-119b": {
+          "token_limit": 300000,
+          "window": "1h",
+          "weight": 4
+        }
+      },
+      "input_target_tokens": 256,
+      "max_output_tokens": 128,
+      "spacing_seconds": 5,
+      "concurrency": 1
+    }
+  },
+  "quota_status": "illustrative-unqualified; Qwen 70/30; Mistral values independent placeholders, not an agreed reservation",
+  "phases": [
+    {
+      "id": "busy",
+      "duration_seconds": 240,
+      "teams": [
+        "engineering",
+        "marketing",
+        "support"
+      ],
+      "spacing_multiplier": 1
+    },
+    {
+      "id": "quiet",
+      "duration_seconds": 240,
+      "teams": [
+        "engineering",
+        "marketing"
+      ],
+      "spacing_multiplier": 6
+    },
+    {
+      "id": "idle",
+      "duration_seconds": 240,
+      "teams": [],
+      "spacing_multiplier": 1
+    }
+  ],
+  "limits": {
+    "max_requests": 200,
+    "request_timeout_seconds": 45,
+    "drain_seconds": 50,
+    "max_wall_seconds": 780,
+    "max_response_bytes": 2000000,
+    "max_retries": 0,
+    "start_delay_seconds": 45
+  },
+  "seed": 42,
+  "gateway_env": "SHOWBACK_GATEWAY_URL"
+}

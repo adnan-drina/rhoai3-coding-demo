@@ -1,0 +1,36 @@
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: team-support
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: team-support
+    app.kubernetes.io/part-of: maas
+    app.kubernetes.io/component: maas-subscription
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+    demo.rhoai.io/team: support
+spec:
+  owner:
+    users:
+    - showback-support
+  modelRefs:
+  - name: qwen3-8-27b
+    namespace: internal-models
+    tokenRateLimits:
+    - limit: 300000
+      window: 1h
+  - name: mistral-small4-119b
+    namespace: internal-models
+    tokenRateLimits:
+    - limit: 300000
+      window: 1h
+  priority: 100
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: support
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: showback-demo

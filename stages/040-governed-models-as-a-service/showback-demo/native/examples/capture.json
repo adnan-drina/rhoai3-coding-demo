@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "source_format": "ipp-cloudevents-v1",
+  "source_contract": {
+    "repository": "https://github.com/red-hat-data-services/ai-gateway-payload-processing",
+    "commit": "a98a2650e74f8b832ff75206f795cbb62b9cd688",
+    "image": "registry.redhat.io/rhoai/odh-ai-gateway-payload-processing-rhel9@sha256:83091d245d7ae9275ba27db0aed50bfc0b80b78b6ef28b77db7f62c175b14fe2"
+  },
+  "evidence_kind": "synthetic_fixture",
+  "source_sha256": "7e696c2577eecf33562e5ca0671e369325bb83f3d89d5cbdaf2a20071701f1df",
+  "coverage": {
+    "start": "2026-10-01T00:00:00Z",
+    "end": "2026-11-01T00:00:00Z",
+    "complete": true,
+    "delivery_reconciled": true,
+    "evidence": "synthetic fixture only; not observed delivery"
+  },
+  "model_mappings": [
+    {
+      "provider": "synthetic-provider",
+      "model": "external-example",
+      "agreement_id": "external",
+      "token_semantics": "openai-chat"
+    }
+  ],
+  "requests": [
+    {
+      "source": "maas-native-fixture",
+      "id": "evt-synthetic-1",
+      "status": "completed",
+      "retry_owner": "consumer",
+      "usage_complete": true,
+      "streaming": true,
+      "final_usage_observed": true,
+      "stream_done_observed": true,
+      "evidence": "synthetic final usage and DONE fixture, not a live response",
+      "billing_categories_verified": true
+    }
+  ]
+}

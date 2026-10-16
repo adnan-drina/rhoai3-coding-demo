@@ -1,0 +1,117 @@
+# Detached, stopped qualification candidate. No Argo Application references this path.
+# Schema patterns come from the existing Qwen service; Mistral runtime/host fit is unqualified.
+apiVersion: serving.kserve.io/v1alpha2
+kind: LLMInferenceService
+metadata:
+  name: mistral-small4-119b
+  namespace: internal-models
+  labels:
+    app.kubernetes.io/name: mistral-small4-119b
+    app.kubernetes.io/part-of: llm-serving
+    app.kubernetes.io/component: local-llm
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: "040"
+    demo.rhoai.io/quantization: nvfp4
+    inference.optimization/acceleratorName: RTX-PRO-6000
+    kueue.x-k8s.io/queue-name: lq-gpu-rtxpro6000
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/genai-asset: "true"
+  annotations:
+    openshift.io/display-name: Mistral Small 4 119B NVFP4
+    openshift.io/description: Unqualified single-RTX candidate; stopped pending kernel and memory qualification
+    opendatahub.io/model-type: generative
+    security.opendatahub.io/enable-auth: "true"
+    opendatahub.io/hardware-profile-name: gpu-rtxpro6000
+    opendatahub.io/hardware-profile-namespace: redhat-ods-applications
+spec:
+  replicas: 0
+  model:
+    name: mistral-small4-119b
+    uri: hf://RedHatAI/Mistral-Small-4-119B-2603-NVFP4:a7b11eb3bdf01f38077f6704e96cc1d9b83a4cfc
+  router:
+    gateway:
+      refs:
+        - name: maas-default-gateway
+          namespace: openshift-ingress
+          sectionName: api
+    route: {}
+    scheduler:
+      config:
+        inline:
+          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+            - type: single-profile-handler
+            - type: queue-scorer
+            - type: max-score-picker
+          schedulingProfiles:
+            - name: default
+              plugins:
+                - pluginRef: queue-scorer
+                  weight: 2
+                - pluginRef: max-score-picker
+      pool:
+        spec:
+          endpointPickerRef:
+            failureMode: FailOpen
+            group: ""
+            kind: Service
+            name: mistral-small4-119b-epp-service
+            port:
+              number: 9002
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: mistral-small4-119b
+              app.kubernetes.io/part-of: llminferenceservice
+              kserve.io/component: workload
+          targetPorts:
+            - number: 8000
+  template:
+    containers:
+      - name: main
+        # Operator-selected serving image; never substitute an unqualified nightly.
+        command: [python, -m, vllm.entrypoints.openai.api_server]
+        args:
+          - "--served-model-name={{.Name}}"
+          - --model=/mnt/models
+          - --enable-ssl-refresh
+          - --ssl-certfile=/var/run/kserve/tls/tls.crt
+          - --ssl-keyfile=/var/run/kserve/tls/tls.key
+          - --enable-force-include-usage
+          - --disable-uvicorn-access-log
+          - --tensor-parallel-size=1
+          - --max-model-len=16384
+          - --max-num-seqs=4
+          - --max-num-batched-tokens=4096
+          - --gpu-memory-utilization=0.90
+          - --kv-cache-dtype=auto
+          - --language-model-only
+        ports:
+          - containerPort: 8000
+            name: http
+        readinessProbe:
+          httpGet: {path: /health, port: 8000, scheme: HTTPS}
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 60
+        livenessProbe:
+          httpGet: {path: /health, port: 8000, scheme: HTTPS}
+          initialDelaySeconds: 600
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+        # Planning values inside the 7 CPU / 56 GiB profile. A 70.8 GB checkpoint
+        # may still fail host loading: measure peak memory before any rehearsal.
+        resources:
+          requests: {cpu: "4", memory: 48Gi, nvidia.com/gpu: "1"}
+          limits: {cpu: "7", memory: 56Gi, nvidia.com/gpu: "1"}
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: shm
+    tolerations:
+      - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      - {key: nvidia-gpu-only, operator: Exists, effect: NoSchedule}
+    volumes:
+      - name: shm
+        emptyDir: {medium: Memory, sizeLimit: 2Gi}

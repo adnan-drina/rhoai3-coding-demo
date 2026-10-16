@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "status": "synthetic_fixture; never deploy these invented limiter names",
+  "max_scrape_gap_seconds": 45,
+  "boundary_tolerance_seconds": 20,
+  "receipt_tolerance_fraction": "0.01",
+  "model_aliases": {
+    "qwen3-8-27b": [
+      "qwen3-8-27b",
+      "publishers/internal-models/models/qwen3-8-27b"
+    ],
+    "mistral-small4-119b": [
+      "mistral-small4-119b",
+      "publishers/internal-models/models/mistral-small4-119b"
+    ]
+  },
+  "canonical_series": [
+    {
+      "subscription": "team-engineering",
+      "user": "showback-engineering",
+      "model": "qwen3-8-27b",
+      "limitador_namespace": "fixture-team-engineering-qwen3-8-27b"
+    },
+    {
+      "subscription": "team-marketing",
+      "user": "showback-marketing",
+      "model": "mistral-small4-119b",
+      "limitador_namespace": "fixture-team-marketing-mistral-small4-119b"
+    },
+    {
+      "subscription": "team-support",
+      "user": "showback-support",
+      "model": "qwen3-8-27b",
+      "limitador_namespace": "fixture-team-support-qwen3-8-27b"
+    },
+    {
+      "subscription": "team-support",
+      "user": "showback-support",
+      "model": "mistral-small4-119b",
+      "limitador_namespace": "fixture-team-support-mistral-small4-119b"
+    }
+  ]
+}

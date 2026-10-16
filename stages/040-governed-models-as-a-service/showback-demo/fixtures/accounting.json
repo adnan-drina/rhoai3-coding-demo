@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "report_id": "synthetic-three-phase-20261016-v1",
+  "scope": "gpu-worker-compute-demo-window",
+  "evidence_kind": "synthetic_fixture",
+  "policy_version": "model-window-token-share-v1",
+  "currency": "USD",
+  "metadata": {
+    "warning": "Synthetic usage and lifecycle timestamps for offline validation; not live cluster evidence.",
+    "cost_exclusions": [
+      "additional storage",
+      "network",
+      "shared platform",
+      "software subscriptions",
+      "tax",
+      "discounts"
+    ]
+  },
+  "models": [
+    "qwen3-8-27b",
+    "mistral-small4-119b"
+  ],
+  "subscriptions": {
+    "team-engineering": "engineering",
+    "team-marketing": "marketing",
+    "team-support": "support",
+    "background-evaluation": "other_consumers"
+  },
+  "rates": {
+    "aws-ohio-g7e-2xlarge-20261015": {
+      "usd_per_hour": "3.36312",
+      "currency": "USD",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/us-east-2/index.csv",
+      "publication_date": "2026-10-12T19:39:25Z",
+      "effective_date": "2026-10-01",
+      "version": "20261012193925",
+      "sku": "84MJTJ2X73HAYM9Q",
+      "region": "us-east-2",
+      "instance_type": "g7e.2xlarge",
+      "operating_system": "Linux",
+      "tenancy": "Shared",
+      "purchase_option": "OnDemand"
+    }
+  },
+  "instance_intervals": [
+    {
+      "instance_id": "synthetic-worker-qwen",
+      "model": "qwen3-8-27b",
+      "start": "2026-10-16T08:58:00Z",
+      "end": "2026-10-16T09:13:00Z",
+      "rate_id": "aws-ohio-g7e-2xlarge-20261015",
+      "source": "synthetic lifecycle fixture, including two minutes preparation and one minute after report"
+    },
+    {
+      "instance_id": "synthetic-worker-mistral",
+      "model": "mistral-small4-119b",
+      "start": "2026-10-16T08:58:00Z",
+      "end": "2026-10-16T09:13:00Z",
+      "rate_id": "aws-ohio-g7e-2xlarge-20261015",
+      "source": "synthetic lifecycle fixture, including two minutes preparation and one minute after report"
+    }
+  ],
+  "windows": [
+    {
+      "id": "busy",
+      "start": "2026-10-16T09:00:00Z",
+      "end": "2026-10-16T09:04:00Z",
+      "phase": "busy",
+      "usage": {
+        "qwen3-8-27b": {
+          "coverage": "complete",
+          "tokens": {
+            "team-engineering": 200000,
+            "team-support": 300000
+          },
+          "input_tokens": {
+            "team-engineering": 180000,
+            "team-support": 240000
+          },
+          "output_tokens": {
+            "team-engineering": 20000,
+            "team-support": 60000
+          }
+        },
+        "mistral-small4-119b": {
+          "coverage": "complete",
+          "tokens": {
+            "team-marketing": 75000,
+            "team-support": 20000,
+            "background-evaluation": 5000
+          }
+        }
+      }
+    },
+    {
+      "id": "quiet",
+      "start": "2026-10-16T09:04:00Z",
+      "end": "2026-10-16T09:08:00Z",
+      "phase": "quiet",
+      "usage": {
+        "qwen3-8-27b": {
+          "coverage": "complete",
+          "tokens": {
+            "team-engineering": 100
+          }
+        },
+        "mistral-small4-119b": {
+          "coverage": "complete",
+          "tokens": {
+            "team-marketing": 100
+          }
+        }
+      }
+    },
+    {
+      "id": "idle",
+      "start": "2026-10-16T09:08:00Z",
+      "end": "2026-10-16T09:12:00Z",
+      "phase": "idle",
+      "usage": {
+        "qwen3-8-27b": {
+          "coverage": "complete",
+          "tokens": {}
+        },
+        "mistral-small4-119b": {
+          "coverage": "complete",
+          "tokens": {}
+        }
+      }
+    }
+  ],
+  "scenario_sha256": "8df5927b0754f7a061439ee94aedafb1f75c14859b379e640cc5466500bcb969",
+  "source_hashes": {
+    "aws_rate_evidence": "c4fe58295919350afa646427cec85550df2d336f0dc4606983c6b224bcb4b161"
+  }
+}

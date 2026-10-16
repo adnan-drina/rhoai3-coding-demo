@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "synthetic_fixture",
+  "instance_intervals": [
+    {
+      "instance_id": "fixture-instance-qwen3-8-27b",
+      "model": "qwen3-8-27b",
+      "start": "2026-10-15T12:00:00Z",
+      "end": "2026-10-15T12:12:00Z",
+      "rate_id": "aws-ohio-g7e-2xlarge-20261015",
+      "source": "synthetic lifecycle fixture, not AWS evidence"
+    },
+    {
+      "instance_id": "fixture-instance-mistral-small4-119b",
+      "model": "mistral-small4-119b",
+      "start": "2026-10-15T12:00:00Z",
+      "end": "2026-10-15T12:12:00Z",
+      "rate_id": "aws-ohio-g7e-2xlarge-20261015",
+      "source": "synthetic lifecycle fixture, not AWS evidence"
+    }
+  ]
+}

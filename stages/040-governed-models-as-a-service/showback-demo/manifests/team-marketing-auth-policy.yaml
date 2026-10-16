@@ -1,0 +1,27 @@
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: team-marketing
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: team-marketing
+    app.kubernetes.io/part-of: maas
+    app.kubernetes.io/component: maas-auth-policy
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+    demo.rhoai.io/team: marketing
+spec:
+  subjects:
+    users:
+    - showback-marketing
+  modelRefs:
+  - name: mistral-small4-119b
+    namespace: internal-models
+  meteringMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: marketing
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: showback-demo

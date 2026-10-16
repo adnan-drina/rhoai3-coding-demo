@@ -1,0 +1,19 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: mistral-small4-119b
+  namespace: internal-models
+  labels:
+    app.kubernetes.io/name: mistral-small4-119b
+    app.kubernetes.io/part-of: maas
+    app.kubernetes.io/component: maas-model-ref
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: "040"
+    demo.rhoai.io/quantization: nvfp4
+    demo.rhoai.io/provider: local
+  annotations:
+    openshift.io/display-name: Mistral Small 4 119B NVFP4
+spec:
+  modelRef:
+    kind: LLMInferenceService
+    name: mistral-small4-119b

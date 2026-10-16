@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "report_id": "replace-with-unique-month-id",
+  "revision": 1,
+  "policy_version": "service-offers-v1",
+  "currency": "USD",
+  "evidence_kind": "observed",
+  "statement_status": "estimate",
+  "cost_scope": "UNCONFIGURED: specify inclusions and exclusions; this template grants no access or dedicated capacity",
+  "price_basis": "unavailable",
+  "period": {
+    "start": "2026-10-01T00:00:00Z",
+    "end": "2026-11-01T00:00:00Z",
+    "timezone": "UTC"
+  },
+  "consumers": {},
+  "agreements": [
+    {
+      "id": "external",
+      "offer": "external",
+      "model": "claude-sonnet-5-5",
+      "price_basis": "unavailable",
+      "contract_version": "unconfigured",
+      "source": "Awaiting reviewed service agreement",
+      "members": [],
+      "usage_coverage": "missing",
+      "cost_coverage": "missing",
+      "rate_cards": [
+        {
+          "id": "early",
+          "rate_version": "fixture-early",
+          "start": "2026-10-01T00:00:00Z",
+          "end": "2026-10-16T00:00:00Z",
+          "source": "Awaiting provider contract/rates",
+          "evidence_kind": "unavailable",
+          "prices": {
+            "input_uncached": null,
+            "cache_read": null,
+            "cache_write": null,
+            "output": null,
+            "tool_calls": null
+          }
+        },
+        {
+          "id": "late",
+          "rate_version": "fixture-late",
+          "start": "2026-10-16T00:00:00Z",
+          "end": "2026-11-01T00:00:00Z",
+          "source": "Awaiting provider contract/rates",
+          "evidence_kind": "unavailable",
+          "prices": {
+            "input_uncached": null,
+            "cache_read": null,
+            "cache_write": null,
+            "output": null,
+            "tool_calls": null
+          }
+        }
+      ],
+      "invoice": {
+        "usd": null,
+        "source": "Awaiting provider invoice",
+        "evidence_kind": "unavailable"
+      }
+    },
+    {
+      "id": "dedicated",
+      "offer": "dedicated",
+      "model": "unassigned-dedicated-model",
+      "price_basis": "unavailable",
+      "contract_version": "unconfigured",
+      "source": "Awaiting reviewed service agreement",
+      "members": [],
+      "owner_team": "unassigned-sponsor",
+      "usage_coverage": "missing",
+      "cost_coverage": "missing",
+      "billing_method": "cost_reimbursement"
+    },
+    {
+      "id": "shared",
+      "offer": "shared",
+      "model": "qwen3-8-27b",
+      "price_basis": "unavailable",
+      "contract_version": "unconfigured",
+      "source": "Awaiting reviewed service agreement",
+      "members": [],
+      "usage_coverage": "missing",
+      "cost_coverage": "missing",
+      "tariff": {
+        "status": "unpriced",
+        "rate_version": "fixture-tariff-v1",
+        "source": "Awaiting approved forecast, subsidy and weights",
+        "evidence_kind": "unavailable",
+        "approved_at": null,
+        "start": "2026-10-01T00:00:00Z",
+        "end": "2026-11-01T00:00:00Z",
+        "subsidy_usd": null,
+        "forecast": {
+          "service_cost_usd": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "output_weight": null
+        },
+        "reservation_fees": []
+      }
+    }
+  ],
+  "events": [],
+  "cost_items": [],
+  "adjustments": []
+}

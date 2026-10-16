@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "observed",
+  "instance_intervals": [],
+  "instructions": "Populate measured AWS running intervals: instance_id, model, start/end UTC, rate_id, source. Empty intervals are invalid for accounting; do not use pod Ready time as exact billable runtime."
+}

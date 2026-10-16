@@ -1,0 +1,27 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: showback-report-publisher
+  namespace: redhat-ods-monitoring
+  labels:
+    monitoring.opendatahub.io/scrape: "true"
+    app.kubernetes.io/name: showback-report-publisher
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/managed-by: argocd
+spec:
+  namespaceSelector:
+    matchNames:
+      - redhat-ods-monitoring
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: showback-report-publisher
+  endpoints:
+    - port: metrics
+      path: /metrics.prom
+      interval: 30s
+      relabelings:
+        # Also labels the generated up series, allowing panels to fail closed
+        # when the selected report is unavailable or rejected by the publisher.
+        - targetLabel: showback_publisher
+          replacement: selected-report

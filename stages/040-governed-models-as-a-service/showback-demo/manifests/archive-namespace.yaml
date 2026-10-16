@@ -1,0 +1,15 @@
+# Detached evidence workspace. No direct S3 credentials or shared-server changes.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: showback-reporting
+  labels:
+    app.kubernetes.io/name: showback-reporting
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: "040"
+    opendatahub.io/dashboard: "true"
+  annotations:
+    openshift.io/display-name: Showback evidence
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false

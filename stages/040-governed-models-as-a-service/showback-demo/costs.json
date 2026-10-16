@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "currency": "USD",
+  "scope": "two-gpu-worker-compute",
+  "policy_version": "model-window-token-share-v1",
+  "rates": {
+    "aws-ohio-g7e-2xlarge-20261015": {
+      "usd_per_hour": "3.36312",
+      "source": "AWS public Ohio Linux On-Demand Shared price snapshot 2026-10-15",
+      "evidence_file": "showback-aws-pricing-2026-10-15.json",
+      "effective_date": "2026-10-01",
+      "instance_type": "g7e.2xlarge",
+      "region": "us-east-2"
+    }
+  },
+  "excluded_costs": [
+    "EBS outside included instance storage",
+    "network and load balancer",
+    "shared platform/control-plane",
+    "software subscriptions",
+    "taxes",
+    "account discounts"
+  ],
+  "price_basis": "dated-public-list-estimate-not-invoice"
+}

@@ -1,0 +1,63 @@
+# Detached Qwen FP8 component, based on the existing Stage 040 component.
+# Apply only through a later reviewed GitOps change; replicas explicitly remain zero.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+patches:
+  - target:
+      group: serving.kserve.io
+      kind: LLMInferenceService
+      name: qwen3-8-27b
+    patch: |-
+      - op: add
+        path: /metadata/labels/app.kubernetes.io~1part-of
+        value: llm-serving
+      - op: add
+        path: /metadata/labels/app.kubernetes.io~1managed-by
+        value: argocd
+      - op: replace
+        path: /metadata/labels/demo.rhoai.io~1quantization
+        value: fp8
+      - op: replace
+        path: /metadata/annotations/openshift.io~1display-name
+        value: Qwen3.8 27B FP8
+      - op: replace
+        path: /metadata/annotations/openshift.io~1description
+        value: "Model id: qwen3-8-27b, quantization: FP8, context 262,144-token"
+      - op: replace
+        path: /spec/model/uri
+        value: hf://Qwen/Qwen3.8-27B-FP8:017b9c7af6b5689d5dd426a76e0bc077eb5ca20a
+      # vLLM's DeepGEMM warm-up has no FP8 recipe for sm120 (RTX PRO 6000) and aborts startup
+      # ("Unknown recipe"); the CUTLASS block-scaled FP8 kernel it already selects is used instead.
+      - op: add
+        path: /spec/template/containers/0/env/-
+        value:
+          name: VLLM_USE_DEEP_GEMM
+          value: "0"
+  - target:
+      group: maas.opendatahub.io
+      kind: MaaSModelRef
+      name: qwen3-8-27b
+    patch: |-
+      - op: add
+        path: /metadata/labels/app.kubernetes.io~1part-of
+        value: maas
+      - op: add
+        path: /metadata/labels/app.kubernetes.io~1managed-by
+        value: argocd
+      - op: replace
+        path: /metadata/labels/demo.rhoai.io~1quantization
+        value: fp8
+      - op: replace
+        path: /metadata/annotations/openshift.io~1display-name
+        value: Qwen3.8 27B FP8
+      - op: replace
+        path: /metadata/annotations/openshift.io~1description
+        value: "Model id: qwen3-8-27b, quantization: FP8, context 262,144-token"
+  - target:
+      group: serving.kserve.io
+      kind: LLMInferenceService
+      name: qwen3-8-27b
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0
