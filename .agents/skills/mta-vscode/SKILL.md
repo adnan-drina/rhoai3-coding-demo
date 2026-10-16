@@ -41,9 +41,9 @@ workspaces created from the Developer Hub `app-migration` template.
 ## Procedure
 
 1. Change VSIX versions only through `artifacts.lock.json` + `Dockerfile`
-   (the former checker `verify-image.py` is in git history at `82092e01`),
-   then publish a new workspace image digest (outside
-   this repo, see `docs/OPERATIONS.md#workspace-overlay-images`).
+   and build, check (`verify-image.py`) and publish a new workspace image
+   digest with `stages/070-advanced-app-platform/workspace-image/build.sh`
+   (see `docs/OPERATIONS.md#workspace-overlay-images`).
 2. A template change publishes through the Stage 070 catalog
    (`rhdh` component); existing workspaces keep the devfile they were
    created with.

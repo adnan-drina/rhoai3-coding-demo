@@ -50,8 +50,8 @@ Paths are under `gitops/stages/070-advanced-app-platform/`.
    `070-rhdh/catalog/all.yaml` (the generator republishes the runtime catalog).
 2. Never put a client or session secret in Git; the hook keeps existing
    values and generates only missing or placeholder ones on the next sync
-   (the retired `rotate-credentials.py`, in git history at `82092e01`, rotated
-   the GitLab and Argo CD tokens, not these).
+   (`stages/070-advanced-app-platform/credentials/rotate.sh` rotates the
+   GitLab and Argo CD tokens, not these).
 3. Validate after the safety guard in `AGENTS.md`:
 
    ```bash

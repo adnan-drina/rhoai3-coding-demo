@@ -51,9 +51,9 @@ Paths are under `gitops/stages/070-advanced-app-platform/`.
 
 1. Token values never enter Git; `070-gitlab` mints 90-day tokens and reuses
    them while valid. Rotate before expiry (a token expiring within seven days
-   refuses the GitLab sync) through GitLab's token API; the former helper
-   `rotate-credentials.py --component publisher` is in git history at
-   `82092e01` (component list in `docs/OPERATIONS.md#stage-070-security-review-follow-up`).
+   refuses the GitLab sync) through GitLab's token API with
+   `stages/070-advanced-app-platform/credentials/rotate.sh publisher`
+   (components in `stages/070-advanced-app-platform/credentials/README.md`).
 
 2. Validate after the safety guard in `AGENTS.md`:
 

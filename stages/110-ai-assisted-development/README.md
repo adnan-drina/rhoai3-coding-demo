@@ -342,9 +342,14 @@ pass.
 
 ### Resetting the demo
 
-Resetting is an **operator action**, not a workspace action: it needs operator credentials, which never enter a developer workspace. It restores the registered GitLab baseline of `coolstore-inventory-service` with a normal commit (history is kept), recreates the `agentic-coolstore` DevWorkspace and clears the SonarQube project so the restored code becomes the fresh quality baseline; the commit fires one expected pipeline run in `coolstore-dev`. The former helper (`scripts/demo/reset-coolstore-demo.sh`, retired 2026-10-16) is in git history at 82092e01.
+Resetting is an **operator action**, not a workspace action: it needs operator credentials, which never enter a developer workspace. It restores the registered GitLab baseline of `coolstore-inventory-service` with a normal commit (history is kept) and stops the `agentic-coolstore` workspaces that clone it (their PVCs and local changes are kept); the commit fires one expected pipeline run in `coolstore-dev`.
 
-Add `--yes` to skip the confirmation prompt. See `docs/OPERATIONS.md` (Coolstore Demo Reset) for advancing the baseline when the demo app legitimately evolves.
+```bash
+GITLAB_OPERATOR_TOKEN_FILE=<your token file> ./stages/070-advanced-app-platform/demo-reset/reset-coolstore.sh        # prints the plan
+GITLAB_OPERATOR_TOKEN_FILE=<your token file> ./stages/070-advanced-app-platform/demo-reset/reset-coolstore.sh --yes  # applies it
+```
+
+Without `--yes` the script only prints the plan and refuses. See [`demo-reset/README.md`](../070-advanced-app-platform/demo-reset/README.md) and `docs/OPERATIONS.md` (Coolstore Demo Reset).
 
 ### BONUS for platform admins: the cost of everything you just did
 

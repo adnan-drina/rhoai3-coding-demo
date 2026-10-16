@@ -98,6 +98,8 @@ Review the complete published and pending release diff before publishing and dep
 
 Static checks need `oc` (for `oc kustomize`), `jq`, `ruby` and Git. Live deployment uses the repository's cluster guard. [Operations](../../docs/OPERATIONS.md#stage-070-gitlab-release) contains deployment order, credentials, lifecycle and acceptance. [Troubleshooting](../../docs/TROUBLESHOOTING.md#stage-070-gitlab-project-enrollment-is-pending) covers refusal and recovery.
 
+Stage actions are task scripts, each described in its folder's README: [`demo-reset/`](demo-reset/README.md) (restore the Coolstore baseline, retire a template-created project), [`credentials/`](credentials/README.md) (rotate one integration credential), [`workspace-image/`](workspace-image/README.md) and [`tools-image/`](tools-image/README.md) (build the shared images).
+
 Source: [Stage 070 component folders](../../gitops/stages/070-advanced-app-platform/) and [Applications](../../gitops/applications/) (`070-*.yaml`). The root platform Application retains its GitHub bootstrap source; project tooling, owned goldens, catalog and delivery use GitLab. A full platform-root cutover is a separate reviewed step.
 
 ## References
