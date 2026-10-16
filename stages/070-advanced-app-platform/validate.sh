@@ -29,7 +29,7 @@ check_stage_applications 070 "$EXPECTED_REVISION"
 for row in \
   'openshift-operators devspaces devspacesoperator.v3.30.' \
   'rhdh-operator rhdh rhdh-operator.v1.10.5' \
-  'openshift-mta mta-operator mta-operator.v8.3.1' \
+  'openshift-mta mta-operator mta-operator.v8.3.2' \
   'openshift-operators openshift-pipelines-operator-rh openshift-pipelines-operator-rh.v1.24.' \
   'openshift-operators rhtas-operator rhtas-operator.v1.5.'; do
   read -r ns subscription csv <<< "$row"

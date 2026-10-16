@@ -1,6 +1,6 @@
 # Migration Toolkit for Applications (`070-mta`)
 
-This Application installs Migration Toolkit for Applications (MTA) 8.3.1 in `openshift-mta`. It enables Hub authentication through the platform Keycloak realm, the Developer Lightspeed LLM proxy and the native MTA Agents. All model traffic goes through the governed MaaS Gateway with an owner-bound MaaS subscription. Developers use the MTA UI and the editor extensions in Dev Spaces workspaces. Stage 130 (AI-autonomous migration) uses the Hub for analysis. Optional Solution Server stays disabled.
+This Application installs Migration Toolkit for Applications (MTA) 8.3.2 in `openshift-mta`. It enables Hub authentication through the platform Keycloak realm, the Developer Lightspeed LLM proxy and the native MTA Agents. All model traffic goes through the governed MaaS Gateway with an owner-bound MaaS subscription. Developers use the MTA UI and the editor extensions in Dev Spaces workspaces. Stage 130 (AI-autonomous migration) uses the Hub for analysis. Optional Solution Server stays disabled.
 
 | | |
 |---|---|
@@ -24,9 +24,9 @@ Everything MTA-specific lives in one Application: the Operator, the instance, SS
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | OperatorGroup | `mta` | `openshift-mta` | Own-namespace target (wave 1) |
-| Subscription | `mta-operator` | `openshift-mta` | Channel `stable-v8.3`, `redhat-operators`, `installPlanApproval: Manual`, `startingCSV: mta-operator.v8.3.1` (wave 2) |
+| Subscription | `mta-operator` | `openshift-mta` | Channel `stable-v8.3`, `redhat-operators`, `installPlanApproval: Manual`, `startingCSV: mta-operator.v8.3.2` (wave 2) |
 | ServiceAccount, Role, RoleBinding | `approve-installplan` | `openshift-mta` | `get`/`list`/`patch` InstallPlans; `get` on Subscription `mta-operator` only (wave 1) |
-| Job (Sync hook) | `approve-installplan` | `openshift-mta` | Approves this operator's InstallPlan only if every CSV is on its allowlist (`mta-operator.v8.3.1`), then waits for that CSV (wave 2; `BeforeHookCreation,HookSucceeded`) |
+| Job (Sync hook) | `approve-installplan` | `openshift-mta` | Approves this operator's InstallPlan only if every CSV is on its allowlist (`mta-operator.v8.3.2`), then waits for that CSV (wave 2; `BeforeHookCreation,HookSucceeded`) |
 | ConsoleLink | `mta` | (cluster) | Application-menu entry; a placeholder URL in Git, patched by the SSO hook (wave 9) |
 | Tackle | `mta` | `openshift-mta` | `feature_auth_required: true`, `idp_primary: true`, `rwx_supported: "false"`, `kai_llm_proxy_enabled: true`, `kai_solution_server_enabled: false`, `kai_llm_provider: openai`, `kai_llm_model: publishers/internal-models/models/qwen3-8-27b`, `kai_database_volume_size: 5Gi`, `agentic_enabled: true`, `agentic_steer_enabled: false` (wave 10) |
 
@@ -68,7 +68,7 @@ All hooks use `BeforeHookCreation,HookSucceeded`.
 
 ## How
 
-- **Installation.** `stable-v8.3` with Manual approval pins the patch level. This component's own `approve-installplan` Sync hook approves the plan only if every CSV in it is on its allowlist (`mta-operator.v8.3.1`), and waits until that CSV is installed. Its Role reaches only `openshift-mta` InstallPlans and the `mta-operator` Subscription. Argo CD ignores `startingCSV` after installation.
+- **Installation.** `stable-v8.3` with Manual approval pins the patch level. This component's own `approve-installplan` Sync hook approves the plan only if every CSV in it is on its allowlist (`mta-operator.v8.3.2`), and waits until that CSV is installed. Its Role reaches only `openshift-mta` InstallPlans and the `mta-operator` Subscription. Argo CD ignores `startingCSV` after installation.
 - **SSO (`job-configure-mta-platform-sso`).** The hook waits for the Keycloak Route and the MTA Route. It gets a token for the `stage070-mta-provisioner` client in the `platform` realm. It ensures the realm roles `role.admin`, `role.architect`, `role.migrator` and `role.project-manager`, assigns `role.admin` to `ai-admin` and `role.architect` to `ai-developer`, and ensures the confidential client `mta-hub` with redirect `https://<mta-host>/oidc/idp/callback`. It creates the optional client scopes `+role.<name>`, each mapped to its realm role. It writes `mta-idp-client-secret` (key `clientSecret`) and applies the `IdentityProvider` `platform-sso` (primary, with the issuer-templated redirect URI and the `+role.*` scopes) [1]. If anything changed, it restarts the Hub Deployment. Finally it patches the ConsoleLink to the live Route. The client secret is generated in the Job and reused while the Secret exists.
 - **MaaS key (`configure-mta-ai`).** The Job runs as `mta-maas-provisioner` and authenticates to the MaaS API with its own service-account token. It reads the single `maas.` listener of `maas-default-gateway`. If `kai-api-keys` holds a key that MaaS reports as `active` for this principal and subscription, it keeps the key. Otherwise it mints a new key for subscription `mta-migration-ai`. A foreign owner or subscription, or an unknown status, stops the Job before it mints or revokes anything. It writes `OPENAI_API_KEY` and `MAAS_KEY_ID` through `secret_writer.py`, which stores no `last-applied-configuration`. Then it patches Tackle `kai_llm_baseurl` to `https://maas.<cluster-domain>/v1` and Gateway `maas-qwen` `endpoint` to the bare origin, because the native Gateway appends `/v1/models` itself. Both fields are in `ignoreDifferences`. `rotate-credentials.py` rotates the key with a short-lived token for the same service account, so that account must stay.
 - **Controller sizing.** MTA 8.3 sets the `agentic-controller` memory to 64Mi request and 128Mi limit, and the operator owns that Deployment. The VPA changes the pod's memory at admission instead of editing the Deployment. The reasoning is in [Operations](../../../../docs/OPERATIONS.md#mta-native-agents-and-controller-memory-sizing).
@@ -80,7 +80,7 @@ Symptoms and recovery: [Lightspeed cannot call MaaS](../../../../docs/TROUBLESHO
 
 `validate.sh` (live, no inference):
 
-- Operator: "mta-operator installed revision" (`mta-operator.v8.3.1`) and "mta-operator.v8.3.1 succeeded".
+- Operator: "mta-operator installed revision" (`mta-operator.v8.3.2`) and "mta-operator.v8.3.2 succeeded".
 - Native Agents: "MTA Hub authentication retained", "MTA platform IdP retained", "MTA native agentic component enabled", "MTA native Gateway credential binding", "MTA Gateway uses MaaS canonical model ID", "MTA credential provisioned", "MTA native agentic controller ready", "MTA memory sizing targets only its controller", "MTA memory recommendation is available".
 - Lightspeed: "MTA AI proxy enabled", "MTA proxy uses MaaS canonical model ID", "MTA LLM proxy ready without inference", "MTA MaaS origin is unambiguous", "MTA native Gateway uses MaaS origin", "MTA Lightspeed uses versioned MaaS API base".
 - Solution Server: "MTA Solution Server explicitly deferred" and "Deferred Solution Server is not crash-looping" (no `kai-api` Deployment).
@@ -100,7 +100,7 @@ oc get deployment,vpa -n openshift-mta
 | Topic | Official guidance | This repository | Status |
 |---|---|---|---|
 | Install method and platform | MTA Operator and a `Tackle` instance; OpenShift 4.21–4.22 [1] | Operator Subscription plus `Tackle mta` on OpenShift 4.22 | Aligned |
-| Version selection | The install guide gives no channel or approval guidance [1] | `stable-v8.3`, Manual, allow-listed 8.3.1 | Deviation (justified: reviewed patch-level pin) |
+| Version selection | The install guide gives no channel or approval guidance [1] | `stable-v8.3`, Manual, allow-listed 8.3.2 | Deviation (justified: reviewed patch-level pin) |
 | Persistent volumes | Hub database 10Gi RWO; bucket and cache RWX only with `rwx_supported`; `kai-db` 5Gi RWO [1] | `rwx_supported: "false"`; `gp3-csi` RWO volumes (Hub bucket 100Gi RWO observed) | Aligned |
 | Authentication | `feature_auth_required` default true; `idp_primary` makes MTA redirect to the IdP (chapter 11) [1] | Both true | Aligned |
 | External IdP | Client Secret with key `clientSecret`; `IdentityProvider` CR with `issuer`, `clientId`, `clientSecret`, `redirectURI` containing `/oidc/idp/callback`, `primary`, `scopes`; restart the Hub (9.1–9.2); `${issuer.*}` templates (chapter 12) [1] | All fields as documented; Secret `mta-idp-client-secret`; Hub restarted on change | Aligned |

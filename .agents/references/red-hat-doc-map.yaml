@@ -2028,7 +2028,7 @@ products:
               - known-issues-8-3-0_mta-8-3-0
               - fixed-issues-8-3-0_mta-8-3-0
               - mta-8-2-1_mta-8-2
-            reviewed: { version: "8.3", date: 2026-10-15, note: "the book describes 8.3.0 only; the repo pins operator 8.3.1" }
+            reviewed: { version: "8.3", date: 2026-10-15, note: "the book describes 8.3.0 only; the repo pins operator 8.3.2" }
       install:
         description: Operator installation, Tackle CR, CLI zip install, disconnected install.
         routes:
