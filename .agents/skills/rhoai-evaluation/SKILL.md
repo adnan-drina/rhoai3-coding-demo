@@ -56,9 +56,9 @@ OpenShift AI 3.5 sections. Detailed record:
 2. Submit from the dashboard **Develop & train → Evaluations** (or the
    documented EvalHub REST API, [Submit][submit]) in tenant `evaluated-models`,
    and record the result as custom properties on the model version in the
-   dashboard model version **Properties**. The former helpers
-   `submit-evaluation.sh`, `record-evaluation.sh` and `swebench-run.sh` are in
-   git history at `82092e01`. Check the service after the OpenShift safety
+   dashboard model version **Properties**. From a terminal, the task scripts
+   `stages/050-model-evaluation/evaluation/submit.sh` and `record.sh` do both;
+   the former `swebench-run.sh` is in git history at `82092e01`. Check the service after the OpenShift safety
    guard in `AGENTS.md`:
 
    ```bash

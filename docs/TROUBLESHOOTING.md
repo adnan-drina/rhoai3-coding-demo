@@ -2599,7 +2599,7 @@ curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
                 "generation_parameters": {"temperature": 0.7, "top_p": 0.8, "max_new_tokens": 512}}}
 ```
 
-The EvalHub REST API accepts the same job body; the former terminal helper `submit-evaluation.sh` is in git history at `82092e01`. The `inspect/swe-bench` card cannot run on 3.5.1 regardless of the model (see the SWE-bench notes in the Stage 050 README).
+The EvalHub REST API accepts the same job body; from a terminal, `stages/050-model-evaluation/evaluation/submit.sh` submits it ([task README](../stages/050-model-evaluation/evaluation/README.md)). The `inspect/swe-bench` card cannot run on 3.5.1 regardless of the model (see the SWE-bench notes in the Stage 050 README).
 
 ## EvalHub Provider Jobs Fail Or Never Finish Against MaaS Models
 

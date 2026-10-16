@@ -41,8 +41,8 @@ Run a model against the per-change set (`agentic-coding-livecodebench-v2`, `agen
 `agentic-coding-security-quick-v2`, `agentic-coding-latency-v1`, `agentic-coding-throughput-v2`; add
 `agentic-coding-security-full-v2` nightly or before promotion), one job per collection from **Develop & train →
 Evaluations** or the EvalHub CLI below. Each job carries the MaaS key, Kueue queue, MLflow experiment with model,
-collection and accelerator tags, and OCI export of results and evaluation card. The former loop helper
-`submit-evaluation.sh` is in git history at `82092e01`.
+collection and accelerator tags, and OCI export of results and evaluation card. From a terminal,
+`../evaluation/submit.sh --model-name ID --collection NAME` submits one ([evaluation/README.md](../evaluation/README.md)).
 
 CI gating uses the CLI with a full job body (`evalhub eval run --config <file> --wait` exits non-zero when the
 job fails); `agentic-coding-capability.ci.yaml` is the template. Change criteria in a new `-v2` collection,

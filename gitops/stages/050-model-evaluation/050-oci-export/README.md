@@ -3,8 +3,8 @@
 This Application lets EvalHub jobs in the `evaluated-models` tenant push their result artifacts and evaluation cards as
 immutable OCI artifacts to the cluster's internal image registry (repository `evaluated-models/evaluation-results`). It
 creates a pusher ServiceAccount and composes the registry credential Secret that jobs reference, using the registry's
-default route that `010-rhoai-platform` enables. A job opts in with an `exports.oci` block (the former helper
-`submit-evaluation.sh`, in git history at `82092e01`, added it to every job).
+default route that `010-rhoai-platform` enables. A job opts in with an `exports.oci` block ([`stages/050-model-evaluation/evaluation/submit.sh`](../../../../stages/050-model-evaluation/evaluation/submit.sh) adds it
+to every job unless run with `--no-oci-export`).
 
 | | |
 |---|---|

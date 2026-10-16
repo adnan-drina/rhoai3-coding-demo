@@ -13,7 +13,7 @@ API consume it through `050-evalhub`. Criteria change more often than the servic
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced and Healthy at the stage revision); EvalHub start-up validates the ids (see How). No content-specific check. |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. |
 | Depends on | `050-evalhub` (lists every id in its CR); `050-model-qualification` (namespace `evaluated-models`, OBC `evaluation-models-workbench`, tenant job ServiceAccount); ODF Route `s3`; Stage 040 MaaS (models under test). |
-| Used by | `050-evalhub`; the qualification pipeline (`latency-v1`, `throughput-v2`, `livecodebench-v2`, `python-tasks-v1`, `security-quick-v2`, `security-full-v2`); jobs submitted from **Develop & train → Evaluations** or the EvalHub REST API (the former helpers `swebench-run.sh` and `submit-evaluation.sh` are in git history at `82092e01`). |
+| Used by | `050-evalhub`; the qualification pipeline (`latency-v1`, `throughput-v2`, `livecodebench-v2`, `python-tasks-v1`, `security-quick-v2`, `security-full-v2`); jobs submitted from **Develop & train → Evaluations** or the EvalHub REST API, or `stages/050-model-evaluation/evaluation/submit.sh` (the former SWE-bench driver `swebench-run.sh` is in git history at `82092e01`). |
 
 ## Why
 

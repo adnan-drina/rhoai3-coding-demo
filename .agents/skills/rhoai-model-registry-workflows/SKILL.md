@@ -41,7 +41,7 @@ records).
 | One registered model per checkpoint (name = repository, e.g. `Qwen3.8-27B-NVFP4`), one version per immutable revision (`source-<sha>`), one artifact with the pinned `hf://` URI; idempotent, never overwrites a differing artifact | same script | [Register a model version][version] |
 | Prepared format alternates (`040-local-models/components/qwen38-fp8`) are registered without deployment linkage | `gitops/stages/040-governed-models-as-a-service/040-local-models/components/` | [View registered models][view] |
 | Deployment linkage via labels `modelregistry.opendatahub.io/registered-model-id` and `model-version-id` stamped on the LLMInferenceService; Git sets only `modelregistry.opendatahub.io/name: demo-registry` and delegates the id labels | `gitops/stages/040-governed-models-as-a-service/040-local-models/qwen38-27b-llminferenceservice.yaml` | not product guidance |
-| Evaluation evidence lands as `evalhub.*` custom properties on the model version, entered in the dashboard model version **Properties**, because the dashboard renders version properties (the former `record-evaluation.sh` is in git history at `82092e01`) | — | [Edit model version metadata][editversion] |
+| Evaluation evidence lands as `evalhub.*` custom properties on the model version, entered in the dashboard model version **Properties**, because the dashboard renders version properties (or written by `stages/050-model-evaluation/evaluation/record.sh`) | — | [Edit model version metadata][editversion] |
 | Models are deployed from GitOps, not from the registry's Deploy action | `gitops/stages/040-governed-models-as-a-service/040-local-models/` | [Deploy a model version][deploy] (not used) |
 
 ## Procedure
