@@ -38,6 +38,7 @@ rules:
   - rhdh-gitlab
   - gitlab-enroller
   - gitlab-oauth-config
+  - gitlab-demo-operator
   verbs:
   - get
   - patch
