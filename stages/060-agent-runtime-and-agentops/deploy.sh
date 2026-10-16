@@ -8,7 +8,8 @@
 #   060-mcp-platform        the native MCP lifecycle operator
 #   060-agent-tools         the two native OpenShift MCP servers (Gen AI Studio publishing is Stage 040's)
 # Credentials stay in memory: they reach curl and oc through stdin or a --config pipe, never arguments or output.
-# The ai-agents workspace step needs RHOAI_STAGE060_OPENSHELL_CLI, the CLI binary pinned in source-pins.json.
+# The ai-agents workspace step runs the OpenShell CLI pinned in source-pins.json: RHOAI_STAGE060_OPENSHELL_CLI, or by
+# default ~/.local/share/rhoai3-demo/openshell-<cliRelease>/bin/openshell; its checksum must match cliBinarySha256.
 # Usage: stages/060-agent-runtime-and-agentops/deploy.sh [--revision REF] [--component NAME]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -371,9 +372,10 @@ forward() {
 # The ai-agents gateway workspace with ai-admin as its only administrator, through the pinned native CLI and a
 # private temporary profile holding the bootstrap token (removed on exit). No sandbox, provider or model changes.
 ai_agents_setup() {
-  local cli=${RHOAI_STAGE060_OPENSHELL_CLI:-} issuer user uid id token port home dir labels
-  [[ -f "$cli" && $(shasum -a 256 "$cli" | cut -d' ' -f1) == $(jq -r '.cliBinarySha256' "$REPO_ROOT/$RUNTIME_PATH/chart/source-pins.json") ]] ||
-    fail "Set RHOAI_STAGE060_OPENSHELL_CLI to the pinned native CLI (chart/source-pins.json)"
+  local pins="$REPO_ROOT/$RUNTIME_PATH/chart/source-pins.json" cli issuer user uid id token port home dir labels
+  cli=${RHOAI_STAGE060_OPENSHELL_CLI:-$HOME/.local/share/rhoai3-demo/openshell-$(jq -r '.cliRelease' "$pins")/bin/openshell}
+  [[ -f "$cli" && $(shasum -a 256 "$cli" | cut -d' ' -f1) == $(jq -r '.cliBinarySha256' "$pins") ]] ||
+    fail "Install the pinned OpenShell CLI at $cli or set RHOAI_STAGE060_OPENSHELL_CLI (chart/source-pins.json cliBinarySha256)"
   get applications.argoproj.io 060-openshell-runtime -n openshift-gitops | jq -e --arg rev "$REVISION" '.spec.source.targetRevision == $rev
     and .status.sync.revision == $rev and .status.sync.status == "Synced" and .status.health.status == "Healthy" and .operation == null' >/dev/null ||
     fail "Exact runtime GitOps revision is not ready"
