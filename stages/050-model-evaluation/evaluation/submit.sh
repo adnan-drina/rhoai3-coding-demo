@@ -161,10 +161,11 @@ QUEUE="$QUEUE" OCI_HOST="$OCI_HOST" ACCEL="$ACCEL" TENANT_NS="$TENANT" jq -n '$E
   | if $e.OCI_HOST != "" then .exports = {oci: {coordinates: {oci_host: $e.OCI_HOST,
       oci_repository: ($e.TENANT_NS + "/evaluation-results")}, k8s: {connection: "evalhub-oci-registry"}}} else . end
   | if $e.QUEUE != "" then .queue = {kind: "kueue", name: $e.QUEUE} else . end
-  | if $e.COLLECTION != "" then .collection = {id: $e.COLLECTION} else .pass_criteria = {threshold: ($e.THRESHOLD | tonumber)} end
-  | if $e.ACCEL != "" then .experiment.tags += [{key: "accelerator", value: $e.ACCEL}]
+  | if $e.ACCEL != "" then .experiment.tags += [{key: "accelerator", value: $e.ACCEL}] else . end
+  | if $e.COLLECTION != "" then .collection = {id: $e.COLLECTION}
     else
-      (if $e.PROVIDER == "lighteval" then
+      .pass_criteria = {threshold: ($e.THRESHOLD | tonumber)}
+      | (if $e.PROVIDER == "lighteval" then
         {provider: "endpoint", num_few_shot: 0, parameters: {concurrent_requests: ($e.CONCURRENT | tonumber), api_max_retry: 1,
           generation_parameters: {temperature: ($e.TEMPERATURE | tonumber), top_p: ($e.TOP_P | tonumber),
             max_new_tokens: ($e.MAX_NEW_TOKENS | tonumber)}}}
