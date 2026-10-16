@@ -516,8 +516,8 @@ rule ids and locations; `--build-fresh SOURCE` builds both fresh M1 → M2 roots
 with `rehearse-legacy.sh` and the offline corpus derivations, then compares
 plans and MTA findings; `--patches A B` compares the typed-repair patch digests
 of two independent applications. Source captures are reported NOT-RUN, as is
-MTA when no CLI resolves. `qualify-release.sh` (retired; in git history at
-`82092e01`) ran the scaffold suites and this driver, then wrote `verdict.json`. Each claim
+MTA when no CLI resolves. [`qualification/qualify-release.sh`](qualification/README.md)
+runs the scaffold suites and this driver, then writes `verdict.json`. Each claim
 in the table above is graded MEASURED, PARTIAL, NOT-MEASURED or FAILED, and the
 verdict lists what each claim is missing. Repeatable migration stays
 NOT-MEASURED until the two full runs exist.

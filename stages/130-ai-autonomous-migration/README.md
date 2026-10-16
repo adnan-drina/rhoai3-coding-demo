@@ -303,6 +303,7 @@ actually shipped.
 | [OUTCOME-BOARD-CONTRACT.md](OUTCOME-BOARD-CONTRACT.md) | Outcome-board contract and qualification status |
 | [validate.sh](validate.sh) (`--run` for one run) | Current launch and stage validation entrypoint |
 | [hermes-runtime/](hermes-runtime/) | Workspace runtime patches and authority packaging helper |
+| [qualification/](qualification/README.md) | Offline release qualification of the golden scaffold (`qualify-release.sh`: scaffold suites, repeatability driver, `verdict.json`) |
 
 Previously tracked run records remain in Git history. Assisted v10 reached M4
 `PROVISIONAL_ACCEPT` and a live Route; that result is not autonomous proof or

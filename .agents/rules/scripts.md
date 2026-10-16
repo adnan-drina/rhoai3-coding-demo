@@ -27,7 +27,7 @@ cluster or in a workspace).
   script in a named subfolder of the stage, for example `stages/040-.../showback/generate-load.sh` or
   `stages/070-.../demo-reset/reset-coolstore.sh`. Name the folder after the task; give it a short `README.md` that says
   when to run each script, and link it from the stage README. Existing examples: `050 qualification/` (the KFP
-  pipeline) and `050 edd/`.
+  pipeline), `050 edd/`, `050 evaluation/` and `130 qualification/`.
 - `scripts/` holds only what every stage needs: `lib.sh` (environment, the cluster guard, logging, the validation
   check functions, and the shared read-only prerequisites `check_operator_policy`, `require_node_sizing`,
   `check_serving_prerequisites`), `stage-apps.sh` (the Argo CD component engine) and `validate-stage-flow.sh` (the
