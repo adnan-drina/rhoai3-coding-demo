@@ -50,7 +50,7 @@ repo lessons not in Git live in `references/working-configuration.md`.
 | One `MaaSSubscription` + `MaaSAuthPolicy` pair per consumer, owned by a user or one ServiceAccount (not groups); personal priority 150-170 above service subscriptions; 1 h windows | `gitops/stages/040-governed-models-as-a-service/040-model-access/` | [Subscriptions][subs], [Priority levels][prio], [Authorization policies][authz] |
 | Default MaaS tenant only (external models require it) | `040-model-access/README.md`, `040-external-models/README.md` | [Multi-tenancy][tenancy] |
 | API keys use the product default lifetime; keys are minted at runtime by owners (dashboard, Stage 070 provisioner, playground and Stage 050 Jobs) | not in Git | [Manage API keys][keys], [Expiration limit][keyexp] |
-| Usage export uses the dashboard Usage page's native **Export as CSV** (the former Thanos script `export-maas-usage.sh` is in git history at `82092e01`) | not in Git | [Export usage data][export] |
+| Usage export uses the dashboard Usage page's native **Export as CSV** (a raw unpriced Thanos export for an explicit UTC window is `stages/040-governed-models-as-a-service/showback/export-usage.sh`) | not in Git | [Export usage data][export] |
 
 ## Procedure
 

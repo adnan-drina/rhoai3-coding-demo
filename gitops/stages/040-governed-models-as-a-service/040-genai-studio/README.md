@@ -123,8 +123,8 @@ the Stage 060 objects at publication time.
 `validate.sh --readiness` requires this Application to be Synced and Healthy at the deployed revision and checks
 both MCP keys (it passes with an explicit deferral while the Stage 060 MCP
 runtime is absent). It does not check the endpoint Secret, the custom endpoint ConfigMap, the MLflow prompt or the agent
-profile; playground use is a user acceptance step. The former model-free qualifier `qualify-catalog-mcp.sh` for the
-token-required `OpenShift-MCP-ReadWrite` entry is in git history at `82092e01`.
+profile; playground use is a user acceptance step. The model-free persona qualification of the
+token-required `OpenShift-MCP-ReadWrite` entry is [`stages/040-governed-models-as-a-service/catalog/qualify-mcp.sh`](../../../../stages/040-governed-models-as-a-service/catalog/README.md).
 
 By hand (read-only; do not print the Secret):
 

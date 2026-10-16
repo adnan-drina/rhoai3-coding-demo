@@ -52,8 +52,8 @@ Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unle
 ## Procedure
 
 1. Change monitoring ConfigMaps, Subscriptions and dashboards in Git only;
-   edit the PersesDashboard YAML directly (its former generator
-   `gen-cost-dashboards.py` is in git history at `82092e01`).
+   regenerate the PersesDashboard YAML with
+   `stages/040-governed-models-as-a-service/showback/generate-dashboards.sh --write`.
 2. Deploy and validate Stage 010:
    `./stages/010-openshift-ai-platform-foundation/deploy.sh`,
    `./stages/010-openshift-ai-platform-foundation/validate.sh`,

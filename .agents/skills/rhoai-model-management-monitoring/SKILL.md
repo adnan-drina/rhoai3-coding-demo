@@ -51,9 +51,8 @@ OpenShift AI 3.5 sections. Detailed record:
 
 1. Change rules or bindings in Git and deploy the owning stage
    (`./stages/040-governed-models-as-a-service/deploy.sh`, then
-   `validate.sh --readiness`). Dashboards: edit the PersesDashboard YAML
-   directly (the former generator `gen-cost-dashboards.py` is in git history
-   at `82092e01`).
+   `validate.sh --readiness`). Dashboards: edit the generator
+   `stages/040-governed-models-as-a-service/showback/generate-dashboards.sh` and run it with `--write`.
 2. Inspect read-only, after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash

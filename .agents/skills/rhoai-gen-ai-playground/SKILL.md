@@ -58,8 +58,8 @@ OpenShift AI 3.5 sections. Detailed record:
    ./stages/040-governed-models-as-a-service/validate.sh --readiness
    ```
 
-   The former model-free MCP qualifier `qualify-catalog-mcp.sh` is in git
-   history at `82092e01`.
+   The model-free persona qualification of the read-write entry is
+   `stages/040-governed-models-as-a-service/catalog/qualify-mcp.sh`.
 
    Readiness checks the Application and the two MCP keys only; the custom
    endpoint, prompt and agent are user acceptance in the dashboard.
