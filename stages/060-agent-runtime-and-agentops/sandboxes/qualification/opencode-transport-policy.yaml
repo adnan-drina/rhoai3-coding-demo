@@ -1,0 +1,9 @@
+# Initial CPU transport qualification: no provider credentials or network destinations.
+version: 1
+filesystem_policy:
+  include_workdir: false
+  read_only: [/usr, /bin, /lib, /lib64, /etc, /proc, /dev/urandom, /dev/random]
+  read_write: [/sandbox, /tmp, /dev/null]
+landlock:
+  compatibility: hard_requirement
+network_policies: {}
