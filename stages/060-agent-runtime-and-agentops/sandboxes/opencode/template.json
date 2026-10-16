@@ -1,0 +1,22 @@
+{
+  "name": "opencode",
+  "workspace": "ai-agents",
+  "image": "image-registry.openshift-image-registry.svc:5000/ai-agents/opencode-runtime@sha256:86922260052003a80883880b40fa4245ae7645b25a4ee5f988ec7f1daca93d09",
+  "cpu": "1",
+  "memory": "1Gi",
+  "env": {
+    "HOME": "/sandbox/state",
+    "XDG_DATA_HOME": "/sandbox/state/data",
+    "XDG_CONFIG_HOME": "/sandbox/state/config",
+    "XDG_CACHE_HOME": "/sandbox/state/cache",
+    "XDG_STATE_HOME": "/sandbox/state/state",
+    "TMPDIR": "/tmp",
+    "OPENCODE_DISABLE_MODELS_FETCH": "1",
+    "OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX": "1024"
+  },
+  "labels": {
+    "app.kubernetes.io/name": "opencode",
+    "app.kubernetes.io/part-of": "rhoai3-coding-demo",
+    "demo.rhoai.io/stage": "060"
+  }
+}
