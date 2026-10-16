@@ -10,10 +10,10 @@ through the OpenShell CLI; the AgentOps console (`060-agent-console`) only reads
 |---|---|
 | Argo CD Application | `060-openshell-runtime` ([manifest](../../../applications/060-openshell-runtime.yaml)) |
 | Deployed by | [`stages/060-agent-runtime-and-agentops/deploy.sh`](../../../../stages/060-agent-runtime-and-agentops/deploy.sh) `--component 060-openshell-runtime` (also part of a full `deploy.sh` run) |
-| Validated by | No component validator. `deploy.sh --component 060-openshell-runtime` gates on its runtime setup step, `check_operator_policy` and `stage-apps.sh wait` (Synced and Healthy at the SHA). The former opt-in qualifiers (`qualify-host.sh`, `qualify-opencode.py`, `qualify-hermes.py`, `owner-client.py --check`) are in git history at `82092e01`. [`validate.sh`](../../../../stages/060-agent-runtime-and-agentops/validate.sh) reports the stage as pending (exit 2). |
+| Validated by | No component validator. `deploy.sh --component 060-openshell-runtime` gates on its runtime setup step, `check_operator_policy` and `stage-apps.sh wait` (Synced and Healthy at the SHA). Opt-in qualification: [`sandboxes/qualify.sh`](../../../../stages/060-agent-runtime-and-agentops/sandboxes/README.md) (`host`, `inference`, `opencode`, `hermes`, `client`). [`validate.sh`](../../../../stages/060-agent-runtime-and-agentops/validate.sh) reports the stage as pending (exit 2). |
 | Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/stage-apps.sh`. Annotation `compare-options: ServerSideDiff=true`. Sync option `RespectIgnoreDifferences=true`; `ignoreDifferences` on `/data` of three runtime-owned objects. |
 | Depends on | `060-openshell-identity` (realm `openshell` must exist for the issuer check). Stage 040 MaaS (`MaaSSubscription` API, model `internal-models/qwen3-8-27b`). Stage 050 MLflow (`mlflow.kubeflow.org` authorization). Group `rhods-admins` (Stage 010). The `redhat-operators` catalog with package `agent-sandbox-operator`. |
-| Used by | `060-agent-console` (needs this Application Healthy and the Sandbox CRD). OpenCode and Hermes sandboxes in `ai-agents`, created through the gateway by the optional OpenCode/Hermes flow, which was retired from the repository (restore from git history at `82092e01` if needed), and its trace clients (MLflow experiment `agent-runtime-traces`). |
+| Used by | `060-agent-console` (needs this Application Healthy and the Sandbox CRD). OpenCode and Hermes sandboxes in `ai-agents`, created through the gateway by [`sandboxes/create.sh`](../../../../stages/060-agent-runtime-and-agentops/sandboxes/README.md), and the 2026-10 trace clients (MLflow experiment `agent-runtime-traces`). |
 
 ## Why
 
@@ -29,7 +29,7 @@ This repository diverges from the upstream getting-started guide [6] on purpose:
 |---|---|---|
 | Chart 0.0.116, `odh-openshell-*` images | NVIDIA chart and images pinned by digest at commit `12cec59bf` [4] (dev build `0.1.3-dev.99`, merge of upstream PR 4150) | The earlier v0.1.2 tuple returned no bytes on the OpenCode HTTP path; the pinned commit passed qualification (stage plan). Not a tagged or supported release. |
 | `allowUnauthenticatedUsers=true` | OIDC required, issuer from `060-openshell-identity` | Shared cluster. |
-| `privileged` SCC for the sandbox service account | No SCC grant; workloads admitted under `restricted-v2` | `restricted-v2` drops all capabilities, sets RuntimeDefault seccomp and uses a namespace UID range [9]; the pinned build confines sockets on loopback without extra privilege (qualified by the former `qualify-host.sh`). |
+| `privileged` SCC for the sandbox service account | No SCC grant; workloads admitted under `restricted-v2` | `restricted-v2` drops all capabilities, sets RuntimeDefault seccomp and uses a namespace UID range [9]; the pinned build confines sockets on loopback without extra privilege (qualified by `sandboxes/qualify.sh host`). |
 | Sandboxes in `openshell` | Operator workspace mode: one namespace per workspace, allowlisted by label | Per-owner isolation. |
 | Passthrough Route | ClusterIP only; clients port-forward | No public gateway endpoint. |
 
@@ -84,8 +84,8 @@ one lifecycle and one readiness gate. Helm is not run by Argo CD: the chart is r
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | ImageStream | `opencode-runtime` | `ai-agents` | Tag `1.18.16` from the qualified digest in `openshell/opencode-runtime`, `referencePolicy: Local`. `Delete=false,Prune=false`. |
-| BuildConfig | `opencode-runtime` | `ai-agents` | Binary Docker build [14] to `opencode-runtime:1.18.16`; formerly run by `build-opencode.sh` (in git history at `82092e01`). |
-| ImageStream, BuildConfig | `hermes-runtime-api` | `ai-agents` | Binary Docker build to `hermes-runtime-api:0.20.5-api`; formerly run by `build-hermes.sh` (in git history at `82092e01`). ImageStream `Delete=false,Prune=false`. |
+| BuildConfig | `opencode-runtime` | `ai-agents` | Binary Docker build [14] to `opencode-runtime:1.18.16`; started by [`images/build-opencode.sh`](../../../../stages/060-agent-runtime-and-agentops/images/README.md). |
+| ImageStream, BuildConfig | `hermes-runtime-api` | `ai-agents` | Binary Docker build to `hermes-runtime-api:0.20.5-api`; started by [`images/build-hermes.sh`](../../../../stages/060-agent-runtime-and-agentops/images/README.md). ImageStream `Delete=false,Prune=false`. |
 | ImageStream, BuildConfig | `opencode-runtime` | `openshell` | Earlier build location, kept for sandboxes in `openshell-developer`. |
 | Role, RoleBinding | `opencode-runtime-pull`, `hermes-runtime-api-pull` | `ai-agents`, `openshell` | `imagestreams/layers` get for the workspace `openshell-sandbox` account. |
 
@@ -112,9 +112,9 @@ All at wave 10.
 | Secrets `openshell-server-tls`, `openshell-client-tls`, `openshell-jwt-keys` | Certgen Job; no owner reference, not pruned |
 | PVC `openshell-data-openshell-0` | StatefulSet claim template (retained) |
 | Operator CSV, `agent-sandbox-controller` and `sandbox-router-deployment`, Sandbox CRDs | OLM / Agent Sandbox bundle |
-| Gateway store: workspaces, members, global policy, providers, sandbox templates | Gateway SQLite; written through the gateway API by `stages/060-agent-runtime-and-agentops/deploy.sh` (workspace and members) and by the retired OpenCode/Hermes setup helpers (providers, templates, global policy; in git history at `82092e01`) |
+| Gateway store: workspaces, members, global policy, providers, sandbox templates | Gateway SQLite; written through the gateway API by `stages/060-agent-runtime-and-agentops/deploy.sh` (workspace and members) and by `stages/060-agent-runtime-and-agentops/sandboxes/create.sh` (profiles, providers, templates, global policy) |
 | Sandboxes `opencode`, `hermes` and their pods/claims in `ai-agents` | Gateway and Agent Sandbox controller |
-| MaaS API keys bound to the two subscriptions | Setup helpers; stored only in the gateway provider credential |
+| MaaS API keys bound to the two subscriptions | `sandboxes/create.sh`; stored only in the gateway provider credential |
 | Recovery set `openshell-data-pre-pr4150` (PVC, snapshot, Secret copies) | Manual, from the 2026-10-06 upgrade |
 
 ## How
