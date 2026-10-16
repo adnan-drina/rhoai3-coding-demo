@@ -39,7 +39,7 @@ Important paths:
 - `gitops/` — desired state for Argo CD and OpenShift resources.
 - `gitops/applications/` — one Argo CD Application per component, flat; each file is named after its Application.
 - `gitops/stages/` — desired state for stage-specific OpenShift resources.
-- `stages/` — ordered workshop path: stage READMEs and exactly one `deploy.sh` and one `validate.sh` per stage (stage capabilities are modes of those two). `validate.sh` is required; missing `deploy.sh` means workflow-only (no Argo CD app). Stage 130 keeps its own solution architecture in that stage directory (not workshop architecture; not dest execution).
+- `stages/` — ordered workshop path: stage READMEs and exactly one complete `deploy.sh` and one complete `validate.sh` per stage, plus task-focused scripts for stage actions (demo load, showback, reset, rotation, image builds) in named subfolders with a README. `validate.sh` is required; missing `deploy.sh` means workflow-only (no Argo CD app). Stage 130 keeps its own solution architecture in that stage directory (not workshop architecture; not dest execution).
 - `docs/` — operations, troubleshooting, architecture, and supporting documentation.
 - `.agents/` — shared tool-neutral agent guidance (rules, skills, hooks, references).
 
@@ -99,7 +99,7 @@ For Stage 130 native Kanban review/attach vs custom M4 receipts and K4 mint tran
 
 For GitOps authoring, manifests, labels, and schema validation, read `.agents/rules/gitops.md`.
 
-For operator scripts (one `deploy.sh` and one `validate.sh` per stage, shell only except the Stage 050 KFP pipeline, `scripts/` limited to `lib.sh`, `stage-apps.sh` and `validate-stage-flow.sh`), read `.agents/rules/scripts.md`.
+For operator scripts (one complete `deploy.sh` and one complete `validate.sh` per stage, task scripts in named stage subfolders, shell only except the Stage 050 KFP pipeline, `scripts/` limited to `lib.sh`, `stage-apps.sh` and `validate-stage-flow.sh`), read `.agents/rules/scripts.md`.
 
 For documentation standards, README structure, and operations docs, read `.agents/rules/docs.md`.
 

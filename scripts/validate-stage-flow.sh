@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Repository gate for the demo stages (offline; the review command before any deploy).
 #   Static: each stages/NNN-slug/ holds a README, an executable validate.sh and, for a GitOps stage, an executable
-#   deploy.sh, and no other top-level script; every Argo CD component Application is named, labelled and placed as
+#   deploy.sh, no other top-level script, and a README.md in every task-script subfolder; every Argo CD component
+#   Application is named, labelled and placed as
 #   gitops/applications/<name>.yaml -> gitops/stages/<stage>/<name>/ with a documented README; each stage renders as
 #   the disjoint union of its components; Stage 010 delegations match the hook Jobs that write them; no YAML file
 #   repeats a mapping key; every declared sync option survives its render; stage scripts never call the argocd CLI;
@@ -37,8 +38,12 @@ for dir in stages/*/; do
     [[ -x "$dir/validate.sh" ]] || fail "stages/$name/validate.sh is missing or not executable"
     # One deploy script and one validate script per stage; nothing else at the stage's top level.
     while IFS= read -r extra; do
-        fail "stages/$name/$extra: a stage holds only deploy.sh and validate.sh as scripts"
+        fail "stages/$name/$extra: only deploy.sh and validate.sh sit at a stage's top level; put a stage action in a task subfolder"
     done < <(find "$dir" -maxdepth 1 -type f \( -name '*.sh' -o -name '*.py' \) ! -name deploy.sh ! -name validate.sh -exec basename {} \;)
+    # Stage actions live as task scripts in a named subfolder that documents them (.agents/rules/scripts.md).
+    while IFS= read -r task; do
+        [[ -f "$task/README.md" ]] || fail "${task%/}: a task-script folder needs a README.md"
+    done < <(find "$dir" -mindepth 2 -maxdepth 2 -type f -name '*.sh' ! -path '*/scaffold-repo/*' -exec dirname {} \; | sort -u)
     if [[ -f "$dir/deploy.sh" ]]; then
         [[ -x "$dir/deploy.sh" ]] || fail "stages/$name/deploy.sh is not executable"
         gitops_stages+=("$name")
@@ -132,11 +137,13 @@ done
 log_step "Stage scripts"
 # Applications are applied, synced and waited for by scripts/stage-apps.sh (.agents/rules/gitops.md), never by the
 # argocd CLI, whose core mode depends on the kube-context namespace and the client version.
-if git grep -n -E '(^|[^A-Za-z_./-])argocd +(--core|app +(sync|wait|set|create))' -- 'stages/*/deploy.sh' 'stages/*/validate.sh' 'scripts/*.sh'; then
+if git grep -n -E '(^|[^A-Za-z_./-])argocd +(--core|app +(sync|wait|set|create))' -- 'stages/*/deploy.sh' 'stages/*/validate.sh' 'stages/*/*/*.sh' 'scripts/*.sh'; then
     fail "a stage script calls the argocd CLI; use scripts/stage-apps.sh apply/sync/wait"
 fi
-for script in scripts/*.sh stages/*/deploy.sh stages/*/validate.sh; do
+for script in scripts/*.sh stages/*/deploy.sh stages/*/validate.sh stages/*/*/*.sh; do
+    [[ -f "$script" ]] || continue
     bash -n "$script" || fail "$script does not parse"
+    [[ "$script" == stages/*/*/*.sh ]] && { [[ -x "$script" ]] || fail "$script is not executable"; }
 done
 
 if (( ERRORS > 0 )); then

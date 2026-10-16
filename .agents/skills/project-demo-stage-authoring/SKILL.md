@@ -48,8 +48,9 @@ Each stage produces this artifact set:
 ```text
 stages/NNN-descriptive-slug/
   README.md
-  deploy.sh
-  validate.sh
+  deploy.sh                                                   # complete: deploys the whole stage in one run
+  validate.sh                                                 # complete: validates the whole stage in one run
+  <task>/README.md, <task>/*.sh                               # optional stage actions (demo load, showback, reset)
 gitops/
   applications/NNN-<component>.yaml                         # one Application per component; file name = Application name
   stages/NNN-descriptive-slug/kustomization.yaml              # union of the component folders
@@ -80,7 +81,7 @@ Note: Stage 070 absorbed the former Stage 090 (RHDH portal). All developer porta
    Argo CD Applications as reference.
 8. Generate manifests only from official docs, verified live schema (`oc explain`),
    or explicitly documented demo exceptions.
-9. Add `deploy.sh` and `validate.sh` following existing stage script patterns.
+9. Add `deploy.sh` and `validate.sh` following existing stage script patterns; put stage actions that are neither deploying nor validating in a named task subfolder with a README (`.agents/rules/scripts.md`).
 10. Add an Architecture section with an ASCII or Mermaid diagram showing new
     capabilities (inline in the README).
 11. Update `docs/OPERATIONS.md` and `docs/TROUBLESHOOTING.md` when the stage
