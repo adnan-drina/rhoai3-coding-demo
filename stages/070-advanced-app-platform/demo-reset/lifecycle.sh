@@ -11,13 +11,13 @@ trap 'rm -rf "$LIFECYCLE_TMP"' EXIT
 
 die() { log_error "$*"; exit 1; }
 
-# ── GitLab API (operator token from GITLAB_OPERATOR_TOKEN_FILE; never printed, never a process argument) ─────────────
+# ── GitLab API (the demo-operator token from Secret gitlab-system/gitlab-demo-operator, written by the 070-gitlab
+#    bootstrap; never printed, never a process argument) ───────────────────────────────────────────────────────────
 lifecycle_read_token() {
-    [[ -n "${GITLAB_OPERATOR_TOKEN_FILE:-}" ]] || die "GITLAB_OPERATOR_TOKEN_FILE must name your scoped operator token file"
-    [[ -r "$GITLAB_OPERATOR_TOKEN_FILE" ]] || die "GITLAB_OPERATOR_TOKEN_FILE is not a readable file"
-    GITLAB_TOKEN=$(<"$GITLAB_OPERATOR_TOKEN_FILE")
+    GITLAB_TOKEN=$(oc get secret gitlab-demo-operator -n gitlab-system -o json 2>/dev/null | jq -j '.data.token // "" | @base64d') ||
+        die "Secret gitlab-system/gitlab-demo-operator is unreadable; sync 070-gitlab so its bootstrap creates it"
     GITLAB_TOKEN="${GITLAB_TOKEN//[$'\t\r\n ']/}"
-    [[ -n "$GITLAB_TOKEN" ]] || die "The operator token file is empty"
+    [[ -n "$GITLAB_TOKEN" ]] || die "Secret gitlab-system/gitlab-demo-operator holds no token"
 }
 
 # gitlab METHOD PATH [OUTFILE]: JSON body (if any) on stdin for POST; the response goes to stdout, or to OUTFILE for a

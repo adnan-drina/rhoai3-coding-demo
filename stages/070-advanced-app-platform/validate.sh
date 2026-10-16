@@ -136,7 +136,7 @@ if [[ -n "$GITLAB_HOST" ]]; then
 else
   check 'GitLab Route exists' 'echo missing' 'present'
 fi
-for pair in 'rhdh gitlab-publisher' 'rhdh gitlab-catalog-reader' 'app-platform-build gitlab-enroller' 'openshift-devspaces gitlab-oauth-config' 'gitlab-system gitlab-oidc'; do
+for pair in 'rhdh gitlab-publisher' 'rhdh gitlab-catalog-reader' 'app-platform-build gitlab-enroller' 'openshift-devspaces gitlab-oauth-config' 'gitlab-system gitlab-oidc' 'gitlab-system gitlab-demo-operator'; do
   read -r ns name <<< "$pair"
   check "Scoped integration Secret $ns/$name exists" "oc get secret '$name' -n '$ns' -o jsonpath='{.metadata.name}'" "$name"
 done

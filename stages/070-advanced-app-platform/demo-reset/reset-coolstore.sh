@@ -3,8 +3,8 @@
 # commit on main (history kept, no force push) and stop the DevWorkspaces that clone it (their PVCs and local changes
 # are kept). The commit fires one expected pipeline run in coolstore-dev. Changes: that commit and spec.started=false
 # on the matching workspaces. Without --yes it only prints the plan (read-only) and refuses; safe to rerun (a reset of
-# an already restored main commits nothing). Needs GITLAB_OPERATOR_TOKEN_FILE, a file holding your scoped GitLab
-# operator token (never part of a developer workspace).
+# an already restored main commits nothing). Acts as the GitLab user demo-operator, whose
+# token the 070-gitlab bootstrap keeps in Secret gitlab-system/gitlab-demo-operator (never in a developer workspace).
 # Usage: stages/070-advanced-app-platform/demo-reset/reset-coolstore.sh [--yes]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

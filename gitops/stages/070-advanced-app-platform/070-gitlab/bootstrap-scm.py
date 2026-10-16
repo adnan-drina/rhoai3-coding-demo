@@ -241,11 +241,13 @@ def main():
             membership(platform['id'], account['id'], 20)
             membership(delivery['id'], account['id'], 20)
 
-        publisher, enroller, reader = [user(u) for u in ('rhdh-publisher', 'platform-enroller', 'platform-catalog-reader')]
-        for identity, groups in ((publisher, [(workloads, 40), (platform, 20)]), (enroller, [(workloads, 50), (delivery, 50), (platform, 20)]), (reader, [(platform, 20)])):
+        publisher, enroller, reader, operator = [user(u) for u in ('rhdh-publisher', 'platform-enroller', 'platform-catalog-reader', 'demo-operator')]
+        # demo-operator: the demo operator's own identity for the Stage 070 demo-reset task scripts (baseline commits,
+        # archiving retired projects); Owner of the workload group, nothing else.
+        for identity, groups in ((publisher, [(workloads, 40), (platform, 20)]), (enroller, [(workloads, 50), (delivery, 50), (platform, 20)]), (reader, [(platform, 20)]), (operator, [(workloads, 50)])):
             for g, level in groups: membership(g['id'], identity['id'], level)
 
-        def credential(username, scopes, secret_name, ns):
+        def credential(username, scopes, secret_name, ns, days=90):
             try:
                 existing = oc('get', 'secret', secret_name, '-n', ns, '-o', 'json')
                 # Missing expiry or an expired secret is a refusal, never a silent remint.
@@ -254,13 +256,15 @@ def main():
                 return existing
             except subprocess.CalledProcessError as error:
                 if '(NotFound)' not in error.stderr: raise
-            u = user(username); expiry = (datetime.date.today() + datetime.timedelta(days=90)).isoformat()
+            u = user(username); expiry = (datetime.date.today() + datetime.timedelta(days=days)).isoformat()
             row = api('POST', f"users/{u['id']}/personal_access_tokens", {'name': 'stage070-' + username, 'scopes': scopes, 'expires_at': expiry})
             return apply('Secret', secret_name, ns, {'token': row['token']}, annotations={'rhoai3.io/expires-at': expiry})
 
         publish_secret = credential('rhdh-publisher', ['api', 'read_repository'], 'gitlab-publisher', 'rhdh')
         credential('platform-enroller', ['api', 'read_repository'], 'gitlab-enroller', 'app-platform-build')
         read_secret = credential('platform-catalog-reader', ['read_api', 'read_repository'], 'gitlab-catalog-reader', 'rhdh')
+        # Outlives any demo environment (GitLab requires an expiry); read only by operators with gitlab-system access.
+        credential('demo-operator', ['api'], 'gitlab-demo-operator', 'gitlab-system', days=180)
 
         def project(group, name, origin=None):
             try: p = api('GET', 'projects/' + quote(group['path'] + '/' + name, safe=''))

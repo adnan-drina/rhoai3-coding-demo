@@ -320,7 +320,7 @@ For presenters with time: [`demo-assets/003-catalog-ai-search.md`](demo-assets/0
 
 ### Resetting the demo
 
-Teardown is an operator action on the platform: retire the registered GitLab project and its generated Applications, workspace and namespace. Run `stages/070-advanced-app-platform/demo-reset/delete-project.sh NAME` (plan) and then with `--yes`, with `GITLAB_OPERATOR_TOKEN_FILE` naming your operator token file; see [`demo-reset/README.md`](../070-advanced-app-platform/demo-reset/README.md). Scaffold again anytime; the template recreates everything in seconds.
+Teardown is an operator action on the platform: retire the registered GitLab project and its generated Applications, workspace and namespace. Run `stages/070-advanced-app-platform/demo-reset/delete-project.sh NAME` (plan) and then with `--yes` (it acts as the GitLab user `demo-operator`); see [`demo-reset/README.md`](../070-advanced-app-platform/demo-reset/README.md). Scaffold again anytime; the template recreates everything in seconds.
 
 ## Red Hat Products Used
 

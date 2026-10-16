@@ -77,7 +77,7 @@ Not in Git: every generated Secret, the `*-runtime` ConfigMaps, `gitlab-initial-
 5. **Integration hub (wave 14).** It mints a one-day root `api` token through `gitlab-rails runner` in the toolbox pod and revokes it in a `finally` block. With it, the hub:
    - creates the private groups `rhoai-platform`, `rhoai-workloads` and `rhoai-delivery`;
    - links the personas to their platform-realm subjects, as `platform-developer` and `platform-admin`;
-   - creates the service users `rhdh-publisher`, `platform-enroller` and `platform-catalog-reader`, with 90-day tokens that carry an `rhoai3.io/expires-at` annotation;
+   - creates the service users `rhdh-publisher`, `platform-enroller` and `platform-catalog-reader`, with 90-day tokens that carry an `rhoai3.io/expires-at` annotation, and `demo-operator` (Owner of the workload group, a 180-day `api` token in `gitlab-system/gitlab-demo-operator`) for the Stage 070 `demo-reset/` task scripts;
    - imports the platform, golden and sample repositories from GitHub;
    - fast-forwards the platform mirror to the Application's exact `targetRevision` (never a force push);
    - publishes the two goldens as one ordinary commit;
@@ -91,7 +91,7 @@ Not in Git: every generated Secret, the `*-runtime` ConfigMaps, `gitlab-initial-
 
 ## Validation
 
-`validate.sh` (live, read-only) checks that `gitlab-gitlab-chart-info` records `19.4.2`; that webservice, Gitaly and sidekiq are ready; that the six OBCs are `Bound` and `/-/readiness` returns 200 through the Route. It checks that the scoped integration Secrets exist (`rhdh/gitlab-publisher`, `rhdh/gitlab-catalog-reader`, `app-platform-build/gitlab-enroller`, `openshift-devspaces/gitlab-oauth-config`, `gitlab-system/gitlab-oidc`). It also checks that both standing workspaces clone from GitLab and that the enrollment CronJob exists. `stages/070-advanced-app-platform/validate.sh` adds four checks. No credential Secret carries a last-applied annotation. Only named PVC `volumeName` fields are ignored. The idle hub ServiceAccount can neither `exec` nor create Secrets (`idle_bootstrap_cannot_exec`, `idle_bootstrap_cannot_write_credentials`). `platform-ingress` is installed in `gitlab-system`.
+`validate.sh` (live, read-only) checks that `gitlab-gitlab-chart-info` records `19.4.2`; that webservice, Gitaly and sidekiq are ready; that the six OBCs are `Bound` and `/-/readiness` returns 200 through the Route. It checks that the scoped integration Secrets exist (`rhdh/gitlab-publisher`, `rhdh/gitlab-catalog-reader`, `app-platform-build/gitlab-enroller`, `openshift-devspaces/gitlab-oauth-config`, `gitlab-system/gitlab-oidc`, `gitlab-system/gitlab-demo-operator`). It also checks that both standing workspaces clone from GitLab and that the enrollment CronJob exists. `stages/070-advanced-app-platform/validate.sh` adds four checks. No credential Secret carries a last-applied annotation. Only named PVC `volumeName` fields are ignored. The idle hub ServiceAccount can neither `exec` nor create Secrets (`idle_bootstrap_cannot_exec`, `idle_bootstrap_cannot_write_credentials`). `platform-ingress` is installed in `gitlab-system`.
 
 Static checks: `validate.sh --static`. The former offline tests (`chart-gitops.test.py`, `stage070-upgrade.test.py`, `security-boundaries.test.py`) are in git history at `82092e01`.
 

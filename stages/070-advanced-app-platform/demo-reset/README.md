@@ -1,7 +1,8 @@
 # Demo reset and project retirement
 
-Operator actions on registered GitLab projects. They need your own scoped GitLab operator token in a file named by
-`GITLAB_OPERATOR_TOKEN_FILE`; it never enters a developer workspace. Both print a read-only plan and refuse until you
+Operator actions on registered GitLab projects. They act as the GitLab user `demo-operator`, which the
+`070-gitlab` bootstrap creates as Owner of the workload group, with a 180-day `api` token in Secret
+`gitlab-system/gitlab-demo-operator` (readable with your cluster access; it never enters a developer workspace). Both print a read-only plan and refuse until you
 pass `--yes`. Repository history is always kept (no force push); workspace PVCs and delivery history stay.
 
 | Script | When to run |

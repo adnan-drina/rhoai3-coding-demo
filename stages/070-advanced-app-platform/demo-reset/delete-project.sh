@@ -6,7 +6,7 @@
 # project-NAME and runtime-NAME, its cross-namespace grants, delivery reader Secret and listener binding, and its
 # namespace. Kept: the GitLab repository (archived), workspace PVCs, delivery history; no GitHub/Quay deletion.
 # Without --yes it only prints the plan (read-only) and refuses; safe to rerun (every step accepts the retired state).
-# Needs GITLAB_OPERATOR_TOKEN_FILE, a file holding your scoped GitLab operator token.
+# Acts as the GitLab user demo-operator (token in Secret gitlab-system/gitlab-demo-operator).
 # Usage: stages/070-advanced-app-platform/demo-reset/delete-project.sh NAME [--yes]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
