@@ -67,7 +67,7 @@ The GPU-as-a-Service layer on top of the Stage 010 base platform.
 
 - **One model per card** — this project uses exclusive cards to leave memory available for its selected model weights and inference runtime; it does not demonstrate GPU time-slicing
 - **CPU queue sizing** — `cq-cpu-default` provides cpu: 40, memory: 128Gi, sized for the CPU model plane (reranker, embedding InferenceServices, workbenches)
-- **MachineSet is cluster-specific** — carries AMI, subnet, and cluster labels; must be regenerated from the cluster's own worker pool on each new environment via `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets`
+- **MachineSet is cluster-specific** — carries AMI, subnet, and cluster labels; must be regenerated from the cluster's own worker pool on each new environment via `stages/020-gpu-infrastructure-private-ai/machinesets/generate.sh`
 - **DSC patch mechanism** — Stage 020 does not own a second DataScienceCluster; it patches the Stage 010 shared owner through a dedicated ServiceAccount and ClusterRole
 
 ## How Red Hat And Open Source Make It Work
@@ -105,11 +105,11 @@ OpenShift Machine API creates GPU worker capacity from a declarative MachineSet.
 
 ## Deploy And Validate
 
-The stage is deployed as five Argo CD Applications at one reviewed revision: `020-node-feature-discovery`, `020-nvidia-gpu-operator`, `020-kueue`, `020-gpu-machinesets` (the generated pools in `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets/`, with replicas left to `deploy.sh --gpus N`) and `020-gpu-quotas` (Kueue queues and hardware profiles). Changing a pool or a quota syncs only that component.
+The stage is deployed as five Argo CD Applications at one reviewed revision: `020-node-feature-discovery`, `020-nvidia-gpu-operator`, `020-kueue`, `020-gpu-machinesets` (the generated pools in `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets/`, with replicas left to `deploy.sh --gpus N`) and `020-gpu-quotas` (Kueue queues and hardware profiles). Changing a pool or a quota syncs only that component. The pool generator is a task script, described in [`machinesets/README.md`](machinesets/README.md).
 
 ```bash
 # Generate the cluster-specific GPU pools (required on each new environment; all start at 0 replicas)
-./stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets "$RHOAI_SOURCE_WORKER_MACHINESET" --write
+./stages/020-gpu-infrastructure-private-ai/machinesets/generate.sh "$RHOAI_SOURCE_WORKER_MACHINESET" --write
 
 # Review and publish the generated pool files, then deploy their exact revision
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh

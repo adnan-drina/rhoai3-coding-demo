@@ -98,7 +98,7 @@ In **Gen AI studio → Playground → MCP**, select **OpenShift-MCP** (read-only
 
 This follows the [documented MCP connection procedure](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/experimenting_with_models_in_the_gen_ai_playground/index). It is a direct HTTPS connection, not MCP Gateway aggregation or MaaS API-key/quota governance. Gateway qualification is tracked separately.
 
-Both discovery fields are published by `stages/040-governed-models-as-a-service/deploy.sh`; exact Argo field delegation preserves them, every deploy republishes them (a no-op when unchanged), `validate.sh` detects drift, and a reviewed change of a published field needs `deploy.sh --replace-studio-mcp`. This is customer-managed field publication, not operator synchronization from the Registry. Retain its private UID-scoped ownership journal for repeated deployment. Stage040 does not require Stage060 on a fresh foundation: publication defers while the catalog runtime is absent, and Stage060 explicitly publishes once ready.
+Both discovery fields are published by `stages/040-governed-models-as-a-service/deploy.sh`; exact Argo field delegation preserves them, every deploy republishes them (a no-op when unchanged), `validate.sh` detects drift, and a reviewed change of a published field needs [`studio-mcp/publish.sh --replace`](studio-mcp/README.md). This is customer-managed field publication, not operator synchronization from the Registry. Retain its private UID-scoped ownership journal for repeated deployment. Stage040 does not require Stage060 on a fresh foundation: publication defers while the catalog runtime is absent, and Stage060 explicitly publishes once ready.
 
 ### Playground Agent: OpenShift Ops Assistant
 

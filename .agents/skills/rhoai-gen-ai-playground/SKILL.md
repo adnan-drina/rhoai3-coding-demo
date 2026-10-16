@@ -49,8 +49,8 @@ OpenShift AI 3.5 sections. Detailed record:
 ## Procedure
 
 1. Change files under `gitops/stages/040-governed-models-as-a-service/040-genai-studio/`;
-   MCP entries change only through `stages/040-governed-models-as-a-service/deploy.sh` (needs
-   `--replace-studio-mcp` to change a published value).
+   MCP entries change only through `stages/040-governed-models-as-a-service/deploy.sh` (a reviewed
+   change of a published value: `stages/040-governed-models-as-a-service/studio-mcp/publish.sh --replace`).
 2. Deploy and validate after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash

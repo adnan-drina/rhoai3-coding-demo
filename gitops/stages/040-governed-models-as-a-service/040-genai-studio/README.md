@@ -106,7 +106,7 @@ cannot read Secrets or write.
 lifecycle operator reports (in-cluster service address for the token-less read-only server, HTTPS Route for the
 read-write server). `ignoreDifferences` on exactly those two JSON pointers with `RespectIgnoreDifferences=true` keeps
 Argo CD from removing them [6][7]. `stages/040-governed-models-as-a-service/deploy.sh` refuses to write unless this Application is Synced and Healthy
-at the expected revision, and needs `--replace-studio-mcp` to change a published value.
+at the expected revision, and needs `stages/040-governed-models-as-a-service/studio-mcp/publish.sh --replace` to change a published value.
 
 **Retained state PVC.** `Prune=false,Delete=false` keeps playground history when the Application or object is removed
 [6]. Attach it only to a freshly created playground (the former helper `studio-api.sh` is in git history at

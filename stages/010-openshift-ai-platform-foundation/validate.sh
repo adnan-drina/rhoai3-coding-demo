@@ -2,64 +2,21 @@
 # Stage 010 validation: OpenShift GitOps, the component Applications, ODF, RHOAI and its observability stack, access,
 # the sandbox bucket connections, the console Perses integration, and native metrics and trace round trips.
 # Read-only (local port-forwards only); credential values are compared inside jq, never printed or passed as arguments.
-# --login-personas signs the demo personas in again (browser; OAuth tokens expire) into their own kubeconfigs from .env
-# (RHOAI_ADMIN_KUBECONFIG, RHOAI_DEVELOPER_KUBECONFIG), never your default kubeconfig; --private-window prints the login
-# URL instead of opening the browser, so an existing ai-admin browser session is not reused.
-# Usage: stages/010-openshift-ai-platform-foundation/validate.sh [--component 010-sandbox-storage|010-console-observability | --login-personas [admin|developer] [--private-window]]
+# Usage: stages/010-openshift-ai-platform-foundation/validate.sh [--component 010-sandbox-storage|010-console-observability]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ROOT_DIR="$REPO_ROOT"
 source "$REPO_ROOT/scripts/lib.sh"
-COMPONENT="" LOGIN="" OPEN_BROWSER=true
+COMPONENT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --component) COMPONENT=${2:?}; shift 2 ;;
-    --login-personas) LOGIN="admin developer"; [[ "${2:-}" == admin || "${2:-}" == developer ]] && { LOGIN=$2; shift; }; shift ;;
-    --private-window) OPEN_BROWSER=false; shift ;;
     *) sed -n 's/^# Usage: //p' "$0" >&2; exit 1 ;;
   esac
 done
 load_env
 check_oc_logged_in
-
-# ── Persona sessions (interactive) ────────────────────────────────────────────
-login_personas() {
-  local server persona var kubeconfig user actual rc=0
-  server="$(oc --request-timeout=10s whoami --show-server)"
-  for persona in $LOGIN; do
-    if [[ "$persona" == admin ]]; then var=ADMIN; kubeconfig="${RHOAI_ADMIN_KUBECONFIG:-}"; user="${RHOAI_ADMIN_USER:-}"
-    else var=DEVELOPER; kubeconfig="${RHOAI_DEVELOPER_KUBECONFIG:-}"; user="${RHOAI_DEVELOPER_USER:-}"; fi
-    kubeconfig="${kubeconfig/#\~/$HOME}"
-    [[ -n "$kubeconfig" && -n "$user" ]] || { log_error "set RHOAI_${var}_KUBECONFIG and RHOAI_${var}_USER in .env"; rc=1; continue; }
-    mkdir -p "$(dirname "$kubeconfig")"
-    if [[ ! -s "$kubeconfig" ]]; then
-      # A new persona kubeconfig carries the guarded context's cluster trust (server plus CA data or its TLS setting),
-      # never its user credentials, so the browser login reaches the same API server.
-      (umask 077; oc config view --minify --raw -o json | jq '{apiVersion: "v1", kind: "Config",
-        clusters: [{name: "persona-cluster", cluster: .clusters[0].cluster}], users: [],
-        contexts: [{name: "persona", context: {cluster: "persona-cluster"}}], "current-context": "persona"}' >"$kubeconfig")
-    fi
-    if [[ "$OPEN_BROWSER" == true ]]; then
-      echo "── Sign in as ${user} in the browser window that opens (session saved to ${kubeconfig})"
-      oc login --web --kubeconfig "$kubeconfig" "$server" >/dev/null
-    else
-      echo "── Open the URL below in a private browser window and sign in as ${user} (session saved to ${kubeconfig})"
-      oc login --web --auto-open-browser=false --kubeconfig "$kubeconfig" "$server"
-    fi
-    chmod 600 "$kubeconfig"
-    actual="$(oc --kubeconfig "$kubeconfig" --request-timeout=10s whoami 2>/dev/null || true)"
-    if [[ "$actual" == "$user" ]]; then
-      log_success "${persona}: logged in as ${actual}"
-    else
-      rm -f "$kubeconfig"  # never leave another user's session in this persona's kubeconfig
-      log_error "${persona}: logged in as '${actual:-nobody}', expected ${user}; run again with --private-window"
-      rc=1
-    fi
-  done
-  return "$rc"
-}
-if [[ -n "$LOGIN" ]]; then login_personas; exit; fi
 
 # ── Core foundation ───────────────────────────────────────────────────────────
 validate_core() {
@@ -182,7 +139,7 @@ validate_core() {
   # Native observability functional acceptance replaces legacy workaround-presence checks.
   validate_persona() {
     local label="$1" kubeconfig="$2" expected_user="$3" actual_user server permission guarded_server
-    local refresh="run stages/010-openshift-ai-platform-foundation/validate.sh --login-personas"
+    local refresh="run stages/010-openshift-ai-platform-foundation/personas/login.sh"
     if [[ -z "$kubeconfig" || ! -f "$kubeconfig" ]]; then
       record_warn "$label real authenticated session" "no persona session; $refresh"
       return

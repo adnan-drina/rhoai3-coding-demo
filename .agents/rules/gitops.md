@@ -90,7 +90,7 @@ Follows the Kustomize and Red Hat `odh-gitops` conventions: plain manifests in o
 - No `base/`-in-`base/` wrappers, no `aggregate/` layers, no placeholder values patched by an overlay: write the reviewed value (for example the Subscription channel) in the manifest.
 - Add `overlays/<variant>/` only for a real variant, and `components/<feature>/` (Kustomize `kind: Component`) for an optional feature.
 - Transformers (`labels`, `replacements`) belong in the component's `kustomization.yaml`, where they apply to the whole Application.
-- Cluster-specific generated files live in their component folder (Stage 020 `020-gpu-machinesets/`, written by `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets`).
+- Cluster-specific generated files live in their component folder (Stage 020 `020-gpu-machinesets/`, written by `stages/020-gpu-infrastructure-private-ai/machinesets/generate.sh`).
 
 ### Operator Deployment and CRD Timing
 

@@ -50,7 +50,7 @@ Paths are relative to `gitops/stages/020-gpu-infrastructure-private-ai/` unless 
 ## Procedure
 
 1. Change labels and taints only in the MachineSet template (regenerate with
-   `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets`, see `ocp-machine-management`); add a
+   `stages/020-gpu-infrastructure-private-ai/machinesets/generate.sh`, see `ocp-machine-management`); add a
    matching toleration to every GPU consumer in the same change.
 2. Validate: `./stages/020-gpu-infrastructure-private-ai/validate.sh` checks
    that each Ready GPU node allocates one `nvidia.com/gpu`, has its pool's GPU

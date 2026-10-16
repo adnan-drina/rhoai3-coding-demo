@@ -41,14 +41,14 @@ OpenShift AI 3.5 sections. Detailed record:
 | `ClusterPolicy` `gpu-cluster-policy` from the operator's default example plus a `nvidia-gpu-only` toleration; Driver Toolkit build; DCGM ServiceMonitor on; sandbox workloads off | `020-nvidia-gpu-operator/cluster-policy.yaml` | [Enable NVIDIA GPUs][nvidia]; field detail is NVIDIA's (upstream, see component README) |
 | No time-slicing or MIG partitioning: `mig.strategy: single`, no device-plugin config, one card = one `nvidia.com/gpu` (one model per card) | `020-nvidia-gpu-operator/cluster-policy.yaml` | [GPU time slicing][timeslice] (not used) |
 | Default pool `g7e.2xlarge` (one RTX PRO 6000 Blackwell, 96 GB), one MachineSet per `us-east-2` zone; L40S pool `g6e.2xlarge` kept at zero; all 0 replicas in Git, 200 GB gp3 root disk | `020-gpu-machinesets/machineset-rtxpro6000.yaml`, `020-gpu-machinesets/machineset-gpu.yaml` | OCP: see `ocp-machine-management` |
-| Pool shape: label `cluster-api/accelerator` (`nvidia-rtxpro6000` / `nvidia-gpu`), `node-role.kubernetes.io/gpu`, taint `nvidia-gpu-only:NoSchedule`; generated from the active CPU worker pool | `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets` | OCP: see `ocp-machine-management` |
+| Pool shape: label `cluster-api/accelerator` (`nvidia-rtxpro6000` / `nvidia-gpu`), `node-role.kubernetes.io/gpu`, taint `nvidia-gpu-only:NoSchedule`; generated from the active CPU worker pool | `stages/020-gpu-infrastructure-private-ai/machinesets/generate.sh` | OCP: see `ocp-machine-management` |
 | `migration-gpu-status` delete + dashboard restart is not automated (ConfigMap absent on this cluster, checked 2026-10-14) | `docs/OPERATIONS.md#stage-020` | [Enable NVIDIA GPUs][nvidia] |
 | GPU utilization for the OpenShift AI dashboards via ServiceMonitor `accelerator-gpu-utilization` (workaround for a 3.5.1 gap); `rhods-admins` bound to `cluster-monitoring-metrics-api` | `020-nvidia-gpu-operator/rhoai-monitoring/`, `020-nvidia-gpu-operator/rolebinding-gpu-metrics-admins.yaml` | see `rhoai-observability` |
 
 ## Procedure
 
 1. On a new cluster regenerate the pools, review, publish:
-   `./stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets <cpu-machineset> --write`.
+   `./stages/020-gpu-infrastructure-private-ai/machinesets/generate.sh <cpu-machineset> --write`.
 2. Deploy: `./stages/020-gpu-infrastructure-private-ai/deploy.sh`.
 3. Scale a pool for a session with `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1`
    (`GPU_POOL=l40s` for the L40S pool, `--gpus 0` parks all pools); probe

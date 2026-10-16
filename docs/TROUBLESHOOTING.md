@@ -168,7 +168,7 @@ oc get llminferenceservice qwen3-6-27b -n models-as-a-service \
 
 **Affected stage:** Stage 040 (first pull of a large modelcar)
 
-**Likely cause:** kubelet DiskPressure mid-pull. Modelcar images are large (~30-36GB); on a 100GB root volume the pull plus cached base images crosses the image-GC threshold and garbage collection thrashes the very layers being pulled. Fixed by the 200GB gp3 default in `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets`; note that MachineSet template changes only apply to newly created machines.
+**Likely cause:** kubelet DiskPressure mid-pull. Modelcar images are large (~30-36GB); on a 100GB root volume the pull plus cached base images crosses the image-GC threshold and garbage collection thrashes the very layers being pulled. Fixed by the 200GB gp3 default in `stages/020-gpu-infrastructure-private-ai/machinesets/generate.sh`; note that MachineSet template changes only apply to newly created machines.
 
 **Diagnose:**
 
@@ -180,7 +180,7 @@ oc debug node/<gpu-node> -- chroot /host df -h /var  # watch used% growth
 
 **Recover:**
 
-- If the volume is undersized, recreate the GPU machines: scale the GPU MachineSet to 0, regenerate with `stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets <worker-machineset> --write` (200GB gp3 for every pool), sync Stage 020, scale back up with `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus N`.
+- If the volume is undersized, recreate the GPU machines: scale the GPU MachineSet to 0, regenerate with `stages/020-gpu-infrastructure-private-ai/machinesets/generate.sh <worker-machineset> --write` (200GB gp3 for every pool), sync Stage 020, scale back up with `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus N`.
 - If pressure already cleared, the pull resumes on its own; disk usage growth in /var confirms progress.
 
 ## InstallPlan Approval Carries Hidden Passenger CSVs
@@ -2759,7 +2759,7 @@ The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` a
 ```bash
 RHOAI_STAGE060_EXPECTED_REVISION=<060-agent-tools revision> \
   ./stages/040-governed-models-as-a-service/deploy.sh --revision <Stage 040 revision>
-# add --replace-studio-mcp only for a reviewed change of an already published entry
+# a reviewed change of an already published entry: ./stages/040-governed-models-as-a-service/studio-mcp/publish.sh --replace
 ```
 
 Change an Application's revision with `oc patch` on `spec.source.targetRevision` (and `spec.ignoreDifferences` when needed), not by re-applying the whole object. When an explicit operation is needed, pass the Application's options with it: `{"operation":{"sync":{"revision":"<sha>","syncOptions":["RespectIgnoreDifferences=true","ServerSideDiff=true", ...]}}}`, or use `argocd --core app sync`.

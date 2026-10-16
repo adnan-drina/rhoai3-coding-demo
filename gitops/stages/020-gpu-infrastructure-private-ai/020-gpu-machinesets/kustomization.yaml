@@ -1,4 +1,4 @@
-# GPU MachineSets generated for this cluster by stages/020-gpu-infrastructure-private-ai/deploy.sh --generate-machinesets.
+# GPU MachineSets generated for this cluster by stages/020-gpu-infrastructure-private-ai/machinesets/generate.sh.
 # Their replica delegation is in the 020-gpu-machinesets Application manifest (the generator writes both).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
