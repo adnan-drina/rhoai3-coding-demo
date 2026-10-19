@@ -241,3 +241,12 @@ data:
                   icon: developerHub
                   title: Dev Spaces
                   link: ${DEVSPACES_URL}
+            - mountPoint: global.header/application-launcher
+              importName: MenuItemLink
+              config:
+                priority: 50
+                section: Developer Tools
+                props:
+                  icon: developerHub
+                  title: GitLab
+                  link: ${GITLAB_BASE_URL}

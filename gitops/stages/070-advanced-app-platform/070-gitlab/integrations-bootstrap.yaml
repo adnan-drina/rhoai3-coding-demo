@@ -186,6 +186,16 @@ rules:
   - cluster
   verbs:
   - get
+# The console application-menu link to GitLab (consolelink.yaml) gets the live URL.
+- apiGroups:
+  - console.openshift.io
+  resources:
+  - consolelinks
+  resourceNames:
+  - gitlab
+  verbs:
+  - get
+  - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

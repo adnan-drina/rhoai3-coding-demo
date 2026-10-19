@@ -7,7 +7,7 @@ This Application runs the private source-control service of the developer platfo
 | Argo CD Application | `070-gitlab` ([manifest](../../../applications/070-gitlab.yaml)) |
 | Deployed by | `stages/070-advanced-app-platform/deploy.sh` → `stage-apps.sh deploy 070` (deploy-order 7) |
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (GitLab release, readiness, bucket, Route, integration-Secret and security-boundary checks); `validate.sh --static` (renders, disjoint components, scripts parse; the former offline tests `tests/*.test.py` are in git history at `82092e01`) |
-| Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on `/spec/volumeName` of PVCs `gitlab-postgresql-data` and `gitlab-valkey-data` |
+| Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on `/spec/volumeName` of PVCs `gitlab-postgresql-data` and `gitlab-valkey-data`, and on ConsoleLink `gitlab` `href`/`imageURL` |
 | Depends on | `070-namespaces` (`gitlab-system`, `app-platform-build`, `rhdh` and the other target namespaces); `070-identity` (Secret `stage070-scm-provisioner` in `gitlab-system`, platform realm and persona links); `070-devspaces` (CheCluster `devspaces`, standing DevWorkspaces `coolstore-inventory-service`); `070-mta` (Route `mta`); existing Keycloak, NooBaa (`openshift-storage.noobaa.io`, Route `s3`), `gp3-csi` and OpenShift GitOps |
 | Used by | `070-rhdh` (catalog and TechDocs from the platform mirror, `rhdh-gitlab`, `gitlab-publisher`, `gitlab-catalog-reader`, `gitlab-platform-config`, `rhdh-local-user` (operator-managed)); `070-pipelines` enrollment (`gitlab-enroller`, `gitlab-platform-config`, `gitlab-import-seeds`); Dev Spaces (GitLab OAuth); Argo CD (`gitlab-platform-reader` repository Secret, `stage070-project-release`); Stages 110–130 |
 
@@ -49,6 +49,7 @@ Chart pods use ServiceAccount `gitlab-app-nonroot` and UID 1000. Every image is 
 | Deployment, Service | `gitlab-postgresql` | `gitlab-system` | PostgreSQL (upstream image by digest), `Recreate`, credentials from Secret `gitlab-database` (wave 7) |
 | Deployment, Service | `gitlab-valkey` | `gitlab-system` | Valkey with append-only persistence and a password from Secret `gitlab-cache` (wave 7) |
 | Route | `gitlab` | `gitlab-system` | Edge TLS, HTTP redirect, 600 s router timeout, to `http-workhorse` (wave 3) |
+| ConsoleLink | `gitlab` | (cluster) | OpenShift console application-menu entry under Developer Tools; a placeholder URL in Git, patched by the integrations hub (wave 3) |
 | NetworkPolicy | `platform-ingress` | `gitlab-system` | Ingress only from the same namespace, the OpenShift router and monitoring; egress unchanged |
 | ServiceAccount, Role, RoleBinding | `gitlab-app-nonroot`, `gitlab-use-nonroot` | `gitlab-system` | `use` on SCC `nonroot-v2` only, for `gitlab-app-nonroot`, `gitlab-shared-secrets` and `gitlab-bootstrap` (wave 3). The SA has no token mount |
 
@@ -81,13 +82,13 @@ Not in Git: every generated Secret, the `*-runtime` ConfigMaps, `gitlab-initial-
    - imports the platform, golden and sample repositories from GitHub;
    - fast-forwards the platform mirror to the Application's exact `targetRevision` (never a force push);
    - publishes the two goldens as one ordinary commit;
-   - creates the Dev Spaces GitLab OAuth application and the `gitlab-oauth-config` Secret, and patches CheCluster `gitServices` and `allowedSources`;
+   - creates the Dev Spaces GitLab OAuth application and the `gitlab-oauth-config` Secret, and patches CheCluster `gitServices` and `allowedSources`, and the ConsoleLink `gitlab` to the live URL (cluster role `gitlab-integrations-bootstrap-ingress` allows only that link);
    - repoints the stopped `coolstore-inventory-service` workspaces;
    - writes `gitlab-platform-config` (in `rhdh` and `app-platform-build`), `stage070-project-release` and the Argo CD repository Secret `gitlab-platform-reader` (deploy token).
 
    Existing tokens are reused while valid. One that expires within seven days refuses the sync, and the operator renews it through GitLab's token API ([rotation](../../../../docs/OPERATIONS.md#stage-070-security-review-follow-up); the former helper `rotate-credentials.py` is in git history at `82092e01`).
 6. **Secrets.** Every credential is generated in the cluster and written through `secret_writer.py`, which never stores the payload in `kubectl.kubernetes.io/last-applied-configuration`. Recovery requires the Rails secret to be escrowed separately; see [Operations](../../../../docs/OPERATIONS.md#stage-070-gitlab-release).
-7. **`ignoreDifferences`.** Only the dynamically bound `volumeName` of the two hand-authored PVCs is ignored.
+7. **`ignoreDifferences`.** The dynamically bound `volumeName` of the two hand-authored PVCs and the hub-patched URL fields of ConsoleLink `gitlab` are ignored.
 
 ## Validation
 

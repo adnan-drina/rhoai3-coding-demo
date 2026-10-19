@@ -396,6 +396,7 @@ def main():
             oauth = api('POST', 'applications', {'name': 'Dev Spaces', 'redirect_uri': 'https://' + che_host + '/api/oauth/callback', 'scopes': 'api write_repository openid', 'confidential': True})
             apply('Secret', 'gitlab-oauth-config', 'openshift-devspaces', {'id': oauth['application_id'], 'secret': oauth['secret']}, {'app.kubernetes.io/part-of': 'che.eclipse.org', 'app.kubernetes.io/component': 'oauth-scm-configuration'}, {'che.eclipse.org/oauth-scm-server': 'gitlab', 'che.eclipse.org/scm-server-endpoint': base})
         oc('patch', 'checluster', 'devspaces', '-n', 'openshift-devspaces', '--type=merge', '-p', json.dumps({'spec': {'gitServices': {'gitlab': [{'secretName': 'gitlab-oauth-config', 'endpoint': base}]}, 'devEnvironments': {'allowedSources': {'urls': [base + '/' + workloads['path'] + '/*', base + '/' + platform['path'] + '/*']}}}}))
+        oc('patch', 'consolelink', 'gitlab', '--type=merge', '-p', json.dumps({'spec': {'href': base, 'applicationMenu': {'imageURL': base + '/favicon.ico'}}}))
     finally:
         # Revoke even if an import, enrollment or OAuth setup fails. A retry
         # uses a new short-lived bootstrap credential, never an old root token.

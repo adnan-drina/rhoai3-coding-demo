@@ -11,6 +11,7 @@ resources:
 - integrations-bootstrap.yaml
 - bootstrap-cleanup.yaml
 - route.yaml
+- consolelink.yaml
 - generated
 - serviceaccount-gitlab-app-nonroot.yaml
 - role-gitlab-use-nonroot.yaml

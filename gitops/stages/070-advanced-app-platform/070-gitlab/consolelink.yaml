@@ -1,0 +1,15 @@
+# OpenShift console application-menu entry. Git holds a placeholder; the integrations hub (wave 14) patches the live
+# GitLab URL, and the Application ignores those two fields.
+apiVersion: console.openshift.io/v1
+kind: ConsoleLink
+metadata:
+  name: gitlab
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  href: https://gitlab.placeholder.example.com
+  location: ApplicationMenu
+  text: GitLab
+  applicationMenu:
+    section: Developer Tools
+    imageURL: https://gitlab.placeholder.example.com/favicon.ico
