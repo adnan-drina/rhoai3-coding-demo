@@ -3,9 +3,8 @@
   "evidence_kind": "observed_backend_and_installed_native_code_replay",
   "verified_at": "2026-10-19T09:55:49Z",
   "source_base_sha": "be4134cd2d8f478c3dd9b4f1f277c291473c0030",
-  "pending_definitions_sha256": "400343e30e8e0d987a304e0bcc5107daaa6f714175360a1339d4a9a50ff83cd4",
-  "deployment_status": "pending",
-  "browser_acceptance_status": "pending",
+  "deployment_status": "verified",
+  "browser_acceptance_status": "passed_at_788x954_and_1440x954",
   "source_basis": {
     "installed_plugins": {
       "Table": "0.11.2",
@@ -25,7 +24,12 @@
     ],
     "native_replay_module_sha256": "5d25babdbbb9237656bc0f25107a51ae269cac576e99ee26fe39763772f1f53c",
     "input_evidence": "Retained full raw responses underlying dashboard-proxy-readback.json; each series had61samples",
-    "replay_is_browser_rendering": false
+    "replay_is_browser_rendering": false,
+    "remote_asset_manifests": {
+      "BarChart": "HTTP200 using installed name-only asset path",
+      "TimeSeriesChart": "HTTP200 using installed name-only asset path",
+      "Markdown": "HTTP200 using installed name-only asset path"
+    }
   },
   "query_contract": {
     "old_expressions_retained": 43,
@@ -61,7 +65,7 @@
     ],
     "exact_support_token_example": "1,100",
     "table_wrapping_supported": false,
-    "actual_overflow_measurement": "pending_browser_acceptance"
+    "actual_overflow_measurement": "Passed: no authored panel horizontal overflow across all37panels at788x954 and1440x954; native RHOAI tabstrip excluded"
   },
   "unknown_semantics": {
     "idle_efficiency_row_retained": true,
@@ -70,37 +74,18 @@
     "idle_usd_per_million": "undefined; display Unknown, never0",
     "every_original_metric_identity_and_value_retained_after_join": true,
     "no61timestamp_duplicate_rows": true,
-    "zero_bar_annotation": "Native BarChart suppresses0labels; exact companion table retains all6buckets"
+    "zero_bar_annotation": "Observed browser renders zero annotations too; exact companion table retains0.00 for allzero buckets"
   },
-  "regression_checks": [
-    {
-      "check": "showback-demo/tests/test-dashboards.sh including generator/kustomize parity and publisher contracts",
-      "result": "passed",
-      "observer": "independent validator"
-    },
-    {
-      "check": "bash syntax for test-dashboards.sh and generate-dashboards.sh",
-      "result": "passed",
-      "observer": "independent validator"
-    },
-    {
-      "check": "git diff --check",
-      "result": "passed",
-      "observer": "independent validator"
-    },
-    {
-      "check": "43prior expressions retained; exactly1new label-only Bar wrapper; fullwidthlayout and visiblemetadata",
-      "result": "passed",
-      "observer": "independent validator"
-    }
-  ],
   "inference_requests_by_verifier": 0,
   "cluster_mutations_by_verifier": 0,
   "limitations": [
     "Native transformation replay verifies rows and values, not browser appearance",
-    "Column-width constraints require actual browser overflow and readability acceptance after deployment",
-    "Financial values remain a retained six-minute allocated-capacity estimate, not an AWS invoice"
+    "Financial values remain a retained six-minute allocated-capacity estimate, not an AWS invoice",
+    "Browser acceptance scope and native audit/Markdown behavior are recorded in the linked browser readback"
   ],
+  "checked_definitions_sha256": "c11e58c9d19b1aecce04da66b83c74a2a7fc21a852188954f7303c03e6223bb2",
+  "checked_source_sha": "4231cec87ef2a50f3645874c3028eea66704a72b",
+  "browser_acceptance_ref": "dashboard-demo-ready-browser-readback.json",
   "native_table_replay_checks": [
     {"dashboard":"dashboard-7-showback-bill-admin","panel":"reportIdentity","rows":1,"max_samples_per_input_series":61},
     {"dashboard":"dashboard-7-showback-bill-admin","panel":"consumers","rows":6,"max_samples_per_input_series":61},
@@ -128,5 +113,16 @@
     {"dashboard":"dashboard-9-showback-efficiency-admin","panel":"reportWorkerRate","rows":1,"max_samples_per_input_series":61},
     {"dashboard":"dashboard-9-showback-efficiency-admin","panel":"declaredRates","rows":1,"max_samples_per_input_series":61},
     {"dashboard":"dashboard-9-showback-efficiency-admin","panel":"reportAudit","rows":1,"max_samples_per_input_series":61}
-  ]
+  ],
+  "regression_checks": [
+    {"check":"showback-demo/tests/test-dashboards.sh including generator/kustomize parity and publisher contracts","result":"passed","observer":"independent validator"},
+    {"check":"bash syntax for test-dashboards.sh and generate-dashboards.sh","result":"passed","observer":"independent validator"},
+    {"check":"git diff --check","result":"passed","observer":"independent validator"},
+    {"check":"43prior expressions retained; exactly1new label-only Bar wrapper; fullwidthlayout and visiblemetadata","result":"passed","observer":"independent validator"},
+    {"check":"scripts/validate-stage-flow.sh before final height correction","result":"passed","observer":"lead report; not repeated by independent validator"}
+  ],
+  "intermediate_browser_failure": {"source_sha":"8fbb1dae0ef953ddcfca662e888550231f86ac68","observer":"Lead browser review","finding":"Height3 Table panels clipped data rows","browser_accepted":false},
+  "height_correction_review": {"verified_at":"2026-10-19T10:02:43Z","table_heights_raised_to_minimum5":8,"following_y_positions_adjusted":true,"panels_options_and_queries_unchanged":true,"new_minimum_height_regression_guard":true,"focused_dashboard_gate":"passed_after_correction","native_table_replays":"all26passed_after_correction","git_diff_check":"passed","deployment":"verified_at_4231cec87ef2a50f3645874c3028eea66704a72b","browser":"passed; see dashboard-demo-ready-browser-readback.json"},
+  "deployment_verification": {"verified_at":"2026-10-19T10:05:29Z","target_source_sha":"4231cec87ef2a50f3645874c3028eea66704a72b","application_synced_healthy":true,"manual_sync_preserved":true,"publisher_ready_replicas":1,"publisher_pod_uid_unchanged":true,"publisher_restarts":0,"dashboards":[{"dashboard":"dashboard-7-showback-bill-admin","cr_spec_equals_source":true,"api_spec_equals_source_after_empty_optional_field_normalization":true,"panel_kinds":{"Table":11,"BarChart":1,"StatChart":2,"Markdown":1},"full_width_layouts":true,"evidence_and_utc_period_columns":true},{"dashboard":"dashboard-8-showback-usage-admin","cr_spec_equals_source":true,"api_spec_equals_source_after_empty_optional_field_normalization":true,"panel_kinds":{"Table":9,"Markdown":1},"full_width_layouts":true,"evidence_and_utc_period_columns":true},{"dashboard":"dashboard-9-showback-efficiency-admin","cr_spec_equals_source":true,"api_spec_equals_source_after_empty_optional_field_normalization":true,"panel_kinds":{"Table":6,"TimeSeriesChart":5,"Markdown":1},"full_width_layouts":true,"evidence_and_utc_period_columns":true}],"table_panels":26,"bar_chart_panels":1,"total_panels":37,"normalized_optional_omissions":["variables:[]","panel.queries:[]","panel.display.description:empty_string"],"browser_test_by_this_check":false,"inference_requests_by_verifier":0,"cluster_mutations_by_verifier":0},
+  "stage_component_validation": {"source_sha":"4231cec87ef2a50f3645874c3028eea66704a72b","passed":1,"warnings":0,"failed":0,"observer":"Lead targeted deployment log","scope":"source reconciliation and publisher readiness"}
 }

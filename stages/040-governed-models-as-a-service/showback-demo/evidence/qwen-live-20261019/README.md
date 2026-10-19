@@ -79,6 +79,16 @@ The browser check also exposed a separate display defect: the native StatChart d
 
 After reloading the browser at that deployed revision, the lead verified populated report metadata and numeric results in all three views, including bill allocations, team tokens and model rates. This is visual data-availability acceptance, not a claim that every panel is presentation-ready: long legends still shrink or clip in the 788-pixel-wide test viewport and may require horizontal scrolling; numeric formatting abbreviates 1,100 tokens as `1K`. Screenshots remain local; their hashes and the observed results are recorded in the browser evidence below. No monthly-offer UI acceptance or new workload run is implied.
 
+### Compact dashboard acceptance
+
+The three bounded dashboards were redesigned with native compact tables, a horizontal cost comparison and full-width live charts. Evidence type and the closed report's UTC period remain visible; report IDs, hashes, policy and rate sources sit in folded evidence sections. All 43 original query expressions are retained. The bar adds friendly labels without changing allocation values. Independent native-table replay preserved row identities, unmatched values and idle unknowns; see [source, query and deployment readback](dashboard-demo-ready-readback.json).
+
+The first compact release at `8fbb1dae` exposed a real browser fit problem: the completeness panel with a height of three grid rows clipped its values. Revision `4231cec87ef2a50f3645874c3028eea66704a72b` raised native tables to at least five grid rows and recalculated following positions without changing queries or data. The optional Application passed deployment at that revision.
+
+The lead then checked all **37 authored panels** at both **788 px and 1440 px**. All 26 tables populated after loading, and no authored panel had horizontal overflow. The browser showed exact team counts of **653 and 1,100**, Complete pricing and allocation, and all six cost buckets: Engineering **$0.15**, Marketing **$0.00**, Support **$0.07**, Platform idle **$0.12**, Other consumers **$0.00** and Unresolved **$0.00**. The idle efficiency row retained **0 tokens** and **Unknown** cost per million. Evidence type, UTC period and folded audit details remained available. See [browser measurements and observations](dashboard-demo-ready-browser-readback.json).
+
+The native RHOAI app tab strip still scrolls at the narrow width, and long audit strings are read on hover. These are separate from authored panel overflow. No additional inference was generated. This acceptance covers the three bounded Qwen dashboards; it does not qualify monthly service views, native Loki showback, external metering, invoices or full FP8/Mistral workflows.
+
 ## Evidence index
 
 - [Initial source and operational-query readback](source-readback.json): first published SHA, ownership, archive grant, Qwen and native-feature state, per-datasource results.
@@ -92,5 +102,7 @@ After reloading the browser at that deployed revision, the lead verified populat
 - [RHOAI dashboard proxy readback](dashboard-proxy-readback.json): follow-up queries through the actual external RHOAI/Perses path, including idle-window operational limits.
 - [Deployed display-option readback](dashboard-display-readback.json): independently verified dashboard definitions, 36 explicit legends, unchanged publisher and regression results.
 - [Browser data-availability acceptance](dashboard-browser-readback.json): genuine `ai-admin` observations after deployment, screenshot hashes and remaining narrow-screen presentation limits.
+- [Compact dashboard source and deployment acceptance](dashboard-demo-ready-readback.json): installed native plugin capabilities, retained query expressions, table replay, friendly bar labels and final deployment readback.
+- [Compact dashboard browser acceptance](dashboard-demo-ready-browser-readback.json): all 37 panels at 788 px and 1440 px, exact counts, six cost buckets, idle unknowns and authored-panel overflow checks.
 
 AI assistance: Codex lead with implementation and independent validation delegated to GPT-6.1 Sol. Human review of the complete diff remains required before merge. These summaries distinguish observed results from source-only, estimated and pending claims.
