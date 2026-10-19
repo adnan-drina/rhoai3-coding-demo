@@ -77,6 +77,46 @@ The runtime must restrict each agent to its approved checkout, tools and service
 
 OpenShell controls sandbox execution and access. OpenCode and Hermes run the development workflows; MLflow records selected instrumented evidence. These components have separate version and support boundaries.
 
+## Demo: OpenCode In An OpenShell Sandbox
+
+The preferred demo runs the OpenCode terminal UI inside the developer's own OpenShell sandbox, driven from a laptop
+terminal. The developer gets the same coding agent as in Dev Spaces, while the platform enforces what it may touch:
+its files, its network and its model credential.
+
+**One-time setup (platform team).** Deploy `060-openshell-runtime`, then follow
+[sandboxes/README.md](sandboxes/README.md#developer-access): sign `ai-developer` in with `sandboxes/login.sh` and create the
+sandbox with `sandboxes/create.sh opencode --owner ai-developer --apply`. The sandbox `opencode` in workspace
+`openshell-developer` persists across demos; its MaaS key lasts 30 days.
+
+**Run the demo (laptop terminal, as `ai-developer`).** Use the pinned CLI and the developer's profile:
+
+```bash
+export XDG_CONFIG_HOME=~/.config/rhoai3-openshell-ai-developer OPENSHELL_GATEWAY_INSECURE=true RUST_LOG=error
+alias os='~/.local/share/rhoai3-demo/openshell-v0.1.3/bin/openshell --gateway openshell --workspace openshell-developer'
+```
+
+1. Show the sandbox: `os sandbox list` lists `opencode` as `Ready`. The same sandbox appears in the OpenShift AI
+   dashboard under **AI hub → Agents** for `ai-developer`.
+2. Bring code in: `os sandbox upload opencode ./my-project /sandbox/workspace`.
+3. Start OpenCode in the sandbox:
+
+   ```bash
+   os sandbox exec opencode --tty --workdir /sandbox/workspace/my-project -- opencode
+   ```
+
+   The terminal UI runs on the cluster, inside the sandbox. Ask it to change the code; it uses Qwen3.8 through MaaS.
+4. Take the result back: `os sandbox download opencode /sandbox/workspace/my-project ./my-project-out`.
+
+**What to point out.** Open a shell next to the agent (`os sandbox exec opencode --tty -- bash`) and show:
+
+- `echo $MAAS_API_KEY` prints a placeholder (`openshell:resolve:env:…`): the gateway holds the real key and injects it
+  only into OpenCode's model calls.
+- `curl https://github.com` is refused: egress is denied by default, and only the OpenCode binary may reach MaaS.
+- `touch /etc/x` is refused: the agent writes only under `/sandbox`.
+- Model usage is metered on the developer's own subscription, `opencode-developer-qwen38`.
+
+Quit OpenCode with `ctrl+c`; the sandbox keeps running. `os sandbox stop opencode` stops it and keeps its files.
+
 ## Deploy And Validate
 
 `deploy.sh` deploys the five components in order: `060-openshell-identity`, `060-openshell-runtime` (including the `ai-agents` workspace, which runs the pinned OpenShell CLI from `~/.local/share/rhoai3-demo/openshell-<cliRelease>/bin/openshell` or `RHOAI_STAGE060_OPENSHELL_CLI`), `060-agent-console`, `060-mcp-platform` and `060-agent-tools`; `deploy.sh --component NAME` deploys one of them. It takes an optional `--revision REF` (default `GIT_REPO_BRANCH`, then `HEAD`), selects the reviewed published commit, runs each component's read-only preflight, pins its Application to the commit, starts a hook-strategy sync and waits, through `scripts/stage-apps.sh`. The five components sync manually by design (`.agents/rules/gitops.md`). `validate.sh` reports full-stage acceptance as pending by design; `validate.sh --component NAME` checks the console, the MCP platform or the agent tools alone.

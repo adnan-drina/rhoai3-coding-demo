@@ -43,7 +43,7 @@ into a private kubeconfig, `login.sh ~/.config/rhoai3-openshell-ai-developer` (s
 `RHOAI_STAGE060_PERSONA_KUBECONFIG` and `RHOAI_STAGE060_PERSONA_CLI_HOME`, then
 `create.sh opencode --owner ai-developer --revision SHA --apply`.
 
-The developer then works with the pinned CLI and that profile (`export XDG_CONFIG_HOME=<profile>
+The demo flow is in the [Stage 060 README](../README.md#demo-opencode-in-an-openshell-sandbox). The developer then works with the pinned CLI and that profile (`export XDG_CONFIG_HOME=<profile>
 OPENSHELL_GATEWAY_INSECURE=true RUST_LOG=error`):
 
 | Step | Command |
