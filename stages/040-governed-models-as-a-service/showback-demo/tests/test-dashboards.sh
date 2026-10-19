@@ -125,17 +125,35 @@ jq -e 'all(.[].panels[]; all(.queries[];
     and (.query|contains("up{showback_publisher="))
     and (.query|test("(sum_over_time|increase|rate|delta)\\(")|not)
   else true end))
-  and all(.[].panels[]|select(any(.queries[];.query|contains("showback_")));.options.calculation=="last")' \
+  and all(.[].panels[]|select(.kind=="StatChart" or .kind=="BarChart");.options.calculation=="last")' \
   "$BASE/dashboard-definitions.json" >/dev/null || fail 'Snapshot query contract'
-jq -e 'all(.[];.panels.reportIdentity.queries[0].seriesNameFormat|contains("{{scope}}"))' \
-  "$BASE/dashboard-definitions.json" >/dev/null || fail 'Report scope is not visible'
-# Perses hides a singleton legend in auto mode; the label carries evidence, team, model and window context.
-jq -e 'all(.[].panels[]|select(.kind=="StatChart");.options.legendMode=="on")' \
-  "$BASE/dashboard-definitions.json" >/dev/null || fail 'Singleton stat context is hidden'
+jq -e 'all(.[];
+    .panels.reportIdentity.kind=="Table"
+    and ([.panels.reportIdentity.options.columnSettings[].name]|sort)==["evidence_kind","period_end","period_start"]
+    and ([.panels.reportAudit.options.columnSettings[].name]|sort)==["policy_version","report_id","report_sha256","scope"]
+    and .layouts[0].spec.display.collapse.open)
+  and all(.[].layouts[].spec.items[];.x==0 and .width==24)
+  and all(.[].layouts[].spec.items; reduce .[] as $item ({end:0,valid:true};
+    .valid=(.valid and $item.y>=.end) | .end=($item.y+$item.height))|.valid)
+  and all(.[].panels[]|select(.kind=="Table");
+    .options.defaultColumnHidden and .options.pagination==false
+    and ([.options.columnSettings[].width]|add)<=560
+    and all(.options.columnSettings[]|select(.format!=null);.format.shortValues==false))
+  and all(.[].panels[]|select(.kind=="StatChart");.options.legendMode=="off" and .options.format.shortValues==false)
+  and all(.[].panels[]|select(.kind=="Table")|.options.columnSettings[]|select(.format!=null);
+    any(.cellSettings[];.condition.kind=="Misc" and .condition.spec.value=="null" and .text=="Unknown"))
+  and .[0].panels.costComparison.kind=="BarChart"
+  and .[0].panels.costComparison.options.format.shortValues==false
+  and ([.[0].panels.consumers.options.columnSettings[0].cellSettings[].text]|unique|sort)
+    ==["Engineering","Marketing","Other consumers","Platform idle","Support","Unresolved"]
+  and .[1].panels.teamModelTokens.options.columnSettings[2].format
+    =={unit:"decimal",decimalPlaces:0,shortValues:false}' \
+  "$BASE/dashboard-definitions.json" >/dev/null || fail 'Readable closed-report presentation contract'
 kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" | yaml_json > "$WORK/bundle.json"
 jq -e 'all(.[]|select(.kind=="PersesDashboard" and (.metadata.name|test("^dashboard-[789]-showback-")))
-  | .spec.config.panels[].spec|select(.plugin.kind=="StatChart");.plugin.spec.legendMode=="on")' \
-  "$WORK/bundle.json" >/dev/null || fail 'Rendered singleton stat context is hidden'
+  | .spec.config.panels[].spec|select(.plugin.kind=="Table");
+    .plugin.spec.defaultColumnHidden and ([.plugin.spec.columnSettings[].width]|add)<=560)' \
+  "$WORK/bundle.json" >/dev/null || fail 'Rendered compact-table contract'
 jq -e '([.[]|select(.kind=="Deployment" and .metadata.name=="showback-report-publisher")][0].spec.replicas) as $replicas |
   [.[]|select(.kind=="ConfigMap" and .metadata.name=="showback-selected-report")][0] as $report |
   ($replicas|IN(0,1))

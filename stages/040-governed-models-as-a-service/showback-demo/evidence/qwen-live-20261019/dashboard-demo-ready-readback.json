@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "observed_backend_and_installed_native_code_replay",
+  "verified_at": "2026-10-19T09:55:49Z",
+  "source_base_sha": "be4134cd2d8f478c3dd9b4f1f277c291473c0030",
+  "pending_definitions_sha256": "400343e30e8e0d987a304e0bcc5107daaa6f714175360a1339d4a9a50ff83cd4",
+  "deployment_status": "pending",
+  "browser_acceptance_status": "pending",
+  "source_basis": {
+    "installed_plugins": {
+      "Table": "0.11.2",
+      "BarChart": "0.11.1",
+      "StatChart": "0.12.1",
+      "Markdown": "0.11.1",
+      "Prometheus": "0.58.0-beta.0"
+    },
+    "verified_schemas": [
+      "Installed BarChart schemas/bar.cue: calculation, format, sort, mode; horizontal axes are native",
+      "Installed StatChart schemas/stat.cue: numeric valueFontSize supported",
+      "Installed Table schemas/table.cue and bundled TablePanel: explicit widths, hidden default columns, Value/Misc cellSettings supported"
+    ],
+    "native_replay_code": [
+      "Bundled table-plugin/lib/table-data-utils.js",
+      "Bundled components/dist/utils/transform-data.js"
+    ],
+    "native_replay_module_sha256": "5d25babdbbb9237656bc0f25107a51ae269cac576e99ee26fe39763772f1f53c",
+    "input_evidence": "Retained full raw responses underlying dashboard-proxy-readback.json; each series had61samples",
+    "replay_is_browser_rendering": false
+  },
+  "query_contract": {
+    "old_expressions_retained": 43,
+    "new_query_count": 47,
+    "only_new_expression": "Consumer allocation expression wrapped in label_replace to add display_consumer",
+    "selected_report_hash_preserved": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a"
+  },
+  "bar_backend_checks": {
+    "read_path": "External RHOAI gateway Perses datasource proxy",
+    "authentication": "Existing OpenShift CLI administrator bearer",
+    "instant_query": "HTTP200 success,6buckets",
+    "last30m_range_query": "HTTP200 success,6buckets",
+    "only_result_difference_from_original_consumer_query": "Added display_consumer label; original metric labels, timestamp and values identical",
+    "values": [
+      {"consumer":"engineering","display_consumer":"Engineering","usd":"0.15"},
+      {"consumer":"marketing","display_consumer":"Marketing","usd":"0"},
+      {"consumer":"other_consumers","display_consumer":"Other consumers","usd":"0"},
+      {"consumer":"platform_idle","display_consumer":"Platform idle","usd":"0.12"},
+      {"consumer":"support","display_consumer":"Support","usd":"0.07"},
+      {"consumer":"unresolved_allocation","display_consumer":"Unresolved","usd":"0"}
+    ]
+  },
+  "layout_contract": {
+    "all_panels_full_width_24_columns": true,
+    "table_count": 26,
+    "maximum_declared_table_width_pixels": 555,
+    "all_tables_hide_undeclared_columns": true,
+    "all_tables_use_instant_query_mode": true,
+    "metadata_columns_visible_on_all_three": [
+      "evidence_kind",
+      "period_start",
+      "period_end"
+    ],
+    "exact_support_token_example": "1,100",
+    "table_wrapping_supported": false,
+    "actual_overflow_measurement": "pending_browser_acceptance"
+  },
+  "unknown_semantics": {
+    "idle_efficiency_row_retained": true,
+    "idle_tokens": 0,
+    "idle_usage_completeness": 1,
+    "idle_usd_per_million": "undefined; display Unknown, never0",
+    "every_original_metric_identity_and_value_retained_after_join": true,
+    "no61timestamp_duplicate_rows": true,
+    "zero_bar_annotation": "Native BarChart suppresses0labels; exact companion table retains all6buckets"
+  },
+  "regression_checks": [
+    {
+      "check": "showback-demo/tests/test-dashboards.sh including generator/kustomize parity and publisher contracts",
+      "result": "passed",
+      "observer": "independent validator"
+    },
+    {
+      "check": "bash syntax for test-dashboards.sh and generate-dashboards.sh",
+      "result": "passed",
+      "observer": "independent validator"
+    },
+    {
+      "check": "git diff --check",
+      "result": "passed",
+      "observer": "independent validator"
+    },
+    {
+      "check": "43prior expressions retained; exactly1new label-only Bar wrapper; fullwidthlayout and visiblemetadata",
+      "result": "passed",
+      "observer": "independent validator"
+    }
+  ],
+  "inference_requests_by_verifier": 0,
+  "cluster_mutations_by_verifier": 0,
+  "limitations": [
+    "Native transformation replay verifies rows and values, not browser appearance",
+    "Column-width constraints require actual browser overflow and readability acceptance after deployment",
+    "Financial values remain a retained six-minute allocated-capacity estimate, not an AWS invoice"
+  ],
+  "native_table_replay_checks": [
+    {"dashboard":"dashboard-7-showback-bill-admin","panel":"reportIdentity","rows":1,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-7-showback-bill-admin","panel":"consumers","rows":6,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-7-showback-bill-admin","panel":"completeness","rows":1,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-7-showback-bill-admin","panel":"modelTotals","rows":1,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-7-showback-bill-admin","panel":"teamModel","rows":2,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-7-showback-bill-admin","panel":"windows","rows":3,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-7-showback-bill-admin","panel":"detail","rows":4,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-7-showback-bill-admin","panel":"priceBasis","rows":1,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-7-showback-bill-admin","panel":"rateSources","rows":1,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-7-showback-bill-admin","panel":"exclusions","rows":6,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-7-showback-bill-admin","panel":"reportAudit","rows":1,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-8-showback-usage-admin","panel":"reportIdentity","rows":1,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-8-showback-usage-admin","panel":"teamModelTokens","rows":3,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-8-showback-usage-admin","panel":"receiptTokens","rows":6,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-8-showback-usage-admin","panel":"receiptRequests","rows":6,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-8-showback-usage-admin","panel":"access","rows":2,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-8-showback-usage-admin","panel":"allowance","rows":2,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-8-showback-usage-admin","panel":"tokens","rows":12,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-8-showback-usage-admin","panel":"coverage","rows":3,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-8-showback-usage-admin","panel":"reportAudit","rows":1,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-9-showback-efficiency-admin","panel":"reportIdentity","rows":1,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-9-showback-efficiency-admin","panel":"capacity","rows":3,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-9-showback-efficiency-admin","panel":"efficiency","rows":3,"idle_tokens":0,"idle_usd_per_million":"undefined (must display Unknown)","idle_coverage":1},
+    {"dashboard":"dashboard-9-showback-efficiency-admin","panel":"reportWorkerRate","rows":1,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-9-showback-efficiency-admin","panel":"declaredRates","rows":1,"max_samples_per_input_series":61},
+    {"dashboard":"dashboard-9-showback-efficiency-admin","panel":"reportAudit","rows":1,"max_samples_per_input_series":61}
+  ]
+}

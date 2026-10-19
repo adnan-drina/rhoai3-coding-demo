@@ -1,20 +1,55 @@
 [
   {
     "name": "dashboard-7-showback-bill-admin",
-    "title": "Showback · bill allocation",
-    "description": "One selected closed report. Evidence kind is visible; SYNTHETIC fixtures are not a real bill. Snapshots are gauges, never integrated. Time picker changes do not recalculate allocation.",
+    "title": "Showback · costs",
+    "description": "Estimated hosting cost split by actual use within each closed model/window. Platform idle and unresolved allocation remain explicit.",
     "panels": {
       "reportIdentity": {
-        "title": "Selected closed report — read evidence kind before presenting",
-        "description": "The series label identifies SYNTHETIC versus live evidence, immutable report ID, UTC period and policy. Value 1 means metadata is present. The time picker never recalculates this report.",
-        "kind": "StatChart",
+        "title": "Closed report · UTC",
+        "description": "Evidence type and immutable report period. The time picker does not recalculate this closed allocation.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "evidence_kind",
+              "header": "Evidence",
+              "width": 95,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "observed"
+                    }
+                  },
+                  "text": "Observed"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "synthetic_fixture"
+                    }
+                  },
+                  "text": "SYNTHETIC"
+                }
+              ]
+            },
+            {
+              "name": "period_start",
+              "header": "From (UTC)",
+              "width": 175
+            },
+            {
+              "name": "period_end",
+              "header": "To (UTC)",
+              "width": 175
+            }
+          ]
         },
         "queries": [
           {
@@ -27,17 +62,28 @@
           }
         ]
       },
+      "policy": {
+        "title": "How to read this estimate",
+        "description": "",
+        "kind": "Markdown",
+        "options": {
+          "text": "Costs split within each window by actual token use; idle windows stay with **Platform idle**. Token allowances do not set bill shares. This is a hosting estimate with exclusions, **not a verified invoice**. Missing evidence stays unknown or unresolved. Open **Report evidence** for the exact price basis, exclusions and audit identity."
+        },
+        "queries": []
+      },
       "total": {
-        "title": "Included hosting bill (USD)",
+        "title": "Estimated hosting cost (USD)",
         "description": "Complete priced bill for the selected report. Missing price means NO DATA, never zero.",
         "kind": "StatChart",
         "options": {
           "calculation": "last",
           "format": {
             "unit": "decimal",
-            "decimalPlaces": 2
+            "decimalPlaces": 2,
+            "shortValues": false
           },
-          "legendMode": "on"
+          "legendMode": "off",
+          "valueFontSize": 42
         },
         "queries": [
           {
@@ -50,6 +96,1006 @@
           }
         ]
       },
+      "consumers": {
+        "title": "Cost allocation · exact USD",
+        "description": "All six allocation buckets remain visible when evidenced, including zeroes. Absent data is not replaced by zero.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "consumer",
+              "header": "Team / platform",
+              "width": 190,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "support"
+                    }
+                  },
+                  "text": "Support"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "platform_idle"
+                    }
+                  },
+                  "text": "Platform idle"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "other_consumers"
+                    }
+                  },
+                  "text": "Other consumers"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "unresolved_allocation"
+                    }
+                  },
+                  "text": "Unresolved"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-support"
+                    }
+                  },
+                  "text": "Support"
+                }
+              ]
+            },
+            {
+              "name": "value",
+              "header": "USD",
+              "width": 110,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 2,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_report_allocated_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
+            "seriesNameFormat": "{{consumer}} | {{evidence_kind}}"
+          }
+        ]
+      },
+      "costComparison": {
+        "title": "Who carries the hosting cost?",
+        "description": "Team usage allocations compared with platform idle, other consumers and unresolved amounts. Read the exact table for zeroes.",
+        "kind": "BarChart",
+        "options": {
+          "calculation": "last",
+          "format": {
+            "unit": "decimal",
+            "decimalPlaces": 2,
+            "shortValues": false
+          },
+          "sort": "desc",
+          "mode": "value"
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(label_replace((showback_report_allocated_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100, \"display_consumer\", \"$1\", \"consumer\", \"(.*)\"), \"display_consumer\", \"Engineering\", \"consumer\", \"engineering\"), \"display_consumer\", \"Marketing\", \"consumer\", \"marketing\"), \"display_consumer\", \"Support\", \"consumer\", \"support\"), \"display_consumer\", \"Platform idle\", \"consumer\", \"platform_idle\"), \"display_consumer\", \"Other consumers\", \"consumer\", \"other_consumers\"), \"display_consumer\", \"Unresolved\", \"consumer\", \"unresolved_allocation\")",
+            "seriesNameFormat": "{{display_consumer}}"
+          }
+        ]
+      },
+      "completeness": {
+        "title": "Accounting completeness",
+        "description": "Pricing and allocation are independent. Incomplete pricing does not become a zero bill.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "value #1",
+              "header": "Pricing",
+              "width": 160,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "1"
+                    }
+                  },
+                  "text": "Complete"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "0"
+                    }
+                  },
+                  "text": "Incomplete"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "value #2",
+              "header": "Allocation",
+              "width": 160,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "1"
+                    }
+                  },
+                  "text": "Complete"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "0"
+                    }
+                  },
+                  "text": "Incomplete"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_id"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_sha256"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "job"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "instance"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "report_id",
+                  "report_sha256",
+                  "job",
+                  "instance"
+                ]
+              }
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_report_pricing_complete @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+            "seriesNameFormat": "{{evidence_kind}}"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_report_allocation_complete @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+            "seriesNameFormat": "{{evidence_kind}}"
+          }
+        ]
+      },
+      "modelTotals": {
+        "title": "Hosting cost by model",
+        "description": "Sum of closed-window model costs, including idle windows. An incomplete model price is withheld.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "value",
+              "header": "USD",
+              "width": 100,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 2,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_report_model_cost_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
+            "seriesNameFormat": "{{model}}"
+          }
+        ]
+      },
+      "teamModel": {
+        "title": "Team allocation by model",
+        "description": "Sum of finalized model/window allocations for Engineering, Marketing and Support; no second allocation using whole-report token shares. Known costs with incomplete evidence remain unresolved; unpriced amounts are absent.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "consumer",
+              "header": "Team",
+              "width": 125,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "support"
+                    }
+                  },
+                  "text": "Support"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "platform_idle"
+                    }
+                  },
+                  "text": "Platform idle"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "other_consumers"
+                    }
+                  },
+                  "text": "Other consumers"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "unresolved_allocation"
+                    }
+                  },
+                  "text": "Unresolved"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-support"
+                    }
+                  },
+                  "text": "Support"
+                }
+              ]
+            },
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "value",
+              "header": "USD",
+              "width": 90,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 2,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_report_model_allocated_cents{consumer=~\"engineering|marketing|support\"} @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
+            "seriesNameFormat": "{{consumer}} | {{model}} | prices complete={{pricing_complete}} | usage complete={{usage_complete}}"
+          }
+        ]
+      },
+      "windows": {
+        "title": "Hosting by closed window",
+        "description": "Each row retains its model and UTC window identity. Missing usage is not idle usage.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "phase",
+              "header": "Window",
+              "width": 65,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "busy"
+                    }
+                  },
+                  "text": "Busy"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "quiet"
+                    }
+                  },
+                  "text": "Quiet"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "idle"
+                    }
+                  },
+                  "text": "Idle"
+                }
+              ]
+            },
+            {
+              "name": "window_start",
+              "header": "Start (UTC)",
+              "width": 165
+            },
+            {
+              "name": "value #1",
+              "header": "USD",
+              "width": 65,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 2,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "value #2",
+              "header": "Usage evidence",
+              "width": 110,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "1"
+                    }
+                  },
+                  "text": "Complete"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "0"
+                    }
+                  },
+                  "text": "Incomplete"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "model"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "phase"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "window_start"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_id"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_sha256"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "job"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "instance"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "model",
+                  "phase",
+                  "window_start",
+                  "report_id",
+                  "report_sha256",
+                  "job",
+                  "instance"
+                ]
+              }
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_model_cost_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
+            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}}"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_model_coverage_complete @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}}"
+          }
+        ]
+      },
+      "detail": {
+        "title": "Window allocation detail",
+        "description": "All cents reconcile within each model/window. Unknown coverage assigns its known cost to unresolved_allocation.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "consumer",
+              "header": "Team / platform",
+              "width": 145,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "support"
+                    }
+                  },
+                  "text": "Support"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "platform_idle"
+                    }
+                  },
+                  "text": "Platform idle"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "other_consumers"
+                    }
+                  },
+                  "text": "Other consumers"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "unresolved_allocation"
+                    }
+                  },
+                  "text": "Unresolved"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-support"
+                    }
+                  },
+                  "text": "Support"
+                }
+              ]
+            },
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "phase",
+              "header": "Window",
+              "width": 65,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "busy"
+                    }
+                  },
+                  "text": "Busy"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "quiet"
+                    }
+                  },
+                  "text": "Quiet"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "idle"
+                    }
+                  },
+                  "text": "Idle"
+                }
+              ]
+            },
+            {
+              "name": "window_start",
+              "header": "Start (UTC)",
+              "width": 165
+            },
+            {
+              "name": "value",
+              "header": "USD",
+              "width": 65,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 2,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_model_allocated_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
+            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{consumer}}"
+          }
+        ]
+      },
       "known": {
         "title": "Known priced subtotal (USD)",
         "description": "Priced portions only. This is not the full bill when pricing completeness is 0.",
@@ -58,9 +1104,11 @@
           "calculation": "last",
           "format": {
             "unit": "decimal",
-            "decimalPlaces": 2
+            "decimalPlaces": 2,
+            "shortValues": false
           },
-          "legendMode": "on"
+          "legendMode": "off",
+          "valueFontSize": 36
         },
         "queries": [
           {
@@ -73,63 +1121,27 @@
           }
         ]
       },
-      "pricing": {
-        "title": "Pricing complete (1=yes)",
-        "description": "Every included paid interval has a recorded rate. Evidence kind distinguishes synthetic from observed inputs; a public-list estimate is not an invoice.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
-            },
-            "query": "(showback_report_pricing_complete @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
-            "seriesNameFormat": "{{evidence_kind}}"
-          }
-        ]
-      },
-      "allocation": {
-        "title": "Allocation complete (1=yes)",
-        "description": "0 means attribution or prices are unresolved; known amounts still reconcile.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
-            },
-            "query": "(showback_report_allocation_complete @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
-            "seriesNameFormat": "{{evidence_kind}}"
-          }
-        ]
-      },
       "priceBasis": {
-        "title": "Report price basis — read label",
-        "description": "Basis recorded in this immutable report, not today's price configuration. Value 1 denotes metadata presence; unspecified metadata is explicitly marked. A public-list estimate is not an account invoice.",
-        "kind": "StatChart",
+        "title": "Exact price and cost basis",
+        "description": "Historical assumptions retained with this report. Hover audit cells to read complete text.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "price_basis",
+              "header": "Price basis",
+              "width": 250
+            },
+            {
+              "name": "cost_basis",
+              "header": "Included cost basis",
+              "width": 250
+            }
+          ]
         },
         "queries": [
           {
@@ -143,16 +1155,36 @@
         ]
       },
       "rateSources": {
-        "title": "Report rate evidence — read source labels",
-        "description": "Only rate IDs used by intervals overlapping this report. Value 1 identifies metadata; missing prices stay marked.",
-        "kind": "StatChart",
+        "title": "Rate evidence",
+        "description": "Historical source, date, worker type and region. Hover audit cells for full source text.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "rate_source",
+              "header": "Source",
+              "width": 220
+            },
+            {
+              "name": "instance_type",
+              "header": "Worker",
+              "width": 95
+            },
+            {
+              "name": "region",
+              "header": "Region",
+              "width": 85
+            },
+            {
+              "name": "effective_date",
+              "header": "Effective",
+              "width": 95
+            }
+          ]
         },
         "queries": [
           {
@@ -166,16 +1198,21 @@
         ]
       },
       "exclusions": {
-        "title": "Excluded costs — read labels",
+        "title": "Excluded costs",
         "description": "Exclusions captured with this report. Value 1 denotes an exclusion label, not a dollar amount. Unspecified exclusions are not assumed empty.",
-        "kind": "StatChart",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "excluded_cost",
+              "header": "Excluded from this estimate",
+              "width": 500
+            }
+          ]
         },
         "queries": [
           {
@@ -188,17 +1225,37 @@
           }
         ]
       },
-      "consumers": {
-        "title": "Known bill allocation by team and platform bucket (USD)",
-        "description": "Engineering, Marketing, Support, other_consumers, platform_idle and unresolved_allocation. Active-window cost includes quiet capacity. A fully idle, covered window belongs to platform_idle.",
-        "kind": "StatChart",
+      "reportAudit": {
+        "title": "Report audit identity",
+        "description": "Full report ID, scope, policy and canonical hash are retained. Hover truncated audit cells to read their complete values.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 2
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "report_id",
+              "header": "Report ID",
+              "width": 175
+            },
+            {
+              "name": "scope",
+              "header": "Scope",
+              "width": 125
+            },
+            {
+              "name": "policy_version",
+              "header": "Policy",
+              "width": 100
+            },
+            {
+              "name": "report_sha256",
+              "header": "SHA-256",
+              "width": 100
+            }
+          ]
         },
         "queries": [
           {
@@ -206,123 +1263,8 @@
               "kind": "PrometheusDatasource",
               "name": "data-science-prometheus-datasource"
             },
-            "query": "(showback_report_allocated_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
-            "seriesNameFormat": "{{consumer}} | {{evidence_kind}}"
-          }
-        ]
-      },
-      "teamModel": {
-        "title": "Allocated cost by team and model (known USD)",
-        "description": "Sum of finalized model/window allocations for Engineering, Marketing and Support; no second allocation using whole-report token shares. Known costs with incomplete evidence remain unresolved; unpriced amounts are absent.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 2
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
-            },
-            "query": "(showback_report_model_allocated_cents{consumer=~\"engineering|marketing|support\"} @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
-            "seriesNameFormat": "{{consumer}} | {{model}} | prices complete={{pricing_complete}} | usage complete={{usage_complete}}"
-          }
-        ]
-      },
-      "modelTotals": {
-        "title": "Full hosting cost by model (USD)",
-        "description": "Sum of closed-window model costs, including idle windows. An incomplete model price is withheld.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 2
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
-            },
-            "query": "(showback_report_model_cost_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
-            "seriesNameFormat": "{{model}}"
-          }
-        ]
-      },
-      "models": {
-        "title": "Hosting cost by model and closed window (USD)",
-        "description": "Paid instance hours multiplied by verified rate; zero missing-price values are never fabricated.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 2
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
-            },
-            "query": "(showback_model_cost_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
-            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}}"
-          }
-        ]
-      },
-      "detail": {
-        "title": "Known window allocation detail (USD)",
-        "description": "All cents reconcile within each model/window. Unknown coverage assigns its known cost to unresolved_allocation.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 2
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
-            },
-            "query": "(showback_model_allocated_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
-            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{consumer}}"
-          }
-        ]
-      },
-      "coverage": {
-        "title": "Usage coverage (1=complete)",
-        "description": "A missing interval is not an idle interval. Read the coverage label.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
-            },
-            "query": "(showback_model_coverage_complete @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
-            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}}"
+            "query": "(showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))",
+            "seriesNameFormat": "{{evidence_kind}} | {{scope}} | {{report_id}} | {{period_start}} to {{period_end}} | {{policy_version}}"
           }
         ]
       }
@@ -332,7 +1274,7 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Selected report and evidence",
+            "title": "Closed report",
             "collapse": {
               "open": true
             }
@@ -342,10 +1284,19 @@
               "x": 0,
               "y": 0,
               "width": 24,
-              "height": 7,
+              "height": 3,
               "content": {
                 "$ref": "#/spec/panels/reportIdentity"
               }
+            },
+            {
+              "x": 0,
+              "y": 3,
+              "width": 24,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/policy"
+              }
             }
           ]
         }
@@ -354,7 +1305,7 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Report price basis",
+            "title": "Cost allocation",
             "collapse": {
               "open": true
             }
@@ -364,142 +1315,36 @@
               "x": 0,
               "y": 0,
               "width": 24,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/priceBasis"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Rate provenance and exclusions",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
-            {
-              "x": 0,
-              "y": 0,
-              "width": 12,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/rateSources"
-              }
-            },
-            {
-              "x": 12,
-              "y": 0,
-              "width": 12,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/exclusions"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Bill completeness",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
-            {
-              "x": 0,
-              "y": 0,
-              "width": 6,
-              "height": 7,
+              "height": 5,
               "content": {
                 "$ref": "#/spec/panels/total"
               }
             },
             {
-              "x": 6,
-              "y": 0,
-              "width": 6,
-              "height": 7,
+              "x": 0,
+              "y": 5,
+              "width": 24,
+              "height": 9,
               "content": {
-                "$ref": "#/spec/panels/known"
+                "$ref": "#/spec/panels/costComparison"
               }
             },
-            {
-              "x": 12,
-              "y": 0,
-              "width": 6,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/pricing"
-              }
-            },
-            {
-              "x": 18,
-              "y": 0,
-              "width": 6,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/allocation"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Who pays",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
             {
               "x": 0,
-              "y": 0,
-              "width": 12,
-              "height": 7,
+              "y": 14,
+              "width": 24,
+              "height": 8,
               "content": {
                 "$ref": "#/spec/panels/consumers"
               }
             },
             {
-              "x": 12,
-              "y": 0,
-              "width": 12,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/teamModel"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Full model totals",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
-            {
               "x": 0,
-              "y": 0,
+              "y": 22,
               "width": 24,
-              "height": 7,
+              "height": 3,
               "content": {
-                "$ref": "#/spec/panels/modelTotals"
+                "$ref": "#/spec/panels/completeness"
               }
             }
           ]
@@ -511,26 +1356,53 @@
           "display": {
             "title": "Model and window detail",
             "collapse": {
-              "open": true
+              "open": false
             }
           },
           "items": [
             {
               "x": 0,
               "y": 0,
-              "width": 12,
-              "height": 7,
+              "width": 24,
+              "height": 5,
               "content": {
-                "$ref": "#/spec/panels/models"
+                "$ref": "#/spec/panels/modelTotals"
               }
             },
             {
-              "x": 12,
-              "y": 0,
-              "width": 12,
+              "x": 0,
+              "y": 5,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/teamModel"
+              }
+            },
+            {
+              "x": 0,
+              "y": 11,
+              "width": 24,
               "height": 7,
               "content": {
+                "$ref": "#/spec/panels/windows"
+              }
+            },
+            {
+              "x": 0,
+              "y": 18,
+              "width": 24,
+              "height": 12,
+              "content": {
                 "$ref": "#/spec/panels/detail"
+              }
+            },
+            {
+              "x": 0,
+              "y": 30,
+              "width": 24,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/known"
               }
             }
           ]
@@ -540,9 +1412,9 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Coverage",
+            "title": "Report evidence",
             "collapse": {
-              "open": true
+              "open": false
             }
           },
           "items": [
@@ -550,9 +1422,36 @@
               "x": 0,
               "y": 0,
               "width": 24,
-              "height": 7,
+              "height": 4,
               "content": {
-                "$ref": "#/spec/panels/coverage"
+                "$ref": "#/spec/panels/priceBasis"
+              }
+            },
+            {
+              "x": 0,
+              "y": 4,
+              "width": 24,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/rateSources"
+              }
+            },
+            {
+              "x": 0,
+              "y": 9,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/exclusions"
+              }
+            },
+            {
+              "x": 0,
+              "y": 17,
+              "width": 24,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/reportAudit"
               }
             }
           ]
@@ -562,20 +1461,55 @@
   },
   {
     "name": "dashboard-8-showback-usage-admin",
-    "title": "Showback · usage and governance",
-    "description": "Actual report consumption and the published configuration snapshot are separate. No reserved GPU capacity or fixed cost split is implied.",
+    "title": "Showback · usage",
+    "description": "Exact certified team usage, request receipts and configured access. The closed report and configuration snapshots retain separate evidence.",
     "panels": {
       "reportIdentity": {
-        "title": "Selected closed report — read evidence kind before presenting",
-        "description": "The series label identifies SYNTHETIC versus live evidence, immutable report ID, UTC period and policy. Value 1 means metadata is present. The time picker never recalculates this report.",
-        "kind": "StatChart",
+        "title": "Closed report · UTC",
+        "description": "Evidence type and immutable report period. The time picker does not recalculate this closed allocation.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "evidence_kind",
+              "header": "Evidence",
+              "width": 95,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "observed"
+                    }
+                  },
+                  "text": "Observed"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "synthetic_fixture"
+                    }
+                  },
+                  "text": "SYNTHETIC"
+                }
+              ]
+            },
+            {
+              "name": "period_start",
+              "header": "From (UTC)",
+              "width": 175
+            },
+            {
+              "name": "period_end",
+              "header": "To (UTC)",
+              "width": 175
+            }
+          ]
         },
         "queries": [
           {
@@ -588,17 +1522,170 @@
           }
         ]
       },
-      "teamModelTokens": {
-        "title": "Certified report tokens by team and model",
-        "description": "Sum of closed-window tokens using the report's subscription/team mapping. Withheld for a model if any window has incomplete usage coverage.",
-        "kind": "StatChart",
+      "guide": {
+        "title": "Usage and governance",
+        "description": "",
+        "kind": "Markdown",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+          "text": "These are **closed-report counts**, not a live time-picker total. Certified metering and runner receipts remain separate evidence. Access and allowances are configuration snapshots; they do not prove enforcement or reserve a share of the hosting bill. Missing receipt or policy evidence remains **Unknown**."
+        },
+        "queries": []
+      },
+      "teamModelTokens": {
+        "title": "Certified tokens by team",
+        "description": "Sum of closed-window tokens using the report's subscription/team mapping. Withheld for a model if any window has incomplete usage coverage.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "team",
+              "header": "Team",
+              "width": 125,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "support"
+                    }
+                  },
+                  "text": "Support"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "platform_idle"
+                    }
+                  },
+                  "text": "Platform idle"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "other_consumers"
+                    }
+                  },
+                  "text": "Other consumers"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "unresolved_allocation"
+                    }
+                  },
+                  "text": "Unresolved"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-support"
+                    }
+                  },
+                  "text": "Support"
+                }
+              ]
+            },
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "value",
+              "header": "Tokens",
+              "width": 110,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ]
         },
         "queries": [
           {
@@ -611,17 +1698,291 @@
           }
         ]
       },
-      "tokens": {
-        "title": "Certified tokens by subscription, model and window",
-        "description": "Input plus output tokens from canonical MaaS accounting. Partial observations are withheld from this panel.",
-        "kind": "StatChart",
+      "receiptTokens": {
+        "title": "Runner receipt tokens",
+        "description": "Input and output tokens by subscription and closed window. A missing receipt value remains Unknown.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "subscription",
+              "header": "Team",
+              "width": 125,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "support"
+                    }
+                  },
+                  "text": "Support"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "platform_idle"
+                    }
+                  },
+                  "text": "Platform idle"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "other_consumers"
+                    }
+                  },
+                  "text": "Other consumers"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "unresolved_allocation"
+                    }
+                  },
+                  "text": "Unresolved"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-support"
+                    }
+                  },
+                  "text": "Support"
+                }
+              ]
+            },
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "phase",
+              "header": "Window",
+              "width": 65,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "busy"
+                    }
+                  },
+                  "text": "Busy"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "quiet"
+                    }
+                  },
+                  "text": "Quiet"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "idle"
+                    }
+                  },
+                  "text": "Idle"
+                }
+              ]
+            },
+            {
+              "name": "value #1",
+              "header": "Input",
+              "width": 85,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "value #2",
+              "header": "Output",
+              "width": 85,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "model"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "phase"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "window_start"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_id"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_sha256"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "job"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "instance"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "subscription"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "model",
+                  "phase",
+                  "window_start",
+                  "report_id",
+                  "report_sha256",
+                  "job",
+                  "instance",
+                  "subscription"
+                ]
+              }
+            }
+          ]
         },
         "queries": [
           {
@@ -629,22 +1990,335 @@
               "kind": "PrometheusDatasource",
               "name": "data-science-prometheus-datasource"
             },
-            "query": "(showback_subscription_tokens @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+            "query": "(showback_receipt_input_tokens @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_receipt_output_tokens @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
             "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
           }
         ]
       },
-      "shares": {
-        "title": "Actual token share within each model/window (%)",
-        "description": "These shares determine active-window cost shares. They are independent of configured token allowances.",
-        "kind": "StatChart",
+      "receiptRequests": {
+        "title": "Runner request outcomes",
+        "description": "Requests, errors and quota rejections are independent recorded receipt fields. Absent values are Unknown, not zero.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 2
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "subscription",
+              "header": "Team",
+              "width": 125,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "support"
+                    }
+                  },
+                  "text": "Support"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "platform_idle"
+                    }
+                  },
+                  "text": "Platform idle"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "other_consumers"
+                    }
+                  },
+                  "text": "Other consumers"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "unresolved_allocation"
+                    }
+                  },
+                  "text": "Unresolved"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-support"
+                    }
+                  },
+                  "text": "Support"
+                }
+              ]
+            },
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "phase",
+              "header": "Window",
+              "width": 65,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "busy"
+                    }
+                  },
+                  "text": "Busy"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "quiet"
+                    }
+                  },
+                  "text": "Quiet"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "idle"
+                    }
+                  },
+                  "text": "Idle"
+                }
+              ]
+            },
+            {
+              "name": "value #1",
+              "header": "Requests",
+              "width": 70,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "value #2",
+              "header": "Errors",
+              "width": 65,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "value #3",
+              "header": "Quota",
+              "width": 65,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "model"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "phase"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "window_start"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_id"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_sha256"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "job"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "instance"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "subscription"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "model",
+                  "phase",
+                  "window_start",
+                  "report_id",
+                  "report_sha256",
+                  "job",
+                  "instance",
+                  "subscription"
+                ]
+              }
+            }
+          ]
         },
         "queries": [
           {
@@ -652,22 +2326,194 @@
               "kind": "PrometheusDatasource",
               "name": "data-science-prometheus-datasource"
             },
-            "query": "(showback_subscription_token_share_ratio @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) * 100",
+            "query": "(showback_receipt_requests @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_receipt_errors @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_receipt_quota_rejections @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
             "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
           }
         ]
       },
       "access": {
-        "title": "Configured model access (1=allowed, 0=denied)",
+        "title": "Configured model access",
         "description": "Scenario captured when this snapshot was published: Engineering/Qwen, Marketing/Mistral, Support/both. Four allowed cells, two denied. This is configuration, not live policy or proof that enforcement passed.",
-        "kind": "StatChart",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "team",
+              "header": "Team",
+              "width": 125,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "support"
+                    }
+                  },
+                  "text": "Support"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "platform_idle"
+                    }
+                  },
+                  "text": "Platform idle"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "other_consumers"
+                    }
+                  },
+                  "text": "Other consumers"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "unresolved_allocation"
+                    }
+                  },
+                  "text": "Unresolved"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-support"
+                    }
+                  },
+                  "text": "Support"
+                }
+              ]
+            },
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "value",
+              "header": "Access",
+              "width": 100,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "1"
+                    }
+                  },
+                  "text": "Allowed"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "0"
+                    }
+                  },
+                  "text": "Denied"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ]
         },
         "queries": [
           {
@@ -681,16 +2527,247 @@
         ]
       },
       "allowance": {
-        "title": "Configured token allowance",
-        "description": "Scenario captured when this snapshot was published, with quota-window label. Values remain illustrative until calibrated. A short report is not an aligned quota counter, so remaining quota headroom is deliberately not inferred.",
-        "kind": "StatChart",
+        "title": "Configured token allowances",
+        "description": "Configured tokens and allowance share, not actual use or bill share. Quota window is retained.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "team",
+              "header": "Team",
+              "width": 125,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "support"
+                    }
+                  },
+                  "text": "Support"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "platform_idle"
+                    }
+                  },
+                  "text": "Platform idle"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "other_consumers"
+                    }
+                  },
+                  "text": "Other consumers"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "unresolved_allocation"
+                    }
+                  },
+                  "text": "Unresolved"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-support"
+                    }
+                  },
+                  "text": "Support"
+                }
+              ]
+            },
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "quota_window",
+              "header": "Period",
+              "width": 85
+            },
+            {
+              "name": "value #1",
+              "header": "Tokens",
+              "width": 95,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "value #2",
+              "header": "Share %",
+              "width": 75,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 2,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "team"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "model"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "subscription"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "quota_window"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "job"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "instance"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "team",
+                  "model",
+                  "subscription",
+                  "quota_window",
+                  "job",
+                  "instance"
+                ]
+              }
+            }
+          ]
         },
         "queries": [
           {
@@ -700,22 +2777,7 @@
             },
             "query": "(showback_config_allowance_tokens @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))",
             "seriesNameFormat": "{{team}} | {{model}} | {{quota_window}} | {{configuration_status}}"
-          }
-        ]
-      },
-      "allowanceShare": {
-        "title": "Configured allowance ratio (%)",
-        "description": "Qwen Engineering/Support 70/30 is an allowance proposal. It neither reserves GPU time nor fixes the cost split. Mistral values are independent placeholders.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 2
           },
-          "legendMode": "on"
-        },
-        "queries": [
           {
             "datasource": {
               "kind": "PrometheusDatasource",
@@ -726,17 +2788,429 @@
           }
         ]
       },
-      "coverage": {
-        "title": "Usage coverage (1=complete)",
-        "description": "Request/error/denial counts need separately reconciled runner receipts. Native request counters do not prove a model dimension. Denied attempts count as zero inference tokens only after pre-inference enforcement is proved.",
-        "kind": "StatChart",
+      "tokens": {
+        "title": "Metered use within each window",
+        "description": "Certified subscription tokens and share of that model/window. A zero token share is not a fixed bill allocation.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "subscription",
+              "header": "Team",
+              "width": 125,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "support"
+                    }
+                  },
+                  "text": "Support"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "platform_idle"
+                    }
+                  },
+                  "text": "Platform idle"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "other_consumers"
+                    }
+                  },
+                  "text": "Other consumers"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "unresolved_allocation"
+                    }
+                  },
+                  "text": "Unresolved"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-engineering"
+                    }
+                  },
+                  "text": "Engineering"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-marketing"
+                    }
+                  },
+                  "text": "Marketing"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "team-support"
+                    }
+                  },
+                  "text": "Support"
+                }
+              ]
+            },
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "phase",
+              "header": "Window",
+              "width": 65,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "busy"
+                    }
+                  },
+                  "text": "Busy"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "quiet"
+                    }
+                  },
+                  "text": "Quiet"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "idle"
+                    }
+                  },
+                  "text": "Idle"
+                }
+              ]
+            },
+            {
+              "name": "value #1",
+              "header": "Tokens",
+              "width": 95,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "value #2",
+              "header": "Share %",
+              "width": 80,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 2,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "model"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "phase"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "window_start"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_id"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_sha256"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "job"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "instance"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "subscription"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "model",
+                  "phase",
+                  "window_start",
+                  "report_id",
+                  "report_sha256",
+                  "job",
+                  "instance",
+                  "subscription"
+                ]
+              }
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_subscription_tokens @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
           },
-          "legendMode": "on"
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_subscription_token_share_ratio @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) * 100",
+            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
+          }
+        ]
+      },
+      "coverage": {
+        "title": "Usage evidence by window",
+        "description": "Request/error/denial counts need separately reconciled runner receipts. Native request counters do not prove a model dimension. Denied attempts count as zero inference tokens only after pre-inference enforcement is proved.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "phase",
+              "header": "Window",
+              "width": 65,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "busy"
+                    }
+                  },
+                  "text": "Busy"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "quiet"
+                    }
+                  },
+                  "text": "Quiet"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "idle"
+                    }
+                  },
+                  "text": "Idle"
+                }
+              ]
+            },
+            {
+              "name": "window_start",
+              "header": "Start (UTC)",
+              "width": 165
+            },
+            {
+              "name": "value",
+              "header": "Usage evidence",
+              "width": 110,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "1"
+                    }
+                  },
+                  "text": "Complete"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "0"
+                    }
+                  },
+                  "text": "Incomplete"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ]
         },
         "queries": [
           {
@@ -749,17 +3223,37 @@
           }
         ]
       },
-      "receiptInputs": {
-        "title": "Runner receipt input tokens",
-        "description": "Optional closed-window runner receipts, not native Limitador per-model counters. Absent receipt data stays NO DATA. Receipt input/output split is a cross-check, not the allocation denominator. Denied attempts add no separate cost charge. The bounded runner disables retries.",
-        "kind": "StatChart",
+      "reportAudit": {
+        "title": "Report audit identity",
+        "description": "Full report ID, scope, policy and canonical hash are retained. Hover truncated audit cells to read their complete values.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "report_id",
+              "header": "Report ID",
+              "width": 175
+            },
+            {
+              "name": "scope",
+              "header": "Scope",
+              "width": 125
+            },
+            {
+              "name": "policy_version",
+              "header": "Policy",
+              "width": 100
+            },
+            {
+              "name": "report_sha256",
+              "header": "SHA-256",
+              "width": 100
+            }
+          ]
         },
         "queries": [
           {
@@ -767,100 +3261,8 @@
               "kind": "PrometheusDatasource",
               "name": "data-science-prometheus-datasource"
             },
-            "query": "(showback_receipt_input_tokens @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
-            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
-          }
-        ]
-      },
-      "receiptOutputs": {
-        "title": "Runner receipt output tokens",
-        "description": "Optional closed-window runner receipts, not native Limitador per-model counters. Absent receipt data stays NO DATA. Receipt input/output split is a cross-check, not the allocation denominator. Denied attempts add no separate cost charge. The bounded runner disables retries.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
-            },
-            "query": "(showback_receipt_output_tokens @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
-            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
-          }
-        ]
-      },
-      "receiptRequests": {
-        "title": "Runner receipt requests",
-        "description": "Optional closed-window runner receipts, not native Limitador per-model counters. Absent receipt data stays NO DATA. Receipt input/output split is a cross-check, not the allocation denominator. Denied attempts add no separate cost charge. The bounded runner disables retries.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
-            },
-            "query": "(showback_receipt_requests @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
-            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
-          }
-        ]
-      },
-      "receiptErrors": {
-        "title": "Runner receipt errors",
-        "description": "Optional closed-window runner receipts, not native Limitador per-model counters. Absent receipt data stays NO DATA. Receipt input/output split is a cross-check, not the allocation denominator. Denied attempts add no separate cost charge. The bounded runner disables retries.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
-            },
-            "query": "(showback_receipt_errors @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
-            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
-          }
-        ]
-      },
-      "receiptQuota": {
-        "title": "Runner receipt quota rejections",
-        "description": "Optional closed-window runner receipts, not native Limitador per-model counters. Absent receipt data stays NO DATA. Receipt input/output split is a cross-check, not the allocation denominator. Denied attempts add no separate cost charge. The bounded runner disables retries.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
-            },
-            "query": "(showback_receipt_quota_rejections @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
-            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}} | {{subscription}}"
+            "query": "(showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))",
+            "seriesNameFormat": "{{evidence_kind}} | {{scope}} | {{report_id}} | {{period_start}} to {{period_end}} | {{policy_version}}"
           }
         ]
       }
@@ -870,7 +3272,7 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Selected report and evidence",
+            "title": "Closed report",
             "collapse": {
               "open": true
             }
@@ -880,31 +3282,18 @@
               "x": 0,
               "y": 0,
               "width": 24,
-              "height": 7,
+              "height": 3,
               "content": {
                 "$ref": "#/spec/panels/reportIdentity"
               }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Actual team/model usage",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
+            },
             {
               "x": 0,
-              "y": 0,
+              "y": 3,
               "width": 24,
-              "height": 7,
+              "height": 5,
               "content": {
-                "$ref": "#/spec/panels/teamModelTokens"
+                "$ref": "#/spec/panels/guide"
               }
             }
           ]
@@ -914,7 +3303,7 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Actual window usage",
+            "title": "Team usage",
             "collapse": {
               "open": true
             }
@@ -923,165 +3312,99 @@
             {
               "x": 0,
               "y": 0,
-              "width": 12,
-              "height": 7,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/teamModelTokens"
+              }
+            },
+            {
+              "x": 0,
+              "y": 6,
+              "width": 24,
+              "height": 9,
+              "content": {
+                "$ref": "#/spec/panels/receiptTokens"
+              }
+            },
+            {
+              "x": 0,
+              "y": 15,
+              "width": 24,
+              "height": 9,
+              "content": {
+                "$ref": "#/spec/panels/receiptRequests"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Governance snapshots",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/access"
+              }
+            },
+            {
+              "x": 0,
+              "y": 8,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/allowance"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Window and report evidence",
+            "collapse": {
+              "open": false
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 12,
               "content": {
                 "$ref": "#/spec/panels/tokens"
               }
             },
             {
-              "x": 12,
-              "y": 0,
-              "width": 12,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/shares"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Optional bounded runner receipts",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
-            {
               "x": 0,
-              "y": 0,
-              "width": 12,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/receiptInputs"
-              }
-            },
-            {
-              "x": 12,
-              "y": 0,
-              "width": 12,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/receiptOutputs"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Optional runner outcomes",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
-            {
-              "x": 0,
-              "y": 0,
-              "width": 8,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/receiptRequests"
-              }
-            },
-            {
-              "x": 8,
-              "y": 0,
-              "width": 8,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/receiptErrors"
-              }
-            },
-            {
-              "x": 16,
-              "y": 0,
-              "width": 8,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/receiptQuota"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Published access configuration — not enforcement proof",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
-            {
-              "x": 0,
-              "y": 0,
-              "width": 24,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/access"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Published allowance configuration — not remaining quota",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
-            {
-              "x": 0,
-              "y": 0,
-              "width": 12,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/allowance"
-              }
-            },
-            {
-              "x": 12,
-              "y": 0,
-              "width": 12,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/allowanceShare"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Evidence boundaries",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
-            {
-              "x": 0,
-              "y": 0,
+              "y": 12,
               "width": 24,
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/coverage"
+              }
+            },
+            {
+              "x": 0,
+              "y": 19,
+              "width": 24,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/reportAudit"
               }
             }
           ]
@@ -1091,20 +3414,55 @@
   },
   {
     "name": "dashboard-9-showback-efficiency-admin",
-    "title": "Showback · model cost and efficiency",
-    "description": "Closed-report cost efficiency followed by clearly separate live vLLM/DCGM context. No per-team GPU cost model.",
+    "title": "Showback · efficiency",
+    "description": "Closed-report capacity economics and a separate live operational time range. Missing observations stay unknown.",
     "panels": {
       "reportIdentity": {
-        "title": "Selected closed report — read evidence kind before presenting",
-        "description": "The series label identifies SYNTHETIC versus live evidence, immutable report ID, UTC period and policy. Value 1 means metadata is present. The time picker never recalculates this report.",
-        "kind": "StatChart",
+        "title": "Closed report · UTC",
+        "description": "Evidence type and immutable report period. The time picker does not recalculate this closed allocation.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "evidence_kind",
+              "header": "Evidence",
+              "width": 95,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "observed"
+                    }
+                  },
+                  "text": "Observed"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "synthetic_fixture"
+                    }
+                  },
+                  "text": "SYNTHETIC"
+                }
+              ]
+            },
+            {
+              "name": "period_start",
+              "header": "From (UTC)",
+              "width": 175
+            },
+            {
+              "name": "period_end",
+              "header": "To (UTC)",
+              "width": 175
+            }
+          ]
         },
         "queries": [
           {
@@ -1117,17 +3475,236 @@
           }
         ]
       },
-      "fullCost": {
-        "title": "Full hosting cost by model/window (USD)",
-        "description": "Complete model/window cost includes paid quiet and idle capacity. Missing price stays NO DATA.",
-        "kind": "StatChart",
+      "guide": {
+        "title": "Capacity economics and live performance",
+        "description": "",
+        "kind": "Markdown",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 2
-          },
-          "legendMode": "on"
+          "text": "The tables use the **closed report** above. The charts use the **live time picker** and do not recalculate that report. Cost per million tokens is unavailable for zero usage or incomplete evidence. Idle capacity still costs money; GPU utilization explains efficiency and does not establish team ownership of GPU-seconds."
+        },
+        "queries": []
+      },
+      "capacity": {
+        "title": "Paid capacity by window",
+        "description": "Hosting cost, paid instance hours and effective worker rate. Paid hours and hosting cost are retained even at zero use.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "phase",
+              "header": "Window",
+              "width": 65,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "busy"
+                    }
+                  },
+                  "text": "Busy"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "quiet"
+                    }
+                  },
+                  "text": "Quiet"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "idle"
+                    }
+                  },
+                  "text": "Idle"
+                }
+              ]
+            },
+            {
+              "name": "value #1",
+              "header": "Cost USD",
+              "width": 85,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 2,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "value #2",
+              "header": "Hours",
+              "width": 85,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 4,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "value #3",
+              "header": "USD/hour",
+              "width": 110,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 6,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "model"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "phase"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "window_start"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_id"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_sha256"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "job"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "instance"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "model",
+                  "phase",
+                  "window_start",
+                  "report_id",
+                  "report_sha256",
+                  "job",
+                  "instance"
+                ]
+              }
+            }
+          ]
         },
         "queries": [
           {
@@ -1137,22 +3714,15 @@
             },
             "query": "(showback_model_cost_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
             "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}}"
-          }
-        ]
-      },
-      "workerRate": {
-        "title": "Effective worker USD per paid instance-hour",
-        "description": "Unrounded model/window hosting cost divided by evidenced paid instance-hours. This is a time-weighted worker rate when interval prices differ. Missing price or zero hours stays NO DATA.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 6
           },
-          "legendMode": "on"
-        },
-        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_model_instance_hours @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}}"
+          },
           {
             "datasource": {
               "kind": "PrometheusDatasource",
@@ -1163,86 +3733,239 @@
           }
         ]
       },
-      "reportWorkerRate": {
-        "title": "Effective worker rate across the report (USD/hour)",
-        "description": "Unrounded hosting cost divided by summed paid instance-hours for each model, with no dashboard price variables.",
-        "kind": "StatChart",
+      "efficiency": {
+        "title": "Token efficiency by window",
+        "description": "Certified tokens, hosting USD per million tokens and usage completeness. Unknown cost per million is not zero.",
+        "kind": "Table",
         "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 6
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
             },
-            "query": "(showback_report_model_effective_worker_usd_per_hour @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
-            "seriesNameFormat": "{{model}}"
-          }
-        ]
-      },
-      "declaredRates": {
-        "title": "Recorded worker rates (USD/hour)",
-        "description": "Numeric rates and provenance come from the selected report. Unknown rates are withheld.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 6
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
+            {
+              "name": "phase",
+              "header": "Window",
+              "width": 65,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "busy"
+                    }
+                  },
+                  "text": "Busy"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "quiet"
+                    }
+                  },
+                  "text": "Quiet"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "idle"
+                    }
+                  },
+                  "text": "Idle"
+                }
+              ]
             },
-            "query": "(showback_report_rate_usd_per_hour @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
-            "seriesNameFormat": "{{rate_id}} | {{instance_type}} | {{region}}"
-          }
-        ]
-      },
-      "hours": {
-        "title": "Paid instance hours by model/window",
-        "description": "Hosting hours from the report's instance evidence, including idle capacity.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 4
-          },
-          "legendMode": "on"
-        },
-        "queries": [
-          {
-            "datasource": {
-              "kind": "PrometheusDatasource",
-              "name": "data-science-prometheus-datasource"
+            {
+              "name": "value #1",
+              "header": "Tokens",
+              "width": 90,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
             },
-            "query": "(showback_model_instance_hours @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
-            "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}}"
-          }
-        ]
-      },
-      "tokens": {
-        "title": "Certified tokens by model/window",
-        "description": "Missing usage is NO DATA; covered idle is zero.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
-          },
-          "legendMode": "on"
+            {
+              "name": "value #2",
+              "header": "USD / 1M",
+              "width": 105,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 2,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "value #3",
+              "header": "Usage evidence",
+              "width": 110,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "1"
+                    }
+                  },
+                  "text": "Complete"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "0"
+                    }
+                  },
+                  "text": "Incomplete"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "model"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "phase"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "window_start"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_id"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "report_sha256"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "job"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "instance"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "model",
+                  "phase",
+                  "window_start",
+                  "report_id",
+                  "report_sha256",
+                  "job",
+                  "instance"
+                ]
+              }
+            }
+          ]
         },
         "queries": [
           {
@@ -1252,22 +3975,7 @@
             },
             "query": "(showback_model_tokens @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
             "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}}"
-          }
-        ]
-      },
-      "effective": {
-        "title": "Hosting USD per million actual tokens",
-        "description": "Full model/window hosting cost divided by measured tokens. Covered idle is undefined/NO DATA, not $0. Compare busy and quiet windows to show idle capacity's effect.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 2
           },
-          "legendMode": "on"
-        },
-        "queries": [
           {
             "datasource": {
               "kind": "PrometheusDatasource",
@@ -1275,22 +3983,7 @@
             },
             "query": "(showback_model_effective_usd_per_million_tokens @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
             "seriesNameFormat": "{{model}} | {{phase}} | {{window_start}} | {{coverage}}"
-          }
-        ]
-      },
-      "coverage": {
-        "title": "Usage coverage (1=complete)",
-        "description": "Coverage applies to the selected closed report.",
-        "kind": "StatChart",
-        "options": {
-          "calculation": "last",
-          "format": {
-            "unit": "decimal",
-            "decimalPlaces": 0
           },
-          "legendMode": "on"
-        },
-        "queries": [
           {
             "datasource": {
               "kind": "PrometheusDatasource",
@@ -1302,7 +3995,7 @@
         ]
       },
       "throughput": {
-        "title": "Live model throughput — separate from the closed report",
+        "title": "Live token throughput",
         "description": "Native vLLM model-wide input/output rates over the visible time picker. Not per-team GPU accounting.",
         "kind": "TimeSeriesChart",
         "options": {
@@ -1344,7 +4037,7 @@
         ]
       },
       "latency": {
-        "title": "Live model TTFT and inter-token latency (seconds)",
+        "title": "Live latency · seconds",
         "description": "Native model histograms. Missing series stay empty; no zero-error or zero-latency fallback. End-to-end request latency awaits a verified runtime histogram.",
         "kind": "TimeSeriesChart",
         "options": {
@@ -1386,7 +4079,7 @@
         ]
       },
       "gpu": {
-        "title": "Live GPU utilization by model (%)",
+        "title": "Live GPU utilization · %",
         "description": "NVIDIA DCGM utilization via the repository's ServiceMonitor model_name mapping. No GPU usage is attributed to teams. Power and model-specific errors await verified series and units.",
         "kind": "TimeSeriesChart",
         "options": {
@@ -1420,7 +4113,7 @@
         ]
       },
       "queue": {
-        "title": "Live model queue depth (requests)",
+        "title": "Live waiting requests",
         "description": "Raw UWM vLLM waiting-request gauge, as used by the repository's VLLMRequestQueueBacklog rule. Missing metrics remain empty; this is operational context, not closed-report billing evidence.",
         "kind": "TimeSeriesChart",
         "options": {
@@ -1454,7 +4147,7 @@
         ]
       },
       "memory": {
-        "title": "Live GPU framebuffer used (exporter MB)",
+        "title": "Live GPU memory · MB",
         "description": "Raw DCGM_FI_DEV_FB_USED with the MB display convention in the repository's NVIDIA console dashboard. No byte conversion or per-team/model attribution. Labels identify the exporter host/instance, consuming pod and GPU. Runtime label/scrape compatibility still requires qualification.",
         "kind": "TimeSeriesChart",
         "options": {
@@ -1483,7 +4176,198 @@
               "name": "cluster-prometheus-datasource"
             },
             "query": "max by (Hostname, instance, gpu, exported_pod) (DCGM_FI_DEV_FB_USED{exported_pod=~\"(qwen3-8-27b|mistral-small4-119b)-kserve-.*\"})",
-            "seriesNameFormat": "{{Hostname}} | {{instance}} | {{exported_pod}} | GPU {{gpu}}"
+            "seriesNameFormat": "GPU {{gpu}} · {{exported_pod}}"
+          }
+        ]
+      },
+      "reportWorkerRate": {
+        "title": "Worker rate across the report",
+        "description": "Unrounded hosting cost divided by summed paid instance-hours for each model, with no dashboard price variables.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "qwen3-8-27b"
+                    }
+                  },
+                  "text": "Qwen3.8 27B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "mistral-small4-119b"
+                    }
+                  },
+                  "text": "Mistral Small 4"
+                }
+              ]
+            },
+            {
+              "name": "value",
+              "header": "USD/hour",
+              "width": 120,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 6,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_report_model_effective_worker_usd_per_hour @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+            "seriesNameFormat": "{{model}}"
+          }
+        ]
+      },
+      "declaredRates": {
+        "title": "Recorded worker rate",
+        "description": "Numeric rates and provenance come from the selected report. Unknown rates are withheld.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "instance_type",
+              "header": "Worker",
+              "width": 105
+            },
+            {
+              "name": "region",
+              "header": "Region",
+              "width": 100
+            },
+            {
+              "name": "value",
+              "header": "USD/hour",
+              "width": 120,
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 6,
+                "shortValues": false
+              },
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "rate_id",
+              "header": "Rate ID",
+              "width": 175
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_report_rate_usd_per_hour @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+            "seriesNameFormat": "{{rate_id}} | {{instance_type}} | {{region}}"
+          }
+        ]
+      },
+      "reportAudit": {
+        "title": "Report audit identity",
+        "description": "Full report ID, scope, policy and canonical hash are retained. Hover truncated audit cells to read their complete values.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "report_id",
+              "header": "Report ID",
+              "width": 175
+            },
+            {
+              "name": "scope",
+              "header": "Scope",
+              "width": 125
+            },
+            {
+              "name": "policy_version",
+              "header": "Policy",
+              "width": 100
+            },
+            {
+              "name": "report_sha256",
+              "header": "SHA-256",
+              "width": 100
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))",
+            "seriesNameFormat": "{{evidence_kind}} | {{scope}} | {{report_id}} | {{period_start}} to {{period_end}} | {{policy_version}}"
           }
         ]
       }
@@ -1493,7 +4377,38 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Selected report and evidence",
+            "title": "Closed report",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/reportIdentity"
+              }
+            },
+            {
+              "x": 0,
+              "y": 3,
+              "width": 24,
+              "height": 5,
+              "content": {
+                "$ref": "#/spec/panels/guide"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Capacity economics",
             "collapse": {
               "open": true
             }
@@ -1505,7 +4420,16 @@
               "width": 24,
               "height": 7,
               "content": {
-                "$ref": "#/spec/panels/reportIdentity"
+                "$ref": "#/spec/panels/capacity"
+              }
+            },
+            {
+              "x": 0,
+              "y": 7,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/efficiency"
               }
             }
           ]
@@ -1515,7 +4439,7 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Recorded and effective worker rates",
+            "title": "Live performance · time picker",
             "collapse": {
               "open": true
             }
@@ -1524,139 +4448,46 @@
             {
               "x": 0,
               "y": 0,
-              "width": 12,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/declaredRates"
-              }
-            },
-            {
-              "x": 12,
-              "y": 0,
-              "width": 12,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/reportWorkerRate"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Closed-window hosting cost",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
-            {
-              "x": 0,
-              "y": 0,
-              "width": 8,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/hours"
-              }
-            },
-            {
-              "x": 8,
-              "y": 0,
-              "width": 8,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/workerRate"
-              }
-            },
-            {
-              "x": 16,
-              "y": 0,
-              "width": 8,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/fullCost"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Closed report efficiency",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
-            {
-              "x": 0,
-              "y": 0,
-              "width": 8,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/tokens"
-              }
-            },
-            {
-              "x": 8,
-              "y": 0,
-              "width": 8,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/effective"
-              }
-            },
-            {
-              "x": 16,
-              "y": 0,
-              "width": 8,
-              "height": 7,
-              "content": {
-                "$ref": "#/spec/panels/coverage"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "kind": "Grid",
-        "spec": {
-          "display": {
-            "title": "Live operational context — dashboard time picker",
-            "collapse": {
-              "open": true
-            }
-          },
-          "items": [
-            {
-              "x": 0,
-              "y": 0,
-              "width": 8,
-              "height": 7,
+              "width": 24,
+              "height": 9,
               "content": {
                 "$ref": "#/spec/panels/throughput"
               }
             },
             {
-              "x": 8,
-              "y": 0,
-              "width": 8,
-              "height": 7,
+              "x": 0,
+              "y": 9,
+              "width": 24,
+              "height": 9,
               "content": {
                 "$ref": "#/spec/panels/latency"
               }
             },
             {
-              "x": 16,
-              "y": 0,
-              "width": 8,
-              "height": 7,
+              "x": 0,
+              "y": 18,
+              "width": 24,
+              "height": 9,
+              "content": {
+                "$ref": "#/spec/panels/gpu"
+              }
+            },
+            {
+              "x": 0,
+              "y": 27,
+              "width": 24,
+              "height": 9,
               "content": {
                 "$ref": "#/spec/panels/queue"
+              }
+            },
+            {
+              "x": 0,
+              "y": 36,
+              "width": 24,
+              "height": 9,
+              "content": {
+                "$ref": "#/spec/panels/memory"
               }
             }
           ]
@@ -1666,28 +4497,37 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Live GPU context",
+            "title": "Rate and report evidence",
             "collapse": {
-              "open": true
+              "open": false
             }
           },
           "items": [
             {
               "x": 0,
               "y": 0,
-              "width": 12,
-              "height": 7,
+              "width": 24,
+              "height": 5,
               "content": {
-                "$ref": "#/spec/panels/gpu"
+                "$ref": "#/spec/panels/reportWorkerRate"
               }
             },
             {
-              "x": 12,
-              "y": 0,
-              "width": 12,
-              "height": 7,
+              "x": 0,
+              "y": 5,
+              "width": 24,
+              "height": 5,
               "content": {
-                "$ref": "#/spec/panels/memory"
+                "$ref": "#/spec/panels/declaredRates"
+              }
+            },
+            {
+              "x": 0,
+              "y": 10,
+              "width": 24,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/reportAudit"
               }
             }
           ]
