@@ -134,9 +134,13 @@ jq -e '([.[]|select(.kind=="Deployment" and .metadata.name=="showback-report-pub
   [.[]|select(.kind=="ConfigMap" and .metadata.name=="showback-selected-report")][0] as $report |
   ($replicas|IN(0,1))
   and all(.[];.kind!="LLMInferenceService" and .kind!="MachineSet")
+  and any(.[];.kind=="Deployment" and .metadata.name=="showback-report-publisher"
+    and .spec.template.spec.containers[0].command==["/usr/bin/run-httpd"]
+    and .spec.template.spec.containers[0].args==["-f","/etc/showback/httpd.conf"])
   and (if $replicas==0 then $report.data=={} else ($report.data|keys)==["metrics.prom"]
     and ($report.data["metrics.prom"]|test("(?m)^showback_selected_report_info\\{[^\\n]*evidence_kind=\"observed\"")) end)
   and any(.[];.kind=="ServiceMonitor" and .spec.endpoints[0].path=="/metrics.prom")
   and any(.[];.kind=="ConfigMap" and .metadata.name=="showback-report-httpd"
+    and (.data["httpd.conf"]|startswith("Include /etc/httpd/conf/httpd.conf\n"))
     and (.data["httpd.conf"]|contains("ForceType text/plain")))' "$WORK/bundle.json" >/dev/null || fail 'Selected-report static-server contract'
 echo 'PASS publisher/dashboard shell contracts (parity, provenance, unknown/idle, aliases, snapshot, static server)'

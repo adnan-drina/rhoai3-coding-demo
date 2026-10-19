@@ -4,7 +4,7 @@ The optional `040-showback-demo` Application was published and deployed at `4349
 
 The observed six-minute run completed **14 successful SSE requests and 1,753 tokens**, with exact response/counter agreement. The corrected allocation is **$0.34: Engineering $0.15, Support $0.07, platform idle $0.12**. This is a dated list-price estimate of allocated capacity, not an AWS invoice or full service cost.
 
-Current source selects the reviewed corrected report and one publisher replica. Live publication and scraping of that financial snapshot are the next acceptance step. The earlier zero-replica readback below remains historical evidence, not the desired final state.
+Current source selects the reviewed corrected report and one publisher replica. The first activation at `89036c17908519bc3ccc8d03f441f9b6cf60b7da` synced but the publisher exited with Apache CLI usage. Its corrected startup arguments are prepared; live readiness and financial scraping are the next acceptance step. The earlier zero-replica readback below remains historical evidence, not the desired final state.
 
 ## Identity, access and metering
 
@@ -75,5 +75,6 @@ The three bounded-report views will consume the selected corrected snapshot afte
 - [Perses API ingestion](perses-readback.json): all eight definitions, controller conditions and explicit visual-test limit.
 - [Original archive acceptance](archive-original.json) and [corrected archive acceptance](archive-corrected.json): FINISHED runs, hash readback and denied team access.
 - [Release source validation](source-validation.json): all 20 package gates and repository/static Stage 040 checks passed without live transport.
+- [Publisher startup correction](publisher-startup-correction.json): preserved first activation failure, verified pinned-image configuration and minimal argument correction. The focused publisher/dashboard regression and Stage 040 static gate passed after this fix; runtime acceptance is separate.
 
 AI assistance: Codex lead with implementation and independent validation delegated to GPT-6.1 Sol. Human review of the complete diff remains required before merge. These summaries distinguish observed results from source-only, estimated and pending claims.

@@ -10,6 +10,7 @@ metadata:
     app.kubernetes.io/managed-by: argocd
 data:
   httpd.conf: |
+    Include /etc/httpd/conf/httpd.conf
     DocumentRoot /selected
     <Directory /selected>
       Require all granted

@@ -1,0 +1,49 @@
+{
+  "failed_revision": "89036c17908519bc3ccc8d03f441f9b6cf60b7da",
+  "observed_failure": {
+    "application_sync": "Synced",
+    "application_health": "Progressing",
+    "operation": "Succeeded",
+    "container_exit_code": 1,
+    "container_ready": false,
+    "logs": "stock initialization completed, then Apache CLI usage"
+  },
+  "pinned_image_config": {
+    "sha256": "346e3dbba042932dfa191773b6c77f038cdb59a82dfcb8c5f41e0aee2eb9f272",
+    "content_digest_verified": true,
+    "HTTPD_MAIN_CONF_PATH": "/etc/httpd/conf"
+  },
+  "wrapper_source_evidence": {
+    "kind": "upstream reference, not extracted pinned-image script",
+    "reference": "https://github.com/sclorg/httpd-container/blob/master/2.4/root/usr/bin/run-httpd",
+    "expansion": "exec httpd -D FOREGROUND $@",
+    "live_read_attempt": "failed container absent; no further attempts"
+  },
+  "local_argument_reproduction": {
+    "old_argv": [
+      "-D",
+      "FOREGROUND",
+      "-c",
+      "Include",
+      "/etc/showback/httpd.conf"
+    ],
+    "corrected_argv": [
+      "-D",
+      "FOREGROUND",
+      "-f",
+      "/etc/showback/httpd.conf"
+    ],
+    "passed": true,
+    "server_started": false
+  },
+  "correction": {
+    "args": [
+      "-f",
+      "/etc/showback/httpd.conf"
+    ],
+    "config_first_line": "Include /etc/httpd/conf/httpd.conf",
+    "image_pin_changed": false,
+    "live_mutations_performed": false
+  },
+  "runtime_acceptance": "pending targeted deployment"
+}

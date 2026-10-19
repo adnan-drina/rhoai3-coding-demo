@@ -35,8 +35,9 @@ spec:
           command:
             - /usr/bin/run-httpd
           args:
-            - -c
-            - Include /etc/showback/httpd.conf
+            # The stock wrapper expands arguments unquoted; -f avoids a multiword directive argument.
+            - -f
+            - /etc/showback/httpd.conf
           ports:
             - name: metrics
               containerPort: 8080
