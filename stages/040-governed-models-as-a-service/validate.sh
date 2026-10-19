@@ -77,10 +77,10 @@ showback_source_state() {
     jq -e '([.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort) as $teams |
         [.[] | select(.kind == "Deployment")] as $publishers |
         [.[] | select(.kind == "ConfigMap" and .metadata.name == "showback-selected-report")] as $reports |
-        ((length == 21 and $teams == ["team-engineering","team-support"]
+        ((length == 24 and $teams == ["team-engineering","team-support"]
             and all(.[] | select(.kind == "MaaSSubscription" or .kind == "MaaSAuthPolicy");
                 [.spec.modelRefs[].name] == ["qwen3-8-27b"])) or
-         (length == 23 and $teams == ["team-engineering","team-marketing","team-support"]))
+         (length == 26 and $teams == ["team-engineering","team-marketing","team-support"]))
         and all(.[]; .kind != "Job" and .kind != "CronJob" and .kind != "LLMInferenceService"
         and .kind != "HorizontalPodAutoscaler" and .kind != "Config" and .kind != "LokiStack")
         and ($publishers | length) == 1 and $publishers[0].metadata.name == "showback-report-publisher"

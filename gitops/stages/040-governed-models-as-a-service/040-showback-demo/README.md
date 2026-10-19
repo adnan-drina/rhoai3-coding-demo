@@ -8,13 +8,14 @@ The demo connects governed team identities to explicit financial allocation and 
 
 ## What
 
-The root Kustomize render contains exactly 21 resources with `components/qwen-only` enabled (23 with that Component removed after full-model qualification):
+The root Kustomize render contains exactly 24 resources with `components/qwen-only` enabled (26 with that Component removed after full-model qualification):
 
 | Files | Objects and namespace |
 |---|---|
 | `team-*-subscription.yaml`, `team-*-auth-policy.yaml` | Two active `MaaSSubscription` / `MaaSAuthPolicy` pairs in `models-as-a-service`: Engineering and Support use Qwen. The generated full-scenario files retain the Marketing pair and Support Mistral reference; the enabled Component removes them from the active render |
 | `archive-namespace.yaml`, `archive-rolebinding.yaml` | Retained Namespace `showback-reporting` and its `showback-mlflow-edit` RoleBinding to the existing native `edit` ClusterRole, whose aggregated MLflow experiment read/write permissions are checked before deployment |
 | `dashboard-showback-*.yaml` | Three bounded allocation `PersesDashboard` resources in `redhat-ods-monitoring` |
+| `dashboard-offer-*.yaml` | Three additional offer comparison dashboards: all external models, dedicated private and shared private; observed data and explicit missing states |
 | `publisher-*.yaml` | Deployment `showback-report-publisher` at one Ready replica, HTTP configuration and selected R2 report ConfigMaps, Service and ServiceMonitor in `redhat-ods-monitoring`; live financial scraping verified |
 | `service-views/` | Five monthly service-offer `PersesDashboard` resources in `redhat-ods-monitoring` |
 | `native-inputs/` | Two inert ConfigMaps: Loki review inputs in `redhat-ods-monitoring`, metering review inputs in `redhat-ai-gateway-infra` |
@@ -40,6 +41,8 @@ The explicit bounded profile is [qualification-qwen-only.json](../../../../stage
 Generators and accounting tools remain in [showback-demo](../../../../stages/040-governed-models-as-a-service/showback-demo/README.md). Committed YAML in this component is the sole deployment output. Regenerate it with the package's `render-access.sh --write`, `generate-dashboards.sh --write`, `service-views/generate-dashboards.sh --write` and `native/render-integration.sh --write`; their `--check` modes detect drift. Never maintain duplicate manifests in the package or apply this component directly outside Argo CD.
 
 The three bounded showback dashboards present cost allocation through a native horizontal bar chart and exact six-bucket table, usage through exact-count tables, and efficiency through capacity rows and full-width live charts. Evidence type and UTC report period remain visible; audit identities and source text sit in folded sections. Tables keep a bounded column width, hide metadata's constant `1`, map boolean states to text and preserve absent values as Unknown. Numeric formatting disables abbreviation. The bar adds human-readable labels to the unchanged allocation values; no second accounting formula is introduced. Browser acceptance at the deployed revision must verify both narrow and desktop layouts, exact counts, team versus idle allocation and no horizontal scrolling inside authored panels; API acceptance alone does not prove presentation.
+
+The three offer comparison views use a separate definition file in the same generic generator. They preserve the bounded dashboards and five service-view candidates. External inventory and bounded request receipts remain separate from monthly provider charges; a trial endpoint does not establish a zero-price tariff. Dedicated has no observed agreement, sponsor or capacity evidence, and the shared Qwen run is never relabelled dedicated. Shared retains the observed bounded allocation while monthly tariff/recovery inputs remain Unknown. Monthly and probe queries use their own observed identity/hash guards. Metadata fallbacks distinguish missing evidence from publisher failure and never supply money. These new views require separate deployed browser acceptance.
 
 ## Validation
 

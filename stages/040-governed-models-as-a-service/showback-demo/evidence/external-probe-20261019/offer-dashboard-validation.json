@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "independent_static_native_code_replay_and_live_read_only_query_validation",
+  "verified_at": "2026-10-19T10:36:10Z",
+  "source_base_sha": "fe6333467424799c6abbad87a6759f72aecf8370",
+  "reviewed_definitions_sha256": "35306af18ed0b6397a5ab37e6a3070992b2d704b5224a805ba9ee20ca86119e1",
+  "published_source_sha": null,
+  "deployment_status": "pending",
+  "browser_status": "pending",
+  "observed_probe": {
+    "sha256": "f8571896dc9d653c27cc0112fe3785ddc99dd99527c0b27164c82164e9bf886c",
+    "model": "nemotron-3-ultra-550b-a55b",
+    "user": "ai-admin",
+    "subscription": "personal-ai-admin",
+    "requests": 2,
+    "input_tokens": 42,
+    "output_tokens": 4,
+    "scope": "bounded_api_probe",
+    "period_start": "2026-10-19T10:29:28Z",
+    "period_end": "2026-10-19T10:29:30Z"
+  },
+  "publisher_preservation": {
+    "original_bounded_metrics_are_identical_prefix": true,
+    "original_metadata_unchanged": true,
+    "only_external_probe_families_added": true,
+    "current_three_and_five_candidate_dashboard_sources_byte_identical": true
+  },
+  "offline_checks": {
+    "test_script": "tests/test-offer-dashboards.sh",
+    "passed": 25,
+    "failed": 0,
+    "syntax": "passed",
+    "diff_check": "passed",
+    "cases": [
+      "all inventory models retained; unprobed stays absent",
+      "actual zero differs from absent usage",
+      "failed and partial receipts retain status but withhold incomplete tokens",
+      "duplicate client/provider IDs, invalid dates and unregistered receipts rejected atomically",
+      "composition is deterministic and preserves existing metadata/metrics",
+      "offer-scoped observed monthly metrics and report/hash guards",
+      "hidden metadata markers never become monetary values",
+      "real producer schema supplies future monthly fields",
+      "dedicated idle availability retains sponsor/full cost",
+      "missing external rates withhold full charges"
+    ]
+  },
+  "native_table_replay": {
+    "basis": "Exact installed Table builder/transform functions; actual candidate probe receipt metrics plus explicit offline missing/future-zero states",
+    "models": [
+      {
+        "model": "claude-sonnet-5-5",
+        "provider": "anthropic",
+        "status": "Not measured",
+        "requests": "Unknown",
+        "input_tokens": "Unknown",
+        "output_tokens": "Unknown"
+      },
+      {
+        "model": "gpt-6-luna",
+        "provider": "openai",
+        "status": "Not measured",
+        "requests": "Unknown",
+        "input_tokens": "Unknown",
+        "output_tokens": "Unknown"
+      },
+      {
+        "model": "nemotron-3-ultra-550b-a55b",
+        "provider": "nvidia",
+        "status": "Measured",
+        "requests": 2,
+        "input_tokens": 42,
+        "output_tokens": 4
+      }
+    ],
+    "consumer_rows": 1,
+    "consumer_usage_complete": 1,
+    "monthly_fallback_tables": 12,
+    "monthly_visible_money": "Unknown; fallback value1 hidden",
+    "future_zero_vs_missing_invoice": {
+      "kind": "simulated_offline_only",
+      "cost": 0,
+      "charge": 0,
+      "invoice": "Unknown",
+      "difference": "Unknown"
+    }
+  },
+  "predeployment_live_query_checks": {
+    "read_path": "Existing RHOAI external gateway and Perses datasource proxy",
+    "auth": "Existing OpenShift CLI administrator bearer",
+    "query_count": 58,
+    "all_http_200_success": true,
+    "current_monthly_actual_money_series": 0,
+    "missing_status_metadata": "Healthy publisher / No observed report / Not measured",
+    "external_probe_live_publication": "pending; real probe values above are renderer/native-replay evidence",
+    "ui_rendering_qualified": false
+  },
+  "qualified_scope": {
+    "monthly_financial_statements": false,
+    "dedicated_live_service": false,
+    "shared_monthly_tariff_or_recovery": false,
+    "native_loki_or_external_metering": false
+  },
+  "inference_requests_by_independent_validator": 0,
+  "cluster_mutations_by_independent_validator": 0,
+  "limitations": [
+    "A bounded provider receipt is not monthly coverage, a paid tariff, an invoice, or team attribution",
+    "Future-populated monthly path has static/offline producer checks only; no live monthly report is selected",
+    "Browser readability and final deployed source/API equality remain acceptance gates"
+  ]
+}

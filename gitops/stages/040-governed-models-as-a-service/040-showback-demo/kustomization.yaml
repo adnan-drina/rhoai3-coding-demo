@@ -13,6 +13,9 @@ resources:
   - dashboard-showback-bill.yaml
   - dashboard-showback-usage.yaml
   - dashboard-showback-efficiency.yaml
+  - dashboard-offer-external.yaml
+  - dashboard-offer-dedicated.yaml
+  - dashboard-offer-shared.yaml
   - publisher-httpd.yaml
   - publisher-report.yaml
   - publisher-deployment.yaml

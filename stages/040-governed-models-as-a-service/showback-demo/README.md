@@ -66,6 +66,8 @@ Financial panels use the allocator's report, not a second cost formula. Unknown 
 
 The additional [service views](service-views/README.md) provide five platform dashboard candidates covering six requirements: consumption/team statements, dedicated efficiency, shared recovery, accounting completeness and workload quality/sourcing. They reuse the existing publisher and native LLM operational views. Private user/team JSON, CSV and readable statements use explicit operator-verified scopes; this offline export is not a self-service authorization service. Native self-only usage access and any team-manager delivery need live qualification before exposing financial data.
 
+Three additional comparison tabs use the same publisher and native Perses components: **Offer · External model**, **Offer · Dedicated private** and **Offer · Shared private**. External covers all inventoried external models and separates bounded observed request receipts from monthly category pricing, user/team charges and provider invoices. Dedicated keeps sponsor, full cost including idle and SLO evidence Unknown until a dedicated agreement is observed. Shared shows the observed bounded Qwen allocation separately from monthly tariffs, charges, subsidy and recovery. Missing financial inputs remain Unknown; metadata rows distinguish Not measured from Publisher unavailable. These are platform views, not consumer access controls. The original three dashboards and five service-view candidates are unchanged; the new views need their own deployed browser acceptance.
+
 `analysis/analyze.sh` evaluates explicitly accepted tasks, corrective retries, planned turns and fallbacks, including full service costs and human rework. Its sourcing scenarios include external commitments, private capacity steps and migration payback. Evidence must identify model profiles and prompt versions; sampled traces or successful HTTP responses cannot supply missing task outcomes. Application instrumentation and native MLflow drill-down remain qualification work, not automatic MaaS capture.
 
 ## Package contents
@@ -80,7 +82,8 @@ The additional [service views](service-views/README.md) provide five platform da
 | `collect-usage.sh`, `metering.json` | Raw range capture and offline counter/receipt reconciliation |
 | `costs.json`, `instance-intervals.example.json` | Dated prices and required lifecycle evidence |
 | `allocate.sh` | Deterministic cost allocation, JSON and CSV reports |
-| `publish-report.sh`, `generate-dashboards.sh` | Report gauges and three generated Perses dashboards |
+| `publish-report.sh`, `generate-dashboards.sh` | Report gauges and six generated Perses dashboards from separate bounded-report and offer definitions |
+| `offer-dashboard-definitions.json` | Three offer comparison views using observed data and explicit missing states; no published synthetic preview |
 | `archive.sh` | Private hashed evidence bundles; optional explicit MLflow upload |
 | `archive-index.sh` | Offline monthly continuity and selection of one correction chain per period |
 | `offers/` | Three-offer monthly accounting, exact pricing, safe unpriced input template and synthetic regression cases |

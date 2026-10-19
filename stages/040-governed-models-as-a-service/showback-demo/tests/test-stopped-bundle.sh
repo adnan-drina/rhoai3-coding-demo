@@ -19,13 +19,13 @@ if jq -e '
        and .metadata.annotations["argocd.argoproj.io/hook"]==null)
   and ([.[]|select(.kind=="Deployment")]|length)==1
   and ([.[]|select(.kind=="Deployment")][0].spec.replicas|IN(0,1))
-  and length==21
+  and length==24
   and ([.[]|select(.kind=="MaaSSubscription")]|length)==2
   and ([.[]|select(.kind=="MaaSAuthPolicy")]|length)==2
   and all(.[]|select(.kind=="MaaSSubscription" or .kind=="MaaSAuthPolicy");
       (.metadata.name|IN("team-engineering","team-support"))
       and (.spec.modelRefs|length)==1 and .spec.modelRefs[0].name=="qwen3-8-27b")
-  and ([.[]|select(.kind=="PersesDashboard")]|length)==8
+  and ([.[]|select(.kind=="PersesDashboard")]|length)==11
   and (if $replicas==0 then $report.data=={}
      else ($report.data|keys)==["metrics.prom"]
        and ($report.metadata.annotations["showback.demo.rhoai.io/report-sha256"]|test("^[a-f0-9]{64}$"))
@@ -42,7 +42,7 @@ cp -R "$COMPONENT" "$WORK_DIR/full"
 yaml_json <"$WORK_DIR/full/kustomization.yaml" | jq '.[0] | del(.components)' >"$WORK_DIR/full/kustomization.yaml.new"
 mv "$WORK_DIR/full/kustomization.yaml.new" "$WORK_DIR/full/kustomization.yaml"
 kustomize build "$WORK_DIR/full" | yaml_json >"$WORK_DIR/full.json"
-if jq -e 'length==23
+if jq -e 'length==26
   and ([.[]|select(.kind=="MaaSSubscription")]|length)==3
   and ([.[]|select(.kind=="MaaSAuthPolicy")]|length)==3
   and ([.[]|select(.kind=="MaaSAuthPolicy")|.spec.modelRefs[].name]|unique)
