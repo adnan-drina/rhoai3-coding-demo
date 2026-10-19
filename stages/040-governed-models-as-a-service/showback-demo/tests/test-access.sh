@@ -28,7 +28,7 @@ jq -e '
  all(.[]; (.spec.tokenMetadata.costCenter // .spec.meteringMetadata.costCenter)==.metadata.labels["demo.rhoai.io/team"] and
    .metadata.labels["app.kubernetes.io/part-of"]=="maas" and .metadata.labels["app.kubernetes.io/managed-by"]=="argocd")
 ' "$work/resources.json" >/dev/null
-bash "$DEMO_DIR/render-access.sh" --check "$DEMO_DIR/manifests"
+bash "$DEMO_DIR/render-access.sh" --check
 bash "$DEMO_DIR/render-access.sh" --check "$work/manifests"
 printf '\n' >> "$work/manifests/team-support-auth-policy.yaml"
 if bash "$DEMO_DIR/render-access.sh" --check "$work/manifests" >/dev/null 2>&1; then

@@ -1,0 +1,47 @@
+--- attempt1
++++ accepted
+@@ -197,6 +197,27 @@
+ expect quota_denial pass 'Backend returns hasAccess=false; no gateway-generated 429 is tested.' \
+   jq -e '.usage==1100 and .balance==0 and .overage==100 and .hasAccess==false' "$output/quota_denial.body" >/dev/null
+ 
++# The pinned handler asynchronously audits a denied balance check in the same ledger.
++# Its stored status 429 is synthetic; the HTTP response above remains 200.
++denial_filter='def is_denial:
++  .source=="metering-quota" and .provider=="gateway" and .username==$user and .model==$model and
++  (.event_id|startswith("deny-")) and .status_code==429 and .prompt_tokens==0 and
++  .completion_tokens==0 and .total_tokens==0 and (.cost_usd|tonumber)==0;
++  [.events[]|select(.source=="metering-quota")]|length==1 and all(.[];is_denial)'
++denial_recorded=false
++for attempt in 1 2 3 4; do
++    snapshot "denial-audit-$attempt"
++    if jq -e --arg user "$quota_user" --arg model "$model" "$denial_filter" \
++      "$output/denial-audit-$attempt.json" >/dev/null; then
++        denial_recorded=true
++        break
++    fi
++    sleep 1
++done
++expect denial_audit observed-limitation \
++  'The balance denial adds one zero-token audit row with stored status 429; no gateway HTTP 429 was exercised.' \
++  test "$denial_recorded" = true
++
+ event missing "$missing_user" 0 0
+ jq 'del(.data.prompt_tokens,.data.completion_tokens,.data.total_tokens,.data.cached_input_tokens,
+   .data.cache_creation_tokens,.data.reasoning_tokens)' "$output/missing.event.json" > "$output/missing-fields.event.json"
+@@ -223,9 +244,13 @@
+ snapshot after_rejections
+ expect rejected_events_not_persisted pass 'Rejected requests added no usage rows.' \
+   cmp -s "$output/before_restart.json" "$output/after_rejections.json"
+-expect raw_hourly_parity pass 'Raw events and hourly rollups agree for the synthetic users.' \
+-  jq -e '(.events|length)==4 and ([.events[].total_tokens]|add)==1340 and
+-    ([.hourly[].requests]|add)==4 and ([.hourly[].total_tokens]|add)==1340' "$output/before_restart.json" >/dev/null
++expect submitted_events pass 'Four submitted events, including the replay, account for all 1340 tokens.' \
++  jq -e '[.events[]|select(.source=="showback-local-validation")]|length==4 and
++    (map(.total_tokens)|add)==1340' "$output/before_restart.json" >/dev/null
++expect raw_hourly_parity observed-limitation \
++  'Raw and hourly counts include four submitted events plus one denial audit: five requests, not five inferences.' \
++  jq -e '(.events|length)==5 and ([.events[].total_tokens]|add)==1340 and
++    ([.hourly[].requests]|add)==5 and ([.hourly[].total_tokens]|add)==1340' "$output/before_restart.json" >/dev/null
+ 
+ # Deliberately restart only the supplied backend; never create/remove/start a VM or database here.
+ "${engine[@]}" restart --time 10 "$backend" > "$output/backend-restart.txt" 2> "$output/backend-restart.stderr"

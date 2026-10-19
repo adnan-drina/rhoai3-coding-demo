@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: showback-report-publisher
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: showback-report-publisher
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/managed-by: argocd
+spec:
+  # Offline candidate: requires reviewed report selection and authorized deployment.
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: showback-report-publisher
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: showback-report-publisher
+        app.kubernetes.io/part-of: observability
+        app.kubernetes.io/component: observability
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: publisher
+          # Registry metadata pin: stages/040-governed-models-as-a-service/showback-demo/publisher-image-evidence.json.
+          # Standard Apache serves only the prevalidated, atomically selected snapshot.
+          image: registry.access.redhat.com/ubi9/httpd-24@sha256:fc533289672190a4c61acb9840a128b15ecfebf2d05c879fcc23447e441cac4d
+          command:
+            - /usr/bin/run-httpd
+          args:
+            - -c
+            - Include /etc/showback/httpd.conf
+          ports:
+            - name: metrics
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /metrics.prom
+              port: metrics
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            # The stock image prepares its Apache/nss_wrapper config as non-root.
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: server-config
+              mountPath: /etc/showback
+              readOnly: true
+            - name: report
+              mountPath: /selected
+              readOnly: true
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: server-config
+          configMap:
+            name: showback-report-httpd
+        - name: report
+          configMap:
+            name: showback-selected-report
+        - name: temporary
+          emptyDir: {}

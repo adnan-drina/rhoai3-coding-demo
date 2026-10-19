@@ -1,0 +1,32 @@
+[1/2] STEP 1/7: FROM docker.io/library/golang@sha256:78c9e40f10516d7070156948a1747347cc5093022f06deeff3c9decd5faa3af7 AS builder
+[1/2] STEP 2/7: ENV GOTOOLCHAIN=go1.26.0
+--> Using cache 9f9699f1001f81cd669f9eb16705127c84076d5e896ebe71046b48bf270456d9
+--> 9f9699f1001f
+[1/2] STEP 3/7: WORKDIR /src
+--> Using cache ee72d0c4c1ded41df21cf6ff41ce3e21bd9dbe1bccba50f1689f472e8ff24400
+--> ee72d0c4c1de
+[1/2] STEP 4/7: COPY go.mod go.sum ./
+--> Using cache d58d2aa38921bcb3fccca2adedb369012aa2535a39bef4f55683cebdb7b48c50
+--> d58d2aa38921
+[1/2] STEP 5/7: RUN go mod download
+--> Using cache 2bf366a472aa4e1f173da9280604306af005c31c4e8fc0357e3370916aaf0dea
+--> 2bf366a472aa
+[1/2] STEP 6/7: COPY . .
+--> 35f8782801ac
+[1/2] STEP 7/7: RUN GOMAXPROCS=2 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -p=2 -trimpath -ldflags="-s -w" -o /metering-service ./cmd
+--> 0aa884d7189a
+[2/2] STEP 1/6: FROM registry.access.redhat.com/ubi9/ubi-minimal@sha256:865c6a875328a1174ff7f17599574412edd327aa47812951b9bead902806dc53
+[2/2] STEP 2/6: WORKDIR /
+--> Using cache 0dc21d2cf0e9d66a1abb2929318651d93983df77bac093a9dea264aab7f0e88f
+--> 0dc21d2cf0e9
+[2/2] STEP 3/6: COPY --from=builder /metering-service /metering-service
+--> 6a2d66f415eb
+[2/2] STEP 4/6: USER 1001
+--> 9ed4462c7fde
+[2/2] STEP 5/6: ENTRYPOINT ["/metering-service"]
+--> 9daf9192eb9f
+[2/2] STEP 6/6: LABEL "org.opencontainers.image.source"="https://github.com/noyitz/ai-gateway-metering-service" "org.opencontainers.image.revision"="f9a56b1769b0933e3fe7454a174b1f42a229f07a" "io.showback.patch.sha256"="c997048addb0afbfe25d38eb8de5ec06dca2d08e7f3414d3593737480c385a1e"
+[2/2] COMMIT localhost/showback-metering:f9a56b1-c997048addb0
+--> 34bf73af2c83
+Successfully tagged localhost/showback-metering:f9a56b1-c997048addb0
+34bf73af2c838edb000d18915b42bb5d9fbb98c97f7c9e5962b8ef7b8b8616d9

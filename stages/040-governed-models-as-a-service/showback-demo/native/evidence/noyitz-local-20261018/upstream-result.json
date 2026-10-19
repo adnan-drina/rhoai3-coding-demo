@@ -1,0 +1,38 @@
+{
+  "exit_code": 0,
+  "top_level_passed": 96,
+  "passed_including_subtests": 123,
+  "failures": [],
+  "skipped_tests": [],
+  "passed_packages": [
+    "github.com/noyitz/ai-gateway-metering-service/internal/config",
+    "github.com/noyitz/ai-gateway-metering-service/internal/handler",
+    "github.com/noyitz/ai-gateway-metering-service/internal/maasapi",
+    "github.com/noyitz/ai-gateway-metering-service/internal/pricing",
+    "github.com/noyitz/ai-gateway-metering-service/internal/storage"
+  ],
+  "packages_without_tests": [
+    "github.com/noyitz/ai-gateway-metering-service/internal/dashboard",
+    "github.com/noyitz/ai-gateway-metering-service/internal/k8s"
+  ],
+  "command": "go test -json -count=1 -p=1 -parallel=1 -timeout=5m ./internal/...",
+  "executable": "/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.linux-amd64/bin/go",
+  "environment": {
+    "GOTOOLCHAIN": "local",
+    "GOPROXY": "off",
+    "GOSUMDB": "off",
+    "GOFLAGS": "-mod=readonly",
+    "GOOS": "linux",
+    "GOARCH": "amd64",
+    "CGO_ENABLED": "0",
+    "GOMAXPROCS": "2"
+  },
+  "database_url_supplied": true,
+  "preflight_dsn_supplied": true,
+  "database_scope": "Disposable isolated PostgreSQL16.15; integration tests create/drop temporary databases; SQL preflight uses migrated schema.",
+  "initial_launcher_attempt": {
+    "exit_code": 1,
+    "evidence": "upstream-launch-attempt1.stderr",
+    "reason": "Go launcher refuses toolchain verification with GOSUMDB=off; no tests ran. Retried the same cached Go1.26.0 binary directly."
+  }
+}

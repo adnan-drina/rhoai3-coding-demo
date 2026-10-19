@@ -20,7 +20,7 @@ cat >"$WORK_DIR/bin/oc" <<'SH'
 printf '%s\n' blocked >>"$SHOWBACK_BLOCKED_TRANSPORT"
 exit 99
 SH
-for transport in curl kubectl aws wget; do cp "$WORK_DIR/bin/oc" "$WORK_DIR/bin/$transport"; done
+for transport in curl kubectl aws wget podman docker skopeo; do cp "$WORK_DIR/bin/oc" "$WORK_DIR/bin/$transport"; done
 chmod +x "$WORK_DIR/bin/"*
 export SHOWBACK_BLOCKED_TRANSPORT="$WORK_DIR/blocked-transports"
 export PATH="$WORK_DIR/bin:$PATH"
@@ -35,20 +35,29 @@ shell_sources() {
 }
 if shell_sources; then record 'Shell-only source and syntax' pass
 else record 'Shell-only source and syntax' 'Non-shell source or invalid syntax'; fi
+run_suite() {
+    local suite=$1 log="$WORK_DIR/suite.log" rc=0
+    bash "$suite" >"$log" 2>&1 || rc=$?
+    cat "$log"
+    # Some shell exits can lose their failure status during cleanup; uncaught diagnostics still fail the suite.
+    (( rc == 0 )) && ! grep -E 'unbound variable|syntax error|command not found|No such file or directory' "$log" >/dev/null
+}
 for suite in "$SCRIPT_DIR"/tests/test-*.sh; do
-    if bash "$suite"; then record "$(basename "$suite")" pass
+    if run_suite "$suite"; then record "$(basename "$suite")" pass
     else record "$(basename "$suite")" failed; fi
 done
 for suite in "$SCRIPT_DIR/analysis/test-analysis.sh" "$SCRIPT_DIR/offers/test-offers.sh" \
     "$SCRIPT_DIR/native/test-native.sh" "$SCRIPT_DIR/service-views/test-views.sh"; do
-    if [[ -f "$suite" ]] && bash "$suite"; then record "$(basename "$(dirname "$suite")") offline contract" pass
+    if [[ -f "$suite" ]] && run_suite "$suite"; then record "$(basename "$(dirname "$suite")") offline contract" pass
     else record "$(basename "$(dirname "$suite")") offline contract" failed; fi
 done
-if "$SCRIPT_DIR/render-access.sh" --check "$SCRIPT_DIR/manifests" \
+if "$SCRIPT_DIR/render-access.sh" --check \
     && "$SCRIPT_DIR/generate-dashboards.sh" --check; then record 'Generated resources match shell sources' pass
 else record 'Generated resources match shell sources' failed; fi
 if "$SCRIPT_DIR/run-workload.sh" >"$WORK_DIR/preview.json" \
-    && "$SCRIPT_DIR/run-workload.sh" --mode access-probe >"$WORK_DIR/access-preview.json"; then
+    && "$SCRIPT_DIR/run-workload.sh" --mode access-probe >"$WORK_DIR/access-preview.json" \
+    && "$SCRIPT_DIR/run-workload.sh" --scenario "$SCRIPT_DIR/qualification-qwen-only.json" \
+        >"$WORK_DIR/qwen-preview.json"; then
     record 'Previews require no transport or credentials' pass
 else record 'Previews require no transport or credentials' failed; fi
 

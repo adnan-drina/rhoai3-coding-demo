@@ -1,6 +1,6 @@
 # Service report views
 
-This offline package turns one versioned service-offer report into candidate platform financial dashboards and private, scoped statements. It reuses the existing Perses datasource and stopped static report publisher. Nothing here deploys a dashboard, starts a server, grants access or enables a preview feature.
+This offline package turns one versioned service-offer report into candidate platform financial dashboards and private, scoped statements. Canonical dashboard manifests live in `gitops/stages/040-governed-models-as-a-service/040-showback-demo/service-views/` (from the repository root), included by the optional manual-sync Application. It reuses the existing Perses datasource and stopped static report publisher. These local tools render files; deployment uses the explicit Stage 040 component entrypoint. No preview feature or consumer authorization service is enabled.
 
 | Required view | Source delivered here | Qualification still needed |
 |---|---|---|
@@ -61,6 +61,6 @@ User statements contain only explicitly user-attributed charges. They exclude te
 
 ## Offline validation
 
-Run `bash test-views.sh`. It creates synthetic service and analysis evidence, checks line/report/panel parity, rejects cross-user/team and report-hash mismatches, exercises missing coverage and zero denominators, verifies atomic failure behavior, and renders the detached Kustomize bundle. Run `bash generate-dashboards.sh --write` after editing the JSON definitions; `--check` detects stale generated YAML.
+Run `bash test-views.sh`. It creates synthetic service and analysis evidence, checks line/report/panel parity, rejects cross-user/team and report-hash mismatches, exercises missing coverage and zero denominators, verifies atomic failure behavior, and renders the canonical Kustomize bundle. Run `bash generate-dashboards.sh --write` after editing the JSON definitions; `--check` detects stale generated YAML.
 
 No cluster, provider API or inference request is used. Not validated against a live OpenShift cluster. Static and synthetic tests only.

@@ -21,7 +21,7 @@ jq -e '.[1].data["candidate.json"]|fromjson|
   .profile_candidate.profiles[0].plugins.response==[{pluginRef:"external-metering-streaming"}] and
   ([.profile_candidate.plugins[]|select(.type=="external-metering-streaming")|.parameters]==[.plugin_parameters]) and
   .plugin_parameters.meteringURL=="https://metering.invalid"' "$work/preview.json" >/dev/null
-bash "$SCRIPT_DIR/render-integration.sh" --check "$SCRIPT_DIR/manifests"
+bash "$SCRIPT_DIR/render-integration.sh" --check
 bash "$SCRIPT_DIR/render-integration.sh" --write "$work/manifests"
 for file in "$work/manifests"/*.yaml; do
     yaml_json < "$file" | jq -e 'length==1 and .[0].kind=="ConfigMap"' >/dev/null

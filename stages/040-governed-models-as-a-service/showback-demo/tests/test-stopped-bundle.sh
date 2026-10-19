@@ -4,32 +4,60 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+COMPONENT="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo"
 source "$REPO_ROOT/scripts/lib.sh"
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
-kustomize build "$SCRIPT_DIR/manifests" | yaml_json >"$WORK_DIR/bundle.json"
+kustomize build "$COMPONENT" | yaml_json >"$WORK_DIR/bundle.json"
 if jq -e '
   all(.[]; .kind!="Job" and .kind!="CronJob" and .kind!="Application"
-       and .kind!="HorizontalPodAutoscaler" and .kind!="LLMInferenceService")
+       and .kind!="Pod" and .kind!="DaemonSet" and .kind!="StatefulSet"
+       and .kind!="HorizontalPodAutoscaler" and .kind!="LLMInferenceService"
+       and .kind!="InferenceService" and .kind!="MaaSModelRef"
+       and .metadata.annotations["argocd.argoproj.io/hook"]==null)
   and ([.[]|select(.kind=="Deployment")]|length)==1
   and all(.[]|select(.kind=="Deployment"); .spec.replicas==0)
+  and length==21
+  and ([.[]|select(.kind=="MaaSSubscription")]|length)==2
+  and ([.[]|select(.kind=="MaaSAuthPolicy")]|length)==2
+  and all(.[]|select(.kind=="MaaSSubscription" or .kind=="MaaSAuthPolicy");
+      (.metadata.name|IN("team-engineering","team-support"))
+      and (.spec.modelRefs|length)==1 and .spec.modelRefs[0].name=="qwen3-8-27b")
+  and ([.[]|select(.kind=="PersesDashboard")]|length)==8
+  and any(.[]; .kind=="ConfigMap" and .metadata.name=="showback-selected-report" and .data=={})
+  and ([.[]|select(.kind=="ConfigMap" and .metadata.annotations["demo.rhoai.io/state"]=="inert-review-inputs")]|length)==2
+  ' "$WORK_DIR/bundle.json" >/dev/null; then
+    record 'Optional bundle cannot start models, publisher or scheduled load' pass
+else record 'Optional bundle cannot start models, publisher or scheduled load' 'Unexpected workload'; fi
+
+# The explicit qualification component narrows activation; the original generated scenario stays reusable.
+cp -R "$COMPONENT" "$WORK_DIR/full"
+yaml_json <"$WORK_DIR/full/kustomization.yaml" | jq '.[0] | del(.components)' >"$WORK_DIR/full/kustomization.yaml.new"
+mv "$WORK_DIR/full/kustomization.yaml.new" "$WORK_DIR/full/kustomization.yaml"
+kustomize build "$WORK_DIR/full" | yaml_json >"$WORK_DIR/full.json"
+if jq -e 'length==23
   and ([.[]|select(.kind=="MaaSSubscription")]|length)==3
   and ([.[]|select(.kind=="MaaSAuthPolicy")]|length)==3
-  and ([.[]|select(.kind=="PersesDashboard")]|length)==3' "$WORK_DIR/bundle.json" >/dev/null; then
-    record 'Detached bundle cannot start models, publisher or scheduled load' pass
-else record 'Detached bundle cannot start models, publisher or scheduled load' 'Unexpected workload'; fi
-kustomize build "$SCRIPT_DIR/model-drafts/mistral" | yaml_json >"$WORK_DIR/mistral.json"
+  and ([.[]|select(.kind=="MaaSAuthPolicy")|.spec.modelRefs[].name]|unique)
+      ==["mistral-small4-119b","qwen3-8-27b"]
+  and any(.[]; .kind=="RoleBinding" and .metadata.namespace=="showback-reporting"
+      and .roleRef=={apiGroup:"rbac.authorization.k8s.io",kind:"ClusterRole",name:"edit"}
+      and .subjects==[{apiGroup:"rbac.authorization.k8s.io",kind:"Group",name:"rhods-admins"}])' \
+    "$WORK_DIR/full.json" >/dev/null; then
+    record 'Full generated scenario retained; archive grant is namespaced for rhods-admins' pass
+else record 'Full generated scenario retained; archive grant is namespaced for rhods-admins' 'Scenario or grant differs'; fi
+kustomize build "$COMPONENT/model-drafts/mistral" | yaml_json >"$WORK_DIR/mistral.json"
 if jq -e 'any(.[]; .kind=="LLMInferenceService" and .spec.replicas==0)
   and any(..|objects; .sectionName?=="api")' "$WORK_DIR/mistral.json" >/dev/null; then
     record 'Mistral candidate remains stopped' pass
 else record 'Mistral candidate remains stopped' 'Invalid draft'; fi
 
-# Keep the detached bundle ready for review without relaxing repository manifest rules.
+# Keep the optional bundle ready for review without relaxing repository manifest rules.
 manifest_conventions() {
     local file
-    for file in "$SCRIPT_DIR"/manifests/*.yaml "$SCRIPT_DIR"/model-drafts/mistral/*.yaml; do
+    while IFS= read -r file; do
         yaml_json <"$file" | jq -e 'length == 1' >/dev/null || return 1
-    done
+    done < <(find "$COMPONENT" -type f -name '*.yaml')
     jq -es 'add | all(.[];
       .metadata.labels as $labels
       | ($labels["app.kubernetes.io/name"]|type)=="string"
@@ -61,11 +89,34 @@ if jq -e 'any(.[]; .kind=="LLMInferenceService" and .spec.replicas==0)
   and any(..|objects; .name?=="VLLM_USE_DEEP_GEMM")' "$WORK_DIR/qwen.json" >/dev/null; then
     record 'Qwen FP8 component preserves stopped state' pass
 else record 'Qwen FP8 component preserves stopped state' 'Invalid component'; fi
-if grep -Rl --include='*.yaml' 'showback-demo' "$REPO_ROOT/gitops" >"$WORK_DIR/references"; then
-    record 'Active GitOps does not reference showback-demo' 'Found active reference'
-else
-    result=$?
-    if (( result == 1 )); then record 'Active GitOps does not reference showback-demo' pass
-    else record 'Active GitOps does not reference showback-demo' 'Unable to inspect GitOps'; fi
-fi
+yaml_json <"$REPO_ROOT/gitops/applications/040-showback-demo.yaml" >"$WORK_DIR/app.json"
+if jq -e '.[0] | .metadata.annotations["demo.rhoai.io/optional"]=="true"
+    and .metadata.annotations["demo.rhoai.io/deploy-order"]==null
+    and (.metadata.annotations["demo.rhoai.io/deploy-script"]|endswith("--component 040-showback-demo"))
+    and .spec.syncPolicy.automated==null and .operation==null
+    and (.metadata.finalizers // []|index("resources-finalizer.argocd.argoproj.io"))==null
+    and .spec.source.path=="gitops/stages/040-governed-models-as-a-service/040-showback-demo"' \
+    "$WORK_DIR/app.json" >/dev/null; then
+    record 'Optional Application requires an explicit manual sync' pass
+else record 'Optional Application requires an explicit manual sync' 'Activation contract differs'; fi
+
+# A component may reference shared services, but it must never become their second owner.
+if jq -e 'all(.[];
+    (.kind!="Namespace" or .metadata.name=="showback-reporting")
+    and (.kind|IN("Gateway","HTTPRoute","DataScienceCluster","DSCInitialization","OdhDashboardConfig",
+      "MaasTenantConfig","Config","MachineSet","ClusterQueue","ResourceFlavor","LokiStack")|not)
+    and (.kind!="ConfigMap" or .metadata.name!="payload-processing-plugins"))' "$WORK_DIR/bundle.json" >/dev/null; then
+    record 'Shared platform and model resources keep their existing owners' pass
+else record 'Shared platform and model resources keep their existing owners' 'Found shared resource owner'; fi
+
+for component in "$REPO_ROOT"/gitops/stages/040-governed-models-as-a-service/040-*/; do
+    [[ "${component%/}" == "$COMPONENT" ]] && continue
+    kustomize build "$component" | yaml_json
+done | jq -s 'add' >"$WORK_DIR/other-components.json"
+if jq -ne --slurpfile bundle "$WORK_DIR/bundle.json" --slurpfile other "$WORK_DIR/other-components.json" '
+    def identities: map([(.apiVersion|split("/")|if length>1 then .[0] else "" end),.kind,
+      (.metadata.namespace // "openshift-gitops"),.metadata.name]|join(":"));
+    ($bundle[0]|identities) as $b | ($other[0]|identities) as $o | ($b - ($b-$o))==[]' >/dev/null; then
+    record 'Optional objects are disjoint from every other Stage 040 component' pass
+else record 'Optional objects are disjoint from every other Stage 040 component' 'Duplicate object owner'; fi
 validation_summary

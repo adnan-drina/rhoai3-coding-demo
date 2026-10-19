@@ -1,0 +1,11 @@
+Created private service statement: /var/folders/sp/02z541qj3cdf4v1wjd5vlxtc0000gn/T/tmp.c0BQIhzh7U/statement.json
+Native tests passed: inert inputs, schema metadata checks, snapshot hash binding, direct service reporting, identity/quarantine, source+id replay, categories and strict stream completeness.
+[0;32m[PASS][0m Detached bundle cannot start models, publisher or scheduled load
+[0;32m[PASS][0m Mistral candidate remains stopped
+[0;32m[PASS][0m One resource per file and functional ownership labels
+[0;32m[PASS][0m Qwen FP8 component preserves stopped state
+[0;32m[PASS][0m Active GitOps does not reference showback-demo
+
+VALIDATION: 5 passed, 0 warnings, 0 failed (total: 5)
+BACKLOG.md: OK
+stages/040-governed-models-as-a-service/README.md: OK

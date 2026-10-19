@@ -1,0 +1,1 @@
+Remote podman rm rejected unsupported --storage; no resource removed by that failed command. After a brief VM restart, the supported rm --force removed the exact owned aborted build container. All cleanup receipts are retained.

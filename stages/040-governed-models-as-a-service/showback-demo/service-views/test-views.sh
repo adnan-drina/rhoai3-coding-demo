@@ -4,8 +4,11 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$PACKAGE_DIR/../../.." && pwd)"
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
+# Bash 3.2 can reset a fatal unset-variable exit to zero while running an EXIT cleanup.
+completed=false
+trap 'result=$?; [[ "$completed" == true ]] || result=1; rm -rf "$WORK"; exit "$result"' EXIT
 passed=0
 pass() { passed=$((passed + 1)); printf 'PASS %s\n' "$1"; }
 reject() {
@@ -149,8 +152,10 @@ reject 'ambiguous duplicate keys rejected' render "$WORK/duplicates.json" "$WORK
 jq '.period.start="2026-09-01T00:00:00Z"' "$WORK/advice.json" > "$WORK/wrong-advice.json"
 reject 'advice period mismatch rejected' bash "$SCRIPT_DIR/render-report.sh" --report "$WORK/report.json" \
     --analysis "$WORK/wrong-advice.json" --output "$WORK/wrong.prom"
-bash "$SCRIPT_DIR/generate-dashboards.sh" --check
-kustomize build "$SCRIPT_DIR/manifests" > "$WORK/dashboards.yaml"
+bash "$SCRIPT_DIR/generate-dashboards.sh" --check || { printf '%s\n' 'FAIL dashboard generator check' >&2; exit 1; }
+kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo/service-views" > "$WORK/dashboards.yaml" || {
+    printf '%s\n' 'FAIL service dashboard render' >&2; exit 1;
+}
 ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' \
     < "$WORK/dashboards.yaml" > "$WORK/dashboards.json"
 jq -e 'length==5 and all(.[];.kind=="PersesDashboard" and .metadata.labels["app.kubernetes.io/part-of"]=="observability"
@@ -162,3 +167,4 @@ jq -e 'all(.[]|.spec.config.panels[];.spec.plugin.kind=="StatChart" and .spec.pl
 ! rg 'kind: (Deployment|Service|RoleBinding|ClusterRoleBinding)' "$WORK/dashboards.yaml" >/dev/null
 pass 'five detached platform dashboards render with current gauges and no fabricated access or server'
 printf '%s service-view tests passed. Synthetic offline validation only.\n' "$passed"
+completed=true

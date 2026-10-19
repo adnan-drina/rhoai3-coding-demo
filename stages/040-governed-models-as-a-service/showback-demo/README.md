@@ -1,8 +1,10 @@
 # MaaS service offers and three-team showback demo
 
-This package implements the question “What did AI cost us this quarter?” using two shared private models, governed team identities and an explicit allocation policy. **Implemented and tested offline; not deployed or qualified on the live models.** All candidate manifests are detached from the active GitOps applications. The existing `../showback/` platform utilities remain unchanged.
+This package implements the question “What did AI cost us this quarter?” using two shared private models, governed team identities and an explicit allocation policy. **Implemented and tested offline; not deployed or qualified on the live models.** Its canonical manifests belong to the optional, manual-sync [040-showback-demo component](../../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/README.md). The default Stage 040 deployment still deploys its eight ordered components; this ninth component requires explicit selection. The existing `../showback/` platform utilities remain unchanged.
 
 The package also implements **offline monthly accounting for three service offers**: external provider pass-through, dedicated private managed capacity and shared private inference priced per token. Native Loki showback and external-metering integration inputs are retained as inert review artifacts, with a captured-event importer; they are not enabled or deployed. The [plan](PLAN.md) distinguishes implemented source from native/downstream qualification and remaining live work. The bounded allocation policy and stopped state below are unchanged.
+
+For implementation-agent transfer, use the [preparation report and implementation handoff](IMPLEMENTATION-HANDOFF.md). It consolidates the prepared artifacts, source authority, dated validation evidence, remaining gaps and phased environment implementation/rollback gates.
 
 ## Service offers
 
@@ -14,7 +16,9 @@ The package also implements **offline monthly accounting for three service offer
 
 `offers/service-report.sh` produces versioned JSON/CSV statements for UTC calendar months, keeping costs, charges and recovery separate. Its editable `month.example.json` is intentionally unpriced and incomplete; fixture prices are synthetic and cannot become observed rates. Corrections replace a prior statement through a hash-linked revision. The existing bounded allocator is a separate report mode.
 
-`native/` reuses source contracts for newer MaaS Loki showback and IPP external metering. Its renderer emits only ConfigMaps containing candidate configuration documents, never live Config/LokiStack resources or gateway hooks. The source review found incompatible upstream/downstream assumptions, including a logging flag that is not reliably an off switch and an unqualified metering backend. Matching installed schemas, artifact pins and supported integration still need review. See [native integration](native/README.md) before promotion; no product support is claimed for a linked development backend.
+`native/` binds MaaS Loki showback and IPP external metering to the installed RHOAI 3.5.1 schemas and image revisions. The Loki 6.6.1 candidate has a matching image-bound schema, explicit storage class and 30-day retention. Its renderer emits only ConfigMaps containing candidate documents, never live Config/LokiStack resources or gateway hooks. In this installed release, `usageLogging` enables/removes the owned logging pipeline; the separately owned store remains independent. The pinned Noyitz development backend has an original local build plus a [reviewable correction patch](native/backend/README.md) for replay deduplication, missing usage and database health. The [original evidence](native/evidence/noyitz-local-20261018/README.md) remains unchanged; the [2026-10-19 correction evidence](native/evidence/noyitz-local-20261019/README.md) records the rebuilt artifact, 115 top-level Go tests and 93 runtime checks. It is not published, deployed or connected to MaaS. Native pricing and completeness limits still prevent treating its dashboard totals as our financial ledger. See [native integration](native/README.md); no product support is claimed for the development backend.
+
+The current Application root enables a **Qwen-only qualification slice** through `components/qwen-only`: Engineering and Support access the existing Qwen NVFP4 model. Marketing and all active Mistral references are removed from the render. [qualification-qwen-only.json](qualification-qwen-only.json) bounds this run to six minutes, 24 requests and tiny synthetic prompts; it does not qualify the full FP8/Mistral scenario below. The full `scenario.json` and generated access files are preserved for later qualification.
 
 ## Scenario
 
@@ -65,6 +69,8 @@ The additional [service views](service-views/README.md) provide five platform da
 | Source | Purpose |
 |---|---|
 | `scenario.json`, `render-access.sh` | Workloads, user/subscription mapping and generated access policies |
+| `qualification-qwen-only.json` | Six-minute Engineering/Support qualification profile for the existing Qwen NVFP4 owner |
+| `qualify-qwen-identities.sh` | Explicit creation of two new demo identities through the existing SSO authority, genuine OpenShift login and owner-created ephemeral MaaS keys; private recovery evidence only |
 | `run-workload.sh` | Preview by default; bounded HTTP only with explicit execution |
 | `collect-usage.sh`, `metering.json` | Raw range capture and offline counter/receipt reconciliation |
 | `costs.json`, `instance-intervals.example.json` | Dated prices and required lifecycle evidence |
@@ -74,16 +80,18 @@ The additional [service views](service-views/README.md) provide five platform da
 | `archive-index.sh` | Offline monthly continuity and selection of one correction chain per period |
 | `offers/` | Three-offer monthly accounting, exact pricing, safe unpriced input template and synthetic regression cases |
 | `native/` | Pinned source contracts, inert Loki/metering integration inputs and local captured-event normalization |
-| `service-views/` | Five detached financial dashboards, snapshot metrics and private scoped statements |
+| `service-views/` | Generators for five financial dashboards, snapshot metrics and private scoped statements |
 | `analysis/` | Accepted-task economics and capacity/quality-bounded sourcing advice |
-| `manifests/` | Detached access, dashboard, stopped publisher and evidence-workspace bundle |
-| `model-drafts/` | Separate stopped Mistral candidate and Qwen FP8/stop component |
+| `gitops/stages/040-governed-models-as-a-service/040-showback-demo/` (repository root) | Canonical access, dashboard, stopped publisher and evidence-workspace manifests; nested `service-views/` and inert `native-inputs/` are included |
+| Canonical `model-drafts/mistral/`; local `model-drafts/qwen-fp8/` | Mistral candidate excluded from the component render; Qwen FP8/stop component remains a shared-model owner dependency |
 | `fixtures/`, `tests/`, `validate.sh` | Clearly labelled synthetic evidence and offline verification |
 
 See [OPERATIONS.md](OPERATIONS.md) for local commands, prerequisites, evidence formats and failure handling, and [PLAN.md](PLAN.md) for research and acceptance gates. Operator tools and tests are Bash scripts using the repository's `jq`, `curl`, Ruby YAML conversion and checksum tools. Kustomize renders the candidate manifests. Operator commands require no Python interpreter or SDK; the native vLLM container runtime is unchanged.
 
 ## Containment and review
 
-No active Argo CD application, stage deploy script, existing dashboard or live resource is changed by this package. There is no deployment entrypoint. Later promotion must preserve existing consumers and replica/registry delegation, qualify models, verify identity and limiter labels, and obtain deployment authorization. The `showback-reporting` workspace grant is a candidate namespaced binding for platform administrators; users and API keys remain prerequisites, not committed credentials.
+`deploy.sh --component 040-showback-demo` uses the normal reviewed published-revision selection, adoption preflight, apply, sync and wait flow. Its publisher remains at zero replicas with an empty report, native inputs are inert, and Mistral is excluded. The Application has no automated sync. Broad validation prints `SKIP 040-showback-demo (not activated)` while absent; once present it must pass the same revision, source, sync and health checks as other components. Explicit `--component` validation requires presence. The Qwen-only Component removes active Mistral access dependencies; no degraded health is accepted. Source preparation is not live deployment evidence.
+
+Later execution must preserve existing consumers and replica/registry delegation, qualify models, verify identity and limiter labels, and obtain deployment authorization. Demo-owned resources stay concentrated in this component; shared Qwen, GPU, MaaS and IPP fields retain their existing owners and require reviewed integration. The `showback-reporting` workspace grant is a candidate namespaced binding for platform administrators; users and API keys remain prerequisites, not committed credentials.
 
 Private evidence is written with restricted permissions and must stay outside Git. Fixture usage is synthetic and visibly labelled; it cannot prove live attribution or a quarter's history. Local archives request 400-day retention but do not enforce storage lifecycle policy. Monthly correction/continuity indexing and supplied full-cost inputs are implemented offline; automatic collection/close, actual invoices and enforced retention remain qualification work. No new billing server or dashboard engine is deployed.

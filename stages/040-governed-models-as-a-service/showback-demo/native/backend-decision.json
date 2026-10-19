@@ -1,13 +1,62 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-10-16",
-  "decision": "Use the shipped example's Noyitz service as the source-level reference contract; no deployable backend image is selected.",
+  "reviewed_at": "2026-10-19",
+  "decision": "Official RHOAI 3.5 documentation leaves the backend installation reference unresolved. The installed IPP example identifies OpenMeter as an integration target and Noyitz as the development testing backend. The original pinned Noyitz build and its observed limitations are retained. A local derivative containing the reviewed correctness patch was built and validated locally on 2026-10-19, with patch/image-bound Go and runtime evidence. This does not approve publication, cluster deployment or financial completeness. Keep the deployment selection unset pending integration qualification.",
+  "selection": {
+    "strategy": "official-documentation-and-upstream-source",
+    "status": "noyitz-local-correction-validated-gateway-unqualified",
+    "name": null,
+    "image": null
+  },
+  "research_verified_at": "2026-10-18",
+  "official_documentation_review": {
+    "checked_at": "2026-10-18",
+    "scope": "RHOAI 3.5 Developer Preview release notes, complete 143-page MaaS book and HTML chapter, installation/component chapter, model-server configuration, and official-linked companion platform/observability pages.",
+    "findings": [
+      "Release notes section 4.1 describes an IPP plugin and PostgreSQL-backed service, plus a separate BBR integration entry. Neither entry supplies a backend image, Operator, chart, manifest or installation link.",
+      "MaaS sections 1.8 and 1.18 document observability, usage views and CSV export; they do not install an external metering service. Section 1.5 configures the API-key database, a separate concern.",
+      "No external metering backend installation reference was found in the reviewed installation/model-serving chapters or companion platform/observability pages.",
+      "This is a documentation gap in the reviewed sources, not proof that no backend artifact exists. Developer Preview status does not establish a supported production backend."
+    ],
+    "actionable_documented_path": "For showback, configure dashboard observability, Kuadrant monitoring and tenant telemetry, then view/filter Usage and export CSV. Verify fields against the installed schema. Backend selection remains unresolved.",
+    "sources": [
+      "https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/release_notes/developer-preview-features_relnotes",
+      "https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service",
+      "https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/pdf/govern_llm_access_with_models-as-a-service/Red_Hat_OpenShift_AI_Self-Managed-3.5-Govern_LLM_access_with_Models-as-a-Service-en-US.pdf",
+      "https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install",
+      "https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/configuring_your_model-serving_platform/configuring-model-servers_rhoai-admin",
+      "https://rh-aiservices-bu.github.io/rhoai-maas-guide/modules/main/02-platform-config.html",
+      "https://rh-aiservices-bu.github.io/rhoai-maas-guide/modules/main/03-maas-platform.html",
+      "https://rh-aiservices-bu.github.io/rhoai-maas-guide/modules/main/07-observability.html"
+    ]
+  },
   "reference_backend": "noyitz-development",
   "deployable_backend": null,
   "activation_allowed": false,
   "live_qualified": false,
   "product_backend_verified": false,
   "support_boundary": "RHOAI 3.5 external metering is Developer Preview. The linked development service is community source, not a verified Red Hat product backend.",
+  "upstream_trace": {
+    "repository": "https://github.com/opendatahub-io/ai-gateway-payload-processing",
+    "current_main_commit": "0138be54eae504e9370d6c87796cfaf0e211ba45",
+    "initial_proposal": "PR 320 was closed without merging. Its closing comment explicitly identifies PR 332 as its merged successor; the original bundled-service proposal is not evidence that a backend shipped in the IPP image.",
+    "merged_pr": "https://github.com/opendatahub-io/ai-gateway-payload-processing/pull/332",
+    "merge_commit": "b3343c0c682ab5cf45c5d1d41c0684547f6585f6",
+    "merged_at": "2026-07-08T14:12:24Z",
+    "installed_ancestry": "GitHub compare reports the installed downstream a98a2650e74f8b832ff75206f795cbb62b9cd688 as 202 commits ahead, zero behind, with b3343c0c682ab5cf45c5d1d41c0684547f6585f6 as merge base.",
+    "unchanged_source_blobs": {
+      "scope": "These three files have identical Git blob IDs at installed downstream a98a2650 and upstream main 0138be54; this does not assert equivalence of the entire repositories.",
+      "pkg/plugins/external-metering/plugin.go": "0e06f0a3e18773c9232301eb253c1de3a60df1dd",
+      "pkg/plugins/external-metering/client.go": "2ea5b52e9596da0a206e5a4fffa5517f945d6999",
+      "deploy/examples/external-metering/README.md": "eab2918f6a60e1a4a268010bad5eee164f63b173"
+    },
+    "example_roles": {
+      "openmeter": "Named integration target with a Helm quickstart link. No pinned version, configured meter/customer/entitlement, authentication or end-to-end qualification is established by that example.",
+      "noyitz": "Explicitly linked under Testing with the Development Metering Service, for testing without OpenMeter. This is the source-backed reference candidate, not a Red Hat backend image or an approved deployment.",
+      "pricetag": "Not linked by the installed or current upstream IPP example. Its own SOURCE-MAP and Git ancestry establish continuation of the Noyitz service history; that relationship does not establish RHOAI support or installed compatibility."
+    },
+    "unmerged_followups": "As checked on 2026-10-18, upstream PR 386 (organization/cost-center fields) and PR 442 (Kafka delivery) remain open and unmerged; neither is part of this installed source contract."
+  },
   "ipp": {
     "repository": "https://github.com/red-hat-data-services/ai-gateway-payload-processing",
     "commit": "a98a2650e74f8b832ff75206f795cbb62b9cd688",
@@ -65,56 +114,125 @@
     "id": "noyitz-development",
     "repository": "https://github.com/noyitz/ai-gateway-metering-service",
     "commit": "f9a56b1769b0933e3fe7454a174b1f42a229f07a",
-    "source_role": "The exact shipped IPP example links this repository for testing without OpenMeter.",
-    "api_compatibility": "Source verified: matching GET path and response fields; POST accepts the generated JSON fields and returns 204; neither handler is behind the dashboard authentication wrapper.",
+    "source_role": "Reference candidate identified by the exact shipped and current upstream IPP examples for testing without OpenMeter. It is not the selected approved backend; this historical source remains unchanged at f9a56b while PriceTag continues its history.",
+    "api_compatibility": "The unpatched source has matching GET and POST paths; neither handler is behind dashboard authentication. The local derivative preserves these paths and adds strict event validation and replay conflict responses. Its compatibility with actual installed IPP delivery remains unqualified.",
     "published_reference": "ghcr.io/noyitz/ai-gateway-metering-service:latest",
     "verified_image_digest": null,
-    "registry_metadata_result": "unauthorized; credentials or public access unavailable in this check, not evidence that the image does not exist",
+    "registry_metadata_result": "Advertised latest reference checked anonymously on 2026-10-18: unauthorized; credentials or public access unavailable, not evidence that the image does not exist. No source-bound backend digest was verified.",
     "build": {
+      "scope": "Historical unpatched source build, 2026-10-18; retained unchanged. See local_correction for the newer derivative.",
       "dockerfile": "Dockerfile",
       "builder_base": "golang:1.25-alpine",
       "runtime_base": "registry.access.redhat.com/ubi9/ubi-minimal:9.5",
-      "base_digests_verified": false,
+      "base_digests_verified": true,
+      "base_metadata_checked_at": "2026-10-18",
+      "builder_linux_amd64_digest": "sha256:78c9e40f10516d7070156948a1747347cc5093022f06deeff3c9decd5faa3af7",
+      "runtime_linux_amd64_digest": "sha256:865c6a875328a1174ff7f17599574412edd327aa47812951b9bead902806dc53",
+      "proposed_builder_reference": "docker.io/library/golang@sha256:78c9e40f10516d7070156948a1747347cc5093022f06deeff3c9decd5faa3af7",
+      "proposed_runtime_reference": "registry.access.redhat.com/ubi9/ubi-minimal@sha256:865c6a875328a1174ff7f17599574412edd327aa47812951b9bead902806dc53",
+      "proposed_toolchain": "Executed with GOTOOLCHAIN=go1.26.0; retained binary build information confirms Go 1.26.0.",
+      "base_metadata_limit": "The derived Containerfile pins the verified platform digests. Layers were downloaded and built locally on 2026-10-18; upstream source was unchanged. This is a community backend build, not a Red Hat product operand.",
       "go_module_requires": "1.26.0",
       "toolchain": "GOTOOLCHAIN=auto may download Go 1.26 despite the Go 1.25 builder tag; module and toolchain access are prerequisites.",
       "target": "CGO_ENABLED=0 GOOS=linux GOARCH=amd64; binary ./cmd; runtime UID 1001",
-      "execution_performed": false,
-      "artifact_prerequisite": "Obtain authorized access to a published image and verify its digest/source binding, or build this exact source with reviewed pinned bases/toolchain, publish it to an accessible registry, and record its immutable digest. Neither has been done."
+      "execution_performed": true,
+      "evidence": "evidence/noyitz-local-20261018/summary.json",
+      "local_reference": "localhost/showback-metering:f9a56b1769b0933e3fe7454a174b1f42a229f07a",
+      "local_image_config_id": "sha256:a1dacdd86d72736e82b4e126a506940cc44b64dd5734a1d8ac37dd538aeed7a9",
+      "exported_oci_manifest_digest": "sha256:c96ead9bccfe344f49b27628016fed20d843b1e0ebc816878c6ce214785d2b00",
+      "published": false,
+      "artifact_prerequisite": "Local build evidence establishes this candidate artifact only. Publication and OpenShift/IPP integration remain separate, unauthorized steps; neither is implied by local runtime checks."
+    },
+    "local_correction": {
+      "status": "validated-locally-gateway-unqualified",
+      "built_at": "2026-10-19",
+      "base_source_commit": "f9a56b1769b0933e3fe7454a174b1f42a229f07a",
+      "patch": "backend/0001-metering-correctness.patch",
+      "patch_sha256": "c997048addb0afbfe25d38eb8de5ec06dca2d08e7f3414d3593737480c385a1e",
+      "local_reference": "localhost/showback-metering:f9a56b1-c997048addb0",
+      "local_image_config_id": "sha256:34bf73af2c838edb000d18915b42bb5d9fbb98c97f7c9e5962b8ef7b8b8616d9",
+      "exported_oci_manifest_digest": "sha256:ff3eb4b2759460150c35b3622ee8ef2668c75ff95b62f78bf1d53cfc99820931",
+      "target": "Linux amd64; Go 1.26.0; pinned builder/runtime bases retained from the original build route.",
+      "published": false,
+      "evidence": "evidence/noyitz-local-20261019/summary.json",
+      "evidence_notes": "evidence/noyitz-local-20261019/README.md",
+      "validation": {
+        "go_tests": "passed",
+        "go_top_level_tests": 115,
+        "go_test_cases_including_subtests": 201,
+        "go_failures": 0,
+        "go_skips": 0,
+        "local_runtime_probes": "passed",
+        "runtime_passed_checks": 93,
+        "runtime_observed_limitations": 2,
+        "runtime_exit_code": 0,
+        "postgresql": "PostgreSQL 15+ required by NULLS NOT DISTINCT; local Go and runtime validation passed on PostgreSQL 16. PostgreSQL 15 was not separately tested.",
+        "gateway_integration": "not performed",
+        "cluster_deployment": "not performed"
+      },
+      "implemented_changes": [
+        "Unique source/event_id and transactional insert/rollup handling: identical JSONB payload replay is a no-op; changed payload or unverifiable legacy history is a conflict. JSONB comparison preserves semantic content and unknown fields, not original whitespace or key order.",
+        "Require CloudEvents 1.0, a supported event type, explicit valid timestamp and identity, and six explicit non-null nonnegative int32 counters for usage. Reject total below prompt plus completion, trailing JSON, recursive duplicate keys and case aliases of known fields; do not manufacture totals or timestamps.",
+        "Retain token-less native error events with raw_event, usage_complete=false and NULL raw cost. Explicit zero usage remains complete; migrated legacy rows keep NULL completeness and raw payload rather than invented evidence.",
+        "Both health endpoints check the primary database with a one-second deadline; event insertion has a two-second deadline. Local probes observed health/readiness 503 during database outage and 200 after recovery, with failed ingestion returning 500 within the bound.",
+        "Migration refuses existing duplicate source/event_id history without deleting rows. Reconcile that history explicitly before migration; never rewrite the retained original probe evidence."
+      ]
     },
     "runtime": {
+      "scope": "Historical unpatched runtime, validated locally on 2026-10-18; local_correction describes the separately validated newer derivative.",
       "http_port": 8080,
       "required_env": ["DATABASE_URL"],
       "optional_port_env": "PORT",
       "database": "PostgreSQL 14+ per README; startup connects and migrates schema. The example references rhel9/postgresql-16:latest on port 5432, with no verified digest or persistent volume; do not apply that example as a durable ledger.",
       "probes": ["/health", "/ready"],
-      "probe_limit": "Both handlers return 200; they do not demonstrate ongoing database or ledger health.",
+      "probe_limit": "Observed locally: both handlers remain 200 during database outage while entitlement returns 500. They do not demonstrate ongoing database or ledger health.",
+      "local_validation": "evidence/noyitz-local-20261018/summary.json; local API, database integration, restart and outage checks only. IPP/gateway integration remains unqualified.",
       "quota": "Actual config uses MONTHLY_TOKEN_QUOTA, default 100000000; the example sets 10000000000. Zero falls back to the default, despite stale README text about TOKEN_QUOTA=0. Dollar quota decisions also affect hasAccess. Review and test these before activation.",
       "optional_integrations": "Kubernetes catalog and key-service integrations remain off without their explicit environment configuration. They are not required for the metering wire contract."
     },
-    "accounting_limits": [
+    "historical_unpatched_accounting_limits": [
       "The ingestion handler accepts missing numeric fields as zero and invalid timestamps as the current time; it does not qualify billing categories or stream completion.",
-      "At this source pin the usage_events table has no event-id uniqueness constraint and InsertEvent has no deduplication. Replay cannot be assumed safe.",
+      "At this source pin the usage_events table has no event-id uniqueness constraint and InsertEvent has no deduplication. Local replay testing observed two stored rows and doubled entitlement usage for an identical event.",
+      "A denied entitlement GET asynchronously inserts a zero-token metering-quota audit row with stored status 429 and increments hourly request totals. Local testing observed this despite the entitlement HTTP response being 200; ledger row counts are not inference request counts.",
       "The database flattens events and does not retain the full original CloudEvent or duration_ms; a lossless export/capture path for this demo has not been verified.",
       "Startup fetches mutable community LiteLLM prices and seeds hosted-model rates separately. Those dashboard costs are not our sourced provider rates, GPU cost allocation or prospective private tariffs.",
+      "The backend subtracts cached input from prompt tokens without selecting provider semantics; raw Anthropic uncached-input counts need separate normalization. Unknown model prices fall back to generic rates, so backend monetary totals are not fail-closed financial evidence.",
       "Use retained source events and the existing fail-closed importer/report contracts for financial statements; backend aggregates do not replace their completeness and reconciliation evidence."
+    ],
+    "accounting_limits": [
+      "The local derivative's replay, raw-event, strict-usage and health corrections passed Go tests and patch/image-bound local probes. The original unpatched findings are retained separately as history; local validation does not qualify financial completeness or actual gateway integration.",
+      "Raw JSONB records preserve semantic event content, including extensions. A qualified capture/export path to the existing importer is still absent; byte-for-byte original wire formatting is not retained.",
+      "Incomplete error rows retain NULL raw cost and usage_complete=false. Legacy rows retain unknown completeness. Numeric hourly aggregates use zero arithmetic sentinels and include audit requests, so they cannot establish billing completeness or inference request counts.",
+      "Denied entitlement GETs still create zero-token metering-quota audit rows with stored status 429. This is not evidence that a gateway emitted HTTP 429.",
+      "Mutable community pricing, separately seeded hosted-model rates, generic unknown-price fallbacks and provider-independent cache subtraction remain unchanged. Backend monetary totals are not the authority for sourced provider rates, GPU allocation or private tariffs.",
+      "Actual IPP delivery, stream completion, outage/loss handling, identity mapping, export, provider invoice reconciliation and financial completeness remain unqualified. Use the existing fail-closed importer/report contracts for financial statements."
     ]
   },
   "alternative": {
     "id": "pricetag-development",
     "repository": "https://github.com/redhat-et/pricetag-metering",
-    "commit": "93374d909b0cbceda172d7487f09d5babb9fa710",
-    "product_status": "community development service; not a verified downstream RHOAI product backend",
+    "commit": "586356a1844d2e18dee602068bf43512fd3b49c6",
+    "previously_reviewed_commit": "93374d909b0cbceda172d7487f09d5babb9fa710",
+    "product_status": "community metering service and dashboard; not a verified downstream RHOAI product backend",
+    "lineage": {
+      "source_map": "SOURCE-MAP.md explicitly identifies historical noyitz/ai-gateway-metering-service as its migrated source, retaining original service history.",
+      "snapshot_commit": "8a6eadb2216642b00c3779e87749d56c8f05d64c",
+      "history_preservation_commit": "b979c75c50d22c3cd01abf9e7e96f27021a6d1ad",
+      "history_parents": ["8a6eadb2216642b00c3779e87749d56c8f05d64c", "f9a56b1769b0933e3fe7454a174b1f42a229f07a"],
+      "merge_commit": "4ed5bc4e08abde25f0f0ff8d2edf6ebfb7e0b4b3",
+      "current_ancestry": "GitHub compare reports main 586356a as 114 commits ahead of f9a56b, zero behind, with f9a56b as merge base. This is a separate public repository with preserved history, not a GitHub fork or redirect."
+    },
     "api_compatibility": "Matching events and entitlement paths are source verified when optional M2M authentication is off. Enabling M2M_AUTH_REQUIRED requires an Authorization header the shipped IPP client cannot supply.",
     "image_checks": [
-      {"reference": "ghcr.io/redhat-et/pricetag-metering:latest", "verified_digest": null, "result": "denied; credentials or public access unavailable"},
-      {"reference": "quay.io/redhat-et/pricetag-metering:latest", "verified_digest": null, "result": "unauthorized; credentials or public access unavailable"}
+      {"reference": "ghcr.io/redhat-et/pricetag-metering:latest", "reference_basis": "historical guessed probe, not established by reviewed publishing documentation", "verified_digest": null, "result": "denied in prior check; not evidence of publication or absence"},
+      {"reference": "quay.io/redhat-et/pricetag-metering:latest", "reference_basis": "repository is the documented intended publishing location; latest tag was inferred for the probe", "verified_digest": null, "result": "anonymous metadata unauthorized on 2026-10-18; not evidence of publication or absence"}
     ],
-    "qualification_limits": "Its documented event-id dedup migration must be applied explicitly and differs from source+id conflict checking. Auto pricing, raw export, quota policy and end-to-end IPP delivery remain unqualified. The deployment project documents internal dogfood images as unsuitable for fresh deployment inputs."
+    "qualification_limits": "Its event-id-only dedup migration must be applied explicitly and does not perform source+id payload-conflict checking. Missing numeric fields still become zero and missing event times become now. The user usage API aggregates month-to-date linked identities, not lossless original CloudEvents. Actual QUOTA_ENFORCEMENT_ENABLED defaults true despite README text saying false; model policy can deny access even with quota gating disabled. Shared cache-subtraction and generic unknown-price fallbacks are not our accounting policy. Internal dogfood images are documented as unsuitable for fresh deployment inputs; backend artifact, export, quota policy and end-to-end IPP delivery remain unqualified."
   },
   "remaining_gates": [
-    "One concrete backend artifact/access decision: obtain a source-bound immutable image for the selected reference, or deliberately select and qualify another compatible backend. No backend image placeholder is substituted.",
-    "Prepare stopped backend/database candidates only after that artifact decision; retain replicas zero and omit gateway activation from the default build.",
-    "Qualify database persistence, actual quota decisions, OpenShift runtime compatibility and replay semantics with bounded tests before starting the service.",
+    "Choose an approved backend path using the now-established upstream reference chain. Noyitz is the linked testing candidate; PriceTag is its independently verified successor; OpenMeter is the named integration target. No choice is approved by the documentation alone.",
+    "The original Noyitz build and the locally validated corrective derivative are retained as separate artifacts. Preserve the exact source/patch/image and probe bindings for any later review or publication; no published image or cluster deployment is selected.",
+    "Local PostgreSQL 16 validation passed for corrected replay/concurrency/conflicts, strict usage, NULL-cost error retention, migration refusal, restart persistence and bounded database outage/recovery. Actual IPP/gateway delivery and pricing policy still require separate qualification; gateway activation stays omitted.",
     "Qualify event capture/export, streaming completion, backend outage/loss, identity mapping and provider reconciliation before claiming native financial completeness.",
     "Review the persistent existing-ConfigMap patch and explicit reload/rollback separately; confirm the installed annotation and preservation behavior before activation."
   ],
@@ -123,6 +241,12 @@
     "https://github.com/red-hat-data-services/ai-gateway-payload-processing/blob/a98a2650e74f8b832ff75206f795cbb62b9cd688/pkg/plugins/external-metering/plugin.go",
     "https://github.com/red-hat-data-services/ai-gateway-payload-processing/blob/a98a2650e74f8b832ff75206f795cbb62b9cd688/pkg/plugins/external-metering/client.go",
     "https://github.com/red-hat-data-services/ai-gateway-payload-processing/blob/a98a2650e74f8b832ff75206f795cbb62b9cd688/deploy/examples/external-metering/README.md",
+    "https://github.com/opendatahub-io/ai-gateway-payload-processing/pull/320#issuecomment-4915902756",
+    "https://github.com/opendatahub-io/ai-gateway-payload-processing/pull/332",
+    "https://github.com/red-hat-data-services/ai-gateway-payload-processing/compare/b3343c0c682ab5cf45c5d1d41c0684547f6585f6...a98a2650e74f8b832ff75206f795cbb62b9cd688",
+    "https://github.com/opendatahub-io/ai-gateway-payload-processing/blob/0138be54eae504e9370d6c87796cfaf0e211ba45/deploy/examples/external-metering/README.md",
+    "https://github.com/opendatahub-io/ai-gateway-payload-processing/pull/386",
+    "https://github.com/opendatahub-io/ai-gateway-payload-processing/pull/442",
     "https://github.com/llm-d/llm-d-inference-payload-processor/blob/a8bbe6a6a75a9435cbf8d0703613cf5ac9875f90/pkg/config/loader/configloader.go",
     "https://github.com/red-hat-data-services/models-as-a-service/blob/563117f178f04c8eac7058df481815a97694a88d/maas-controller/pkg/platform/tenantreconcile/apply.go",
     "https://github.com/red-hat-data-services/models-as-a-service/blob/563117f178f04c8eac7058df481815a97694a88d/maas-controller/pkg/platform/tenantreconcile/apply_plugins_configmap_test.go",
@@ -137,6 +261,12 @@
     "https://github.com/noyitz/ai-gateway-metering-service/blob/f9a56b1769b0933e3fe7454a174b1f42a229f07a/deploy/postgres.yaml",
     "https://github.com/redhat-et/pricetag-metering/blob/93374d909b0cbceda172d7487f09d5babb9fa710/internal/handler/m2m.go",
     "https://github.com/redhat-et/pricetag-metering/blob/93374d909b0cbceda172d7487f09d5babb9fa710/docs/event-idempotency.md",
+    "https://github.com/redhat-et/pricetag-metering/blob/586356a1844d2e18dee602068bf43512fd3b49c6/SOURCE-MAP.md",
+    "https://github.com/redhat-et/pricetag-metering/commit/b979c75c50d22c3cd01abf9e7e96f27021a6d1ad",
+    "https://github.com/redhat-et/pricetag-metering/compare/f9a56b1769b0933e3fe7454a174b1f42a229f07a...586356a1844d2e18dee602068bf43512fd3b49c6",
+    "https://github.com/redhat-et/pricetag-metering/blob/586356a1844d2e18dee602068bf43512fd3b49c6/internal/config/config.go",
+    "https://github.com/redhat-et/pricetag-metering/blob/586356a1844d2e18dee602068bf43512fd3b49c6/internal/handler/events.go",
+    "https://github.com/redhat-et/pricetag-metering/blob/586356a1844d2e18dee602068bf43512fd3b49c6/internal/storage/postgres.go",
     "https://github.com/redhat-et/pricetag/blob/cb06d37dedf8160c2bd5c2434e43527524e4103c/docs/operations/image-provenance.md"
   ]
 }

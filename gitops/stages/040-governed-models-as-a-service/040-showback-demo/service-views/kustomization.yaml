@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Platform dashboards share the parent component's stopped publisher.
+resources:
+  - service-view-statements.yaml
+  - service-view-dedicated.yaml
+  - service-view-shared.yaml
+  - service-view-completeness.yaml
+  - service-view-quality.yaml

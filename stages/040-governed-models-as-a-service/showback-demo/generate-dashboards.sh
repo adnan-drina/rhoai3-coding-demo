@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
+MANIFEST_DIR="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo"
 MODE=print
 case "${1:-}" in
     --write) MODE=write ;;
@@ -42,8 +43,8 @@ while IFS= read -r document; do
         printf '%s' "$document" | ruby -ryaml -rjson -e 'puts YAML.dump(JSON.parse(STDIN.read))'
     } > "$WORK/$file"
     case "$MODE" in
-        write) cp "$WORK/$file" "$SCRIPT_DIR/manifests/$file" ;;
-        check) cmp -s "$WORK/$file" "$SCRIPT_DIR/manifests/$file" || { log_error "Stale generated $file"; status=1; } ;;
+        write) cp "$WORK/$file" "$MANIFEST_DIR/$file" ;;
+        check) cmp -s "$WORK/$file" "$MANIFEST_DIR/$file" || { log_error "Stale generated $file"; status=1; } ;;
         print) cat "$WORK/$file" ;;
     esac
 done < "$WORK/documents.jsonl"

@@ -4,12 +4,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-usage() { echo 'Usage: render-integration.sh [--write DIR | --check DIR] [--schema-dir DIR --artifact-pins FILE]' >&2; exit 2; }
+usage() { echo 'Usage: render-integration.sh [--write [DIR] | --check [DIR]] [--schema-dir DIR --artifact-pins FILE]' >&2; exit 2; }
 fail() { echo "Native integration: $*" >&2; exit 2; }
-mode=preview; directory=''; schemas=''; pins=''
+mode=preview; schemas=''; pins=''
+directory="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo/native-inputs"
 while (($#)); do
     case "$1" in
-        --write|--check) (($#>=2)) || usage; [[ "$mode" == preview ]] || usage; mode=${1#--}; directory=$2; shift 2 ;;
+        --write|--check)
+            [[ "$mode" == preview ]] || usage
+            mode=${1#--}; shift
+            if (($#)) && [[ "$1" != --* ]]; then directory=$1; shift; fi
+            ;;
         --schema-dir) (($#>=2)) || usage; schemas=$2; shift 2 ;;
         --artifact-pins) (($#>=2)) || usage; pins=$2; shift 2 ;;
         *) usage ;;

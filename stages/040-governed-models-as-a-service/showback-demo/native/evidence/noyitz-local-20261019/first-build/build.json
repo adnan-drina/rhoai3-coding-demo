@@ -1,0 +1,13 @@
+{
+  "source_commit": "f9a56b1769b0933e3fe7454a174b1f42a229f07a",
+  "source_archive_sha256": "f1768f0d56caa12a3294b4bacbe89a88f3813ffa72969aaa600e7050ce76e5c8",
+  "patch_sha256": "2419cda4de3fbcd0d069f34f30bdb56d558aadc84c1b605135f42abaec874e86",
+  "containerfile_sha256": "13a1c5b507eb1b5e8853fc564532f91d0cf1155ccc2b69af39567d5c10fb61fb",
+  "started": "2026-10-19T06:38:17Z",
+  "ended": "2026-10-19T06:39:42Z",
+  "exit_code": 125,
+  "local_image": "localhost/showback-metering:f9a56b1-2419cda4de3f",
+  "local_builder": "localhost/showback-metering-builder:f9a56b1-2419cda4de3f",
+  "platform": "linux/amd64",
+  "published": false
+}

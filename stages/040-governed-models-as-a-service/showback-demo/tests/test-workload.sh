@@ -215,4 +215,48 @@ for mutation in '.models["qwen3-8-27b"].namespace={}' '.teams.support.subscripti
         exit 1
     fi
 done
+
+# Existing-model qualification must never need Marketing credentials or schedule Mistral traffic.
+unset SHOWBACK_MARKETING_KEY
+bash "$DEMO_DIR/run-workload.sh" --scenario "$DEMO_DIR/qualification-qwen-only.json" --mode access-probe \
+    >"$work/qwen-preview.json"
+jq -e '.max_requests==2 and (.access_cases|length)==2
+  and all(.access_cases[]; .model=="qwen3-8-27b" and .expected_access=="allow"
+    and (.team=="engineering" or .team=="support"))
+  and .limits.max_requests==24 and .limits.max_wall_seconds==360' "$work/qwen-preview.json" >/dev/null
+jq -e '(.teams|keys)==["engineering","support"] and (.models|keys)==["qwen3-8-27b"]
+  and [.phases[].duration_seconds]==[120,120,120]
+  and .phases[0].teams==["engineering","support"] and .phases[1].teams==["engineering"]
+  and .phases[2].teams==[] and all(.teams[]; .input_target_tokens==128 and .max_output_tokens==32)' \
+    "$DEMO_DIR/qualification-qwen-only.json" >/dev/null
+cp "$work/scenario.json" "$work/original-scenario.json"
+jq '.status="synthetic_fixture" | .limits.start_delay_seconds=0 | .limits.drain_seconds=2 |
+    .limits.request_timeout_seconds=2 | .limits.max_wall_seconds=9 | .limits.max_response_bytes=1024 |
+    .phases[].duration_seconds=3 | .teams[].spacing_seconds=1' \
+    "$DEMO_DIR/qualification-qwen-only.json" >"$work/scenario.json"
+run_case qwen-access 0 --mode access-probe
+jq -e '.access_probe_passed==true and .requests_started==2' "$work/qwen-access/run.json" >/dev/null
+jq -s -e 'length==2 and all(.[]; .requested_model=="qwen3-8-27b" and .access_check=="passed")
+  and ([.[].team]|sort)==["engineering","support"]' "$work/qwen-access/receipts.jsonl" >/dev/null
+export MOCK_KIND=wrong-model
+run_case qwen-wrong-model 1 --mode access-probe
+export MOCK_KIND=normal
+jq '.limits.max_requests=3' "$work/scenario.json" >"$work/qwen-capped.json"
+bash "$DEMO_DIR/run-workload.sh" --scenario "$work/qwen-capped.json" --execute --output "$work/qwen-capped" \
+    >"$work/qwen-capped.stdout" 2>"$work/qwen-capped.stderr"
+jq -e '.requests_started==3 and .status=="completed"' "$work/qwen-capped/run.json" >/dev/null
+jq -s -e 'length==3 and all(.[]; .requested_model=="qwen3-8-27b"
+  and (.team=="engineering" or .team=="support") and .phase!="idle")' "$work/qwen-capped/receipts.jsonl" >/dev/null
+for mutation in \
+    '.teams.marketing=.teams.engineering' \
+    '.teams.support.models["mistral-small4-119b"]={weight:1}' \
+    '.models["qwen3-8-27b"].namespace=null' \
+    '.phases[0].teams+=["marketing"]' \
+    '.teams.support.subscription=null'; do
+    jq "$mutation" "$work/scenario.json" >"$work/invalid-qwen.json"
+    if bash "$DEMO_DIR/run-workload.sh" --scenario "$work/invalid-qwen.json" >/dev/null 2>&1; then
+        printf 'FAIL: invalid Qwen-only scenario accepted: %s\n' "$mutation" >&2
+        exit 1
+    fi
+done
 printf '%s\n' 'Workload shell tests passed: preview, guarded mock HTTP, access, quota, streaming, bounds, privacy, deadlines and receipts.'

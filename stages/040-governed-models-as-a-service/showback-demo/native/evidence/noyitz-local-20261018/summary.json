@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "qualification_id": "noyitz-local-20261018",
+  "scope": "local-build-and-synthetic-runtime",
+  "completed_at": "2026-10-18T14:37:04Z",
+  "source": {
+    "repository": "https://github.com/noyitz/ai-gateway-metering-service",
+    "commit": "f9a56b1769b0933e3fe7454a174b1f42a229f07a",
+    "tree": "b0b9495c059335e6746e12e59ea218db5c7d7431",
+    "clean_checkout": true,
+    "archive_sha256": "f1768f0d56caa12a3294b4bacbe89a88f3813ffa72969aaa600e7050ce76e5c8",
+    "original_dockerfile_sha256": "038da18339869895d7ca8525821267c653df57511c4219dd42c047321fcf6844",
+    "derived_containerfile_sha256": "76a39a34677bfb99664bfba27fb944f93950ab0c2bc0d15c6319cbc95c0ace39",
+    "go_mod_sha256": "8991891ec1a8a8114aa3b2f2d64cd9b894d3d032401917207a9ef112403b1ebe",
+    "go_sum_sha256": "61a46e8a84bfbcd5ad62ba721a0e77a2c86fb1eaa786dbf89a73609fcb51e497",
+    "source_patched": false,
+    "derivation": "Pin both amd64 base digests and GOTOOLCHAIN=go1.26.0; add source/revision image labels at build time."
+  },
+  "build": {
+    "started_at": "2026-10-18T14:22:32Z",
+    "completed_at": "2026-10-18T14:25:04Z",
+    "exit_code": 0,
+    "platform": "linux/amd64",
+    "engine": {
+      "Client": {
+        "APIVersion": "5.6.1",
+        "Version": "5.6.1",
+        "GoVersion": "go1.25.1",
+        "GitCommit": "",
+        "BuiltTime": "Thu Sep  4 21:23:56 2025",
+        "Built": 1757013836,
+        "BuildOrigin": "brew",
+        "OsArch": "darwin/arm64",
+        "Os": "darwin"
+      },
+      "Server": {
+        "APIVersion": "5.6.2",
+        "Version": "5.6.2",
+        "GoVersion": "go1.24.7",
+        "GitCommit": "9dd5e1ed33830612bc200d7a13db00af6ab865a4",
+        "BuiltTime": "Tue Sep 30 02:00:00 2025",
+        "Built": 1759190400,
+        "OsArch": "linux/arm64",
+        "Os": "linux"
+      }
+    },
+    "builder": "docker.io/library/golang@sha256:78c9e40f10516d7070156948a1747347cc5093022f06deeff3c9decd5faa3af7",
+    "runtime": "registry.access.redhat.com/ubi9/ubi-minimal@sha256:865c6a875328a1174ff7f17599574412edd327aa47812951b9bead902806dc53",
+    "observed_go_version": "go1.26.0",
+    "runtime_uid": 1001,
+    "log": "build.log"
+  },
+  "artifact": {
+    "local_reference": "localhost/showback-metering:f9a56b1769b0933e3fe7454a174b1f42a229f07a",
+    "local_image_config_id": "sha256:a1dacdd86d72736e82b4e126a506940cc44b64dd5734a1d8ac37dd538aeed7a9",
+    "local_storage_manifest_digest": "sha256:d6027bf4a2001539153163bfbf894a5ca5a1a1f52d1f0c7acc341d00a4054c24",
+    "exported_oci_manifest_digest": "sha256:c96ead9bccfe344f49b27628016fed20d843b1e0ebc816878c6ce214785d2b00",
+    "binary_sha256": "83b66ab38ef8ed5e9ebd3a12d886a037f01378681c551bfe7cea23d78178949a",
+    "builder_runtime_binary_match": true,
+    "oci_archive": {
+      "repository_relative_path": "tmp/showback-noyitz-local-20261018/metering.oci.tar",
+      "sha256": "0ee980daa8d4bcbf9c7bf0ffa03e312e27581886b24f06fb7d83127d08aef333",
+      "git_ignored": true
+    },
+    "published_reference": null,
+    "published": false,
+    "digest_note": "Local storage manifest, OCI export manifest, config ID and archive checksum identify different representations; none is a published registry digest."
+  },
+  "local_database": {
+    "image": "docker.io/library/postgres@sha256:2c942175a1255a9abe0366e48c1b401d9f50f835b04dfea13f111609b5530df7",
+    "version": "16.15",
+    "platform": "linux/arm64",
+    "network_internal": true,
+    "host_port_published": false,
+    "credentials": "Throwaway local credentials; private env files removed.",
+    "retained": false
+  },
+  "validation": {
+    "upstream": {
+      "exit_code": 0,
+      "top_level_passed": 96,
+      "passed_including_subtests": 123,
+      "failures": [],
+      "skipped_tests": [],
+      "passed_packages": [
+        "github.com/noyitz/ai-gateway-metering-service/internal/config",
+        "github.com/noyitz/ai-gateway-metering-service/internal/handler",
+        "github.com/noyitz/ai-gateway-metering-service/internal/maasapi",
+        "github.com/noyitz/ai-gateway-metering-service/internal/pricing",
+        "github.com/noyitz/ai-gateway-metering-service/internal/storage"
+      ],
+      "packages_without_tests": [
+        "github.com/noyitz/ai-gateway-metering-service/internal/dashboard",
+        "github.com/noyitz/ai-gateway-metering-service/internal/k8s"
+      ],
+      "command": "go test -json -count=1 -p=1 -parallel=1 -timeout=5m ./internal/...",
+      "executable": "/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.0.linux-amd64/bin/go",
+      "environment": {
+        "GOTOOLCHAIN": "local",
+        "GOPROXY": "off",
+        "GOSUMDB": "off",
+        "GOFLAGS": "-mod=readonly",
+        "GOOS": "linux",
+        "GOARCH": "amd64",
+        "CGO_ENABLED": "0",
+        "GOMAXPROCS": "2"
+      },
+      "database_url_supplied": true,
+      "preflight_dsn_supplied": true,
+      "database_scope": "Disposable isolated PostgreSQL16.15; integration tests create/drop temporary databases; SQL preflight uses migrated schema.",
+      "initial_launcher_attempt": {
+        "exit_code": 1,
+        "evidence": "upstream-launch-attempt1.stderr",
+        "reason": "Go launcher refuses toolchain verification with GOSUMDB=off; no tests ran. Retried the same cached Go1.26.0 binary directly."
+      }
+    },
+    "initial_runtime": {
+      "evidence": "runtime/result.json",
+      "exit_code": 1,
+      "probe_sha256": "617b668d1af51acda4512295309a57c70d3103d34d8153ad8fc6ceeb431de4f0",
+      "reason": "Incorrect probe expected4rows; actual4submitted events plus1quota-denial audit. Preserved unchanged; probe correction in probe-correction.patch."
+    },
+    "accepted_runtime": {
+      "evidence": "runtime-retry/result.json",
+      "exit_code": 0,
+      "probe_sha256": "63f67861c661dbb4de9cc34eb4d884b17b6262f7b7c13d9508cb38a9d676c4fb",
+      "passed": 27,
+      "observed_limitations": 7
+    },
+    "database_recovery": {
+      "evidence": "database-recovery/result.json",
+      "complete": true
+    },
+    "repository_checks": {
+      "bash_syntax": true,
+      "native_contract_suite": true,
+      "inert_render_matches": true,
+      "stopped_bundle": {
+        "passed": 5,
+        "failed": 0
+      }
+    }
+  },
+  "limitations": [
+    "Identical event replay double-counts quota and usage.",
+    "Missing numeric usage fields are accepted as zero.",
+    "Denied entitlement GET writes a zero-token429audit row; request totals include these balance checks, not only inference attempts.",
+    "Health and readiness stay200during database outage; entitlement returns500.",
+    "Unknown models receive fallback prices. These dollar totals are not the agreed service-offer ledger.",
+    "Synthetic API/database tests do not establish IPP delivery, streaming completion, gateway enforcement, authenticated user access or provider invoice reconciliation."
+  ],
+  "cleanup": {
+    "owned_containers_removed": 4,
+    "remaining_rootless_containers": 0,
+    "owned_network_removed": true,
+    "owned_volume_removed": true,
+    "machine": {
+      "Name": "podman-machine-default",
+      "State": "stopped",
+      "Rootful": true,
+      "Rosetta": false,
+      "Resources": {
+        "CPUs": 6,
+        "DiskSize": 93,
+        "Memory": 14336,
+        "USBs": []
+      }
+    },
+    "original_machine_state": "stopped",
+    "unrelated_containers_resumed": false,
+    "private_env_files_removed": true,
+    "retained": "Local backend/builder/base images, ignored OCI archive and non-secret source/build work directory."
+  },
+  "claims": {
+    "local_build_passed": true,
+    "local_runtime_checks_passed": true,
+    "cluster_deployed": false,
+    "cluster_contacted": false,
+    "image_published": false,
+    "ipp_end_to_end_qualified": false,
+    "financial_complete": false,
+    "red_hat_product_backend": false
+  }
+}

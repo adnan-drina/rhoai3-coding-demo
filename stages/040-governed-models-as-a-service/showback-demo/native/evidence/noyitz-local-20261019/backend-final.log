@@ -1,0 +1,45 @@
+2026/10/19 06:48:27 INFO running database migrations
+2026/10/19 06:48:28 INFO database migrations complete
+2026/10/19 06:48:28 INFO rollup read switch set enabled=false
+2026/10/19 06:48:28 WARN pricing: fetch failed, using bundled pricing error="fetch: Get \"https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json\": dial tcp: lookup raw.githubusercontent.com on 10.89.0.1:53: no such host"
+2026/10/19 06:48:28 INFO rollups backfill complete — usage_hourly is authoritative for dashboard reads
+2026/10/19 06:48:29 INFO model pricing seeded models=612 updated=612 source=bundled
+2026/10/19 06:48:29 INFO local model pricing seeded models=3 updated=3
+2026/10/19 06:48:29 WARN list pricing fetch failed — cost-saved column may be stale error="fetch: Get \"https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json\": dial tcp: lookup raw.githubusercontent.com on 10.89.0.1:53: no such host"
+2026/10/19 06:48:29 INFO kubernetes adapter disabled — set MODEL_CRD_GROUP/PROVIDER_CRD_GROUP to enable
+2026/10/19 06:48:29 WARN SESSION_SECRET not set — using random secret (sessions won't survive restarts)
+2026/10/19 06:48:29 INFO metering service starting port=8080
+2026/10/19 06:53:18 INFO event recorded user=sb-probe-20261019T065317Z-34569-normal model=showback-synthetic-model tokens=120 usage_complete=true
+2026/10/19 06:53:18 INFO event recorded user=sb-probe-20261019T065317Z-34569-normal model=showback-synthetic-model tokens=120 usage_complete=true
+2026/10/19 06:53:19 INFO event recorded user=sb-probe-20261019T065317Z-34569-normal model=showback-synthetic-model tokens=120 usage_complete=true
+2026/10/19 06:53:19 INFO event recorded user=sb-probe-20261019T065317Z-34569-normal model=showback-synthetic-model tokens=120 usage_complete=true
+2026/10/19 06:53:20 INFO event recorded user=sb-probe-20261019T065317Z-34569-concurrent model=showback-synthetic-model tokens=20 usage_complete=true
+2026/10/19 06:53:20 INFO event recorded user=sb-probe-20261019T065317Z-34569-concurrent model=showback-synthetic-model tokens=20 usage_complete=true
+2026/10/19 06:53:20 INFO event recorded user=sb-probe-20261019T065317Z-34569-concurrent model=showback-synthetic-model tokens=20 usage_complete=true
+2026/10/19 06:53:20 INFO event recorded user=sb-probe-20261019T065317Z-34569-concurrent model=showback-synthetic-model tokens=20 usage_complete=true
+2026/10/19 06:53:20 INFO event recorded user=sb-probe-20261019T065317Z-34569-concurrent model=showback-synthetic-model tokens=20 usage_complete=true
+2026/10/19 06:53:20 INFO event recorded user=sb-probe-20261019T065317Z-34569-concurrent model=showback-synthetic-model tokens=20 usage_complete=true
+2026/10/19 06:53:20 INFO event recorded user=sb-probe-20261019T065317Z-34569-concurrent model=showback-synthetic-model tokens=20 usage_complete=true
+2026/10/19 06:53:20 INFO event recorded user=sb-probe-20261019T065317Z-34569-concurrent model=showback-synthetic-model tokens=20 usage_complete=true
+2026/10/19 06:53:20 INFO event recorded user=sb-probe-20261019T065317Z-34569-concurrent model=showback-synthetic-model tokens=20 usage_complete=true
+2026/10/19 06:53:20 INFO event recorded user=sb-probe-20261019T065317Z-34569-quota model=showback-synthetic-model tokens=1100 usage_complete=true
+2026/10/19 06:53:21 ERROR failed to decode event error="invalid character 'i' looking for beginning of object key string"
+2026/10/19 06:53:22 INFO event recorded user=sb-probe-20261019T065317Z-34569-zero model=showback-synthetic-model tokens=0 usage_complete=true
+2026/10/19 06:53:22 INFO event recorded user=sb-probe-20261019T065317Z-34569-error model=showback-synthetic-model tokens=0 usage_complete=false
+2026/10/19 06:53:22 INFO shutting down
+2026/10/19 06:53:23 INFO running database migrations
+2026/10/19 06:53:23 INFO database migrations complete
+2026/10/19 06:53:23 INFO rollup read switch set enabled=false
+2026/10/19 06:53:23 WARN pricing: fetch failed, using bundled pricing error="fetch: Get \"https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json\": dial tcp: lookup raw.githubusercontent.com on 10.89.0.1:53: no such host"
+2026/10/19 06:53:23 INFO rollup parity green window=168h0m0s
+2026/10/19 06:53:23 INFO model pricing seeded models=612 updated=612 source=bundled
+2026/10/19 06:53:23 INFO local model pricing seeded models=3 updated=3
+2026/10/19 06:53:23 WARN list pricing fetch failed — cost-saved column may be stale error="fetch: Get \"https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json\": dial tcp: lookup raw.githubusercontent.com on 10.89.0.1:53: no such host"
+2026/10/19 06:53:23 INFO kubernetes adapter disabled — set MODEL_CRD_GROUP/PROVIDER_CRD_GROUP to enable
+2026/10/19 06:53:23 WARN SESSION_SECRET not set — using random secret (sessions won't survive restarts)
+2026/10/19 06:53:23 INFO metering service starting port=8080
+2026/10/19 06:53:24 INFO event recorded user=sb-probe-20261019T065317Z-34569-normal model=showback-synthetic-model tokens=120 usage_complete=true
+2026/10/19 06:53:25 ERROR failed to get usage error="dial tcp: lookup showback-db on 10.89.0.1:53: no such host" user=sb-probe-20261019T065317Z-34569-normal
+2026/10/19 06:53:25 ERROR failed to insert event error="dial tcp: lookup showback-db on 10.89.0.1:53: no such host" event_id=sb-probe-20261019T065317Z-34569-retry
+2026/10/19 06:53:26 INFO event recorded user=sb-probe-20261019T065317Z-34569-retry model=showback-synthetic-model tokens=20 usage_complete=true
+2026/10/19 06:53:26 INFO event recorded user=sb-probe-20261019T065317Z-34569-retry model=showback-synthetic-model tokens=20 usage_complete=true

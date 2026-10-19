@@ -1,0 +1,6 @@
+{
+  "observed_machine_state_before_work": "stopped",
+  "observed_rootless_containers_before_work": 0,
+  "unrelated_rootful_containers": "petclinic-pg and v31-lab-pg were already stopped; neither was started",
+  "scope": "Only disposable rootless local validation resources are authorized. No cluster contact, image publication, provider credentials or inference."
+}

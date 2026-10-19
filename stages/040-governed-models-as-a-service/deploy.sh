@@ -7,23 +7,56 @@
 # records of the deployed model and its prepared alternates. Secret values travel only through pipes and jq's
 # environment: never Git, arguments or output.
 # RHOAI_STAGE040_ROTATE_PROVIDER_SECRET=true replaces the OpenAI provider key in place from OPENAI_API_KEY.
-# Usage: stages/040-governed-models-as-a-service/deploy.sh [--revision REF]
+# --component 040-showback-demo reconciles only the optional stopped showback bundle, with shared prerequisites
+# read-only. It never provisions keys, selects a report, starts models or enables native metering.
+# Usage: stages/040-governed-models-as-a-service/deploy.sh [--revision REF] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-ref="${GIT_REPO_BRANCH:-HEAD}"
+ref="${GIT_REPO_BRANCH:-HEAD}" COMPONENT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --revision) ref="${2:?}"; shift 2 ;;
+    --component) COMPONENT="${2:?}"; shift 2 ;;
     *) sed -n 's/^# Usage: //p' "$0" >&2; exit 1 ;;
   esac
 done
+[[ -z "$COMPONENT" || "$COMPONENT" == 040-showback-demo ]] || { log_error "Unknown Stage 040 component: $COMPONENT"; exit 1; }
 load_env
 check_oc_logged_in
 require_env GIT_REPO_URL "reviewed Stage 040 source repository"
 assert_required_env
 STAGE_APPS="$REPO_ROOT/scripts/stage-apps.sh"
+
+if [[ "$COMPONENT" == 040-showback-demo ]]; then
+    revision=$("$STAGE_APPS" select 040 --ref "$ref" --repo-url "$GIT_REPO_URL")
+    "$STAGE_APPS" preflight 040 --repo-url "$GIT_REPO_URL" --app "$COMPONENT"
+    # Shared namespaces and APIs remain owned by their existing platform components.
+    for ns in models-as-a-service redhat-ods-monitoring redhat-ai-gateway-infra; do
+        oc --request-timeout=10s get namespace "$ns" -o json | jq -e '.status.phase == "Active"' >/dev/null || {
+            log_error "Showback requires the existing active namespace $ns"; exit 1;
+        }
+    done
+    oc --request-timeout=10s get crd maassubscriptions.maas.opendatahub.io maasauthpolicies.maas.opendatahub.io \
+        persesdashboards.perses.dev servicemonitors.monitoring.coreos.com -o json |
+        jq -e '.items | length == 4 and all(.[]; any(.status.conditions[]?; .type == "Established" and .status == "True"))' \
+        >/dev/null || { log_error "Showback requires established MaaS, Perses and ServiceMonitor APIs"; exit 1; }
+    # Native edit aggregates the installed MLflow read/write roles; the write operand alone omits reads.
+    oc --request-timeout=10s get clusterrole edit -o json |
+        jq -e '.rules as $rules | all(["get","list","create","update","delete"][]; . as $verb |
+            any($rules[]; (.apiGroups | index("mlflow.kubeflow.org")) != null
+                and (.resources | index("experiments")) != null and (.verbs | index($verb)) != null))' >/dev/null || {
+        log_error "Showback archive access requires native edit with aggregated MLflow experiment read/write permissions"; exit 1;
+    }
+    # The component remains stopped. Its normal health wait may fail while referenced models are unqualified.
+    "$STAGE_APPS" apply 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL"
+    "$STAGE_APPS" sync 040 --app "$COMPONENT"
+    "$STAGE_APPS" wait 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
+    RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION="$revision" "$SCRIPT_DIR/validate.sh" --component "$COMPONENT"
+    log_success "Showback source reconciled in its stopped state; models, access enforcement and metering remain unqualified."
+    exit 0
+fi
 
 # ── Read-only preflight; prints "fresh" (no MaaS database yet) or "retained" ───────────────────────────────────
 stage_preflight() {

@@ -129,7 +129,7 @@ jq -e 'all(.[].panels[]; all(.queries[];
   "$BASE/dashboard-definitions.json" >/dev/null || fail 'Snapshot query contract'
 jq -e 'all(.[];.panels.reportIdentity.queries[0].seriesNameFormat|contains("{{scope}}"))' \
   "$BASE/dashboard-definitions.json" >/dev/null || fail 'Report scope is not visible'
-kustomize build "$BASE/manifests" | yaml_json > "$WORK/bundle.json"
+kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" | yaml_json > "$WORK/bundle.json"
 jq -e 'any(.[];.kind=="Deployment" and .metadata.name=="showback-report-publisher" and .spec.replicas==0)
   and all(.[];.kind!="LLMInferenceService" and .kind!="MachineSet")
   and any(.[];.kind=="ConfigMap" and .metadata.name=="showback-selected-report" and .data=={})

@@ -58,8 +58,16 @@ validation='def integer: type=="number" and .==floor;
  def bounded($low;$high): integer and . >= $low and . <= $high;
  def name: type=="string" and test("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$");
  . as $s | .limits as $l |
- .schema_version==1 and (.teams|keys)==["engineering","marketing","support"] and
- (.models|length)==2 and all(.models[];.namespace|name) and
+ .schema_version==1 and
+ (( (.teams|keys)==["engineering","marketing","support"] and
+   (.models|keys)==["mistral-small4-119b","qwen3-8-27b"] and
+   (.teams.engineering.models|keys)==["qwen3-8-27b"] and
+   (.teams.marketing.models|keys)==["mistral-small4-119b"] and
+   (.teams.support.models|keys)==["mistral-small4-119b","qwen3-8-27b"] ) or
+ ( (.teams|keys)==["engineering","support"] and (.models|keys)==["qwen3-8-27b"] and
+   all(.teams[]; (.models|keys)==["qwen3-8-27b"] and .input_target_tokens<=128 and .max_output_tokens<=32) and
+   $l.max_requests<=24 and $l.max_wall_seconds<=360 )) and
+ all(.models[];.namespace|name) and
  ($l.max_requests|bounded(1;200)) and ($l.request_timeout_seconds|bounded(1;45)) and
  ($l.drain_seconds|bounded(1;50)) and ($l.start_delay_seconds|bounded(0;60)) and
  ($l.max_wall_seconds|bounded(1;780)) and ($l.max_response_bytes|bounded(1024;2000000)) and
@@ -84,10 +92,10 @@ elif [[ -n "$quota_model" ]]; then
 fi
 
 plan="$(jq -c --arg mode "$mode" --argjson seconds "$quota_seconds" '
- .limits as $l |
+ . as $s | .limits as $l |
  (if $mode=="workload" then .phases else
    [{id:$mode,duration_seconds:([($l.max_wall_seconds), (if $mode=="access-probe" then 180 else $seconds end)]|min),
-     teams:(if $mode=="access-probe" then ["engineering","marketing","support"] else ["support"] end),
+     teams:(if $mode=="access-probe" then ($s.teams|keys) else ["support"] end),
      spacing_multiplier:1}] end) |
  reduce .[] as $p ({offset:0,phases:[]};
    .phases += [$p + {start_offset:.offset,end_offset:(.offset+$p.duration_seconds),
@@ -101,7 +109,7 @@ if [[ "$execute" == false ]]; then
         --arg mode "$mode" --argjson count "$quota_requests" '
       {schema_version:1,evidence_kind:"preview",network_requests:0,mode:$mode,
        scenario_id:$s[0].scenario_id,parameters_status:"unqualified",phases:$phases,
-       max_requests:(if $mode=="access-probe" then 6 elif $mode=="quota-probe" then $count else $s[0].limits.max_requests end),
+       max_requests:(if $mode=="access-probe" then ($cases|length) elif $mode=="quota-probe" then $count else $s[0].limits.max_requests end),
        access_cases:$cases,limits:$s[0].limits}'
     exit 0
 fi
@@ -116,7 +124,14 @@ printf '%s' "$gateway" | jq -Re 'test("^https://[^/@?#[:space:]]+(:[0-9]+)?(/v1(
 gateway="${gateway%/}"
 gateway="${gateway%/v1/chat/completions}"
 gateway="${gateway%/v1}/v1/chat/completions"
-teams=(engineering marketing support)
+teams=()
+while IFS= read -r team; do teams+=("$team"); done < <(jq -r '.teams|keys[]' "$scenario")
+model_count="$(jq -r '.models|length' "$scenario")"
+access_case_count="$(printf '%s' "$cases" | jq length)"
+support_index=0
+for index in "${!teams[@]}"; do
+    [[ "${teams[$index]}" != support ]] || support_index=$index
+done
 for team in "${teams[@]}"; do
     [[ "$mode" != quota-probe || "$team" == support ]] || continue
     key_env="$(jq -r --arg team "$team" '.teams[$team].key_env' "$scenario")"
@@ -142,12 +157,20 @@ max_bytes="$(jq -r .limits.max_response_bytes "$scenario")"
 stop_at="$(printf '%s' "$plan" | jq -r '.[-1].end_offset')"
 run_status=running
 request_count=0
-pids=("" "" "")
-ids=("" "" "")
-deadlines=(0 0 0)
-counts=(0 0 0)
-next_due=(0 0 0)
-stopped=(false false false)
+pids=()
+ids=()
+deadlines=()
+counts=()
+next_due=()
+stopped=()
+for index in "${!teams[@]}"; do
+    pids+=("")
+    ids+=("")
+    deadlines+=(0)
+    counts+=(0)
+    next_due+=(0)
+    stopped+=(false)
+done
 last_phase=""
 quota_observed=false
 
@@ -158,7 +181,7 @@ write_manifest() {
         --arg run "$run_id" --arg hash "$scenario_hash" --arg mode "$mode" --arg kind "$kind" \
         --arg status "$run_status" --argjson start "$started_epoch" --argjson end "$ended" \
         --argjson phases "$plan" --argjson count "$request_count" --argjson stream "$stream" \
-        --argjson quota "$quota_observed" '
+        --argjson quota "$quota_observed" --argjson access_count "$access_case_count" '
       {schema_version:1,run_id:$run,scenario_id:$s[0].scenario_id,policy_version:$s[0].policy_version,
        scenario_sha256:$hash,mode:$mode,evidence_kind:$kind,status:$status,parameters_status:"unqualified",
        started_at:($start|todateiso8601),ended_at:$end,limits:$s[0].limits,stream:$stream,
@@ -166,7 +189,7 @@ write_manifest() {
          submit_after:($start+.submit_after_offset|todateiso8601),submit_until:($start+.submit_until_offset|todateiso8601)}],
        requests_started:$count,outcomes:($receipts|group_by(.status)|map({key:.[0].status,value:length})|from_entries),
        quota_429_observed:$quota,usage_source:"response usage; prompts approximate input size only"} +
-       (if $mode=="access-probe" then {access_probe_passed:($status=="completed" and ($receipts|length)==6 and
+       (if $mode=="access-probe" then {access_probe_passed:($status=="completed" and ($receipts|length)==$access_count and
          all($receipts[];.access_check=="passed"))} elif $mode=="quota-probe" then
          {quota_probe_passed:($status=="completed" and $quota)} else {} end)' > "$state/run.new"
     mv "$state/run.new" "$output/run.json"
@@ -308,7 +331,7 @@ finalize() {
     local index
     trap - EXIT INT TERM
     [[ "$run_status" != running ]] || run_status=interrupted
-    for index in 0 1 2; do
+    for index in "${!teams[@]}"; do
         [[ -n "${pids[$index]}" ]] || continue
         stop_attempt "$index" run_interrupted
         collect_attempt "$index"
@@ -323,7 +346,7 @@ write_manifest
 # A single parent owns admission and receipt append order; each team has one child.
 while true; do
     now=$((SECONDS-started_seconds))
-    for index in 0 1 2; do
+    for index in "${!teams[@]}"; do
         [[ -n "${pids[$index]}" ]] || continue
         directory="$state/${ids[$index]}"
         if [[ -f "$directory/result.json" ]]; then collect_attempt "$index"
@@ -335,14 +358,18 @@ while true; do
     done
     ((now<stop_at)) || break
     # Probe scopes can close early after all checks finish; workload windows never do.
-    if [[ "$mode" != workload && -z "${pids[0]}${pids[1]}${pids[2]}" ]]; then
-        if [[ "$mode" == access-probe ]] && ((request_count>=6)); then break; fi
-        if [[ "$mode" == quota-probe ]] && { [[ "$quota_observed" == true ]] || ((counts[2]>=quota_requests)); }; then break; fi
+    active_pids="$(printf '%s' "${pids[@]}")"
+    if [[ "$mode" != workload && -z "$active_pids" ]]; then
+        if [[ "$mode" == access-probe ]] && ((request_count>=access_case_count)); then break; fi
+        if [[ "$mode" == quota-probe ]] && { [[ "$quota_observed" == true ]] || ((counts[support_index]>=quota_requests)); }; then break; fi
     fi
     phase="$(printf '%s' "$plan" | jq -c --argjson now "$now" '.[]|select(.start_offset<=$now and $now<.end_offset)')"
     phase_id="$(printf '%s' "$phase" | jq -r .id)"
-    if [[ "$last_phase" != "$phase_id" ]]; then next_due=(0 0 0); last_phase="$phase_id"; fi
-    for index in 0 1 2; do
+    if [[ "$last_phase" != "$phase_id" ]]; then
+        for index in "${!teams[@]}"; do next_due[$index]=0; done
+        last_phase="$phase_id"
+    fi
+    for index in "${!teams[@]}"; do
         now=$((SECONDS-started_seconds))
         team="${teams[$index]}"
         [[ -z "${pids[$index]}" && "${stopped[$index]}" == false ]] || continue
@@ -353,7 +380,7 @@ while true; do
             '.submit_after_offset <= $now and $now < .submit_until_offset' >/dev/null || continue
         expected=""
         if [[ "$mode" == access-probe ]]; then
-            ((counts[index]<2)) || continue
+            ((counts[index]<model_count)) || continue
             case_row="$(printf '%s' "$cases" | jq -c --arg team "$team" --argjson n "${counts[$index]}" '[.[]|select(.team==$team)][$n]')"
             model="$(printf '%s' "$case_row" | jq -r .model)"
             expected="$(printf '%s' "$case_row" | jq -r .expected_access)"
@@ -391,7 +418,7 @@ while true; do
     sleep 0.1
 done
 run_status=completed
-for index in 0 1 2; do
+for index in "${!teams[@]}"; do
     [[ -n "${pids[$index]}" ]] || continue
     stop_attempt "$index" run_deadline
     collect_attempt "$index"

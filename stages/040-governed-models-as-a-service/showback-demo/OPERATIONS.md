@@ -2,7 +2,7 @@
 
 ## Current boundary
 
-This package is implemented for **offline review and testing**. No deployment, GPU resume, credential creation or inference has been authorized. The active stage deploy scripts and GitOps paths do not reference it. Keep that separation until the live gate is approved. The existing `../showback/` utilities still serve the current platform.
+This package is implemented for **offline review and testing**, with source for the optional manual-sync `040-showback-demo` Application. A pinned backend image build and disposable local validation were separately authorized on 2026-10-18. On 2026-10-19, the user authorized publication, deployment and bounded testing with the one available Qwen model. This authorization does not qualify the full two-model scenario or activate native/backend workloads. Default Stage 040 deployment excludes this component. The existing `../showback/` utilities still serve the current platform.
 
 Requirements for offline work: Bash, `jq`, `curl`, Ruby for YAML conversion, `shasum` and Kustomize, as used by the repository. Tools source `scripts/lib.sh`; only explicitly requested live actions invoke its environment and cluster guard. No Python, dependency installation, image pull or cluster login is needed for offline checks.
 
@@ -14,7 +14,7 @@ From the repository root:
 ./stages/040-governed-models-as-a-service/showback-demo/validate.sh
 ```
 
-This runs shell regression tests, verifies generated files, previews workloads, renders detached manifests and exercises synthetic samples → reconciled evidence → allocation → metric exposition → hashed archive. It also checks the three service offers, native event import, scoped statements, task analysis and monthly archive continuity. Real cluster, HTTP and AWS commands are blocked; HTTP tests supply explicit mocks. Synthetic output is temporary and explicitly labelled. The bounded integration fixture totals 135 cents, including 45 cents of fully idle model capacity; those are test assertions, not a measured bill.
+This runs shell regression tests, verifies generated files, previews workloads, renders canonical manifests and exercises synthetic samples → reconciled evidence → allocation → metric exposition → hashed archive. It also checks the three service offers, native event import, scoped statements, task analysis and monthly archive continuity. Real cluster, HTTP and AWS commands are blocked; HTTP tests supply explicit mocks. Synthetic output is temporary and explicitly labelled. The bounded integration fixture totals 135 cents, including 45 cents of fully idle model capacity; those are test assertions, not a measured bill.
 
 Preview workload and access decisions without credentials:
 
@@ -26,7 +26,7 @@ stages/040-governed-models-as-a-service/showback-demo/run-workload.sh --mode acc
 Edit `scenario.json` to calibrate budgets/profiles, then regenerate and validate:
 
 ```bash
-stages/040-governed-models-as-a-service/showback-demo/render-access.sh --write stages/040-governed-models-as-a-service/showback-demo/manifests
+stages/040-governed-models-as-a-service/showback-demo/render-access.sh --write gitops/stages/040-governed-models-as-a-service/040-showback-demo
 stages/040-governed-models-as-a-service/showback-demo/generate-dashboards.sh --write
 ```
 
@@ -34,18 +34,44 @@ The access renderer writes six named YAML files, one subscription and one author
 
 ## Package and promotion
 
-- `manifests/` is a **candidate bundle**, containing three subscription/auth-policy pairs, three Perses dashboards, a zero-replica publisher, Service/ServiceMonitor, empty selected-report ConfigMap and the evidence workspace/access grant.
-- `model-drafts/mistral/` is a separately rendered, **zero-replica** Mistral service and model reference. Its 48 GiB request/56 GiB limit and serving flags are hypotheses, not a cold-load qualification. One GPU is requested and no runtime image is overridden. Cache dtype is `auto`; actual dtype and reasoning behavior require qualification.
+- `gitops/stages/040-governed-models-as-a-service/040-showback-demo/` (from the repository root) is the sole canonical owner of the source for three subscription/auth-policy pairs; its enabled `components/qwen-only` selects only Engineering/Support with Qwen. The same component owns three bounded Perses dashboards, a zero-replica publisher, Service/ServiceMonitor, empty selected-report ConfigMap and the evidence workspace/access grant.
+- Its nested `model-drafts/mistral/` is excluded from the root render and separately renders a **zero-replica** Mistral service and model reference. Its 48 GiB request/56 GiB limit and serving flags are hypotheses, not a cold-load qualification. One GPU is requested and no runtime image is overridden. Cache dtype is `auto`; actual dtype and reasoning behavior require qualification.
 - `model-drafts/qwen-fp8/` is a detached Kustomize component copied from the existing FP8 component with an added `replicas: 0` patch. It preserves the model ID. It is not a standalone deployment or an active serving configuration change.
-- `native/manifests/` contains only two inert ConfigMaps holding candidate documents. No LokiStack, metering workload or controller configuration is activated. The source-backed importer processes saved events locally; it does not collect them from the platform.
-- `service-views/manifests/` contains five detached platform financial dashboards. They reuse the same stopped publisher and datasource; they do not establish user/team access controls.
-- No load Job/CronJob, autoscaler, Argo Application or deployment script is added. The runtime workload generator is a foreground client with explicit execution.
+- Canonical nested `native-inputs/` contains only two inert ConfigMaps holding candidate documents. No LokiStack, metering workload or controller configuration is activated. The source-backed importer processes saved events locally; it does not collect them from the platform.
+- Canonical nested `service-views/` contains five platform financial dashboards. They reuse the same stopped publisher and datasource; they do not establish user/team access controls.
+- The manual-sync Application is marked `demo.rhoai.io/optional: 'true'` and uses `deploy-script`, with no `deploy-order`. No load Job/CronJob or autoscaler is added. The runtime workload generator remains a foreground client with explicit execution.
 
-Later promotion requires a reviewed stage-owned GitOps integration. Preserve existing consumer policies and resource IDs; verify named replica/registry-label delegation for the new model. Adding a Git replica value of zero does not override an existing ignored live replica field. Confirm resource absence or the expected stopped UID before a future sync. Never apply this folder over the whole active stage as a shortcut.
+After separate live authorization and source publication, operate only this component through the stage entrypoints:
 
-The candidate namespace binding grants `rhods-admins` the documented `mlflow-edit` role in `showback-reporting`; verify the installed role and target membership before promotion. It does not change the shared MLflow server, bucket or other experiments. No Keycloak realm ownership or real users are changed here.
+```bash
+./stages/040-governed-models-as-a-service/deploy.sh --component 040-showback-demo --revision REVIEWED_REF
+RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION=REVIEWED_SHA ./stages/040-governed-models-as-a-service/validate.sh --component 040-showback-demo
+```
 
-## Before any later live rehearsal
+The deploy path uses the existing environment/cluster guard, published-source selection, adoption preflight and component apply/sync/wait. Read-only prerequisites check namespaces, required APIs and the existing native `edit` role’s aggregated MLflow experiment get/list/create/update/delete permissions. It does not create identities/keys, start GPUs, scale the publisher or activate native telemetry. Default deployment still selects eight ordered components. Broad validation reports `SKIP 040-showback-demo (not activated)` when the optional Application is absent; present Applications receive strict source/revision/sync/health validation and must retain manual sync. Explicit component validation requires presence; `RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION` additionally checks the supplied SHA. Without that input it checks the Application's own immutable revision. Deployment supplies its selected SHA automatically. The enabled Qwen-only Component removes the Marketing pair and Support Mistral references, so the active root has 21 resources and no Mistral dependency. No exception accepts degraded health.
+
+Preserve existing consumer policies and resource IDs; shared Qwen, GPU, MaaS and IPP fields retain their current owners. Verify named replica/registry-label delegation before any later model integration. Adding a Git replica value of zero does not override an existing ignored live replica field. Confirm resource absence or the expected stopped UID before a future sync. Never apply this folder over the whole active stage as a shortcut.
+
+The candidate namespace binding grants `rhods-admins` the existing native namespace `edit` role, including aggregated MLflow experiment permissions, in `showback-reporting`; verify the installed role and target membership before promotion. Native `edit` also permits ordinary namespace editing in this isolated administrator evidence workspace; no new ClusterRole is introduced. It does not change the shared MLflow server, bucket or other experiments. No Keycloak realm ownership or real users are changed here.
+
+## Authorized Qwen-only qualification
+
+Use the checked-in [qualification-qwen-only.json](qualification-qwen-only.json) for execution, collection and publication. Freeze its exact bytes in the private evidence bundle. It records the observed NVFP4 configuration under the existing `040-local-models` owner, with no quantization or GPU change. Its two positive access cases cannot prove the full scenario's cross-model denials. Confirm Engineering/Support identities and their selected subscriptions; obtain separate runtime keys outside Git. Preserve all existing consumer policies.
+
+```bash
+stages/040-governed-models-as-a-service/showback-demo/run-workload.sh \
+  --scenario stages/040-governed-models-as-a-service/showback-demo/qualification-qwen-only.json
+stages/040-governed-models-as-a-service/showback-demo/run-workload.sh \
+  --scenario stages/040-governed-models-as-a-service/showback-demo/qualification-qwen-only.json \
+  --mode access-probe --execute --insecure --output /private/tmp/showback-qwen-access
+stages/040-governed-models-as-a-service/showback-demo/run-workload.sh \
+  --scenario stages/040-governed-models-as-a-service/showback-demo/qualification-qwen-only.json \
+  --execute --insecure --output /private/tmp/showback-qwen-run
+```
+
+The qualification workload has three 120-second busy/quiet/idle phases, a 30-second leading buffer, 45-second drain and request timeout, at most one request per team, 24 requests overall, and approximate input/output bounds of 128/32 tokens. It retains the current illustrative 700,000/300,000 Qwen allowances and does not prove quota exhaustion. Use the same `--scenario` with `collect-usage.sh prepare` and `publish-report.sh`; use a private Qwen-only metering map with verified canonical labels and captured running intervals. The committed full-scenario metering file is a template, not live evidence. A zero or incomplete price/allocation must retain its existing uncertainty state. Native integration remains inactive; the initial publisher stays at zero with no report.
+
+## Before any later full two-model rehearsal
 
 After authorization, use the repository's normal `scripts/lib.sh` environment and API-server guard before cluster commands. This package does not discover a cluster or bypass that guard.
 
@@ -189,13 +215,99 @@ The optional analysis input needs explicit accepted-task outcomes, trusted user/
 
 ## Native Loki and external-metering preparation
 
-Follow [native/README.md](native/README.md) for pinned source contracts and the offline renderer/importer. Preview/check emits only ConfigMaps containing candidate data. The current upstream `usageLogging:false` value selects a collector and **does not stop logging**; source/version matching is required before any future activation.
+Follow [native/README.md](native/README.md) for installed RHOAI 3.5.1 schema/image evidence and the offline renderer/importer. Preview/check emits only ConfigMaps containing candidate data. In this installed build, `Config/default.spec.usageLogging` enables/removes the owned logging pipeline. The separately owned LokiStack is outside that removal, so this is not a general stop command. Neither setting is applied by this package. Do not add the unsupported `telemetry.logs.captureUser` or a DSCI logging field.
 
 For captured events, `native/import-events.sh` takes saved CloudEvents JSONL, a capture manifest and a monthly offer input with an empty event list. It snapshots all inputs, verifies their binding, normalizes provider categories, deduplicates exact source/ID replays, and quarantines unknown identities. Final token/category coverage and stream completion need independent retained evidence; a received event alone cannot prove complete capture. The output goes directly to the service accountant. Do not count a native monetary charge and a recalculated charge as separate expenditure: this report remains the local policy result, with native/provider amounts used for reconciliation.
 
-Before activation, resolve the exact downstream controller and IPP images/source, saved CRD schemas, chart/profile syntax, Loki store ownership, and approved metering backend artifact. The upstream-linked development backend is not a verified Red Hat product operand. The 2026-10-16 guarded read-only attempt stopped before schema inspection because the API/login could not be confirmed, so compatibility is unverified. No backend, Loki export parser or live event capture process is supplied as if qualified.
+Guarded read-only inspection on 2026-10-16 verified the installed controller/IPP images, source revisions, CRDs and current profile. The saved Loki 6.6.1 schema is bound to the catalog candidate's image source; its operator is not installed. The candidate specifies `gp3-csi`, v13, 30-day retention and the separate store expected by MaaS. Before activation, supply reviewed object-store credentials/CA and confirm ownership. The supported source mechanism preserves an existing plugins ConfigMap under `opendatahub.io/managed=false`; a later controlled processor restart reloads edits. The candidate preserves routing/authentication and uses a single streaming metering plugin for JSON and SSE.
+
+The official RHOAI 3.5 documentation does not supply a backend installation recipe. The upstream IPP example identifies OpenMeter or a compatible service, with Noyitz's development backend as the testing reference; see [the retained decision](native/backend-decision.json). The pinned Noyitz image now has local build/API/database evidence; publication and RHOAI integration remain unqualified. No Loki export parser or live event capture process is supplied as if qualified. The 2026-10-18 bounded metadata refresh timed out at the cluster guard before any resource read; the retained installed evidence remains dated 2026-10-16.
 
 After those source prerequisites, later authorized qualification must prove user isolation, category/streaming semantics, loss/replay recovery, balance overshoot and failure behavior, storage retention, invoice reconciliation and rendering. Native operational views and MLflow diagnostics are reused where qualified. Prometheus sampling and sampled traces cannot replace complete financial records. These are future gates; nothing in this runbook authorizes deployment.
+
+### Obtain or build the reference backend image
+
+**The pinned local build was executed on 2026-10-18.** The development reference is
+[noyitz/ai-gateway-metering-service at f9a56b1](https://github.com/noyitz/ai-gateway-metering-service/tree/f9a56b1769b0933e3fe7454a174b1f42a229f07a),
+as linked by the installed IPP source. [Build/runtime evidence](native/evidence/noyitz-local-20261018/README.md)
+records the original artifact, checks and retained failures. The current [local derivative](native/backend/README.md) adds replay, missing-usage and database-health corrections without changing the source pin. The optional Application contains no backend workload, and the image remains unpublished.
+
+1. **Existing image route:** its pinned `deploy/metering-service.yaml` names
+   `ghcr.io/noyitz/ai-gateway-metering-service:latest`. Obtain registry access and verify its Linux amd64
+   manifest digest and source revision before use. The tag is an example input, not evidence of availability
+   or provenance. The checked repository has no image-publishing workflow, release or tag to establish those facts.
+2. **Source route:** use the pinned checkout and its Dockerfile with a local OCI builder, for example Podman.
+   No PostgreSQL instance or provider credentials are needed to build the image. The upstream Dockerfile uses
+   `golang:1.25-alpine`, `GOTOOLCHAIN=auto`, and a module requiring Go 1.26.0; it needs toolchain/module network
+   access. It compiles `CGO_ENABLED=0 GOOS=linux GOARCH=amd64` and packages into UBI 9 minimal as UID 1001.
+   Registry metadata inspection on 2026-10-18 resolved both Linux amd64 base digests. The recipe below derives a
+   separate Containerfile that pins those bases and requests exactly Go 1.26.0, and applies the reviewed correctness patch. Its toolchain/dependencies still
+   need downloading on a fresh build. The recorded build and local tests establish only their stated scope.
+
+```bash
+# Explicit local-only rebuild; requires an already running local Podman engine.
+set -euo pipefail
+METERING_REV=f9a56b1769b0933e3fe7454a174b1f42a229f07a
+METERING_WORK=$(mktemp -d)
+METERING_CONNECTION=podman-machine-default # Verify this is the intended local connection.
+git init "$METERING_WORK/source"
+git -C "$METERING_WORK/source" remote add origin https://github.com/noyitz/ai-gateway-metering-service.git
+git -C "$METERING_WORK/source" fetch --depth=1 origin "$METERING_REV"
+git -C "$METERING_WORK/source" checkout --detach FETCH_HEAD
+podman --connection "$METERING_CONNECTION" pull --platform linux/amd64 \
+  docker.io/library/golang@sha256:78c9e40f10516d7070156948a1747347cc5093022f06deeff3c9decd5faa3af7
+podman --connection "$METERING_CONNECTION" pull --platform linux/amd64 \
+  registry.access.redhat.com/ubi9/ubi-minimal@sha256:865c6a875328a1174ff7f17599574412edd327aa47812951b9bead902806dc53
+mkdir "$METERING_WORK/build"
+bash native/backend/build-local.sh --source "$METERING_WORK/source" \
+  --connection "$METERING_CONNECTION" --output "$METERING_WORK/build"
+```
+
+Keep the build log, source commit, Dockerfile/base/toolchain evidence and local image inspection together.
+A local image ID is not a registry manifest digest. A later, separately authorized publication must retain the
+registry digest and verify that exact artifact before preparing any workload. Do not set `artifact_verified`
+or `live_qualified` from a successful build alone.
+
+PriceTag's deployment repository also documents local Podman builds and intends to use
+`quay.io/redhat-et/pricetag-metering`, but its reviewed
+[image-provenance instructions](https://github.com/redhat-et/pricetag/blob/cb06d37dedf8160c2bd5c2434e43527524e4103c/docs/operations/image-provenance.md)
+leave publication pending. A source release does not establish a corresponding published container.
+Its `build-metering-et.sh` creates OpenShift build resources and is not a local image-only procedure.
+Do not run it, `docker compose up`, or the example `kubectl apply` commands during this stopped phase.
+The earlier speculative PriceTag GHCR lookup is not a publisher-advertised image reference.
+
+Later runtime qualification needs a separate PostgreSQL database/PVC and Secret-backed `DATABASE_URL`,
+reviewed quota behavior and a verified export path. The backend's fallback prices and cache arithmetic differ
+from our service-offer policy; preserve raw events and use the existing accountant for the financial result.
+Backend self-reported health, a 204 ingestion response or a visible dashboard does not establish complete metering.
+
+### Local backend validation
+
+The [2026-10-19 corrected local run](native/evidence/noyitz-local-20261019/README.md)
+passed 115 top-level Go tests and 93 runtime checks. It preserves two known dashboard/audit
+limitations, the earlier build failure and final cleanup evidence. The local VM is stopped.
+
+This explicit local action is separate from the default offline checks. Use an isolated Podman internal
+network, a disposable PostgreSQL database and private environment files; do not load `.env`, provider keys
+or a kubeconfig. Publish only backend port 8080 on loopback, leave the database unpublished, and set
+`MONTHLY_TOKEN_QUOTA=1000`. The retained run used pinned PostgreSQL 16.15 ARM64 and the AMD64 backend
+under QEMU. Blocked startup downloads selected bundled prices, which are not our service-offer rates.
+
+`native/test-backend-local.sh` takes an already-running backend/database and an existing empty output
+directory. Supply `--url http://127.0.0.1:PORT --connection LOCAL_CONNECTION
+--backend-container BACKEND --db-container DATABASE --output EMPTY_DIRECTORY`.
+It checks source and patch image labels and port ownership, inserts synthetic events, reads PostgreSQL,
+restarts the named backend and temporarily stops/starts the named disposable database. It retains passed assertions, observed limitations and failures. It does not
+create or remove containers. After preserving evidence, remove only owned test containers/network/volume
+and restore the local VM's initial state.
+
+Upstream Go tests need `DATABASE_URL` and `PREFLIGHT_DSN` for the disposable, migrated database, with
+permission to create/drop temporary databases. Use PostgreSQL 15 or later for the replay index
+(16.15 in local evidence). The patched migration refuses duplicate history; it does not repair or delete it.
+The evidence records the exact command using the cached
+Go 1.26.0 binary. The ordinary Go launcher refuses toolchain verification with `GOSUMDB=off`; invoking
+the cached binary with `GOTOOLCHAIN=local` preserves the pinned version and blocked network. Backend
+denial audit rows do not establish actual gateway 429 responses or IPP delivery.
 
 ## Failure handling and rollback
 

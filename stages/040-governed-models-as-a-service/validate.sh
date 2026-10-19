@@ -12,20 +12,30 @@
 #   RHOAI_STAGE040_TEST_EXTERNAL=false (skip external models: result pending), RHOAI_STAGE040_SUBSCRIPTION,
 #   RHOAI_STAGE040_CA_BUNDLE (extra CA file), RHOAI_STAGE040_EVIDENCE_PATH (new file under /private/tmp).
 # Exit codes: 0 pass, 1 fail, 2 pending (functional only). API contract: shipped MaaS 563117f1/openapi3.yaml.
-# Usage: stages/040-governed-models-as-a-service/validate.sh [--readiness|--functional]
+# --component 040-showback-demo checks only the installed optional component's source ownership and stopped state;
+# it does not require model inference, policy readiness, selected financial data or native metering activation.
+# Usage: stages/040-governed-models-as-a-service/validate.sh [--readiness|--functional] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-MODE="${1:---readiness}"
-[[ $# -le 1 && ( "$MODE" == --readiness || "$MODE" == --functional ) ]] || { sed -n 's/^# Usage: //p' "$0" >&2; exit 1; }
+MODE=--readiness COMPONENT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --readiness|--functional) MODE=$1; shift ;;
+        --component) COMPONENT=${2:?}; shift 2 ;;
+        *) sed -n 's/^# Usage: //p' "$0" >&2; exit 1 ;;
+    esac
+done
+[[ -z "$COMPONENT" || ( "$COMPONENT" == 040-showback-demo && "$MODE" == --readiness ) ]] || {
+    sed -n 's/^# Usage: //p' "$0" >&2; exit 1;
+}
 load_env
 check_oc_logged_in
 
 STAGE_APPS="$REPO_ROOT/scripts/stage-apps.sh"
 TIMEOUT="${RHOAI_OC_REQUEST_TIMEOUT:-10s}"
 read_json() { oc --request-timeout="$TIMEOUT" get "$@" -o json; }
-check_operator_policy "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" --verify
 
 # jq definitions used by the checks.
 DEFS='
@@ -55,8 +65,60 @@ def selects($labels): (.matchLabels // {} | to_entries | all(.value == $labels[.
 jqd() { local n=$# filter="${!#}"; jq "${@:1:n-1}" "$DEFS $filter"; }
 yes_no() { jqd "$@" >/dev/null && echo yes || echo no; }
 
-DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" |
+SHOWBACK_DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" |
     ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)')
+# Stopped-source validation is separate from readiness of shared model endpoints and MaaS access enforcement.
+showback_stopped() {
+    local d kind ns name group live args tracking
+    "$STAGE_APPS" status 040 --app 040-showback-demo \
+        ${RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION:+--revision "$RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION"} \
+        >/dev/null 2>&1 || { echo "showback Application not Synced and Healthy at its reviewed revision"; return; }
+    jq -e '([.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort) as $teams |
+        ((length == 21 and $teams == ["team-engineering","team-support"]
+            and all(.[] | select(.kind == "MaaSSubscription" or .kind == "MaaSAuthPolicy");
+                [.spec.modelRefs[].name] == ["qwen3-8-27b"])) or
+         (length == 23 and $teams == ["team-engineering","team-marketing","team-support"]))
+        and all(.[]; .kind != "Job" and .kind != "CronJob" and .kind != "LLMInferenceService"
+        and .kind != "HorizontalPodAutoscaler" and .kind != "Config" and .kind != "LokiStack")
+        and ([.[] | select(.kind == "Deployment")] | length) == 1
+        and all(.[] | select(.kind == "Deployment"); .spec.replicas == 0)
+        and any(.[]; .kind == "ConfigMap" and .metadata.name == "showback-selected-report" and .data == {})' \
+        <<<"$SHOWBACK_DESIRED" >/dev/null || { echo "showback source no longer matches the stopped bundle"; return; }
+    while IFS= read -r d; do
+        kind=$(jq -r '.kind' <<<"$d"); ns=$(jq -r '.metadata.namespace // ""' <<<"$d")
+        name=$(jq -r '.metadata.name' <<<"$d")
+        group=$(jq -r '.apiVersion | if contains("/") then split("/")[0] else "" end' <<<"$d")
+        args=("$(jq -r '.kind + (if (.apiVersion | contains("/")) then "." + (.apiVersion | split("/") | .[1] + "." + .[0]) else "" end)' <<<"$d")" "$name")
+        [[ -z "$ns" ]] || args+=(-n "$ns")
+        live=$(read_json "${args[@]}") || { echo "$kind $name unavailable"; return; }
+        tracking="040-showback-demo:$group/$kind:${ns:-openshift-gitops}/$name"
+        jqd -e --argjson d "$d" --arg t "$tracking" '.metadata.deletionTimestamp == null
+            and (.metadata.ownerReferences // [] | length) == 0
+            and .metadata.annotations["argocd.argoproj.io/tracking-id"] == $t
+            and covers($d | if .kind == "ConfigMap" and .data == {} then del(.data) else . end)
+            and (if .kind == "Deployment" then .spec.replicas == 0 and (.status.replicas // 0) == 0
+                and (.status.readyReplicas // 0) == 0 and (.status.availableReplicas // 0) == 0 else true end)
+            and (if .kind == "ConfigMap" and .metadata.name == "showback-selected-report"
+                then (.data // {}) == {} else true end)' <<<"$live" >/dev/null || {
+                    echo "$kind $name source, ownership or stopped state differs"; return;
+                }
+    done < <(jq -c '.[]' <<<"$SHOWBACK_DESIRED")
+    read_json pods -n redhat-ods-monitoring -l app.kubernetes.io/name=showback-report-publisher |
+        jq -e '.items | length == 0' >/dev/null || { echo "publisher Pods still exist"; return; }
+    echo yes
+}
+if [[ "$COMPONENT" == 040-showback-demo ]]; then
+    check "Optional showback Application owns the reviewed bundle; publisher stopped and no selected report" showback_stopped yes
+    echo "Scope: stopped source only; model qualification, access enforcement, report publication and native metering remain pending."
+    validation_summary
+    exit $?
+fi
+
+check_operator_policy "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" --verify
+DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" |
+    ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' |
+    jq -c --argjson optional "$SHOWBACK_DESIRED" 'def id: [.apiVersion, .kind, .metadata.namespace, .metadata.name];
+        ($optional | map(id)) as $excluded | map(select(id as $i | $excluded | index($i) | not))')
 desired_of() { jq -c --arg k "$1" '[.[] | select(.kind == $k)]' <<<"$DESIRED"; }
 
 components_reconciled() {
@@ -388,6 +450,13 @@ EOT
     [[ -z "$differs" ]] && echo yes || echo "differs: $differs"
 }
 check "Declared MaaS subscriptions and auth policies Active and Ready (quota enforcement is functional acceptance)" governance yes
+showback_application=$(oc --request-timeout="$TIMEOUT" get applications.argoproj.io 040-showback-demo \
+    -n openshift-gitops --ignore-not-found -o name) || {
+        log_error "Cannot determine whether the optional showback Application is installed"; exit 1;
+    }
+if [[ -n "$showback_application" ]]; then
+    check "Installed optional showback bundle retains its owned stopped state (runtime acceptance pending)" showback_stopped yes
+fi
 check "Studio catalog entries current, or deferred until Stage 060 deploys the MCP servers" studio_catalog yes
 check "MaaS gateway AdminNetworkPolicy boundary: needed destinations open, others blocked" gateway_boundary yes
 if [[ "$MODE" == --readiness ]]; then
@@ -451,8 +520,7 @@ functional() {
     }
     json_file() { local f; f=$(mktemp "$WORK/req.XXXX"); cat >"$f"; echo "$f"; }
 
-    DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" |
-        ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)')
+    # Reuse the shared-stage source selected above; optional showback identities stay outside this acceptance scope.
     REFS=$(jq -c --arg sel "${RHOAI_STAGE040_MODEL:-}" '[.[] | select(.kind == "MaaSModelRef")
         | select($sel == "" or .metadata.name == $sel)] | sort_by([.metadata.namespace == "external-models", .metadata.name])' <<<"$DESIRED")
     SINGLE=$(tr '[:upper:]' '[:lower:]' <<<"${RHOAI_STAGE040_SINGLE_COMPLETION:-false}")

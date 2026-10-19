@@ -1,0 +1,26 @@
+{
+  "complete": true,
+  "checks": [
+    {
+      "id": "health-during-db-outage",
+      "result": "observed-limitation",
+      "http_status": 200
+    },
+    {
+      "id": "ready-during-db-outage",
+      "result": "observed-limitation",
+      "http_status": 200
+    },
+    {
+      "id": "balance-during-db-outage",
+      "result": "pass",
+      "http_status": 500
+    },
+    {
+      "id": "database-restart-persistence",
+      "result": "pass",
+      "observation": "Raw rows and rollups unchanged; recovered entitlement usage240 balance760"
+    }
+  ],
+  "boundary": "Same disposable database volume. No gateway outage/delivery behavior tested."
+}

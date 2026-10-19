@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Preview detached MaaS candidates. --write regenerates six local files, safely on rerun; never applies them.
-# Usage: render-access.sh [--scenario FILE] [--check DIR | --write DIR]
+# Preview MaaS candidates. --write regenerates six GitOps files, safely on rerun; never applies them.
+# Usage: render-access.sh [--scenario FILE] [--check [DIR] | --write [DIR]]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -8,23 +8,23 @@ source "$REPO_ROOT/scripts/lib.sh"
 
 scenario="$SCRIPT_DIR/scenario.json"
 mode=preview
-directory=""
+directory="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo"
 usage() {
-    printf '%s\n' 'Usage: render-access.sh [--scenario FILE] [--check DIR | --write DIR]' \
-        'Default: JSON preview array, no files or cluster calls. --write emits one YAML resource per file.'
+    printf '%s\n' 'Usage: render-access.sh [--scenario FILE] [--check [DIR] | --write [DIR]]' \
+        'Default: JSON preview array. --check/--write use the canonical GitOps component unless DIR is supplied.'
 }
 while (($#)); do
     case "$1" in
-        --scenario|--check|--write)
+        --scenario)
             (($# >= 2)) || { usage >&2; exit 2; }
-            if [[ "$1" == --scenario ]]; then
-                scenario="$2"
-            else
-                [[ "$mode" == preview ]] || { usage >&2; exit 2; }
-                mode="${1#--}"
-                directory="$2"
-            fi
+            scenario="$2"
             shift 2
+            ;;
+        --check|--write)
+            [[ "$mode" == preview ]] || { usage >&2; exit 2; }
+            mode="${1#--}"
+            shift
+            if (($#)) && [[ "$1" != --* ]]; then directory="$1"; shift; fi
             ;;
         -h|--help)
             usage
@@ -92,7 +92,7 @@ while IFS= read -r resource; do
     if [[ "$mode" == write ]]; then
         printf '%s\n' "$rendered" > "$directory/$filename"
     elif ! cmp -s <(printf '%s\n' "$rendered") "$directory/$filename"; then
-        printf 'Detached access manifest differs from scenario: %s\n' "$filename" >&2
+        printf 'Generated access manifest differs from scenario: %s\n' "$filename" >&2
         exit 1
     fi
 done < <(printf '%s' "$resources" | jq -c '.[]')
