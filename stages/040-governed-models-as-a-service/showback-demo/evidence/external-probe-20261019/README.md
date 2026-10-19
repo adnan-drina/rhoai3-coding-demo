@@ -36,3 +36,22 @@ monthly statements, prices, provider invoices, cache categories, quality, capaci
 not qualified. Costs and unmeasured usage remain unknown. NVIDIA identifies its catalog endpoint as a free prototype
 service, which does not establish a monthly tariff or paid-provider rate:
 [official model catalog](https://build.nvidia.com/nvidia/nemotron-3-ultra-550b-a55b).
+
+The three offer comparison dashboards were deployed through the dedicated Application at
+`52b921c04fc5395f766d922023deffc56eb5507d`, followed by two display-only label mappings at
+`bae0521f62ed05959d93bff24b491ef1b0a06ffa`. The [independent validation](offer-dashboard-validation.json)
+records all 58 native datasource queries, exact installed Table transformations, 24-resource source readback,
+all nine external metric series and the unchanged Qwen report. The existing publisher remained Ready with zero
+restarts. The original three bounded dashboards and five monthly candidates remain byte-identical.
+
+[Browser acceptance](offer-dashboard-browser-readback.json) covers all 28 new panels at 788 px and 1440 px.
+All 23 tables rendered; authored panel interiors had no horizontal overflow. External shows the three configured
+models, Nemotron's exact 2/42/4 counts and one verified caller. Dedicated shows explicit missing states. Shared
+preserves Engineering $0.15, Support $0.07 and platform idle $0.12, with exact 653/1,100 team token counts.
+Monthly rates and recovery remain Unknown. The final External labels read **Request test** and **OK**.
+The native application's tab strip still scrolls; live chart time and report UTC periods remain separate.
+
+Rollback uses the matching checkout and published prior revision through the same Stage 040 component entrypoint.
+No MaaS access policy, model deployment, GPU capacity or native Loki/metering activation changed in this update.
+Implementation and independent validation used GPT-6.1 Sol sub-agents under the lead agent; human review remains
+required before merge.

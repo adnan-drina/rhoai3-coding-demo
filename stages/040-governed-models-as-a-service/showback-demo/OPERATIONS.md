@@ -42,6 +42,27 @@ After deploying a dashboard revision, open all three views in the RHOAI browser 
 
 ## Package and promotion
 
+For a bounded external-model rehearsal, `external-probe.sh` previews without network access. Explicit execution
+requires the guarded platform login for inventory and a separate private, genuine `ai-admin` or `ai-developer`
+login for owner access. It uses the existing personal subscription, makes exactly two nonstreaming Nemotron calls
+with a 128-token output cap and 60-second timeout, performs no retries and revokes its temporary API key. It does
+not grant model access. Raw HTTP evidence stays in a new private directory; only the reviewed sanitized
+`probe.json` is suitable for the report renderer. See [the observed run](evidence/external-probe-20261019/README.md).
+
+```bash
+bash stages/040-governed-models-as-a-service/showback-demo/external-probe.sh
+# Run only when live test traffic is intended, using an existing owner-only kubeconfig:
+bash stages/040-governed-models-as-a-service/showback-demo/external-probe.sh \
+  --execute --persona /private/tmp/existing-persona/kubeconfig \
+  --output /private/tmp/new-external-probe --insecure
+```
+
+Compose the sanitized probe with `render-external-probe.sh --probe FILE --publisher EXISTING_CONFIGMAP --output NEW_FILE`.
+Review the new file before replacing `publisher-report.yaml` and publishing through the component entrypoint.
+Composition replaces only `showback_external_*` metrics, preserving Qwen metrics and report annotation. Repeating
+composition does not accumulate calls. This is a selected bounded snapshot, not continuous external usage
+collection; native delivery and monthly invoice reconciliation remain unqualified.
+
 - `gitops/stages/040-governed-models-as-a-service/040-showback-demo/` (from the repository root) is the sole canonical owner of the source for three subscription/auth-policy pairs; its enabled `components/qwen-only` selects only Engineering/Support with Qwen. The same component owns three bounded Perses dashboards, the selected R2 report, one-replica publisher source, Service/ServiceMonitor and the evidence workspace/access grant.
 - Its nested `model-drafts/mistral/` is excluded from the root render and separately renders a **zero-replica** Mistral service and model reference. Its 48 GiB request/56 GiB limit and serving flags are hypotheses, not a cold-load qualification. One GPU is requested and no runtime image is overridden. Cache dtype is `auto`; actual dtype and reasoning behavior require qualification.
 - `model-drafts/qwen-fp8/` is a detached Kustomize component copied from the existing FP8 component with an added `replicas: 0` patch. It preserves the model ID. It is not a standalone deployment or an active serving configuration change.

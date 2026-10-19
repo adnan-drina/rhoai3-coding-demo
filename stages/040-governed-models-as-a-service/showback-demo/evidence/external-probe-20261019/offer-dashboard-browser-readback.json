@@ -1,0 +1,443 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "observed",
+  "captured_at": "2026-10-19T10:44:56Z",
+  "deployed_revision": "bae0521f62ed05959d93bff24b491ef1b0a06ffa",
+  "initial_query_revision": "52b921c04fc5395f766d922023deffc56eb5507d",
+  "method": "Authenticated RHOAI browser, loaded tables, screenshots and read-only DOM dimensions",
+  "viewport_height": 954,
+  "views": [
+    {
+      "offer": "external",
+      "viewport_width": 788,
+      "panels": [
+        {
+          "title": "External model · consumption contract",
+          "kind": "Markdown",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Evidence availability",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Configured models · observed probe usage",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Selected request probe · UTC",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Observed requests by user and model",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Observed request outcomes",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly categories and rates",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly charges by user and team",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Provider reconciliation · USD",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly agreement audit",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        }
+      ]
+    },
+    {
+      "offer": "external",
+      "viewport_width": 1440,
+      "panels": [
+        {
+          "title": "External model · consumption contract",
+          "kind": "Markdown",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Evidence availability",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Configured models · observed probe usage",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Selected request probe · UTC",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Observed requests by user and model",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Observed request outcomes",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly categories and rates",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly charges by user and team",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Provider reconciliation · USD",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly agreement audit",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        }
+      ]
+    },
+    {
+      "offer": "dedicated",
+      "viewport_width": 788,
+      "panels": [
+        {
+          "title": "Dedicated private · sponsor owns availability",
+          "kind": "Markdown",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Evidence availability",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Sponsor and contract",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Sponsor economics · USD",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Dedicated consumption",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Full-cost components · USD",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Capacity, efficiency and SLO · not measured",
+          "kind": "Markdown",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly agreement audit",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        }
+      ]
+    },
+    {
+      "offer": "dedicated",
+      "viewport_width": 1440,
+      "panels": [
+        {
+          "title": "Dedicated private · sponsor owns availability",
+          "kind": "Markdown",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Evidence availability",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Sponsor and contract",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Sponsor economics · USD",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Dedicated consumption",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Full-cost components · USD",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Capacity, efficiency and SLO · not measured",
+          "kind": "Markdown",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly agreement audit",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        }
+      ]
+    },
+    {
+      "offer": "shared",
+      "viewport_width": 788,
+      "panels": [
+        {
+          "title": "Shared private · tariff and idle ownership",
+          "kind": "Markdown",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Observed bounded Qwen report · UTC",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Bounded hosting allocation · USD",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Bounded Qwen use · exact tokens",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Bounded allocated capacity and cost",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Live Qwen throughput · separate time range",
+          "kind": "TimeSeriesChart",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Evidence availability",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly shared recovery · USD",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly tariff evidence",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly agreement audit",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        }
+      ]
+    },
+    {
+      "offer": "shared",
+      "viewport_width": 1440,
+      "panels": [
+        {
+          "title": "Shared private · tariff and idle ownership",
+          "kind": "Markdown",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Observed bounded Qwen report · UTC",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Bounded hosting allocation · USD",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Bounded Qwen use · exact tokens",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Bounded allocated capacity and cost",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Live Qwen throughput · separate time range",
+          "kind": "TimeSeriesChart",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Evidence availability",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly shared recovery · USD",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly tariff evidence",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        },
+        {
+          "title": "Monthly agreement audit",
+          "kind": "Table",
+          "observed": true,
+          "horizontal_overflow": 0
+        }
+      ]
+    }
+  ],
+  "expected_panels_per_width": 28,
+  "observed_external": {
+    "models": [
+      "Claude Sonnet 5.5",
+      "GPT-6 Luna",
+      "Nemotron 3 Ultra 550B"
+    ],
+    "nemotron": {
+      "requests": 2,
+      "input_tokens": 42,
+      "output_tokens": 4,
+      "user": "ai-admin",
+      "subscription": "personal-ai-admin",
+      "usage": "Complete"
+    },
+    "unprobed_models": "Not measured; numeric usage Unknown",
+    "monthly_costs": "Unknown",
+    "final_labels": {
+      "scope": "Request test",
+      "transport": "OK"
+    }
+  },
+  "observed_dedicated": {
+    "agreement": "Not measured",
+    "sponsor": "Unknown",
+    "cost": "Unknown",
+    "usage": "Unknown"
+  },
+  "observed_shared": {
+    "period_start": "2026-10-19T08:42:16Z",
+    "period_end": "2026-10-19T08:48:16Z",
+    "tokens": {
+      "engineering": 653,
+      "support": 1100
+    },
+    "cost_cents": {
+      "engineering": 15,
+      "marketing": 0,
+      "support": 7,
+      "platform_idle": 12,
+      "other": 0,
+      "unresolved": 0
+    },
+    "monthly_tariff_and_recovery": "Unknown",
+    "live_throughput": "Separate selected time range; zero throughput observed"
+  },
+  "limitations": [
+    "Platform admin views, not per-consumer access authorization",
+    "Native application tab strip scrolls; authored panel interiors have no horizontal overflow",
+    "Long audit strings may use native truncation and hover",
+    "Initial projection/scrape and asynchronous query refresh can briefly show missing states; acceptance used settled data",
+    "Bounded external receipts are not native-metering delivery or monthly invoice evidence"
+  ],
+  "private_screenshots": [
+    "external-788-final.png",
+    "external-1440-final.png",
+    "dedicated-1440.png",
+    "shared-788.png",
+    "shared-1440.png"
+  ]
+}

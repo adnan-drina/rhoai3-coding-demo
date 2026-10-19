@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "evidence_kind": "independent_static_native_code_replay_and_live_read_only_query_validation",
-  "verified_at": "2026-10-19T10:40:49Z",
+  "verified_at": "2026-10-19T10:44:01Z",
   "source_base_sha": "fe6333467424799c6abbad87a6759f72aecf8370",
   "reviewed_definitions_sha256": "35306af18ed0b6397a5ab37e6a3070992b2d704b5224a805ba9ee20ca86119e1",
-  "published_source_sha": "52b921c04fc5395f766d922023deffc56eb5507d",
-  "deployment_status": "passed at published source; two subsequent label-only mappings awaiting separate final browser acceptance",
+  "published_source_sha": "bae0521f62ed05959d93bff24b491ef1b0a06ffa",
+  "deployment_status": "passed at final display revision",
   "browser_status": "parent-owned acceptance pending final display revision",
   "observed_probe": {
     "sha256": "f8571896dc9d653c27cc0112fe3785ddc99dd99527c0b27164c82164e9bf886c",
@@ -164,6 +164,23 @@
       }
     ],
     "collection_note": "Initial browser No inventory resolved after normal projection/scrape and refresh, without restart; final proxy observations contain actual inventory and receipt metrics",
-    "subsequent_display_only_change": "Request test and OK text mappings; query strings and numeric data unchanged; final revision and browser acceptance recorded separately"
+    "subsequent_display_only_change": "Request test and OK mappings verified in final live CR and Perses API; query definitions identical"
+  },
+  "final_display_readback": {
+    "verified_at": "2026-10-19T10:44:01Z",
+    "published_source_sha": "bae0521f62ed05959d93bff24b491ef1b0a06ffa",
+    "application_synced_healthy": true,
+    "resources_synced": 24,
+    "publisher_ready": 1,
+    "publisher_pod_uid_unchanged": true,
+    "publisher_restarts": 0,
+    "external_cr_and_api_equal_source": true,
+    "request_test_and_ok_mappings_present": true,
+    "all_offer_query_definitions_unchanged_from": "52b921c04fc5395f766d922023deffc56eb5507d",
+    "native_proxy_external_series": 9,
+    "original_qwen_report_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+    "original_qwen_selected_report_present": true,
+    "repeat_58_query_pass_required": false,
+    "browser_acceptance": "parent-owned separate evidence"
   }
 }
