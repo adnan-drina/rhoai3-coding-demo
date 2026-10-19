@@ -16,3 +16,7 @@ subjects:
 - kind: ServiceAccount
   name: openshell-sandbox
   namespace: ai-agents
+# Developer-owned OpenCode sandboxes (sandboxes/create.sh --owner ai-developer) run the same reviewed image.
+- kind: ServiceAccount
+  name: openshell-sandbox
+  namespace: openshell-developer

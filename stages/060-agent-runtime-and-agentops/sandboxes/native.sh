@@ -11,7 +11,10 @@ STAGE060=gitops/stages/060-agent-runtime-and-agentops
 RUNTIME_PATH=$STAGE060/060-openshell-runtime
 PINS="$REPO_ROOT/$RUNTIME_PATH/chart/source-pins.json"
 SANDBOXES="$REPO_ROOT/stages/060-agent-runtime-and-agentops/sandboxes"
-WORKSPACE=ai-agents
+# The default owner: ai-admin in ai-agents, the workspace's native administrator, who also manages its profiles,
+# providers and templates. owner_select switches to the developer path.
+OWNER=ai-admin WORKSPACE=ai-agents MEMBER_ROLE=admin SETUP_ROLE=owner
+IMAGE_NAMESPACE=ai-agents
 MODEL=publishers/internal-models/models/qwen3-8-27b
 SOURCE_COMMIT=12cec59bf4c36c305032143eb90870bd16d8820b
 STATE_ROOT="$HOME/.local/state/rhoai3-coding-demo/060-sandboxes"
@@ -263,6 +266,16 @@ sandbox_identity() {
 }
 
 # ── Owned setup: runtime values and the owner-only recovery journal ─────────────────────────────────────────────────
+# owner_select ai-admin|ai-developer: the hosting workspace and the persona's native role there. ai-developer is a
+# workspace user of openshell-developer: the platform administrator session manages that workspace's profile,
+# provider and template, the developer mints the key on their own subscription and owns the sandbox.
+owner_select() {
+  case "$1" in
+    ai-admin) OWNER=ai-admin WORKSPACE=ai-agents MEMBER_ROLE=admin SETUP_ROLE=owner ;;
+    ai-developer) OWNER=ai-developer WORKSPACE=openshell-developer MEMBER_ROLE=user SETUP_ROLE=admin ;;
+    *) return 1 ;;
+  esac
+}
 # runtime_select opencode|hermes
 runtime_select() {
   case "$1" in
@@ -276,7 +289,17 @@ runtime_select() {
   esac
   INPUTS="$SANDBOXES/$NAME"
   POLICY_FILE="$SANDBOXES/global-policy.yaml"
-  TEMPLATE=$(cat "$INPUTS/template.json")
+  SUBSCRIPTION_FILE="$REPO_ROOT/$RUNTIME_PATH/$NAME/subscription.yaml"
+  TEMPLATE_FILE="$INPUTS/template.json" CONFIG_FILE="$INPUTS/$CONFIG_SOURCE" OVERRIDES=()
+  # The developer's OpenCode: its own subscription, and a template and config sized for interactive work.
+  if [[ "$OWNER" == ai-developer ]]; then
+    [[ "$NAME" == opencode ]] || return 1
+    SUBSCRIPTION=opencode-developer-qwen38
+    SUBSCRIPTION_FILE="$REPO_ROOT/$RUNTIME_PATH/opencode/developer-subscription.yaml"
+    TEMPLATE_FILE="$INPUTS/developer/template.json" CONFIG_FILE="$INPUTS/developer/$CONFIG_SOURCE"
+    OVERRIDES=("$TEMPLATE_FILE" "$CONFIG_FILE")
+  fi
+  TEMPLATE=$(cat "$TEMPLATE_FILE")
   IMAGE=$(printf '%s' "$TEMPLATE" | jq -r '.image')
   IMAGE_DIGEST=${IMAGE#*@}
 }
@@ -298,8 +321,8 @@ state() { printf '%s' "$STATE" | jq -r "$@"; }
 # setup_init: sessions, pins and the journal (Setup.__init__). Needs RUNTIME, PERSONA_KUBECONFIG, BOOTSTRAP_KUBECONFIG,
 # STATE_DIR.
 setup_init() {
-  runtime_select "$RUNTIME"
-  persona_session ai-admin
+  runtime_select "$RUNTIME" || fail "Owner $OWNER has no $RUNTIME sandbox path"
+  persona_session "$OWNER"
   resolve_cli
   [[ $(jq -r '.sourceCommit' "$PINS") == "$SOURCE_COMMIT" ]] || fail "Native CLI/source pin differs"
   GATEWAY_PIN=$(jq -c '.images.gateway' "$PINS")
@@ -309,10 +332,10 @@ setup_init() {
   [[ ! -e "$JOURNAL" ]] || private_path "$JOURNAL" || fail "Unsafe recovery journal"
   STATE=$(cat "$JOURNAL" 2>/dev/null || echo '{}')
   state -e --arg w "$WORKSPACE" '. == {} or .workspace == $w' >/dev/null || fail "Foreign recovery state"
-  RECEIPT=$(jq -n -c --arg w "$WORKSPACE" --arg n "$NAME" --arg m "$MODEL" '{workspace: $w, sandbox: $n, model: $m, checks: {}, changes: []}')
+  RECEIPT=$(jq -n -c --arg o "$OWNER" --arg w "$WORKSPACE" --arg n "$NAME" --arg m "$MODEL" '{owner: $o, workspace: $w, sandbox: $n, model: $m, checks: {}, changes: []}')
 }
 # setup_preflight REVISION SOURCE_FILE...: read-only; the runtime revision, published sources, pinned gateway, the
-# dedicated subscription, the rehomed image, the MaaS host and the model visible to ai-admin.
+# dedicated subscription, the rehomed image, the MaaS host and the model visible to the owner.
 setup_preflight() {
   local revision=$1 gateway desired subscription file sources=()
   shift
@@ -322,21 +345,21 @@ setup_preflight() {
   for file in "$INPUTS"/*; do
     if [[ -f "$file" ]]; then sources+=("$file"); fi
   done
-  source_guard "$revision" "$@" "$POLICY_FILE" "$PINS" "${sources[@]}"
+  source_guard "$revision" "$@" "$POLICY_FILE" "$PINS" "${sources[@]}" ${OVERRIDES[@]+"${OVERRIDES[@]}"}
   bget statefulset openshell openshell | jq -e --argjson pin "$GATEWAY_PIN" '.spec.template.spec.containers[0].image as $i
     | ($i | split("@")[0] | split(":")[0]) == $pin.repository and ($i | endswith("@" + $pin.amd64Digest)) and .status.readyReplicas == 1' >/dev/null ||
     fail "Gateway does not match the ready pinned runtime"
-  desired=$(yaml_json <"$REPO_ROOT/$RUNTIME_PATH/$NAME/subscription.yaml" | jq -c '.[0].spec')
+  desired=$(yaml_json <"$SUBSCRIPTION_FILE" | jq -c '.[0].spec')
   subscription=$(bget maassubscription "$SUBSCRIPTION" models-as-a-service)
   printf '%s' "$subscription" | jq -e --argjson d "$desired" '.spec == $d' >/dev/null ||
     fail "Dedicated subscription differs from its complete reviewed scope"
-  printf '%s' "$subscription" | jq -e '.spec.owner == {users: ["ai-admin"]} and (.spec.modelRefs | length) == 1
+  printf '%s' "$subscription" | jq -e --arg o "$OWNER" '.spec.owner == {users: [$o]} and (.spec.modelRefs | length) == 1
     and .spec.modelRefs[0].name == "qwen3-8-27b" and .spec.modelRefs[0].namespace == "internal-models"' >/dev/null ||
     fail "Private subscription scope differs"
   printf '%s' "$subscription" | jq -e '.metadata.generation as $g
     | any(.status.conditions[]?; .type == "Ready" and .status == "True" and .observedGeneration == $g)' >/dev/null ||
     fail "Dedicated subscription is not Ready"
-  bget imagestreamtag "$IMAGE_TAG" "$WORKSPACE" | jq -e --arg d "$IMAGE_DIGEST" '.image.metadata.name == $d' >/dev/null ||
+  bget imagestreamtag "$IMAGE_TAG" "$IMAGE_NAMESPACE" | jq -e --arg d "$IMAGE_DIGEST" '.image.metadata.name == $d' >/dev/null ||
     fail "Rehomed immutable image is absent"
   gateway=$(bget gateway maas-default-gateway openshift-ingress)
   HOST=$(printf '%s' "$gateway" | jq -r '[.spec.listeners[] | select(.name == "api") | .hostname] | if length == 1 then .[0] else empty end')
@@ -346,7 +369,7 @@ setup_preflight() {
     fail "OpenCode context limit differs from actual serving configuration"
   http GET "$API/v1/models" USER_TOKEN
   [[ "$HTTP_STATUS" == 200 ]] && printf '%s' "$HTTP_BODY" | jq -e --arg m "$MODEL" 'any(.data[]?; .id == $m and .ready)' >/dev/null ||
-    fail "Canonical Qwen model is not available to ai-admin"
+    fail "Canonical Qwen model is not available to $OWNER"
   http GET "$API/v1/subscriptions" USER_TOKEN
   [[ "$HTTP_STATUS" == 200 ]] && printf '%s' "$HTTP_BODY" | jq -e --arg s "$SUBSCRIPTION" '[(. // [])[] | select(.subscription_id_header == $s)] | length == 1' >/dev/null ||
     fail "Dedicated native subscription is not discoverable"
@@ -357,9 +380,9 @@ setup_inventory() {
   local identity members workspaces workspace_id binding inputs file providers templates
   identity=$(ncli owner - 30 whoami -o json)
   members=$(ncli admin - 30 workspace member list --workspace "$WORKSPACE" -o json)
-  jq -n -e --argjson i "$identity" --argjson m "$members" '($m.next_page_token // "") == "" and ($m.members | length) == 1
-    and $m.members[0].role == "admin" and $m.members[0].subject == $i.subject and $i.display_name == "ai-admin"' >/dev/null 2>&1 ||
-    fail "Genuine immutable workspace administrator differs"
+  jq -n -e --argjson i "$identity" --argjson m "$members" --arg o "$OWNER" --arg r "$MEMBER_ROLE" '($m.next_page_token // "") == ""
+    and ($m.members | length) == 1 and $m.members[0].role == $r and $m.members[0].subject == $i.subject and $i.display_name == $o' >/dev/null 2>&1 ||
+    fail "Genuine immutable workspace owner differs"
   printf '%s' "$identity" | jq -e '(.roles // [] | index("openshell-user")) != null and (.roles // [] | index("openshell-platform-admin")) == null' >/dev/null ||
     fail "Native owner role is outside the reviewed workspace scope"
   workspaces=$(ncli admin - 30 workspace list -o json)
@@ -369,6 +392,9 @@ setup_inventory() {
   inputs='{}'
   for file in "$INPUTS"/*; do
     if [[ -f "$file" ]]; then inputs=$(printf '%s' "$inputs" | jq -c --arg k "$(basename "$file")" --rawfile v "$file" '. + {($k): $v}'); fi
+  done
+  for file in ${OVERRIDES[@]+"${OVERRIDES[@]}"}; do
+    inputs=$(printf '%s' "$inputs" | jq -c --arg k "developer/$(basename "$file")" --rawfile v "$file" '. + {($k): $v}')
   done
   inputs=$(printf '%s' "$inputs" | jq -c --rawfile v "$POLICY_FILE" '. + {"global-policy.yaml": $v}')
   binding=$(jq -n -c --arg server "$(boc whoami --show-server)" --arg issuer "$(bget configmap openshell-identity openshell | jq -r '.data.issuer')" \
@@ -382,8 +408,8 @@ setup_inventory() {
   FLEET=$(ncli admin - 30 sandbox list --all-workspaces -o json)
   printf '%s' "$FLEET" | jq -e '(.next_page_token // "") == ""' >/dev/null || fail "Fleet inventory is incomplete"
   POLICY=$(ncli admin - 30 policy get --global --full -o json)
-  providers=$(ncli owner "$WORKSPACE" 30 provider list -o json)
-  templates=$(ncli owner "$WORKSPACE" 30 sandbox template list -o json)
+  providers=$(ncli "$SETUP_ROLE" "$WORKSPACE" 30 provider list -o json)
+  templates=$(ncli "$SETUP_ROLE" "$WORKSPACE" 30 sandbox template list -o json)
   jq -n -e --argjson p "$providers" --argjson t "$templates" '($p.next_page_token // "") == "" and ($t.next_page_token // "") == ""' >/dev/null ||
     fail "Native provider/template inventory incomplete"
   PROVIDERS=$(printf '%s' "$providers" | jq -c '.providers')
@@ -432,15 +458,15 @@ setup_provision() {
   local sandbox key_name
   # Provider profile: imported once, then pinned by its exported digest.
   (umask 077; sed "s/__MAAS_COMMON_HOST__/$HOST/g" "$INPUTS/profile.yaml" >"$STATE_DIR/profile.yaml")
-  profiles=$(ncli owner "$WORKSPACE" 30 profile list -o json)
+  profiles=$(ncli "$SETUP_ROLE" "$WORKSPACE" 30 profile list -o json)
   if printf '%s' "$profiles" | jq -e --arg p "$PROVIDER" 'any(.[]; .id == $p) | not' >/dev/null; then
-    ncli owner "$WORKSPACE" 30 profile lint -f "$STATE_DIR/profile.yaml" >/dev/null
+    ncli "$SETUP_ROLE" "$WORKSPACE" 30 profile lint -f "$STATE_DIR/profile.yaml" >/dev/null
     state_save '{"profile_pending": true}'
-    ncli owner "$WORKSPACE" 30 profile import -f "$STATE_DIR/profile.yaml" >/dev/null
-    exported=$(ncli owner "$WORKSPACE" 30 profile export "$PROVIDER" -o json)
+    ncli "$SETUP_ROLE" "$WORKSPACE" 30 profile import -f "$STATE_DIR/profile.yaml" >/dev/null
+    exported=$(ncli "$SETUP_ROLE" "$WORKSPACE" 30 profile export "$PROVIDER" -o json)
     state_save "$(jq -n -c --arg h "$(printf '%s' "$exported" | digest)" '{profile_hash: $h, profile_pending: false}')"
   else
-    exported=$(ncli owner "$WORKSPACE" 30 profile export "$PROVIDER" -o json)
+    exported=$(ncli "$SETUP_ROLE" "$WORKSPACE" 30 profile export "$PROVIDER" -o json)
     [[ $(state '.profile_hash // ""') == $(printf '%s' "$exported" | digest) ]] || fail "Existing profile is foreign or changed; import refused"
   fi
   # Provider: a 30-day persistent key on the dedicated subscription, held only by the native encrypted provider.
@@ -464,11 +490,11 @@ setup_provision() {
     [[ -z "$expiry" ]] || expiry_s=$(iso_epoch "$expiry")
     jq -n -e --argjson e "$expiry_s" --argjson now "$(date +%s)" '$now + 86400 < $e and $e <= $now + 31 * 86400' >/dev/null ||
       fail "Native key expiry is outside the reviewed 30-day duration"
-    state_save "$(jq -n -c --arg e "$expiry" --arg s "$SUBSCRIPTION_HEADER" --arg h "$(sha256_text "$KEY")" \
-      '{key_expiry: $e, key_owner: "ai-admin", key_subscription: $s, key_hash: $h}')"
+    state_save "$(jq -n -c --arg e "$expiry" --arg o "$OWNER" --arg s "$SUBSCRIPTION_HEADER" --arg h "$(sha256_text "$KEY")" \
+      '{key_expiry: $e, key_owner: $o, key_subscription: $s, key_hash: $h}')"
     http GET "$API/v1/api-keys/$(state '.key_id')" USER_TOKEN
     metadata=$HTTP_BODY
-    [[ "$HTTP_STATUS" == 200 ]] && printf '%s' "$metadata" | jq -e --arg s "$SUBSCRIPTION" '.username == "ai-admin" and .subscription == $s
+    [[ "$HTTP_STATUS" == 200 ]] && printf '%s' "$metadata" | jq -e --arg o "$OWNER" --arg s "$SUBSCRIPTION" '.username == $o and .subscription == $s
       and .status == "active" and (.tenant // "") != ""' >/dev/null || fail "New persistent key owner/scope metadata differs"
     state_save "$(jq -n -c --arg t "$(printf '%s' "$metadata" | jq -r '.tenant')" '{key_tenant: $t}')"
     if [[ "$NAME" == hermes ]]; then
@@ -477,11 +503,11 @@ setup_provision() {
         fail "Dedicated retained key exposes unexpected model authority"
       state_save "$(jq -n -c --arg m "$MODEL" '{key_model_scope: [$m]}')"
     fi
-    (export MAAS_API_KEY="$KEY"; ncli owner "$WORKSPACE" 30 provider create --name "$PROVIDER" --type "$PROVIDER" --credential MAAS_API_KEY \
+    (export MAAS_API_KEY="$KEY"; ncli "$SETUP_ROLE" "$WORKSPACE" 30 provider create --name "$PROVIDER" --type "$PROVIDER" --credential MAAS_API_KEY \
       --config owner=rhoai3-coding-demo --config "maas_key_id=$(state '.key_id')") >/dev/null
     unset KEY
-    ncli owner "$WORKSPACE" 30 provider update "$PROVIDER" --credential-expires-at "MAAS_API_KEY=$(iso_epoch_ms "$expiry")" --wait >/dev/null
-    provider=$(ncli owner "$WORKSPACE" 30 provider list -o json | jq -c --arg p "$PROVIDER" '[.providers[] | select(.name == $p)]')
+    ncli "$SETUP_ROLE" "$WORKSPACE" 30 provider update "$PROVIDER" --credential-expires-at "MAAS_API_KEY=$(iso_epoch_ms "$expiry")" --wait >/dev/null
+    provider=$(ncli "$SETUP_ROLE" "$WORKSPACE" 30 provider list -o json | jq -c --arg p "$PROVIDER" '[.providers[] | select(.name == $p)]')
     [[ $(printf '%s' "$provider" | jq length) == 1 ]] || fail "Created provider is ambiguous"
     state_save "$(jq -n -c --arg id "$(printf '%s' "$provider" | jq -r '.[0].id')" --arg h "$(printf '%s' "$provider" | jq -c '.[0]' | provider_digest)" \
       '{provider_id: $id, provider_hash: $h, key_pending: false}')"
@@ -497,7 +523,7 @@ setup_provision() {
       --memory "$(printf '%s' "$TEMPLATE" | jq -r '.memory')" -o json)
     while IFS= read -r item; do arguments+=(--env "$item"); done < <(printf '%s' "$TEMPLATE" | jq -r '.env | to_entries[] | "\(.key)=\(.value)"')
     while IFS= read -r item; do arguments+=(--label "$item"); done < <(printf '%s' "$TEMPLATE" | jq -r '.labels | to_entries[] | "\(.key)=\(.value)"')
-    template=$(ncli owner "$WORKSPACE" 30 "${arguments[@]}")
+    template=$(ncli "$SETUP_ROLE" "$WORKSPACE" 30 "${arguments[@]}")
     state_save "$(jq -n -c --arg id "$(printf '%s' "$template" | jq -r '.id')" --arg h "$(printf '%s' "$template" | digest)" '{template_id: $id, template_hash: $h}')"
   else
     jq -n -e --argjson f "$found" --argjson s "$STATE" --argjson t "$TEMPLATE" "$FALSY"'($f | length) == 1 and $f[0] as $x | $s.template_id == $x.id
@@ -528,7 +554,7 @@ setup_provision() {
   private_path "$password" || fail "Unsafe local listener secret"
   cp "$INPUTS/start.sh" "$upload/state/start.sh"
   chmod 700 "$upload/state/start.sh"
-  (umask 077; mkdir -p "$(dirname "$upload/$CONFIG_DESTINATION")"; sed "s/__MAAS_COMMON_HOST__/$HOST/g" "$INPUTS/$CONFIG_SOURCE" >"$upload/$CONFIG_DESTINATION")
+  (umask 077; mkdir -p "$(dirname "$upload/$CONFIG_DESTINATION")"; sed "s/__MAAS_COMMON_HOST__/$HOST/g" "$CONFIG_FILE" >"$upload/$CONFIG_DESTINATION")
   state_save "$(jq -n -c --arg p "$password" '{server_key_path: $p}')"
   if [[ $(printf '%s' "$owned" | jq length) == 0 ]]; then
     state -e '(.sandbox_pending // false) | not' >/dev/null || fail "Unknown create outcome; exact-ID review required, new creation refused"
@@ -556,8 +582,8 @@ setup_key_metadata() {
   local metadata native_expiry recorded_expiry
   http GET "$API/v1/api-keys/$(state '.key_id // ""')" USER_TOKEN
   metadata=$HTTP_BODY
-  [[ "$HTTP_STATUS" == 200 ]] && printf '%s' "$metadata" | jq -e --argjson s "$STATE" --arg n "$NAME-runtime-qwen38" --arg sub "$SUBSCRIPTION" \
-    '.id == $s.key_id and .name == $n and .username == "ai-admin" and .subscription == $sub and .ephemeral == false and .status == "active"
+  [[ "$HTTP_STATUS" == 200 ]] && printf '%s' "$metadata" | jq -e --argjson s "$STATE" --arg n "$NAME-runtime-qwen38" --arg sub "$SUBSCRIPTION" --arg o "$OWNER" \
+    '.id == $s.key_id and .name == $n and .username == $o and .subscription == $sub and .ephemeral == false and .status == "active"
      and .tenant == $s.key_tenant' >/dev/null || fail "Owned key metadata/owner/model subscription is not active"
   native_expiry=$(iso_epoch "$(printf '%s' "$metadata" | jq -r '.expirationDate // ""')" 2>/dev/null) || fail "Owned key expiry is unreadable"
   recorded_expiry=$(iso_epoch "$(state '.key_expiry // ""')" 2>/dev/null) || fail "Recorded key expiry is unreadable"
@@ -574,7 +600,7 @@ setup_check() {
     and .created_from_workload_template.name == $n' >/dev/null || fail "Sandbox native template/global-policy contract differs"
   policy=$(ncli admin - 30 policy get --global --full -o json)
   jq -n -e --argjson p "$policy" --argjson i "$INTENDED" '$p.policy == $i' >/dev/null || fail "Durable policy changed"
-  providers=$(ncli owner "$WORKSPACE" 30 provider list -o json)
+  providers=$(ncli "$SETUP_ROLE" "$WORKSPACE" 30 provider list -o json)
   printf '%s' "$providers" | jq -e '(.next_page_token // "") == ""' >/dev/null || fail "Provider check inventory incomplete"
   providers=$(printf '%s' "$providers" | jq -c --argjson s "$STATE" --arg p "$PROVIDER" '[.providers[] | select(.id == $s.provider_id and .name == $p)]')
   [[ $(printf '%s' "$providers" | jq length) == 1 ]] && printf '%s' "$providers" | jq -e --arg p "$PROVIDER" '.[0].type == $p' >/dev/null &&

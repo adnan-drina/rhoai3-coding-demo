@@ -1,0 +1,26 @@
+# Developer access to the gateway from a laptop CLI. Passthrough keeps TLS end to end; the gateway still requires an
+# OpenShell (Keycloak) login for every call. The server certificate does not name this host, so clients connect with
+# --gateway-insecure (demo posture, see sandboxes/README.md).
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: openshell
+  namespace: openshell
+  labels:
+    app.kubernetes.io/name: openshell
+    app.kubernetes.io/component: gateway-access
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: '060'
+  annotations:
+    argocd.argoproj.io/sync-wave: '5'
+    # gRPC streams (logs, exec, forwards) outlive the router's default 30 s idle timeout.
+    haproxy.router.openshift.io/timeout: 1h
+spec:
+  to:
+    kind: Service
+    name: openshell
+  port:
+    targetPort: grpc
+  tls:
+    termination: passthrough
+    insecureEdgeTerminationPolicy: None
