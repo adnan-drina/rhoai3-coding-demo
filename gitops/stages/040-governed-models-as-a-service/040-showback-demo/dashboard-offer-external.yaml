@@ -367,6 +367,11 @@ spec:
                     spec:
                       value: NaN
                   text: Unknown
+                - condition:
+                    kind: Value
+                    spec:
+                      value: bounded_api_probe
+                  text: Request test
               - name: period_start
                 header: From (UTC)
                 width: 175
@@ -784,6 +789,11 @@ spec:
                     spec:
                       value: NaN
                   text: Unknown
+                - condition:
+                    kind: Value
+                    spec:
+                      value: '0'
+                  text: OK
               - name: status
                 header: Evidence
                 width: 130

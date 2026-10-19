@@ -410,6 +410,15 @@
                     }
                   },
                   "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "bounded_api_probe"
+                    }
+                  },
+                  "text": "Request test"
                 }
               ]
             },
@@ -999,6 +1008,15 @@
                     }
                   },
                   "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "0"
+                    }
+                  },
+                  "text": "OK"
                 }
               ]
             },
