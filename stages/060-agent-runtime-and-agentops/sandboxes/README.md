@@ -50,7 +50,7 @@ OPENSHELL_GATEWAY_INSECURE=true RUST_LOG=error`):
 |---|---|
 | See the sandbox | `openshell --workspace openshell-developer sandbox list` (also under **AI hub → Agents** in the dashboard) |
 | Bring code in (no Git egress in the sandbox) | `openshell --workspace openshell-developer sandbox upload opencode ./my-project /sandbox/workspace` (creates `/sandbox/workspace/my-project`; only files Git tracks or does not ignore, `--no-git-ignore` for all) |
-| Open a shell and run OpenCode there | `openshell --workspace openshell-developer sandbox connect opencode`, then `cd /sandbox/workspace/my-project && opencode`. OpenCode reads its config from `/sandbox/workspace/opencode.json`, so start it under `/sandbox/workspace`. |
+| Run the OpenCode terminal UI there | `openshell --workspace openshell-developer sandbox exec opencode --tty --workdir /sandbox/workspace/my-project -- opencode` (`-- bash` for a shell). OpenCode reads its config from `/sandbox/workspace/opencode.json`, so start it under `/sandbox/workspace`. `sandbox connect` instead attaches to the running OpenCode server's console; leave it with Ctrl-D or Ctrl-P Ctrl-Q, not Ctrl-C. |
 | Take results back | `openshell --workspace openshell-developer sandbox download opencode /sandbox/workspace/my-project ./my-project-out` |
 | Stop or start it | `openshell --workspace openshell-developer sandbox stop\|start opencode` |
 
