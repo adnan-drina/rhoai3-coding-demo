@@ -24,7 +24,7 @@ description: >-
 - **CheCluster**: `devspaces` in `openshift-devspaces` (open-vsx.org, 1200s timeout, no-idle, `pvcStrategy: per-user`)
 - **GitOps DevWorkspaces**: `coolstore-inventory-service` in `wksp-ai-developer` and `wksp-ai-admin` only (Stage 070 catalog seat). Persona namespaces `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` stay GitOps-owned.
 - **Factory workspaces**: Stages 070 and 080 create per-run DevWorkspaces from RHDH templates (`agentic-quarkus-scaffold`, `app-migration`). Those destfiles live in the cloned repo; GitOps does not pre-create the CRs. Both destfiles set `controller.devfile.io/storage-type: per-workspace` so they can run beside `coolstore-inventory-service` without multi-attaching the per-user RWO `claim-devworkspace`.
-- **Retired standing seats** (do not recreate): `getting-started-ai-coding`, `coolstore-inventory-service`, `mca-coolstore`.
+- **Retired standing seats** (do not recreate): `getting-started-ai-coding`, `agentic-coolstore` (renamed `coolstore-inventory-service` on 2026-10-19), `mca-coolstore`.
 - **Cloned repos**:
   - `https://github.com/adnan-drina/coolstore-inventory-service.git` — Stage 070 `coolstore-inventory-service` project
   - Stage 120/080 factory repos are published per run; Stage 130 also clones the legacy URL as `/projects/legacy`

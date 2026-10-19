@@ -85,7 +85,7 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Che Code product defaults disable Workspace Trust before first UI: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.product\\.json}' | contains 'security.workspace.trust.enabled.: false' && echo present || echo missing" \
         "present"
-    for retired in getting-started-ai-coding coolstore-inventory-service mca-coolstore; do
+    for retired in getting-started-ai-coding agentic-coolstore mca-coolstore; do
         check "Retired standing DevWorkspace is absent: $ns/$retired" \
             "oc get devworkspace $retired -n $ns >/dev/null 2>&1 && echo present || echo absent" \
             "absent"
