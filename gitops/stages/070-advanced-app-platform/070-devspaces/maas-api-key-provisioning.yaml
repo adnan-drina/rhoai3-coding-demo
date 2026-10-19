@@ -2236,6 +2236,8 @@ data:
       # The image is the only way OpenCode changes version (autoupdate false). chunkTimeout covers a long silent
       # tool-call write. Permissions (last matching rule wins): edits allowed (Git and the SonarQube gate are the
       # safety net), destructive shell commands ask, OpenShift MCP tools (named openshift_<tool>) ask.
+      # quarkus_searchDocs is denied (hidden from the agent): it needs a container runtime for its documentation
+      # database, which workspaces do not provide, so every call answered "still warming up".
       cat > "${OPENCODE_CFG_TARGET}" <<EOF
     {
       "\$schema": "https://opencode.ai/config.json",
@@ -2289,7 +2291,8 @@ data:
           "oc delete *": "ask",
           "kubectl delete *": "ask"
         },
-        "openshift_*": "ask"
+        "openshift_*": "ask",
+        "quarkus-agent_quarkus_searchDocs": "deny"
       }
     }
     EOF
