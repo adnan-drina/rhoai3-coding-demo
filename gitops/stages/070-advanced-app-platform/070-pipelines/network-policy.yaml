@@ -49,3 +49,7 @@ spec:
     - namespaceSelector:
         matchLabels:
           network.openshift.io/policy-group: monitoring
+    # The RHTAS operator (openshift-operators) reads each service API, e.g. Fulcio's trust bundle, to mark it Ready.
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: openshift-operators

@@ -29,7 +29,7 @@ One Application holds these parts because they change together: the per-project 
 | Subscription | `rhtas-operator` | `openshift-operators` | Channel `stable-v1.5`, Automatic, `startingCSV` v1.5.0 (wave 2) |
 | ClusterRole | `pipeline-userns-builder` | cluster | `use` on the default `nested-container` SCC (wave 3) |
 | SA, ClusterRole, ClusterRoleBinding, Job (Sync hook) | `configure-tekton-pruner` | `app-platform-build` | Patches `TektonConfig` pruner: PipelineRuns, keep 10, hourly (Job wave 12) |
-| NetworkPolicy | `platform-ingress` | `app-platform-build`, `trusted-artifact-signer` | Ingress from same namespace, the router and monitoring; egress unchanged |
+| NetworkPolicy | `platform-ingress` | `app-platform-build`, `trusted-artifact-signer` | Ingress from same namespace, the router and monitoring (and, for `trusted-artifact-signer`, the RHTAS operator in `openshift-operators`); egress unchanged |
 
 ### `build/`: coordinator settings
 
