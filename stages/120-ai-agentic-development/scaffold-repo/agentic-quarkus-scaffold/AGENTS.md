@@ -4,10 +4,12 @@ This is a corporate Quarkus application scaffold. You (the coding agent)
 build the application described by a spec in `specs/`, following the
 standards in `.opencode/skills/`. The standards steer the work — do not ask
 the user to restate them in prompts.
+OpenCode loads them as native skills (`.opencode/skills/<name>/SKILL.md`), so
+the matching skill is offered to you automatically when its description applies.
 
 ## Skills index — what to consult when
 
-| Skill (`.opencode/skills/`) | Consult when |
+| Skill (`.opencode/skills/<name>/SKILL.md`) | Consult when |
 |---|---|
 | `spec-driven-workflow` | Before any `/speckit.*` command |
 | `quarkus-rest-conventions` | Creating or changing any REST endpoint |

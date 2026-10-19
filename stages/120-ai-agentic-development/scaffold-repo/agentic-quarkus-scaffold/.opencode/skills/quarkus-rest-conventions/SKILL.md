@@ -1,3 +1,8 @@
+---
+name: quarkus-rest-conventions
+description: Use when creating or changing any REST endpoint, JAX-RS resource or @Path in this Quarkus service: path naming under /api/, JSON, status codes and error handling.
+---
+
 # Skill: Quarkus REST conventions
 
 How this team builds REST endpoints. Apply on every endpoint change.

@@ -9,7 +9,7 @@ spec, and a coding agent (OpenCode) builds it following the corporate
 standards that live in this repository:
 
 - `AGENTS.md` — the agent's entry point: identity, workflow, commands.
-- `.opencode/skills/` — REST conventions, test standards, and the mandatory
+- `.opencode/skills/<name>/SKILL.md` — OpenCode skills: REST conventions, test standards, and the mandatory
   MaaS-only LLM integration pattern.
 - `specs/TEMPLATE.md` — spec format; `specs/claims-triage-service.md` is a
   worked example including an LLM-powered feature through the MaaS gateway.

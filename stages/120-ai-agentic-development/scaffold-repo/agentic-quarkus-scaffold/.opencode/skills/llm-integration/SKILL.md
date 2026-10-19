@@ -1,3 +1,8 @@
+---
+name: llm-integration
+description: Use when adding or changing any LLM-powered feature: wiring through the MaaS gateway with Quarkus LangChain4j, environment variables, and error handling. Never call a model provider directly.
+---
+
 # Skill: LLM integration via MaaS
 
 How this team adds LLM-powered features. The MaaS gateway is the only valid

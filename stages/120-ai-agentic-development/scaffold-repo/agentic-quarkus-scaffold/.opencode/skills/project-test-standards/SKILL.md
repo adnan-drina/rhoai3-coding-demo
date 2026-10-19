@@ -1,3 +1,8 @@
+---
+name: project-test-standards
+description: Use on every code change in this project: required @QuarkusTest and RestAssured tests, the health test, and the coverage rules the SonarQube quality gate enforces.
+---
+
 # Skill: Project test standards
 
 How this team tests. Apply on every change.

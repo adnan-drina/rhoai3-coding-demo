@@ -1,32 +1,44 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "autoupdate": true,
-  "enabled_providers": ["qwen38"],
+  "autoupdate": false,
+  "enabled_providers": [
+    "qwen38"
+  ],
   "provider": {
     "qwen38": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "MaaS Qwen3.8 27B (keys pending — restart workspace once the platform Secret is ready)",
+      "name": "MaaS Qwen3.8 27B (placeholder: the workspace writes the managed /etc/opencode/opencode.json at start)",
       "models": {
-        "qwen3-8-27b": {
+        "publishers/internal-models/models/qwen3-8-27b": {
           "name": "Qwen3.8 27B (Local GPU)",
-          "temperature": true,
-          "limit": { "context": 262144, "output": 16384 }
+          "limit": {
+            "context": 262144,
+            "output": 16384
+          }
         }
       },
       "options": {
         "apiKey": "MAAS-SECRET-NOT-READY",
         "baseURL": "https://maas-gateway-not-configured.invalid/v1",
         "timeout": 1200000,
-        "chunkTimeout": 120000
+        "chunkTimeout": 600000
       }
     }
   },
-  "model": "qwen38/qwen3-8-27b",
-  "small_model": "qwen38/qwen3-8-27b",
+  "model": "qwen38/publishers/internal-models/models/qwen3-8-27b",
+  "small_model": "qwen38/publishers/internal-models/models/qwen3-8-27b",
   "mcp": {
+    "openshift": {
+      "type": "remote",
+      "url": "http://openshift-mcp-server.mcp-servers.svc.cluster.local:8080/mcp",
+      "enabled": true,
+      "timeout": 10000
+    },
     "quarkus-agent": {
       "type": "local",
-      "command": ["{env:HOME}/.local/bin/quarkus-agent-mcp"],
+      "command": [
+        "{env:HOME}/.local/bin/quarkus-agent-mcp"
+      ],
       "enabled": true
     }
   },
@@ -34,10 +46,17 @@
     "read": "allow",
     "grep": "allow",
     "glob": "allow",
-    "edit": "ask",
-    "write": "ask",
-    "bash": "allow",
+    "list": "allow",
+    "edit": "allow",
     "webfetch": "ask",
-    "*_mcp_*": "ask"
+    "bash": {
+      "*": "allow",
+      "rm -rf *": "ask",
+      "git push *": "ask",
+      "git reset --hard*": "ask",
+      "oc delete *": "ask",
+      "kubectl delete *": "ask"
+    },
+    "openshift_*": "ask"
   }
 }

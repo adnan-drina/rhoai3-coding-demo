@@ -1,3 +1,8 @@
+---
+name: spec-driven-workflow
+description: Use before running any /speckit.* command (specify, plan, tasks, implement) in this project: the command order and the artifacts each phase must produce.
+---
+
 # Skill: Spec-driven workflow
 
 How to execute the `/speckit.*` workflow in this project. Consult before
