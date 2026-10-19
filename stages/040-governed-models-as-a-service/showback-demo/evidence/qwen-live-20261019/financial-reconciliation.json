@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "observed",
+  "verified_at": "2026-10-19T08:55:56Z",
+  "report_id": "showback-1792399336-60885-6425-r2-cadence30",
+  "original_report_canonical_sha256": "d9c83fefc99ceb1cbd6f064b9946f357da9533fe7d47e18a5cf03cfeb1b1d259",
+  "corrected_report_canonical_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+  "original_manifest_sha256": "0bb2986e600d2d3c79e34b0e33b060b2e70dfe5a5b5307db77d2a154c38e59c9",
+  "corrected_manifest_sha256": "7db19c1f61dafa6a61c18e7fb7e690674cef5a2b9225cbb9560a040e2d22b259",
+  "raw_inputs_unchanged": true,
+  "original_preserved_all_unresolved_cents": 34,
+  "period": {
+    "start": "2026-10-19T08:42:16Z",
+    "end": "2026-10-19T08:48:16Z",
+    "seconds": 360
+  },
+  "requests": {
+    "completed": 14,
+    "success": 14,
+    "known_usage": 14,
+    "total_tokens": 1753,
+    "input_tokens": 1305,
+    "output_tokens": 448,
+    "other_existing_consumer_delta_tokens": 0,
+    "raw_counter_delta_tokens": 1753,
+    "raw_counter_receipt_agreement": true
+  },
+  "phases": [
+    {
+      "id": "busy",
+      "engineering_tokens": 523,
+      "support_tokens": 1100,
+      "requests": 13,
+      "coverage": "complete"
+    },
+    {
+      "id": "quiet",
+      "engineering_tokens": 130,
+      "support_tokens": 0,
+      "requests": 1,
+      "coverage": "complete"
+    },
+    {
+      "id": "idle",
+      "engineering_tokens": 0,
+      "support_tokens": 0,
+      "requests": 0,
+      "coverage": "complete"
+    }
+  ],
+  "pricing_complete": true,
+  "allocation_complete": true,
+  "total_cents": 34,
+  "allocations_cents": {
+    "engineering": 15,
+    "marketing": 0,
+    "other_consumers": 0,
+    "platform_idle": 12,
+    "support": 7,
+    "unresolved_allocation": 0
+  },
+  "calibration": {
+    "configured_job": "data-science-collector-prometheus",
+    "configured_scrape_interval_seconds": 30,
+    "raw_max_sample_step_seconds": 30,
+    "old_boundary_tolerance_seconds": 20,
+    "new_boundary_tolerance_seconds": 30,
+    "unchanged_max_gap_seconds": 45,
+    "boundary_count": 16,
+    "max_before_gap_seconds": 8.253,
+    "max_after_gap_seconds": 21.747,
+    "all_boundary_flanks_equal": true,
+    "no_boundary_activity_or_resets_accepted": true,
+    "no_extra_traffic": true
+  },
+  "capacity_scope": {
+    "model": "qwen3-8-27b",
+    "gpu_workers": 1,
+    "instance_type": "g7e.2xlarge",
+    "region": "us-east-2",
+    "repeated_observations_same_node_provider_model": true,
+    "aws_actual_billing_verified": false,
+    "scope": "Six-minute allocated-capacity list-price estimate; not AWS billed lifecycle or invoice; earlier/later capacity excluded"
+  },
+  "selected_metrics": {
+    "matches_corrected_report_prom_bytes": true,
+    "annotation_matches_canonical_report_hash": true,
+    "sensitive_host_token_or_provider_id_patterns_found": false
+  },
+  "limitations": [
+    "Sampled showback, not billing-grade metering",
+    "Cross-boundary activity, resets or gaps remain unresolved rather than extrapolated",
+    "AWS describe-instances failed NoCredentials; allocation interval is based on repeated guarded OCP observations, not exact AWS billed runtime",
+    "Cost excludes warmup before and ongoing capacity after the bounded report",
+    "30s sampled showback cannot establish unsampled sub-scrape billing detail"
+  ],
+  "excluded_costs": [
+    "EBS outside included instance storage",
+    "network and load balancer",
+    "shared platform/control-plane",
+    "software subscriptions",
+    "taxes",
+    "account discounts"
+  ],
+  "cost_basis": "GPU-worker compute estimate; other costs are excluded unless explicitly included by a different policy",
+  "dated_worker_rate_usd_per_hour": "3.36312"
+}

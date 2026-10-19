@@ -12,7 +12,11 @@ mkdir -p "$work/repo/$stage" "$work/repo/scripts" "$work/bin"
 cp "$REPO_ROOT/$stage/deploy.sh" "$REPO_ROOT/$stage/validate.sh" "$work/repo/$stage/"
 cp "$REPO_ROOT/scripts/lib.sh" "$work/repo/scripts/"
 kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" |
-    ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' >"$work/desired.json"
+    ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' |
+    jq 'map(if .kind=="Deployment" then .spec.replicas=0
+      elif .metadata.name=="showback-selected-report" then .data={} |
+        del(.metadata.annotations["showback.demo.rhoai.io/report-sha256"])
+      else . end)' >"$work/desired.json"
 export SHOWBACK_CONTROL_DESIRED="$work/desired.json" SHOWBACK_CONTROL_LOG="$work/control.log"
 export SHOWBACK_CONTROL_STATE=healthy
 export RHOAI_EXPECTED_API_SERVER=unit.invalid GIT_REPO_URL=https://example.invalid/demo.git
@@ -68,8 +72,13 @@ case "${1:-}" in
                     + (if (.apiVersion|contains("/")) then (.apiVersion|split("/")[0]) else "" end)
                     + "/"+.kind+":"+(.metadata.namespace // "openshift-gitops")+"/"+.metadata.name) |
                   if .kind=="Deployment" then
+                    (if .spec.replicas==1 then .metadata.generation=4 |
+                      .status={observedGeneration:4,replicas:1,updatedReplicas:1,readyReplicas:1,availableReplicas:1,
+                        conditions:[{type:"Available",status:"True"}]} else . end) |
                     if $state=="active-spec" then .spec.replicas=1
                     elif $state=="active-status" then .status.replicas=1
+                    elif $state=="unready" then .status.readyReplicas=0
+                    elif $state=="stale-status" then .status.observedGeneration=3
                     elif $state=="wrong-owner" then .metadata.annotations["argocd.argoproj.io/tracking-id"]="foreign"
                     else . end
                   elif .metadata.name=="showback-selected-report" and $state=="selected-report" then .data={unexpected:"report"}
@@ -95,6 +104,29 @@ for state in bad-app active-spec active-status wrong-owner selected-report linge
     if component_validate >"$work/rejected.log" 2>&1; then fail "Validator accepted $state"; fi
 done
 
+# Activation is accepted only when both the reviewed source and exact live report select a ready publisher.
+cp "$SHOWBACK_CONTROL_DESIRED" "$work/stopped-desired.json"
+jq 'map(if .kind=="Deployment" then .spec.replicas=1
+  elif .metadata.name=="showback-selected-report" then
+    .data={"metrics.prom":"showback_selected_report_info{report_id=\"synthetic-active\"} 1\n"} |
+    .metadata.annotations["showback.demo.rhoai.io/report-sha256"]=("a"*64)
+  else . end)' "$work/stopped-desired.json" > "$SHOWBACK_CONTROL_DESIRED"
+export SHOWBACK_CONTROL_STATE=healthy
+component_validate >"$work/active.log" 2>&1 || { cat "$work/active.log" >&2; fail 'Ready reviewed publisher rejected'; }
+for state in selected-report wrong-owner unready stale-status; do
+    export SHOWBACK_CONTROL_STATE=$state
+    if component_validate >"$work/rejected.log" 2>&1; then fail "Active validator accepted $state"; fi
+done
+cp "$SHOWBACK_CONTROL_DESIRED" "$work/active-desired.json"
+for mutation in \
+    'map(if .kind=="Deployment" then .spec.replicas=0 else . end)' \
+    'map(if .metadata.name=="showback-selected-report" then .data={} else . end)'; do
+    jq "$mutation" "$work/active-desired.json" > "$SHOWBACK_CONTROL_DESIRED"
+    export SHOWBACK_CONTROL_STATE=healthy
+    if component_validate >"$work/rejected.log" 2>&1; then fail 'Mismatched source report/publisher activation accepted'; fi
+done
+cp "$work/stopped-desired.json" "$SHOWBACK_CONTROL_DESIRED"
+
 for state in guard-failure missing-role incomplete-role; do
     export SHOWBACK_CONTROL_STATE=$state
     : >"$SHOWBACK_CONTROL_LOG"
@@ -113,7 +145,7 @@ if grep -E '^(preflight|apply|sync|wait|status) ' "$SHOWBACK_CONTROL_LOG" |
 # Run the actual presence branch in isolation: a failed discovery must not skip the installed-component check.
 {
     printf 'source "%s/scripts/lib.sh"\nTIMEOUT=10s\n' "$work/repo"
-    printf 'showback_stopped() { echo yes; }\n'
+    printf 'showback_source_state() { echo yes; }\n'
     sed -n '/^showback_application=/,/^fi$/p' "$work/repo/$stage/validate.sh"
 } >"$work/presence.sh"
 [[ -s "$work/presence.sh" ]] || fail 'Optional presence branch missing'

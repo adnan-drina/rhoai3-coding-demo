@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "observed",
+  "verified_at": "2026-10-19T08:43:22Z",
+  "model": "qwen3-8-27b",
+  "monitor_backend": "RHOAI Thanos via data-science-thanos-querier-route",
+  "completed": true,
+  "passed": true,
+  "request_ledger": {
+    "initial_incomplete_run": {
+      "inference_http_posts": 2,
+      "successful_primes": 2,
+      "reason": "Canonical native MaaS counters were queried in platform Thanos; both successful prime completions were retained. Later native counters include their usage.",
+      "accounting_loss_demonstrated": false
+    },
+    "successful_rerun": {
+      "inference_http_posts": 8,
+      "successful_completions": 6,
+      "authentication_denials": 2,
+      "requests_rejected_http_status": [
+        401,
+        401
+      ]
+    },
+    "total_http_posts": 10,
+    "total_successful_completions": 8
+  },
+  "exact_response_usage_tokens_per_isolated_request": 20,
+  "independent_raw_snapshot_checks": [
+    {
+      "team": "engineering",
+      "protocol": "JSON",
+      "target_counter_delta_equals_response_usage": true,
+      "other_team_counter_unchanged": true,
+      "target_full_labels_unchanged": true,
+      "other_team_full_labels_unchanged": true
+    },
+    {
+      "team": "engineering",
+      "protocol": "SSE",
+      "target_counter_delta_equals_response_usage": true,
+      "other_team_counter_unchanged": true,
+      "target_full_labels_unchanged": true,
+      "other_team_full_labels_unchanged": true
+    },
+    {
+      "team": "support",
+      "protocol": "JSON",
+      "target_counter_delta_equals_response_usage": true,
+      "other_team_counter_unchanged": true,
+      "target_full_labels_unchanged": true,
+      "other_team_full_labels_unchanged": true
+    },
+    {
+      "team": "support",
+      "protocol": "SSE",
+      "target_counter_delta_equals_response_usage": true,
+      "other_team_counter_unchanged": true,
+      "target_full_labels_unchanged": true,
+      "other_team_full_labels_unchanged": true
+    }
+  ],
+  "denial_checks": [
+    {
+      "scope": "authentication-denial",
+      "probe": "none",
+      "http_status": 401,
+      "passed": true
+    },
+    {
+      "scope": "authentication-denial",
+      "probe": "invalid",
+      "http_status": 401,
+      "passed": true
+    }
+  ],
+  "limits": {
+    "max_output_tokens": 32,
+    "request_timeout_seconds": 45,
+    "quota_exhaustion": false
+  },
+  "scope": "No additional inference by this independent verifier; no claim about billing-grade metering or native external delivery"
+}

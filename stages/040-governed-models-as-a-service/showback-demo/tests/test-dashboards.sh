@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline shell regression checks for publication, report identity, dashboards and stopped static serving.
+# Offline shell regression checks for publication, report identity, dashboards and selected-report static serving.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -130,10 +130,13 @@ jq -e 'all(.[].panels[]; all(.queries[];
 jq -e 'all(.[];.panels.reportIdentity.queries[0].seriesNameFormat|contains("{{scope}}"))' \
   "$BASE/dashboard-definitions.json" >/dev/null || fail 'Report scope is not visible'
 kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" | yaml_json > "$WORK/bundle.json"
-jq -e 'any(.[];.kind=="Deployment" and .metadata.name=="showback-report-publisher" and .spec.replicas==0)
+jq -e '([.[]|select(.kind=="Deployment" and .metadata.name=="showback-report-publisher")][0].spec.replicas) as $replicas |
+  [.[]|select(.kind=="ConfigMap" and .metadata.name=="showback-selected-report")][0] as $report |
+  ($replicas|IN(0,1))
   and all(.[];.kind!="LLMInferenceService" and .kind!="MachineSet")
-  and any(.[];.kind=="ConfigMap" and .metadata.name=="showback-selected-report" and .data=={})
+  and (if $replicas==0 then $report.data=={} else ($report.data|keys)==["metrics.prom"]
+    and ($report.data["metrics.prom"]|test("(?m)^showback_selected_report_info\\{[^\\n]*evidence_kind=\"observed\"")) end)
   and any(.[];.kind=="ServiceMonitor" and .spec.endpoints[0].path=="/metrics.prom")
   and any(.[];.kind=="ConfigMap" and .metadata.name=="showback-report-httpd"
-    and (.data["httpd.conf"]|contains("ForceType text/plain")))' "$WORK/bundle.json" >/dev/null || fail 'Stopped static-server contract'
+    and (.data["httpd.conf"]|contains("ForceType text/plain")))' "$WORK/bundle.json" >/dev/null || fail 'Selected-report static-server contract'
 echo 'PASS publisher/dashboard shell contracts (parity, provenance, unknown/idle, aliases, snapshot, static server)'

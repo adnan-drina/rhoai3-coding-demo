@@ -2,18 +2,19 @@
 # Explicitly create two new showback users in the existing SSO authority and mint their own ephemeral MaaS keys.
 # Normal OpenShift/Keycloak browser-form OAuth is used; no impersonation, realm import, client change or model traffic.
 # Private credentials and recovery evidence persist only in a NEW directory under /private/tmp. Never overwrite users.
-# Usage: qualify-qwen-identities.sh [--execute --output NEW_PRIVATE_DIR] [--insecure]
+# Usage: qualify-qwen-identities.sh [--execute --output NEW_PRIVATE_DIR] [--resume] [--insecure]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-execute=false output='' insecure=false
+execute=false output='' insecure=false resume=false
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 while (($#)); do
     case "$1" in
         --execute) execute=true; shift ;;
         --output) output=${2:?}; shift 2 ;;
         --insecure) insecure=true; shift ;;
+        --resume) resume=true; shift ;;
         -h|--help) sed -n 's/^# Usage: //p' "$0"; exit 0 ;;
         *) fail 'Unknown argument' ;;
     esac
@@ -21,16 +22,24 @@ done
 if [[ "$execute" == false ]]; then
     jq -n '{evidence_kind:"preview",network_requests:0,users:["showback-engineering","showback-support"],
       subscriptions:["team-engineering","team-support"],key_lifetime:"1h",inference_requests:0,
-      changes:["two new marked SSO users","two genuine OpenShift logins","two owner-created ephemeral MaaS keys"]}'
+      changes:["two new SSO users with an optional metadata tag","two genuine OpenShift logins","two owner-created ephemeral MaaS keys"]}'
     exit 0
 fi
-[[ "$output" == /private/tmp/* && ! -e "$output" && ! -L "$output" ]] || fail 'Use a new directory under /private/tmp'
+[[ "$output" == /private/tmp/* && ! -L "$output" ]] || fail 'Use a private directory under /private/tmp'
+if [[ "$resume" == true ]]; then
+    [[ -d "$output" && -f "$output/gateway.json" ]] || fail 'Resume requires the existing private recovery journal'
+    recovery="$output-before-resume-$(date -u +%Y%m%dT%H%M%SZ)"
+    [[ ! -e "$recovery" ]] || fail 'Recovery snapshot exists'
+    cp -Rp "$output" "$recovery"
+else
+    [[ ! -e "$output" ]] || fail 'Output exists; preserve it and use explicit --resume'
+fi
 for command in jq curl ruby openssl; do command -v "$command" >/dev/null || fail "Missing $command"; done
 load_env
 check_oc_logged_in
 umask 077
-mkdir -m 700 "$output"
-tls=(); [[ "$insecure" == false ]] || tls=(--insecure)
+[[ -d "$output" ]] || mkdir -m 700 "$output"
+tls=(--proto '=https'); [[ "$insecure" == false ]] || tls+=(--insecure)
 SSO="https://$(oc --request-timeout=15s get route keycloak -n keycloak -o jsonpath='{.spec.host}')"
 OAUTH="https://$(oc --request-timeout=15s get route oauth-openshift -n openshift-authentication -o jsonpath='{.spec.host}')"
 SERVER=$(oc --request-timeout=15s whoami --show-server)
@@ -59,16 +68,31 @@ ADMIN_TOKEN=$(oc --request-timeout=15s get secret keycloak-initial-admin -n keyc
 # Refuse all collisions before the first write. Never reset an existing account's password or groups.
 for team in engineering support; do
     http GET "$SSO/admin/realms/sso/users?username=showback-$team&exact=true" "$ADMIN_TOKEN"
-    [[ "$HTTP_STATUS" == 200 ]] && jq -e 'length==0' "$output/http-body" >/dev/null || fail 'Demo username already exists'
+    [[ "$HTTP_STATUS" == 200 ]] || fail 'User collision check failed'
+    if ! jq -e 'length==0' "$output/http-body" >/dev/null; then
+        [[ "$resume" == true && -f "$output/$team-created-location" && -f "$output/$team-user-request.json" ]] ||
+          fail 'Demo username already exists outside this recovery journal'
+        # Keycloak may discard unmanaged user attributes; the captured POST-201 UUID is the recovery authority.
+        jq -e --arg u "showback-$team" --slurpfile request "$output/$team-user-request.json" \
+          --rawfile location "$output/$team-created-location" 'length==1 and .[0].username==$u and $request[0].username==$u and
+          (.[0].attributes["rhoai3.owner"]==null or .[0].attributes["rhoai3.owner"]==["showback-qwen-live"]) and
+          (($location|rtrimstr("\n")|split("/")|last)==.[0].id)' "$output/http-body" >/dev/null ||
+          fail 'Existing identity differs from the owned recovery journal'
+        cp "$output/http-body" "$output/$team-owned-user.json"
+    fi
     oc --request-timeout=15s get user "showback-$team" --ignore-not-found -o json > "$output/$team-existing-user.json"
-    [[ ! -s "$output/$team-existing-user.json" ]] || fail 'OpenShift demo username already exists'
+    if [[ -s "$output/$team-existing-user.json" ]]; then
+        [[ "$resume" == true && -f "$output/$team-owned-user.json" ]] || fail 'OpenShift demo username already exists'
+        jq -e --slurpfile source "$output/$team-owned-user.json" '.identities|index("rhbk:"+$source[0][0].id)!=null' \
+          "$output/$team-existing-user.json" >/dev/null || fail 'Existing OpenShift identity differs'
+    fi
 done
 
 location() { ruby -e 'puts File.read(ARGV[0]).lines.reverse.find{|s|s.match?(/^location:/i)}.to_s.sub(/^location:\s*/i, "").strip' "$1"; }
 resolve() { ruby -ruri -e 'puts URI.join(ARGV[0],ARGV[1])' "$1" "$2"; }
 login() {
     local team=$1 dir="$output/$1" url action next token step
-    mkdir -m 700 "$dir"
+    [[ -d "$dir" ]] || mkdir -m 700 "$dir"
     url="$OAUTH/oauth/authorize?client_id=openshift-browser-client&response_type=token&redirect_uri=$(
       printf '%s' "$OAUTH/oauth/token/display" | jq -Rr @uri)&scope=user%3Afull"
     # Browser flow without automatic cross-origin credential forwarding. Every hop stays on the two known origins.
@@ -78,20 +102,24 @@ login() {
           --cookie "$dir/cookies" --cookie-jar "$dir/cookies" --dump-header "$dir/headers" \
           --output "$dir/body" "$url" || fail 'OAuth login transport failed'
         next=$(location "$dir/headers")
+        if [[ -n "$next" ]]; then
+            next=$(resolve "$url" "$next")
+            case "$next" in "$OAUTH/"*|"$SSO/"*) ;; *) fail 'Unexpected login redirect origin' ;; esac
+        fi
         if [[ "$next" == *'#access_token='* ]]; then
             printf '%s' "$next" | ruby -ruri -e \
               'puts URI.decode_www_form(STDIN.read.split("#",2).last).to_h.fetch("access_token")' > "$dir/token"
             return
         fi
         if [[ -n "$next" ]]; then
-            url=$(resolve "$url" "$next")
+            url=$next
             continue
         fi
         action=$(ruby -rcgi -e 's=File.read(ARGV[0]); f=s[/<form\b[^>]*id="kc-form-login"[^>]*>/];
           puts CGI.unescapeHTML(f.to_s[/action="([^"]+)"/,1].to_s)' "$dir/body")
         if [[ -n "$action" ]]; then
             [[ "$action" == "$SSO/realms/sso/login-actions/"* ]] || fail 'Unexpected Keycloak login form'
-            jq -j --slurpfile u "$output/$team-user-request.json" '{username:$u[0].username,password:$u[0].credentials[0].value,
+            jq -nj --slurpfile u "$output/$team-user-request.json" '{username:$u[0].username,password:$u[0].credentials[0].value,
               credentialId:""}|to_entries|map((.key|@uri)+"="+(.value|@uri))|join("&")' |
               curl --silent --show-error --connect-timeout 10 --max-time 30 "${tls[@]}" \
                 --cookie "$dir/cookies" --cookie-jar "$dir/cookies" --dump-header "$dir/headers" \
@@ -108,16 +136,19 @@ login() {
 }
 
 for team in engineering support; do
-    export SHOWBACK_NEW_PASSWORD
-    SHOWBACK_NEW_PASSWORD=$(openssl rand -hex 24)
-    jq -n --arg user "showback-$team" '{username:$user,enabled:true,emailVerified:true,
-      email:($user+"@example.invalid"),firstName:"Showback",lastName:$user,requiredActions:[],
-      attributes:{"rhoai3.owner":["showback-qwen-live"]},
-      credentials:[{type:"password",value:$ENV.SHOWBACK_NEW_PASSWORD,temporary:false}]}' > "$output/$team-user-request.json"
-    unset SHOWBACK_NEW_PASSWORD
-    http POST "$SSO/admin/realms/sso/users" "$ADMIN_TOKEN" "$output/$team-user-request.json"
-    [[ "$HTTP_STATUS" == 201 ]] || fail 'New SSO user creation failed; preserve recovery journal'
-    location "$output/http-headers" > "$output/$team-created-location"
+    [[ ! -f "$output/$team/key-created.json" ]] || fail 'Owned key already exists; do not mint a duplicate'
+    if [[ ! -f "$output/$team-owned-user.json" ]]; then
+        export SHOWBACK_NEW_PASSWORD
+        SHOWBACK_NEW_PASSWORD=$(openssl rand -hex 24)
+        jq -n --arg user "showback-$team" '{username:$user,enabled:true,emailVerified:true,
+          email:($user+"@example.invalid"),firstName:"Showback",lastName:$user,requiredActions:[],
+          attributes:{"rhoai3.owner":["showback-qwen-live"]},
+          credentials:[{type:"password",value:$ENV.SHOWBACK_NEW_PASSWORD,temporary:false}]}' > "$output/$team-user-request.json"
+        unset SHOWBACK_NEW_PASSWORD
+        http POST "$SSO/admin/realms/sso/users" "$ADMIN_TOKEN" "$output/$team-user-request.json"
+        [[ "$HTTP_STATUS" == 201 ]] || fail 'New SSO user creation failed; preserve recovery journal'
+        location "$output/http-headers" > "$output/$team-created-location"
+    fi
     login "$team"
     OWNER_TOKEN=$(cat "$output/$team/token")
     http GET "$SERVER/apis/user.openshift.io/v1/users/~" "$OWNER_TOKEN"

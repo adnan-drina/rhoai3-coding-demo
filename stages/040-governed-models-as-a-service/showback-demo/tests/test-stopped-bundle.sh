@@ -10,13 +10,15 @@ WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 kustomize build "$COMPONENT" | yaml_json >"$WORK_DIR/bundle.json"
 if jq -e '
+  ([.[]|select(.kind=="Deployment")][0].spec.replicas) as $replicas |
+  [.[]|select(.kind=="ConfigMap" and .metadata.name=="showback-selected-report")][0] as $report |
   all(.[]; .kind!="Job" and .kind!="CronJob" and .kind!="Application"
        and .kind!="Pod" and .kind!="DaemonSet" and .kind!="StatefulSet"
        and .kind!="HorizontalPodAutoscaler" and .kind!="LLMInferenceService"
        and .kind!="InferenceService" and .kind!="MaaSModelRef"
        and .metadata.annotations["argocd.argoproj.io/hook"]==null)
   and ([.[]|select(.kind=="Deployment")]|length)==1
-  and all(.[]|select(.kind=="Deployment"); .spec.replicas==0)
+  and ([.[]|select(.kind=="Deployment")][0].spec.replicas|IN(0,1))
   and length==21
   and ([.[]|select(.kind=="MaaSSubscription")]|length)==2
   and ([.[]|select(.kind=="MaaSAuthPolicy")]|length)==2
@@ -24,11 +26,16 @@ if jq -e '
       (.metadata.name|IN("team-engineering","team-support"))
       and (.spec.modelRefs|length)==1 and .spec.modelRefs[0].name=="qwen3-8-27b")
   and ([.[]|select(.kind=="PersesDashboard")]|length)==8
-  and any(.[]; .kind=="ConfigMap" and .metadata.name=="showback-selected-report" and .data=={})
+  and (if $replicas==0 then $report.data=={}
+     else ($report.data|keys)==["metrics.prom"]
+       and ($report.metadata.annotations["showback.demo.rhoai.io/report-sha256"]|test("^[a-f0-9]{64}$"))
+       and ($report.data["metrics.prom"]|test("(?m)^showback_selected_report_info\\{[^\\n]*evidence_kind=\"observed\""))
+       and ($report.data["metrics.prom"]|contains("report_sha256=\""+$report.metadata.annotations["showback.demo.rhoai.io/report-sha256"]+"\""))
+     end)
   and ([.[]|select(.kind=="ConfigMap" and .metadata.annotations["demo.rhoai.io/state"]=="inert-review-inputs")]|length)==2
   ' "$WORK_DIR/bundle.json" >/dev/null; then
-    record 'Optional bundle cannot start models, publisher or scheduled load' pass
-else record 'Optional bundle cannot start models, publisher or scheduled load' 'Unexpected workload'; fi
+    record 'Only an observed selected-report publisher may run; no models or scheduled load' pass
+else record 'Only an observed selected-report publisher may run; no models or scheduled load' 'Unexpected workload or report'; fi
 
 # The explicit qualification component narrows activation; the original generated scenario stays reusable.
 cp -R "$COMPONENT" "$WORK_DIR/full"

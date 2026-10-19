@@ -12,8 +12,9 @@
 #   RHOAI_STAGE040_TEST_EXTERNAL=false (skip external models: result pending), RHOAI_STAGE040_SUBSCRIPTION,
 #   RHOAI_STAGE040_CA_BUNDLE (extra CA file), RHOAI_STAGE040_EVIDENCE_PATH (new file under /private/tmp).
 # Exit codes: 0 pass, 1 fail, 2 pending (functional only). API contract: shipped MaaS 563117f1/openapi3.yaml.
-# --component 040-showback-demo checks only the installed optional component's source ownership and stopped state;
-# it does not require model inference, policy readiness, selected financial data or native metering activation.
+# --component 040-showback-demo checks the installed optional component's source ownership and publisher state:
+# stopped with no report, or one Ready replica serving a selected source report. It does not prove model inference,
+# policy enforcement, report scraping or native metering delivery.
 # Usage: stages/040-governed-models-as-a-service/validate.sh [--readiness|--functional] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,23 +68,31 @@ yes_no() { jqd "$@" >/dev/null && echo yes || echo no; }
 
 SHOWBACK_DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" |
     ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)')
-# Stopped-source validation is separate from readiness of shared model endpoints and MaaS access enforcement.
-showback_stopped() {
-    local d kind ns name group live args tracking
+# Source reconciliation is separate from model inference, MaaS access enforcement and actual report scraping.
+showback_source_state() {
+    local d kind ns name group live args tracking publisher_replicas
     "$STAGE_APPS" status 040 --app 040-showback-demo \
         ${RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION:+--revision "$RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION"} \
         >/dev/null 2>&1 || { echo "showback Application not Synced and Healthy at its reviewed revision"; return; }
     jq -e '([.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort) as $teams |
+        [.[] | select(.kind == "Deployment")] as $publishers |
+        [.[] | select(.kind == "ConfigMap" and .metadata.name == "showback-selected-report")] as $reports |
         ((length == 21 and $teams == ["team-engineering","team-support"]
             and all(.[] | select(.kind == "MaaSSubscription" or .kind == "MaaSAuthPolicy");
                 [.spec.modelRefs[].name] == ["qwen3-8-27b"])) or
          (length == 23 and $teams == ["team-engineering","team-marketing","team-support"]))
         and all(.[]; .kind != "Job" and .kind != "CronJob" and .kind != "LLMInferenceService"
         and .kind != "HorizontalPodAutoscaler" and .kind != "Config" and .kind != "LokiStack")
-        and ([.[] | select(.kind == "Deployment")] | length) == 1
-        and all(.[] | select(.kind == "Deployment"); .spec.replicas == 0)
-        and any(.[]; .kind == "ConfigMap" and .metadata.name == "showback-selected-report" and .data == {})' \
-        <<<"$SHOWBACK_DESIRED" >/dev/null || { echo "showback source no longer matches the stopped bundle"; return; }
+        and ($publishers | length) == 1 and $publishers[0].metadata.name == "showback-report-publisher"
+        and ($reports | length) == 1
+        and (($publishers[0].spec.replicas == 0 and $reports[0].data == {}) or
+            ($publishers[0].spec.replicas == 1 and ($reports[0].data | keys) == ["metrics.prom"]
+                and ($reports[0].data["metrics.prom"] | type == "string" and length > 0
+                    and test("(?m)^showback_selected_report_info\\{"))
+                and ($reports[0].metadata.annotations["showback.demo.rhoai.io/report-sha256"] |
+                    type == "string" and test("^[a-f0-9]{64}$"))))' \
+        <<<"$SHOWBACK_DESIRED" >/dev/null || { echo "showback source has an invalid bundle or publisher/report state"; return; }
+    publisher_replicas=$(jq -r '.[] | select(.kind == "Deployment") | .spec.replicas' <<<"$SHOWBACK_DESIRED")
     while IFS= read -r d; do
         kind=$(jq -r '.kind' <<<"$d"); ns=$(jq -r '.metadata.namespace // ""' <<<"$d")
         name=$(jq -r '.metadata.name' <<<"$d")
@@ -96,20 +105,24 @@ showback_stopped() {
             and (.metadata.ownerReferences // [] | length) == 0
             and .metadata.annotations["argocd.argoproj.io/tracking-id"] == $t
             and covers($d | if .kind == "ConfigMap" and .data == {} then del(.data) else . end)
-            and (if .kind == "Deployment" then .spec.replicas == 0 and (.status.replicas // 0) == 0
-                and (.status.readyReplicas // 0) == 0 and (.status.availableReplicas // 0) == 0 else true end)
+            and (if .kind == "Deployment" then
+                if $d.spec.replicas == 0 then .spec.replicas == 0 and (.status.replicas // 0) == 0
+                    and (.status.readyReplicas // 0) == 0 and (.status.availableReplicas // 0) == 0
+                else workload and ready_cond("Available") end else true end)
             and (if .kind == "ConfigMap" and .metadata.name == "showback-selected-report"
-                then (.data // {}) == {} else true end)' <<<"$live" >/dev/null || {
-                    echo "$kind $name source, ownership or stopped state differs"; return;
+                then (.data // {}) == $d.data else true end)' <<<"$live" >/dev/null || {
+                    echo "$kind $name source, ownership or publisher state differs"; return;
                 }
     done < <(jq -c '.[]' <<<"$SHOWBACK_DESIRED")
-    read_json pods -n redhat-ods-monitoring -l app.kubernetes.io/name=showback-report-publisher |
-        jq -e '.items | length == 0' >/dev/null || { echo "publisher Pods still exist"; return; }
+    if [[ "$publisher_replicas" == 0 ]]; then
+        read_json pods -n redhat-ods-monitoring -l app.kubernetes.io/name=showback-report-publisher |
+            jq -e '.items | length == 0' >/dev/null || { echo "publisher Pods still exist"; return; }
+    fi
     echo yes
 }
 if [[ "$COMPONENT" == 040-showback-demo ]]; then
-    check "Optional showback Application owns the reviewed bundle; publisher stopped and no selected report" showback_stopped yes
-    echo "Scope: stopped source only; model qualification, access enforcement, report publication and native metering remain pending."
+    check "Optional showback Application owns the reviewed bundle and matches its publisher/report source state" showback_source_state yes
+    echo "Scope: source reconciliation and publisher readiness only; inference, access enforcement, scraping and native delivery need separate evidence."
     validation_summary
     exit $?
 fi
@@ -455,7 +468,7 @@ showback_application=$(oc --request-timeout="$TIMEOUT" get applications.argoproj
         log_error "Cannot determine whether the optional showback Application is installed"; exit 1;
     }
 if [[ -n "$showback_application" ]]; then
-    check "Installed optional showback bundle retains its owned stopped state (runtime acceptance pending)" showback_stopped yes
+    check "Installed optional showback bundle matches its owned publisher/report source state" showback_source_state yes
 fi
 check "Studio catalog entries current, or deferred until Stage 060 deploys the MCP servers" studio_catalog yes
 check "MaaS gateway AdminNetworkPolicy boundary: needed destinations open, others blocked" gateway_boundary yes

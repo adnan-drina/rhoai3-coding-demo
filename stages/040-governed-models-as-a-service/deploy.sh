@@ -7,8 +7,8 @@
 # records of the deployed model and its prepared alternates. Secret values travel only through pipes and jq's
 # environment: never Git, arguments or output.
 # RHOAI_STAGE040_ROTATE_PROVIDER_SECRET=true replaces the OpenAI provider key in place from OPENAI_API_KEY.
-# --component 040-showback-demo reconciles only the optional stopped showback bundle, with shared prerequisites
-# read-only. It never provisions keys, selects a report, starts models or enables native metering.
+# --component 040-showback-demo reconciles only the optional showback bundle, with shared prerequisites read-only.
+# Publisher/report state comes from reviewed source. It never provisions keys, starts models or enables native metering.
 # Usage: stages/040-governed-models-as-a-service/deploy.sh [--revision REF] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,12 +49,12 @@ if [[ "$COMPONENT" == 040-showback-demo ]]; then
                 and (.resources | index("experiments")) != null and (.verbs | index($verb)) != null))' >/dev/null || {
         log_error "Showback archive access requires native edit with aggregated MLflow experiment read/write permissions"; exit 1;
     }
-    # The component remains stopped. Its normal health wait may fail while referenced models are unqualified.
+    # Publisher/report activation is explicit reviewed source; referenced models retain their existing owner.
     "$STAGE_APPS" apply 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL"
     "$STAGE_APPS" sync 040 --app "$COMPONENT"
     "$STAGE_APPS" wait 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
     RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION="$revision" "$SCRIPT_DIR/validate.sh" --component "$COMPONENT"
-    log_success "Showback source reconciled in its stopped state; models, access enforcement and metering remain unqualified."
+    log_success "Showback source and publisher state reconciled; runtime acceptance requires separate inference, scraping and archive evidence."
     exit 0
 fi
 

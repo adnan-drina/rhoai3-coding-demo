@@ -1,6 +1,6 @@
 # Showback demo (`040-showback-demo`)
 
-This optional Application packages the Qwen-only qualification slice of the three-team showback scenario in one lifecycle boundary. The source is prepared for review; it has not been deployed or qualified against live models. Its publisher is stopped, its selected-report ConfigMap is empty, and its native configuration documents are inert.
+This optional Application packages the Qwen-only slice of the three-team showback scenario in one lifecycle boundary. Its first stopped deployment reconciled Synced/Healthy at `4349dd62429d15e68bb0e6935d3f1f0e617cdbc8`, with strict readback of 21 resources. Subsequent bounded inference, exact attribution, accounting and archive acceptance passed. Current source selects the reviewed R2 report and one publisher replica; publication, reconciliation and live report scraping of that selection remain pending. Native configuration documents stay inert. See the [qualified run and correction evidence](../../../../stages/040-governed-models-as-a-service/showback-demo/evidence/qwen-live-20261019/README.md).
 
 ## Why
 
@@ -15,7 +15,7 @@ The root Kustomize render contains exactly 21 resources with `components/qwen-on
 | `team-*-subscription.yaml`, `team-*-auth-policy.yaml` | Two active `MaaSSubscription` / `MaaSAuthPolicy` pairs in `models-as-a-service`: Engineering and Support use Qwen. The generated full-scenario files retain the Marketing pair and Support Mistral reference; the enabled Component removes them from the active render |
 | `archive-namespace.yaml`, `archive-rolebinding.yaml` | Retained Namespace `showback-reporting` and its `showback-mlflow-edit` RoleBinding to the existing native `edit` ClusterRole, whose aggregated MLflow experiment read/write permissions are checked before deployment |
 | `dashboard-showback-*.yaml` | Three bounded allocation `PersesDashboard` resources in `redhat-ods-monitoring` |
-| `publisher-*.yaml` | Deployment `showback-report-publisher` at zero replicas, HTTP configuration and empty selected-report ConfigMaps, Service and ServiceMonitor in `redhat-ods-monitoring` |
+| `publisher-*.yaml` | Deployment `showback-report-publisher` at one replica in source, HTTP configuration and selected R2 report ConfigMaps, Service and ServiceMonitor in `redhat-ods-monitoring`; live activation pending |
 | `service-views/` | Five monthly service-offer `PersesDashboard` resources in `redhat-ods-monitoring` |
 | `native-inputs/` | Two inert ConfigMaps: Loki review inputs in `redhat-ods-monitoring`, metering review inputs in `redhat-ai-gateway-infra` |
 
@@ -33,9 +33,11 @@ After source publication, human review and separate deployment authorization, th
 ./stages/040-governed-models-as-a-service/deploy.sh --revision <reviewed-ref> --component 040-showback-demo
 ```
 
-This path uses the cluster guard, published-source selection and ownership preflight, checks existing namespaces, CRDs and the native `edit` role’s actual MLflow experiment permissions, then applies, syncs and waits for this Application only. It does not run provider/database setup, mint keys, select a financial report, start models or enable native metering. It retains the normal Synced/Healthy requirement. The Qwen-only Component removes every active Mistral access reference; no degraded-health exception is supplied. It does not alter the existing Qwen checkpoint, quantization or serving owner. Stopped-source reconciliation does not establish inference or enforcement.
+This path uses the cluster guard, published-source selection and ownership preflight, checks existing namespaces, CRDs and the native `edit` role’s actual MLflow experiment permissions, then applies, syncs and waits for this Application only. It reconciles the report/publisher state authored in source, without provider/database setup, key minting, model startup or native metering activation. It retains the normal Synced/Healthy requirement. The Qwen-only Component removes every active Mistral access reference; no degraded-health exception is supplied. The existing Qwen checkpoint, quantization and serving owner remain unchanged.
 
-The explicit bounded profile is [qualification-qwen-only.json](../../../../stages/040-governed-models-as-a-service/showback-demo/qualification-qwen-only.json): Engineering/Support, existing Qwen NVFP4, three 120-second phases, at most 24 requests, 128 approximate input tokens and 32 output tokens. It is not qualification of Qwen FP8 or the full two-model scenario. `scenario.json` and the six generated access files remain the complete later scenario; do not regenerate those files from the qualification profile.\n\nGenerators and accounting tools remain in [showback-demo](../../../../stages/040-governed-models-as-a-service/showback-demo/README.md). Committed YAML in this component is the sole deployment output. Regenerate it with the package's `render-access.sh --write`, `generate-dashboards.sh --write`, `service-views/generate-dashboards.sh --write` and `native/render-integration.sh --write`; their `--check` modes detect drift. Never maintain duplicate manifests in the package or apply this component directly outside Argo CD.
+The explicit bounded profile is [qualification-qwen-only.json](../../../../stages/040-governed-models-as-a-service/showback-demo/qualification-qwen-only.json): Engineering/Support, existing Qwen NVFP4, three 120-second phases, at most 24 requests, 128 approximate input tokens and 32 output tokens. The completed workload had 14 successful SSE requests and 1,753 tokens. Its R2 allocated-capacity estimate is $0.34: Engineering $0.15, Support $0.07 and platform idle $0.12, with other/unresolved allocation zero. This is not qualification of Qwen FP8, Mistral, actual AWS billed lifecycle or a full monthly service offer. `scenario.json` and the six generated access files remain the complete later scenario; do not regenerate those files from the qualification profile.
+
+Generators and accounting tools remain in [showback-demo](../../../../stages/040-governed-models-as-a-service/showback-demo/README.md). Committed YAML in this component is the sole deployment output. Regenerate it with the package's `render-access.sh --write`, `generate-dashboards.sh --write`, `service-views/generate-dashboards.sh --write` and `native/render-integration.sh --write`; their `--check` modes detect drift. Never maintain duplicate manifests in the package or apply this component directly outside Argo CD.
 
 ## Validation
 
@@ -49,13 +51,15 @@ scripts/stage-apps.sh check-static 040
 scripts/validate-stage-flow.sh
 ```
 
-The normal Stage 040 validator checks shared policies separately from this optional bundle. When installed, this component also receives dedicated source/ownership checks, including zero publisher replicas, no publisher Pods and an empty selected-report ConfigMap. The explicit read-only mode requires the Application to exist:
+The normal Stage 040 validator checks shared policies separately from this optional bundle. When installed, this component receives dedicated source/ownership checks. Current source pairs one publisher replica with the nonempty R2 `metrics.prom` selection and report-hash annotation; validation requires exact selected-data readback and a current, fully Ready Deployment. The historical stopped branch requires zero replicas, no publisher Pods and an empty report. Mixed states are rejected. The explicit read-only mode requires the Application to exist:
 
 ```bash
 ./stages/040-governed-models-as-a-service/validate.sh --component 040-showback-demo
 ```
 
-These checks establish a stopped source state only. Model inference, user/key enforcement, dashboard rendering, report scraping, native delivery and financial completeness remain separate acceptance gates. Not validated against a live cluster. Static review only.
+The Qwen run separately proved genuine user-owned keys, isolated JSON/SSE token attribution, missing/invalid-key 401 denials and reconciled accounting. Native collector configuration and samples established 30-second cadence; R2 calibrated boundary tolerance to 30 seconds while replaying unchanged raw inputs and retaining the original unresolved report. Both archive runs passed full hash readback as genuine `ai-admin`; Engineering access returned 403. All eight dashboards passed API ingestion and seven operational selector queries passed against the configured datasource. Browser rendering, live report scraping and the source-selected publisher's activation remain acceptance gates.
+
+For report promotion, generate a validated ConfigMap with the package's `publish-report.sh --scenario FROZEN_SCENARIO --report REPORT --output METRICS --configmap-output CANDIDATE`. Review its public labels and financial values, replace canonical `publisher-report.yaml` with that selection and set `publisher-deployment.yaml` to one replica in the same reviewed, published revision. Sync only this Application through the targeted stage entrypoint. Keep private raw evidence outside Git. Returning to the stopped state requires both zero replicas and an empty report in source; never patch the live ConfigMap or scale the Deployment outside its owner.
 
 Rollback is a reviewed revert of this optional component's source. A later live rollback must stop only owned work, preserve archived evidence and the retained workspace, revoke demo keys through the existing API, and use the normal non-cascading Application procedure. Shared model/Gateway/MLflow resources remain under their existing owners.
 
@@ -63,11 +67,11 @@ Rollback is a reviewed revert of this optional component's source. A later live 
 
 | Topic | Repository choice | Status |
 |---|---|---|
-| MaaS identity and quotas [1] | One user-owned subscription and matching authorization policy per team; no committed keys | Candidate source; live enforcement unqualified |
+| MaaS identity and quotas [1] | Genuine user-owned subscriptions and matching authorization policies; no committed keys | Engineering/Support Qwen access and 401 denials passed; quota exhaustion and full cross-model matrix unqualified |
 | Native usage and showback [1] | Reuse existing MaaS/Gateway/observability; inert review inputs activate nothing | No native metering deployment or billing-grade claim |
-| Model serving [2] | Shared Qwen stays with its owner; excluded Mistral draft stays stopped | Model qualification deferred |
-| GitOps [3] | One disjoint Application, manual opt-in, immutable revision selection and normal health checks | Repository lifecycle policy; live reconciliation unqualified |
-| MLflow [4] | Reuse the existing service and role; retain an isolated evidence workspace | Archive access/readback and retention qualification pending |
+| Model serving [2] | Shared Qwen NVFP4 stays with its owner; excluded Mistral draft stays stopped | Bounded current-Qwen inference passed; FP8/Mistral and broader performance qualification deferred |
+| GitOps [3] | One disjoint Application, manual opt-in, immutable revision selection and normal health checks | First Qwen-only stopped reconciliation passed at the recorded revision |
+| MLflow [4] | Reuse the existing service and role; retain an isolated evidence workspace | Original/R2 upload and full hash readback passed; Engineering denied; retention enforcement unproven |
 
 ## References
 

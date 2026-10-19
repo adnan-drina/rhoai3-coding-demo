@@ -9,8 +9,8 @@ metadata:
     app.kubernetes.io/component: observability
     app.kubernetes.io/managed-by: argocd
 spec:
-  # Offline candidate: requires reviewed report selection and authorized deployment.
-  replicas: 0
+  # Reviewed six-minute Qwen qualification snapshot; no workload generation.
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: showback-report-publisher

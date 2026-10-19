@@ -1,0 +1,53 @@
+{
+  "dashboard_count": 8,
+  "api_readback": [
+    {
+      "dashboard": "dashboard-7-showback-bill-admin",
+      "api_ingested": true,
+      "api_spec_equals_live_cr_after_empty_variable_normalization": true
+    },
+    {
+      "dashboard": "dashboard-8-showback-usage-admin",
+      "api_ingested": true,
+      "api_spec_equals_live_cr_after_empty_variable_normalization": true
+    },
+    {
+      "dashboard": "dashboard-9-showback-efficiency-admin",
+      "api_ingested": true,
+      "api_spec_equals_live_cr_after_empty_variable_normalization": true
+    },
+    {
+      "dashboard": "service-view-completeness",
+      "api_ingested": true,
+      "api_spec_equals_live_cr_after_empty_variable_normalization": true
+    },
+    {
+      "dashboard": "service-view-dedicated",
+      "api_ingested": true,
+      "api_spec_equals_live_cr_after_empty_variable_normalization": true
+    },
+    {
+      "dashboard": "service-view-quality",
+      "api_ingested": true,
+      "api_spec_equals_live_cr_after_empty_variable_normalization": true
+    },
+    {
+      "dashboard": "service-view-shared",
+      "api_ingested": true,
+      "api_spec_equals_live_cr_after_empty_variable_normalization": true
+    },
+    {
+      "dashboard": "service-view-statements",
+      "api_ingested": true,
+      "api_spec_equals_live_cr_after_empty_variable_normalization": true
+    }
+  ],
+  "ui_visual_test_performed": false,
+  "note": "Read-only localhost API forward closed after readback; browser interface not visually tested",
+  "verified_at": "2026-10-19T08:46:12Z",
+  "checked_dashboard_source_sha": "4349dd62429d15e68bb0e6935d3f1f0e617cdbc8",
+  "controller_conditions": {
+    "available_true": 8,
+    "degraded_false": 8
+  }
+}
