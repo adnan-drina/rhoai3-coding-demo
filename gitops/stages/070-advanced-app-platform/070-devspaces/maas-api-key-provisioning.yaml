@@ -2211,10 +2211,13 @@ data:
         OPENCODE_CFG_TARGET="${OPENCODE_MANAGED_CFG}"
       fi
       mkdir -p "$(dirname "${OPENCODE_CFG_TARGET}")" "${HOME}/.config/opencode"
+      # The image is the only way OpenCode changes version (autoupdate false). chunkTimeout covers a long silent
+      # tool-call write. Permissions (last matching rule wins): edits allowed (Git and the SonarQube gate are the
+      # safety net), destructive shell commands ask, OpenShift MCP tools (named openshift_<tool>) ask.
       cat > "${OPENCODE_CFG_TARGET}" <<EOF
     {
       "\$schema": "https://opencode.ai/config.json",
-      "autoupdate": true,
+      "autoupdate": false,
       "enabled_providers": ${OPENCODE_ENABLED},
       "provider": {
         "qwen38": {
@@ -2230,7 +2233,7 @@ data:
             "apiKey": "${MAAS_API_KEY_QWEN27B}",
             "baseURL": "${MAAS_BASE_URL}/v1",
             "timeout": 1200000,
-            "chunkTimeout": 120000
+            "chunkTimeout": 600000
           }
         }${OPENCODE_REDHAT_PROVIDER}
       },
@@ -2253,11 +2256,18 @@ data:
         "read": "allow",
         "grep": "allow",
         "glob": "allow",
-        "edit": "ask",
-        "write": "ask",
-        "bash": "allow",
+        "list": "allow",
+        "edit": "allow",
         "webfetch": "ask",
-        "*_mcp_*": "ask"
+        "bash": {
+          "*": "allow",
+          "rm -rf *": "ask",
+          "git push *": "ask",
+          "git reset --hard*": "ask",
+          "oc delete *": "ask",
+          "kubectl delete *": "ask"
+        },
+        "openshift_*": "ask"
       }
     }
     EOF

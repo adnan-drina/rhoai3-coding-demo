@@ -48,11 +48,11 @@ The operator, the instance and the workspace contract form one Application becau
 | Role, RoleBinding | `devspace-maas-key-reader[-admin]` / `devspace-maas-key-workspace-readers[-admin]` | each persona namespace | That namespace's workspace service accounts read its two key Secrets by name |
 | Role, RoleBinding | `devspace-ai-tools-init-reader` / `devspace-ai-tools-init-admin-readers` | `wksp-ai-developer` | `ai-admin`'s workspace service accounts read the shared init ConfigMap |
 | ConfigMap | `workspace-maas-model-endpoint[-admin]` | each persona namespace | OpenAI path on the MaaS gateway (`/v1`), mounted into the key Job |
-| ConfigMap | `devspace-ai-tools-init` | `wksp-ai-developer` | `init-ai-tools.sh`: the workspace postStart bootstrap for Kilo Code, OpenCode and the Stage 130 Hermes worker configuration |
+| ConfigMap | `devspace-ai-tools-init` | `wksp-ai-developer` | `init-ai-tools.sh`: the workspace postStart bootstrap for Kilo Code, OpenCode and the Stage 130 Hermes worker configuration. OpenCode's managed `/etc/opencode/opencode.json` pins Qwen3.8 through MaaS, turns auto-update off (the image sets the version), allows edits, asks before destructive shell commands and OpenShift MCP tools |
 | ConfigMap (generated) | `migration-model-profiles` | `wksp-ai-developer` | `model-profiles.json`, the one model runtime profile table; mounted read-only at `/etc/rhoai3/model-profiles` with `mount-on-start` |
 | ConfigMap (generated) | `stage070-secret-writer-<hash>` | `wksp-ai-developer` | `secret_writer.py`, the typed Secret writer |
 | Job (not a hook) | `provision-devspace-maas-api-keys[-admin]` | each persona namespace | Mints or keeps MaaS keys and writes `maas-devspace-api-keys` and `workspace-maas-credentials` (wave 18; `Force=true,Replace=true` recreate it on each sync [12]) |
-| NetworkPolicy | `migration-workspace-maas-egress` | `wksp-ai-developer` | Egress for workspace pods: DNS, Dev Spaces, MaaS/ingress, RHOAI, MTA, same namespace, and TCP 80/443 (wave 20) |
+| NetworkPolicy | `migration-workspace-maas-egress` | `wksp-ai-developer`, `wksp-ai-admin` | Egress for workspace pods: DNS, Dev Spaces, MaaS/ingress, RHOAI, MTA, the OpenShift MCP server (`mcp-servers`, TCP 8080), same namespace, and TCP 80/443 (wave 20) |
 | AdminNetworkPolicy | `workspace-allow-kapi-egress` | cluster | Allows workspace namespaces to reach the API server on control-plane nodes, TCP 6443 (wave 19, priority 50) |
 
 ### Migration-run contract (Stage 130)

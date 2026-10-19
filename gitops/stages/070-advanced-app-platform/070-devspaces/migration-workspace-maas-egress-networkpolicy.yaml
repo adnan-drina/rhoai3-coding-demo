@@ -2,7 +2,7 @@
 #
 # Managed Scope cannot restrict egress. This policy is the platform control:
 # DevWorkspace pods in both persona namespaces (wksp-ai-developer, wksp-ai-admin) may reach in-cluster DNS, the API,
-# MTA, the MaaS / gateway namespaces, and OpenShift ingress (MaaS routes),
+# MTA, the MaaS / gateway namespaces, OpenShift ingress (MaaS routes), the OpenShift MCP server,
 # plus TCP 80/443 for build/git tooling.
 #
 # L4 cannot fully block every public LLM hostname without an egress proxy;
@@ -84,6 +84,14 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: openshift-mta
+    # Native OpenShift MCP server (Stage 060 060-agent-tools) that the OpenCode config names.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mcp-servers
+      ports:
+        - protocol: TCP
+          port: 8080
     # Same namespace (workspace sidecars / projects)
     - to:
         - podSelector: {}
@@ -151,6 +159,13 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: openshift-mta
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mcp-servers
+      ports:
+        - protocol: TCP
+          port: 8080
     - to:
         - podSelector: {}
     - ports:
