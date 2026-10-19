@@ -41,7 +41,7 @@ data:
         admin:
           users:
             - name: user:default/ai-admin
-        pluginsWithPermission: [catalog, scaffolder, permission, kubernetes]
+        pluginsWithPermission: [catalog, scaffolder, permission, kubernetes, argocd]
         policies-csv-file: /opt/app-root/src/rbac/rbac-policies.csv
     signInPage: oidc
     integrations:
