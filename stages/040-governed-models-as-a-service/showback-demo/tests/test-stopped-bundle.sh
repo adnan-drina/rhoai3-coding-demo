@@ -9,6 +9,10 @@ source "$REPO_ROOT/scripts/lib.sh"
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 kustomize build "$COMPONENT" | yaml_json >"$WORK_DIR/bundle.json"
+# The legacy selected-report bundle is independently stoppable. Continuous metering
+# owns an active backend/database partition and is checked separately below.
+jq 'map(select(.metadata.labels["app.kubernetes.io/component"]!="external-metering"))' \
+    "$WORK_DIR/bundle.json" > "$WORK_DIR/base.json"
 if jq -e '
   ([.[]|select(.kind=="Deployment")][0].spec.replicas) as $replicas |
   [.[]|select(.kind=="ConfigMap" and .metadata.name=="showback-selected-report")][0] as $report |
@@ -33,15 +37,49 @@ if jq -e '
        and ($report.data["metrics.prom"]|contains("report_sha256=\""+$report.metadata.annotations["showback.demo.rhoai.io/report-sha256"]+"\""))
      end)
   and ([.[]|select(.kind=="ConfigMap" and .metadata.annotations["demo.rhoai.io/state"]=="inert-review-inputs")]|length)==2
-  ' "$WORK_DIR/bundle.json" >/dev/null; then
+  ' "$WORK_DIR/base.json" >/dev/null; then
     record 'Only an observed selected-report publisher may run; no models or scheduled load' pass
 else record 'Only an observed selected-report publisher may run; no models or scheduled load' 'Unexpected workload or report'; fi
+
+jq 'map(select(.metadata.labels["app.kubernetes.io/component"]=="external-metering"))' \
+    "$WORK_DIR/bundle.json" > "$WORK_DIR/metering.json"
+if jq -e 'length==11
+  and all(.[]; (.metadata.namespace==(if .kind=="NetworkPolicy" then "openshift-ingress" else "redhat-ods-monitoring" end))
+    and (.kind|IN("ConfigMap","Secret","PersistentVolumeClaim","Deployment","Service",
+      "ServiceMonitor","ImageStream","NetworkPolicy")))
+  and ([.[]|select(.kind=="Deployment")|.metadata.name]|sort)
+      ==["showback-external-metering","showback-external-metering-db"]
+  and all(.[]|select(.kind=="Deployment"); .spec.replicas==1
+    and .spec.strategy.type=="Recreate" and .spec.template.spec.automountServiceAccountToken==false
+    and all(.spec.template.spec.containers[]; .image|test("@sha256:[a-f0-9]{64}$")))
+  and ([.[]|select(.kind=="PersistentVolumeClaim")]|length)==1
+  and any(.[]; .kind=="PersistentVolumeClaim" and .metadata.name=="showback-external-metering-db"
+    and .metadata.annotations["argocd.argoproj.io/sync-options"]=="Prune=false,Delete=false"
+    and .spec.accessModes==["ReadWriteOnce"] and .spec.storageClassName=="gp3-csi")
+  and any(.[]; .kind=="Deployment" and .metadata.name=="showback-external-metering-db"
+    and any(.spec.template.spec.volumes[]; .persistentVolumeClaim.claimName=="showback-external-metering-db"))
+  and any(.[]; .kind=="Deployment" and .metadata.name=="showback-external-metering"
+    and any(.spec.template.spec.containers[0].env[]; .name=="SHOWBACK_PRICING_FILE"
+      and .value=="/etc/showback/provider-pricing.json")
+    and .spec.template.spec.containers[0].readinessProbe.httpGet.path=="/ready"
+    and .spec.template.spec.containers[0].livenessProbe==null)
+  and any(.[]; .kind=="ServiceMonitor" and .metadata.name=="showback-external-metering"
+    and .metadata.labels["monitoring.opendatahub.io/scrape"]=="true"
+    and .spec.selector.matchLabels["app.kubernetes.io/name"]=="showback-external-metering"
+    and .spec.endpoints==[{port:"http",path:"/metrics",interval:"30s",scrapeTimeout:"5s",
+      relabelings:[{targetLabel:"showback_metering",replacement:"external"}]}])
+  and any(.[]; .kind=="ConfigMap" and .metadata.name=="showback-external-metering-profile"
+    and .data.enabled=="true")' "$WORK_DIR/metering.json" >/dev/null; then
+    record 'Continuous metering has a pinned backend, retained database and native scrape path' pass
+else record 'Continuous metering has a pinned backend, retained database and native scrape path' 'Active integration differs'; fi
 
 # The explicit qualification component narrows activation; the original generated scenario stays reusable.
 cp -R "$COMPONENT" "$WORK_DIR/full"
 yaml_json <"$WORK_DIR/full/kustomization.yaml" | jq '.[0] | del(.components)' >"$WORK_DIR/full/kustomization.yaml.new"
 mv "$WORK_DIR/full/kustomization.yaml.new" "$WORK_DIR/full/kustomization.yaml"
 kustomize build "$WORK_DIR/full" | yaml_json >"$WORK_DIR/full.json"
+jq 'map(select(.metadata.labels["app.kubernetes.io/component"]!="external-metering"))' \
+    "$WORK_DIR/full.json" > "$WORK_DIR/full-base.json"
 if jq -e 'length==26
   and ([.[]|select(.kind=="MaaSSubscription")]|length)==3
   and ([.[]|select(.kind=="MaaSAuthPolicy")]|length)==3
@@ -50,7 +88,7 @@ if jq -e 'length==26
   and any(.[]; .kind=="RoleBinding" and .metadata.namespace=="showback-reporting"
       and .roleRef=={apiGroup:"rbac.authorization.k8s.io",kind:"ClusterRole",name:"edit"}
       and .subjects==[{apiGroup:"rbac.authorization.k8s.io",kind:"Group",name:"rhods-admins"}])' \
-    "$WORK_DIR/full.json" >/dev/null; then
+    "$WORK_DIR/full-base.json" >/dev/null; then
     record 'Full generated scenario retained; archive grant is namespaced for rhods-admins' pass
 else record 'Full generated scenario retained; archive grant is namespaced for rhods-admins' 'Scenario or grant differs'; fi
 kustomize build "$COMPONENT/model-drafts/mistral" | yaml_json >"$WORK_DIR/mistral.json"

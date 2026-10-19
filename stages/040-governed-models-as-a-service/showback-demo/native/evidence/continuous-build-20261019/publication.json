@@ -1,0 +1,7 @@
+{
+  "image": "image-registry.openshift-image-registry.svc:5000/redhat-ods-monitoring/showback-external-metering@sha256:cd5b3dec76e01c9392bea32a4eaad811c7cde3ed5460d2909ee19e5d902cb495",
+  "patch_sha256": "5ab927fca0ce6e10bb643de568532a849909ee745a22fea00d4943881eb63cda",
+  "source_commit": "f9a56b1769b0933e3fe7454a174b1f42a229f07a",
+  "published_at": "2026-10-19T11:14:15Z",
+  "registry_digest_verified": true
+}

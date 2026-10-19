@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+- pairs:
+    app.kubernetes.io/component: external-metering
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/managed-by: argocd
+  includeSelectors: false
+  includeTemplates: true
+resources:
+- database.yaml
+- database-service.yaml
+- database-secret.yaml
+- database-storage.yaml
+- deployment.yaml
+- service.yaml
+- servicemonitor.yaml
+- imagestream.yaml
+- profile.yaml
+- networkpolicy.yaml
+configMapGenerator:
+- name: showback-external-metering-config
+  namespace: redhat-ods-monitoring
+  files:
+  - provider-pricing.json
+generatorOptions:
+  labels:
+    app.kubernetes.io/name: showback-external-metering-config

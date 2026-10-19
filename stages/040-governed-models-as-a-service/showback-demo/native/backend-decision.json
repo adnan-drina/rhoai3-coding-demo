@@ -1,8 +1,10 @@
 {
   "schema_version": 1,
   "reviewed_at": "2026-10-19",
+  "record_scope": "The top-level decision, selection, activation_allowed/live_qualified flags and customization candidate below preserve the original patch1 research status. The continuous_metering section is the authority for the separately authorized two-patch continuous derivative, its current publication and integration qualification.",
   "decision": "Official RHOAI 3.5 documentation leaves the backend installation reference unresolved. The installed IPP example identifies OpenMeter as an integration target and Noyitz as the development testing backend. The original pinned Noyitz build and its observed limitations are retained. A local derivative containing the reviewed correctness patch was built and validated locally on 2026-10-19, with patch/image-bound Go and runtime evidence. This does not approve publication, cluster deployment or financial completeness. Keep the deployment selection unset pending integration qualification.",
   "selection": {
+    "scope": "Historical patch1 local evaluation; superseded for continuous deployment by continuous_metering",
     "strategy": "official-documentation-and-upstream-source",
     "status": "noyitz-local-correction-validated-gateway-unqualified",
     "name": null,
@@ -268,5 +270,26 @@
     "https://github.com/redhat-et/pricetag-metering/blob/586356a1844d2e18dee602068bf43512fd3b49c6/internal/handler/events.go",
     "https://github.com/redhat-et/pricetag-metering/blob/586356a1844d2e18dee602068bf43512fd3b49c6/internal/storage/postgres.go",
     "https://github.com/redhat-et/pricetag/blob/cb06d37dedf8160c2bd5c2434e43527524e4103c/docs/operations/image-provenance.md"
-  ]
+  ],
+  "continuous_metering": {
+    "state": "published-runtime-qualified-live-integration-pending",
+    "published_manifest_digest": "sha256:cd5b3dec76e01c9392bea32a4eaad811c7cde3ed5460d2909ee19e5d902cb495",
+    "publication_evidence": "evidence/continuous-build-20261019/publication.json",
+    "local_build_evidence": "evidence/continuous-build-20261019/README.md",
+    "composite_patch_sha256": "5ab927fca0ce6e10bb643de568532a849909ee745a22fea00d4943881eb63cda",
+    "runtime_qualification": {"evidence": "evidence/continuous-build-20261019/runtime-qualification.json", "passed": 12, "failed": 0, "scope": "isolated local PostgreSQL and synthetic HTTP; no provider inference or cluster mutation"},
+    "mode": "SHOWBACK_PRICING_FILE",
+    "source_commit": "f9a56b1769b0933e3fe7454a174b1f42a229f07a",
+    "patches": [
+      "backend/0001-metering-correctness.patch",
+      "backend/0002-continuous-showback.patch"
+    ],
+    "catalog": "provider-pricing.json",
+    "gitops": "gitops/stages/040-governed-models-as-a-service/040-showback-demo/metering",
+    "identity": "versioned protocol plus upstream model mapping; raw identity retained",
+    "amount_basis": "frozen conditional standard-rate token estimate; no invoice authority",
+    "delivery": "best-effort one-attempt native producer; durable delivered-event PostgreSQL ledger",
+    "loki": "unchanged inert preparation",
+    "historical_evidence_preserved": true
+  }
 }

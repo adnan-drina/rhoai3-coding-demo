@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Build the reviewed backend patch on an already running local Podman engine.
 # Never starts a VM, runs the service, pushes an image or contacts OpenShift.
-# Usage: build-local.sh --source CLEAN_PINNED_CHECKOUT --connection LOCAL_CONNECTION --output EMPTY_DIR
+# Usage: build-local.sh --source CLEAN_PINNED_CHECKOUT --connection LOCAL_CONNECTION --output EMPTY_DIR [--continuous]
 set -euo pipefail
 umask 077
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 commit=f9a56b1769b0933e3fe7454a174b1f42a229f07a
 repository=https://github.com/noyitz/ai-gateway-metering-service
-source_dir=''; connection=''; output=''
+source_dir=''; connection=''; output=''; continuous=false
 fail() { printf 'Local backend build: %s\n' "$*" >&2; exit 1; }
 while (($#)); do
+    if [[ "$1" == --continuous ]]; then continuous=true; shift; continue; fi
     (($# >= 2)) || fail 'expected option/value pairs; see script usage'
     case "$1" in
         --source) source_dir=$2 ;;
@@ -42,6 +43,10 @@ cp "$0" "$output/build-local.sh"
 cp "$script_dir/Containerfile" "$output/Containerfile"
 cp "$script_dir/0001-metering-correctness.patch" "$output/0001-metering-correctness.patch"
 patch_sha=$(shasum -a 256 "$output/0001-metering-correctness.patch" | awk '{print $1}')
+if [[ "$continuous" == true ]]; then
+    cp "$script_dir/0002-continuous-showback.patch" "$output/0002-continuous-showback.patch"
+    patch_sha=$(cat "$output/0001-metering-correctness.patch" "$output/0002-continuous-showback.patch" | shasum -a 256 | awk '{print $1}')
+fi
 image="localhost/showback-metering:${commit:0:7}-${patch_sha:0:12}"
 builder="localhost/showback-metering-builder:${commit:0:7}-${patch_sha:0:12}"
 git -C "$source_dir" archive "$commit" > "$output/source.tar"
@@ -49,6 +54,10 @@ mkdir "$output/context"
 tar -xf "$output/source.tar" -C "$output/context"
 GIT_CEILING_DIRECTORIES="$output" git -C "$output/context" apply --check "$output/0001-metering-correctness.patch"
 GIT_CEILING_DIRECTORIES="$output" git -C "$output/context" apply "$output/0001-metering-correctness.patch"
+if [[ "$continuous" == true ]]; then
+    GIT_CEILING_DIRECTORIES="$output" git -C "$output/context" apply --check "$output/0002-continuous-showback.patch"
+    GIT_CEILING_DIRECTORIES="$output" git -C "$output/context" apply "$output/0002-continuous-showback.patch"
+fi
 started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 code=0
 runtime_code=0

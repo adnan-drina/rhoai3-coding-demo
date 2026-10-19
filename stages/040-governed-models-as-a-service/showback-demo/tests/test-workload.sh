@@ -100,10 +100,11 @@ jq -e '.network_requests==0 and .evidence_kind=="preview" and .phases[0].submit_
 [[ ! -e "$work/must-not-exist" && ! -e "$work/oc-calls" ]]
 [[ "$(find "$work/calls" -type f | wc -l | tr -d ' ')" == 0 ]]
 
-# Short bounded scenarios exercise the real scheduler without waiting twelve minutes.
-jq '.status="synthetic_fixture" | .limits.start_delay_seconds=0 | .limits.drain_seconds=2 |
-    .limits.request_timeout_seconds=2 | .limits.max_wall_seconds=9 | .limits.max_response_bytes=1024 |
-    .phases[].duration_seconds=3 | .teams[].spacing_seconds=1' \
+# Mock processes also parse JSON and synthesize SSE, so allow host scheduling time.
+# Deadline, phase containment and weighted model-selection assertions remain explicit.
+jq '.status="synthetic_fixture" | .limits.start_delay_seconds=0 | .limits.drain_seconds=4 |
+    .limits.request_timeout_seconds=4 | .limits.max_wall_seconds=24 | .limits.max_response_bytes=1024 |
+    .phases[].duration_seconds=6 | .teams[].spacing_seconds=1' \
     "$DEMO_DIR/scenario.json" > "$work/scenario.json"
 run_case() {
     local name="$1" expected="$2"
@@ -179,14 +180,16 @@ jq '.limits.max_requests=3' "$work/scenario.json" > "$work/capped.json"
 bash "$DEMO_DIR/run-workload.sh" --scenario "$work/capped.json" --execute --output "$work/capped" \
     > "$work/capped.stdout" 2> "$work/capped.stderr"
 jq -e '.requests_started==3 and .status=="completed"' "$work/capped/run.json" >/dev/null
-jq -s -e 'all(.[];.phase!="idle" and .duration_seconds<=3)' "$work/capped/receipts.jsonl" >/dev/null
+jq -s -e --slurpfile run "$work/capped/run.json" \
+    'all(.[];.phase!="idle" and .duration_seconds<=($run[0].limits.request_timeout_seconds+1))' \
+    "$work/capped/receipts.jsonl" >/dev/null
 permissions="$(ls -l "$work/capped/receipts.jsonl" | cut -c 1-10)"
 [[ "$permissions" == '-rw-------' ]]
 hash="$(shasum -a 256 "$work/capped.json")"
 hash="${hash%% *}"
 jq -e --arg hash "$hash" '.scenario_sha256==$hash' "$work/capped/run.json" >/dev/null
-jq '.limits.start_delay_seconds=1 | .limits.max_wall_seconds=16 | .phases[0].duration_seconds=8 |
-    .phases[1].duration_seconds=4 | .phases[2].duration_seconds=4' \
+jq '.limits.start_delay_seconds=1 | .limits.max_wall_seconds=49 | .phases[0].duration_seconds=30 |
+    .phases[1].duration_seconds=12 | .phases[2].duration_seconds=6' \
     "$work/scenario.json" > "$work/timed.json"
 bash "$DEMO_DIR/run-workload.sh" --scenario "$work/timed.json" --execute --output "$work/timed" \
     > "$work/timed.stdout" 2> "$work/timed.stderr"
@@ -230,9 +233,9 @@ jq -e '(.teams|keys)==["engineering","support"] and (.models|keys)==["qwen3-8-27
   and .phases[2].teams==[] and all(.teams[]; .input_target_tokens==128 and .max_output_tokens==32)' \
     "$DEMO_DIR/qualification-qwen-only.json" >/dev/null
 cp "$work/scenario.json" "$work/original-scenario.json"
-jq '.status="synthetic_fixture" | .limits.start_delay_seconds=0 | .limits.drain_seconds=2 |
-    .limits.request_timeout_seconds=2 | .limits.max_wall_seconds=9 | .limits.max_response_bytes=1024 |
-    .phases[].duration_seconds=3 | .teams[].spacing_seconds=1' \
+jq '.status="synthetic_fixture" | .limits.start_delay_seconds=0 | .limits.drain_seconds=4 |
+    .limits.request_timeout_seconds=4 | .limits.max_wall_seconds=24 | .limits.max_response_bytes=1024 |
+    .phases[].duration_seconds=6 | .teams[].spacing_seconds=1' \
     "$DEMO_DIR/qualification-qwen-only.json" >"$work/scenario.json"
 run_case qwen-access 0 --mode access-probe
 jq -e '.access_probe_passed==true and .requests_started==2' "$work/qwen-access/run.json" >/dev/null

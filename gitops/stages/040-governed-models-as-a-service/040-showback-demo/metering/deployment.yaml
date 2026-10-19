@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: redhat-ods-monitoring
+  name: showback-external-metering
+  labels:
+    app.kubernetes.io/name: showback-external-metering
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: showback-external-metering
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: showback-external-metering
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: metering
+        # Source-bound local build, independently validated; registry digest verified on publication.
+        image: image-registry.openshift-image-registry.svc:5000/redhat-ods-monitoring/showback-external-metering@sha256:cd5b3dec76e01c9392bea32a4eaad811c7cde3ed5460d2909ee19e5d902cb495
+        env:
+        - name: SHOWBACK_PRICING_FILE
+          value: /etc/showback/provider-pricing.json
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: showback-external-metering-db
+              key: DATABASE_URL
+        ports:
+        - name: http
+          containerPort: 8080
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: '1'
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          periodSeconds: 5
+        volumeMounts:
+        - name: pricing
+          mountPath: /etc/showback
+          readOnly: true
+      volumes:
+      - name: pricing
+        configMap:
+          name: showback-external-metering-config

@@ -2,14 +2,14 @@
   {
     "name": "dashboard-offer-external-model-admin",
     "title": "Offer · External model",
-    "description": "All configured external models. Bounded request receipts remain separate from monthly provider billing, user/team charges and invoice reconciliation.",
+    "description": "Continuous captured native usage and versioned provider price estimates, with capture limits and invoice unknowns. Bounded probe receipts and monthly statements remain separate evidence.",
     "panels": {
       "contract": {
-        "title": "External model · consumption contract",
+        "title": "External models · usage and price estimates",
         "description": "",
         "kind": "Markdown",
         "options": {
-          "text": "Consumers pay the applicable **input, output, cache and tool rates**, plus disclosed fees, credits and commitments. Provider capacity is recovered through those terms; any platform commitment or retry cost needs an explicit owner. **Rates, monthly charges and invoices are not measured here yet.** A prototype/trial endpoint does not establish a production zero-price tariff. Bounded request receipts prove only those requests. User/subscription identity does not prove team membership; latency, SLOs and complete provider billing categories remain unqualified."
+          "text": "**Continuous metering records delivered native events.** Counts cover the current UTC month only from the capture start shown below; delivery is best effort, so this is not a complete provider statement. **USD is a conditional token estimate, not an invoice or consumer charge.** OpenAI/Anthropic use verified public Standard global prices with stated assumptions; NVIDIA's exact hosted **free prototype** has no charge. Commercial terms, tools, commitments, fees and invoice reconciliation need separate evidence. User/subscription identity does not establish a team."
         },
         "queries": []
       },
@@ -2190,6 +2190,1675 @@
             "query": "label_replace(label_replace((absent(((service_agreement_info{offer=\"external\",evidence_kind=\"observed\"} @ end() and on(report_id, report_sha256, job, instance) (service_report_info{evidence_kind=\"observed\"} @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))))) and on() (up{showback_publisher=\"selected-report\"} @ end() == 1)), \"evidence_kind\", \"unavailable\", \"\", \"\"), \"status\", \"Not measured\", \"\", \"\") or label_replace(label_replace(absent(up{showback_publisher=\"selected-report\"} @ end() == 1), \"evidence_kind\", \"unavailable\", \"\", \"\"), \"status\", \"Publisher unavailable\", \"\", \"\")"
           }
         ]
+      },
+      "captureContext": {
+        "title": "Current month · captured interval",
+        "description": "Ledger start records database initialization, not gateway activation or uninterrupted capture. Gauges are persisted current-month captured-event sums sampled at dashboard end; the dashboard's time range does not expand coverage. Profile activation is qualified separately.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "period_start",
+              "header": "Month from (UTC)",
+              "width": 175,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "ledger_started_at",
+              "header": "Ledger start (UTC)",
+              "width": 175,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "delivery",
+              "header": "Delivery",
+              "width": 110,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "best_effort"
+                    }
+                  },
+                  "text": "Best effort"
+                }
+              ]
+            },
+            {
+              "name": "status",
+              "header": "Status",
+              "width": 95,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "period_start"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "ledger_started_at"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "delivery"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "status"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "period_start",
+                  "ledger_started_at",
+                  "delivery",
+                  "status"
+                ]
+              }
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"Capturing\", \"\", \"\")"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((absent(showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)) and on() (up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"No capture\", \"\", \"\") or label_replace((absent(up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"Metering unavailable\", \"\", \"\")"
+          }
+        ]
+      },
+      "continuousModels": {
+        "title": "Configured models · captured usage",
+        "description": "All configured external models remain visible. Known input/output are exact subtotals from usable delivered events; Usage unknown means the complete usage is not known. All-zero normalized usage is Unknown because the producer loses presence flags. Events are delivery observations, not a complete provider request ledger.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 165,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "nemotron-3-ultra-550b-a55b"
+                    }
+                  },
+                  "text": "Nemotron 3 Ultra 550B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "claude-sonnet-5-5"
+                    }
+                  },
+                  "text": "Claude Sonnet 5.5"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "gpt-6-luna"
+                    }
+                  },
+                  "text": "GPT-6 Luna"
+                }
+              ]
+            },
+            {
+              "name": "value #2",
+              "header": "Events",
+              "width": 65,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "value #3",
+              "header": "Known input",
+              "width": 80,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "value #4",
+              "header": "Known output",
+              "width": 80,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "status",
+              "header": "Evidence",
+              "width": 120,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "model"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "provider"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "status"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "model",
+                  "provider"
+                ]
+              }
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((showback_external_model_info{evidence_kind=\"observed\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)) and on() (up{showback_metering=\"external\"} @ end() == 1), \"status\", \"Not measured\", \"\", \"\") or label_replace((showback_external_model_info{evidence_kind=\"observed\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)) unless on() (up{showback_metering=\"external\"} @ end() == 1), \"status\", \"Metering unavailable\", \"\", \"\")"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((sum by (model, provider) (showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))), \"status\", \"Captured\", \"\", \"\")"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((sum by (model, provider) (showback_external_metering_input_tokens{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))), \"status\", \"Captured\", \"\", \"\")"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((sum by (model, provider) (showback_external_metering_output_tokens{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))), \"status\", \"Captured\", \"\", \"\")"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((sum by (model, provider) ((showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) unless on(user, subscription, provider, model, usage_state, price_state, price_version, catalog_sha256, scope, job, instance, exported_job, exported_instance) (showback_external_metering_input_tokens{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))))), \"status\", \"Usage unknown\", \"\", \"\")"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((absent((showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) or (showback_external_model_info{evidence_kind=\"observed\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) and on() (up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"No inventory\", \"\", \"\") or label_replace((absent(up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"Metering unavailable\", \"\", \"\")"
+          }
+        ]
+      },
+      "continuousUsers": {
+        "title": "Captured usage by user and model",
+        "description": "Known input/output are exact usable-event subtotals, not full usage when Missing usage is nonzero. Missing usage counts events lacking either token gauge; it is zero only when captured events prove complete token presence. User/subscription labels do not prove team ownership.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "user",
+              "header": "User",
+              "width": 90,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 155,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "nemotron-3-ultra-550b-a55b"
+                    }
+                  },
+                  "text": "Nemotron 3 Ultra 550B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "claude-sonnet-5-5"
+                    }
+                  },
+                  "text": "Claude Sonnet 5.5"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "gpt-6-luna"
+                    }
+                  },
+                  "text": "GPT-6 Luna"
+                }
+              ]
+            },
+            {
+              "name": "value #1",
+              "header": "Events",
+              "width": 60,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "value #2",
+              "header": "Known input",
+              "width": 75,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "value #3",
+              "header": "Known output",
+              "width": 75,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "value #4",
+              "header": "Missing usage",
+              "width": 90,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "user"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "provider"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "model"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "user",
+                  "provider",
+                  "model"
+                ]
+              }
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "sum by (user, provider, model) (showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "sum by (user, provider, model) (showback_external_metering_input_tokens{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "sum by (user, provider, model) (showback_external_metering_output_tokens{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "sum by (user, provider, model) (((showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) unless on(user, subscription, provider, model, usage_state, price_state, price_version, catalog_sha256, scope, job, instance, exported_job, exported_instance) (showback_external_metering_input_tokens{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))) or ((showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) unless on(user, subscription, provider, model, usage_state, price_state, price_version, catalog_sha256, scope, job, instance, exported_job, exported_instance) (showback_external_metering_output_tokens{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))))) or on(user, provider, model) (0 * (sum by (user, provider, model) (showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))))"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((label_replace((absent(showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) and on() (up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"No captured events\", \"\", \"\") or label_replace((absent(up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"Metering unavailable\", \"\", \"\")), \"user\", \"$1\", \"status\", \"(.*)\")"
+          }
+        ]
+      },
+      "estimateSummary": {
+        "title": "Captured token estimate · USD",
+        "description": "Known subtotal includes only events with a frozen price estimate. Full estimate is Unknown if any captured event is unpriced, has unusable usage or an unsupported category. A zero unpriced count is derived only from actual captured events; absent activity is not zero.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "value #1",
+              "header": "Known subtotal",
+              "width": 135,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 8,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "value #2",
+              "header": "Full estimate",
+              "width": 135,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 8,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "value #3",
+              "header": "Unpriced events",
+              "width": 130,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "status",
+              "header": "Basis",
+              "width": 145,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "status"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "status"
+                ]
+              }
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((sum(showback_external_metering_estimated_usd{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))), \"status\", \"Conditional estimate\", \"\", \"\")"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((sum(showback_external_metering_estimated_usd{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) unless on() ((sum((showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) unless on(user, subscription, provider, model, usage_state, price_state, price_version, catalog_sha256, scope, job, instance, exported_job, exported_instance) (showback_external_metering_estimated_usd{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))) or on() (0 * sum(showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))))) > 0)), \"status\", \"Conditional estimate\", \"\", \"\")"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace(((sum((showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) unless on(user, subscription, provider, model, usage_state, price_state, price_version, catalog_sha256, scope, job, instance, exported_job, exported_instance) (showback_external_metering_estimated_usd{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))) or on() (0 * sum(showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))))), \"status\", \"Conditional estimate\", \"\", \"\")"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((absent(showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) and on() (up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"No captured events\", \"\", \"\") or label_replace((absent(up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"Metering unavailable\", \"\", \"\")"
+          }
+        ]
+      },
+      "userEstimates": {
+        "title": "User token estimates · USD",
+        "description": "Known subtotal and complete estimate are separate. Missing prices or unknown usage never become a zero charge. Free prototype zero is a verified endpoint condition; paid amounts remain conditional public-price estimates, not invoices.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "user",
+              "header": "User",
+              "width": 90,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 155,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "nemotron-3-ultra-550b-a55b"
+                    }
+                  },
+                  "text": "Nemotron 3 Ultra 550B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "claude-sonnet-5-5"
+                    }
+                  },
+                  "text": "Claude Sonnet 5.5"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "gpt-6-luna"
+                    }
+                  },
+                  "text": "GPT-6 Luna"
+                }
+              ]
+            },
+            {
+              "name": "value #1",
+              "header": "Subtotal",
+              "width": 95,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 8,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "value #2",
+              "header": "Full estimate",
+              "width": 105,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 8,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "value #3",
+              "header": "Unpriced",
+              "width": 90,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": false
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "user"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "provider"
+              }
+            },
+            {
+              "kind": "MergeIndexedColumns",
+              "spec": {
+                "column": "model"
+              }
+            },
+            {
+              "kind": "JoinByColumnValue",
+              "spec": {
+                "columns": [
+                  "user",
+                  "provider",
+                  "model"
+                ]
+              }
+            }
+          ]
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "sum by (user, provider, model) (showback_external_metering_estimated_usd{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "sum by (user, provider, model) (showback_external_metering_estimated_usd{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) unless on(user, provider, model) ((sum by (user, provider, model) ((showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) unless on(user, subscription, provider, model, usage_state, price_state, price_version, catalog_sha256, scope, job, instance, exported_job, exported_instance) (showback_external_metering_estimated_usd{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))) or on(user, provider, model) (0 * sum by (user, provider, model) (showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))))) > 0)"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "(sum by (user, provider, model) ((showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) unless on(user, subscription, provider, model, usage_state, price_state, price_version, catalog_sha256, scope, job, instance, exported_job, exported_instance) (showback_external_metering_estimated_usd{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))) or on(user, provider, model) (0 * sum by (user, provider, model) (showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)))))"
+          },
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "label_replace((label_replace((absent(showback_external_metering_events{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) and on() (up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"No captured events\", \"\", \"\") or label_replace((absent(up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"Metering unavailable\", \"\", \"\")), \"user\", \"$1\", \"status\", \"(.*)\")"
+          }
+        ]
+      },
+      "providerRates": {
+        "title": "Verified provider rates · USD per 1M tokens",
+        "description": "Dynamic loaded catalog. GPT-6 context bands are separate rows; cache writes replace uncached input rather than adding to it. Claude compatibility has no caching categories. NVIDIA zero applies only to the configured free prototype endpoint. Rate version and applicability are in the audit.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 160,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "nemotron-3-ultra-550b-a55b"
+                    }
+                  },
+                  "text": "Nemotron 3 Ultra 550B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "claude-sonnet-5-5"
+                    }
+                  },
+                  "text": "Claude Sonnet 5.5"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "gpt-6-luna"
+                    }
+                  },
+                  "text": "GPT-6 Luna"
+                }
+              ]
+            },
+            {
+              "name": "context_band",
+              "header": "Context",
+              "width": 95,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "input_tokens_lte_272000"
+                    }
+                  },
+                  "text": "≤272K input"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "input_tokens_gt_272000"
+                    }
+                  },
+                  "text": ">272K input"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "all_supported_context"
+                    }
+                  },
+                  "text": "All contexts"
+                }
+              ]
+            },
+            {
+              "name": "category",
+              "header": "Category",
+              "width": 115,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "input_uncached"
+                    }
+                  },
+                  "text": "Input"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "cache_read"
+                    }
+                  },
+                  "text": "Cache read"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "cache_write"
+                    }
+                  },
+                  "text": "Cache write"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "output"
+                    }
+                  },
+                  "text": "Output"
+                }
+              ]
+            },
+            {
+              "name": "value",
+              "header": "USD / 1M",
+              "width": 90,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ],
+              "align": "right",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 3,
+                "shortValues": false
+              }
+            },
+            {
+              "name": "basis",
+              "header": "Basis",
+              "width": 95,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "provider_free_prototype"
+                    }
+                  },
+                  "text": "Free prototype"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "public_list_price_estimate"
+                    }
+                  },
+                  "text": "Public list"
+                }
+              ]
+            }
+          ],
+          "transforms": []
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "showback_external_metering_rate_usd_per_million @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)) or label_replace((absent(showback_external_metering_rate_usd_per_million @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) and on() (up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"No catalog\", \"\", \"\") or label_replace((absent(up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"Metering unavailable\", \"\", \"\")"
+          }
+        ]
+      },
+      "priceAssumptions": {
+        "title": "How to read the estimate",
+        "description": "",
+        "kind": "Markdown",
+        "options": {
+          "text": "**GPT-6 Luna:** Standard global rates are assumed. Input is priced as uncached except proven nonzero cache quantities; missing cache details are not proof of zero. Input above 272K uses the higher context band. **Claude Sonnet 5.5:** this OpenAI-compatible route does not support prompt caching; provider input/output counts use Standard global rates. **Reasoning is already part of output and is not added again.** Tool fees, region/tier adjustments and invoice credits are excluded. **NVIDIA:** the exact hosted prototype is documented free; production pricing, capacity and SLA are not established. Each event freezes its catalog version at ingest; later catalog changes do not reprice history."
+        },
+        "queries": []
+      },
+      "meteringAudit": {
+        "title": "Capture and price audit",
+        "description": "Producer-normalized detail presence is unavailable; raw ledger identities and frozen pricing are retained by the metering backend. Long audit fields are available on hover.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "catalog_version",
+              "header": "Catalog version",
+              "width": 180,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "catalog_sha256",
+              "header": "SHA-256",
+              "width": 180,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "detail_presence",
+              "header": "Usage detail",
+              "width": 100,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "unavailable"
+                    }
+                  },
+                  "text": "Unavailable"
+                }
+              ]
+            },
+            {
+              "name": "cost_basis",
+              "header": "USD basis",
+              "width": 95,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "conditional_token_estimate"
+                    }
+                  },
+                  "text": "Estimate"
+                }
+              ]
+            }
+          ],
+          "transforms": []
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1) or label_replace((absent(showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)) and on() (up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"No capture\", \"\", \"\") or label_replace((absent(up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"Metering unavailable\", \"\", \"\")"
+          }
+        ]
+      },
+      "rateAudit": {
+        "title": "Price sources and adoption · UTC",
+        "description": "Source URLs and pricing semantics are reviewed in native/provider-pricing.json. Adoption is a local catalog boundary, not a claimed provider change date. Earlier events retain their original price state.",
+        "kind": "Table",
+        "options": {
+          "density": "compact",
+          "enableFiltering": false,
+          "pagination": false,
+          "defaultColumnHidden": true,
+          "columnSettings": [
+            {
+              "name": "model",
+              "header": "Model",
+              "width": 160,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "nemotron-3-ultra-550b-a55b"
+                    }
+                  },
+                  "text": "Nemotron 3 Ultra 550B"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "claude-sonnet-5-5"
+                    }
+                  },
+                  "text": "Claude Sonnet 5.5"
+                },
+                {
+                  "condition": {
+                    "kind": "Value",
+                    "spec": {
+                      "value": "gpt-6-luna"
+                    }
+                  },
+                  "text": "GPT-6 Luna"
+                }
+              ]
+            },
+            {
+              "name": "price_version",
+              "header": "Rate version",
+              "width": 175,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            },
+            {
+              "name": "valid_from",
+              "header": "Adopted (UTC)",
+              "width": 175,
+              "cellSettings": [
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "null"
+                    }
+                  },
+                  "text": "Unknown"
+                },
+                {
+                  "condition": {
+                    "kind": "Misc",
+                    "spec": {
+                      "value": "NaN"
+                    }
+                  },
+                  "text": "Unknown"
+                }
+              ]
+            }
+          ],
+          "transforms": []
+        },
+        "queries": [
+          {
+            "datasource": {
+              "kind": "PrometheusDatasource",
+              "name": "data-science-prometheus-datasource"
+            },
+            "query": "group by (provider, model, price_version, valid_from, job, instance, exported_job, exported_instance) (showback_external_metering_rate_usd_per_million @ end()) and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1)) or label_replace((absent(showback_external_metering_rate_usd_per_million @ end() and on(job, instance, exported_job, exported_instance) (showback_external_metering_info{scope=\"captured_native_events\"} @ end() and on(job, instance, exported_job, exported_instance) (up{showback_metering=\"external\"} @ end() == 1))) and on() (up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"No catalog\", \"\", \"\") or label_replace((absent(up{showback_metering=\"external\"} @ end() == 1)), \"status\", \"Metering unavailable\", \"\", \"\")"
+          }
+        ]
       }
     },
     "layouts": [
@@ -2197,7 +3866,7 @@
         "kind": "Grid",
         "spec": {
           "display": {
-            "title": "Contract and evidence",
+            "title": "Continuous usage and estimates",
             "collapse": {
               "open": true
             }
@@ -2216,9 +3885,63 @@
               "x": 0,
               "y": 7,
               "width": 24,
-              "height": 7,
+              "height": 6,
               "content": {
-                "$ref": "#/spec/panels/availability"
+                "$ref": "#/spec/panels/captureContext"
+              }
+            },
+            {
+              "x": 0,
+              "y": 13,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/continuousModels"
+              }
+            },
+            {
+              "x": 0,
+              "y": 21,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/continuousUsers"
+              }
+            },
+            {
+              "x": 0,
+              "y": 29,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/estimateSummary"
+              }
+            },
+            {
+              "x": 0,
+              "y": 35,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/userEstimates"
+              }
+            },
+            {
+              "x": 0,
+              "y": 43,
+              "width": 24,
+              "height": 18,
+              "content": {
+                "$ref": "#/spec/panels/providerRates"
+              }
+            },
+            {
+              "x": 0,
+              "y": 61,
+              "width": 24,
+              "height": 9,
+              "content": {
+                "$ref": "#/spec/panels/priceAssumptions"
               }
             }
           ]
@@ -2230,7 +3953,7 @@
           "display": {
             "title": "Observed request receipts",
             "collapse": {
-              "open": true
+              "open": false
             }
           },
           "items": [
@@ -2279,7 +4002,7 @@
           "display": {
             "title": "Monthly pricing and economics",
             "collapse": {
-              "open": true
+              "open": false
             }
           },
           "items": [
@@ -2329,7 +4052,34 @@
               "width": 24,
               "height": 6,
               "content": {
+                "$ref": "#/spec/panels/meteringAudit"
+              }
+            },
+            {
+              "x": 0,
+              "y": 6,
+              "width": 24,
+              "height": 12,
+              "content": {
+                "$ref": "#/spec/panels/rateAudit"
+              }
+            },
+            {
+              "x": 0,
+              "y": 18,
+              "width": 24,
+              "height": 6,
+              "content": {
                 "$ref": "#/spec/panels/audit"
+              }
+            },
+            {
+              "x": 0,
+              "y": 24,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/availability"
               }
             }
           ]

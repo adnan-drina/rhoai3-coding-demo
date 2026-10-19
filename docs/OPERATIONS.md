@@ -622,6 +622,8 @@ Do not merge a feature branch to `main` only to validate developer workflow cata
 
 ## Stage-Specific Operational Notes
 
+The optional Stage 040 showback component includes a continuous external-metering source configuration. Its [operations guide](../stages/040-governed-models-as-a-service/showback-demo/OPERATIONS.md#continuous-external-metering) covers the pinned local build, internal-registry publication, targeted deployment, native profile activation and safe disable sequence. Received-event usage and frozen public-rate token estimates are distinct from complete monthly coverage and invoice reconciliation. Disabling the source profile restores MaaS processing before the backend is stopped; retain its PostgreSQL PVC. Historical Qwen and two-request probe records below describe earlier releases.
+
 ### Stage 010
 
 Stage 010 installs OpenShift AI and platform dependencies. Operator reconciliation can take several minutes.

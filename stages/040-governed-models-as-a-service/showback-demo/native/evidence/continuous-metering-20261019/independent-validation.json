@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "independent_source_and_synthetic_local_runtime_validation",
+  "verified_at": "2026-10-19T11:28:35Z",
+  "source_base_sha": "163fc055ba3bd6c4a5c62bacdb41deb9ba0c837d",
+  "published_source_sha": null,
+  "image_digest": "sha256:cd5b3dec76e01c9392bea32a4eaad811c7cde3ed5460d2909ee19e5d902cb495",
+  "pricing_catalog_sha256": "b90394d5412431b31d32ad3ea2b42eabf965c5293ba57edae181191dbb9b08c8",
+  "continuous_patch_sha256": "918015ce6fa8a9f76b97063938912b6f28978f465644cc7523bf47ffbaeb5977",
+  "source_review": {
+    "installed_ipp_image_sha256": "83091d245d7ae9275ba27db0aed50bfc0b80b78b6ef28b77db7f62c175b14fe2",
+    "image_bound_source_commit": "a98a2650e74f8b832ff75206f795cbb62b9cd688",
+    "current_profile_delegated_managed_false": true,
+    "existing_native_usage_logging_enabled": false,
+    "trusted_identity": "MaaS username/subscription retained before header stripping; dedicated backend requires matching subject/user and allowed source",
+    "canonical_mapping": "Protocol/upstream identity differs from provider/client alias; NVIDIA openai/prefixed model maps to nvidia/client model",
+    "native_governance_counters": "Attributed cumulative total tokens/calls exist; input/output/cache/reasoning split is unavailable",
+    "producer_limits": [
+      "Absent detail counts collapse to zero; base all-zero usage stays Unknown",
+      "One HTTP post without durable producer retry/outbox; events are captured delivery only",
+      "Generated event UUID is not the original gateway request ID",
+      "No-usage non-error responses can emit no event; denied requests are not inferred as provider billing"
+    ],
+    "estimate_boundary": "Standard/global token estimates with explicit assumptions; reasoning included in output; no invoice or whole-month completeness claim",
+    "ledger_started_at": "Database initialization; not proof of profile activation or uninterrupted coverage"
+  },
+  "synthetic_local_runtime": {
+    "test_script": "tests/test-continuous-metering.sh",
+    "passed": 12,
+    "failed": 0,
+    "verified_at": "2026-10-19T11:12:21Z",
+    "database_restored": true,
+    "original_catalog_restored": true,
+    "checks": [
+      "disjoint cache categories and reasoning included once in output",
+      "same source/id replays once and conflicting payload is rejected",
+      "missing counts, identity/source mismatch and impossible subsets rejected",
+      "all-zero and failed events retain Unknown tokens and amount",
+      "NVIDIA upstream/protocol canonicalized and documented free amount preserved",
+      "unmapped external usage remains counted without an invented rate",
+      "272000/272001 input context price boundary",
+      "UTC month excludes previous-month row while retaining current-month row",
+      "metering-only entitlement leaves MaaS authorization unchanged",
+      "backend restart preserves durable rows and frozen estimates",
+      "immutable catalog version rejected; new-version replay preserves old frozen estimate",
+      "DB outage emits503, never acknowledges failed writes, and permits one durable retry"
+    ],
+    "initial_harness_repair": "Negative Ruby argument separator corrected before complete passing run; no backend change required",
+    "reviewed_test_script_sha256": "ce801176747f99083c901fb8fcf7f5a2bc0736f3ef26749b7384b843c78de02b",
+    "offline_entrypoint": "No-argument offline catalog contract was added after the runtime pass; explicit runtime path unchanged"
+  },
+  "activation_contract": {
+    "profile_wrapper": "passed",
+    "source_catalog_copy_identical": true,
+    "preserved": "All existing metadata, pre-processing profile and unrelated ConfigMap data",
+    "negative_cases": [
+      "Wrong cluster guard",
+      "Unrecognized or nondelegated profile",
+      "Unready backend",
+      "Atomic resourceVersion conflict",
+      "Unexpected preservation readback",
+      "Invalid source JSON/state",
+      "Restart failure reported"
+    ],
+    "idempotence": "Matching profile waits for rollout readiness without a new patch/restart",
+    "recovery_limit": "Failure after ConfigMap patch can require the documented explicit processing restart; source match alone is not delivery proof"
+  },
+  "dashboard_native_code_replay": {
+    "kind": "synthetic_offline_native_code_replay",
+    "models_retained": 3,
+    "partial_model_evidence": "Usage unknown",
+    "known_token_subtotals_explicit": true,
+    "missing_usage_count": 1,
+    "mixed_cost": {
+      "known_subtotal": 0.002,
+      "full_estimate": "Unknown",
+      "unpriced_events": 1
+    },
+    "all_free": {
+      "subtotal": 0,
+      "full_estimate": 0
+    },
+    "all_unknown": {
+      "subtotal": "Unknown",
+      "full_estimate": "Unknown",
+      "unpriced_events": 2
+    },
+    "per_user_rows": 2,
+    "unavailable_fallbacks": 7
+  },
+  "predeployment_native_query_checks": {
+    "queries": 24,
+    "all_http_200_success": true,
+    "final_target_marker": "showback_metering=external",
+    "join_dimensions": [
+      "job",
+      "instance",
+      "exported_job",
+      "exported_instance"
+    ],
+    "scope": "Parser/proxy acceptance before activation; does not prove populated continuous metrics"
+  },
+  "offline_gate_status": {
+    "package_initial": {
+      "passed": 23,
+      "failed": 1,
+      "failed_suite": "test-workload.sh"
+    },
+    "targeted_workload": {
+      "result": "passed",
+      "diagnosis": "Unmodified targeted trace reproduced mocked streaming request exceeding2-second fixture deadline",
+      "correction": "Fixture-only timeout/drain4seconds, short phases6seconds, timed busy30/quiet12/idle6 with49-second cap; same access/privacy/phase/model-weight assertions",
+      "production_workload_implementation_changed": false
+    },
+    "final_offer_text_regression": {
+      "passed": 25,
+      "failed": 0
+    },
+    "stage040_static_render_resources": 128,
+    "bash_syntax": "passed",
+    "generator_check": "passed",
+    "non_patch_diff_check": "passed",
+    "full_suite_repeated": false
+  },
+  "deployment_status": "pending",
+  "bounded_gateway_qualification": "pending explicit release",
+  "browser_acceptance": "parent-owned separate evidence",
+  "inference_requests_by_independent_validator": 0,
+  "limitations": [
+    "Synthetic local events never published to the cluster",
+    "Captured events cannot establish complete monthly coverage or provider invoice reconciliation",
+    "Live genuine-user attribution, native datasource joins and numeric estimate readback remain required"
+  ],
+  "kubernetes_resource_mutations_by_independent_validator": 0
+}

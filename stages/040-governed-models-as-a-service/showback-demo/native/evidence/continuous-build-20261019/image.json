@@ -1,0 +1,34 @@
+{
+  "Id": "87a1e866bafe572f296f75d78b7398a8f7ac43561991e9ef190bafe6135625c9",
+  "Digest": "sha256:1bbd03e75ee3a74ca6828956df501be94dbd549aa42d9853e0629595ee1de13d",
+  "Os": "linux",
+  "Architecture": "amd64",
+  "Labels": {
+    "architecture": "x86_64",
+    "build-date": "2025-05-13T04:42:10",
+    "com.redhat.component": "ubi9-minimal-container",
+    "com.redhat.license_terms": "https://www.redhat.com/en/about/red-hat-end-user-license-agreements#UBI",
+    "description": "The Universal Base Image Minimal is a stripped down image that uses microdnf as a package manager. This base image is freely redistributable, but Red Hat only supports Red Hat technologies through subscriptions for Red Hat products. This image is maintained by Red Hat and updated regularly.",
+    "distribution-scope": "public",
+    "io.buildah.version": "1.41.5",
+    "io.k8s.description": "The Universal Base Image Minimal is a stripped down image that uses microdnf as a package manager. This base image is freely redistributable, but Red Hat only supports Red Hat technologies through subscriptions for Red Hat products. This image is maintained by Red Hat and updated regularly.",
+    "io.k8s.display-name": "Red Hat Universal Base Image 9 Minimal",
+    "io.openshift.expose-services": "",
+    "io.openshift.tags": "minimal rhel9",
+    "io.showback.patch.sha256": "5ab927fca0ce6e10bb643de568532a849909ee745a22fea00d4943881eb63cda",
+    "maintainer": "Red Hat, Inc.",
+    "name": "ubi9-minimal",
+    "org.opencontainers.image.revision": "f9a56b1769b0933e3fe7454a174b1f42a229f07a",
+    "org.opencontainers.image.source": "https://github.com/noyitz/ai-gateway-metering-service",
+    "release": "1747111267",
+    "summary": "Provides the latest release of the minimal Red Hat Universal Base Image 9.",
+    "url": "https://www.redhat.com",
+    "vcs-ref": "7575d7eb45eb7f545fef31ba067dfe3d8e52c4eb",
+    "vcs-type": "git",
+    "vendor": "Red Hat, Inc.",
+    "version": "9.5"
+  },
+  "Config": {
+    "User": "1001"
+  }
+}

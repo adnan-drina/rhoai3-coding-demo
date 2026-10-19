@@ -1,5 +1,14 @@
 # RHOAI 3.5.1 native showback preparation
 
+The separate opt-in **continuous external metering** source now lives in
+`gitops/stages/040-governed-models-as-a-service/040-showback-demo/metering/`.
+It uses the [continuous backend derivative](backend/README.md#continuous-captured-event-mode)
+and the versioned [provider catalog](provider-pricing.json). Its explicit profile
+ConfigMap owns activation intent and the reviewed rollback baseline. This path
+does not activate Loki or alter the historical inert candidates described below.
+Delivered events are durable and replay-safe; producer delivery remains best
+effort and paid costs are conditional token estimates, not reconciled invoices.
+
 This package binds the Loki and external-metering candidates to **installed
 RHOAI 3.5.1 schemas and image source revisions**, rather than upstream main.
 It enables neither feature. The renderer emits only two inert ConfigMaps

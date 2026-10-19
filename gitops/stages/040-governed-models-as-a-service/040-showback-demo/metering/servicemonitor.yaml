@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  namespace: redhat-ods-monitoring
+  name: showback-external-metering
+  labels:
+    app.kubernetes.io/name: showback-external-metering
+    monitoring.opendatahub.io/scrape: 'true'
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: showback-external-metering
+  namespaceSelector:
+    matchNames:
+    - redhat-ods-monitoring
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 5s
+    relabelings:
+    # The native collector rewrites job; preserve a target marker on both data and up.
+    - targetLabel: showback_metering
+      replacement: external

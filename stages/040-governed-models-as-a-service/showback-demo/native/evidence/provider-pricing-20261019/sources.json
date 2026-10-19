@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "catalog_version": "provider-pricing-20261019-v1",
+  "checked_at": "2026-10-19T10:53:56Z",
+  "evidence_kind": "official_provider_documentation",
+  "invoice_actual_verified": false,
+  "local_adoption": "2026-10-19T10:53:56Z",
+  "findings": [
+    {
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "configured_wire": "api.openai.com/v1/chat/completions; openai-chat",
+      "applicability": "Standard global public-list estimate. Cache categories are disjoint. Reasoning is already output. Producer lacks tier/geography/cache-write presence, so frozen amounts are conditional estimates.",
+      "short_context_usd_per_million": {
+        "input": "0.10",
+        "cache_read": "0.01",
+        "cache_write": "0.125",
+        "output": "0.50"
+      },
+      "long_context": "Above 272K input: input/cache 2x, output 1.5x.",
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-6-luna",
+        "https://developers.openai.com/api/docs/pricing",
+        "https://developers.openai.com/api/docs/guides/prompt-caching",
+        "https://developers.openai.com/api/docs/guides/reasoning"
+      ]
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "configured_wire": "api.anthropic.com/v1/chat/completions; anthropic provider protocol; OpenAI compatibility",
+      "applicability": "Compatibility route does not support caching and returns empty token details. Provider prompt/completion counts apply; native Messages cache rates do not. Standard global public-list estimate excludes fees and invoice adjustments.",
+      "usd_per_million": {
+        "input": "2.00",
+        "output": "10.00"
+      },
+      "sources": [
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk",
+        "https://platform.claude.com/docs/en/build-with-claude/thinking"
+      ]
+    },
+    {
+      "provider": "nvidia",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b",
+      "configured_wire": "integrate.api.nvidia.com/v1/chat/completions; openai provider protocol",
+      "applicability": "Exact NVIDIA-hosted route is documented as a free prototype. Current prototype charge zero is verified; commercial production terms and invoice actual remain unknown.",
+      "basis": "provider_free_prototype",
+      "sources": [
+        "https://build.nvidia.com/nvidia/nemotron-3-ultra-550b-a55b",
+        "https://assets.ngc.nvidia.com/products/api-catalog/legal/NVIDIA%20API%20Trial%20Terms%20of%20Service.pdf"
+      ]
+    }
+  ]
+}

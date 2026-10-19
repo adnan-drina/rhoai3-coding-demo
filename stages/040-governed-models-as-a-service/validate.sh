@@ -14,7 +14,8 @@
 # Exit codes: 0 pass, 1 fail, 2 pending (functional only). API contract: shipped MaaS 563117f1/openapi3.yaml.
 # --component 040-showback-demo checks the installed optional component's source ownership and publisher state:
 # stopped with no report, or one Ready replica serving a selected source report. It does not prove model inference,
-# policy enforcement, report scraping or native metering delivery.
+# policy enforcement, report scraping or native metering delivery. When enabled in source, it also checks metering
+# workloads, retained storage and the loaded IPP profile; event receipt and cost accuracy require separate probes.
 # Usage: stages/040-governed-models-as-a-service/validate.sh [--readiness|--functional] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,19 +71,31 @@ SHOWBACK_DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as
     ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)')
 # Source reconciliation is separate from model inference, MaaS access enforcement and actual report scraping.
 showback_source_state() {
-    local d kind ns name group live args tracking publisher_replicas
+    local d kind ns name group live args tracking publisher_replicas profile expected current
     "$STAGE_APPS" status 040 --app 040-showback-demo \
         ${RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION:+--revision "$RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION"} \
         >/dev/null 2>&1 || { echo "showback Application not Synced and Healthy at its reviewed revision"; return; }
-    jq -e '([.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort) as $teams |
-        [.[] | select(.kind == "Deployment")] as $publishers |
+    jq -e '[.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $metering |
+        [.[] | select(.metadata.labels["app.kubernetes.io/component"] != "external-metering")] as $base |
+        ($base | [.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort) as $teams |
+        ($base | [.[] | select(.kind == "Deployment")]) as $publishers |
         [.[] | select(.kind == "ConfigMap" and .metadata.name == "showback-selected-report")] as $reports |
-        ((length == 24 and $teams == ["team-engineering","team-support"]
+        (($base | length) == 24 and $teams == ["team-engineering","team-support"]
             and all(.[] | select(.kind == "MaaSSubscription" or .kind == "MaaSAuthPolicy");
-                [.spec.modelRefs[].name] == ["qwen3-8-27b"])) or
-         (length == 26 and $teams == ["team-engineering","team-marketing","team-support"]))
+                [.spec.modelRefs[].name] == ["qwen3-8-27b"]) or
+         (($base | length) == 26 and $teams == ["team-engineering","team-marketing","team-support"]))
         and all(.[]; .kind != "Job" and .kind != "CronJob" and .kind != "LLMInferenceService"
         and .kind != "HorizontalPodAutoscaler" and .kind != "Config" and .kind != "LokiStack")
+        and (all($metering[]; (.metadata.name | startswith("showback-external-metering"))
+            and (.kind | IN("ConfigMap","Secret","Deployment","Service","PersistentVolumeClaim",
+                "ServiceMonitor","NetworkPolicy","ImageStream")))
+          and (($metering | length) == 0 or
+            (($metering | [.[] | select(.kind == "Deployment") | .metadata.name] | sort)
+                == ["showback-external-metering","showback-external-metering-db"]
+              and any($metering[]; .kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile"
+                and (.data.enabled | IN("true","false")))
+              and any($metering[]; .kind == "PersistentVolumeClaim"
+                and .metadata.annotations["argocd.argoproj.io/sync-options"] == "Prune=false,Delete=false"))))
         and ($publishers | length) == 1 and $publishers[0].metadata.name == "showback-report-publisher"
         and ($reports | length) == 1
         and (($publishers[0].spec.replicas == 0 and $reports[0].data == {}) or
@@ -92,7 +105,8 @@ showback_source_state() {
                 and ($reports[0].metadata.annotations["showback.demo.rhoai.io/report-sha256"] |
                     type == "string" and test("^[a-f0-9]{64}$"))))' \
         <<<"$SHOWBACK_DESIRED" >/dev/null || { echo "showback source has an invalid bundle or publisher/report state"; return; }
-    publisher_replicas=$(jq -r '.[] | select(.kind == "Deployment") | .spec.replicas' <<<"$SHOWBACK_DESIRED")
+    publisher_replicas=$(jq -r '.[] | select(.kind == "Deployment" and .metadata.name == "showback-report-publisher")
+        | .spec.replicas' <<<"$SHOWBACK_DESIRED")
     while IFS= read -r d; do
         kind=$(jq -r '.kind' <<<"$d"); ns=$(jq -r '.metadata.namespace // ""' <<<"$d")
         name=$(jq -r '.metadata.name' <<<"$d")
@@ -104,11 +118,15 @@ showback_source_state() {
         jqd -e --argjson d "$d" --arg t "$tracking" '.metadata.deletionTimestamp == null
             and (.metadata.ownerReferences // [] | length) == 0
             and .metadata.annotations["argocd.argoproj.io/tracking-id"] == $t
-            and covers($d | if .kind == "ConfigMap" and .data == {} then del(.data) else . end)
+            and covers($d | if .kind == "ConfigMap" and .data == {} then del(.data)
+                elif .kind == "Secret" and .stringData != null
+                    then .data = ((.data // {}) + (.stringData | map_values(@base64))) | del(.stringData)
+                else . end)
             and (if .kind == "Deployment" then
                 if $d.spec.replicas == 0 then .spec.replicas == 0 and (.status.replicas // 0) == 0
                     and (.status.readyReplicas // 0) == 0 and (.status.availableReplicas // 0) == 0
                 else workload and ready_cond("Available") end else true end)
+            and (if .kind == "PersistentVolumeClaim" then .status.phase == "Bound" else true end)
             and (if .kind == "ConfigMap" and .metadata.name == "showback-selected-report"
                 then (.data // {}) == $d.data else true end)' <<<"$live" >/dev/null || {
                     echo "$kind $name source, ownership or publisher state differs"; return;
@@ -118,11 +136,31 @@ showback_source_state() {
         read_json pods -n redhat-ods-monitoring -l app.kubernetes.io/name=showback-report-publisher |
             jq -e '.items | length == 0' >/dev/null || { echo "publisher Pods still exist"; return; }
     fi
+    profile=$(jq -c '.[] | select(.kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile")' \
+        <<<"$SHOWBACK_DESIRED")
+    if [[ -n "$profile" ]]; then
+        expected=$(jq -c '.data | if .enabled == "true" then .["profile.json"] else .["baseline.json"] end | fromjson' \
+            <<<"$profile")
+        live=$(read_json configmap payload-processing-plugins -n openshift-ingress) || {
+            echo "MaaS processing profile unavailable"; return;
+        }
+        jq -e '.metadata.annotations["opendatahub.io/managed"] == "false"
+            and any(.metadata.ownerReferences[]?; .kind == "Config" and .name == "default")' <<<"$live" >/dev/null || {
+            echo "MaaS processing profile ownership or delegation differs"; return;
+        }
+        current=$(jq -r '.data["custom-ipp-config.yaml"]' <<<"$live" |
+            ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load(STDIN.read))')
+        jq -e --argjson expected "$expected" '. == $expected' <<<"$current" >/dev/null || {
+            echo "MaaS processing profile differs from source activation state"; return;
+        }
+        read_json deployment payload-processing -n openshift-ingress | jqd -e 'workload and ready_cond("Available")' \
+            >/dev/null || { echo "MaaS processing workload is not Ready"; return; }
+    fi
     echo yes
 }
 if [[ "$COMPONENT" == 040-showback-demo ]]; then
     check "Optional showback Application owns the reviewed bundle and matches its publisher/report source state" showback_source_state yes
-    echo "Scope: source reconciliation and publisher readiness only; inference, access enforcement, scraping and native delivery need separate evidence."
+    echo "Scope: source reconciliation, workload/storage readiness and configured metering profile; inference, scraping and event delivery need separate evidence."
     validation_summary
     exit $?
 fi

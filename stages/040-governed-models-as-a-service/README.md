@@ -1,5 +1,7 @@
 # Stage 040: Governed Models-as-a-Service
 
+The optional `040-showback-demo` component also contains continuous external capture for all three configured external models. Its [operations guide](showback-demo/OPERATIONS.md#continuous-external-metering) describes the native IPP plugin, retained community-backend ledger, verified endpoint-specific prices and explicit disable procedure. The External offer dashboard presents captured usage and conditional token estimates by user; a partial month and missing billing details are visible. This adds 11 owned metering resources to the earlier 24-resource Qwen/dashboard bundle, without changing model access, GPU capacity or the original allocation snapshot. Loki remains inactive and invoices remain unreconciled.
+
 ## Why This Matters
 
 A model endpoint alone does not provide a shared enterprise service. Models-as-a-Service (MaaS) gives developers governed access to private and approved external models through API keys, subscriptions, quotas and usage telemetry.

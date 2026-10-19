@@ -13,7 +13,10 @@ cp "$REPO_ROOT/$stage/deploy.sh" "$REPO_ROOT/$stage/validate.sh" "$work/repo/$st
 cp "$REPO_ROOT/scripts/lib.sh" "$work/repo/scripts/"
 kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" |
     ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' |
-    jq 'map(if .kind=="Deployment" then .spec.replicas=0
+    # Continuous metering has its own active database/backend and profile tests.
+    # Keep this fixture focused on the independently stoppable report publisher.
+    jq 'map(select(.metadata.labels["app.kubernetes.io/component"]!="external-metering")) |
+      map(if .kind=="Deployment" then .spec.replicas=0
       elif .metadata.name=="showback-selected-report" then .data={} |
         del(.metadata.annotations["showback.demo.rhoai.io/report-sha256"])
       else . end)' >"$work/desired.json"
@@ -65,6 +68,21 @@ case "${1:-}" in
                 if [[ "$SHOWBACK_CONTROL_STATE" == lingering-pod ]]; then echo '{"items":[{}]}'
                 else echo '{"items":[]}' ; fi
                 ;;
+            configmap)
+                [[ "$name" == payload-processing-plugins ]] || exit 97
+                jq -n --arg state "$SHOWBACK_CONTROL_STATE" --slurpfile desired "$SHOWBACK_CONTROL_DESIRED" '
+                  ($desired[0][]|select(.metadata.name=="showback-external-metering-profile")) as $profile |
+                  {metadata:{annotations:{"opendatahub.io/managed":(if $state=="meter-managed" then "true" else "false" end)},
+                    ownerReferences:[{kind:"Config",name:"default"}]},
+                   data:{"custom-ipp-config.yaml":(if $state=="meter-profile-drift" then "{unreviewed:true}" else
+                     $profile.data|if .enabled=="true" then .["profile.json"] else .["baseline.json"] end end)}}'
+                ;;
+            deployment)
+                [[ "$name" == payload-processing ]] || exit 97
+                jq -n --arg state "$SHOWBACK_CONTROL_STATE" '{kind:"Deployment",metadata:{generation:4},spec:{replicas:1},
+                  status:{observedGeneration:4,replicas:1,updatedReplicas:1,readyReplicas:(if $state=="processing-unready"
+                    then 0 else 1 end),availableReplicas:1,conditions:[{type:"Available",status:"True"}]}}'
+                ;;
             *)
                 jq -ce --arg kind "${kind%%.*}" --arg name "$name" --arg state "$SHOWBACK_CONTROL_STATE" '
                   .[] | select(.kind==$kind and .metadata.name==$name) |
@@ -77,10 +95,14 @@ case "${1:-}" in
                         conditions:[{type:"Available",status:"True"}]} else . end) |
                     if $state=="active-spec" then .spec.replicas=1
                     elif $state=="active-status" then .status.replicas=1
-                    elif $state=="unready" then .status.readyReplicas=0
+                    elif $state=="unready" or ($state=="meter-unready" and .metadata.name=="showback-external-metering")
+                      then .status.readyReplicas=0
                     elif $state=="stale-status" then .status.observedGeneration=3
                     elif $state=="wrong-owner" then .metadata.annotations["argocd.argoproj.io/tracking-id"]="foreign"
                     else . end
+                  elif .kind=="PersistentVolumeClaim" then
+                    .status.phase=(if $state=="unbound-storage" then "Pending" else "Bound" end)
+                  elif .kind=="Secret" and .stringData!=null then .data=(.stringData|map_values(@base64))|del(.stringData)
                   elif .metadata.name=="showback-selected-report" and $state=="selected-report" then .data={unexpected:"report"}
                   elif .metadata.name=="showback-selected-report" and $state=="omitted-empty-data" then del(.data)
                   elif .kind=="RoleBinding" and $state=="wrong-role" then .roleRef.name="cluster-admin"
@@ -158,4 +180,19 @@ grep -q 'Installed optional showback bundle' "$work/present.log" || fail 'Instal
 export SHOWBACK_CONTROL_STATE=discovery-failure
 if bash "$work/presence.sh" >"$work/discovery.log" 2>&1; then fail 'Failed optional discovery was treated as absent'; fi
 grep -q 'Cannot determine whether' "$work/discovery.log" || fail 'Discovery error was hidden'
+
+# Independently active metering resources must satisfy storage/readiness/profile checks.
+kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" |
+    ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' |
+    jq 'map(select(.metadata.labels["app.kubernetes.io/component"]=="external-metering"))' > "$work/metering.json"
+jq -s 'add' "$work/stopped-desired.json" "$work/metering.json" > "$SHOWBACK_CONTROL_DESIRED"
+export SHOWBACK_CONTROL_STATE=healthy
+component_validate > "$work/metering-ready.log" 2>&1 || {
+    cat "$work/metering-ready.log" >&2; fail 'Healthy independent metering partition rejected';
+}
+for state in unbound-storage meter-unready meter-managed meter-profile-drift processing-unready; do
+    export SHOWBACK_CONTROL_STATE=$state
+    if component_validate > "$work/metering-rejected.log" 2>&1; then fail "Active validator accepted $state"; fi
+done
 printf '%s\n' 'PASS Stage 040 component branches: stopped ownership, residual workload/report rejection, guarded prerequisites and scoped sync order.'
+printf '%s\n' 'PASS Continuous metering partition: bound storage, active workloads, delegated profile and processing readiness.'

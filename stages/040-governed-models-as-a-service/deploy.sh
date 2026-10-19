@@ -8,7 +8,7 @@
 # environment: never Git, arguments or output.
 # RHOAI_STAGE040_ROTATE_PROVIDER_SECRET=true replaces the OpenAI provider key in place from OPENAI_API_KEY.
 # --component 040-showback-demo reconciles only the optional showback bundle, with shared prerequisites read-only.
-# Publisher/report state comes from reviewed source. It never provisions keys, starts models or enables native metering.
+# Publisher and external-metering state come from reviewed source. No keys or models are provisioned by this branch.
 # Usage: stages/040-governed-models-as-a-service/deploy.sh [--revision REF] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,6 +28,60 @@ check_oc_logged_in
 require_env GIT_REPO_URL "reviewed Stage 040 source repository"
 assert_required_env
 STAGE_APPS="$REPO_ROOT/scripts/stage-apps.sh"
+
+# The MaaS controller deliberately delegates customization of this file through managed=false.
+# Keep its ownership, pre-processing profile and other data. Refuse an unreviewed third profile.
+# enabled=false restores the reviewed baseline while retaining the metering database.
+showback_metering_profile() {
+    local action=$1 desired config baseline candidate target live current patch updated
+    desired=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" |
+        ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)')
+    config=$(jq -c '.[] | select(.kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile")' <<<"$desired")
+    [[ -n "$config" ]] || return 0
+    jq -e '.data.enabled == "true" or .data.enabled == "false"' <<<"$config" >/dev/null || {
+        log_error "External metering requires an explicit source activation state"; return 1;
+    }
+    baseline=$(jq -ce '.data["baseline.json"] | fromjson' <<<"$config")
+    candidate=$(jq -ce '.data["profile.json"] | fromjson' <<<"$config")
+    target=$baseline
+    [[ $(jq -r '.data.enabled' <<<"$config") != true ]] || target=$candidate
+    live=$(oc --request-timeout=10s get configmap payload-processing-plugins -n openshift-ingress -o json)
+    jq -e '.metadata.annotations["opendatahub.io/managed"] == "false"
+        and any(.metadata.ownerReferences[]?; .kind == "Config" and .name == "default")
+        and (.data["custom-pre-processing-ipp-config.yaml"] | type == "string" and length > 0)' <<<"$live" >/dev/null || {
+        log_error "MaaS processing profile is not the expected delegated default-tenant configuration"; return 1;
+    }
+    current=$(jq -r '.data["custom-ipp-config.yaml"]' <<<"$live" |
+        ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load(STDIN.read))')
+    jq -e --argjson baseline "$baseline" --argjson candidate "$candidate" \
+        '. == $baseline or . == $candidate' <<<"$current" >/dev/null || {
+        log_error "Processing profile differs from the reviewed baseline and metering profile; refusing to overwrite it"; return 1;
+    }
+    [[ "$action" == activate ]] || return 0
+    if jq -e --argjson target "$target" '. == $target' <<<"$current" >/dev/null; then
+        oc rollout status deployment/payload-processing -n openshift-ingress --timeout=180s >/dev/null
+        log_info "MaaS metering profile matches source and existing rollout is ready; event delivery must still be verified"
+        return 0
+    fi
+    if [[ $(jq -r '.data.enabled' <<<"$config") == true ]]; then
+        oc rollout status deployment/showback-external-metering -n redhat-ods-monitoring --timeout=180s >/dev/null
+    fi
+    # Test the resource version atomically so an intervening administrator edit cannot be overwritten.
+    patch=$(jq -n --arg rv "$(jq -r '.metadata.resourceVersion' <<<"$live")" --arg profile "$target" \
+        '[{op:"test",path:"/metadata/resourceVersion",value:$rv},
+          {op:"replace",path:"/data/custom-ipp-config.yaml",value:$profile}]')
+    printf '%s' "$patch" | oc patch configmap payload-processing-plugins -n openshift-ingress \
+        --type=json --patch-file=/dev/stdin >/dev/null
+    updated=$(oc --request-timeout=10s get configmap payload-processing-plugins -n openshift-ingress -o json)
+    jq -e --argjson before "$live" --arg profile "$target" '
+        .data["custom-ipp-config.yaml"] == $profile
+        and (del(.data["custom-ipp-config.yaml"], .metadata.resourceVersion, .metadata.managedFields)
+          == ($before | del(.data["custom-ipp-config.yaml"], .metadata.resourceVersion, .metadata.managedFields)))' \
+        <<<"$updated" >/dev/null || { log_error "Processing profile readback or preservation check failed"; return 1; }
+    oc rollout restart deployment/payload-processing -n openshift-ingress >/dev/null
+    oc rollout status deployment/payload-processing -n openshift-ingress --timeout=180s >/dev/null
+    log_success "Reviewed external-metering profile loaded; existing MaaS identity and access controls preserved"
+}
 
 if [[ "$COMPONENT" == 040-showback-demo ]]; then
     revision=$("$STAGE_APPS" select 040 --ref "$ref" --repo-url "$GIT_REPO_URL")
@@ -49,10 +103,12 @@ if [[ "$COMPONENT" == 040-showback-demo ]]; then
                 and (.resources | index("experiments")) != null and (.verbs | index($verb)) != null))' >/dev/null || {
         log_error "Showback archive access requires native edit with aggregated MLflow experiment read/write permissions"; exit 1;
     }
+    showback_metering_profile preflight
     # Publisher/report activation is explicit reviewed source; referenced models retain their existing owner.
     "$STAGE_APPS" apply 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL"
     "$STAGE_APPS" sync 040 --app "$COMPONENT"
     "$STAGE_APPS" wait 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
+    showback_metering_profile activate
     RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION="$revision" "$SCRIPT_DIR/validate.sh" --component "$COMPONENT"
     log_success "Showback source and publisher state reconciled; runtime acceptance requires separate inference, scraping and archive evidence."
     exit 0

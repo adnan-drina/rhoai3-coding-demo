@@ -8,7 +8,7 @@ The demo connects governed team identities to explicit financial allocation and 
 
 ## What
 
-The root Kustomize render contains exactly 24 resources with `components/qwen-only` enabled (26 with that Component removed after full-model qualification):
+The root Kustomize render contains 35 resources with `components/qwen-only` enabled (37 with that Component removed after full-model qualification). Eleven resources add continuous external metering to the earlier 24-resource dashboard bundle:
 
 | Files | Objects and namespace |
 |---|---|
@@ -19,10 +19,15 @@ The root Kustomize render contains exactly 24 resources with `components/qwen-on
 | `publisher-*.yaml` | Deployment `showback-report-publisher` at one Ready replica, HTTP configuration and selected R2 report ConfigMaps, Service and ServiceMonitor in `redhat-ods-monitoring`; live financial scraping verified |
 | `service-views/` | Five monthly service-offer `PersesDashboard` resources in `redhat-ods-monitoring` |
 | `native-inputs/` | Two inert ConfigMaps: Loki review inputs in `redhat-ods-monitoring`, metering review inputs in `redhat-ai-gateway-infra` |
+| `metering/` | Patched Noyitz metering service, PostgreSQL 16 with retained PVC, demo database credential, versioned provider rates, profile intent, ImageStream, Services, ServiceMonitor and the required IPP egress permission. All belong to this Application; IPP itself remains MaaS-owned |
 
 `model-drafts/mistral/` contains a separately renderable, zero-replica `LLMInferenceService` and `MaaSModelRef` candidate. It is **excluded from the root render**. The model's runtime, resource envelope and resulting policy health remain unqualified. Promoting it into this Application requires a reviewed root Kustomize change and model qualification; moving the files here does not deploy it.
 
-The Application owns no shared Namespace, Qwen resource, Gateway, operator, MaaS `Config`, IPP plugin ConfigMap, LokiStack, database or backend workload. Shared Qwen remains owned by `040-local-models`; the [package's Qwen FP8 component](../../../../stages/040-governed-models-as-a-service/showback-demo/model-drafts/qwen-fp8/) is review input for that existing owner. Stage 020 retains GPU infrastructure and queue ownership. Stage 050 retains MLflow and artifact-store ownership. Users, keys, real tariffs and report evidence are runtime inputs, not committed resources.
+The Application owns no shared Namespace, Qwen resource, Gateway, operator, MaaS `Config`, IPP plugin ConfigMap or LokiStack. Its own external-metering database and backend are isolated from the MaaS API-key database. Shared Qwen remains owned by `040-local-models`; the [package's Qwen FP8 component](../../../../stages/040-governed-models-as-a-service/showback-demo/model-drafts/qwen-fp8/) is review input for that existing owner. Stage 020 retains GPU infrastructure and queue ownership. Stage 050 retains MLflow and artifact-store ownership. Provider and user credentials remain runtime inputs. Public provider rate evidence is versioned in source; it is not an account invoice.
+
+The Stage 040 targeted deploy path reads `metering/profile.yaml`, refuses an unknown current IPP profile, and changes only `custom-ipp-config.yaml` after the backend is Ready. It preserves MaaS ownership, the trusted identity guard and pre-processing data. It restarts `payload-processing` only when the profile changes. Setting the source profile's `enabled` value to `false` restores the reviewed baseline on the next targeted deployment, while preserving the ledger PVC. Reverting only the Application revision does not undo this delegated profile field.
+
+The External offer dashboard reads continuous captured-event gauges directly from the backend. Frozen per-event public-rate estimates are separate from invoice cost. NVIDIA's configured hosted endpoint is explicitly a free prototype. Missing usage, unpriced events and coverage beginning partway through a month remain visible. RHOAI external metering is Developer Preview; the Noyitz derivative is community demo code, not a Red Hat product operand. Loki remains inactive.
 
 ## How
 

@@ -2,7 +2,8 @@
 
 This folder carries a small patch to the Noyitz development backend at
 `f9a56b1769b0933e3fe7454a174b1f42a229f07a`. It is a community source derivative,
-not an RHOAI product operand. No active manifest references this image.
+not an RHOAI product operand. The separate continuous derivative below is the
+opt-in showback component's external metering backend.
 Build and validation entrypoints are Bash; the patch changes the existing Go service.
 
 ## Behavior
@@ -79,8 +80,70 @@ Database health proves a primary read, not write permission, storage capacity,
 complete capture or provider reconciliation. Do not attach these dependency checks
 as restart-triggering liveness probes without a separate deployment review.
 
-No rollback is required in the cluster because nothing is deployed. Retain the old
-image and evidence. For local revalidation, discard only the explicitly named
+For the original patch1 local evaluation, no cluster rollback was needed because
+that artifact was not deployed. This is historical status; the continuous mode
+below has a separate activation and rollback contract. Retain the old image and
+evidence. For local revalidation, discard only the explicitly named
 disposable database and create a fresh one. Do not roll an existing ledger back to
 the unpatched writer or remove its uniqueness index as a workaround: the old writer
 cannot handle duplicate conflicts and does not retain the new raw/completeness fields.
+
+## Continuous captured-event mode
+
+`0002-continuous-showback.patch` applies after the unchanged correctness patch.
+Build with `build-local.sh ... --continuous`; the image patch label and
+`build.json.patch_sha256` are the SHA-256 of the two patches concatenated in
+application order. Both exact patches remain with build evidence. The default
+build still produces the original correctness derivative.
+
+Setting `SHOWBACK_PRICING_FILE` selects a mode exposing only ingestion,
+metering-only entitlements, `/health`, `/ready` and `/metrics`. Both health routes
+query PostgreSQL. Upstream mutable pricing fetchers, quota decisions and
+administrative dollar views are not started. Entitlements always grant;
+existing MaaS subscriptions control access and token limits.
+
+Ingestion requires the expected gateway source, matching subject and user,
+nonempty subscription/provider, and JSON content type. Impossible token subsets
+are rejected. PostgreSQL retains semantic CloudEvents and freezes canonical
+identity, conditional token estimate, price version and catalog hash in the
+same transaction. Catalog snapshots remain in PostgreSQL; changing bytes while
+reusing a catalog version fails startup. Source/event-ID replay cannot change
+the original estimate.
+Assign a new `price_version` to every changed rate as well as a new catalog
+version; the persisted catalog hash keeps historical snapshots distinct.
+
+Catalog identity maps native protocol and upstream model to the client model
+and provider name. NVIDIA maps raw provider `openai` and model
+`nvidia/nemotron-3-ultra-550b-a55b` to provider `nvidia` and the Nemotron alias.
+Unmapped identities stay in the raw ledger and appear as unpriced `unmapped`
+provider rows, making model/catalog drift visible. The source-verified internal
+publisher path with no provider protocol is outside this external-only capture.
+
+`/metrics` publishes the current UTC month's captured-event gauges by genuine
+user, subscription, provider, model and immutable price version. Never integrate
+these cumulative ledger sums across scrape time. Unused models have no usage
+series. Database query failures return 503 without replacement zeros. Metadata
+discloses ledger start and best-effort delivery; `observed_at_seconds` is the
+query cutoff. A missing amount means unpriced; a known subtotal is not the full
+total when any captured event remains unpriced.
+
+Paid amounts are **conditional standard-rate token estimates**, excluding
+unproven tier, geography, cache-presence and tool-fee adjustments. Reasoning is
+already included in output. Positive NVIDIA prototype events may carry the
+verified current free-endpoint estimate of zero; this is not a commercial
+tariff or reconciled invoice. Earlier events are not repriced using newly
+adopted rates. Missing rates and unsupported categories produce no amount.
+
+IPP normalizes absent counters to zero. All-zero usage is unknown, including
+genuine zero responses whose presence cannot be proved. Positive values remain
+producer-reported; zero cache/reasoning details do not prove measured categories.
+A response without usage or a recognized error may emit no event. Delivery has
+one attempt and no durable retry queue. Continuous capture covers delivered
+events; it does not establish a complete request or invoice ledger.
+
+GitOps resources and the separate activation/rollback profile are in
+`gitops/stages/040-governed-models-as-a-service/040-showback-demo/metering/`.
+The hashed catalog ConfigMap rolls the backend on a catalog change while past
+estimates remain frozen. Disable profile intent and restore its baseline before
+removing the service. Retain the database PVC; do not downgrade the writer or
+delete captured history as rollback.
