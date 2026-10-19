@@ -265,7 +265,7 @@ spec:
         projected:
           sources:
           - configMap:
-              name: gitlab-toolbox
+              name: gitlab-toolbox-runtime
       - name: toolbox-tmp
         emptyDir: {}
       - name: init-toolbox-secrets

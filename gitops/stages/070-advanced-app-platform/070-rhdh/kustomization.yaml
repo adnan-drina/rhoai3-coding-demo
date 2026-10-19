@@ -18,7 +18,6 @@ resources:
   - rhdh-instance/rbac-policy.yaml
   - rhdh-instance/rhdh-secrets.yaml
   - rhdh-instance/dynamic-plugins-configmap.yaml
-  - rhdh-instance/catalog-runtime-configmap.yaml
   - rhdh-instance/kubernetes-reader.yaml
   # Runtime catalog generation: the bundle below + Sync hook + refresh CronJob
   - jobs/generate-rhdh-catalog.yaml

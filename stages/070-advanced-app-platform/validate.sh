@@ -130,6 +130,11 @@ check 'GitLab sidekiq ready' "oc get deployment gitlab-sidekiq-all-in-1-v2 -n gi
 for bucket in lfs artifacts uploads packages backups backup-tmp; do
   check "GitLab $bucket bucket bound" "oc get obc 'gitlab-$bucket' -n gitlab-system -o jsonpath='{.status.phase}'" 'Bound'
 done
+# Rails reads its host from the bootstrap-rendered *-runtime ConfigMaps; a chart ConfigMap keeps the placeholder host,
+# which Sidekiq would put into webhook payloads (project pipelines then never trigger).
+for workload in deployment/gitlab-webservice-default deployment/gitlab-sidekiq-all-in-1-v2 deployment/gitlab-toolbox; do
+  check "GitLab $workload uses its runtime config" "oc get $workload -n gitlab-system -o json | jq -r '[.spec.template.spec.volumes[] | .configMap.name, (.projected.sources[]?.configMap.name) | select(. != null and test(\"^gitlab-(webservice|sidekiq|toolbox)(-runtime)?$\"))] | if length > 0 and all(endswith(\"-runtime\")) then \"RUNTIME\" else \"CHART\" end'" 'RUNTIME'
+done
 GITLAB_HOST=$(oc get route gitlab -n gitlab-system -o jsonpath='{.spec.host}' 2>/dev/null || true)
 if [[ -n "$GITLAB_HOST" ]]; then
   check_http_code 'GitLab readiness endpoint' "https://${GITLAB_HOST}/-/readiness" '200'

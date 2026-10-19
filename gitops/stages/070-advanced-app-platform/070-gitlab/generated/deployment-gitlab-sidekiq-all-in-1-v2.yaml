@@ -261,7 +261,7 @@ spec:
         projected:
           sources:
           - configMap:
-              name: gitlab-sidekiq
+              name: gitlab-sidekiq-runtime
       - name: init-sidekiq-secrets
         projected:
           defaultMode: 256
