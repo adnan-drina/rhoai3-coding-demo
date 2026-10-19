@@ -4,7 +4,7 @@ This Application runs the agent sandbox platform for Stage 060. It installs the 
 operator, the authenticated NVIDIA OpenShell gateway (from a rendered upstream chart), the workspace projects
 `openshell-admin`, `openshell-developer` and `ai-agents`, the images and MaaS subscriptions for the standalone OpenCode
 and Hermes agents, and the MLflow trace permission for the selected-call tracing check. Workspace owners use it
-through the OpenShell CLI; the AgentOps console (`060-agent-console`) only reads what it creates.
+through the OpenShell CLI, from a laptop through the gateway Route; the AgentOps console (`060-agent-console`) only reads what it creates.
 
 | | |
 |---|---|
@@ -13,7 +13,7 @@ through the OpenShell CLI; the AgentOps console (`060-agent-console`) only reads
 | Validated by | No component validator. `deploy.sh --component 060-openshell-runtime` gates on its runtime setup step, `check_operator_policy` and `stage-apps.sh wait` (Synced and Healthy at the SHA). Opt-in qualification: [`sandboxes/qualify.sh`](../../../../stages/060-agent-runtime-and-agentops/sandboxes/README.md) (`host`, `inference`, `opencode`, `hermes`, `client`). [`validate.sh`](../../../../stages/060-agent-runtime-and-agentops/validate.sh) reports the stage as pending (exit 2). |
 | Sync | Manual (documented exception in `.agents/rules/gitops.md`). The script pins it to the selected published SHA and starts a hook-strategy sync through `scripts/stage-apps.sh`. Annotation `compare-options: ServerSideDiff=true`. Sync option `RespectIgnoreDifferences=true`; `ignoreDifferences` on `/data` of three runtime-owned objects. |
 | Depends on | `060-openshell-identity` (realm `openshell` must exist for the issuer check). Stage 040 MaaS (`MaaSSubscription` API, model `internal-models/qwen3-8-27b`). Stage 050 MLflow (`mlflow.kubeflow.org` authorization). Group `rhods-admins` (Stage 010). The `redhat-operators` catalog with package `agent-sandbox-operator`. |
-| Used by | `060-agent-console` (needs this Application Healthy and the Sandbox CRD). OpenCode and Hermes sandboxes in `ai-agents`, created through the gateway by [`sandboxes/create.sh`](../../../../stages/060-agent-runtime-and-agentops/sandboxes/README.md), and the 2026-10 trace clients (MLflow experiment `agent-runtime-traces`). |
+| Used by | `060-agent-console` (needs this Application Healthy and the Sandbox CRD). OpenCode and Hermes sandboxes in `ai-agents` and the developer's OpenCode sandbox in `openshell-developer`, created through the gateway by [`sandboxes/create.sh`](../../../../stages/060-agent-runtime-and-agentops/sandboxes/README.md), and the 2026-10 trace clients (MLflow experiment `agent-runtime-traces`). |
 
 ## Why
 
@@ -31,7 +31,7 @@ This repository diverges from the upstream getting-started guide [6] on purpose:
 | `allowUnauthenticatedUsers=true` | OIDC required, issuer from `060-openshell-identity` | Shared cluster. |
 | `privileged` SCC for the sandbox service account | No SCC grant; workloads admitted under `restricted-v2` | `restricted-v2` drops all capabilities, sets RuntimeDefault seccomp and uses a namespace UID range [9]; the pinned build confines sockets on loopback without extra privilege (qualified by `sandboxes/qualify.sh host`). |
 | Sandboxes in `openshell` | Operator workspace mode: one namespace per workspace, allowlisted by label | Per-owner isolation. |
-| Passthrough Route | ClusterIP only; clients port-forward | No public gateway endpoint. |
+| Passthrough Route | Passthrough Route `openshell`; the setup scripts still port-forward | Developers reach the gateway from a laptop CLI; every call still needs the OIDC login. The certificate does not name the Route host, so clients skip TLS verification (demo posture). |
 
 One Application owns the whole runtime because the gateway, its workspaces, its images and its prerequisites share
 one lifecycle and one readiness gate. Helm is not run by Argo CD: the chart is rendered offline and committed (see
@@ -39,7 +39,7 @@ one lifecycle and one readiness gate. Helm is not run by Argo CD: the chart is r
 
 ## What
 
-`oc kustomize` renders 63 objects.
+`oc kustomize` renders 65 objects.
 
 ### `chart/rendered/` — OpenShell gateway (rendered chart, 32 objects)
 
@@ -58,6 +58,12 @@ one lifecycle and one readiness gate. Helm is not run by Argo CD: the chart is r
 | ConfigMap | `openshell-config` | `openshell` | `gateway.toml`: Kubernetes driver in operator workspace mode, mTLS, sandbox/supervisor image digests, `policy_validation_failure_mode = fail_closed`, websocket tunnel off. |
 | Service | `openshell`, `openshell-peer` | `openshell` | ClusterIP gRPC 8080 and metrics 9090; headless peer service. |
 | StatefulSet | `openshell` | `openshell` | One gateway replica, SQLite on a 1Gi RWO claim, PVC retention `Retain` on delete and scale. |
+
+### `access/` — gateway Route
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| Route | `openshell` | `openshell` | Passthrough TLS to the gateway's gRPC port, 1 h router timeout for long streams. Wave 5. Used by [`sandboxes/login.sh`](../../../../stages/060-agent-runtime-and-agentops/sandboxes/README.md) and developer CLIs. |
 
 ### `chart/controller/` — Agent Sandbox operator
 
@@ -87,7 +93,7 @@ one lifecycle and one readiness gate. Helm is not run by Argo CD: the chart is r
 | BuildConfig | `opencode-runtime` | `ai-agents` | Binary Docker build [14] to `opencode-runtime:1.18.16`; started by [`images/build-opencode.sh`](../../../../stages/060-agent-runtime-and-agentops/images/README.md). |
 | ImageStream, BuildConfig | `hermes-runtime-api` | `ai-agents` | Binary Docker build to `hermes-runtime-api:0.20.5-api`; started by [`images/build-hermes.sh`](../../../../stages/060-agent-runtime-and-agentops/images/README.md). ImageStream `Delete=false,Prune=false`. |
 | ImageStream, BuildConfig | `opencode-runtime` | `openshell` | Earlier build location, kept for sandboxes in `openshell-developer`. |
-| Role, RoleBinding | `opencode-runtime-pull`, `hermes-runtime-api-pull` | `ai-agents`, `openshell` | `imagestreams/layers` get for the workspace `openshell-sandbox` account. |
+| Role, RoleBinding | `opencode-runtime-pull`, `hermes-runtime-api-pull` | `ai-agents`, `openshell` | `imagestreams/layers` get for the workspace `openshell-sandbox` account; in `ai-agents`, `opencode-runtime-pull` also admits the `openshell-developer` account for the developer's OpenCode sandbox. |
 
 All at wave 10.
 
@@ -96,6 +102,7 @@ All at wave 10.
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | MaaSSubscription | `opencode-private-qwen38`, `hermes-private-qwen38` | `models-as-a-service` | Owner `ai-admin`, only `internal-models/qwen3-8-27b`, 100,000 tokens per hour, priority 140 / 130, cost metadata. Wave 18, `SkipDryRunOnMissingResource=true`. |
+| MaaSSubscription | `opencode-developer-qwen38` | `models-as-a-service` | The same scope for owner `ai-developer`'s OpenCode sandbox, priority 135. |
 | ConfigMap | `opencode-runtime-contract`, `hermes-runtime-contract` | `ai-agents` | Non-secret names read by the setup helpers: workspace, sandbox, provider, subscription, model, key expiry (30 d), Hermes image digest. Wave 18. |
 
 ### `client-traces/` — selected-call tracing

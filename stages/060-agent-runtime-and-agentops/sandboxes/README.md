@@ -2,13 +2,15 @@
 
 `deploy.sh` stops at the platform: the OpenShell gateway, its identity and the `ai-agents` workspace with `ai-admin`
 as its native administrator. These task scripts create and qualify the persistent OpenCode and Hermes sandboxes that
-`ai-admin` owns there, through the native OpenShell API and the pinned CLI only. They are opt-in and never run by
-`deploy.sh` or `validate.sh`.
+`ai-admin` owns there, and the developer's own OpenCode sandbox in `openshell-developer`, through the native OpenShell
+API and the pinned CLI only. They are opt-in and never run by `deploy.sh` or `validate.sh`.
 
 | Script | When to run |
 |---|---|
 | `create.sh opencode\|hermes --revision SHA` | Read-only check of an existing sandbox against its journal (provider, key, template, global policy, sandbox record). |
 | `create.sh opencode\|hermes --revision SHA --apply [--expected-policy-hash HASH]` | Create the sandbox: provider profile, a 30-day MaaS key on the agent's dedicated subscription (`opencode-private-qwen38` / `hermes-private-qwen38`, held only by the native encrypted provider), the provider, the sandbox template, once the complete gateway-global policy (`global-policy.yaml`; only on an empty fleet with the reviewed current hash), then the sandbox and its start script, config and listener secret. |
+| `create.sh opencode --owner ai-developer --revision SHA [--apply]` | The same for `ai-developer` in `openshell-developer`: subscription `opencode-developer-qwen38` (owned by the developer, who mints the key), the template and config in `opencode/developer/` (2 CPU, 4Gi, 8192 output tokens, no step limit). The developer is a workspace user, so the platform administrator session imports the profile and creates the provider and template; the developer creates and owns the sandbox. The global policy is shared and already set. Journal: `060-sandboxes/opencode-ai-developer/`. |
+| `login.sh PROFILE_DIR` | Registers the gateway Route in a private CLI profile and signs a persona in (prints the Keycloak URL for a private window). Use the profile as that persona's `XDG_CONFIG_HOME` and as create.sh's `--persona-home`. |
 | `qualify.sh opencode\|hermes --static` | Offline: the reviewed agent config and the independent fixture verifier. |
 | `qualify.sh opencode\|hermes --run --revision SHA` | One synthetic coding task with one approved test command, an application cancellation and a native stop/start of the existing sandbox (model calls). Retains the key, sandbox, sessions and fixture. |
 | `qualify.sh hermes --confinement-only --revision SHA` | No-model negative checks: denied filesystem writes, internet and metadata connections, the shared system Python, and wrong request methods or paths to MaaS. |
@@ -32,9 +34,33 @@ as its native administrator. These task scripts create and qualify the persisten
   plus the listener secret under `upload/state/auth/`. Keep it: reruns adopt only what it records, and rotation and
   rollback need it (docs/OPERATIONS.md, Stage 060).
 
+## Developer access
+
+The gateway is reachable from a laptop through the passthrough Route `openshell` in `openshell`; every call still
+needs an OpenShell login. Its certificate does not name the Route host, so clients set
+`OPENSHELL_GATEWAY_INSECURE=true` (demo posture) and `RUST_LOG=error`, which keeps the CLI's TLS warning off standard output. One-time setup by the platform team: `oc login` as `ai-developer`
+into a private kubeconfig, `login.sh ~/.config/rhoai3-openshell-ai-developer` (sign in as `ai-developer`), set
+`RHOAI_STAGE060_PERSONA_KUBECONFIG` and `RHOAI_STAGE060_PERSONA_CLI_HOME`, then
+`create.sh opencode --owner ai-developer --revision SHA --apply`.
+
+The developer then works with the pinned CLI and that profile (`export XDG_CONFIG_HOME=<profile>
+OPENSHELL_GATEWAY_INSECURE=true RUST_LOG=error`):
+
+| Step | Command |
+|---|---|
+| See the sandbox | `openshell --workspace openshell-developer sandbox list` (also under **AI hub → Agents** in the dashboard) |
+| Bring code in (no Git egress in the sandbox) | `openshell --workspace openshell-developer sandbox upload opencode ./my-project /sandbox/workspace/my-project` |
+| Open a shell and run OpenCode there | `openshell --workspace openshell-developer sandbox connect opencode`, then `cd /sandbox/workspace && opencode` |
+| Take results back | `openshell --workspace openshell-developer sandbox download opencode /sandbox/workspace/my-project ./my-project` |
+| Stop or start it | `openshell --workspace openshell-developer sandbox stop\|start opencode` |
+
+Inside the sandbox OpenCode reaches only MaaS (the global policy's `opencode_maas` route for `/usr/local/bin/opencode`),
+writes only under `/sandbox`, and sees a placeholder instead of the MaaS key.
+
 ## Data
 
-- `opencode/`, `hermes/`: per agent the provider profile, sandbox template, start script and agent config.
+- `opencode/`, `hermes/`: per agent the provider profile, sandbox template, start script and agent config;
+  `opencode/developer/` holds the developer sandbox's template and config.
 - `global-policy.yaml`: the complete gateway-global policy both agents share (hard filesystem and Landlock denials,
   one MaaS route per agent binary). `__MAAS_COMMON_HOST__` is rendered from the live MaaS gateway at run time.
 - `qualification/`: the inference suite's run profile and temporary policy, the no-network restore policy, the
