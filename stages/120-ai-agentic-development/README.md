@@ -85,7 +85,7 @@ Everything this project ships maps onto that picture:
 |--------------|-------|------|-------|
 | Memory bank | Constitution | `.specify/memory/constitution.md` | Project principles every spec-kit command consults |
 | Memory bank | Standing rules | `AGENTS.md` | How any agent behaves in this repo, always |
-| Memory bank | Skills | `.opencode/skills/*.md` | On-demand know-how: REST shapes, LLM integration, test standards |
+| Memory bank | Skills | `.opencode/skills/<name>/SKILL.md` | On-demand know-how loaded by OpenCode's skill tool: spec-driven workflow, REST shapes, LLM integration, test standards |
 | Specs | Feature spec | `specs/<n>-<feature>/spec.md` | What to build: requirements, API, acceptance |
 
 ### Concept 1: The memory bank: AGENTS.md and skills
