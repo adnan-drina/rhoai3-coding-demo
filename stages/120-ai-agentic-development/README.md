@@ -94,7 +94,7 @@ Everything this project ships maps onto that picture:
 
 **Skills** are the modular complement: reusable procedures an agent *discovers and loads on demand* rather than carrying always. Each is a `SKILL.md` with a name and description in frontmatter; OpenCode lists them via its native skill tool and pulls the full content only when the task calls for it. The distinction matters: AGENTS.md is always-on behavior, skills are just-in-time expertise, the same way a team has both working agreements and runbooks.
 
-This project carries three skills (REST conventions, LLM integration, test standards), and the **Quarkus Agent MCP** adds a dynamic layer: its `quarkus_skills` tool derives extension-specific guidance from what is actually in your pom, straight from the Quarkus team.
+This project carries three skills (REST conventions, LLM integration, test standards), and the **Quarkus Agent MCP** adds a dynamic layer: its `quarkus_skills` tool serves the Quarkus team's extension guidance (for example `quarkus-rest` and `quarkus-arc`), which the platform installs at workspace start.
 
 ### Concept 2: Spec-Driven Development
 
@@ -161,7 +161,7 @@ opencode
 Using the quarkus-agent tools, list this project's extensions and summarize what our .opencode/skills recommend for REST endpoints and tests.
 ```
 
-**What you should see:** the agent calls the MCP tools, reads the skills, and answers with the project's actual conventions, proof that the standards are discoverable, not tribal.
+**What you should see:** the agent calls `quarkus_skills` (which lists the Quarkus extension skills, such as `quarkus-rest`), reads the project skills, and answers with the project's actual conventions, proof that the standards are discoverable, not tribal.
 
 > Note: both models render their reasoning as collapsible blocks because
 > the platform runs proper reasoning parsers for them.
