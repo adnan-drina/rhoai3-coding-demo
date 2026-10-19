@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the OpenCode runtime image (opencode-runtime:1.18.16 in ai-agents) through the GitOps-owned binary BuildConfig
-# from the exact official release asset named in opencode/release-source.json (checksum-verified). The tag is an output
+# from the exact official release asset named in opencode/release-source.json (checksum-verified), plus the pinned
+# ripgrep release OpenCode's search tools use. The tag is an output
 # handle, never a runtime pin; the script prints the immutable image reference the Build produced.
 # Changes: starts one OpenShift Build (a new image in the ai-agents ImageStream); nothing else. Safe to rerun (each run
 # is a new Build of the same reviewed input). The revision is RHOAI_STAGE060_EXPECTED_REVISION, default HEAD; it must
@@ -51,6 +52,11 @@ curl -fsSL --max-time 30 -o "$CONTEXT/release.tar.gz" "$(jq -r '.asset' "$RELEAS
 [[ $(tar -tvzf "$CONTEXT/release.tar.gz" | awk '{ print substr($1, 1, 1), $NF }') == "- opencode" ]] || fail "Unexpected release archive"
 tar -xzf "$CONTEXT/release.tar.gz" -C "$CONTEXT" opencode
 rm "$CONTEXT/release.tar.gz"
+# ripgrep, the version OpenCode would otherwise download at first search (sandbox egress denies that download).
+curl -fsSL --max-time 60 -o "$CONTEXT/ripgrep.tar.gz" "$(jq -r '.ripgrepAsset' "$RELEASE")" || fail "ripgrep download failed"
+[[ $(shasum -a 256 "$CONTEXT/ripgrep.tar.gz" | cut -d' ' -f1) == $(jq -r '.ripgrepAssetSha256' "$RELEASE") ]] || fail "ripgrep archive checksum mismatch"
+tar -xzf "$CONTEXT/ripgrep.tar.gz" -C "$CONTEXT" --strip-components=1 "ripgrep-$(jq -r '.ripgrepVersion' "$RELEASE")-x86_64-unknown-linux-musl/rg"
+rm "$CONTEXT/ripgrep.tar.gz"
 cp "$SCRIPT_DIR/opencode/Dockerfile" "$CONTEXT/Dockerfile"
 
 # ── Build, then read back the immutable output digest ──────────────────────────────────────────────────────────────

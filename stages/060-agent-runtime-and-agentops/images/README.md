@@ -16,7 +16,8 @@ OpenShift Build and changes nothing else; rerunning builds the same input again.
 
 Build contexts:
 
-- `opencode/`: `Dockerfile` (UBI 9 plus the release binary) and `release-source.json` (asset URL, SHA-256, source commit).
+- `opencode/`: `Dockerfile` (UBI 9 plus the release binary and ripgrep, which OpenCode's search tools need and cannot
+  download inside a sandbox) and `release-source.json` (asset URLs, SHA-256s, source commit).
 - `hermes-api/`: `Dockerfile` (the Stage 130 Hermes workspace image plus the native HTTP dependency closure),
   `requirements.lock`, `dependency-source.json` and `verify-packaging.py`, which runs inside the image during the build
   (before and after the wheel install) to prove the fork, the existing packages and the private interpreter are

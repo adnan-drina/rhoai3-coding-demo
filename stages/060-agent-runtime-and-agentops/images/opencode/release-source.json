@@ -3,5 +3,8 @@
   "sourceCommit": "a3647eb025c7615159d417dcc49fc39fdaeba65b",
   "asset": "https://github.com/anomalyco/opencode/releases/download/v1.18.16/opencode-linux-x64-baseline.tar.gz",
   "assetSha256": "b075251f373b45fa01cc41b7b1fd6eb2b61c9544383e3399a5e7f1447d1fb95f",
-  "baseImage": "registry.access.redhat.com/ubi9/ubi@sha256:dec374e05cc13ebbc0975c9f521f3db6942d27f8ccdf06b180160490eef8bdbc"
+  "baseImage": "registry.access.redhat.com/ubi9/ubi@sha256:dec374e05cc13ebbc0975c9f521f3db6942d27f8ccdf06b180160490eef8bdbc",
+  "ripgrepVersion": "15.1.0",
+  "ripgrepAsset": "https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-unknown-linux-musl.tar.gz",
+  "ripgrepAssetSha256": "1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599"
 }

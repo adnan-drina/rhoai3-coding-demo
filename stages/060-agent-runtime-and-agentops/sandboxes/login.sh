@@ -29,9 +29,11 @@ printf '#!/bin/sh\nprintf "\\n  Sign in (private window, as the persona):\\n  %%
 cp "$WORK/open" "$WORK/xdg-open"
 chmod 700 "$WORK/open" "$WORK/xdg-open"
 export XDG_CONFIG_HOME="$PROFILE" OPENSHELL_GATEWAY_INSECURE=true RUST_LOG=error PATH="$WORK:$PATH"
+# Registering the gateway signs in as well; an existing profile only signs in again.
 if [[ ! -f "$PROFILE/openshell/gateways/openshell/metadata.json" ]]; then
   "$CLI" gateway add "https://$host" --name openshell --oidc-issuer "$issuer"
+else
+  "$CLI" gateway login openshell
 fi
-"$CLI" gateway login openshell
 "$CLI" --gateway openshell whoami
 log_success "Profile $PROFILE: gateway https://$host. Use it with XDG_CONFIG_HOME=$PROFILE OPENSHELL_GATEWAY_INSECURE=true RUST_LOG=error"

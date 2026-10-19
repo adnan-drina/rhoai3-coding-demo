@@ -2,7 +2,10 @@ FROM registry.access.redhat.com/ubi9/ubi@sha256:dec374e05cc13ebbc0975c9f521f3db6
 # The binary build context is verified against release-source.json before upload.
 RUN dnf install -y git-core libstdc++ findutils tar gzip && dnf clean all
 COPY opencode /usr/local/bin/opencode
-RUN chmod 0755 /usr/local/bin/opencode && /usr/local/bin/opencode --version | grep -Fx 1.18.16 \
+# OpenCode's glob/grep tools need rg; without it they download one at first use, which sandbox egress denies.
+COPY rg /usr/local/bin/rg
+RUN chmod 0755 /usr/local/bin/opencode /usr/local/bin/rg && /usr/local/bin/opencode --version | grep -Fx 1.18.16 \
+    && /usr/local/bin/rg --version | head -1 | grep -F 'ripgrep 15.1.0' \
     && mkdir -p /workspace /state && chgrp -R 0 /workspace /state && chmod -R g=u /workspace /state
 # Mounted state/workspace volumes must be made writable by the admitted namespace fsGroup.
 # Image group0 permissions alone do not qualify a nonzero namespace GID.
