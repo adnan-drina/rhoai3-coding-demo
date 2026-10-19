@@ -268,6 +268,20 @@ def ensure_delivery_branch(api, project_id, allow_initial_reset):
         raise ValueError('Delivery writer cannot safely push its protected branch')
 
 
+def ensure_delivery_webhook(api, delivery_id, config):
+    """Push hook to Argo CD's documented webhook endpoint, so runtime-<name> refreshes on each promotion
+    instead of waiting for the next Git poll (the promote step can only read its Application)."""
+    url = config['ARGOCD_URL'].rstrip('/') + '/api/webhook'
+    hooks = api.request('GET', 'projects/%s/hooks' % delivery_id)
+    wanted = {'url': url, 'push_events': True, 'push_events_branch_filter': 'main', 'enable_ssl_verification': True,
+              'merge_requests_events': False, 'tag_push_events': False}
+    matching = [h for h in hooks if h['url'] == url]
+    if not matching:
+        api.request('POST', 'projects/%s/hooks' % delivery_id, wanted)
+    elif any(matching[0].get(k) != v for k, v in wanted.items()):
+        api.request('PUT', 'projects/%s/hooks/%s' % (delivery_id, matching[0]['id']), wanted)
+
+
 def ensure_delivery(api, name, ns, source_project, config, source_repo):
     path = config['GITLAB_DELIVERY_GROUP'] + '/' + name + '-deployment'
     try:
@@ -288,6 +302,7 @@ def ensure_delivery(api, name, ns, source_project, config, source_repo):
         if '(NotFound)' not in error.stderr: raise
         writer_exists = False
     ensure_delivery_branch(api, delivery['id'], allow_initial_reset=not writer_exists)
+    ensure_delivery_webhook(api, delivery['id'], config)
     if not writer_exists:
         import datetime
         expiry = (datetime.date.today() + datetime.timedelta(days=90)).isoformat()
