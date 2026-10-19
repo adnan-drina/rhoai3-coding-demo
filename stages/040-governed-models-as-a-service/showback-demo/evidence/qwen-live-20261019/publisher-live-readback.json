@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "observed",
+  "verified_at": "2026-10-19T09:11:02Z",
+  "checked_source_sha": "adecf57cab87982f5b5a48c966860376474f8f62",
+  "application_synced_healthy": true,
+  "owned_objects_exact_source_readback": 21,
+  "publisher": {
+    "desired": 1,
+    "updated": 1,
+    "ready": 1,
+    "available": 1,
+    "current_ready_pods": 1,
+    "healthy_scrape_series": 1,
+    "healthy_scrape_value": 1,
+    "healthy_scrape_matches_current_pod": true,
+    "retained_failed_pod_down_series": 1,
+    "retained_down_series_matches_recorded_failed_pod": true,
+    "note": "Historical failed target remains visible as up=0; guarded report panels select up=1"
+  },
+  "selected_report": {
+    "canonical_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+    "unique_selected_info_series": 1,
+    "evidence_kind": "observed",
+    "total_cents": 34,
+    "allocations_cents": {
+      "engineering": 15,
+      "support": 7,
+      "platform_idle": 12,
+      "other_consumers": 0,
+      "unresolved_allocation": 0
+    },
+    "pricing_complete": true,
+    "allocation_complete": true
+  },
+  "financial_panel_queries": [
+    {
+      "panel": "reportIdentity",
+      "datasource": "data-science-prometheus-datasource",
+      "query": "(showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))",
+      "series_count": 1,
+      "results": [
+        {
+          "consumer": null,
+          "report_id": "showback-1792399336-60885-6425-r2-cadence30",
+          "report_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+          "evidence_kind": "observed",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "panel": "total",
+      "datasource": "data-science-prometheus-datasource",
+      "query": "(showback_report_cost_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
+      "series_count": 1,
+      "results": [
+        {
+          "consumer": null,
+          "report_id": "showback-1792399336-60885-6425-r2-cadence30",
+          "report_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+          "evidence_kind": "observed",
+          "value": "0.34"
+        }
+      ]
+    },
+    {
+      "panel": "pricing",
+      "datasource": "data-science-prometheus-datasource",
+      "query": "(showback_report_pricing_complete @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+      "series_count": 1,
+      "results": [
+        {
+          "consumer": null,
+          "report_id": "showback-1792399336-60885-6425-r2-cadence30",
+          "report_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+          "evidence_kind": "observed",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "panel": "allocation",
+      "datasource": "data-science-prometheus-datasource",
+      "query": "(showback_report_allocation_complete @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1)))",
+      "series_count": 1,
+      "results": [
+        {
+          "consumer": null,
+          "report_id": "showback-1792399336-60885-6425-r2-cadence30",
+          "report_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+          "evidence_kind": "observed",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "panel": "consumers",
+      "datasource": "data-science-prometheus-datasource",
+      "query": "(showback_report_allocated_cents @ end() and on(report_id, report_sha256, job, instance) (showback_selected_report_info @ end() and on(job, instance) (up{showback_publisher=\"selected-report\"} @ end() == 1))) / 100",
+      "series_count": 6,
+      "results": [
+        {
+          "consumer": "engineering",
+          "report_id": "showback-1792399336-60885-6425-r2-cadence30",
+          "report_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+          "evidence_kind": "observed",
+          "value": "0.15"
+        },
+        {
+          "consumer": "marketing",
+          "report_id": "showback-1792399336-60885-6425-r2-cadence30",
+          "report_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+          "evidence_kind": "observed",
+          "value": "0"
+        },
+        {
+          "consumer": "other_consumers",
+          "report_id": "showback-1792399336-60885-6425-r2-cadence30",
+          "report_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+          "evidence_kind": "observed",
+          "value": "0"
+        },
+        {
+          "consumer": "platform_idle",
+          "report_id": "showback-1792399336-60885-6425-r2-cadence30",
+          "report_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+          "evidence_kind": "observed",
+          "value": "0.12"
+        },
+        {
+          "consumer": "support",
+          "report_id": "showback-1792399336-60885-6425-r2-cadence30",
+          "report_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+          "evidence_kind": "observed",
+          "value": "0.07"
+        },
+        {
+          "consumer": "unresolved_allocation",
+          "report_id": "showback-1792399336-60885-6425-r2-cadence30",
+          "report_sha256": "b1d090696543beb0842108c528b7734cedc108789d14f6254eaa698fae26f44a",
+          "evidence_kind": "observed",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "panel": "publisherUp",
+      "datasource": "data-science-prometheus-datasource",
+      "query": "up{showback_publisher=\"selected-report\"}",
+      "series_count": 2,
+      "results": [
+        {
+          "consumer": null,
+          "report_id": null,
+          "report_sha256": null,
+          "evidence_kind": null,
+          "value": "0"
+        },
+        {
+          "consumer": null,
+          "report_id": null,
+          "report_sha256": null,
+          "evidence_kind": null,
+          "value": "1"
+        }
+      ]
+    }
+  ],
+  "shared_qwen_uid_and_spec_unchanged": true,
+  "usage_logging": false,
+  "external_metering_profile_unchanged": true,
+  "inference_requests_by_independent_verifier": 0,
+  "ui_visual_test_performed": false,
+  "startup_recovery": {
+    "initial_activation_sha": "89036c17908519bc3ccc8d03f441f9b6cf60b7da",
+    "initial_activation_result": "source Synced; publisher container exited1 and application Progressing",
+    "correction": "Separate -f/config-path wrapper arguments and inclusion of the stock Apache config",
+    "corrected_sha": "adecf57cab87982f5b5a48c966860376474f8f62",
+    "corrected_runtime_verified": true
+  },
+  "limitations": [
+    "One selected six-minute allocated worker-cost estimate; AWS billing lifecycle/invoice unverified",
+    "Native usage logging and external metering remain disabled",
+    "Monthly service views await monthly statements"
+  ],
+  "result": "pass"
+}

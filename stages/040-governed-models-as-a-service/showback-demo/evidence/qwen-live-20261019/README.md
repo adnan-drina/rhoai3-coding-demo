@@ -4,7 +4,7 @@ The optional `040-showback-demo` Application was published and deployed at `4349
 
 The observed six-minute run completed **14 successful SSE requests and 1,753 tokens**, with exact response/counter agreement. The corrected allocation is **$0.34: Engineering $0.15, Support $0.07, platform idle $0.12**. This is a dated list-price estimate of allocated capacity, not an AWS invoice or full service cost.
 
-Current source selects the reviewed corrected report and one publisher replica. The first activation at `89036c17908519bc3ccc8d03f441f9b6cf60b7da` synced but the publisher exited with Apache CLI usage. Its corrected startup arguments are prepared; live readiness and financial scraping are the next acceptance step. The earlier zero-replica readback below remains historical evidence, not the desired final state.
+The corrected publisher is **live and independently accepted** at `adecf57cab87982f5b5a48c966860376474f8f62`, with one Ready replica, one healthy scrape and the exact selected report. The first activation at `89036c17908519bc3ccc8d03f441f9b6cf60b7da` synced but the publisher exited with Apache CLI usage; a minimal startup-argument correction fixed it without changing the image. The earlier zero-replica readback and failed activation remain historical evidence. Later documentation-only revisions do not change these validated manifests.
 
 ## Identity, access and metering
 
@@ -65,7 +65,9 @@ The private bundles contain raw evidence; this folder holds only sanitized summa
 
 All eight Perses dashboards were Available with no Degraded condition. Read-only Perses API results matched their live custom-resource definitions after normalizing an omitted empty variables array. Seven operational queries returned finite Qwen series using their actual configured datasource: native RHOAI Thanos for throughput, TTFT, inter-token latency and GPU activity; platform Thanos for queue depth and DCGM framebuffer memory. The temporary API forward was closed. Browser rendering and presenter interaction were not tested.
 
-The three bounded-report views will consume the selected corrected snapshot after publisher activation. The five monthly service views have definitions but no observed monthly statements. Full-quarter continuity, actual provider invoices, accepted-task quality/tracing, three-offer live pricing, consumer dashboard isolation, enforced retention, quota exhaustion and full FP8/Mistral qualification remain open. Native Loki/external-metering inputs and the locally built backend remain inactive.
+The three bounded-report views now have the selected corrected snapshot. The actual bill panel queries return one observed report, $0.34 total, $0.15 Engineering, $0.07 Support and $0.12 platform idle, with both pricing and allocation complete. Six consumer rows are unique; Marketing, other consumers and unresolved costs are zero. The healthy `up=1` series matches the only current Ready publisher Pod. At acceptance, one historical `up=0` series still matched the recorded failed predecessor; the guarded financial panels exclude it. No data or selector was changed to conceal that failed target.
+
+The five monthly service views have definitions but no observed monthly statements. Full-quarter continuity, actual provider invoices, accepted-task quality/tracing, three-offer live pricing, consumer dashboard isolation, enforced retention, quota exhaustion and full FP8/Mistral qualification remain open. Native Loki/external-metering inputs and the locally built backend remain inactive.
 
 ## Evidence index
 
@@ -75,6 +77,7 @@ The three bounded-report views will consume the selected corrected snapshot afte
 - [Perses API ingestion](perses-readback.json): all eight definitions, controller conditions and explicit visual-test limit.
 - [Original archive acceptance](archive-original.json) and [corrected archive acceptance](archive-corrected.json): FINISHED runs, hash readback and denied team access.
 - [Release source validation](source-validation.json): all 20 package gates and repository/static Stage 040 checks passed without live transport.
-- [Publisher startup correction](publisher-startup-correction.json): preserved first activation failure, verified pinned-image configuration and minimal argument correction. The focused publisher/dashboard regression and Stage 040 static gate passed after this fix; runtime acceptance is separate.
+- [Publisher startup correction](publisher-startup-correction.json): preserved first activation failure, verified pinned-image configuration and minimal argument correction. Its pending status is historical; the focused publisher/dashboard regression and Stage 040 static gate passed after this fix.
+- [Final publisher and financial-panel acceptance](publisher-live-readback.json): exact 21-resource readback at the corrected revision, one current healthy publisher, unique selected report, actual financial query results and unchanged model/native state.
 
 AI assistance: Codex lead with implementation and independent validation delegated to GPT-6.1 Sol. Human review of the complete diff remains required before merge. These summaries distinguish observed results from source-only, estimated and pending claims.
