@@ -13,7 +13,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -35,7 +36,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 2
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -57,7 +59,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 2
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -79,7 +82,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -101,7 +105,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -123,7 +128,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -145,7 +151,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -167,7 +174,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -189,7 +197,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 2
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -211,7 +220,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 2
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -233,7 +243,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 2
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -255,7 +266,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 2
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -277,7 +289,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 2
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -299,7 +312,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -560,7 +574,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -582,7 +597,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -604,7 +620,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -626,7 +643,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 2
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -648,7 +666,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -670,7 +689,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -692,7 +712,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 2
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -714,7 +735,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -736,7 +758,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -758,7 +781,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -780,7 +804,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -802,7 +827,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -824,7 +850,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -1076,7 +1103,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -1098,7 +1126,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 2
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -1120,7 +1149,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 6
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -1142,7 +1172,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 6
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -1164,7 +1195,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 6
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -1186,7 +1218,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 4
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -1208,7 +1241,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -1230,7 +1264,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 2
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {
@@ -1252,7 +1287,8 @@
           "format": {
             "unit": "decimal",
             "decimalPlaces": 0
-          }
+          },
+          "legendMode": "on"
         },
         "queries": [
           {

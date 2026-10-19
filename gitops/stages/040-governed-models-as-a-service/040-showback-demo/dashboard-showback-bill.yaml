@@ -36,6 +36,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 0
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -63,6 +64,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -91,6 +93,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -120,6 +123,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 0
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -148,6 +152,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 0
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -177,6 +182,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 0
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -205,6 +211,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 0
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -235,6 +242,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 0
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -264,6 +272,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -294,6 +303,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -323,6 +333,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -351,6 +362,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -379,6 +391,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -408,6 +421,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 0
+              legendMode: 'on'
           queries:
           - kind: TimeSeriesQuery
             spec:

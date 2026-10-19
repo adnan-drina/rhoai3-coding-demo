@@ -129,7 +129,13 @@ jq -e 'all(.[].panels[]; all(.queries[];
   "$BASE/dashboard-definitions.json" >/dev/null || fail 'Snapshot query contract'
 jq -e 'all(.[];.panels.reportIdentity.queries[0].seriesNameFormat|contains("{{scope}}"))' \
   "$BASE/dashboard-definitions.json" >/dev/null || fail 'Report scope is not visible'
+# Perses hides a singleton legend in auto mode; the label carries evidence, team, model and window context.
+jq -e 'all(.[].panels[]|select(.kind=="StatChart");.options.legendMode=="on")' \
+  "$BASE/dashboard-definitions.json" >/dev/null || fail 'Singleton stat context is hidden'
 kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" | yaml_json > "$WORK/bundle.json"
+jq -e 'all(.[]|select(.kind=="PersesDashboard" and (.metadata.name|test("^dashboard-[789]-showback-")))
+  | .spec.config.panels[].spec|select(.plugin.kind=="StatChart");.plugin.spec.legendMode=="on")' \
+  "$WORK/bundle.json" >/dev/null || fail 'Rendered singleton stat context is hidden'
 jq -e '([.[]|select(.kind=="Deployment" and .metadata.name=="showback-report-publisher")][0].spec.replicas) as $replicas |
   [.[]|select(.kind=="ConfigMap" and .metadata.name=="showback-selected-report")][0] as $report |
   ($replicas|IN(0,1))

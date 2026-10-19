@@ -63,11 +63,19 @@ The private bundles contain raw evidence; this folder holds only sanitized summa
 
 ## Dashboard verification and limits
 
-All eight Perses dashboards were Available with no Degraded condition. Read-only Perses API results matched their live custom-resource definitions after normalizing an omitted empty variables array. Seven operational queries returned finite Qwen series using their actual configured datasource: native RHOAI Thanos for throughput, TTFT, inter-token latency and GPU activity; platform Thanos for queue depth and DCGM framebuffer memory. The temporary API forward was closed. Browser rendering and presenter interaction were not tested.
+All eight Perses dashboards were Available with no Degraded condition. Read-only Perses API results matched their live custom-resource definitions after normalizing an omitted empty variables array. Seven operational queries returned finite Qwen series using their actual configured datasource: native RHOAI Thanos for throughput, TTFT, inter-token latency and GPU activity; platform Thanos for queue depth and DCGM framebuffer memory. The temporary API forward was closed. This initial acceptance did not test browser rendering or presenter interaction; the later check below covers the three bounded-report views.
 
 The three bounded-report views now have the selected corrected snapshot. The actual bill panel queries return one observed report, $0.34 total, $0.15 Engineering, $0.07 Support and $0.12 platform idle, with both pricing and allocation complete. Six consumer rows are unique; Marketing, other consumers and unresolved costs are zero. The healthy `up=1` series matches the only current Ready publisher Pod. At acceptance, one historical `up=0` series still matched the recorded failed predecessor; the guarded financial panels exclude it. No data or selector was changed to conceal that failed target.
 
 The five monthly service views have definitions but no observed monthly statements. Full-quarter continuity, actual provider invoices, accepted-task quality/tracing, three-offer live pricing, consumer dashboard isolation, enforced retention, quota exhaustion and full FP8/Mistral qualification remain open. Native Loki/external-metering inputs and the locally built backend remain inactive.
+
+### Follow-up after the empty-dashboard report
+
+The three supplied screenshot attachments have filesystem timestamps of 09:05:43, 09:06:00 and 09:06:17 UTC. The corrected publisher became Ready at 09:09:00 UTC and its successful scrape/report acceptance was recorded at 09:11:02 UTC. This timing is consistent with the empty views being captured during the earlier startup failure. Attachment timestamps are corroborating evidence, not guaranteed browser capture times; no browser cache fault was established.
+
+A fresh authenticated `ai-admin` browser session with **Last 30 minutes** showed populated values in all three views: the $0.34 bill and $0.15/$0.07/$0.12 allocation, Engineering's 653 tokens and Support's abbreviated `1K` display, and the 3.363120 USD/hour model rate. The underlying Support value is 1,100 tokens. The independently checked external RHOAI-to-Perses datasource proxy returned successful, populated responses for all 43 panel queries. Current throughput, queue and GPU activity were zero; latency quantiles were NaN in the idle window. These operational values follow the time picker, whereas the closed-report gauges continue to show the selected completed run. No additional inference was generated.
+
+The browser check also exposed a separate display defect: the native StatChart default hides a singleton series legend, leaving report metadata panels displaying only `1`. The bounded dashboards now explicitly enable legends to retain report, price, model and window context. Query expressions, datasource selection, report contents and allocation policy are unchanged. Narrow screens can still abbreviate numbers or require horizontal scrolling within multi-series panels; this is native chart behavior, not missing metering data.
 
 ## Evidence index
 
@@ -79,5 +87,6 @@ The five monthly service views have definitions but no observed monthly statemen
 - [Release source validation](source-validation.json): all 20 package gates and repository/static Stage 040 checks passed without live transport.
 - [Publisher startup correction](publisher-startup-correction.json): preserved first activation failure, verified pinned-image configuration and minimal argument correction. Its pending status is historical; the focused publisher/dashboard regression and Stage 040 static gate passed after this fix.
 - [Final publisher and financial-panel acceptance](publisher-live-readback.json): exact 21-resource readback at the corrected revision, one current healthy publisher, unique selected report, actual financial query results and unchanged model/native state.
+- [RHOAI dashboard proxy readback](dashboard-proxy-readback.json): follow-up queries through the actual external RHOAI/Perses path, including idle-window operational limits.
 
 AI assistance: Codex lead with implementation and independent validation delegated to GPT-6.1 Sol. Human review of the complete diff remains required before merge. These summaries distinguish observed results from source-only, estimated and pending claims.

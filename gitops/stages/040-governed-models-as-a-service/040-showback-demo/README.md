@@ -39,6 +39,8 @@ The explicit bounded profile is [qualification-qwen-only.json](../../../../stage
 
 Generators and accounting tools remain in [showback-demo](../../../../stages/040-governed-models-as-a-service/showback-demo/README.md). Committed YAML in this component is the sole deployment output. Regenerate it with the package's `render-access.sh --write`, `generate-dashboards.sh --write`, `service-views/generate-dashboards.sh --write` and `native/render-integration.sh --write`; their `--check` modes detect drift. Never maintain duplicate manifests in the package or apply this component directly outside Argo CD.
 
+The three bounded showback dashboards keep StatChart legends visible for single-series results so report provenance, team, model and window context accompanies the value. Browser verification after deployment must confirm those labels and financial values are readable; API acceptance alone does not prove presentation.
+
 ## Validation
 
 Offline checks render source only and start no workload:

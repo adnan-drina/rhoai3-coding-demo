@@ -34,6 +34,8 @@ stages/040-governed-models-as-a-service/showback-demo/generate-dashboards.sh --w
 
 The access renderer writes six named YAML files, one subscription and one authorization policy per team. Its default remains a stdout preview. If the scenario changes intentionally, update the synthetic fixture's `scenario_sha256` to the SHA256 of the new exact file bytes and review its request expectations. Do not change a scenario to fit an already observed run: retain that run's original configuration instead. Dashboard definitions must match their shell generator. The cluster publisher serves a reviewed metrics snapshot; it does not run the accounting code.
 
+The three bounded showback dashboards explicitly enable StatChart legends. Perses otherwise hides the legend when a panel returns one series, concealing report provenance, team, model or window labels even while its numeric value renders. After deploying dashboard changes, open all three views in the RHOAI browser UI, allow loading to finish, and verify the selected report identity, UTC period, price basis and team allocations are readable alongside their values. Successful API ingestion and datasource queries do not establish browser rendering; retain browser evidence before marking presenter acceptance complete.
+
 ## Package and promotion
 
 - `gitops/stages/040-governed-models-as-a-service/040-showback-demo/` (from the repository root) is the sole canonical owner of the source for three subscription/auth-policy pairs; its enabled `components/qwen-only` selects only Engineering/Support with Qwen. The same component owns three bounded Perses dashboards, the selected R2 report, one-replica publisher source, Service/ServiceMonitor and the evidence workspace/access grant.
