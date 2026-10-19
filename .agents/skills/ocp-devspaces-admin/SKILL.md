@@ -71,7 +71,7 @@ Dev Spaces 3.30 topics. Detailed record:
 
 - A per-user RWO claim cannot attach to two running workspaces; that is why
   the repo uses `per-workspace`:
-  `docs/TROUBLESHOOTING.md#factory-workspace-failedmount-while-agentic-coolstore-is-running`.
+  `docs/TROUBLESHOOTING.md#factory-workspace-failedmount-while-coolstore-inventory-service-is-running`.
 - `gitServices.gitlab[].endpoint` is deprecated in favour of the Secret
   annotation ([CheCluster fields][fields]); keep both until removed.
 - A running workspace keeps an expired GitLab token until restarted:

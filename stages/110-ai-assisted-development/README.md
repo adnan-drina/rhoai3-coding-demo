@@ -52,7 +52,7 @@ This is the brownfield service you will extend. It is already deployed, already 
 
 ## Step 3: Open the workspace and tour the project
 
-1. On the component page, click the **Dev Spaces** link. This opens the `agentic-coolstore` workspace directly (no factory URL needed).
+1. On the component page, click the **Dev Spaces** link. This opens the `coolstore-inventory-service` workspace directly (no factory URL needed).
 2. The workspace starts. First-start notes:
    - The Kilo Code VSIX (111 MB) downloads from Open VSX (1–3 minutes). Later restarts reuse the PVC.
    - Kilo Code is enabled automatically (Workspace Trust is off in these platform namespaces). Do not click Enable in the Extensions view — that path loads Kilo's default catalog instead of MaaS.
@@ -342,7 +342,7 @@ pass.
 
 ### Resetting the demo
 
-Resetting is an **operator action**, not a workspace action: it needs operator credentials, which never enter a developer workspace. It restores the registered GitLab baseline of `coolstore-inventory-service` with a normal commit (history is kept) and stops the `agentic-coolstore` workspaces that clone it (their PVCs and local changes are kept); the commit fires one expected pipeline run in `coolstore-dev`.
+Resetting is an **operator action**, not a workspace action: it needs operator credentials, which never enter a developer workspace. It restores the registered GitLab baseline of `coolstore-inventory-service` with a normal commit (history is kept) and stops the `coolstore-inventory-service` workspaces that clone it (their PVCs and local changes are kept); the commit fires one expected pipeline run in `coolstore-dev`.
 
 ```bash
 ./stages/070-advanced-app-platform/demo-reset/reset-coolstore.sh        # prints the plan

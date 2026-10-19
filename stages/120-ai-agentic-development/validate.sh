@@ -45,17 +45,17 @@ log_step "Argo CD Application (platform stage owns the resources)"
 check_stage_applications 070
 
 log_step "Agentic workspace"
-check "agentic-coolstore DevWorkspace exists" \
-  "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
-  "agentic-coolstore"
+check "coolstore-inventory-service DevWorkspace exists" \
+  "oc get devworkspace coolstore-inventory-service -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
+  "coolstore-inventory-service"
 check "workspace clones the main revision" \
-  "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o jsonpath='{.spec.template.projects[0].git.checkoutFrom.revision}'" \
+  "oc get devworkspace coolstore-inventory-service -n wksp-ai-developer -o jsonpath='{.spec.template.projects[0].git.checkoutFrom.revision}'" \
   "main"
 check "workspace has agent-scale memory" \
-  "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o jsonpath='{.spec.template.components[0].container.memoryLimit}'" \
+  "oc get devworkspace coolstore-inventory-service -n wksp-ai-developer -o jsonpath='{.spec.template.components[0].container.memoryLimit}'" \
   "6Gi"
 check "workspace DevWorkspace is not failed" \
-  "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o jsonpath='{.status.phase}' | grep -vq Failed && echo ok" \
+  "oc get devworkspace coolstore-inventory-service -n wksp-ai-developer -o jsonpath='{.status.phase}' | grep -vq Failed && echo ok" \
   "ok"
 
 log_step "Private GitLab golden readiness"
@@ -64,7 +64,7 @@ check "Published agentic golden matches the reviewed staging tree" \
   "PASS: agentic-quarkus-scaffold"
 # Factory destfile is the GitOps skeleton (template replace:true), not the
 # GitLab golden destfile. per-workspace avoids RWO FailedMount when the
-# Stage 070 agentic-coolstore seat is still Running.
+# Stage 070 coolstore-inventory-service seat is still Running.
 SKELETON_070="$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml"
 STAGING_070="$SCRIPT_DIR/scaffold-repo/agentic-quarkus-scaffold/devfile.yaml"
 check "GitOps 070 factory destfile uses per-workspace storage" \

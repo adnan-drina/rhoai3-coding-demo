@@ -78,7 +78,7 @@ rules:
   resources:
   - devworkspaces
   resourceNames:
-  - agentic-coolstore
+  - coolstore-inventory-service
   verbs:
   - get
   - patch
@@ -373,7 +373,7 @@ rules:
   resources:
   - devworkspaces
   resourceNames:
-  - agentic-coolstore
+  - coolstore-inventory-service
   verbs:
   - get
   - patch
@@ -391,7 +391,7 @@ rules:
   resources:
   - devworkspaces
   resourceNames:
-  - agentic-coolstore
+  - coolstore-inventory-service
   verbs:
   - get
   - patch

@@ -760,7 +760,7 @@ The upstream-image OpenShift MCP server in `rhoai-mcp` and the inactive Slack/Br
 
 The stage 070 `devspaces` component installs Red Hat OpenShift Dev Spaces and persona namespaces (consumed by the workflow-only stages 110/120/130).
 
-`validate.sh` checks that the component Application is Synced and Healthy and that the standing `agentic-coolstore` workspace in `wksp-ai-developer` and `wksp-ai-admin` clones from the private GitLab `rhoai-workloads/coolstore-inventory-service` project. Stages 120 and 130 create additional workspaces from RHDH factory templates at demo time. The CheCluster uses the `per-workspace` PVC strategy, so each workspace gets its own claim and factory workspaces run beside `agentic-coolstore`. Standing `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces were retired. Component detail: [devspaces README](../gitops/stages/070-advanced-app-platform/070-devspaces/README.md).
+`validate.sh` checks that the component Application is Synced and Healthy and that the standing `coolstore-inventory-service` workspace in `wksp-ai-developer` and `wksp-ai-admin` clones from the private GitLab `rhoai-workloads/coolstore-inventory-service` project. Stages 120 and 130 create additional workspaces from RHDH factory templates at demo time. The CheCluster uses the `per-workspace` PVC strategy, so each workspace gets its own claim and factory workspaces run beside `coolstore-inventory-service`. Standing `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces were retired. Component detail: [devspaces README](../gitops/stages/070-advanced-app-platform/070-devspaces/README.md).
 
 Useful checks:
 

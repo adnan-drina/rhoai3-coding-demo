@@ -371,14 +371,14 @@ def main():
         if not mta_host.endswith('.' + domain): raise RuntimeError('MTA Route is outside the ingress domain')
         config['MTA_HUB_URL'] = 'https://' + mta_host
         for namespace in ('wksp-ai-developer', 'wksp-ai-admin'):
-            workspace = oc('get', 'devworkspace', 'agentic-coolstore', '-n', namespace, '-o', 'json')
+            workspace = oc('get', 'devworkspace', 'coolstore-inventory-service', '-n', namespace, '-o', 'json')
             url = imports['coolstore-inventory-service']['http_url_to_repo']
             # Already pointing at the mirror: nothing to change, so a running workspace is fine.
             if workspace['spec']['template']['projects'][0]['git']['remotes'].get('origin') == url: continue
             if workspace['spec'].get('started'):
                 raise RuntimeError('Stop the standing workspace before changing its source: ' + namespace)
             patch = [{'op': 'replace', 'path': '/spec/template/projects/0/git/remotes/origin', 'value': url}]
-            oc('patch', 'devworkspace', 'agentic-coolstore', '-n', namespace, '--type=json', '-p', json.dumps(patch))
+            oc('patch', 'devworkspace', 'coolstore-inventory-service', '-n', namespace, '--type=json', '-p', json.dumps(patch))
         for name in ('agentic-quarkus-scaffold', 'quarkus-migration-scaffold-v2'):
             p = imports[name]; head = api('GET', f"projects/{p['id']}/repository/branches/main")['commit']['id']
             config[name] = base + '/' + p['path_with_namespace'] + '/-/tree/' + head

@@ -3,7 +3,7 @@ kind: Kustomization
 
 # Dev Spaces component (moved from the former assisted-development stage
 # base). OpenShift Dev Spaces with Kilo Code AI code assistant, persona
-# namespaces, the Stage 070 `agentic-coolstore` catalog seat, and MaaS API
+# namespaces, the Stage 070 `coolstore-inventory-service` catalog seat, and MaaS API
 # key provisioning. Stages 070/080 factory workspaces come from RHDH
 # templates, not standing GitOps DevWorkspaces.
 # Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/

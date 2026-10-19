@@ -1,7 +1,7 @@
 # Per-user workspace namespaces and RBAC.
 #
 # GitOps pre-provisions only the Stage 070 catalog seat
-# (`agentic-workspace.yaml`: `agentic-coolstore` in wksp-ai-developer and
+# (`agentic-workspace.yaml`: `coolstore-inventory-service` in wksp-ai-developer and
 # wksp-ai-admin). Stages 070 and 080 create workspaces from RHDH factory
 # templates at demo time. Standing getting-started-ai-coding,
 # coolstore-inventory-service, and mca-coolstore DevWorkspaces were retired.

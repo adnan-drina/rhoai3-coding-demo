@@ -94,44 +94,44 @@ done
 
 log_step "Agentic Coolstore Workspace (stage 070 golden path)"
 for ns in wksp-ai-developer wksp-ai-admin; do
-    check "agentic-coolstore DevWorkspace exists: $ns" \
-        "oc get devworkspace agentic-coolstore -n $ns -o jsonpath='{.metadata.name}'" \
-        "agentic-coolstore"
-    check "agentic-coolstore tooling image is digest-pinned: $ns" \
-        "case \"\$(oc get devworkspace agentic-coolstore -n $ns -o jsonpath='{.spec.template.components[0].container.image}')\" in *@sha256:*) echo pinned ;; *) echo unpinned ;; esac" \
+    check "coolstore-inventory-service DevWorkspace exists: $ns" \
+        "oc get devworkspace coolstore-inventory-service -n $ns -o jsonpath='{.metadata.name}'" \
+        "coolstore-inventory-service"
+    check "coolstore-inventory-service tooling image is digest-pinned: $ns" \
+        "case \"\$(oc get devworkspace coolstore-inventory-service -n $ns -o jsonpath='{.spec.template.components[0].container.image}')\" in *@sha256:*) echo pinned ;; *) echo unpinned ;; esac" \
         "pinned"
-    check "agentic-coolstore declares Java 21 JAVA_HOME: $ns" \
-        "oc get devworkspace agentic-coolstore -n $ns -o yaml | contains '/home/tooling/.sdkman/candidates/java/21.0.5-tem' && echo present || echo missing" \
+    check "coolstore-inventory-service declares Java 21 JAVA_HOME: $ns" \
+        "oc get devworkspace coolstore-inventory-service -n $ns -o yaml | contains '/home/tooling/.sdkman/candidates/java/21.0.5-tem' && echo present || echo missing" \
         "present"
-    check "agentic-coolstore startup configures Java 21 shell default: $ns" \
-        "oc get devworkspace agentic-coolstore -n $ns -o yaml | contains 'rhoai3-coding-demo: java 21 default' && echo present || echo missing" \
+    check "coolstore-inventory-service startup configures Java 21 shell default: $ns" \
+        "oc get devworkspace coolstore-inventory-service -n $ns -o yaml | contains 'rhoai3-coding-demo: java 21 default' && echo present || echo missing" \
         "present"
-    check "agentic-coolstore declares Kilo Code default extension: $ns" \
-        "oc get devworkspace agentic-coolstore -n $ns -o yaml | contains '/tmp/kilo.vsix' && echo present || echo missing" \
+    check "coolstore-inventory-service declares Kilo Code default extension: $ns" \
+        "oc get devworkspace coolstore-inventory-service -n $ns -o yaml | contains '/tmp/kilo.vsix' && echo present || echo missing" \
         "present"
-    check "agentic-coolstore downloads Kilo Code extension 7.4.8: $ns" \
-        "oc get devworkspace agentic-coolstore -n $ns -o yaml | contains 'kilo-code-7.4.8' && echo present || echo missing" \
+    check "coolstore-inventory-service downloads Kilo Code extension 7.4.8: $ns" \
+        "oc get devworkspace coolstore-inventory-service -n $ns -o yaml | contains 'kilo-code-7.4.8' && echo present || echo missing" \
         "present"
-    phase=$(oc get devworkspace agentic-coolstore -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "ERROR")
+    phase=$(oc get devworkspace coolstore-inventory-service -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "ERROR")
     if [[ "$phase" == "Failed" || "$phase" == "Failing" || "$phase" == "ERROR" ]]; then
-        echo -e "${RED}[FAIL]${NC} agentic-coolstore is not failed: $ns (got: $phase)"
+        echo -e "${RED}[FAIL]${NC} coolstore-inventory-service is not failed: $ns (got: $phase)"
         VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
     else
-        echo -e "${GREEN}[PASS]${NC} agentic-coolstore is not failed: $ns (phase: ${phase:-NotStarted})"
+        echo -e "${GREEN}[PASS]${NC} coolstore-inventory-service is not failed: $ns (phase: ${phase:-NotStarted})"
         VALIDATE_PASS=$((VALIDATE_PASS + 1))
     fi
 done
-check "agentic-coolstore tracks main branch" \
-    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | grep -A2 'checkoutFrom' | contains 'revision: main' && echo main || echo other" \
+check "coolstore-inventory-service tracks main branch" \
+    "oc get devworkspace coolstore-inventory-service -n wksp-ai-developer -o yaml | grep -A2 'checkoutFrom' | contains 'revision: main' && echo main || echo other" \
     "main"
-check "agentic-coolstore exposes quarkus-dev endpoint" \
-    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | contains 'name: quarkus-dev' && echo present || echo missing" \
+check "coolstore-inventory-service exposes quarkus-dev endpoint" \
+    "oc get devworkspace coolstore-inventory-service -n wksp-ai-developer -o yaml | contains 'name: quarkus-dev' && echo present || echo missing" \
     "present"
-check "agentic-coolstore has package command" \
-    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | contains 'id: package' && echo present || echo missing" \
+check "coolstore-inventory-service has package command" \
+    "oc get devworkspace coolstore-inventory-service -n wksp-ai-developer -o yaml | contains 'id: package' && echo present || echo missing" \
     "present"
-check "agentic-coolstore has start-dev command" \
-    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | contains 'id: start-dev' && echo present || echo missing" \
+check "coolstore-inventory-service has start-dev command" \
+    "oc get devworkspace coolstore-inventory-service -n wksp-ai-developer -o yaml | contains 'id: start-dev' && echo present || echo missing" \
     "present"
 
 log_step "RHDH Platform Integration"

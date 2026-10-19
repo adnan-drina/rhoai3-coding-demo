@@ -62,7 +62,7 @@ spec:
               set -euo pipefail
 
               for namespace in wksp-ai-developer wksp-ai-admin; do
-                for workspace in agentic-coolstore; do
+                for workspace in coolstore-inventory-service; do
                   identity=$(oc get devworkspace "$workspace" -n "$namespace" --ignore-not-found \
                     -o jsonpath='{.metadata.uid}')
                   if [ -z "$identity" ]; then

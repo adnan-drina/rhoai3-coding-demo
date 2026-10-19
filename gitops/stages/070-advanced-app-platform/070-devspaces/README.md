@@ -1,6 +1,6 @@
 # OpenShift Dev Spaces (`070-devspaces`)
 
-This Application installs Red Hat OpenShift Dev Spaces 3.30 and the workspace side of the developer platform: the operator, the `CheCluster`, the persona workspace namespaces, the standing `agentic-coolstore` workspace, and governed MaaS model access for workspaces. Developers in Stages 110–130 open their IDE here. Developer Hub templates create new workspaces against this instance, and Stage 130 migration runs use its per-run identity and model-profile contract.
+This Application installs Red Hat OpenShift Dev Spaces 3.30 and the workspace side of the developer platform: the operator, the `CheCluster`, the persona workspace namespaces, the standing `coolstore-inventory-service` workspace, and governed MaaS model access for workspaces. Developers in Stages 110–130 open their IDE here. Developer Hub templates create new workspaces against this instance, and Stage 130 migration runs use its per-run identity and model-profile contract.
 
 | | |
 |---|---|
@@ -34,7 +34,7 @@ The operator, the instance and the workspace contract form one Application becau
 |---|---|---|---|
 | RoleBinding | `wksp-edit-<user>` | each persona namespace | ClusterRole `edit` for the persona user (wave 3) |
 | ConfigMap | `vscode-editor-configurations` | each persona namespace | Code - OSS settings, recommendations and the Kilo Code model default (wave 17) |
-| DevWorkspace | `agentic-coolstore` | `wksp-ai-developer`, `wksp-ai-admin` | Standing catalog workspace, `started: false`, UDI image pinned by digest, Kilo Code VSIX via `DEFAULT_EXTENSIONS`, remote patched by `070-gitlab` (wave 10) |
+| DevWorkspace | `coolstore-inventory-service` | `wksp-ai-developer`, `wksp-ai-admin` | Standing catalog workspace, `started: false`, UDI image pinned by digest, Kilo Code VSIX via `DEFAULT_EXTENSIONS`, remote patched by `070-gitlab` (wave 10) |
 | ServiceAccount, ClusterRole, ClusterRoleBinding | `job-repair-devworkspace-sync-options` | `openshift-devspaces` / cluster | `get`/`patch` on DevWorkspaces (wave 17) |
 | Job (Sync hook) | `job-repair-devworkspace-sync-options` | `openshift-devspaces` | Resets the Argo sync-option annotation on the two standing workspaces (wave 19) |
 
@@ -76,7 +76,7 @@ Not in Git: the GitLab OAuth Secret `gitlab-oauth-config`, the CheCluster `gitSe
 
 **CheCluster choices** (field reference [3]):
 
-- `storage.pvcStrategy: per-workspace`, 20 Gi on `gp3-csi`, with `persistUserHome.enabled: true`. One volume per workspace lets factory workspaces run beside `agentic-coolstore` without sharing an RWO claim.
+- `storage.pvcStrategy: per-workspace`, 20 Gi on `gp3-csi`, with `persistUserHome.enabled: true`. One volume per workspace lets factory workspaces run beside `coolstore-inventory-service` without sharing an RWO claim.
 - `secondsOfInactivityBeforeIdling: -1` disables idling, because agent workers run unattended for long periods. `startTimeoutSeconds: 1200` allows the large tooling image and the postStart bootstrap.
 - `maxNumberOfRunningWorkspacesPerUser: 3`; `containerResourceCaps` caps containers at 6 CPU / 12 Gi.
 - `allowedSources.urls` starts as an `.invalid` placeholder; `070-gitlab` replaces it with the GitLab workload and platform groups. Only those sources can start a workspace.
@@ -86,11 +86,11 @@ Not in Git: the GitLab OAuth Secret `gitlab-oauth-config`, the CheCluster `gitSe
 
 **MaaS credentials.** Each persona namespace has its own key Job and key owner (`maas-keys/base`, overlays `developer` and `admin`), so MaaS usage is attributed per persona; the Stage 040 `devspaces-coding-models` subscription lists both owners. The key Job reads the Gateway hostname, authenticates to the MaaS API with its own service-account token, and creates keys on the `devspaces-coding-models` subscription. An existing key is kept only if the API confirms the same owner and subscription and an `active` status; any other answer stops the Job without revoking anything. Keys go into `maas-devspace-api-keys` and into `workspace-maas-credentials`, an env-mounted Secret with `MAAS_API_KEY`, `MAAS_API_BASE_URL` and the canonical model ID [6]. `secret_writer.py` creates or merge-patches each Secret without a `last-applied-configuration` copy. `ai-admin` workspaces read the same Secrets across namespaces, so both personas share one key owner.
 
-**Workspace bootstrap.** `agentic-coolstore` runs `init-ai-tools.sh` from the ConfigMap at postStart, through the Kubernetes API. The AdminNetworkPolicy allows that API path; the namespaced policy cannot, because the API server runs on host network.
+**Workspace bootstrap.** `coolstore-inventory-service` runs `init-ai-tools.sh` from the ConfigMap at postStart, through the Kubernetes API. The AdminNetworkPolicy allows that API path; the namespaced policy cannot, because the API server runs on host network.
 
 **Cross-component writes.** `070-gitlab`'s integration hub (wave 14 of that Application) writes the GitLab OAuth Secret with the labels and annotations the guide requires [7], patches the CheCluster `gitServices` and `allowedSources`, and patches the workspaces' `origin` remote. `070-pipelines` runs the migration-run provisioner and the project enrollment that mirror per-run and Sonar credentials into `wksp-ai-developer`.
 
-**ignoreDifferences.** DevWorkspace `spec.started` (user lifecycle) and the `HOST_USERS` env, `devworkspace-config` and `scc` attributes that Dev Spaces injects; CheCluster `allowedSources.urls` and the GitLab endpoint (owned by `070-gitlab`); the two `agentic-coolstore` remotes (owned by `070-gitlab`).
+**ignoreDifferences.** DevWorkspace `spec.started` (user lifecycle) and the `HOST_USERS` env, `devworkspace-config` and `scc` attributes that Dev Spaces injects; CheCluster `allowedSources.urls` and the GitLab endpoint (owned by `070-gitlab`); the two `coolstore-inventory-service` remotes (owned by `070-gitlab`).
 
 Operations: [Stage 070 Dev Spaces](../../../../docs/OPERATIONS.md#stage-070--dev-spaces-devspaces-component). Failures: [workspace does not start](../../../../docs/TROUBLESHOOTING.md#red-hat-openshift-dev-spaces-workspace-does-not-start), [workspace tools unavailable](../../../../docs/TROUBLESHOOTING.md#stage-070-workspace-tools-or-mta-ai-are-unavailable).
 

@@ -149,7 +149,7 @@ check 'Dev Spaces Active' "oc get checluster devspaces -n openshift-devspaces -o
 check 'Dev Spaces per-workspace storage' "oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.spec.devEnvironments.storage.pvcStrategy}'" 'per-workspace'
 check 'Dev Spaces GitLab OAuth configured' "oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.spec.gitServices.gitlab[0].secretName}'" 'gitlab-oauth-config'
 for ns in wksp-ai-developer wksp-ai-admin; do
-  check "$ns standing workspace uses GitLab" "oc get devworkspace agentic-coolstore -n '$ns' -o jsonpath='{.spec.template.projects[0].git.remotes.origin}'" "https://${GITLAB_HOST}/rhoai-workloads/coolstore-inventory-service.git"
+  check "$ns standing workspace uses GitLab" "oc get devworkspace coolstore-inventory-service -n '$ns' -o jsonpath='{.spec.template.projects[0].git.remotes.origin}'" "https://${GITLAB_HOST}/rhoai-workloads/coolstore-inventory-service.git"
 done
 
 log_step 'SonarQube and internal-registry delivery'

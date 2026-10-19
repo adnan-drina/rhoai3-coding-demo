@@ -61,13 +61,13 @@ spec:
     - .spec.gitServices.gitlab[]? | select(.secretName == "gitlab-oauth-config") | .endpoint
   - group: workspace.devfile.io
     kind: DevWorkspace
-    name: agentic-coolstore
+    name: coolstore-inventory-service
     namespace: wksp-ai-developer
     jsonPointers:
     - "/spec/template/projects/0/git/remotes/origin"
   - group: workspace.devfile.io
     kind: DevWorkspace
-    name: agentic-coolstore
+    name: coolstore-inventory-service
     namespace: wksp-ai-admin
     jsonPointers:
     - "/spec/template/projects/0/git/remotes/origin"

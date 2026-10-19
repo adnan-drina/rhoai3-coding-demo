@@ -6,7 +6,7 @@ metadata:
     argocd.argoproj.io/sync-wave: '10'
   labels:
     demo.rhoai.io/stage: '110'
-  name: agentic-coolstore
+  name: coolstore-inventory-service
   namespace: wksp-ai-developer
 spec:
   contributions:
@@ -18,7 +18,7 @@ spec:
     commands:
     - exec:
         commandLine: |
-          PROJECT_DIR="/projects/agentic-coolstore"
+          PROJECT_DIR="/projects/coolstore-inventory-service"
           java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
           if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
             for candidate in \
@@ -61,7 +61,7 @@ spec:
           KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
           if curl -fsS --cacert "${KUBE_CA}"                 -H "Authorization: Bearer ${KUBE_TOKEN}"                 "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init"                 | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh                 && [ -s /tmp/init-ai-tools.sh ]; then
             chmod 700 /tmp/init-ai-tools.sh
-            /tmp/init-ai-tools.sh "${PROJECT_DIR}" "agentic-coolstore"
+            /tmp/init-ai-tools.sh "${PROJECT_DIR}" "coolstore-inventory-service"
           else
             if [ -d "${PROJECT_DIR}/.opencode" ]; then
               mkdir -p ~/.config/opencode ~/.opencode
@@ -127,7 +127,7 @@ spec:
           revision: main
         remotes:
           origin: https://gitlab.pending.invalid/rhoai-workloads/coolstore-inventory-service.git
-      name: agentic-coolstore
+      name: coolstore-inventory-service
 ---
 # Mirror for the second demo user: identical workspace in wksp-ai-admin
 # (reads the same init ConfigMap and MaaS keys from wksp-ai-developer via
@@ -140,7 +140,7 @@ metadata:
     argocd.argoproj.io/sync-wave: '10'
   labels:
     demo.rhoai.io/stage: '110'
-  name: agentic-coolstore
+  name: coolstore-inventory-service
   namespace: wksp-ai-admin
 spec:
   contributions:
@@ -152,7 +152,7 @@ spec:
     commands:
     - exec:
         commandLine: |
-          PROJECT_DIR="/projects/agentic-coolstore"
+          PROJECT_DIR="/projects/coolstore-inventory-service"
           java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
           if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
             for candidate in \
@@ -195,7 +195,7 @@ spec:
           KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
           if curl -fsS --cacert "${KUBE_CA}"                 -H "Authorization: Bearer ${KUBE_TOKEN}"                 "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init"                 | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh                 && [ -s /tmp/init-ai-tools.sh ]; then
             chmod 700 /tmp/init-ai-tools.sh
-            /tmp/init-ai-tools.sh "${PROJECT_DIR}" "agentic-coolstore"
+            /tmp/init-ai-tools.sh "${PROJECT_DIR}" "coolstore-inventory-service"
           else
             if [ -d "${PROJECT_DIR}/.opencode" ]; then
               mkdir -p ~/.config/opencode ~/.opencode
@@ -261,4 +261,4 @@ spec:
           revision: main
         remotes:
           origin: https://gitlab.pending.invalid/rhoai-workloads/coolstore-inventory-service.git
-      name: agentic-coolstore
+      name: coolstore-inventory-service

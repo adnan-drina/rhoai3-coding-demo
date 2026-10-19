@@ -132,7 +132,7 @@ def ensure_project_scanner(name, ns, project_id):
 def mount_project_scanner(name, ns, row, project_id):
     source = scanner_binding(oc('get', 'secret', 'sonarqube-credentials', '-n', ns, '-o', 'json'), name, project_id)
     if row['kind'] == 'imported-application':
-        targets = [('wksp-ai-developer', 'agentic-coolstore'), ('wksp-ai-admin', 'agentic-coolstore')]
+        targets = [('wksp-ai-developer', 'coolstore-inventory-service'), ('wksp-ai-admin', 'coolstore-inventory-service')]
     else:
         persona = {'user:default/ai-developer': 'wksp-ai-developer', 'user:default/ai-admin': 'wksp-ai-admin'}
         if row.get('requester') not in persona: raise ValueError('No approved workspace persona')

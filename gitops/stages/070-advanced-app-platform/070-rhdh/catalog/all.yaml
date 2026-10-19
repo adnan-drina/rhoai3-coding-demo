@@ -95,7 +95,7 @@ metadata:
     - url: "https://coolstore-inventory-route.placeholder.example.com/api/inventory"
       title: Deployed App (dev)
       icon: web
-    - url: "https://devspaces-inventory.placeholder.example.com/dashboard/#/ide/wksp-ai-developer/agentic-coolstore"
+    - url: "https://devspaces-inventory.placeholder.example.com/dashboard/#/ide/wksp-ai-developer/coolstore-inventory-service"
       title: Dev Spaces
       icon: catalog
     - url: "https://sonarqube.placeholder.example.com/dashboard?id=coolstore-inventory-service"

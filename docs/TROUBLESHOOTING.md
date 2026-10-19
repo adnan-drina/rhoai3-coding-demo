@@ -1153,11 +1153,11 @@ oc get backstage developer-hub -n rhdh -o yaml
 - Add narrow `ignoreDifferences` only for dynamic cluster-specific values.
 - Avoid ignoring the full Backstage spec.
 
-## Factory workspace FailedMount while agentic-coolstore is Running
+## Factory workspace FailedMount while coolstore-inventory-service is Running
 
 **Affected stage:** Stages 120 and 130 (RHDH factory DevWorkspaces)
 
-**Symptom:** The factory workspace stays `Failed` / `Starting`. Events show `FailedMount` or a multi-attach error on `claim-devworkspace`. The Stage 070 `agentic-coolstore` seat is `Running` in the same persona namespace.
+**Symptom:** The factory workspace stays `Failed` / `Starting`. Events show `FailedMount` or a multi-attach error on `claim-devworkspace`. The Stage 070 `coolstore-inventory-service` seat is `Running` in the same persona namespace.
 
 **Likely cause:** CheCluster `pvcStrategy: per-user` uses a single RWO PVC per namespace. A second workspace that inherits that default cannot attach the claim while the first is running. Factory destfiles must set `controller.devfile.io/storage-type: per-workspace`.
 
@@ -1174,7 +1174,7 @@ oc describe devworkspace <factory-workspace> -n wksp-ai-developer | tail -40
 **Recover:**
 
 - Confirm the stamped repo `devfile.yaml` (GitOps skeleton, applied with `replace: true` at scaffold time) includes `controller.devfile.io/storage-type: per-workspace`. A destfile already published without that attribute needs a new scaffold or a destfile push plus a new factory start.
-- Do not delete `claim-devworkspace` while `agentic-coolstore` still needs it.
+- Do not delete `claim-devworkspace` while `coolstore-inventory-service` still needs it.
 - CheCluster `maxNumberOfRunningWorkspacesPerUser: 2` only allows the second seat; it does not change PVC access mode.
 
 ## Factory Creates A Suffixed Duplicate Workspace
@@ -1318,7 +1318,7 @@ measures from the lift.
 ```bash
 oc get devworkspace -A
 oc get pods -n wksp-ai-developer
-oc describe devworkspace agentic-coolstore -n wksp-ai-developer
+oc describe devworkspace coolstore-inventory-service -n wksp-ai-developer
 oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 ```
 
@@ -1782,11 +1782,11 @@ for proc in ("/proc/net/tcp","/proc/net/tcp6"):
 **Diagnose:**
 
 ```bash
-oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml \
+oc get devworkspace coolstore-inventory-service -n wksp-ai-developer -o yaml \
   | grep -E 'DEFAULT_EXTENSIONS|kilo-code'
 
 POD=$(oc get pod -n wksp-ai-developer \
-  -l controller.devfile.io/devworkspace_name=agentic-coolstore \
+  -l controller.devfile.io/devworkspace_name=coolstore-inventory-service \
   -o jsonpath='{.items[0].metadata.name}')
 
 oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
@@ -1801,7 +1801,7 @@ oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
 
 ## Kilo Code Shows The Default Catalog Instead Of MaaS Qwen3.8
 
-**Affected stage:** Stage 070 (`agentic-coolstore`)
+**Affected stage:** Stage 070 (`coolstore-inventory-service`)
 
 **Likely cause:** Two stacked defaults. Che Code Restricted Mode (Workspace Trust) leaves a VSIX installed but disabled until the user clicks Enable. After enable, Kilo 7.4 reads `kilo-code.new.model.*` from `vscode-editor-configurations` and its built-in Gateway catalog unless `~/.config/kilo/kilo.jsonc` allow-lists only `qwen38`. Machine `settings.json` alone does not suppress the first-start trust dialog; Che Code must also merge `product.json` `configurationDefaults`.
 
@@ -1816,7 +1816,7 @@ oc get configmap devspace-ai-tools-init -n wksp-ai-developer \
   -o jsonpath='{.data.init-ai-tools\.sh}' | grep -E 'enabled_providers|kilo.jsonc|qwen38'
 ```
 
-**Recover:** Sync Stage 070, then **stop and start** `agentic-coolstore` so Che Code reloads editor settings and postStart rewrites `~/.config/kilo/kilo.jsonc`. Do not click Enable on a Restricted Mode workspace as the configuration path — trust is disabled in these namespaces. The picker should show only `qwen3-8-27b`.
+**Recover:** Sync Stage 070, then **stop and start** `coolstore-inventory-service` so Che Code reloads editor settings and postStart rewrites `~/.config/kilo/kilo.jsonc`. Do not click Enable on a Restricted Mode workspace as the configuration path — trust is disabled in these namespaces. The picker should show only `qwen3-8-27b`.
 
 ## First Factory Workspace Asks To Trust Authors
 
@@ -1843,7 +1843,7 @@ oc get configmap vscode-editor-configurations -n wksp-ai-developer \
 
 ```bash
 POD=$(oc get pod -n wksp-ai-developer \
-  -l controller.devfile.io/devworkspace_name=agentic-coolstore \
+  -l controller.devfile.io/devworkspace_name=coolstore-inventory-service \
   -o jsonpath='{.items[0].metadata.name}')
 
 oc logs -n wksp-ai-developer "$POD" -c tooling-container --tail=200 \
@@ -2909,7 +2909,7 @@ project's permissions to the unrelated API to make an ambiguous query succeed.
 
 ### Stage 070 stays OutOfSync after a successful workspace sync
 
-If Argo reports only the two platform `agentic-coolstore` workspaces as
+If Argo reports only the two platform `coolstore-inventory-service` workspaces as
 OutOfSync, inspect the normalized comparison before changing ignore rules. A
 legacy repair hook removed the whole `argocd.argoproj.io/sync-options`
 annotation after GitOps applied it. The corrected hook retains the declared

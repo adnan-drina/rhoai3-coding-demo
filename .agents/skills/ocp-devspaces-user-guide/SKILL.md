@@ -8,7 +8,7 @@ metadata:
   skill-group: "OpenShift Platform"
 description: >
   Use when authoring or reviewing what runs inside Dev Spaces 3.30 workspaces
-  in this demo: the agentic-coolstore DevWorkspaces and the Developer Hub
+  in this demo: the coolstore-inventory-service DevWorkspaces and the Developer Hub
   template devfiles, factory URLs with revision and existing parameters,
   DEFAULT_EXTENSIONS and baked VSIX files, mounted Secrets and ConfigMaps
   (workspace-maas-credentials, migration-model-profiles with mount-on-start),
@@ -36,7 +36,7 @@ in the linked Dev Spaces 3.30 topics. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Standing DevWorkspace `agentic-coolstore` (`started: false`) in `wksp-ai-developer` and `wksp-ai-admin`, UDI image pinned by digest; `070-gitlab` patches its remote | `gitops/stages/070-advanced-app-platform/070-devspaces/agentic-workspace.yaml` | [Devfile in Dev Spaces][devfile] |
+| Standing DevWorkspace `coolstore-inventory-service` (`started: false`) in `wksp-ai-developer` and `wksp-ai-admin`, UDI image pinned by digest; `070-gitlab` patches its remote | `gitops/stages/070-advanced-app-platform/070-devspaces/agentic-workspace.yaml` | [Devfile in Dev Spaces][devfile] |
 | New workspaces come from Developer Hub templates as factory URLs `…#<gitlab repo>?revision=main&existing=<name>` | `gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/template.yaml` | [Start from a Git URL][fromurl], [Existing workspace name][existing] |
 | Kilo Code VSIX downloaded at postStart and loaded through `DEFAULT_EXTENSIONS`; migration workspaces load baked MTA VSIX files | `agentic-workspace.yaml`; `.../app-migration/skeleton/devfile.yaml` | [Pre-install extensions][defext], [Automate VS Code extensions][autoext] |
 | MaaS credentials: Secret `workspace-maas-credentials` mounted as env (`MAAS_API_KEY`, `MAAS_API_BASE_URL`, model id), written by the key Job | `070-devspaces/maas-api-key-provisioning.yaml` | [Mount Secrets][secrets] |
