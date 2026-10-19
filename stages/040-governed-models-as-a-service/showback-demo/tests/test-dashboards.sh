@@ -133,6 +133,8 @@ jq -e 'all(.[];
     and ([.panels.reportAudit.options.columnSettings[].name]|sort)==["policy_version","report_id","report_sha256","scope"]
     and .layouts[0].spec.display.collapse.open)
   and all(.[].layouts[].spec.items[];.x==0 and .width==24)
+  and all(.[];.panels as $panels | all(.layouts[].spec.items[];
+    (.content["$ref"]|split("/")|last) as $key | if $panels[$key].kind=="Table" then .height>=5 else true end))
   and all(.[].layouts[].spec.items; reduce .[] as $item ({end:0,valid:true};
     .valid=(.valid and $item.y>=.end) | .end=($item.y+$item.height))|.valid)
   and all(.[].panels[]|select(.kind=="Table");

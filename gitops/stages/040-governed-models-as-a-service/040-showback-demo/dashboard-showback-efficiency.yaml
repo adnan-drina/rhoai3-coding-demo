@@ -807,11 +807,11 @@ spec:
         - x: 0
           y: 0
           width: 24
-          height: 3
+          height: 5
           content:
             "$ref": "#/spec/panels/reportIdentity"
         - x: 0
-          y: 3
+          y: 5
           width: 24
           height: 5
           content:
@@ -894,6 +894,6 @@ spec:
         - x: 0
           y: 10
           width: 24
-          height: 4
+          height: 5
           content:
             "$ref": "#/spec/panels/reportAudit"

@@ -1013,11 +1013,11 @@ spec:
         - x: 0
           y: 0
           width: 24
-          height: 3
+          height: 5
           content:
             "$ref": "#/spec/panels/reportIdentity"
         - x: 0
-          y: 3
+          y: 5
           width: 24
           height: 5
           content:
@@ -1050,7 +1050,7 @@ spec:
         - x: 0
           y: 22
           width: 24
-          height: 3
+          height: 5
           content:
             "$ref": "#/spec/panels/completeness"
     - kind: Grid
@@ -1100,24 +1100,24 @@ spec:
         - x: 0
           y: 0
           width: 24
-          height: 4
+          height: 5
           content:
             "$ref": "#/spec/panels/priceBasis"
         - x: 0
-          y: 4
+          y: 5
           width: 24
           height: 5
           content:
             "$ref": "#/spec/panels/rateSources"
         - x: 0
-          y: 9
+          y: 10
           width: 24
           height: 8
           content:
             "$ref": "#/spec/panels/exclusions"
         - x: 0
-          y: 17
+          y: 18
           width: 24
-          height: 4
+          height: 5
           content:
             "$ref": "#/spec/panels/reportAudit"
