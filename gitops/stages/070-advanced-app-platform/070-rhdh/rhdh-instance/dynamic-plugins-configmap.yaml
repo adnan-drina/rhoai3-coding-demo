@@ -49,3 +49,18 @@ data:
         disabled: false
       - package: oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-community-plugin-argocd@sha256:a359632458c901e6b22019b161c45ec3d45398f74ad0c4dccfdf46974b9152a7
         disabled: false
+        # The package ships this mount only as an example (app-config.dynamic.yaml); without it no CD tab appears.
+        pluginConfig:
+          dynamicPlugins:
+            frontend:
+              backstage-community.plugin-argocd:
+                mountPoints:
+                  - mountPoint: entity.page.cd/cards
+                    importName: ArgocdPage
+                    config:
+                      layout:
+                        gridColumn: 1 / -1
+                      if:
+                        anyOf:
+                          - hasAnnotation: argocd/app-name
+                          - hasAnnotation: argocd/app-selector

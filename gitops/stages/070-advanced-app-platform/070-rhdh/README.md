@@ -37,7 +37,7 @@ The `rhdh-operator` and `rhdh` namespaces come from `070-namespaces`.
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | ConfigMap | `app-config-rhdh` | `rhdh` | App config: OIDC provider, RBAC, GitLab integration and discovery, Kubernetes and Argo CD plugins, file catalog location, local TechDocs, global header (wave 5) |
-| ConfigMap | `dynamic-plugins-rhdh` | `rhdh` | Enables GitLab catalog and scaffolder modules, RBAC, Kubernetes, Topology; digest-pinned OCI Tekton and Argo CD plugins (wave 5) |
+| ConfigMap | `dynamic-plugins-rhdh` | `rhdh` | Enables GitLab catalog and scaffolder modules, RBAC, Kubernetes, Topology; digest-pinned OCI Tekton and Argo CD plugins, mounted as the CI and CD entity tabs (wave 5) |
 | ConfigMap | `rhdh-rbac-policies` | `rhdh` | `rbac-policies.csv`: `ai-developer` gets `role:default/developer` (catalog read, template use, task create/read, Kubernetes read; catalog entity/location create and delete denied) (wave 5) |
 | Secret | `rhdh-secrets` | `rhdh` | Placeholder `data` only; the configure hook writes runtime values (wave 5, `ServerSideApply=true`) |
 | ConfigMap | `catalog-runtime-rhdh` | `rhdh` | Sync hook (wave 5, `BeforeHookCreation`): placeholder catalog that the generator replaces |
