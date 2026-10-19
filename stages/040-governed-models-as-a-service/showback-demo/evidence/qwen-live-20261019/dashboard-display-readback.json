@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "observed",
+  "verified_at": "2026-10-19T09:29:53Z",
+  "target_source_sha": "e7c4fafe1909fc418f5d9684d97f7a2fbf1ae55b",
+  "application_synced_healthy": true,
+  "manual_sync_preserved": true,
+  "publisher_ready_replicas": 1,
+  "publisher_pod_uid_unchanged": true,
+  "publisher_restarts": 0,
+  "dashboards": [
+    {
+      "dashboard": "dashboard-7-showback-bill-admin",
+      "cr_spec_equals_source": true,
+      "api_spec_equals_source_after_empty_variable_normalization": true,
+      "stat_charts_with_legend_on": 14
+    },
+    {
+      "dashboard": "dashboard-8-showback-usage-admin",
+      "cr_spec_equals_source": true,
+      "api_spec_equals_source_after_empty_variable_normalization": true,
+      "stat_charts_with_legend_on": 13
+    },
+    {
+      "dashboard": "dashboard-9-showback-efficiency-admin",
+      "cr_spec_equals_source": true,
+      "api_spec_equals_source_after_empty_variable_normalization": true,
+      "stat_charts_with_legend_on": 9
+    }
+  ],
+  "total_stat_charts_with_legend_on": 36,
+  "browser_test_by_this_check": false,
+  "inference_requests_by_verifier": 0,
+  "cluster_mutations_by_verifier": 0,
+  "readback_authentication": "Existing OpenShift CLI administrator bearer; genuine ai-admin browser behavior is verified separately by the lead",
+  "api_read_path": "External RHOAI gateway -> Perses project dashboard API",
+  "regression_validation": [
+    {
+      "check": "showback-demo/tests/test-dashboards.sh",
+      "result": "passed",
+      "observer": "independent validator"
+    },
+    {
+      "check": "showback-demo/generate-dashboards.sh --check",
+      "result": "passed",
+      "observer": "independent validator"
+    },
+    {
+      "check": "git diff --check",
+      "result": "passed",
+      "observer": "independent validator"
+    },
+    {
+      "check": "Exactly36 StatChart legend options; removing legendMode restores previous definitions, including all43 query expressions",
+      "result": "passed",
+      "observer": "independent validator"
+    },
+    {
+      "check": "scripts/validate-stage-flow.sh",
+      "result": "passed",
+      "observer": "lead report; not repeated by independent validator"
+    }
+  ],
+  "prior_query_evidence": "dashboard-proxy-readback.json",
+  "query_range_rerun_after_deployment": false,
+  "limitations": [
+    "This readback verifies source reconciliation and API ingestion; browser rendering is a separate check",
+    "The43-query proxy proof was retained unchanged because the correction changes display options only",
+    "The selected financial report remains an allocated-capacity estimate; this display check does not qualify AWS billing"
+  ]
+}
