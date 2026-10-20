@@ -18,7 +18,7 @@ metadata:
     opendatahub.io/genai-asset: "true"
   annotations:
     openshift.io/display-name: Mistral Small 4 119B NVFP4
-    openshift.io/description: Unqualified single-RTX candidate; stopped pending kernel and memory qualification
+    openshift.io/description: Marketing dedicated model for the showback demo; Git keeps it stopped, scale to one replica on a second RTX PRO 6000 worker
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
     opendatahub.io/hardware-profile-name: gpu-rtxpro6000

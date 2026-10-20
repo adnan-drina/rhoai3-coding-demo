@@ -4,15 +4,12 @@ Open limitations and the evidence needed to understand them. Completed narrative
 
 ## Three-team showback demo (Stage 040)
 
-The [showback package](stages/040-governed-models-as-a-service/showback-demo/README.md) runs a live Qwen slice (Engineering and Support, $0.34 reconciled six-minute run), eleven financial dashboards and continuous external metering through the optional `040-showback-demo` component. Dated qualification records, the former plan and the agent handoff are in Git history at `ea5ad451`.
+The [showback demo](stages/040-governed-models-as-a-service/showback-demo/README.md) maps three teams to three offerings (shared Qwen, dedicated Mistral, external models) with live dashboards. The retired report pipeline and its qualification records are in Git history at `87aaf9c1`.
 
-- [ ] Accept continuous external metering live: bounded genuine-user JSON and SSE requests to an external model must match the ledger rows and the External dashboard; check replay handling and revoke the test key.
-- [ ] Qualify Mistral Small 4 119B NVFP4 on a second RTX PRO 6000 worker (first token, JSON/SSE, memory headroom, cold load) and decide on Qwen FP8 versus the current NVFP4 build.
-- [ ] Add the Marketing identity, enable all three subscription pairs and prove four allowed paths and two 403 denials.
-- [ ] Run the full 12-minute three-team busy/quiet/idle workload, a separate quota probe, and close, publish and archive the report.
-- [ ] Calibrate token allowances and replace the $14,200 placeholder with a derived figure for the talk; keep the bounded run and any quarterly projection labelled separately.
-- [ ] Supply real monthly tariffs and inputs for the three service offers, or keep their views labelled synthetic.
-- [ ] Rebuildability: the metering backend image exists only in the cluster registry; document or automate the rebuild for a fresh cluster.
+- [ ] Deploy the reworked component, mint Marketing's key and run all three load profiles; check every dashboard panel in the browser.
+- [ ] Qualify Mistral Small 4 119B NVFP4 on one RTX PRO 6000 (first token, memory headroom, cold load).
+- [ ] Accept external metering live: load on an external model must match the ledger and the External dashboard.
+- [ ] Rebuildability: the metering backend image exists only in the cluster registry; rebuild it with `showback-demo/metering-backend/` on a fresh cluster.
 
 ## Stage 070 shared base SSO
 

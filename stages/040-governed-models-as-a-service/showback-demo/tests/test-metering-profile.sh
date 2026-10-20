@@ -7,9 +7,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 fail() { printf 'Metering profile test: %s\n' "$*" >&2; exit 1; }
-cmp -s "$SCRIPT_DIR/../native/provider-pricing.json" \
-    "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo/metering/provider-pricing.json" ||
-    fail 'Runtime and reviewed pricing catalogs differ'
 source_profile="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo/metering/profile.yaml"
 ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' < "$source_profile" |
     jq -e '.[0].data as $d | ($d["baseline.json"]|fromjson) as $b | ($d["profile.json"]|fromjson) as $p |

@@ -8,7 +8,7 @@
 # environment: never Git, arguments or output.
 # RHOAI_STAGE040_ROTATE_PROVIDER_SECRET=true replaces the OpenAI provider key in place from OPENAI_API_KEY.
 # --component 040-showback-demo reconciles only the optional showback bundle, with shared prerequisites read-only.
-# Publisher and external-metering state come from reviewed source. No keys or models are provisioned by this branch.
+# Team access, offer dashboards, the stopped Mistral model and external metering come from source; no keys are minted.
 # Usage: stages/040-governed-models-as-a-service/deploy.sh [--revision REF] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -87,7 +87,7 @@ if [[ "$COMPONENT" == 040-showback-demo ]]; then
     revision=$("$STAGE_APPS" select 040 --ref "$ref" --repo-url "$GIT_REPO_URL")
     "$STAGE_APPS" preflight 040 --repo-url "$GIT_REPO_URL" --app "$COMPONENT"
     # Shared namespaces and APIs remain owned by their existing platform components.
-    for ns in models-as-a-service redhat-ods-monitoring redhat-ai-gateway-infra; do
+    for ns in models-as-a-service redhat-ods-monitoring internal-models; do
         oc --request-timeout=10s get namespace "$ns" -o json | jq -e '.status.phase == "Active"' >/dev/null || {
             log_error "Showback requires the existing active namespace $ns"; exit 1;
         }
@@ -96,21 +96,14 @@ if [[ "$COMPONENT" == 040-showback-demo ]]; then
         persesdashboards.perses.dev servicemonitors.monitoring.coreos.com -o json |
         jq -e '.items | length == 4 and all(.[]; any(.status.conditions[]?; .type == "Established" and .status == "True"))' \
         >/dev/null || { log_error "Showback requires established MaaS, Perses and ServiceMonitor APIs"; exit 1; }
-    # Native edit aggregates the installed MLflow read/write roles; the write operand alone omits reads.
-    oc --request-timeout=10s get clusterrole edit -o json |
-        jq -e '.rules as $rules | all(["get","list","create","update","delete"][]; . as $verb |
-            any($rules[]; (.apiGroups | index("mlflow.kubeflow.org")) != null
-                and (.resources | index("experiments")) != null and (.verbs | index($verb)) != null))' >/dev/null || {
-        log_error "Showback archive access requires native edit with aggregated MLflow experiment read/write permissions"; exit 1;
-    }
     showback_metering_profile preflight
-    # Publisher/report activation is explicit reviewed source; referenced models retain their existing owner.
+    # Team access, dashboards and the stopped Mistral model come from source; Qwen keeps its existing owner.
     "$STAGE_APPS" apply 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL"
     "$STAGE_APPS" sync 040 --app "$COMPONENT"
     "$STAGE_APPS" wait 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
     showback_metering_profile activate
     RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION="$revision" "$SCRIPT_DIR/validate.sh" --component "$COMPONENT"
-    log_success "Showback source and publisher state reconciled; runtime acceptance requires separate inference, scraping and archive evidence."
+    log_success "Showback component reconciled; generate demo load with showback-demo/generate-load.sh to populate the dashboards."
     exit 0
 fi
 

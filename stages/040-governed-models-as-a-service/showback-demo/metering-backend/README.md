@@ -57,13 +57,8 @@ Containerfile, source archive and image metadata bind the local artifact to its
 inputs. Containerfile bases and Go 1.26.0 remain pinned to the original build.
 Compiler parallelism is bounded to two workers for the local emulated build.
 
-Run [the local probe](../test-backend-local.sh) against a disposable backend and
-PostgreSQL on an internal local network, with the backend published only on
-loopback and `MONTHLY_TOKEN_QUOTA=1000`. It temporarily stops/restarts the named
-database and restarts the backend. Run the patched Go tests with both
-`DATABASE_URL` and `PREFLIGHT_DSN` pointing to that disposable migrated database;
-database integration tests need permission to create/drop their temporary databases.
-Remove owned containers/network/database volume and restore the original VM state.
+The local runtime probe (`native/test-backend-local.sh`) and the Go test procedure used to qualify this backend
+are in Git history at `ea5ad451`; rerun them after changing a patch.
 
 ## Remaining limits and rollback
 

@@ -1,6 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Opt-in Qwen-only qualification bundle with a reviewed report snapshot. Model drafts are excluded.
+# Three-team showback demo: team access, the dedicated Mistral model, live offer dashboards and external metering.
 resources:
   - team-engineering-subscription.yaml
   - team-engineering-auth-policy.yaml
@@ -8,20 +8,8 @@ resources:
   - team-marketing-auth-policy.yaml
   - team-support-subscription.yaml
   - team-support-auth-policy.yaml
-  - archive-namespace.yaml
-  - archive-rolebinding.yaml
-  - dashboard-showback-bill.yaml
-  - dashboard-showback-usage.yaml
-  - dashboard-showback-efficiency.yaml
+  - mistral
   - dashboard-offer-external.yaml
   - dashboard-offer-dedicated.yaml
   - dashboard-offer-shared.yaml
-  - publisher-httpd.yaml
-  - publisher-report.yaml
-  - publisher-deployment.yaml
-  - publisher-service.yaml
-  - publisher-servicemonitor.yaml
-  - service-views
   - metering
-components:
-  - components/qwen-only

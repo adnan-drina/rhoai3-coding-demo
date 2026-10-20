@@ -12,10 +12,9 @@
 #   RHOAI_STAGE040_TEST_EXTERNAL=false (skip external models: result pending), RHOAI_STAGE040_SUBSCRIPTION,
 #   RHOAI_STAGE040_CA_BUNDLE (extra CA file), RHOAI_STAGE040_EVIDENCE_PATH (new file under /private/tmp).
 # Exit codes: 0 pass, 1 fail, 2 pending (functional only). API contract: shipped MaaS 563117f1/openapi3.yaml.
-# --component 040-showback-demo checks the installed optional component's source ownership and publisher state:
-# stopped with no report, or one Ready replica serving a selected source report. It does not prove model inference,
-# policy enforcement, report scraping or native metering delivery. When enabled in source, it also checks metering
-# workloads, retained storage and the loaded IPP profile; event receipt and cost accuracy require separate probes.
+# --component 040-showback-demo checks the installed optional component: three team subscriptions and policies,
+# the Mistral model (replicas are a demo-time choice), three offer dashboards, metering workloads, retained storage
+# and the loaded IPP profile. Inference and event delivery are exercised by showback-demo/generate-load.sh.
 # Usage: stages/040-governed-models-as-a-service/validate.sh [--readiness|--functional] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,42 +70,29 @@ SHOWBACK_DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as
     ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)')
 # Source reconciliation is separate from model inference, MaaS access enforcement and actual report scraping.
 showback_source_state() {
-    local d kind ns name group live args tracking publisher_replicas profile expected current
+    local d kind ns name group live args tracking profile expected current
     "$STAGE_APPS" status 040 --app 040-showback-demo \
         ${RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION:+--revision "$RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION"} \
         >/dev/null 2>&1 || { echo "showback Application not Synced and Healthy at its reviewed revision"; return; }
     jq -e '[.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $metering |
-        [.[] | select(.metadata.labels["app.kubernetes.io/component"] != "external-metering")] as $base |
-        ($base | [.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort) as $teams |
-        ($base | [.[] | select(.kind == "Deployment")]) as $publishers |
-        [.[] | select(.kind == "ConfigMap" and .metadata.name == "showback-selected-report")] as $reports |
-        (($base | length) == 22 and $teams == ["team-engineering","team-support"]
-            and all(.[] | select(.kind == "MaaSSubscription" or .kind == "MaaSAuthPolicy");
-                [.spec.modelRefs[].name] == ["qwen3-8-27b"]) or
-         (($base | length) == 24 and $teams == ["team-engineering","team-marketing","team-support"]))
-        and all(.[]; .kind != "Job" and .kind != "CronJob" and .kind != "LLMInferenceService"
-        and .kind != "HorizontalPodAutoscaler" and .kind != "Config" and .kind != "LokiStack")
-        and (all($metering[]; (.metadata.name | startswith("showback-external-metering"))
+        ([.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort)
+            == ["team-engineering","team-marketing","team-support"]
+        and ([.[] | select(.kind == "MaaSAuthPolicy") | .metadata.name] | sort)
+            == ["team-engineering","team-marketing","team-support"]
+        and ([.[] | select(.kind == "LLMInferenceService") | .metadata.name] == ["mistral-small4-119b"])
+        and ([.[] | select(.kind == "PersesDashboard")] | length) == 3
+        and all(.[]; .kind != "Job" and .kind != "CronJob" and .kind != "HorizontalPodAutoscaler"
+            and .kind != "Config" and .kind != "LokiStack")
+        and ([.[] | select(.kind == "Deployment") | .metadata.name] | sort)
+            == ["showback-external-metering","showback-external-metering-db"]
+        and all($metering[]; (.metadata.name | startswith("showback-external-metering"))
             and (.kind | IN("ConfigMap","Secret","Deployment","Service","PersistentVolumeClaim",
                 "ServiceMonitor","NetworkPolicy","ImageStream")))
-          and (($metering | length) == 0 or
-            (($metering | [.[] | select(.kind == "Deployment") | .metadata.name] | sort)
-                == ["showback-external-metering","showback-external-metering-db"]
-              and any($metering[]; .kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile"
-                and (.data.enabled | IN("true","false")))
-              and any($metering[]; .kind == "PersistentVolumeClaim"
-                and .metadata.annotations["argocd.argoproj.io/sync-options"] == "Prune=false,Delete=false"))))
-        and ($publishers | length) == 1 and $publishers[0].metadata.name == "showback-report-publisher"
-        and ($reports | length) == 1
-        and (($publishers[0].spec.replicas == 0 and $reports[0].data == {}) or
-            ($publishers[0].spec.replicas == 1 and ($reports[0].data | keys) == ["metrics.prom"]
-                and ($reports[0].data["metrics.prom"] | type == "string" and length > 0
-                    and test("(?m)^showback_selected_report_info\\{"))
-                and ($reports[0].metadata.annotations["showback.demo.rhoai.io/report-sha256"] |
-                    type == "string" and test("^[a-f0-9]{64}$"))))' \
-        <<<"$SHOWBACK_DESIRED" >/dev/null || { echo "showback source has an invalid bundle or publisher/report state"; return; }
-    publisher_replicas=$(jq -r '.[] | select(.kind == "Deployment" and .metadata.name == "showback-report-publisher")
-        | .spec.replicas' <<<"$SHOWBACK_DESIRED")
+        and any($metering[]; .kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile"
+            and (.data.enabled | IN("true","false")))
+        and any($metering[]; .kind == "PersistentVolumeClaim"
+            and .metadata.annotations["argocd.argoproj.io/sync-options"] == "Prune=false,Delete=false")' \
+        <<<"$SHOWBACK_DESIRED" >/dev/null || { echo "showback source has an invalid bundle"; return; }
     while IFS= read -r d; do
         kind=$(jq -r '.kind' <<<"$d"); ns=$(jq -r '.metadata.namespace // ""' <<<"$d")
         name=$(jq -r '.metadata.name' <<<"$d")
@@ -119,6 +105,7 @@ showback_source_state() {
             and (.metadata.ownerReferences // [] | length) == 0
             and .metadata.annotations["argocd.argoproj.io/tracking-id"] == $t
             and covers($d | if .kind == "ConfigMap" and .data == {} then del(.data)
+                elif .kind == "LLMInferenceService" then del(.spec.replicas)
                 elif .kind == "Secret" and .stringData != null
                     then .data = ((.data // {}) + (.stringData | map_values(@base64))) | del(.stringData)
                 else . end)
@@ -126,16 +113,10 @@ showback_source_state() {
                 if $d.spec.replicas == 0 then .spec.replicas == 0 and (.status.replicas // 0) == 0
                     and (.status.readyReplicas // 0) == 0 and (.status.availableReplicas // 0) == 0
                 else workload and ready_cond("Available") end else true end)
-            and (if .kind == "PersistentVolumeClaim" then .status.phase == "Bound" else true end)
-            and (if .kind == "ConfigMap" and .metadata.name == "showback-selected-report"
-                then (.data // {}) == $d.data else true end)' <<<"$live" >/dev/null || {
-                    echo "$kind $name source, ownership or publisher state differs"; return;
+            and (if .kind == "PersistentVolumeClaim" then .status.phase == "Bound" else true end)' <<<"$live" >/dev/null || {
+                    echo "$kind $name source, ownership or readiness differs"; return;
                 }
     done < <(jq -c '.[]' <<<"$SHOWBACK_DESIRED")
-    if [[ "$publisher_replicas" == 0 ]]; then
-        read_json pods -n redhat-ods-monitoring -l app.kubernetes.io/name=showback-report-publisher |
-            jq -e '.items | length == 0' >/dev/null || { echo "publisher Pods still exist"; return; }
-    fi
     profile=$(jq -c '.[] | select(.kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile")' \
         <<<"$SHOWBACK_DESIRED")
     if [[ -n "$profile" ]]; then
@@ -159,8 +140,8 @@ showback_source_state() {
     echo yes
 }
 if [[ "$COMPONENT" == 040-showback-demo ]]; then
-    check "Optional showback Application owns the reviewed bundle and matches its publisher/report source state" showback_source_state yes
-    echo "Scope: source reconciliation, workload/storage readiness and configured metering profile; inference, scraping and event delivery need separate evidence."
+    check "Optional showback Application owns the reviewed team, dashboard, model and metering bundle" showback_source_state yes
+    echo "Scope: source reconciliation, workload/storage readiness and configured metering profile; demo load exercises inference and metering."
     validation_summary
     exit $?
 fi
@@ -506,7 +487,7 @@ showback_application=$(oc --request-timeout="$TIMEOUT" get applications.argoproj
         log_error "Cannot determine whether the optional showback Application is installed"; exit 1;
     }
 if [[ -n "$showback_application" ]]; then
-    check "Installed optional showback bundle matches its owned publisher/report source state" showback_source_state yes
+    check "Installed optional showback bundle matches its source" showback_source_state yes
 fi
 check "Studio catalog entries current, or deferred until Stage 060 deploys the MCP servers" studio_catalog yes
 check "MaaS gateway AdminNetworkPolicy boundary: needed destinations open, others blocked" gateway_boundary yes

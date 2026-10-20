@@ -21,10 +21,20 @@ spec:
     tokenRateLimits:
     - limit: 300000
       window: 1h
-  - name: mistral-small4-119b
-    namespace: internal-models
+  - name: gpt-6-luna
+    namespace: external-models
     tokenRateLimits:
-    - limit: 300000
+    - limit: 200000
+      window: 1h
+  - name: claude-sonnet-5-5
+    namespace: external-models
+    tokenRateLimits:
+    - limit: 200000
+      window: 1h
+  - name: nemotron-3-ultra-550b-a55b
+    namespace: external-models
+    tokenRateLimits:
+    - limit: 200000
       window: 1h
   priority: 100
   tokenMetadata:

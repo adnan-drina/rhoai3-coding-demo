@@ -1,6 +1,6 @@
 # Stage 040: Governed Models-as-a-Service
 
-The optional `040-showback-demo` component adds a three-team showback demo on top of this stage: team subscriptions, a reconciled cost allocation, financial dashboards and continuous metering of external-model usage. See [Usage And Showback](#usage-and-showback).
+The optional `040-showback-demo` component adds a three-team showback demo on top of this stage: team subscriptions, a dedicated Mistral model, live offer dashboards and metering of external-model usage. See [Usage And Showback](#usage-and-showback).
 
 ## Why This Matters
 
@@ -71,12 +71,13 @@ GenAI Studio exposes the Technology Preview tracing capability. Enable tracing e
 
 ## Usage And Showback
 
-The optional [showback-demo package](showback-demo/README.md) answers "What did AI cost us?" for teams sharing private models. Its [040-showback-demo component](../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/README.md) is deployed only on request with `deploy.sh --component 040-showback-demo`; the default deployment does not select it.
+The optional [showback demo](showback-demo/README.md) answers "What did AI cost us?" with three teams and three service offerings. Its [040-showback-demo component](../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/README.md) is deployed only on request with `deploy.sh --component 040-showback-demo`; the default deployment does not select it.
 
-- **Live today:** Engineering and Support use Qwen 3.8 through their own subscriptions. A bounded six-minute run on 2026-10-19 allocated **$0.34: Engineering $0.15, Support $0.07, platform idle $0.12** at the public `g7e.2xlarge` rate, reconciled to the cent. Costs, Usage and Efficiency dashboards show the selected report.
-- **External models:** the MaaS gateway's metering plugin records each external-model response in a PostgreSQL ledger with a frozen list-price estimate; the External offer dashboard shows current-month usage by user. Live acceptance against real requests is still open.
-- **Service offers:** shell tools price external pass-through, dedicated and shared private offers per month. Real tariffs are not set; the Dedicated and Shared views show Unknown where inputs are missing.
-- **Planned:** Mistral Small 4 on a second RTX PRO 6000 worker for Marketing and Support, and the Qwen FP8 build.
+- **Shared private:** Engineering and Support use Qwen 3.8 and pay a published tariff per million tokens; the platform pays for the GPU worker and carries the difference.
+- **Dedicated private:** Marketing owns Mistral Small 4 119B on a second RTX PRO 6000 worker and pays its full running cost, busy or idle.
+- **External:** Support calls GPT-6 Luna, Claude Sonnet 5.5 and Nemotron; the gateway's metering plugin records each response at the provider's list price.
+
+`showback-demo/team-keys.sh` mints each team user's own key and `showback-demo/generate-load.sh --offer shared|dedicated|external` drives load; the three **Offer** tabs on the Observability page compute usage and cost live for the selected time range.
 
 **Serving tuning (2026-10-13).** Qwen 3.8 runs on one NVIDIA RTX PRO 6000 with the model card's MTP speculative decoding (`mtp` with three draft tokens), `--max-num-batched-tokens=16384`, `--max-num-seqs=16` and `--async-scheduling`. MTP shortens the time between tokens at a small cost in time to first token; the [serving study](../../docs/OPERATIONS.md#model-serving-study-and-default-model-2026-10-13) has the measurements. With one GPU worker running, a serving change restarts through `replicas` 0 then 1, because a rolling update cannot place the new pod while the old one holds the node's only GPU.
 

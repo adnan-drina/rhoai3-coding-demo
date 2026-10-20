@@ -18,8 +18,12 @@ spec:
   modelRefs:
   - name: qwen3-8-27b
     namespace: internal-models
-  - name: mistral-small4-119b
-    namespace: internal-models
+  - name: gpt-6-luna
+    namespace: external-models
+  - name: claude-sonnet-5-5
+    namespace: external-models
+  - name: nemotron-3-ultra-550b-a55b
+    namespace: external-models
   meteringMetadata:
     organizationId: rhoai3-coding-demo
     costCenter: support

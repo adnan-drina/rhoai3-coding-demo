@@ -4,7 +4,7 @@
 # Usage: publish-local.sh --build BUILD_EVIDENCE_DIR --connection LOCAL_PODMAN_CONNECTION
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 build='' connection=''
 while (( $# )); do
