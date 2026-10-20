@@ -64,7 +64,8 @@ worker() {
     while (( $(date +%s) < deadline )); do
         prompt=${list[RANDOM % ${#list[@]}]}
         jq -n --arg m "$model" --arg p "$prompt" --argjson n "$max_tokens" --argjson qwen "$([[ "$model" == *qwen* ]] && echo true || echo false)" \
-            '{model: $m, max_tokens: $n, temperature: 0.7, messages: [{role: "user", content: $p}]}
+            '{model: $m, messages: [{role: "user", content: $p}]}
+             + (if ($m | startswith("gpt-")) then {max_completion_tokens: $n} else {max_tokens: $n, temperature: 0.7} end)
              + (if $qwen then {chat_template_kwargs: {enable_thinking: false}} else {} end)' > "$work/$id.json"
         code=$(printf 'header = "Authorization: Bearer %s"\n' "$(cat "$STATE/$team.key")" |
             curl --config - --silent --connect-timeout 10 --max-time 120 "${tls[@]}" \
