@@ -6,16 +6,18 @@
 # Each team runs CONCURRENCY parallel request loops until MINUTES have passed, then prints a token summary.
 # --pause SECONDS or MIN-MAX adds think time between a loop's requests (random within the range), like a person reading
 # each answer before the next question.
-# Usage: generate-load.sh --offer shared|dedicated|external [--minutes 5] [--concurrency 2] [--max-tokens 256] [--model NAME] [--pause SECONDS|MIN-MAX] [--insecure]
+# --team limits a run to one team of the offering, so teams can run with different pacing.
+# Usage: generate-load.sh --offer shared|dedicated|external [--team NAME] [--minutes 5] [--concurrency 2] [--max-tokens 256] [--model NAME] [--pause SECONDS|MIN-MAX] [--insecure]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-offer='' minutes=5 concurrency=2 max_tokens=256 external_model=gpt-6-luna pause=0 insecure=false
+offer='' team_filter='' minutes=5 concurrency=2 max_tokens=256 external_model=gpt-6-luna pause=0 insecure=false
 fail() { log_error "$*"; exit 1; }
 while (($#)); do
     case "$1" in
         --offer) offer=${2:?}; shift 2 ;;
+        --team) team_filter=${2:?}; shift 2 ;;
         --minutes) minutes=${2:?}; shift 2 ;;
         --concurrency) concurrency=${2:?}; shift 2 ;;
         --max-tokens) max_tokens=${2:?}; shift 2 ;;
@@ -38,6 +40,12 @@ case "$offer" in
     external) runs=("support $external_model") ;;
     *) fail '--offer must be shared, dedicated or external' ;;
 esac
+if [[ -n "$team_filter" ]]; then
+    selected=()
+    for run in "${runs[@]}"; do [[ "${run%% *}" != "$team_filter" ]] || selected+=("$run"); done
+    (( ${#selected[@]} )) || fail "Team $team_filter does not use the $offer offering"
+    runs=("${selected[@]}")
+fi
 STATE=${SHOWBACK_STATE_DIR:-$HOME/.config/rhoai3-showback}
 [[ -s "$STATE/gateway-url" ]] || fail "No gateway URL in $STATE; run team-keys.sh first"
 URL="$(cat "$STATE/gateway-url")/v1/chat/completions"
