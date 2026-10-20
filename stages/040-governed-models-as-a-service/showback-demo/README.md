@@ -1,89 +1,82 @@
-# MaaS service offers and three-team showback demo
+# Showback demo: three teams, three service offerings
 
-This package implements the question “What did AI cost us this quarter?” using two shared private models, governed team identities and an explicit allocation policy. **Implemented and tested offline; not deployed or qualified on the live models.** All candidate manifests are detached from the active GitOps applications. The existing `../showback/` platform utilities remain unchanged.
+This demo answers "What did AI cost us?" on a governed MaaS platform. Three teams consume AI through three service offerings, each priced differently, and three live dashboards show usage and cost as load runs.
 
-The package also implements **offline monthly accounting for three service offers**: external provider pass-through, dedicated private managed capacity and shared private inference priced per token. Native Loki showback and external-metering integration inputs are retained as inert review artifacts, with a captured-event importer; they are not enabled or deployed. The [plan](PLAN.md) distinguishes implemented source from native/downstream qualification and remaining live work. The bounded allocation policy and stopped state below are unchanged.
-
-## Service offers
-
-| Offer | Consumer charge | Idle and recovery policy |
-|---|---|---|
-| External provider | Applicable input/output/cache/tool rates, plus separately disclosed fees and credits | Provider invoice differences remain visible; platform-owned retries are not hidden in user charges. Missing rates or usage stay unknown. |
-| Dedicated private | Full evidenced capacity/operations cost, or an explicit fixed quote | Sponsor pays for availability even with zero use; quote versus cost variance remains visible. |
-| Shared private | Prospective input/output tariffs; optional reservation fees and capped included-use credits | Forecast idle is included in price. Unexpected shortfall stays visible to the platform; subsidy and reservation revenue are counted once. |
-
-`offers/service-report.sh` produces versioned JSON/CSV statements for UTC calendar months, keeping costs, charges and recovery separate. Its editable `month.example.json` is intentionally unpriced and incomplete; fixture prices are synthetic and cannot become observed rates. Corrections replace a prior statement through a hash-linked revision. The existing bounded allocator is a separate report mode.
-
-`native/` reuses source contracts for newer MaaS Loki showback and IPP external metering. Its renderer emits only ConfigMaps containing candidate configuration documents, never live Config/LokiStack resources or gateway hooks. The source review found incompatible upstream/downstream assumptions, including a logging flag that is not reliably an off switch and an unqualified metering backend. Matching installed schemas, artifact pins and supported integration still need review. See [native integration](native/README.md) before promotion; no product support is claimed for a linked development backend.
-
-## Scenario
-
-| Team | Workload | Access | Illustrative token allowance |
+| Team | Offering | Model | How it is priced |
 |---|---|---|---|
-| Engineering | Code reviews | Qwen3.8 27B FP8 | 700,000 Qwen tokens/hour |
-| Marketing | Campaign creation | Mistral Small 4 119B NVFP4 | 700,000 Mistral tokens/hour |
-| Support | Customer questions | Both | 300,000 tokens/hour for each model |
+| Engineering | Shared private | Qwen 3.8 27B on a platform-owned RTX PRO 6000 worker | Published tariff per million tokens; the platform carries idle capacity |
+| Support | Shared private and External | Qwen 3.8 27B; GPT-6 Luna, Claude Sonnet 5.5, Nemotron | Tariff for Qwen; provider list price per token for external models |
+| Marketing | Dedicated private | Mistral Small 4 119B on its own RTX PRO 6000 worker | Full running cost of the worker, busy or idle |
 
-Qwen's allowances implement the requested 70/30 ratio. Mistral's independently configured numbers are provisional calibration inputs. These limits reserve neither GPU throughput nor a fixed share of the bill. One user and one explicitly selected subscription represent each team; the demo does not claim pooled quotas across multiple people. The matching authorization policies restrict access to the four allowed combinations and deny the other two. These are [MaaS subscription and authorization capabilities](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service).
+The cluster resources are the optional [040-showback-demo component](../../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/README.md): team subscriptions and policies, the Mistral model (stopped in Git), the three dashboards and the external metering service.
 
-Each model is assumed to use one AWS Ohio `g7e.2xlarge` with an NVIDIA RTX PRO 6000. Qwen FP8 and Mistral fit/runtime qualification remain deployment gates. The included cost basis is the saved public price of **$3.36312 per worker-hour, retrieved 2026-10-15**. It is a compute estimate, excluding shared platform, extra storage, networking, licenses and account discounts. It is not an AWS invoice.
+## Dashboards
 
-## Accounting and observability
+Open **Observe & monitor → Dashboard** in the OpenShift AI console. All three tabs query the RHOAI monitoring datasource live; the time range picker sets the billing period.
 
-```text
-Team keys -> MaaS gateway -> Qwen / Mistral
-                 |                 |
-           Canonical counters   Model / GPU metrics
-                 |
-Request receipts + running intervals + dated rates
-                 |
-       Closed-window reconciliation
-                 |
-       Immutable allocation report
-          /                 \
- Retained evidence      Perses report gauges
-```
-
-For each model/window, allocate the full measured running cost by actual governed token shares. With complete evidence but no usage, retain **Platform — idle capacity**. With incomplete evidence, retain **Unresolved allocation**. Other consumers remain visible. The whole included bill reconciles in cents, with carry across windows and models; the quota ratio does not enter the calculation. Input/output usage is retained separately but equally weighted in the first policy. GPU utilization explains efficiency, not team ownership of GPU-seconds.
-
-Three predeclared four-minute windows demonstrate busy shared use, sparse use and fully idle models. The client uses distinct synthetic code-review, campaign and customer-question prompts. Leading scrape buffers and trailing drain time keep boundaries observable. Access and quota probes are separate runs. Missing baselines, ambiguous resources, resets or in-flight boundary work do not become fabricated zero usage. The collector requires all planned windows, including idle. The implementation conservatively leaves uncertain windows unresolved; it does not reconstruct unobserved reset epochs.
-
-## Dashboard views
-
-- **Bill allocation:** selected report identity and UTC period, price sources and exclusions, team/model allocations, platform idle, unresolved costs and exact reconciliation.
-- **Usage and governance:** allowed model matrix, configured allowances, actual consumption, receipt input/output counts, requests, errors and quota events when evidence supplies them.
-- **Model cost and efficiency:** paid instance-hours, worker rates, effective cost per million tokens, serving latency/throughput, queue depth and GPU utilization/memory. Live performance has its own time range; financial gauges retain the selected closed report's period. End-to-end request latency remains pending runtime metric qualification.
-
-Financial panels use the allocator's report, not a second cost formula. Unknown values remain absent/unknown rather than zero. The publisher starts at **zero replicas** and has an intentionally empty report selection until an operator supplies reviewed evidence. Neither metrics nor synthetic fixtures are installed automatically. Dashboard rendering, scrape integration and live metering remain unverified.
-
-The additional [service views](service-views/README.md) provide five platform dashboard candidates covering six requirements: consumption/team statements, dedicated efficiency, shared recovery, accounting completeness and workload quality/sourcing. They reuse the existing publisher and native LLM operational views. Private user/team JSON, CSV and readable statements use explicit operator-verified scopes; this offline export is not a self-service authorization service. Native self-only usage access and any team-manager delivery need live qualification before exposing financial data.
-
-`analysis/analyze.sh` evaluates explicitly accepted tasks, corrective retries, planned turns and fallbacks, including full service costs and human rework. Its sourcing scenarios include external commitments, private capacity steps and migration payback. Evidence must identify model profiles and prompt versions; sampled traces or successful HTTP responses cannot supply missing task outcomes. Application instrumentation and native MLflow drill-down remain qualification work, not automatic MaaS capture.
-
-## Package contents
-
-| Source | Purpose |
+| Tab | Shows |
 |---|---|
-| `scenario.json`, `render-access.sh` | Workloads, user/subscription mapping and generated access policies |
-| `run-workload.sh` | Preview by default; bounded HTTP only with explicit execution |
-| `collect-usage.sh`, `metering.json` | Raw range capture and offline counter/receipt reconciliation |
-| `costs.json`, `instance-intervals.example.json` | Dated prices and required lifecycle evidence |
-| `allocate.sh` | Deterministic cost allocation, JSON and CSV reports |
-| `publish-report.sh`, `generate-dashboards.sh` | Report gauges and three generated Perses dashboards |
-| `archive.sh` | Private hashed evidence bundles; optional explicit MLflow upload |
-| `archive-index.sh` | Offline monthly continuity and selection of one correction chain per period |
-| `offers/` | Three-offer monthly accounting, exact pricing, safe unpriced input template and synthetic regression cases |
-| `native/` | Pinned source contracts, inert Loki/metering integration inputs and local captured-event normalization |
-| `service-views/` | Five detached financial dashboards, snapshot metrics and private scoped statements |
-| `analysis/` | Accepted-task economics and capacity/quality-bounded sourcing advice |
-| `manifests/` | Detached access, dashboard, stopped publisher and evidence-workspace bundle |
-| `model-drafts/` | Separate stopped Mistral candidate and Qwen FP8/stop component |
-| `fixtures/`, `tests/`, `validate.sh` | Clearly labelled synthetic evidence and offline verification |
+| **Offer · Shared private** | Qwen running cost, tokens served, tariff revenue, the platform's balance (revenue minus cost) and a per-subscription table of tokens, tariff charge, token share and cost share |
+| **Offer · Dedicated private** | Marketing's charge (Mistral serving hours × worker rate), tokens, effective cost per million tokens, busy share and paid idle |
+| **Offer · External model** | Month-to-date provider spend by subscription and model from the metering ledger, unpriced requests, the price list and live token rates |
 
-See [OPERATIONS.md](OPERATIONS.md) for local commands, prerequisites, evidence formats and failure handling, and [PLAN.md](PLAN.md) for research and acceptance gates. Operator tools and tests are Bash scripts using the repository's `jq`, `curl`, Ruby YAML conversion and checksum tools. Kustomize renders the candidate manifests. Operator commands require no Python interpreter or SDK; the native vLLM container runtime is unchanged.
+Both private dashboards have a **GPU worker $/hour** field (default $3.36312, the AWS `g7e.2xlarge` on-demand price in us-east-2 saved on 2026-10-15). The shared dashboard also has the **tariff $/1M tokens** field (default $4.00). Running cost counts the minutes a model is serving; node start-up and model loading are not included.
 
-## Containment and review
+## Run the demo
 
-No active Argo CD application, stage deploy script, existing dashboard or live resource is changed by this package. There is no deployment entrypoint. Later promotion must preserve existing consumers and replica/registry delegation, qualify models, verify identity and limiter labels, and obtain deployment authorization. The `showback-reporting` workspace grant is a candidate namespaced binding for platform administrators; users and API keys remain prerequisites, not committed credentials.
+Run the commands from the repository root after the usual cluster login. Each step is safe to repeat.
 
-Private evidence is written with restricted permissions and must stay outside Git. Fixture usage is synthetic and visibly labelled; it cannot prove live attribution or a quarter's history. Local archives request 400-day retention but do not enforce storage lifecycle policy. Monthly correction/continuity indexing and supplied full-cost inputs are implemented offline; automatic collection/close, actual invoices and enforced retention remain qualification work. No new billing server or dashboard engine is deployed.
+1. **Deploy the component** (once per revision):
+
+   ```bash
+   ./stages/040-governed-models-as-a-service/deploy.sh --component 040-showback-demo --revision <full-sha>
+   ```
+
+2. **Start the models you need.** Shared needs Qwen, Dedicated needs Mistral on a second GPU worker, External needs neither.
+
+   ```bash
+   stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 2
+   oc patch llminferenceservice qwen3-8-27b -n internal-models --type=merge -p '{"spec":{"replicas":1}}'
+   oc patch llminferenceservice mistral-small4-119b -n internal-models --type=merge -p '{"spec":{"replicas":1}}'
+   ```
+
+3. **Mint team keys.** `team-keys.sh` creates the `showback-engineering`, `showback-marketing` and `showback-support` users in the `sso` realm if they are missing, signs each in through OpenShift and mints that user's own MaaS key on its team subscription. Passwords and keys are kept in `~/.config/rhoai3-showback` (override with `SHOWBACK_STATE_DIR`).
+
+   ```bash
+   stages/040-governed-models-as-a-service/showback-demo/team-keys.sh --hours 8 --insecure
+   ```
+
+4. **Generate load** for one offering at a time, or run several in parallel terminals:
+
+   ```bash
+   stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer shared --minutes 10 --insecure
+   stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer dedicated --minutes 10 --insecure
+   stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer external --minutes 5 --insecure
+   ```
+
+   `--concurrency` (default 2 loops per team) and `--max-tokens` (default 256) shape the load; `--model` picks the external model (default `gpt-6-luna`; `nemotron-3-ultra-550b-a55b` is free). Each run prints requests and tokens per team. External calls are billed by the provider.
+
+5. **Stop the models** when the demo ends: set both replicas back to 0 and run `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 0`.
+
+## External metering
+
+The MaaS gateway's `external-metering-streaming` plugin (Developer Preview in RHOAI 3.5) posts one event per external-model response to a metering service in `redhat-ods-monitoring`: a patched build of the community Noyitz backend with a PostgreSQL ledger on a retained PVC. Each event keeps the user, subscription, model, token counts and a price estimate frozen from the versioned catalog `metering/provider-pricing.json`. The service exposes month-to-date gauges for the External dashboard.
+
+- **Activation:** the targeted deployment writes the plugin into the MaaS-owned ConfigMap `openshift-ingress/payload-processing-plugins` when `metering/profile.yaml` has `enabled: 'true'`, and restarts `payload-processing` only when the profile changes. The plugin fails open, so a metering outage never blocks inference.
+- **Prices:** add a new catalog version and new `price_version` values for any change; earlier events keep their estimates.
+- **Disable:** set `enabled: 'false'`, publish and redeploy the component; keep the PVC. Reverting the Application alone does not remove the plugin.
+- **After a cluster start** the backend restarts a few times until PostgreSQL is ready.
+- **Limits:** one delivery attempt per event, and a response without usage may produce no event. Estimates are list prices, not invoices.
+- **Rebuild the image** (it exists only in the cluster registry) with [metering-backend/](metering-backend/README.md).
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `team-keys.sh` | Team users and their MaaS keys |
+| `generate-load.sh` | Demo load per offering |
+| `validate.sh` | Offline checks: script syntax, access matrix, dashboards, metering bundle |
+| `metering-backend/` | Patches, Containerfile and build/publish scripts for the metering image |
+| `tests/test-metering-profile.sh` | Mocked test of the metering activation in the Stage 040 deploy script |
+
+The earlier report pipeline (offline allocation, report publisher, MLflow archive, monthly statements and their dashboards) was retired on 2026-10-20 and is in Git history at `87aaf9c1`.

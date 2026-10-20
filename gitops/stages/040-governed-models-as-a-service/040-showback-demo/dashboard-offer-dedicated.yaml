@@ -1,0 +1,353 @@
+# Dedicated private offer (Mistral, Marketing): live sponsor charge.
+# Queries read the RHOAI datasource live; change the time range to change the period.
+---
+apiVersion: perses.dev/v1alpha2
+kind: PersesDashboard
+metadata:
+  name: dashboard-offer-dedicated-private-admin
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: dashboard-offer-dedicated-private-admin
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+spec:
+  config:
+    display:
+      name: Offer · Dedicated private
+      description: 'Mistral Small 4 dedicated to Marketing: the sponsor pays the full running cost of its GPU worker, busy or idle. The time range is the billing period.'
+    duration: 1h
+    variables:
+    - kind: TextVariable
+      spec:
+        name: worker_usd_per_hour
+        value: '3.36312'
+        constant: false
+        display:
+          name: GPU worker $/hour
+          hidden: false
+          description: AWS g7e.2xlarge (one RTX PRO 6000) on-demand list price in us-east-2, saved 2026-10-15.
+    panels:
+      contract:
+        kind: Panel
+        spec:
+          display:
+            name: How the dedicated offer is priced
+            description: ''
+          plugin:
+            kind: Markdown
+            spec:
+              text: "**Dedicated private model.** Mistral Small 4 119B runs on its own RTX PRO 6000 worker for Marketing. Marketing pays the **full running cost** of that worker for every hour it is up, busy or idle. Usage does not change the charge; it only changes the effective cost per token. A low busy share means paid idle capacity: a reason to share the model or schedule it."
+          queries: []
+      charge:
+        kind: Panel
+        spec:
+          display:
+            name: Marketing charge (USD)
+            description: Serving hours in the time range × GPU worker $/hour.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              legendMode: 'off'
+              valueFontSize: 36
+              format:
+                unit: decimal
+                decimalPlaces: 2
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (count_over_time(count(kserve_vllm:num_requests_running{model_name="mistral-small4-119b"})[$__range:1m]) / 60) * $worker_usd_per_hour
+      hours:
+        kind: Panel
+        spec:
+          display:
+            name: Serving hours
+            description: Hours the dedicated model was up in the time range.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              legendMode: 'off'
+              valueFontSize: 36
+              format:
+                unit: decimal
+                decimalPlaces: 2
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: count_over_time(count(kserve_vllm:num_requests_running{model_name="mistral-small4-119b"})[$__range:1m]) / 60
+      tokens:
+        kind: Panel
+        spec:
+          display:
+            name: Marketing tokens
+            description: Governed tokens through MaaS in the time range.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              legendMode: 'off'
+              valueFontSize: 36
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum (increase(authorized_hits_total{model="mistral-small4-119b"}[$__range]))
+      perMillion:
+        kind: Panel
+        spec:
+          display:
+            name: Effective $/1M tokens
+            description: Charge divided by tokens used.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              legendMode: 'off'
+              valueFontSize: 36
+              format:
+                unit: decimal
+                decimalPlaces: 2
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (count_over_time(count(kserve_vllm:num_requests_running{model_name="mistral-small4-119b"})[$__range:1m]) / 60) * $worker_usd_per_hour / (sum (increase(authorized_hits_total{model="mistral-small4-119b"}[$__range]))) * 1e6
+      busy:
+        kind: Panel
+        spec:
+          display:
+            name: Busy share %
+            description: Share of serving minutes with at least one request running.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              legendMode: 'off'
+              valueFontSize: 36
+              format:
+                unit: decimal
+                decimalPlaces: 1
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: 100 * count_over_time((sum(kserve_vllm:num_requests_running{model_name="mistral-small4-119b"}) > 0)[$__range:1m]) / count_over_time(count(kserve_vllm:num_requests_running{model_name="mistral-small4-119b"})[$__range:1m])
+      idle:
+        kind: Panel
+        spec:
+          display:
+            name: Paid idle (USD)
+            description: Charge for serving minutes with no request running.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              legendMode: 'off'
+              valueFontSize: 36
+              format:
+                unit: decimal
+                decimalPlaces: 2
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (count_over_time(count(kserve_vllm:num_requests_running{model_name="mistral-small4-119b"})[$__range:1m]) / 60) * $worker_usd_per_hour * (1 - count_over_time((sum(kserve_vllm:num_requests_running{model_name="mistral-small4-119b"}) > 0)[$__range:1m]) / count_over_time(count(kserve_vllm:num_requests_running{model_name="mistral-small4-119b"})[$__range:1m]))
+      throughput:
+        kind: Panel
+        spec:
+          display:
+            name: Tokens per second
+            description: Live input and output token rate on the dedicated model.
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              legend:
+                mode: list
+                position: bottom
+                values: []
+              visual:
+                areaOpacity: 0.1
+                connectNulls: false
+                display: line
+                lineWidth: 1.5
+              yAxis:
+                format:
+                  unit: decimal
+                min: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum(rate(kserve_vllm:prompt_tokens_total{model_name="mistral-small4-119b"}[$__rate_interval]))
+                  seriesNameFormat: input
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum(rate(kserve_vllm:generation_tokens_total{model_name="mistral-small4-119b"}[$__rate_interval]))
+                  seriesNameFormat: output
+      load:
+        kind: Panel
+        spec:
+          display:
+            name: Requests running and waiting
+            description: vLLM scheduler load on the dedicated worker.
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              legend:
+                mode: list
+                position: bottom
+                values: []
+              visual:
+                areaOpacity: 0.1
+                connectNulls: false
+                display: line
+                lineWidth: 1.5
+              yAxis:
+                format:
+                  unit: decimal
+                min: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum(kserve_vllm:num_requests_running{model_name="mistral-small4-119b"})
+                  seriesNameFormat: running
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum(kserve_vllm:num_requests_waiting{model_name="mistral-small4-119b"})
+                  seriesNameFormat: waiting
+    layouts:
+    - kind: Grid
+      spec:
+        display:
+          title: Dedicated private · Mistral Small 4 119B
+          collapse:
+            open: true
+        items:
+        - x: 0
+          y: 0
+          width: 24
+          height: 5
+          content:
+            "$ref": "#/spec/panels/contract"
+        - x: 0
+          y: 5
+          width: 4
+          height: 4
+          content:
+            "$ref": "#/spec/panels/charge"
+        - x: 4
+          y: 5
+          width: 4
+          height: 4
+          content:
+            "$ref": "#/spec/panels/hours"
+        - x: 8
+          y: 5
+          width: 4
+          height: 4
+          content:
+            "$ref": "#/spec/panels/tokens"
+        - x: 12
+          y: 5
+          width: 4
+          height: 4
+          content:
+            "$ref": "#/spec/panels/perMillion"
+        - x: 16
+          y: 5
+          width: 4
+          height: 4
+          content:
+            "$ref": "#/spec/panels/busy"
+        - x: 20
+          y: 5
+          width: 4
+          height: 4
+          content:
+            "$ref": "#/spec/panels/idle"
+    - kind: Grid
+      spec:
+        display:
+          title: Live load
+          collapse:
+            open: true
+        items:
+        - x: 0
+          y: 0
+          width: 12
+          height: 8
+          content:
+            "$ref": "#/spec/panels/throughput"
+        - x: 12
+          y: 0
+          width: 12
+          height: 8
+          content:
+            "$ref": "#/spec/panels/load"

@@ -1,5 +1,15 @@
 # Troubleshooting Guide
 
+## Stage 040 continuous external showback has missing usage or cost
+
+Start with the [showback demo guide](../stages/040-governed-models-as-a-service/showback-demo/README.md#external-metering) and guarded component validation. Check backend/database readiness and the `showback-external-metering` scrape before treating absent dashboard values as no usage. The scoped IPP egress NetworkPolicy is required because the existing processing policy does not permit backend port 8080. An unchanged source profile does not restart IPP; an unknown live profile is deliberately rejected rather than overwritten.
+
+If activation failed after updating the ConfigMap but before submitting the processor restart, run `oc rollout restart deployment/payload-processing -n openshift-ingress` after the cluster guard. A matching ConfigMap plus an older Ready pod is not proof that the plugin is loaded; qualify delivery with a genuine MaaS request.
+
+Compare a bounded genuine-user response with the retained native event and its frozen price row. The producer identifies NVIDIA by OpenAI protocol and its full upstream model ID; the catalog supplies the canonical provider/model mapping. An absent event cannot be reconstructed from a dashboard refresh. Native delivery is best effort, missing upstream usage may produce no event, and zero-filled cache categories do not prove zero. Keep incomplete estimates and provider invoice differences visible. PostgreSQL failure returns an unhealthy readiness check and failed scrape instead of a manufactured zero.
+
+The native IPP plugin is Developer Preview; the community backend is a demo derivative. If collection must be disabled, publish `enabled: 'false'` in the component profile and run targeted deployment before stopping the backend. Keep the ledger PVC. Restoring an older dashboard revision alone does not unload the native plugin.
+
 > **Foundation migration (2026-07-06):** stages 010-040 now import the
 > validated rhoai3-demo foundation (former 050/060 folded into 040). Sections
 > below that describe the pre-migration 010-060 implementation are historical

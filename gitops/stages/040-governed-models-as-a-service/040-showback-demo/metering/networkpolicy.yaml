@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: showback-external-metering
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: showback-external-metering
+spec:
+  podSelector:
+    matchLabels:
+      app: payload-processing
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: redhat-ods-monitoring
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: showback-external-metering
+    ports:
+    - protocol: TCP
+      port: 8080

@@ -7,23 +7,105 @@
 # records of the deployed model and its prepared alternates. Secret values travel only through pipes and jq's
 # environment: never Git, arguments or output.
 # RHOAI_STAGE040_ROTATE_PROVIDER_SECRET=true replaces the OpenAI provider key in place from OPENAI_API_KEY.
-# Usage: stages/040-governed-models-as-a-service/deploy.sh [--revision REF]
+# --component 040-showback-demo reconciles only the optional showback bundle, with shared prerequisites read-only.
+# Team access, offer dashboards, the stopped Mistral model and external metering come from source; no keys are minted.
+# Usage: stages/040-governed-models-as-a-service/deploy.sh [--revision REF] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-ref="${GIT_REPO_BRANCH:-HEAD}"
+ref="${GIT_REPO_BRANCH:-HEAD}" COMPONENT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --revision) ref="${2:?}"; shift 2 ;;
+    --component) COMPONENT="${2:?}"; shift 2 ;;
     *) sed -n 's/^# Usage: //p' "$0" >&2; exit 1 ;;
   esac
 done
+[[ -z "$COMPONENT" || "$COMPONENT" == 040-showback-demo ]] || { log_error "Unknown Stage 040 component: $COMPONENT"; exit 1; }
 load_env
 check_oc_logged_in
 require_env GIT_REPO_URL "reviewed Stage 040 source repository"
 assert_required_env
 STAGE_APPS="$REPO_ROOT/scripts/stage-apps.sh"
+
+# The MaaS controller deliberately delegates customization of this file through managed=false.
+# Keep its ownership, pre-processing profile and other data. Refuse an unreviewed third profile.
+# enabled=false restores the reviewed baseline while retaining the metering database.
+showback_metering_profile() {
+    local action=$1 desired config baseline candidate target live current patch updated
+    desired=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" |
+        ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)')
+    config=$(jq -c '.[] | select(.kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile")' <<<"$desired")
+    [[ -n "$config" ]] || return 0
+    jq -e '.data.enabled == "true" or .data.enabled == "false"' <<<"$config" >/dev/null || {
+        log_error "External metering requires an explicit source activation state"; return 1;
+    }
+    baseline=$(jq -ce '.data["baseline.json"] | fromjson' <<<"$config")
+    candidate=$(jq -ce '.data["profile.json"] | fromjson' <<<"$config")
+    target=$baseline
+    [[ $(jq -r '.data.enabled' <<<"$config") != true ]] || target=$candidate
+    live=$(oc --request-timeout=10s get configmap payload-processing-plugins -n openshift-ingress -o json)
+    jq -e '.metadata.annotations["opendatahub.io/managed"] == "false"
+        and any(.metadata.ownerReferences[]?; .kind == "Config" and .name == "default")
+        and (.data["custom-pre-processing-ipp-config.yaml"] | type == "string" and length > 0)' <<<"$live" >/dev/null || {
+        log_error "MaaS processing profile is not the expected delegated default-tenant configuration"; return 1;
+    }
+    current=$(jq -r '.data["custom-ipp-config.yaml"]' <<<"$live" |
+        ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load(STDIN.read))')
+    jq -e --argjson baseline "$baseline" --argjson candidate "$candidate" \
+        '. == $baseline or . == $candidate' <<<"$current" >/dev/null || {
+        log_error "Processing profile differs from the reviewed baseline and metering profile; refusing to overwrite it"; return 1;
+    }
+    [[ "$action" == activate ]] || return 0
+    if jq -e --argjson target "$target" '. == $target' <<<"$current" >/dev/null; then
+        oc rollout status deployment/payload-processing -n openshift-ingress --timeout=180s >/dev/null
+        log_info "MaaS metering profile matches source and existing rollout is ready; event delivery must still be verified"
+        return 0
+    fi
+    if [[ $(jq -r '.data.enabled' <<<"$config") == true ]]; then
+        oc rollout status deployment/showback-external-metering -n redhat-ods-monitoring --timeout=180s >/dev/null
+    fi
+    # Test the resource version atomically so an intervening administrator edit cannot be overwritten.
+    patch=$(jq -n --arg rv "$(jq -r '.metadata.resourceVersion' <<<"$live")" --arg profile "$target" \
+        '[{op:"test",path:"/metadata/resourceVersion",value:$rv},
+          {op:"replace",path:"/data/custom-ipp-config.yaml",value:$profile}]')
+    printf '%s' "$patch" | oc patch configmap payload-processing-plugins -n openshift-ingress \
+        --type=json --patch-file=/dev/stdin >/dev/null
+    updated=$(oc --request-timeout=10s get configmap payload-processing-plugins -n openshift-ingress -o json)
+    jq -e --argjson before "$live" --arg profile "$target" '
+        .data["custom-ipp-config.yaml"] == $profile
+        and (del(.data["custom-ipp-config.yaml"], .metadata.resourceVersion, .metadata.managedFields)
+          == ($before | del(.data["custom-ipp-config.yaml"], .metadata.resourceVersion, .metadata.managedFields)))' \
+        <<<"$updated" >/dev/null || { log_error "Processing profile readback or preservation check failed"; return 1; }
+    oc rollout restart deployment/payload-processing -n openshift-ingress >/dev/null
+    oc rollout status deployment/payload-processing -n openshift-ingress --timeout=180s >/dev/null
+    log_success "Reviewed external-metering profile loaded; existing MaaS identity and access controls preserved"
+}
+
+if [[ "$COMPONENT" == 040-showback-demo ]]; then
+    revision=$("$STAGE_APPS" select 040 --ref "$ref" --repo-url "$GIT_REPO_URL")
+    "$STAGE_APPS" preflight 040 --repo-url "$GIT_REPO_URL" --app "$COMPONENT"
+    # Shared namespaces and APIs remain owned by their existing platform components.
+    for ns in models-as-a-service redhat-ods-monitoring internal-models; do
+        oc --request-timeout=10s get namespace "$ns" -o json | jq -e '.status.phase == "Active"' >/dev/null || {
+            log_error "Showback requires the existing active namespace $ns"; exit 1;
+        }
+    done
+    oc --request-timeout=10s get crd maassubscriptions.maas.opendatahub.io maasauthpolicies.maas.opendatahub.io \
+        persesdashboards.perses.dev servicemonitors.monitoring.coreos.com -o json |
+        jq -e '.items | length == 4 and all(.[]; any(.status.conditions[]?; .type == "Established" and .status == "True"))' \
+        >/dev/null || { log_error "Showback requires established MaaS, Perses and ServiceMonitor APIs"; exit 1; }
+    showback_metering_profile preflight
+    # Team access, dashboards and the stopped Mistral model come from source; Qwen keeps its existing owner.
+    "$STAGE_APPS" apply 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL"
+    "$STAGE_APPS" sync 040 --app "$COMPONENT"
+    "$STAGE_APPS" wait 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
+    showback_metering_profile activate
+    RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION="$revision" "$SCRIPT_DIR/validate.sh" --component "$COMPONENT"
+    log_success "Showback component reconciled; generate demo load with showback-demo/generate-load.sh to populate the dashboards."
+    exit 0
+fi
 
 # ── Read-only preflight; prints "fresh" (no MaaS database yet) or "retained" ───────────────────────────────────
 stage_preflight() {

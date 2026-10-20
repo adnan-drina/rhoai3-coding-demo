@@ -1,0 +1,127 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: showback-external-metering-profile
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: showback-external-metering-profile
+    app.kubernetes.io/component: external-metering
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/managed-by: argocd
+data:
+  enabled: 'true'
+  baseline.json: |
+    {
+      "apiVersion": "llm-d.ai/v1alpha1",
+      "kind": "PayloadProcessorConfig",
+      "plugins": [
+        {
+          "type": "maas-headers-guard",
+          "name": "maas-headers-guard"
+        },
+        {
+          "type": "stream-usage-enforcer"
+        },
+        {
+          "type": "model-provider-resolver"
+        },
+        {
+          "type": "api-translation"
+        },
+        {
+          "type": "apikey-injection"
+        }
+      ],
+      "profiles": [
+        {
+          "name": "default",
+          "plugins": {
+            "request": [
+              {
+                "pluginRef": "maas-headers-guard"
+              },
+              {
+                "pluginRef": "stream-usage-enforcer"
+              },
+              {
+                "pluginRef": "model-provider-resolver"
+              },
+              {
+                "pluginRef": "api-translation"
+              },
+              {
+                "pluginRef": "apikey-injection"
+              }
+            ],
+            "response": []
+          }
+        }
+      ]
+    }
+  profile.json: |
+    {
+      "apiVersion": "llm-d.ai/v1alpha1",
+      "kind": "PayloadProcessorConfig",
+      "plugins": [
+        {
+          "type": "maas-headers-guard",
+          "name": "maas-headers-guard"
+        },
+        {
+          "type": "stream-usage-enforcer"
+        },
+        {
+          "type": "model-provider-resolver"
+        },
+        {
+          "type": "external-metering-streaming",
+          "name": "external-metering-streaming",
+          "parameters": {
+            "meteringURL": "http://showback-external-metering.redhat-ods-monitoring.svc:8080",
+            "timeoutSeconds": 2,
+            "featureKey": "inference-tokens",
+            "source": "maas-default-gateway",
+            "failOpen": true
+          }
+        },
+        {
+          "type": "api-translation"
+        },
+        {
+          "type": "apikey-injection"
+        }
+      ],
+      "profiles": [
+        {
+          "name": "default",
+          "plugins": {
+            "request": [
+              {
+                "pluginRef": "maas-headers-guard"
+              },
+              {
+                "pluginRef": "stream-usage-enforcer"
+              },
+              {
+                "pluginRef": "model-provider-resolver"
+              },
+              {
+                "pluginRef": "external-metering-streaming"
+              },
+              {
+                "pluginRef": "api-translation"
+              },
+              {
+                "pluginRef": "apikey-injection"
+              }
+            ],
+            "response": [
+              {
+                "pluginRef": "external-metering-streaming"
+              }
+            ]
+          }
+        }
+      ]
+    }

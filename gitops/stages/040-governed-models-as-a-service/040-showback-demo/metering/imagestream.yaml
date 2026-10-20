@@ -1,0 +1,10 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  namespace: redhat-ods-monitoring
+  name: showback-external-metering
+  labels:
+    app.kubernetes.io/name: showback-external-metering
+spec:
+  lookupPolicy:
+    local: false

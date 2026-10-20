@@ -1,5 +1,7 @@
 # Stage 040: Governed Models-as-a-Service
 
+The optional `040-showback-demo` component adds a three-team showback demo on top of this stage: team subscriptions, a dedicated Mistral model, live offer dashboards and metering of external-model usage. See [Usage And Showback](#usage-and-showback).
+
 ## Why This Matters
 
 A model endpoint alone does not provide a shared enterprise service. Models-as-a-Service (MaaS) gives developers governed access to private and approved external models through API keys, subscriptions, quotas and usage telemetry.
@@ -50,7 +52,7 @@ Red Hat OpenShift AI 3.5, OpenShift Container Platform 4.22, Red Hat Connectivit
 
 `deploy.sh [--revision REF]` deploys the reviewed published commit (default `GIT_REPO_BRANCH`, then `HEAD`) through the shared flow in `scripts/stage-apps.sh`. It starts a hook-strategy sync of each component whose current source has not been synced yet, creates the provider and database credentials in the cluster, and waits until every component is Synced and Healthy at that commit. No Argo CD CLI is needed.
 
-The stage is deployed as eight Argo CD Applications, one per component, all at the same reviewed revision: `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access` and `040-genai-studio`. Switching a model or changing who may use it syncs only that component.
+The default deployment selects eight Argo CD Applications, one per component, all at the same reviewed revision: `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access` and `040-genai-studio`. Switching a model or changing who may use it syncs only that component. A ninth Application, `040-showback-demo`, is optional and manually synced through explicit component selection. Its corrected release `adecf57cab87982f5b5a48c966860376474f8f62` serves the reviewed Qwen R2 report through one Ready publisher with verified native financial scraping. Native inputs remain inert and the Mistral draft is excluded.
 
 ```bash
 ./stages/040-governed-models-as-a-service/deploy.sh
@@ -69,9 +71,13 @@ GenAI Studio exposes the Technology Preview tracing capability. Enable tracing e
 
 ## Usage And Showback
 
-**Offline demo implementation:** [Three-team private AI showback implementation plan](showback-demo/PLAN.md) assigns Engineering to Qwen, Marketing to Mistral and Support to both through dedicated subscriptions and access policies. The accepted accounting policy allocates model costs by actual usage, exposes fully idle capacity as a platform cost, and keeps missing evidence unresolved. Proposed Qwen 70/30 token allowances are separate from cost shares. The baseline assumes Qwen3.8 27B FP8 and Mistral Small 4 119B NVFP4 on separate RTX PRO 6000 workers; qualification is deferred. Verified AWS prices will inform a replacement for the illustrative $14,200 bill. The isolated [showback-demo package](showback-demo/README.md) contains the implementation and offline checks; its manifests are detached from active GitOps and nothing has been deployed.
+The optional [showback demo](showback-demo/README.md) answers "What did AI cost us?" with three teams and three service offerings. Its [040-showback-demo component](../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/README.md) is deployed only on request with `deploy.sh --component 040-showback-demo`; the default deployment does not select it.
 
-The package also implements three monthly service offers: external provider pass-through, sponsor-paid dedicated capacity, and shared token tariffs with visible recovery/shortfall. Shell tools produce statements, dashboard snapshots, correction/continuity indexes and analysis of supplied task outcomes. Native Loki and external-metering preparation consists of inert source-backed configuration inputs and a captured-event importer; downstream compatibility and the metering backend still need qualification. All candidates remain stopped/detached, and real service tariffs are unset.
+- **Shared private:** Engineering and Support use Qwen 3.8 and pay a published tariff per million tokens; the platform pays for the GPU worker and carries the difference.
+- **Dedicated private:** Marketing owns Mistral Small 4 119B on a second RTX PRO 6000 worker and pays its full running cost, busy or idle.
+- **External:** Support calls GPT-6 Luna, Claude Sonnet 5.5 and Nemotron; the gateway's metering plugin records each response at the provider's list price.
+
+`showback-demo/team-keys.sh` mints each team user's own key and `showback-demo/generate-load.sh --offer shared|dedicated|external` drives load; the three **Offer** tabs on the Observability page compute usage and cost live for the selected time range.
 
 **Serving tuning (2026-10-13).** Qwen 3.8 runs on one NVIDIA RTX PRO 6000 with the model card's MTP speculative decoding (`mtp` with three draft tokens), `--max-num-batched-tokens=16384`, `--max-num-seqs=16` and `--async-scheduling`. MTP shortens the time between tokens at a small cost in time to first token; the [serving study](../../docs/OPERATIONS.md#model-serving-study-and-default-model-2026-10-13) has the measurements. With one GPU worker running, a serving change restarts through `replicas` 0 then 1, because a rolling update cannot place the new pod while the old one holds the node's only GPU.
 

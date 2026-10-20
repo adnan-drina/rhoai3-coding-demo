@@ -1,0 +1,527 @@
+diff --git a/cmd/main.go b/cmd/main.go
+index c22f6cf..ebb7e6c 100644
+--- a/cmd/main.go
++++ b/cmd/main.go
+@@ -19,6 +19,10 @@ import (
+ )
+ 
+ func main() {
++	if path := os.Getenv("SHOWBACK_PRICING_FILE"); path != "" {
++		runShowback(path)
++		return
++	}
+ 	cfg := config.Load()
+ 	if cfg.DatabaseURL == "" {
+ 		slog.Error("DATABASE_URL is required")
+diff --git a/cmd/showback.go b/cmd/showback.go
+new file mode 100644
+index 0000000..633214b
+--- /dev/null
++++ b/cmd/showback.go
+@@ -0,0 +1,103 @@
++package main
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"io"
++	"log/slog"
++	"net/http"
++	"os"
++	"os/signal"
++	"strings"
++	"syscall"
++	"time"
++
++	"github.com/noyitz/ai-gateway-metering-service/internal/handler"
++	"github.com/noyitz/ai-gateway-metering-service/internal/storage"
++)
++
++// This mode deliberately does not start upstream pricing fetchers, quota logic,
++// administrative pages or dollar rollups as financial authorities.
++func runShowback(path string) {
++	store, err := storage.New(os.Getenv("DATABASE_URL"), 0)
++	if err != nil {
++		slog.Error("showback database unavailable")
++		os.Exit(1)
++	}
++	defer store.Close()
++	if err := store.EnableShowback(path); err != nil {
++		slog.Error("invalid showback catalog or database schema", "error", err)
++		os.Exit(1)
++	}
++	mux := http.NewServeMux()
++	events := handler.NewEventsHandler(store)
++	mux.HandleFunc("/api/v1/events", func(w http.ResponseWriter, r *http.Request) {
++		if r.Method != http.MethodPost {
++			http.Error(w, "method not allowed", 405)
++			return
++		}
++		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1048576))
++		var event struct {
++			Source      string `json:"source"`
++			Subject     string `json:"subject"`
++			ContentType string `json:"datacontenttype"`
++			Data        struct {
++				User         string `json:"user"`
++				Subscription string `json:"subscription"`
++				Provider     string `json:"provider"`
++				Model        string `json:"model"`
++				Prompt       int    `json:"prompt_tokens"`
++				Completion   int    `json:"completion_tokens"`
++				Cached       int    `json:"cached_input_tokens"`
++				Write        int    `json:"cache_creation_tokens"`
++				Reasoning    int    `json:"reasoning_tokens"`
++			} `json:"data"`
++		}
++		if err == nil && json.Unmarshal(raw, &event) == nil && event.Source == "maas-default-gateway" &&
++			event.ContentType == "application/json" && event.Subject != "" && event.Subject == event.Data.User && event.Data.Subscription != "" &&
++			event.Data.Provider == "" && strings.HasPrefix(event.Data.Model, "publishers/internal-models/models/") {
++			w.WriteHeader(http.StatusNoContent)
++			return // Explicitly outside external-only capture.
++		}
++		if err != nil || json.Unmarshal(raw, &event) != nil || event.Source != "maas-default-gateway" ||
++			event.ContentType != "application/json" || event.Subject == "" || event.Subject != event.Data.User ||
++			event.Data.Subscription == "" || event.Data.Provider == "" || event.Data.Reasoning > event.Data.Completion ||
++			event.Data.Cached+event.Data.Write > event.Data.Prompt {
++			http.Error(w, "invalid trusted metering envelope or token subsets", 400)
++			return
++		}
++		r.Body = io.NopCloser(bytes.NewReader(raw))
++		events.HandleEvent(w, r)
++	})
++	mux.HandleFunc("/api/v1/customers/", func(w http.ResponseWriter, r *http.Request) {
++		if r.Method != http.MethodGet {
++			http.Error(w, "method not allowed", 405)
++			return
++		}
++		w.Header().Set("Content-Type", "application/json")
++		// Existing MaaS remains the authority for access and quotas. No new denial policy.
++		json.NewEncoder(w).Encode(map[string]any{"hasAccess": true, "balance": 0, "usage": 0, "overage": 0})
++	})
++	health := handler.NewHealthHandler(store)
++	mux.HandleFunc("/health", health.HandleHealth)
++	mux.HandleFunc("/ready", health.HandleHealth)
++	mux.HandleFunc("/metrics", store.HandleShowbackMetrics)
++	port := os.Getenv("PORT")
++	if port == "" {
++		port = "8080"
++	}
++	server := &http.Server{Addr: ":" + port, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
++	go func() {
++		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
++			slog.Error("showback server failed")
++			os.Exit(1)
++		}
++	}()
++	stop := make(chan os.Signal, 1)
++	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
++	<-stop
++	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++	server.Shutdown(ctx)
++}
+diff --git a/internal/storage/postgres.go b/internal/storage/postgres.go
+index f870dbb..363125e 100644
+--- a/internal/storage/postgres.go
++++ b/internal/storage/postgres.go
+@@ -71,7 +71,8 @@ type UsageStats struct {
+ }
+ 
+ type Store struct {
+-	db *sql.DB
++	db       *sql.DB
++	showback *ShowbackCatalog
+ 
+ 	// readDB is the optional read-replica pool (Phase 2 of
+ 	// docs/dashboard-scaling-plan.md). The allowlist is the set of
+@@ -260,6 +261,11 @@ func (s *Store) InsertEvent(ctx context.Context, e UsageEvent) error {
+ 		1, e.PromptTokens, e.CompletionTokens, e.TotalTokens, e.CachedInputTokens, e.CacheCreationTokens, rollupCost); err != nil {
+ 		return err
+ 	}
++	if s.showback != nil {
++		if err := s.insertShowback(ctx, tx, e); err != nil {
++			return err
++		}
++	}
+ 	return tx.Commit()
+ }
+ 
+diff --git a/internal/storage/showback.go b/internal/storage/showback.go
+new file mode 100644
+index 0000000..1ac34a8
+--- /dev/null
++++ b/internal/storage/showback.go
+@@ -0,0 +1,289 @@
++package storage
++
++import (
++	"context"
++	"crypto/sha256"
++	"database/sql"
++	"encoding/hex"
++	"encoding/json"
++	"fmt"
++	"math/big"
++	"net/http"
++	"os"
++	"sort"
++	"strconv"
++	"strings"
++	"time"
++)
++
++type ShowbackRate struct {
++	Provider    string                  `json:"provider"`
++	Protocol    string                  `json:"provider_protocol"`
++	Model       string                  `json:"gateway_model"`
++	Upstream    string                  `json:"upstream_model"`
++	Version     string                  `json:"price_version"`
++	ValidFrom   string                  `json:"valid_from"`
++	ContextBand string                  `json:"context_band"`
++	Tier        string                  `json:"processing_tier"`
++	Basis       string                  `json:"basis"`
++	Status      string                  `json:"status"`
++	Prices      map[string]*json.Number `json:"prices_usd_per_million"`
++}
++type ShowbackCatalog struct {
++	Version    string         `json:"catalog_version"`
++	Currency   string         `json:"currency"`
++	VerifiedAt string         `json:"verified_at"`
++	Rates      []ShowbackRate `json:"rates"`
++	SHA        string         `json:"-"`
++}
++
++func (s *Store) EnableShowback(path string) error {
++	raw, err := os.ReadFile(path)
++	if err != nil {
++		return err
++	}
++	var catalog ShowbackCatalog
++	if err = json.Unmarshal(raw, &catalog); err != nil {
++		return err
++	}
++	if catalog.Version == "" || catalog.Currency != "USD" || len(catalog.Rates) == 0 {
++		return fmt.Errorf("invalid catalog metadata")
++	}
++	seen := map[string]bool{}
++	for _, rate := range catalog.Rates {
++		key := rate.Protocol + "\x00" + rate.Upstream + "\x00" + rate.ContextBand + "\x00" + rate.Tier
++		if rate.Provider == "" || rate.Protocol == "" || rate.Model == "" || rate.Upstream == "" || rate.Version == "" || seen[key] {
++			return fmt.Errorf("missing or ambiguous model/rate identity")
++		}
++		seen[key] = true
++		if _, err = time.Parse(time.RFC3339, rate.ValidFrom); err != nil {
++			return err
++		}
++		for _, number := range rate.Prices {
++			if number != nil {
++				v, ok := new(big.Rat).SetString(number.String())
++				if !ok || v.Sign() < 0 {
++					return fmt.Errorf("invalid rate")
++				}
++			}
++		}
++	}
++	hash := sha256.Sum256(raw)
++	catalog.SHA = hex.EncodeToString(hash[:])
++	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++	_, err = s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS showback_capture_metadata (
++		id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK(id),started_at TIMESTAMPTZ NOT NULL DEFAULT now());
++		INSERT INTO showback_capture_metadata(id) VALUES(TRUE) ON CONFLICT DO NOTHING;
++		CREATE TABLE IF NOT EXISTS showback_event_costs (
++		source TEXT NOT NULL,event_id TEXT NOT NULL,timestamp TIMESTAMPTZ NOT NULL,username TEXT NOT NULL,
++		subscription TEXT NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,raw_provider TEXT NOT NULL,raw_model TEXT NOT NULL,
++		usage_state TEXT NOT NULL,price_state TEXT NOT NULL,price_version TEXT NOT NULL,catalog_sha256 TEXT NOT NULL,
++		input_tokens BIGINT,output_tokens BIGINT,estimated_usd NUMERIC,PRIMARY KEY(source,event_id));`)
++	if err != nil {
++		return err
++	}
++	_, err = s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS showback_catalogs(
++		catalog_version TEXT PRIMARY KEY,sha256 TEXT NOT NULL,content JSONB NOT NULL)`)
++	if err != nil {
++		return err
++	}
++	_, err = s.db.ExecContext(ctx, `INSERT INTO showback_catalogs(catalog_version,sha256,content)
++		VALUES($1,$2,$3::jsonb) ON CONFLICT DO NOTHING`, catalog.Version, catalog.SHA, string(raw))
++	if err != nil {
++		return err
++	}
++	var savedSHA string
++	if err = s.db.QueryRowContext(ctx, `SELECT sha256 FROM showback_catalogs WHERE catalog_version=$1`, catalog.Version).Scan(&savedSHA); err != nil {
++		return err
++	}
++	if savedSHA != catalog.SHA {
++		return fmt.Errorf("catalog version is immutable; assign a new version")
++	}
++	s.showback = &catalog
++	return nil
++}
++
++// Select the observed input-count band for a conditional standard-rate estimate.
++// Unproven priority, geography, cache-presence and tool adjustments remain excluded.
++func (c *ShowbackCatalog) rateFor(e UsageEvent) *ShowbackRate {
++	var selected *ShowbackRate
++	for i := range c.Rates {
++		r := &c.Rates[i]
++		if r.Protocol != e.Provider || r.Upstream != e.Model {
++			continue
++		}
++		if r.ContextBand == "input_tokens_lte_272000" && e.PromptTokens > 272000 {
++			continue
++		}
++		if r.ContextBand == "input_tokens_gt_272000" && e.PromptTokens <= 272000 {
++			continue
++		}
++		if selected != nil {
++			return nil
++		}
++		selected = r
++	}
++	return selected
++}
++
++func estimateShowback(e UsageEvent, r *ShowbackRate) (string, string) {
++	if e.StatusCode != nil && *e.StatusCode >= 400 {
++		return "", "usage_unknown"
++	}
++	if r.Tier != "" && r.Tier != "standard" && r.Tier != "free_prototype" {
++		return "", "unsupported_tier"
++	}
++	if e.UsageComplete != nil && !*e.UsageComplete {
++		return "", "usage_unknown"
++	}
++	if e.TotalTokens == 0 && e.PromptTokens == 0 && e.CompletionTokens == 0 {
++		return "", "usage_unknown"
++	}
++	valid, _ := time.Parse(time.RFC3339, r.ValidFrom)
++	if e.Timestamp.Before(valid) {
++		return "", "before_verified_rate"
++	}
++	input := e.PromptTokens - e.CachedInputTokens - e.CacheCreationTokens
++	if input < 0 {
++		return "", "category_mismatch"
++	}
++	cost := new(big.Rat)
++	for category, count := range map[string]int{"input_uncached": input, "cache_read": e.CachedInputTokens,
++		"cache_write": e.CacheCreationTokens, "output": e.CompletionTokens} {
++		if count == 0 {
++			continue
++		}
++		price := r.Prices[category]
++		if price == nil {
++			return "", "unsupported_category"
++		}
++		value, ok := new(big.Rat).SetString(price.String())
++		if !ok {
++			return "", "unknown_price"
++		}
++		value.Mul(value, new(big.Rat).SetInt64(int64(count)))
++		cost.Add(cost, value)
++	}
++	cost.Quo(cost, big.NewRat(1000000, 1))
++	state := "conditional_standard_estimate"
++	if r.Basis == "provider_free_prototype" {
++		state = "free_prototype"
++	}
++	return cost.FloatString(12), state
++}
++
++func (s *Store) insertShowback(ctx context.Context, tx *sql.Tx, e UsageEvent) error {
++	r := s.showback.rateFor(e)
++	if r == nil {
++		if e.Provider == "" && strings.HasPrefix(e.Model, "publishers/internal-models/models/") {
++			return nil
++		}
++		r = &ShowbackRate{Provider: "unmapped", Model: e.Model, Version: "unmapped"}
++	}
++	usage := "producer_reported"
++	var input, output any = e.PromptTokens, e.CompletionTokens
++	if (e.StatusCode != nil && *e.StatusCode >= 400) || (e.UsageComplete != nil && !*e.UsageComplete) || (e.TotalTokens == 0 && e.PromptTokens == 0 && e.CompletionTokens == 0) {
++		usage = "unknown"
++		input = nil
++		output = nil
++	}
++	amount, state := estimateShowback(e, r)
++	if r.Provider == "unmapped" {
++		amount = ""
++		state = "unmapped_identity"
++	}
++	var cost any
++	if amount != "" {
++		cost = amount
++	}
++	_, err := tx.ExecContext(ctx, `INSERT INTO showback_event_costs
++		(source,event_id,timestamp,username,subscription,provider,model,raw_provider,raw_model,usage_state,
++		price_state,price_version,catalog_sha256,input_tokens,output_tokens,estimated_usd)
++		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
++		e.Source, e.EventID, e.Timestamp, e.Username, e.Subscription, r.Provider, r.Model, e.Provider, e.Model, usage,
++		state, r.Version, s.showback.SHA, input, output, cost)
++	return err
++}
++
++func showbackMetric(name string, value string, labels map[string]string) string {
++	keys := make([]string, 0, len(labels))
++	for key := range labels {
++		keys = append(keys, key)
++	}
++	sort.Strings(keys)
++	parts := make([]string, 0, len(keys))
++	for _, key := range keys {
++		parts = append(parts, key+"="+strconv.Quote(labels[key]))
++	}
++	return name + "{" + strings.Join(parts, ",") + "} " + value + "\n"
++}
++
++// All values are durable-ledger cumulative GAUGES, not scrape-time counters.
++// Failed DB reads return 503 without a fabricated zero or stale successful body.
++func (s *Store) HandleShowbackMetrics(w http.ResponseWriter, r *http.Request) {
++	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
++	defer cancel()
++	var started time.Time
++	if err := s.db.QueryRowContext(ctx, `SELECT started_at FROM showback_capture_metadata WHERE id=TRUE`).Scan(&started); err != nil {
++		http.Error(w, "ledger unavailable", 503)
++		return
++	}
++	now := time.Now().UTC()
++	month := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
++	rows, err := s.db.QueryContext(ctx, `SELECT username,subscription,provider,model,usage_state,price_state,price_version,catalog_sha256,
++		COUNT(*),SUM(input_tokens),SUM(output_tokens),SUM(estimated_usd)::text FROM showback_event_costs
++		WHERE timestamp >= $1 AND timestamp <= $2
++		GROUP BY username,subscription,provider,model,usage_state,price_state,price_version,catalog_sha256
++		ORDER BY username,subscription,provider,model,usage_state,price_state,price_version,catalog_sha256`, month, now)
++	if err != nil {
++		http.Error(w, "ledger unavailable", 503)
++		return
++	}
++	defer rows.Close()
++	var body strings.Builder
++	body.WriteString("# Durable captured native events only; best-effort delivery. Values are cumulative gauges.\n")
++	body.WriteString(showbackMetric("showback_external_metering_info", "1", map[string]string{
++		"ledger_started_at": started.UTC().Format(time.RFC3339), "period_start": month.Format(time.RFC3339), "catalog_version": s.showback.Version,
++		"catalog_sha256": s.showback.SHA, "scope": "captured_native_events", "delivery": "best_effort",
++		"usage_basis": "producer_normalized", "detail_presence": "unavailable", "cost_basis": "conditional_token_estimate"}))
++	body.WriteString(showbackMetric("showback_external_metering_observed_at_seconds", strconv.FormatInt(now.Unix(), 10), map[string]string{"scope": "captured_native_events"}))
++	for _, rate := range s.showback.Rates {
++		for category, price := range rate.Prices {
++			if price != nil {
++				body.WriteString(showbackMetric("showback_external_metering_rate_usd_per_million", price.String(), map[string]string{
++					"provider": rate.Provider, "model": rate.Model, "category": category, "price_version": rate.Version,
++					"basis": rate.Basis, "status": rate.Status, "verified_at": s.showback.VerifiedAt, "valid_from": rate.ValidFrom,
++					"context_band": rate.ContextBand}))
++			}
++		}
++	}
++	for rows.Next() {
++		var user, subscription, provider, model, usage, state, version, sha string
++		var events int64
++		var input, output sql.NullInt64
++		var cost sql.NullString
++		if err := rows.Scan(&user, &subscription, &provider, &model, &usage, &state, &version, &sha, &events, &input, &output, &cost); err != nil {
++			http.Error(w, "ledger unavailable", 503)
++			return
++		}
++		labels := map[string]string{"user": user, "subscription": subscription, "provider": provider, "model": model,
++			"usage_state": usage, "price_state": state, "price_version": version, "catalog_sha256": sha, "scope": "captured_native_events"}
++		body.WriteString(showbackMetric("showback_external_metering_events", strconv.FormatInt(events, 10), labels))
++		if input.Valid {
++			body.WriteString(showbackMetric("showback_external_metering_input_tokens", strconv.FormatInt(input.Int64, 10), labels))
++		}
++		if output.Valid {
++			body.WriteString(showbackMetric("showback_external_metering_output_tokens", strconv.FormatInt(output.Int64, 10), labels))
++		}
++		if cost.Valid {
++			body.WriteString(showbackMetric("showback_external_metering_estimated_usd", cost.String, labels))
++		}
++	}
++	if err := rows.Err(); err != nil {
++		http.Error(w, "ledger unavailable", 503)
++		return
++	}
++	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
++	fmt.Fprint(w, body.String())
++}
+diff --git a/internal/storage/showback_test.go b/internal/storage/showback_test.go
+new file mode 100644
+index 0000000..4092230
+--- /dev/null
++++ b/internal/storage/showback_test.go
+@@ -0,0 +1,76 @@
++package storage
++
++import (
++	"encoding/json"
++	"strings"
++	"testing"
++	"time"
++)
++
++func testShowbackRate() *ShowbackRate {
++	prices := map[string]*json.Number{}
++	for key, value := range map[string]string{"input_uncached": "0.10", "cache_read": "0.01", "cache_write": "0.125", "output": "0.50"} {
++		n := json.Number(value)
++		prices[key] = &n
++	}
++	return &ShowbackRate{Protocol: "openai", Upstream: "gpt-6-luna", ValidFrom: "2026-01-01T00:00:00Z", Prices: prices}
++}
++func TestShowbackFrozenEstimate(t *testing.T) {
++	rate := testShowbackRate()
++	event := UsageEvent{Timestamp: time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC), PromptTokens: 10000, CompletionTokens: 1000,
++		TotalTokens: 11000, CachedInputTokens: 4000, CacheCreationTokens: 2000, ReasoningTokens: 500}
++	amount, state := estimateShowback(event, rate)
++	if amount != "0.001190000000" || state != "conditional_standard_estimate" {
++		t.Fatalf("estimate %s %s", amount, state)
++	}
++	event.ReasoningTokens = 999
++	second, _ := estimateShowback(event, rate)
++	if second != amount {
++		t.Fatal("reasoning counted twice")
++	}
++	event.PromptTokens = 0
++	event.CompletionTokens = 0
++	event.TotalTokens = 0
++	if amount, state = estimateShowback(event, rate); amount != "" || state != "usage_unknown" {
++		t.Fatal("manufactured zero")
++	}
++	event.PromptTokens = 100
++	event.TotalTokens = 100
++	event.CachedInputTokens = 0
++	event.CacheCreationTokens = 0
++	rate.Prices["input_uncached"] = nil
++	if amount, state = estimateShowback(event, rate); amount != "" || state != "unsupported_category" {
++		t.Fatal("missing rate defaulted")
++	}
++	zero := json.Number("0")
++	rate.Prices["input_uncached"] = &zero
++	rate.Basis = "provider_free_prototype"
++	if amount, state = estimateShowback(event, rate); amount != "0.000000000000" || state != "free_prototype" {
++		t.Fatal("reported free lost")
++	}
++}
++func TestShowbackContextAndIdentity(t *testing.T) {
++	catalog := ShowbackCatalog{Rates: []ShowbackRate{
++		{Protocol: "openai", Upstream: "gpt-6-luna", ContextBand: "input_tokens_lte_272000"},
++		{Protocol: "openai", Upstream: "gpt-6-luna", ContextBand: "input_tokens_gt_272000"},
++		{Provider: "nvidia", Model: "nemotron-3-ultra-550b-a55b", Protocol: "openai", Upstream: "nvidia/nemotron-3-ultra-550b-a55b"},
++	}}
++	for _, count := range []int{272000, 272001} {
++		r := catalog.rateFor(UsageEvent{Provider: "openai", Model: "gpt-6-luna", PromptTokens: count})
++		if r == nil || (count == 272000 && r.ContextBand != "input_tokens_lte_272000") || (count == 272001 && r.ContextBand != "input_tokens_gt_272000") {
++			t.Fatal("context tier mismatch")
++		}
++	}
++	r := catalog.rateFor(UsageEvent{Provider: "openai", Model: "nvidia/nemotron-3-ultra-550b-a55b"})
++	if r == nil || r.Provider != "nvidia" {
++		t.Fatal("protocol mistaken for provider identity")
++	}
++	catalog.Rates = append(catalog.Rates, *r)
++	if catalog.rateFor(UsageEvent{Provider: "openai", Model: r.Upstream}) != nil {
++		t.Fatal("ambiguous identity accepted")
++	}
++	line := showbackMetric("example", "1", map[string]string{"user": "a\"b\\c\n"})
++	if !strings.Contains(line, `user="a\"b\\c\n"`) {
++		t.Fatal("label escape")
++	}
++}

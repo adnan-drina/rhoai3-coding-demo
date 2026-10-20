@@ -12,20 +12,31 @@
 #   RHOAI_STAGE040_TEST_EXTERNAL=false (skip external models: result pending), RHOAI_STAGE040_SUBSCRIPTION,
 #   RHOAI_STAGE040_CA_BUNDLE (extra CA file), RHOAI_STAGE040_EVIDENCE_PATH (new file under /private/tmp).
 # Exit codes: 0 pass, 1 fail, 2 pending (functional only). API contract: shipped MaaS 563117f1/openapi3.yaml.
-# Usage: stages/040-governed-models-as-a-service/validate.sh [--readiness|--functional]
+# --component 040-showback-demo checks the installed optional component: three team subscriptions and policies,
+# the Mistral model (replicas are a demo-time choice), three offer dashboards, metering workloads, retained storage
+# and the loaded IPP profile. Inference and event delivery are exercised by showback-demo/generate-load.sh.
+# Usage: stages/040-governed-models-as-a-service/validate.sh [--readiness|--functional] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-MODE="${1:---readiness}"
-[[ $# -le 1 && ( "$MODE" == --readiness || "$MODE" == --functional ) ]] || { sed -n 's/^# Usage: //p' "$0" >&2; exit 1; }
+MODE=--readiness COMPONENT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --readiness|--functional) MODE=$1; shift ;;
+        --component) COMPONENT=${2:?}; shift 2 ;;
+        *) sed -n 's/^# Usage: //p' "$0" >&2; exit 1 ;;
+    esac
+done
+[[ -z "$COMPONENT" || ( "$COMPONENT" == 040-showback-demo && "$MODE" == --readiness ) ]] || {
+    sed -n 's/^# Usage: //p' "$0" >&2; exit 1;
+}
 load_env
 check_oc_logged_in
 
 STAGE_APPS="$REPO_ROOT/scripts/stage-apps.sh"
 TIMEOUT="${RHOAI_OC_REQUEST_TIMEOUT:-10s}"
 read_json() { oc --request-timeout="$TIMEOUT" get "$@" -o json; }
-check_operator_policy "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" --verify
 
 # jq definitions used by the checks.
 DEFS='
@@ -55,8 +66,91 @@ def selects($labels): (.matchLabels // {} | to_entries | all(.value == $labels[.
 jqd() { local n=$# filter="${!#}"; jq "${@:1:n-1}" "$DEFS $filter"; }
 yes_no() { jqd "$@" >/dev/null && echo yes || echo no; }
 
-DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" |
+SHOWBACK_DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo" |
     ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)')
+# Source reconciliation is separate from model inference, MaaS access enforcement and actual report scraping.
+showback_source_state() {
+    local d kind ns name group live args tracking profile expected current
+    "$STAGE_APPS" status 040 --app 040-showback-demo \
+        ${RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION:+--revision "$RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION"} \
+        >/dev/null 2>&1 || { echo "showback Application not Synced and Healthy at its reviewed revision"; return; }
+    jq -e '[.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $metering |
+        ([.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort)
+            == ["team-engineering","team-marketing","team-support"]
+        and ([.[] | select(.kind == "MaaSAuthPolicy") | .metadata.name] | sort)
+            == ["team-engineering","team-marketing","team-support"]
+        and ([.[] | select(.kind == "LLMInferenceService") | .metadata.name] == ["mistral-small4-119b"])
+        and ([.[] | select(.kind == "PersesDashboard")] | length) == 3
+        and all(.[]; .kind != "Job" and .kind != "CronJob" and .kind != "HorizontalPodAutoscaler"
+            and .kind != "Config" and .kind != "LokiStack")
+        and ([.[] | select(.kind == "Deployment") | .metadata.name] | sort)
+            == ["showback-external-metering","showback-external-metering-db"]
+        and all($metering[]; (.metadata.name | startswith("showback-external-metering"))
+            and (.kind | IN("ConfigMap","Secret","Deployment","Service","PersistentVolumeClaim",
+                "ServiceMonitor","NetworkPolicy","ImageStream")))
+        and any($metering[]; .kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile"
+            and (.data.enabled | IN("true","false")))
+        and any($metering[]; .kind == "PersistentVolumeClaim"
+            and .metadata.annotations["argocd.argoproj.io/sync-options"] == "Prune=false,Delete=false")' \
+        <<<"$SHOWBACK_DESIRED" >/dev/null || { echo "showback source has an invalid bundle"; return; }
+    while IFS= read -r d; do
+        kind=$(jq -r '.kind' <<<"$d"); ns=$(jq -r '.metadata.namespace // ""' <<<"$d")
+        name=$(jq -r '.metadata.name' <<<"$d")
+        group=$(jq -r '.apiVersion | if contains("/") then split("/")[0] else "" end' <<<"$d")
+        args=("$(jq -r '.kind + (if (.apiVersion | contains("/")) then "." + (.apiVersion | split("/") | .[1] + "." + .[0]) else "" end)' <<<"$d")" "$name")
+        [[ -z "$ns" ]] || args+=(-n "$ns")
+        live=$(read_json "${args[@]}") || { echo "$kind $name unavailable"; return; }
+        tracking="040-showback-demo:$group/$kind:${ns:-openshift-gitops}/$name"
+        jqd -e --argjson d "$d" --arg t "$tracking" '.metadata.deletionTimestamp == null
+            and (.metadata.ownerReferences // [] | length) == 0
+            and .metadata.annotations["argocd.argoproj.io/tracking-id"] == $t
+            and covers($d | if .kind == "ConfigMap" and .data == {} then del(.data)
+                elif .kind == "LLMInferenceService" then del(.spec.replicas)
+                elif .kind == "Secret" and .stringData != null
+                    then .data = ((.data // {}) + (.stringData | map_values(@base64))) | del(.stringData)
+                else . end)
+            and (if .kind == "Deployment" then
+                if $d.spec.replicas == 0 then .spec.replicas == 0 and (.status.replicas // 0) == 0
+                    and (.status.readyReplicas // 0) == 0 and (.status.availableReplicas // 0) == 0
+                else workload and ready_cond("Available") end else true end)
+            and (if .kind == "PersistentVolumeClaim" then .status.phase == "Bound" else true end)' <<<"$live" >/dev/null || {
+                    echo "$kind $name source, ownership or readiness differs"; return;
+                }
+    done < <(jq -c '.[]' <<<"$SHOWBACK_DESIRED")
+    profile=$(jq -c '.[] | select(.kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile")' \
+        <<<"$SHOWBACK_DESIRED")
+    if [[ -n "$profile" ]]; then
+        expected=$(jq -c '.data | if .enabled == "true" then .["profile.json"] else .["baseline.json"] end | fromjson' \
+            <<<"$profile")
+        live=$(read_json configmap payload-processing-plugins -n openshift-ingress) || {
+            echo "MaaS processing profile unavailable"; return;
+        }
+        jq -e '.metadata.annotations["opendatahub.io/managed"] == "false"
+            and any(.metadata.ownerReferences[]?; .kind == "Config" and .name == "default")' <<<"$live" >/dev/null || {
+            echo "MaaS processing profile ownership or delegation differs"; return;
+        }
+        current=$(jq -r '.data["custom-ipp-config.yaml"]' <<<"$live" |
+            ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load(STDIN.read))')
+        jq -e --argjson expected "$expected" '. == $expected' <<<"$current" >/dev/null || {
+            echo "MaaS processing profile differs from source activation state"; return;
+        }
+        read_json deployment payload-processing -n openshift-ingress | jqd -e 'workload and ready_cond("Available")' \
+            >/dev/null || { echo "MaaS processing workload is not Ready"; return; }
+    fi
+    echo yes
+}
+if [[ "$COMPONENT" == 040-showback-demo ]]; then
+    check "Optional showback Application owns the reviewed team, dashboard, model and metering bundle" showback_source_state yes
+    echo "Scope: source reconciliation, workload/storage readiness and configured metering profile; demo load exercises inference and metering."
+    validation_summary
+    exit $?
+fi
+
+check_operator_policy "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" --verify
+DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" |
+    ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' |
+    jq -c --argjson optional "$SHOWBACK_DESIRED" 'def id: [.apiVersion, .kind, .metadata.namespace, .metadata.name];
+        ($optional | map(id)) as $excluded | map(select(id as $i | $excluded | index($i) | not))')
 desired_of() { jq -c --arg k "$1" '[.[] | select(.kind == $k)]' <<<"$DESIRED"; }
 
 components_reconciled() {
@@ -388,6 +482,13 @@ EOT
     [[ -z "$differs" ]] && echo yes || echo "differs: $differs"
 }
 check "Declared MaaS subscriptions and auth policies Active and Ready (quota enforcement is functional acceptance)" governance yes
+showback_application=$(oc --request-timeout="$TIMEOUT" get applications.argoproj.io 040-showback-demo \
+    -n openshift-gitops --ignore-not-found -o name) || {
+        log_error "Cannot determine whether the optional showback Application is installed"; exit 1;
+    }
+if [[ -n "$showback_application" ]]; then
+    check "Installed optional showback bundle matches its source" showback_source_state yes
+fi
 check "Studio catalog entries current, or deferred until Stage 060 deploys the MCP servers" studio_catalog yes
 check "MaaS gateway AdminNetworkPolicy boundary: needed destinations open, others blocked" gateway_boundary yes
 if [[ "$MODE" == --readiness ]]; then
@@ -451,8 +552,7 @@ functional() {
     }
     json_file() { local f; f=$(mktemp "$WORK/req.XXXX"); cat >"$f"; echo "$f"; }
 
-    DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" |
-        ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)')
+    # Reuse the shared-stage source selected above; optional showback identities stay outside this acceptance scope.
     REFS=$(jq -c --arg sel "${RHOAI_STAGE040_MODEL:-}" '[.[] | select(.kind == "MaaSModelRef")
         | select($sel == "" or .metadata.name == $sel)] | sort_by([.metadata.namespace == "external-models", .metadata.name])' <<<"$DESIRED")
     SINGLE=$(tr '[:upper:]' '[:lower:]' <<<"${RHOAI_STAGE040_SINGLE_COMPLETION:-false}")

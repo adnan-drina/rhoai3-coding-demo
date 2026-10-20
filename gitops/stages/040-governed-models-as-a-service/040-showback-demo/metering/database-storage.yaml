@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: redhat-ods-monitoring
+  name: showback-external-metering-db
+  labels:
+    app.kubernetes.io/name: showback-external-metering-db
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: gp3-csi
+  resources:
+    requests:
+      storage: 2Gi

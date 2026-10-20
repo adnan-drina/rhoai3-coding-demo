@@ -1,0 +1,414 @@
+# External offer: month-to-date captured usage and list-price estimates.
+# Queries read the RHOAI datasource live; change the time range to change the period.
+---
+apiVersion: perses.dev/v1alpha2
+kind: PersesDashboard
+metadata:
+  name: dashboard-offer-external-model-admin
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: dashboard-offer-external-model-admin
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+spec:
+  config:
+    display:
+      name: Offer · External model
+      description: 'External models used through MaaS: captured usage and provider list-price estimates for the current UTC month, by subscription and model, plus live token rates.'
+    duration: 1h
+    variables: []
+    panels:
+      contract:
+        kind: Panel
+        spec:
+          display:
+            name: How the external offer is priced
+            description: ''
+          plugin:
+            kind: Markdown
+            spec:
+              text: "**External model, provider pass-through.** Support calls GPT-6 Luna, Claude Sonnet 5.5 and Nemotron through MaaS. The gateway's metering plugin records every response with its input and output tokens; each event is priced once at the provider's **published list price** in force and never repriced. Consumers pay the provider charge with no local GPU or idle cost. Figures are month-to-date estimates until reconciled with the provider invoice; NVIDIA's hosted Nemotron is a free prototype."
+          queries: []
+      spend:
+        kind: Panel
+        spec:
+          display:
+            name: Provider spend this month (USD)
+            description: All captured external events, current UTC month.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              legendMode: 'off'
+              valueFontSize: 36
+              format:
+                unit: decimal
+                decimalPlaces: 2
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum(showback_external_metering_estimated_usd)
+      support:
+        kind: Panel
+        spec:
+          display:
+            name: Support spend this month (USD)
+            description: Captured events for subscription team-support.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              legendMode: 'off'
+              valueFontSize: 36
+              format:
+                unit: decimal
+                decimalPlaces: 2
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum(showback_external_metering_estimated_usd{subscription="team-support"})
+      events:
+        kind: Panel
+        spec:
+          display:
+            name: Captured requests this month
+            description: Events in the metering ledger.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              legendMode: 'off'
+              valueFontSize: 36
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum(showback_external_metering_events)
+      unpriced:
+        kind: Panel
+        spec:
+          display:
+            name: Unpriced requests
+            description: Events without a price estimate (missing usage or no catalog price).
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              legendMode: 'off'
+              valueFontSize: 36
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum(showback_external_metering_events unless on(user, subscription, provider, model, usage_state, price_state, price_version, catalog_sha256) showback_external_metering_estimated_usd) or vector(0)
+      statement:
+        kind: Panel
+        spec:
+          display:
+            name: Statement by subscription and model · this month
+            description: Captured tokens and the list-price estimate per subscription and model.
+          plugin:
+            kind: Table
+            spec:
+              density: compact
+              enableFiltering: false
+              pagination: false
+              defaultColumnHidden: true
+              columnSettings:
+              - name: subscription
+                header: Subscription
+                width: 220
+              - name: model
+                header: Model
+                width: 220
+              - name: 'value #1'
+                header: Requests
+                width: 130
+                align: right
+                format:
+                  unit: decimal
+                  decimalPlaces: 0
+                  shortValues: false
+              - name: 'value #2'
+                header: Input tokens
+                width: 130
+                align: right
+                format:
+                  unit: decimal
+                  decimalPlaces: 0
+                  shortValues: false
+              - name: 'value #3'
+                header: Output tokens
+                width: 130
+                align: right
+                format:
+                  unit: decimal
+                  decimalPlaces: 0
+                  shortValues: false
+              - name: 'value #4'
+                header: Estimate USD
+                width: 130
+                align: right
+                format:
+                  unit: decimal
+                  decimalPlaces: 4
+                  shortValues: false
+              transforms:
+              - kind: MergeIndexedColumns
+                spec:
+                  column: subscription
+              - kind: MergeIndexedColumns
+                spec:
+                  column: model
+              - kind: JoinByColumnValue
+                spec:
+                  columns:
+                  - subscription
+                  - model
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum by (subscription, model) (showback_external_metering_events)
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum by (subscription, model) (showback_external_metering_input_tokens)
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum by (subscription, model) (showback_external_metering_output_tokens)
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum by (subscription, model) (showback_external_metering_estimated_usd)
+      rates:
+        kind: Panel
+        spec:
+          display:
+            name: Provider list prices · USD per 1M tokens
+            description: Versioned price catalog used for new events.
+          plugin:
+            kind: Table
+            spec:
+              density: compact
+              enableFiltering: false
+              pagination: false
+              defaultColumnHidden: true
+              columnSettings:
+              - name: model
+                header: Model
+                width: 220
+              - name: category
+                header: Category
+                width: 220
+              - name: context_band
+                header: Context
+                width: 220
+              - name: value
+                header: USD / 1M
+                width: 130
+                align: right
+                format:
+                  unit: decimal
+                  decimalPlaces: 4
+                  shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: max by (model, category, context_band) (showback_external_metering_rate_usd_per_million)
+      spendOverTime:
+        kind: Panel
+        spec:
+          display:
+            name: Month-to-date spend by subscription (USD)
+            description: Cumulative estimate as events arrive.
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              legend:
+                mode: list
+                position: bottom
+                values: []
+              visual:
+                areaOpacity: 0.1
+                connectNulls: false
+                display: line
+                lineWidth: 1.5
+              yAxis:
+                format:
+                  unit: decimal
+                min: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum by (subscription) (showback_external_metering_estimated_usd)
+                  seriesNameFormat: "{{subscription}}"
+      throughput:
+        kind: Panel
+        spec:
+          display:
+            name: External tokens per second
+            description: Live governed token rate on external models.
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              legend:
+                mode: list
+                position: bottom
+                values: []
+              visual:
+                areaOpacity: 0.1
+                connectNulls: false
+                display: line
+                lineWidth: 1.5
+              yAxis:
+                format:
+                  unit: decimal
+                min: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum by (subscription, model) (rate(authorized_hits_total{limitador_namespace=~"external-models/.*"}[$__rate_interval]))
+                  seriesNameFormat: "{{subscription}} · {{model}}"
+    layouts:
+    - kind: Grid
+      spec:
+        display:
+          title: External model · provider pass-through
+          collapse:
+            open: true
+        items:
+        - x: 0
+          y: 0
+          width: 24
+          height: 5
+          content:
+            "$ref": "#/spec/panels/contract"
+        - x: 0
+          y: 5
+          width: 6
+          height: 4
+          content:
+            "$ref": "#/spec/panels/spend"
+        - x: 6
+          y: 5
+          width: 6
+          height: 4
+          content:
+            "$ref": "#/spec/panels/support"
+        - x: 12
+          y: 5
+          width: 6
+          height: 4
+          content:
+            "$ref": "#/spec/panels/events"
+        - x: 18
+          y: 5
+          width: 6
+          height: 4
+          content:
+            "$ref": "#/spec/panels/unpriced"
+        - x: 0
+          y: 9
+          width: 24
+          height: 7
+          content:
+            "$ref": "#/spec/panels/statement"
+        - x: 0
+          y: 16
+          width: 24
+          height: 7
+          content:
+            "$ref": "#/spec/panels/rates"
+    - kind: Grid
+      spec:
+        display:
+          title: Live usage
+          collapse:
+            open: true
+        items:
+        - x: 0
+          y: 0
+          width: 12
+          height: 8
+          content:
+            "$ref": "#/spec/panels/spendOverTime"
+        - x: 12
+          y: 0
+          width: 12
+          height: 8
+          content:
+            "$ref": "#/spec/panels/throughput"

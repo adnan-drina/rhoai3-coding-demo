@@ -2,22 +2,14 @@
 
 Open limitations and the evidence needed to understand them. Completed narratives remain in Git history; `tmp/` holds local evidence excluded from Git.
 
-## Three-team private AI showback implementation (2026-10-16)
+## Three-team showback demo (Stage 040)
 
-The [Stage 040 implementation plan](stages/040-governed-models-as-a-service/showback-demo/PLAN.md) records the agreed scenario/access matrix, accepted usage-based allocation and idle-capacity rules, verified AWS Ohio RTX PRO 6000 prices, dashboard views and a contained offline implementation. The [showback-demo package](stages/040-governed-models-as-a-service/showback-demo/README.md) is detached from active GitOps; the publisher and model candidates remain stopped. Assume Mistral Small 4 NVFP4 fits one RTX PRO 6000 for planning; qualification is deferred. The slide's $14,200 bill is an illustrative placeholder. The plan distinguishes the source articles' configured token tariffs from our infrastructure-cost reconciliation. No deployment is authorized by the plan.
+The [showback demo](stages/040-governed-models-as-a-service/showback-demo/README.md) maps three teams to three offerings (shared Qwen, dedicated Mistral, external models) with live dashboards. The retired report pipeline and its qualification records are in Git history at `87aaf9c1`.
 
-- [x] Set the scenario: Engineering/code reviews, Marketing/campaign creation and Support/customer questions share Qwen3.8 27B FP8 and Mistral Small 4 119B NVFP4 on separate RTX PRO 6000 workers. These are planning assumptions; the current Qwen deployment remains NVFP4.
-- [x] Set access: Engineering → Qwen, Marketing → Mistral, Support → both. Allocate full model/window cost by actual token shares, proven zero-use windows to Platform — idle capacity and incomplete evidence to Unresolved allocation.
-- [ ] Calibrate the proposed Qwen 70/30 token allowances and independent Mistral allowances; quotas do not reserve GPU throughput or set the bill split. Choose cost scope, quarter and running schedule to replace $14,200.
-- [ ] Later, review qualification budget and same-GPU host-memory contingency, then qualify the exact Mistral checkpoint/runtime on one RTX PRO 6000 before live rehearsal. Stored-weight fit is not proof of working MoE/MLA kernels, host loading or concurrency.
-- [x] Implement three candidate subscription/auth-policy pairs, bounded workloads, conservative metering reconciliation, cost allocation, three report-backed dashboards and private evidence archiving in `showback-demo/`. Operator tools and tests use Bash with the existing repository tools; the metrics endpoint uses a stopped standard HTTP server. Offline tests and rendering do not prove live readiness.
-- [x] Review the package against project rules: split and label candidate manifests, distinguish team prompts, tighten frozen-period/identity and archive/report checks, and remove unused configuration. The allocation policy is unchanged; all candidates remain stopped and detached.
-- [x] Implement shell-based external pass-through pricing/reconciliation, dedicated full-service charging and shared prospective tariffs/recovery, with explicit idle ownership. Add monthly scoped exports, five detached financial dashboards, correction/continuity indexing and analysis of supplied accepted-task/sourcing evidence. Real tariffs remain unpriced; synthetic fixtures do not prove live attribution or outcomes. The original bounded accounting policy is unchanged.
-- [x] Prepare source-pinned, inert Loki showback and external-metering configuration inputs plus a replay-aware native CloudEvent importer. No LokiStack or metering backend is activated; current upstream `usageLogging:false` is not a stop switch.
-- [ ] Resolve matching downstream schemas/images, profile syntax, Loki storage ownership and a verified metering backend artifact. Qualify Loki showback (Technology Preview) and external metering (Developer Preview), event delivery, access isolation, provider categories and invoice reconciliation. The 2026-10-16 guarded inspection stopped before schema reads; release notes/upstream code are not installed-product evidence.
-- [ ] Supply real service contracts, full-cost/usage/outcome evidence and operational retention; qualify native user/team delivery and dashboard access. Automated collection/close and actual application tracing remain future work. Monthly local indexing does not establish a complete observed quarter.
-- [ ] Provision genuine identities/keys after authorization, verify actual limiter labels and qualify model/runtime/scrape/dashboard integration. The original platform showback utilities remain unchanged; no active resources have been deployed.
-- [ ] Complete four allowed team/model attribution checks and two explicit denials; rehearse busy/quiet/idle windows and a separate quota probe. Require exact financial reconciliation and the bill, governance and model-efficiency views. Full-quarter reporting remains unproven until retained evidence covers the period.
+- [ ] Deploy the reworked component, mint Marketing's key and run all three load profiles; check every dashboard panel in the browser.
+- [ ] Qualify Mistral Small 4 119B NVFP4 on one RTX PRO 6000 (first token, memory headroom, cold load).
+- [ ] Accept external metering live: load on an external model must match the ledger and the External dashboard.
+- [ ] Rebuildability: the metering backend image exists only in the cluster registry; rebuild it with `showback-demo/metering-backend/` on a fresh cluster.
 
 ## Stage 070 shared base SSO
 
