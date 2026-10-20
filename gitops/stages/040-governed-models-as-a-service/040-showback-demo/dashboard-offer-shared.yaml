@@ -1,5 +1,5 @@
-# Shared private offer (Qwen): live tariff, cost and balance.
-# Queries read the RHOAI datasource live; change the time range to change the period.
+# Shared private offering: tariff charges, running cost and balance.
+# Model-agnostic: models, sponsors and prices come from offer-catalog.yaml; queries are live.
 ---
 apiVersion: perses.dev/v1alpha2
 kind: PersesDashboard
@@ -16,55 +16,75 @@ spec:
   config:
     display:
       name: Offer · Shared private
-      description: 'Qwen 3.8 shared by Engineering, Support and other platform consumers: published per-token tariff, running cost and the balance the platform carries. The time range is the billing period.'
+      description: 'Private models shared by many teams: consumers pay a published tariff per token, the platform pays the running cost and carries the balance. Models and tariffs come from the showback offer catalog.'
     duration: 1h
     variables:
-    - kind: TextVariable
+    - kind: ListVariable
       spec:
-        name: worker_usd_per_hour
-        value: '3.36312'
-        constant: false
+        name: model
+        allowAllValue: true
+        allowMultiple: true
+        customAllValue: ".*"
+        defaultValue: "$__all"
         display:
-          name: GPU worker $/hour
+          name: Model
           hidden: false
-          description: AWS g7e.2xlarge (one RTX PRO 6000) on-demand list price in us-east-2, saved 2026-10-15.
-    - kind: TextVariable
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            datasource:
+              kind: PrometheusDatasource
+              name: data-science-prometheus-datasource
+            labelName: model
+            matchers:
+            - showback_offer_info{offer="shared"}
+    - kind: ListVariable
       spec:
-        name: tariff_usd_per_million
-        value: '4.00'
-        constant: false
+        name: subscription
+        allowAllValue: true
+        allowMultiple: true
+        customAllValue: ".*"
+        defaultValue: "$__all"
         display:
-          name: Tariff $/1M tokens
+          name: Subscription
           hidden: false
-          description: Published shared-service price per million governed tokens (input and output).
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            datasource:
+              kind: PrometheusDatasource
+              name: data-science-prometheus-datasource
+            labelName: subscription
+            matchers:
+            - authorized_hits_total{subscription!=""}
     panels:
-      contract:
+      about:
         kind: Panel
         spec:
           display:
-            name: How the shared offer is priced
+            name: How the shared offering is priced
             description: ''
           plugin:
             kind: Markdown
             spec:
-              text: "**Shared private model.** Qwen 3.8 27B runs on one RTX PRO 6000 worker that the platform pays for. Engineering, Support and every other consumer pay the published **tariff per million tokens** for what they use. Idle capacity is priced into the tariff: when demand is low the platform carries the shortfall, when it is high the platform keeps the surplus. The *cost share* column shows the same running cost split by token share, for comparison."
+              text: |-
+                A **shared private model** runs on platform-owned GPU capacity and serves many teams. Each consumer pays the published **tariff per million tokens** for what it uses. The platform pays the running cost and prices idle capacity into the tariff: when demand is below forecast the platform carries the shortfall, above forecast it keeps the surplus.
+
+                Running cost = serving hours × GPU worker price; charge = tokens × tariff. *Cost share* splits the running cost by token share, for comparison with the tariff.
           queries: []
       cost:
         kind: Panel
         spec:
           display:
             name: Running cost (USD)
-            description: Serving hours in the time range × GPU worker $/hour.
+            description: Serving hours × worker price, selected shared models.
           plugin:
             kind: StatChart
             spec:
               calculation: last
-              legendMode: 'off'
-              valueFontSize: 36
               format:
                 unit: decimal
                 decimalPlaces: 2
-                shortValues: false
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -74,23 +94,21 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (count_over_time(count(kserve_vllm:num_requests_running{model_name="qwen3-8-27b"})[$__range:1m]) / 60) * $worker_usd_per_hour
+                  query: sum((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"})
       tokens:
         kind: Panel
         spec:
           display:
             name: Tokens served
-            description: Governed tokens through MaaS in the time range, all consumers.
+            description: Governed tokens on the selected models, all consumers.
           plugin:
             kind: StatChart
             spec:
               calculation: last
-              legendMode: 'off'
-              valueFontSize: 36
               format:
                 unit: decimal
                 decimalPlaces: 0
-                shortValues: false
+                shortValues: true
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -100,23 +118,20 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum (increase(authorized_hits_total{model="qwen3-8-27b"}[$__range]))
+                  query: sum((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"})
       revenue:
         kind: Panel
         spec:
           display:
             name: Tariff revenue (USD)
-            description: All consumer tokens × tariff.
+            description: Tokens × published tariff.
           plugin:
             kind: StatChart
             spec:
               calculation: last
-              legendMode: 'off'
-              valueFontSize: 36
               format:
                 unit: decimal
                 decimalPlaces: 2
-                shortValues: false
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -126,23 +141,20 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum (increase(authorized_hits_total{model="qwen3-8-27b"}[$__range])) / 1e6 * $tariff_usd_per_million
+                  query: sum(((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"}) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million) / 1e6)
       balance:
         kind: Panel
         spec:
           display:
             name: Platform balance (USD)
-            description: 'Tariff revenue minus running cost. Negative: shortfall the platform carries.'
+            description: Tariff revenue minus running cost; negative is a shortfall.
           plugin:
             kind: StatChart
             spec:
               calculation: last
-              legendMode: 'off'
-              valueFontSize: 36
               format:
                 unit: decimal
                 decimalPlaces: 2
-                shortValues: false
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -152,64 +164,62 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: ((sum (increase(authorized_hits_total{model="qwen3-8-27b"}[$__range]))) or vector(0)) / 1e6 * $tariff_usd_per_million - ((count_over_time(count(kserve_vllm:num_requests_running{model_name="qwen3-8-27b"})[$__range:1m]) / 60) or vector(0)) * $worker_usd_per_hour
+                  query: (sum(((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"}) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million) / 1e6) or vector(0)) - (sum((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"}) or vector(0))
       consumers:
         kind: Panel
         spec:
           display:
             name: Charges by consumer
-            description: Each MaaS subscription's tokens, tariff charge, token share and the running cost allocated by that share.
+            description: Tokens, tariff charge, token share and cost share per subscription and model.
           plugin:
             kind: Table
             spec:
               density: compact
-              enableFiltering: false
-              pagination: false
-              defaultColumnHidden: true
+              pagination: true
               columnSettings:
+              - name: timestamp
+                hide: true
               - name: subscription
                 header: Subscription
-                width: 220
+                align: left
+                enableSorting: true
+              - name: model
+                header: Model
+                align: left
+                enableSorting: true
               - name: 'value #1'
                 header: Tokens
-                width: 130
                 align: right
+                enableSorting: true
                 format:
                   unit: decimal
                   decimalPlaces: 0
-                  shortValues: false
+                  shortValues: true
+                sort: desc
               - name: 'value #2'
-                header: Tariff charge USD
-                width: 130
+                header: Tariff charge ($)
                 align: right
+                enableSorting: true
                 format:
                   unit: decimal
                   decimalPlaces: 2
-                  shortValues: false
               - name: 'value #3'
                 header: Token share %
-                width: 130
                 align: right
+                enableSorting: true
                 format:
                   unit: decimal
                   decimalPlaces: 1
-                  shortValues: false
               - name: 'value #4'
-                header: Cost share USD
-                width: 130
+                header: Cost share ($)
                 align: right
+                enableSorting: true
                 format:
                   unit: decimal
                   decimalPlaces: 2
-                  shortValues: false
               transforms:
-              - kind: MergeIndexedColumns
-                spec:
-                  column: subscription
-              - kind: JoinByColumnValue
-                spec:
-                  columns:
-                  - subscription
+              - kind: MergeSeries
+                spec: {}
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -219,7 +229,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum by (subscription) (increase(authorized_hits_total{model="qwen3-8-27b"}[$__range]))
+                  query: sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -228,7 +238,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum by (subscription) (increase(authorized_hits_total{model="qwen3-8-27b"}[$__range])) / 1e6 * $tariff_usd_per_million
+                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million) / 1e6
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -237,7 +247,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: 100 * sum by (subscription) (increase(authorized_hits_total{model="qwen3-8-27b"}[$__range])) / scalar(sum (increase(authorized_hits_total{model="qwen3-8-27b"}[$__range])))
+                  query: 100 * (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}) / on(model) group_left (sum by (model) (increase(authorized_hits_total[$__range])))
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -246,13 +256,116 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum by (subscription) (increase(authorized_hits_total{model="qwen3-8-27b"}[$__range])) / scalar(sum (increase(authorized_hits_total{model="qwen3-8-27b"}[$__range]))) * scalar(count_over_time(count(kserve_vllm:num_requests_running{model_name="qwen3-8-27b"})[$__range:1m]) / 60) * $worker_usd_per_hour
+                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}) / on(model) group_left (sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"})
+      models:
+        kind: Panel
+        spec:
+          display:
+            name: Economics by model
+            description: Running cost, tariff revenue and balance per shared model.
+          plugin:
+            kind: Table
+            spec:
+              density: compact
+              pagination: true
+              columnSettings:
+              - name: timestamp
+                hide: true
+              - name: model
+                header: Model
+                align: left
+                enableSorting: true
+              - name: 'value #1'
+                header: Serving hours
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 2
+              - name: 'value #2'
+                header: Running cost ($)
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 2
+              - name: 'value #3'
+                header: Tokens
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 0
+                  shortValues: true
+              - name: 'value #4'
+                header: Revenue ($)
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 2
+              - name: 'value #5'
+                header: Balance ($)
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 2
+              transforms:
+              - kind: MergeSeries
+                spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) and on(model) showback_offer_info{offer="shared", model=~"$model"}
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"}
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"}
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: ((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"}) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million) / 1e6
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"}) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million) / 1e6) - on(model) ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"})
       throughput:
         kind: Panel
         spec:
           display:
-            name: Tokens per second by consumer
-            description: Live governed token rate on Qwen.
+            name: Token rate by consumer
+            description: Governed tokens per second per subscription.
           plugin:
             kind: TimeSeriesChart
             spec:
@@ -278,14 +391,14 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum by (subscription) (rate(authorized_hits_total{model="qwen3-8-27b"}[$__rate_interval]))
+                  query: sum by (subscription) (rate(authorized_hits_total{subscription=~"$subscription"}[$__rate_interval]) and on(model) showback_offer_info{offer="shared", model=~"$model"})
                   seriesNameFormat: "{{subscription}}"
       load:
         kind: Panel
         spec:
           display:
             name: Requests running and waiting
-            description: vLLM scheduler load on the shared worker.
+            description: vLLM scheduler load on the selected shared models.
           plugin:
             kind: TimeSeriesChart
             spec:
@@ -311,8 +424,8 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum(kserve_vllm:num_requests_running{model_name="qwen3-8-27b"})
-                  seriesNameFormat: running
+                  query: label_replace(sum by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)") and on(model) showback_offer_info{offer="shared", model=~"$model"}
+                  seriesNameFormat: "{{model}} running"
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -321,68 +434,88 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum(kserve_vllm:num_requests_waiting{model_name="qwen3-8-27b"})
-                  seriesNameFormat: waiting
+                  query: label_replace(sum by (model_name) (kserve_vllm:num_requests_waiting), "model", "$1", "model_name", "(.+)") and on(model) showback_offer_info{offer="shared", model=~"$model"}
+                  seriesNameFormat: "{{model}} waiting"
     layouts:
     - kind: Grid
       spec:
         display:
-          title: Shared private · Qwen 3.8 27B
+          title: How this offering is priced
+          collapse:
+            open: false
+        items:
+        - x: 0
+          y: 0
+          width: 24
+          height: 6
+          content:
+            "$ref": "#/spec/panels/about"
+    - kind: Grid
+      spec:
+        display:
+          title: Overview
           collapse:
             open: true
         items:
         - x: 0
           y: 0
-          width: 24
-          height: 5
-          content:
-            "$ref": "#/spec/panels/contract"
-        - x: 0
-          y: 5
           width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/cost"
         - x: 6
-          y: 5
+          y: 0
           width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/tokens"
         - x: 12
-          y: 5
+          y: 0
           width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/revenue"
         - x: 18
-          y: 5
+          y: 0
           width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/balance"
-        - x: 0
-          y: 9
-          width: 24
-          height: 8
-          content:
-            "$ref": "#/spec/panels/consumers"
     - kind: Grid
       spec:
         display:
-          title: Live load
+          title: Trends
           collapse:
             open: true
         items:
         - x: 0
           y: 0
           width: 12
-          height: 8
+          height: 7
           content:
             "$ref": "#/spec/panels/throughput"
         - x: 12
           y: 0
           width: 12
-          height: 8
+          height: 7
           content:
             "$ref": "#/spec/panels/load"
+    - kind: Grid
+      spec:
+        display:
+          title: Breakdown
+          collapse:
+            open: true
+        items:
+        - x: 0
+          y: 0
+          width: 24
+          height: 7
+          content:
+            "$ref": "#/spec/panels/consumers"
+        - x: 0
+          y: 7
+          width: 24
+          height: 5
+          content:
+            "$ref": "#/spec/panels/models"

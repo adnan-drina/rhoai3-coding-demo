@@ -9,6 +9,7 @@ resources:
   - team-support-subscription.yaml
   - team-support-auth-policy.yaml
   - mistral
+  - offer-catalog.yaml
   - dashboard-offer-external.yaml
   - dashboard-offer-dedicated.yaml
   - dashboard-offer-shared.yaml

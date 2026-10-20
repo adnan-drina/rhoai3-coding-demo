@@ -12,15 +12,15 @@ The cluster resources are the optional [040-showback-demo component](../../../gi
 
 ## Dashboards
 
-Open **Observe & monitor → Dashboard** in the OpenShift AI console. All three tabs query the RHOAI monitoring datasource live; the time range picker sets the billing period.
+Open **Observe & monitor → Dashboard** in the OpenShift AI console. Each Offer tab has a collapsed **How this offering is priced** section, then Overview, Trends and Breakdown. Panels query the RHOAI monitoring datasource live; the time range picker sets the billing period, and the Model and Subscription filters narrow the view.
 
 | Tab | Shows |
 |---|---|
-| **Offer · Shared private** | Qwen running cost, tokens served, tariff revenue, the platform's balance (revenue minus cost) and a per-subscription table of tokens, tariff charge, token share and cost share |
-| **Offer · Dedicated private** | Marketing's charge (Mistral serving hours × worker rate), tokens, effective cost per million tokens, busy share and paid idle |
-| **Offer · External model** | Month-to-date provider spend by subscription and model from the metering ledger, unpriced requests, the price list and live token rates |
+| **Offer · Shared private** | Running cost, tokens served, tariff revenue and the platform balance for all shared models; per subscription and model: tokens, tariff charge, token share and cost share; per model economics |
+| **Offer · Dedicated private** | Sponsor charges, serving hours, tokens, effective cost per million tokens, busy share and paid idle; one row per dedicated model and sponsor; token rate, load and GPU utilisation |
+| **Offer · External model** | Month-to-date provider spend, requests and tokens from the metering ledger; statement by subscription and model; the provider price list |
 
-Both private dashboards have a **GPU worker $/hour** field (default $3.36312, the AWS `g7e.2xlarge` on-demand price in us-east-2 saved on 2026-10-15). The shared dashboard also has the **tariff $/1M tokens** field (default $4.00). Running cost counts the minutes a model is serving; node start-up and model loading are not included.
+The dashboards name no model. The **offer catalog** (`offer-catalog.yaml` in the component, a PrometheusRule evaluated by the RHOAI Prometheus) records which private models are shared or dedicated, the sponsoring subscription of each dedicated model, the GPU worker price ($3.36312 per hour, AWS `g7e.2xlarge` on-demand in us-east-2, saved 2026-10-15) and the shared tariff ($4.00 per million tokens). To onboard another model or change a price, edit the catalog and redeploy the component. Running cost counts the minutes a model is serving; node start-up and model loading are not included. Catalog series exist from the moment the rule is deployed, so periods before that show no private cost.
 
 ## Run the demo
 

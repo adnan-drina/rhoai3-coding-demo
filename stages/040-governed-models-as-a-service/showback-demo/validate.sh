@@ -50,6 +50,19 @@ if jq -e '[.[] | select(.kind == "PersesDashboard")] as $d
     record 'Three live offer dashboards: every panel laid out and queried from the RHOAI datasource' pass
 else record 'Three live offer dashboards: every panel laid out and queried from the RHOAI datasource' 'Dashboard differs'; fi
 
+# The offer catalog drives every private-offer panel: each offered model needs a worker price, shared models a tariff,
+# dedicated models a sponsor, and every dedicated model must exist in this bundle.
+if jq -e '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog") | .spec.groups[].rules[]] as $r
+    | ($r | map(select(.record == "showback_offer_info") | .labels)) as $info | ($info | length) > 0
+    and all($info[]; . as $i | any($r[]; .record == "showback_offer_worker_usd_per_hour" and .labels.model == $i.model)
+        and (.sponsor | type == "string" and length > 0)
+        and (if .offer == "shared" then any($r[]; .record == "showback_offer_tariff_usd_per_million" and .labels.model == $i.model)
+             else .offer == "dedicated" end))
+    and ([$info[] | select(.offer == "dedicated") | .model] - [.[] | select(.kind == "LLMInferenceService") | .metadata.name]
+        | length) == 0' "$work/bundle.json" >/dev/null; then
+    record 'Offer catalog: every offered model has an offering, sponsor and price' pass
+else record 'Offer catalog: every offered model has an offering, sponsor and price' 'Catalog incomplete'; fi
+
 if jq -e '[.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $m
     | ([$m[] | select(.kind == "Deployment") | .metadata.name] | sort) == ["showback-external-metering", "showback-external-metering-db"]
     and all($m[] | select(.kind == "Deployment"); all(.spec.template.spec.containers[]; .image | test("@sha256:[a-f0-9]{64}$")))

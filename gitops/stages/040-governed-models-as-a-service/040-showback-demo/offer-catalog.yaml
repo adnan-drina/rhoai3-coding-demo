@@ -1,0 +1,37 @@
+# Offer catalog for the showback dashboards: which private models are offered as dedicated or shared, who sponsors a
+# dedicated model, the GPU worker price behind each model and the published shared tariff. The dashboards read only
+# these series; onboarding another model or changing a price is an edit here, not a dashboard change.
+# Worker price: AWS g7e.2xlarge (one RTX PRO 6000) on-demand list price in us-east-2, saved 2026-10-15.
+apiVersion: monitoring.rhobs/v1
+kind: PrometheusRule
+metadata:
+  name: showback-offer-catalog
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: showback-offer-catalog
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+spec:
+  groups:
+    - name: showback-offer-catalog
+      interval: 1m
+      rules:
+        # Shared private: consumers pay the tariff; the platform pays the worker.
+        - record: showback_offer_info
+          expr: vector(1)
+          labels: {offer: shared, model: qwen3-8-27b, sponsor: platform}
+        - record: showback_offer_worker_usd_per_hour
+          expr: vector(3.36312)
+          labels: {offer: shared, model: qwen3-8-27b, instance_type: g7e.2xlarge}
+        - record: showback_offer_tariff_usd_per_million
+          expr: vector(4)
+          labels: {offer: shared, model: qwen3-8-27b}
+        # Dedicated private: the sponsoring subscription pays the worker, busy or idle.
+        - record: showback_offer_info
+          expr: vector(1)
+          labels: {offer: dedicated, model: mistral-small4-119b, sponsor: team-marketing}
+        - record: showback_offer_worker_usd_per_hour
+          expr: vector(3.36312)
+          labels: {offer: dedicated, model: mistral-small4-119b, instance_type: g7e.2xlarge}

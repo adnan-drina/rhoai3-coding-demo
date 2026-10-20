@@ -12,12 +12,13 @@ The demo needs its own team subscriptions, a dedicated model, dashboards and a m
 |---|---|
 | `team-*-subscription.yaml`, `team-*-auth-policy.yaml` | `MaaSSubscription` and `MaaSAuthPolicy` per team in `models-as-a-service`: Engineering → Qwen; Marketing → Mistral; Support → Qwen, GPT-6 Luna, Claude Sonnet 5.5 and Nemotron. Each is owned by the team user `showback-<team>` |
 | `mistral/` | `LLMInferenceService` and `MaaSModelRef` for Mistral Small 4 119B NVFP4 in `internal-models`, zero replicas in Git, one RTX PRO 6000 when scaled up |
-| `dashboard-offer-*.yaml` | `PersesDashboard`s **Offer · Shared private**, **Offer · Dedicated private** and **Offer · External model** in `redhat-ods-monitoring`, querying the RHOAI datasource live |
+| `offer-catalog.yaml` | `PrometheusRule` (`monitoring.rhobs/v1`) in `redhat-ods-monitoring` recording, per private model, its offering, sponsor, GPU worker price and (shared only) tariff |
+| `dashboard-offer-*.yaml` | Model-agnostic `PersesDashboard`s **Offer · Shared private**, **Offer · Dedicated private** and **Offer · External model** in `redhat-ods-monitoring`, querying the RHOAI datasource live and joining on the offer catalog |
 | `metering/` | Metering backend and PostgreSQL 16 (retained PVC), database Secret, price catalog, profile ConfigMap, ImageStream, Services, ServiceMonitor and the NetworkPolicy for gateway-to-backend traffic |
 
 The Application owns no shared Namespace, Qwen resource, Gateway, operator or MaaS `Config`. Qwen stays with `040-local-models` and GPU capacity with Stage 020. The metering plugin entry in the MaaS-owned `openshift-ingress/payload-processing-plugins` ConfigMap is written by the targeted deployment from `metering/profile.yaml`, not by Argo CD, so reverting the Application alone does not remove it.
 
-The dashboards are the generated output of a small, uncommitted generator; edit the YAML directly for small changes. Tokens come from the MaaS counter `authorized_hits_total` (per user, subscription and model), running time from the presence of vLLM metrics, external spend from the metering gauges.
+The dashboards are the generated output of a small, uncommitted generator; edit the YAML directly for small changes. Tokens come from the MaaS counter `authorized_hits_total` (per user, subscription and model), running time from the presence of vLLM metrics, prices and offer membership from the catalog, external spend from the metering gauges. Onboarding a private model to an offering is a catalog entry, not a dashboard change.
 
 ## How
 
