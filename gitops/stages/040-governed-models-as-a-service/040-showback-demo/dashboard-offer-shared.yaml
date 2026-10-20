@@ -247,7 +247,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: 100 * (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}) / on(model) group_left (sum by (model) (increase(authorized_hits_total[$__range])))
+                  query: 100 * (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}) / on(model) group_left() (sum by (model) (increase(authorized_hits_total[$__range])))
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -256,7 +256,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}) / on(model) group_left (sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"})
+                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}) / on(model) group_left() (sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left() ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"})
       models:
         kind: Panel
         spec:
