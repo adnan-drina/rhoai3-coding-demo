@@ -184,20 +184,14 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
    privateCost: stat("Private cost / month (USD)"; "Workers needed x worker price x GPU hours per month."; $private_cost; "decimal"; 0),
    blended: stat("External $/1M tokens"; "Provider list price at the observed input/output mix of the workload."; $blended; "decimal"; 2),
    capacity: stat("Capacity of one worker (tokens / month)"; "Demonstrated tokens per second x usage hours per month."; $capacity; "decimal"; 0),
-   effectiveRange: stat("Effective $/1M tokens"; "Private worker spend in the time range divided by tokens served."; "(\($spend_range)) / (((\($ptok)) + (\($gtok))) / 1e6)"; "decimal"; 2),
    infraSpend: stat("Private spend (USD)"; "Serving hours of each private model in the time range x its worker price."; $spend_range; "decimal"; 2),
    refSpend: stat("Same tokens at the external price (USD)"; "Tokens the private models served in the time range, priced at the selected external model."; $ref_spend_range; "decimal"; 2),
-   fleetSavings: stat("Savings vs external (USD)"; "External price minus private spend for the time range; negative means the workers were under-used."; "(\($ref_spend_range)) - (\($spend_range))"; "decimal"; 2),
-   throughputTrend: ts("Private throughput vs break-even"; "Tokens per second of the private models against the rate at which the serving workers match the external price.";
-       [[$tps_model, "{{model}}"], [$breakeven_tps, "break-even"]]; "decimal"; DS),
-   gpuUtil: ts("GPU utilisation"; "Accelerator utilisation from cluster monitoring (DCGM).";
-       [["avg by (exported_pod) (accelerator_gpu_utilization)", "{{exported_pod}}"]]; "percent"; CDS)} as $tok_panels
-| [grid("How the decision is calculated"; [["about", 0, 0, 24, 7]]) | .spec.display.collapse.open = false,
-   grid("Recommendation"; [["ratio", 0, 0, 8, 8], ["volume", 8, 0, 8, 4], ["breakeven", 16, 0, 8, 4],
-       ["savings", 8, 4, 8, 4], ["workers", 16, 4, 8, 4]]),
-   grid("Monthly comparison"; [["spend", 0, 0, 6, 5], ["privateCost", 6, 0, 6, 5], ["blended", 12, 0, 6, 5], ["capacity", 18, 0, 6, 5]]),
-   grid("Private fleet in the time range"; [["effectiveRange", 0, 0, 6, 5], ["infraSpend", 6, 0, 6, 5], ["refSpend", 12, 0, 6, 5],
-       ["fleetSavings", 18, 0, 6, 5], ["throughputTrend", 0, 5, 24, 7], ["gpuUtil", 0, 12, 24, 7]])] as $tok_layouts
+   fleetSavings: stat("Savings vs external (USD)"; "External price minus private spend for the time range; negative means the workers were under-used."; "(\($ref_spend_range)) - (\($spend_range))"; "decimal"; 2)} as $tok_panels
+| [(grid("How the decision is calculated"; [["about", 0, 0, 24, 7]]) | .spec.display.collapse.open = false),
+   grid("Recommendation"; [["ratio", 0, 0, 8, 8], ["volume", 8, 0, 8, 4], ["breakeven", 16, 0, 8, 4], ["savings", 8, 4, 16, 4]]),
+   grid("Monthly comparison"; [["spend", 0, 0, 12, 5], ["privateCost", 12, 0, 12, 5]]),
+   (grid("Assumptions"; [["blended", 0, 0, 8, 5], ["capacity", 8, 0, 8, 5], ["workers", 16, 0, 8, 5]]) | .spec.display.collapse.open = false),
+   grid("Private fleet in the time range"; [["infraSpend", 0, 0, 8, 5], ["refSpend", 8, 0, 8, 5], ["fleetSavings", 16, 0, 8, 5]])] as $tok_layouts
 
 | {"dashboard-5-cost-per-token.yaml": dashboard("dashboard-5-cost-per-token-admin"; "Cost per token";
        "Showback: tokens served by the private models and governed MaaS users, priced with editable per-million-token prices.";
