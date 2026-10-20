@@ -132,7 +132,8 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 # ── Tokenomics break-even ──
 # Decision view: should an external-model workload move to a private model? Usage in the time range is scaled to a
 # month; worker price and demonstrated capacity per worker come from the showback offer catalog (PrometheusRule in the
-# optional 040-showback-demo component), external list prices from the metering price catalog. No apostrophes below:
+# optional 040-showback-demo component), external list prices from the metering price catalog. Catalog values are
+# read at the end of the range, or at their current value when an entry did not exist yet. No apostrophes below:
 # this program sits in a single-quoted shell string.
 | "scalar(count_over_time(vector(1)[$__range:1m]) / 60)" as $win
 | "/ \($win) * $usage_hours * $users" as $monthly
@@ -144,14 +145,14 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 | "((\($in_r)) + (\($out_r))) \($monthly)" as $vol
 | "((\($in_r)) * \($p_in) + (\($out_r)) * \($p_out)) / 1e6 \($monthly)" as $spend
 | "((\($spend)) / ((\($vol)) > 0) * 1e6 or (\($p_in) + \($p_out)) / 2)" as $blended
-| "max(showback_offer_worker_usd_per_hour{model=\"$private\"} @ end())" as $wprice
-| "max(showback_offer_capacity_tokens_per_second{model=\"$private\"} @ end()) * 3600 * $usage_hours" as $capacity
+| "max(showback_offer_worker_usd_per_hour{model=\"$private\"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model=\"$private\"}[30d] offset -30d))" as $wprice
+| "max(showback_offer_capacity_tokens_per_second{model=\"$private\"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model=\"$private\"}[30d] offset -30d)) * 3600 * $usage_hours" as $capacity
 | "clamp_min(ceil((\($vol)) / (\($capacity))), 1)" as $workers
 | "(\($workers)) * \($wprice) * $worker_hours" as $private_cost
 | "\($wprice) * $worker_hours / (\($blended)) * 1e6" as $breakeven
 # Private fleet in the time range, priced at the reference model
-| "(showback_offer_info @ end())" as $info
-| "max by (model) (showback_offer_worker_usd_per_hour @ end())" as $worker
+| "(showback_offer_info @ end() or last_over_time(showback_offer_info[30d] offset -30d))" as $info
+| "max by (model) (showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d))" as $worker
 | "label_replace(count by (model_name) (kserve_vllm:num_requests_running), \"model\", \"$1\", \"model_name\", \"(.+)\")" as $running
 | "sum((\($running)) * on(model) group_left \($worker) and on(model) \($info))" as $burn
 | "label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])), \"model\", \"$1\", \"model_name\", \"(.+)\") and on(model) \($info)" as $tps_model

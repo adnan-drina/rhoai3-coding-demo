@@ -125,7 +125,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum(max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+                  query: sum(max by (model) (showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d)) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))
       floor:
         kind: Panel
         spec:
@@ -149,7 +149,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end()) / 1e6)
+                  query: sum((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d)) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end() or last_over_time(showback_offer_committed_tariff_usd_per_million[30d] offset -30d)) / 1e6)
       coverage:
         kind: Panel
         spec:
@@ -173,7 +173,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: 100 * sum((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end()) / 1e6) / sum(max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+                  query: 100 * sum((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d)) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end() or last_over_time(showback_offer_committed_tariff_usd_per_million[30d] offset -30d)) / 1e6) / sum(max by (model) (showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d)) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))
       balanceCommitted:
         kind: Panel
         spec:
@@ -197,7 +197,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum(((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end()) / 1e6 + on(subscription, model) ((clamp_min(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - on(subscription, model) (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())), 0)) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6 or (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * 0)) or ((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6) or vector(0)) - sum(max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+                  query: (sum(((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d)) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end() or last_over_time(showback_offer_committed_tariff_usd_per_million[30d] offset -30d)) / 1e6 + on(subscription, model) ((clamp_min(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - on(subscription, model) (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d)) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))), 0)) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d)) / 1e6 or (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d)) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * 0)) or ((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d)) / 1e6) or vector(0)) - sum(max by (model) (showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d)) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))
       balancePayg:
         kind: Panel
         spec:
@@ -221,7 +221,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6) or vector(0)) - sum(max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+                  query: (sum(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d)) / 1e6) or vector(0)) - sum(max by (model) (showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d)) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))
       throughput:
         kind: Panel
         spec:
@@ -253,7 +253,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum by (subscription) (rate(authorized_hits_total{subscription=~"$subscription"}[$__rate_interval]) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+                  query: sum by (subscription) (rate(authorized_hits_total{subscription=~"$subscription"}[$__rate_interval]) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))
                   seriesNameFormat: "{{subscription}}"
       consumers:
         kind: Panel
@@ -330,7 +330,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())
+                  query: sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -339,7 +339,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())
+                  query: max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d)) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -348,7 +348,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
+                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -357,7 +357,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: 100 * ((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / on(subscription, model) (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+                  query: 100 * ((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / on(subscription, model) (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d)) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -366,7 +366,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: ((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end()) / 1e6 + on(subscription, model) ((clamp_min(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - on(subscription, model) (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())), 0)) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6 or (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * 0)) or ((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6
+                  query: ((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d)) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end() or last_over_time(showback_offer_committed_tariff_usd_per_million[30d] offset -30d)) / 1e6 + on(subscription, model) ((clamp_min(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - on(subscription, model) (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d)) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))), 0)) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d)) / 1e6 or (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d)) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * 0)) or ((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d)) / 1e6
     layouts:
     - kind: Grid
       spec:
