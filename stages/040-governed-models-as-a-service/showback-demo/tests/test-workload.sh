@@ -124,7 +124,7 @@ run_case() {
     jq -e '.evidence_kind=="synthetic_fixture"' "$work/$name/run.json" >/dev/null
     jq -s -e --slurpfile run "$work/$name/run.json" \
         'length==$run[0].requests_started and ([.[].request_id]|unique|length)==length' "$work/$name/receipts.jsonl" >/dev/null
-    if rg -q 'test-private-key|PRIVATE_ERROR_BODY|private reply|Fictional context|Northstar notebook|fictional Java change' \
+    if grep -rEq 'test-private-key|PRIVATE_ERROR_BODY|private reply|Fictional context|Northstar notebook|fictional Java change' \
         "$work/$name"; then
         printf '%s\n' 'FAIL: sensitive payload retained' >&2
         exit 1

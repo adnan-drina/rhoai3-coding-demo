@@ -37,12 +37,12 @@ bash "$SCRIPT_DIR/render-report.sh" --report "$WORK/report.json" --output "$WORK
 pass 'report, consumer rollup and agreement metrics reconcile to canonical cent totals'
 [[ $(money service_advice_accepted_tasks "$WORK/report.prom") == 1 ]]
 [[ $(money service_advice_cost_per_accepted_task_cents "$WORK/report.prom") == 10500 ]]
-! rg '^service_sourcing_savings_cents\{.*capacity_eligible="false"' "$WORK/report.prom" >/dev/null
+! grep -E '^service_sourcing_savings_cents\{.*capacity_eligible="false"' "$WORK/report.prom" >/dev/null
 pass 'optional advice preserves outcome cost and omits infeasible savings'
-rg 'price_basis=.+cost|cost_scope=' "$WORK/report.prom" >/dev/null
-rg 'rate_version="fixture-(early|late)"' "$WORK/report.prom" >/dev/null
-rg '^# TYPE service_.* gauge$' "$WORK/report.prom" >/dev/null
-! rg '^# TYPE .* (counter|histogram)' "$WORK/report.prom" >/dev/null
+grep -E 'price_basis=.+cost|cost_scope=' "$WORK/report.prom" >/dev/null
+grep -E 'rate_version="fixture-(early|late)"' "$WORK/report.prom" >/dev/null
+grep -E '^# TYPE service_.* gauge$' "$WORK/report.prom" >/dev/null
+! grep -E '^# TYPE .* (counter|histogram)' "$WORK/report.prom" >/dev/null
 pass 'snapshot identity, rate provenance and gauge-only contract retained'
 ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV[0]))' "$WORK/selected.yaml" > "$WORK/selected.json"
 jq -e '.metadata.name=="showback-selected-report" and .metadata.labels["app.kubernetes.io/part-of"]=="observability"
@@ -54,7 +54,7 @@ jq -e --slurpfile full "$WORK/report.json" 'all(.charge_lines[];.user=="demo-eng
   and .charge_cents==([$full[0].charge_lines[]|select(.user=="demo-eng")|.charge_cents]|add)
   and (.scope_notice|contains("Team availability"))' "$WORK/user/statement.json" >/dev/null
 [[ $(find "$WORK/user" -type f | wc -l | tr -d ' ') == 3 ]]
-! rg 'demo-support|SYNTHETIC INVOICE' "$WORK/user" >/dev/null
+! grep -rE 'demo-support|SYNTHETIC INVOICE' "$WORK/user" >/dev/null
 pass 'user export is scoped, reconciles and excludes fleet report and broader allowlist'
 reject 'cross-user export denied' statement "$WORK/report.json" "$WORK/access.json" user demo-support "$WORK/denied-user"
 reject 'consumer cannot request a team export' statement "$WORK/report.json" "$WORK/access.json" team engineering "$WORK/denied-team"
@@ -77,7 +77,7 @@ bash "$PACKAGE_DIR/offers/service-report.sh" --input "$WORK/formula-input.json" 
 authorize "$WORK/formula-report.json" "$WORK/formula-access-base.json"
 jq '.principal="=demo-eng"|.allowed_users=["=demo-eng"]' "$WORK/formula-access-base.json" > "$WORK/formula-access.json"
 statement "$WORK/formula-report.json" "$WORK/formula-access.json" user '=demo-eng' "$WORK/formula-statement"
-rg '"\x27=demo-eng"' "$WORK/formula-statement/statement.csv" >/dev/null
+grep -F "\"'=demo-eng\"" "$WORK/formula-statement/statement.csv" >/dev/null
 jq -e '.subject=="=demo-eng"' "$WORK/formula-statement/statement.json" >/dev/null
 pass 'CSV protects formula-like string cells while JSON preserves the identity'
 reject 'team manager cannot export another team' statement "$WORK/report.json" "$WORK/team-access.json" team support "$WORK/denied-team2"
@@ -108,11 +108,11 @@ jq '(.agreements[]|select(.offer=="external")|.usage_coverage)="missing"' \
     "$PACKAGE_DIR/offers/fixtures/month.json" > "$WORK/missing-input.json"
 bash "$PACKAGE_DIR/offers/service-report.sh" --input "$WORK/missing-input.json" --output "$WORK/missing.json"
 render "$WORK/missing.json" "$WORK/missing.prom"
-! rg '^service_agreement_(input_tokens|output_tokens|requests)\{.*offer="external"' "$WORK/missing.prom" >/dev/null
-! rg '^service_consumer_charge_cents\{.*offer="external"' "$WORK/missing.prom" >/dev/null
+! grep -E '^service_agreement_(input_tokens|output_tokens|requests)\{.*offer="external"' "$WORK/missing.prom" >/dev/null
+! grep -E '^service_consumer_charge_cents\{.*offer="external"' "$WORK/missing.prom" >/dev/null
 pass 'incomplete usage is not rendered as certified totals or a complete consumer charge'
 render "$WORK/report.json" "$WORK/no-advice.prom"
-! rg '^service_advice_' "$WORK/no-advice.prom" >/dev/null
+! grep -E '^service_advice_' "$WORK/no-advice.prom" >/dev/null
 pass 'missing analysis does not create zero task outcomes'
 jq '.tasks |= map(.accepted=false)' "$PACKAGE_DIR/analysis/fixtures/tasks.json" > "$WORK/no-success-input.json"
 bash "$PACKAGE_DIR/analysis/analyze.sh" --input "$WORK/no-success-input.json" --output "$WORK/no-success.json"
@@ -126,8 +126,8 @@ jq '(.cost_items[]|select(.id=="dedicated-compute")|.usd_per_hour)="0"
     "$PACKAGE_DIR/offers/fixtures/month.json" > "$WORK/zero-cost-input.json"
 bash "$PACKAGE_DIR/offers/service-report.sh" --input "$WORK/zero-cost-input.json" --output "$WORK/zero-cost.json"
 render "$WORK/zero-cost.json" "$WORK/zero-cost.prom"
-rg '^service_agreement_cost_cents\{.*offer="dedicated".* 0$' "$WORK/zero-cost.prom" >/dev/null
-! rg '^service_agreement_recovery_(before|after)_subsidy_ratio\{.*offer="dedicated"' "$WORK/zero-cost.prom" >/dev/null
+grep -E '^service_agreement_cost_cents\{.*offer="dedicated".* 0$' "$WORK/zero-cost.prom" >/dev/null
+! grep -E '^service_agreement_recovery_(before|after)_subsidy_ratio\{.*offer="dedicated"' "$WORK/zero-cost.prom" >/dev/null
 pass 'measured zero cost is explicit while recovery ratios remain undefined'
 jq '.totals.known_charge_cents+=1' "$WORK/report.json" > "$WORK/bad.json"
 cp "$WORK/report.prom" "$WORK/before.prom"
@@ -136,8 +136,8 @@ cmp "$WORK/report.prom" "$WORK/before.prom"
 pass 'failed rendering preserves previously selected report atomically'
 jq '.report_id="synthetic-offers-selected-replacement"' "$WORK/report.json" > "$WORK/replacement.json"
 render "$WORK/replacement.json" "$WORK/report.prom"
-rg 'report_id="synthetic-offers-selected-replacement"' "$WORK/report.prom" >/dev/null
-! rg 'report_id="synthetic-offers-2026-10-v1"' "$WORK/report.prom" >/dev/null
+grep -E 'report_id="synthetic-offers-selected-replacement"' "$WORK/report.prom" >/dev/null
+! grep -E 'report_id="synthetic-offers-2026-10-v1"' "$WORK/report.prom" >/dev/null
 cp "$WORK/report.prom" "$WORK/replaced.prom"
 render "$WORK/replacement.json" "$WORK/report.prom"
 cmp "$WORK/replaced.prom" "$WORK/report.prom"
@@ -163,8 +163,8 @@ jq -e 'length==5 and all(.[];.kind=="PersesDashboard" and .metadata.labels["app.
     "$WORK/dashboards.json" >/dev/null
 jq -e 'all(.[]|.spec.config.panels[];.spec.plugin.kind=="StatChart" and .spec.plugin.spec.calculation=="last")' \
     "$WORK/dashboards.json" >/dev/null
-! rg 'sum_over_time\(|increase\(|rate\(' "$WORK/dashboards.yaml" >/dev/null
-! rg 'kind: (Deployment|Service|RoleBinding|ClusterRoleBinding)' "$WORK/dashboards.yaml" >/dev/null
+! grep -E 'sum_over_time\(|increase\(|rate\(' "$WORK/dashboards.yaml" >/dev/null
+! grep -E 'kind: (Deployment|Service|RoleBinding|ClusterRoleBinding)' "$WORK/dashboards.yaml" >/dev/null
 pass 'five detached platform dashboards render with current gauges and no fabricated access or server'
 printf '%s service-view tests passed. Synthetic offline validation only.\n' "$passed"
 completed=true

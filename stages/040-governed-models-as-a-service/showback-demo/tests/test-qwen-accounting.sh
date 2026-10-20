@@ -31,7 +31,7 @@ jq -e '.evidence_kind=="synthetic_fixture" and .allocation_complete
   and (.totals_by_consumer.platform_idle>0) and ([.windows[].models[].model]|unique)==["qwen3-8-27b"]' \
     "$work/report.json" >/dev/null
 bash "$DEMO_DIR/publish-report.sh" --scenario "$scenario" --report "$work/report.json" --output "$work/report.prom"
-if rg -q '(model="mistral[^\"]*"|team="marketing"|subscription="team-marketing")' "$work/report.prom"; then
+if grep -Eq '(model="mistral[^\"]*"|team="marketing"|subscription="team-marketing")' "$work/report.prom"; then
     echo 'Qwen-only publisher retained an excluded team or model' >&2
     exit 1
 fi
