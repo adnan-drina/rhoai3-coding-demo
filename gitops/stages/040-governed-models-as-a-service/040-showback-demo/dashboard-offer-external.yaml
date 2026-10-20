@@ -107,7 +107,7 @@ spec:
               calculation: last
               format:
                 unit: decimal
-                decimalPlaces: 0
+                decimalPlaces: 1
                 shortValues: true
           queries:
           - kind: TimeSeriesQuery
@@ -131,7 +131,7 @@ spec:
               calculation: last
               format:
                 unit: decimal
-                decimalPlaces: 0
+                decimalPlaces: 1
                 shortValues: true
           queries:
           - kind: TimeSeriesQuery
@@ -155,7 +155,7 @@ spec:
               calculation: last
               format:
                 unit: decimal
-                decimalPlaces: 0
+                decimalPlaces: 1
                 shortValues: true
           queries:
           - kind: TimeSeriesQuery
@@ -219,7 +219,6 @@ spec:
                 format:
                   unit: decimal
                   decimalPlaces: 0
-                  shortValues: true
               - name: 'value #2'
                 header: Input tokens
                 align: right
@@ -227,7 +226,6 @@ spec:
                 format:
                   unit: decimal
                   decimalPlaces: 0
-                  shortValues: true
               - name: 'value #3'
                 header: Output tokens
                 align: right
@@ -235,7 +233,6 @@ spec:
                 format:
                   unit: decimal
                   decimalPlaces: 0
-                  shortValues: true
               - name: 'value #4'
                 header: Estimate ($)
                 align: right

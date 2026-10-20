@@ -94,7 +94,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"})
+                  query: sum((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
       tokens:
         kind: Panel
         spec:
@@ -107,7 +107,7 @@ spec:
               calculation: last
               format:
                 unit: decimal
-                decimalPlaces: 0
+                decimalPlaces: 1
                 shortValues: true
           queries:
           - kind: TimeSeriesQuery
@@ -118,7 +118,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"})
+                  query: sum((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
       revenue:
         kind: Panel
         spec:
@@ -141,7 +141,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum(((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"}) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million) / 1e6)
+                  query: sum(((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6)
       balance:
         kind: Panel
         spec:
@@ -164,7 +164,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum(((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"}) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million) / 1e6) or vector(0)) - (sum((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"}) or vector(0))
+                  query: (sum(((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6) or vector(0)) - (sum((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) or vector(0))
       consumers:
         kind: Panel
         spec:
@@ -194,7 +194,6 @@ spec:
                 format:
                   unit: decimal
                   decimalPlaces: 0
-                  shortValues: true
                 sort: desc
               - name: 'value #2'
                 header: Tariff charge ($)
@@ -229,7 +228,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}
+                  query: sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -238,7 +237,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million) / 1e6
+                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -247,7 +246,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: 100 * (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}) / on(model) group_left() (sum by (model) (increase(authorized_hits_total[$__range])))
+                  query: 100 * (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / on(model) group_left() (sum by (model) (increase(authorized_hits_total[$__range])))
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -256,7 +255,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) and on(model) showback_offer_info{offer="shared", model=~"$model"}) / on(model) group_left() (sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left() ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"})
+                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / on(model) group_left() (sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left() ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
       models:
         kind: Panel
         spec:
@@ -296,7 +295,6 @@ spec:
                 format:
                   unit: decimal
                   decimalPlaces: 0
-                  shortValues: true
               - name: 'value #4'
                 header: Revenue ($)
                 align: right
@@ -323,7 +321,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) and on(model) showback_offer_info{offer="shared", model=~"$model"}
+                  query: (sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -332,7 +330,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"}
+                  query: (sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -341,7 +339,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"}
+                  query: (sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -350,7 +348,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: ((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"}) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million) / 1e6
+                  query: ((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -359,7 +357,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) showback_offer_info{offer="shared", model=~"$model"}) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million) / 1e6) - on(model) ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour) and on(model) showback_offer_info{offer="shared", model=~"$model"})
+                  query: (((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6) - on(model) ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
       throughput:
         kind: Panel
         spec:
@@ -391,7 +389,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum by (subscription) (rate(authorized_hits_total{subscription=~"$subscription"}[$__rate_interval]) and on(model) showback_offer_info{offer="shared", model=~"$model"})
+                  query: sum by (subscription) (rate(authorized_hits_total{subscription=~"$subscription"}[$__rate_interval]) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
                   seriesNameFormat: "{{subscription}}"
       load:
         kind: Panel
@@ -424,7 +422,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: label_replace(sum by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)") and on(model) showback_offer_info{offer="shared", model=~"$model"}
+                  query: label_replace(sum by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())
                   seriesNameFormat: "{{model}} running"
           - kind: TimeSeriesQuery
             spec:
@@ -434,7 +432,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: label_replace(sum by (model_name) (kserve_vllm:num_requests_waiting), "model", "$1", "model_name", "(.+)") and on(model) showback_offer_info{offer="shared", model=~"$model"}
+                  query: label_replace(sum by (model_name) (kserve_vllm:num_requests_waiting), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())
                   seriesNameFormat: "{{model}} waiting"
     layouts:
     - kind: Grid
@@ -516,6 +514,6 @@ spec:
         - x: 0
           y: 7
           width: 24
-          height: 5
+          height: 7
           content:
             "$ref": "#/spec/panels/models"
