@@ -16,11 +16,11 @@ Open **Observe & monitor → Dashboard** in the OpenShift AI console. Each Offer
 
 | Tab | Shows |
 |---|---|
-| **Offer · Shared private** | Running cost, tokens served, tariff revenue and the platform balance for all shared models; per subscription and model: tokens, tariff charge, token share and cost share; per model economics |
-| **Offer · Dedicated private** | Sponsor charges, serving hours, tokens, effective cost per million tokens, busy share and paid idle; one row per dedicated model and sponsor; token rate, load and GPU utilisation |
-| **Offer · External model** | Month-to-date provider spend, requests and tokens from the metering ledger; statement by subscription and model; the provider price list |
+| **Offer · Shared private** | Running cost, tariff revenue, platform balance and projected monthly balance; token rate by consumer; tokens, tariff charge and projected monthly charge per subscription |
+| **Offer · Dedicated private** | Sponsor charges, paid idle, effective cost per million tokens and projected monthly charge; GPU utilisation; charges per dedicated model and sponsor |
+| **Offer · External model** | Month-to-date provider spend, requests and projected monthly spend; spend by subscription over the month; statement by subscription and model; the provider price list (collapsed) |
 
-Each Offer dashboard also projects the selected time range to a month: **Usage hours / month** (default 168, 8 hours x 21 working days) and **Users per team** (default 1, each demo team is one synthetic user) scale the observed usage, and **GPU hours / month** (default 730, always on; 168 for working hours only) sets the private worker schedule. Projected columns show the monthly charge per consumer, the platform's monthly balance and the monthly external estimate.
+Each Offer dashboard also projects the selected time range to a month: **Usage hours / month** (default 168, 8 hours x 21 working days) and **Users per team** (default 1, each demo team is one synthetic user) scale the observed usage, and **GPU hours / month** (default 730, always on; 168 for working hours only) sets the private worker schedule. Projected values show the monthly charge per consumer and sponsor, the platform's monthly balance and the monthly external spend.
 
 **Tokenomics · break-even** answers when an external workload should move to a private model. Pick the external model a team uses and its subscriptions, and a private candidate; the dashboard shows the projected monthly tokens and external cost, the private cost (GPU workers sized from the candidate's demonstrated capacity), the break-even volume of one worker and the monthly savings if moved. In the demo run, Support's Claude workload is about 3% of break-even with one user; raising **Users per team**, or scheduling the GPU for working hours only, shows where moving to private pays off.
 

@@ -73,25 +73,25 @@ spec:
     - kind: TextVariable
       spec:
         name: price_prompt
-        value: '0.10'
+        value: '4.00'
         constant: false
         display:
           name: Price $/1M prompt tokens
-          description: Showback price for prompt (input) tokens, USD per million; edit per model or contract.
+          description: Showback price for prompt (input) tokens, USD per million; default is the shared tariff from the showback offer catalog.
           hidden: false
     - kind: TextVariable
       spec:
         name: price_completion
-        value: '0.40'
+        value: '4.00'
         constant: false
         display:
           name: Price $/1M completion tokens
-          description: Showback price for generated (output) tokens, USD per million.
+          description: Showback price for generated (output) tokens, USD per million; default is the shared tariff.
           hidden: false
     - kind: TextVariable
       spec:
         name: price_blended
-        value: '0.25'
+        value: '4.00'
         constant: false
         display:
           name: Blended $/1M tokens (per user)

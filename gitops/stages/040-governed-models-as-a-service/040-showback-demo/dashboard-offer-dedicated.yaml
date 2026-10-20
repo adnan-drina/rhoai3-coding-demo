@@ -104,102 +104,6 @@ spec:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
                   query: sum(((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()))
-      monthly:
-        kind: Panel
-        spec:
-          display:
-            name: Monthly charge (projected)
-            description: Worker price × GPU hours per month, all selected dedicated models.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-                shortValues: false
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum((max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end()))
-      tokens:
-        kind: Panel
-        spec:
-          display:
-            name: Tokens
-            description: Governed tokens through MaaS on the selected models.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-                shortValues: false
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum((sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end()))
-      perMillion:
-        kind: Panel
-        spec:
-          display:
-            name: Effective $/1M tokens
-            description: Charges divided by tokens used.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-                shortValues: false
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum(((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end())) / sum((sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * 1e6
-      busy:
-        kind: Panel
-        spec:
-          display:
-            name: Busy share %
-            description: Share of serving minutes with at least one request running.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 1
-                shortValues: false
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: 100 * sum((sum by (model) (label_replace(count_over_time((sum by (model_name) (kserve_vllm:num_requests_running) > 0)[$__range:1m]), "model", "$1", "model_name", "(.+)"))) and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) / (sum((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * 60)
       idle:
         kind: Panel
         spec:
@@ -224,96 +128,20 @@ spec:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
                   query: sum((((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end())) * (1 - (((sum by (model) (label_replace(count_over_time((sum by (model_name) (kserve_vllm:num_requests_running) > 0)[$__range:1m]), "model", "$1", "model_name", "(.+)"))) or (sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * 0) / on(model) ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end()))))
-      byModel:
+      perMillion:
         kind: Panel
         spec:
           display:
-            name: Charges by model
-            description: One row per dedicated model and its sponsoring subscription.
+            name: Effective $/1M tokens
+            description: Charges divided by tokens used.
           plugin:
-            kind: Table
+            kind: StatChart
             spec:
-              density: compact
-              pagination: true
-              columnSettings:
-              - name: timestamp
-                hide: true
-              - name: model
-                header: Model
-                align: left
-                enableSorting: true
-              - name: sponsor
-                header: Sponsor
-                align: left
-                enableSorting: true
-              - name: 'value #1'
-                header: Serving hours
-                align: right
-                enableSorting: true
-                format:
-                  unit: decimal
-                  decimalPlaces: 2
-                  shortValues: false
-              - name: 'value #2'
-                header: Charge ($)
-                align: right
-                enableSorting: true
-                format:
-                  unit: decimal
-                  decimalPlaces: 2
-                  shortValues: false
-                sort: desc
-              - name: 'value #3'
-                header: Tokens
-                align: right
-                enableSorting: true
-                format:
-                  unit: decimal
-                  decimalPlaces: 0
-                  shortValues: false
-              - name: 'value #4'
-                header: "$/1M tokens"
-                align: right
-                enableSorting: true
-                format:
-                  unit: decimal
-                  decimalPlaces: 2
-                  shortValues: false
-              - name: 'value #5'
-                header: Busy %
-                align: right
-                enableSorting: true
-                format:
-                  unit: decimal
-                  decimalPlaces: 1
-                  shortValues: false
-              - name: 'value #6'
-                header: Paid idle ($)
-                align: right
-                enableSorting: true
-                format:
-                  unit: decimal
-                  decimalPlaces: 2
-                  shortValues: false
-              - name: 'value #7'
-                header: Monthly charge (proj.)
-                align: right
-                enableSorting: true
-                format:
-                  unit: decimal
-                  decimalPlaces: 0
-                  shortValues: false
-              - name: 'value #8'
-                header: "$/1M (proj.)"
-                align: right
-                enableSorting: true
-                format:
-                  unit: decimal
-                  decimalPlaces: 2
-                  shortValues: false
-              transforms:
-              - kind: MergeSeries
-                spec: {}
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 2
+                shortValues: false
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -323,92 +151,21 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end())
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: (sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: (((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end())) / ((sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * 1e6
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: 100 * (((sum by (model) (label_replace(count_over_time((sum by (model_name) (kserve_vllm:num_requests_running) > 0)[$__range:1m]), "model", "$1", "model_name", "(.+)"))) or (sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * 0) / on(model) ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end()))
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: (((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end())) * (1 - (((sum by (model) (label_replace(count_over_time((sum by (model_name) (kserve_vllm:num_requests_running) > 0)[$__range:1m]), "model", "$1", "model_name", "(.+)"))) or (sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * 0) / on(model) ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())))
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: (max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: ((max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) / (((sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * 1e6
-      throughput:
+                  query: sum(((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end())) / sum((sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * 1e6
+      monthly:
         kind: Panel
         spec:
           display:
-            name: Token rate by model
-            description: Input plus output tokens per second.
+            name: Monthly charge (projected)
+            description: Worker price × GPU hours per month, all selected dedicated models.
           plugin:
-            kind: TimeSeriesChart
+            kind: StatChart
             spec:
-              legend:
-                mode: list
-                position: bottom
-                values: []
-              visual:
-                areaOpacity: 0.1
-                connectNulls: false
-                display: line
-                lineWidth: 1.5
-              yAxis:
-                format:
-                  unit: decimal
-                min: 0
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -418,47 +175,13 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())
-                  seriesNameFormat: "{{model}}"
-      load:
-        kind: Panel
-        spec:
-          display:
-            name: Requests running by model
-            description: vLLM requests in flight.
-          plugin:
-            kind: TimeSeriesChart
-            spec:
-              legend:
-                mode: list
-                position: bottom
-                values: []
-              visual:
-                areaOpacity: 0.1
-                connectNulls: false
-                display: line
-                lineWidth: 1.5
-              yAxis:
-                format:
-                  unit: decimal
-                min: 0
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: label_replace(sum by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())
-                  seriesNameFormat: "{{model}}"
+                  query: sum((max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end()))
       gpu:
         kind: Panel
         spec:
           display:
             name: GPU utilisation
-            description: Accelerator utilisation of each dedicated model pod.
+            description: Accelerator utilisation of each dedicated model; gaps are paid idle.
           plugin:
             kind: TimeSeriesChart
             spec:
@@ -486,6 +209,101 @@ spec:
                     name: data-science-prometheus-datasource
                   query: label_replace(avg by (exported_pod) (accelerator_gpu_utilization), "model", "$1", "exported_pod", "(.+)-kserve-[a-z0-9]+-[a-z0-9]+") and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())
                   seriesNameFormat: "{{model}}"
+      byModel:
+        kind: Panel
+        spec:
+          display:
+            name: Charges by model
+            description: One row per dedicated model and its sponsoring subscription.
+          plugin:
+            kind: Table
+            spec:
+              density: compact
+              pagination: true
+              columnSettings:
+              - name: timestamp
+                hide: true
+              - name: model
+                header: Model
+                align: left
+                enableSorting: true
+              - name: sponsor
+                header: Sponsor
+                align: left
+                enableSorting: true
+              - name: 'value #1'
+                header: Charge ($)
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 2
+                  shortValues: false
+                sort: desc
+              - name: 'value #2'
+                header: "$/1M tokens"
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 2
+                  shortValues: false
+              - name: 'value #3'
+                header: Monthly charge (proj.)
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 0
+                  shortValues: false
+              - name: 'value #4'
+                header: "$/1M (proj.)"
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 2
+                  shortValues: false
+              transforms:
+              - kind: MergeSeries
+                spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end())
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end())) / ((sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * 1e6
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: ((max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) / (((sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * 1e6
     layouts:
     - kind: Grid
       spec:
@@ -509,40 +327,28 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 4
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/charge"
-        - x: 4
+        - x: 6
           y: 0
-          width: 4
-          height: 4
-          content:
-            "$ref": "#/spec/panels/monthly"
-        - x: 8
-          y: 0
-          width: 4
-          height: 4
-          content:
-            "$ref": "#/spec/panels/tokens"
-        - x: 12
-          y: 0
-          width: 4
-          height: 4
-          content:
-            "$ref": "#/spec/panels/perMillion"
-        - x: 16
-          y: 0
-          width: 4
-          height: 4
-          content:
-            "$ref": "#/spec/panels/busy"
-        - x: 20
-          y: 0
-          width: 4
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/idle"
+        - x: 12
+          y: 0
+          width: 6
+          height: 4
+          content:
+            "$ref": "#/spec/panels/perMillion"
+        - x: 18
+          y: 0
+          width: 6
+          height: 4
+          content:
+            "$ref": "#/spec/panels/monthly"
     - kind: Grid
       spec:
         display:
@@ -552,19 +358,7 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 8
-          height: 7
-          content:
-            "$ref": "#/spec/panels/throughput"
-        - x: 8
-          y: 0
-          width: 8
-          height: 7
-          content:
-            "$ref": "#/spec/panels/load"
-        - x: 16
-          y: 0
-          width: 8
+          width: 24
           height: 7
           content:
             "$ref": "#/spec/panels/gpu"

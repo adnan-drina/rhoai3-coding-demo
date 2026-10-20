@@ -90,10 +90,10 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 | [listvar("model"; "model_name"; "kserve_vllm:prompt_tokens_total"; "Model"),
    listvar("user"; "user"; "authorized_hits_total{user!=\"\"}"; "User"),
    listvar("subscription"; "subscription"; "authorized_hits_total{subscription!=\"\"}"; "Subscription"),
-   textvar("price_prompt"; "0.10"; "Price $/1M prompt tokens";
-       "Showback price for prompt (input) tokens, USD per million; edit per model or contract."),
-   textvar("price_completion"; "0.40"; "Price $/1M completion tokens"; "Showback price for generated (output) tokens, USD per million."),
-   textvar("price_blended"; "0.25"; "Blended $/1M tokens (per user)";
+   textvar("price_prompt"; "4.00"; "Price $/1M prompt tokens";
+       "Showback price for prompt (input) tokens, USD per million; default is the shared tariff from the showback offer catalog."),
+   textvar("price_completion"; "4.00"; "Price $/1M completion tokens"; "Showback price for generated (output) tokens, USD per million; default is the shared tariff."),
+   textvar("price_blended"; "4.00"; "Blended $/1M tokens (per user)";
        "MaaS counts total tokens per user and subscription without an input/output split; this blended price values them.")] as $cost_vars
 | {totalCost: stat("Total cost";
        "Prompt and completion tokens served by the private models over the Range window, priced with the dashboard'"'"'s price variables.";

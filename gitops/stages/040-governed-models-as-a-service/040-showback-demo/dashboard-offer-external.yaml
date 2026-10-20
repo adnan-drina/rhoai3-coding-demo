@@ -138,20 +138,52 @@ spec:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
                   query: sum(showback_external_metering_events{subscription=~"$subscription", model=~"$model"})
-      input:
+      monthly:
         kind: Panel
         spec:
           display:
-            name: Input tokens this month
+            name: Monthly spend (projected)
+            description: Spend in the time range scaled to a month (usage hours × users per team).
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 2
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
+      spendOverTime:
+        kind: Panel
+        spec:
+          display:
+            name: Month-to-date spend by subscription (USD)
             description: ''
           plugin:
-            kind: StatChart
+            kind: TimeSeriesChart
             spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-                shortValues: false
+              legend:
+                mode: list
+                position: bottom
+                values: []
+              visual:
+                areaOpacity: 0.1
+                connectNulls: false
+                display: line
+                lineWidth: 1.5
+              yAxis:
+                format:
+                  unit: decimal
+                min: 0
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -161,61 +193,14 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum(showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"})
-      output:
-        kind: Panel
-        spec:
-          display:
-            name: Output tokens this month
-            description: ''
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-                shortValues: false
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum(showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"})
-      unpriced:
-        kind: Panel
-        spec:
-          display:
-            name: Unpriced requests
-            description: Responses with missing usage or no catalog price.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-                shortValues: false
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum(showback_external_metering_events{subscription=~"$subscription", model=~"$model"} unless on(user, subscription, provider, model, usage_state, price_state, price_version, catalog_sha256) showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}) or vector(0)
+                  query: sum by (subscription) (showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"})
+                  seriesNameFormat: "{{subscription}}"
       statement:
         kind: Panel
         spec:
           display:
             name: Statement by subscription and model · this month
-            description: Captured requests, tokens and list-price estimate.
+            description: Captured requests, tokens and list-price estimate, and the projected monthly estimate.
           plugin:
             kind: Table
             spec:
@@ -241,7 +226,7 @@ spec:
                   decimalPlaces: 0
                   shortValues: false
               - name: 'value #2'
-                header: Input tokens
+                header: Tokens
                 align: right
                 enableSorting: true
                 format:
@@ -249,14 +234,6 @@ spec:
                   decimalPlaces: 0
                   shortValues: false
               - name: 'value #3'
-                header: Output tokens
-                align: right
-                enableSorting: true
-                format:
-                  unit: decimal
-                  decimalPlaces: 0
-                  shortValues: false
-              - name: 'value #4'
                 header: Estimate ($)
                 align: right
                 enableSorting: true
@@ -265,7 +242,7 @@ spec:
                   decimalPlaces: 4
                   shortValues: false
                 sort: desc
-              - name: 'value #5'
+              - name: 'value #4'
                 header: Monthly estimate (proj.)
                 align: right
                 enableSorting: true
@@ -294,16 +271,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum by (subscription, model) (showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"})
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum by (subscription, model) (showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"})
+                  query: sum by (subscription, model) (showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"}) + sum by (subscription, model) (showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"})
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -370,72 +338,6 @@ spec:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
                   query: max by (model, category, context_band) (showback_external_metering_rate_usd_per_million{model=~"$model"})
-      spendOverTime:
-        kind: Panel
-        spec:
-          display:
-            name: Month-to-date spend by subscription (USD)
-            description: ''
-          plugin:
-            kind: TimeSeriesChart
-            spec:
-              legend:
-                mode: list
-                position: bottom
-                values: []
-              visual:
-                areaOpacity: 0.1
-                connectNulls: false
-                display: line
-                lineWidth: 1.5
-              yAxis:
-                format:
-                  unit: decimal
-                min: 0
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum by (subscription) (showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"})
-                  seriesNameFormat: "{{subscription}}"
-      throughput:
-        kind: Panel
-        spec:
-          display:
-            name: Token rate by subscription and model
-            description: Governed tokens per second on external models.
-          plugin:
-            kind: TimeSeriesChart
-            spec:
-              legend:
-                mode: list
-                position: bottom
-                values: []
-              visual:
-                areaOpacity: 0.1
-                connectNulls: false
-                display: line
-                lineWidth: 1.5
-              yAxis:
-                format:
-                  unit: decimal
-                min: 0
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum by (subscription, model) (rate(authorized_hits_total{limitador_namespace=~"external-models/.*", subscription=~"$subscription"}[$__rate_interval]))
-                  seriesNameFormat: "{{subscription}} · {{model}}"
     layouts:
     - kind: Grid
       spec:
@@ -459,34 +361,22 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 5
+          width: 8
           height: 4
           content:
             "$ref": "#/spec/panels/spend"
-        - x: 5
+        - x: 8
           y: 0
-          width: 5
+          width: 8
           height: 4
           content:
             "$ref": "#/spec/panels/requests"
-        - x: 10
+        - x: 16
           y: 0
-          width: 5
+          width: 8
           height: 4
           content:
-            "$ref": "#/spec/panels/input"
-        - x: 15
-          y: 0
-          width: 5
-          height: 4
-          content:
-            "$ref": "#/spec/panels/output"
-        - x: 20
-          y: 0
-          width: 4
-          height: 4
-          content:
-            "$ref": "#/spec/panels/unpriced"
+            "$ref": "#/spec/panels/monthly"
     - kind: Grid
       spec:
         display:
@@ -496,16 +386,10 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 12
+          width: 24
           height: 7
           content:
             "$ref": "#/spec/panels/spendOverTime"
-        - x: 12
-          y: 0
-          width: 12
-          height: 7
-          content:
-            "$ref": "#/spec/panels/throughput"
     - kind: Grid
       spec:
         display:
@@ -519,8 +403,15 @@ spec:
           height: 6
           content:
             "$ref": "#/spec/panels/statement"
+    - kind: Grid
+      spec:
+        display:
+          title: Provider list prices
+          collapse:
+            open: false
+        items:
         - x: 0
-          y: 6
+          y: 0
           width: 24
           height: 7
           content:
