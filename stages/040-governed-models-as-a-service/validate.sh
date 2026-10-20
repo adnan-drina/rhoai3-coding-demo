@@ -295,7 +295,9 @@ api_routes() {
 # current (parked ones at zero), one owned route on exactly its listeners with the canonical model header.
 local_model() {
     local models d name app delegated obj replicas parked workloads ready routes route sections
-    models=$(desired_of LLMInferenceService)
+    # Models owned by the optional showback component (its dedicated model) are checked by showback_source_state.
+    models=$(desired_of LLMInferenceService | jq -c --argjson sb "$SHOWBACK_DESIRED" \
+        '([$sb[] | select(.kind == "LLMInferenceService") | .metadata.name]) as $own | map(select(.metadata.name as $n | $own | index($n) | not))')
     [[ $(jq length <<<"$models") == 1 ]] || { echo "local model scope differs"; return; }
     d=$(jq -c '.[0]' <<<"$models")
     name=$(jq -r '.metadata.name' <<<"$d")
@@ -334,7 +336,8 @@ local_model() {
         and (if ($s | index("api")) then any($r.spec.rules[].matches[]?; .path.value == "/v1/chat/completions"
             and any(.headers[]?; (.name | ascii_downcase) == "x-gateway-model-name" and (.type // "Exact") == "Exact"
                 and .value == $canonical)) else true end)' <<<"$route" >/dev/null || { echo "model route listeners or header"; return; }
-    jq -e --argjson n "$(jq length <<<"$models")" '[.items[] | select(any(.spec.parentRefs[]?; .name == "maas-default-gateway"))]
+    # Every declared local model, including the showback dedicated model, owns exactly one gateway route.
+    jq -e --argjson n "$(desired_of LLMInferenceService | jq length)" '[.items[] | select(any(.spec.parentRefs[]?; .name == "maas-default-gateway"))]
         | length == $n' <<<"$routes" >/dev/null || { echo "extra inference route"; return; }
     if [[ "$parked" == true ]]; then echo yes-parked; else echo yes; fi
 }
