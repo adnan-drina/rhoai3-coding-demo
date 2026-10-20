@@ -66,6 +66,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+                shortValues: false
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -89,6 +90,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+                shortValues: false
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -111,8 +113,8 @@ spec:
               calculation: last
               format:
                 unit: decimal
-                decimalPlaces: 1
-                shortValues: true
+                decimalPlaces: 0
+                shortValues: false
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -136,6 +138,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+                shortValues: false
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -159,6 +162,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 1
+                shortValues: false
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -182,6 +186,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+                shortValues: false
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -221,6 +226,7 @@ spec:
                 format:
                   unit: decimal
                   decimalPlaces: 2
+                  shortValues: false
               - name: 'value #2'
                 header: Charge ($)
                 align: right
@@ -228,6 +234,7 @@ spec:
                 format:
                   unit: decimal
                   decimalPlaces: 2
+                  shortValues: false
                 sort: desc
               - name: 'value #3'
                 header: Tokens
@@ -236,6 +243,7 @@ spec:
                 format:
                   unit: decimal
                   decimalPlaces: 0
+                  shortValues: false
               - name: 'value #4'
                 header: "$/1M tokens"
                 align: right
@@ -243,6 +251,7 @@ spec:
                 format:
                   unit: decimal
                   decimalPlaces: 2
+                  shortValues: false
               - name: 'value #5'
                 header: Busy %
                 align: right
@@ -250,6 +259,7 @@ spec:
                 format:
                   unit: decimal
                   decimalPlaces: 1
+                  shortValues: false
               - name: 'value #6'
                 header: Paid idle ($)
                 align: right
@@ -257,6 +267,7 @@ spec:
                 format:
                   unit: decimal
                   decimalPlaces: 2
+                  shortValues: false
               transforms:
               - kind: MergeSeries
                 spec: {}
