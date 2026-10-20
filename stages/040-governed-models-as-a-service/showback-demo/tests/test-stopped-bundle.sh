@@ -23,7 +23,7 @@ if jq -e '
        and .metadata.annotations["argocd.argoproj.io/hook"]==null)
   and ([.[]|select(.kind=="Deployment")]|length)==1
   and ([.[]|select(.kind=="Deployment")][0].spec.replicas|IN(0,1))
-  and length==24
+  and length==22
   and ([.[]|select(.kind=="MaaSSubscription")]|length)==2
   and ([.[]|select(.kind=="MaaSAuthPolicy")]|length)==2
   and all(.[]|select(.kind=="MaaSSubscription" or .kind=="MaaSAuthPolicy");
@@ -36,7 +36,6 @@ if jq -e '
        and ($report.data["metrics.prom"]|test("(?m)^showback_selected_report_info\\{[^\\n]*evidence_kind=\"observed\""))
        and ($report.data["metrics.prom"]|contains("report_sha256=\""+$report.metadata.annotations["showback.demo.rhoai.io/report-sha256"]+"\""))
      end)
-  and ([.[]|select(.kind=="ConfigMap" and .metadata.annotations["demo.rhoai.io/state"]=="inert-review-inputs")]|length)==2
   ' "$WORK_DIR/base.json" >/dev/null; then
     record 'Only an observed selected-report publisher may run; no models or scheduled load' pass
 else record 'Only an observed selected-report publisher may run; no models or scheduled load' 'Unexpected workload or report'; fi
@@ -80,7 +79,7 @@ mv "$WORK_DIR/full/kustomization.yaml.new" "$WORK_DIR/full/kustomization.yaml"
 kustomize build "$WORK_DIR/full" | yaml_json >"$WORK_DIR/full.json"
 jq 'map(select(.metadata.labels["app.kubernetes.io/component"]!="external-metering"))' \
     "$WORK_DIR/full.json" > "$WORK_DIR/full-base.json"
-if jq -e 'length==26
+if jq -e 'length==24
   and ([.[]|select(.kind=="MaaSSubscription")]|length)==3
   and ([.[]|select(.kind=="MaaSAuthPolicy")]|length)==3
   and ([.[]|select(.kind=="MaaSAuthPolicy")|.spec.modelRefs[].name]|unique)

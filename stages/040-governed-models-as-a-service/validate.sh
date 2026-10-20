@@ -80,10 +80,10 @@ showback_source_state() {
         ($base | [.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort) as $teams |
         ($base | [.[] | select(.kind == "Deployment")]) as $publishers |
         [.[] | select(.kind == "ConfigMap" and .metadata.name == "showback-selected-report")] as $reports |
-        (($base | length) == 24 and $teams == ["team-engineering","team-support"]
+        (($base | length) == 22 and $teams == ["team-engineering","team-support"]
             and all(.[] | select(.kind == "MaaSSubscription" or .kind == "MaaSAuthPolicy");
                 [.spec.modelRefs[].name] == ["qwen3-8-27b"]) or
-         (($base | length) == 26 and $teams == ["team-engineering","team-marketing","team-support"]))
+         (($base | length) == 24 and $teams == ["team-engineering","team-marketing","team-support"]))
         and all(.[]; .kind != "Job" and .kind != "CronJob" and .kind != "LLMInferenceService"
         and .kind != "HorizontalPodAutoscaler" and .kind != "Config" and .kind != "LokiStack")
         and (all($metering[]; (.metadata.name | startswith("showback-external-metering"))

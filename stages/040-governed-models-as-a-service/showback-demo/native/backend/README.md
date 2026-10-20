@@ -80,13 +80,9 @@ Database health proves a primary read, not write permission, storage capacity,
 complete capture or provider reconciliation. Do not attach these dependency checks
 as restart-triggering liveness probes without a separate deployment review.
 
-For the original patch1 local evaluation, no cluster rollback was needed because
-that artifact was not deployed. This is historical status; the continuous mode
-below has a separate activation and rollback contract. Retain the old image and
-evidence. For local revalidation, discard only the explicitly named
-disposable database and create a fresh one. Do not roll an existing ledger back to
-the unpatched writer or remove its uniqueness index as a workaround: the old writer
-cannot handle duplicate conflicts and does not retain the new raw/completeness fields.
+Do not roll an existing ledger back to the unpatched writer or remove its
+uniqueness index as a workaround: the old writer cannot handle duplicate
+conflicts and does not retain the new raw/completeness fields.
 
 ## Continuous captured-event mode
 

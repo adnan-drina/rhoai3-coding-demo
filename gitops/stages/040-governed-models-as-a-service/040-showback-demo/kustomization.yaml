@@ -22,7 +22,6 @@ resources:
   - publisher-service.yaml
   - publisher-servicemonitor.yaml
   - service-views
-  - native-inputs
   - metering
 components:
   - components/qwen-only

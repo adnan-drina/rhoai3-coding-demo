@@ -29,7 +29,6 @@ spec:
           type: RuntimeDefault
       containers:
         - name: publisher
-          # Registry metadata pin: stages/040-governed-models-as-a-service/showback-demo/publisher-image-evidence.json.
           # Standard Apache serves only the prevalidated, atomically selected snapshot.
           image: registry.access.redhat.com/ubi9/httpd-24@sha256:fc533289672190a4c61acb9840a128b15ecfebf2d05c879fcc23447e441cac4d
           command:

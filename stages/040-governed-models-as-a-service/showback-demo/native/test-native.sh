@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline contracts only: validate saved metadata and reject synthetic invalid variants.
+# Offline contracts only: import saved captured events into a service statement and reject invalid variants.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
@@ -7,28 +7,6 @@ source "$REPO_ROOT/scripts/lib.sh"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 fail() { echo "Native test failed: $*" >&2; exit 1; }
-bash "$SCRIPT_DIR/render-integration.sh" > "$work/preview.json"
-jq -e 'length==2 and all(.[];.kind=="ConfigMap" and .metadata.annotations["demo.rhoai.io/state"]=="inert-review-inputs" and
-  (.data["qualification.json"]|fromjson|.schema_fields_checked and .artifact_metadata_checked and
-    .metering_backend.artifact_verified==false and .live_qualified==false))' "$work/preview.json" >/dev/null
-jq -e '.[0].data["candidate.json"]|fromjson|
-  .config_usage_logging_behavior=="enable_switch" and (has("tenant_patch_candidate")|not) and
-  .stack_candidate.spec.storageClassName=="gp3-csi" and .stack_candidate.spec.limits.global.retention.days==30 and
-  .operator_candidate.startingCSV=="loki-operator.v6.6.1"' "$work/preview.json" >/dev/null
-jq -e '.[1].data["candidate.json"]|fromjson|
-  .profile_target.name=="payload-processing-plugins" and .profile_target.namespace=="openshift-ingress" and
-  .managed_override.activation_state=="review-only-no-patch-no-restart" and
-  .profile_candidate.profiles[0].plugins.response==[{pluginRef:"external-metering-streaming"}] and
-  ([.profile_candidate.plugins[]|select(.type=="external-metering-streaming")|.parameters]==[.plugin_parameters]) and
-  .plugin_parameters.meteringURL=="https://metering.invalid"' "$work/preview.json" >/dev/null
-bash "$SCRIPT_DIR/render-integration.sh" --check
-bash "$SCRIPT_DIR/render-integration.sh" --write "$work/manifests"
-for file in "$work/manifests"/*.yaml; do
-    yaml_json < "$file" | jq -e 'length==1 and .[0].kind=="ConfigMap"' >/dev/null
-done
-printf '\n' >> "$work/manifests/showback-native-loki-inputs.yaml"
-if bash "$SCRIPT_DIR/render-integration.sh" --check "$work/manifests" >/dev/null 2>&1; then fail 'rendered drift accepted'; fi
-
 # The service-offer fixture supplies the frozen identities, prices and invoice separately.
 jq '.events=[] | .agreements |= map(select(.id=="external")) |
   .cost_items |= map(select(.agreement_id=="external")) |
@@ -137,37 +115,4 @@ if import > "$work/rejected.json" 2>/dev/null; then fail 'conflicting duplicate 
 printf '%s\n' '{"specversion":"1.0","specversion":"2.0"}' > "$work/events.jsonl"
 if import >/dev/null 2>&1; then fail 'duplicate JSON key accepted'; fi
 
-# Exercise the saved schemas and metadata, then synthetic invalid variants.
-# No test changes the captured evidence or claims Kubernetes admission.
-mkdir "$work/schemas"
-cp "$SCRIPT_DIR/evidence/schemas/"*.json "$work/schemas/"
-jq '.evidence_kind="synthetic_fixture"|.source="unit-test-copy"' "$SCRIPT_DIR/evidence/artifacts.json" > "$work/pins.json"
-for name in config tenant lokistack; do
-    digest=$(shasum -a 256 "$work/schemas/$name-crd.json" | cut -d ' ' -f 1)
-    jq --arg key "$name-crd.json" --arg hash "$digest" '.schema_sha256[$key]=$hash' "$work/pins.json" > "$work/new-pins.json"
-    mv "$work/new-pins.json" "$work/pins.json"
-done
-bash "$SCRIPT_DIR/render-integration.sh" --schema-dir "$work/schemas" --artifact-pins "$work/pins.json" > "$work/checked.json"
-jq -e 'all(.[];.kind=="ConfigMap" and (.data["qualification.json"]|fromjson|.schema_fields_checked and .live_qualified==false and .evidence_kind=="synthetic_fixture"))' "$work/checked.json" >/dev/null
-for name in tenant lokistack; do
-    case "$name" in
-        tenant) mutation='.spec.versions[].schema.openAPIV3Schema.properties.spec.properties.telemetry.properties.logs={properties:{captureUser:{type:"boolean"}}}' ;;
-        lokistack) mutation='del(.spec.versions[].schema.openAPIV3Schema.properties.spec.properties.storageClassName)' ;;
-    esac
-    jq "$mutation" "$SCRIPT_DIR/evidence/schemas/$name-crd.json" > "$work/schemas/$name-crd.json"
-    digest=$(shasum -a 256 "$work/schemas/$name-crd.json" | cut -d ' ' -f 1)
-    jq --arg key "$name-crd.json" --arg hash "$digest" '.schema_sha256[$key]=$hash' "$work/pins.json" > "$work/new-pins.json"
-    mv "$work/new-pins.json" "$work/pins.json"
-    if bash "$SCRIPT_DIR/render-integration.sh" --schema-dir "$work/schemas" --artifact-pins "$work/pins.json" >/dev/null 2>&1; then
-        fail "incompatible $name schema accepted"
-    fi
-    cp "$SCRIPT_DIR/evidence/schemas/"*.json "$work/schemas/"
-    jq '.evidence_kind="synthetic_fixture"|.source="unit-test-copy"' "$SCRIPT_DIR/evidence/artifacts.json" > "$work/pins.json"
-done
-jq '.config_usage_logging_behavior="collector_selector"' "$work/pins.json" > "$work/selector-pins.json"
-if bash "$SCRIPT_DIR/render-integration.sh" --schema-dir "$work/schemas" --artifact-pins "$work/selector-pins.json" >/dev/null 2>&1; then
-    fail 'newer upstream logging semantics accepted for shipped release'
-fi
-printf '\n' >> "$work/schemas/config-crd.json"
-if bash "$SCRIPT_DIR/render-integration.sh" --schema-dir "$work/schemas" --artifact-pins "$work/pins.json" >/dev/null 2>&1; then fail 'schema hash drift accepted'; fi
-printf '%s\n' 'Native tests passed: inert inputs, schema metadata checks, snapshot hash binding, direct service reporting, identity/quarantine, source+id replay, categories and strict stream completeness.'
+printf '%s\n' 'Native tests passed: snapshot hash binding, direct service reporting, identity/quarantine, source+id replay, categories and strict stream completeness.'

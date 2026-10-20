@@ -1,1 +1,0 @@
-metering-service: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, Go BuildID=w8E4j6rGHthHjKheGZUg/rLFKGhQ-PxWT5dz3gV1j/ZnJkUioSSQ8SIHOFq8Ma/n1_3ZjcREIxK3GLDi6ZE, BuildID[sha1]=bf551cf87aed763e046733e1153c2cac07b7032d, stripped
