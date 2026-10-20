@@ -14,52 +14,68 @@ spec:
   config:
     display:
       name: "Tokenomics \xB7 break-even (live)"
-      description: 'Self-hosting economics: infrastructure burn, effective cost per million tokens, and the throughput at which the private models beat a hosted API.'
+      description: 'Self-hosting economics: infrastructure burn of the serving private models, effective cost per million tokens, and the throughput at which they beat a reference external model.'
     duration: 168h
     variables:
-    - kind: TextVariable
+    - kind: ListVariable
       spec:
-        name: gpu_hourly_cost
-        value: '2.24'
-        constant: false
+        name: model
+        allowAllValue: true
+        allowMultiple: true
+        customAllValue: .*
+        defaultValue: $__all
         display:
-          name: GPU $/hour (per node)
-          description: Hourly infrastructure cost of one GPU worker; default is an AWS g6e.2xlarge (one L40S) on-demand list price.
+          name: Private model
           hidden: false
-    - kind: TextVariable
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            datasource: &id001
+              kind: PrometheusDatasource
+              name: data-science-prometheus-datasource
+            labelName: model
+            matchers:
+            - showback_offer_info
+    - kind: ListVariable
       spec:
-        name: gpu_count
-        value: '2'
-        constant: false
+        name: reference
+        allowAllValue: false
+        allowMultiple: false
+        defaultValue: gpt-6-luna
         display:
-          name: GPU workers
-          description: Number of GPU workers currently paid for.
+          name: Reference external model
           hidden: false
-    - kind: TextVariable
-      spec:
-        name: api_price_prompt
-        value: '0.15'
-        constant: false
-        display:
-          name: Hosted API $/1M prompt tokens
-          description: Reference price of a comparable hosted model for prompt tokens; the break-even is computed against it.
-          hidden: false
-    - kind: TextVariable
-      spec:
-        name: api_price_completion
-        value: '0.60'
-        constant: false
-        display:
-          name: Hosted API $/1M completion tokens
-          description: Reference price of a comparable hosted model for completion tokens.
-          hidden: false
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            datasource: *id001
+            labelName: model
+            matchers:
+            - showback_external_metering_rate_usd_per_million{category="output"}
     panels:
+      about:
+        kind: Panel
+        spec:
+          display:
+            name: How this is calculated
+            description: ''
+          plugin:
+            kind: Markdown
+            spec:
+              text: '**Private cost** counts only GPU workers that are serving: each running model costs its worker price per hour from the offer catalog. Parked workers cost nothing.
+
+
+                **Reference cost** prices the same input and output tokens at the published list price of the selected external model.
+
+
+                **Break-even throughput** is the token rate at which the private workers cost the same as the reference model; above it, running privately is cheaper.'
+          queries: []
       burn:
         kind: Panel
         spec:
           display:
             name: Infrastructure burn $/h
-            description: GPU workers times hourly cost.
+            description: Worker price of every serving private model, from the offer catalog.
           plugin:
             kind: StatChart
             spec:
@@ -73,16 +89,15 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  datasource: &id001
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: vector(($gpu_hourly_cost * $gpu_count))
+                  datasource: *id001
+                  query: sum((label_replace(count by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)")) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour
+                    @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))
       throughput:
         kind: Panel
         spec:
           display:
             name: Live throughput (tokens/s)
-            description: Prompt plus completion tokens per second across the private models.
+            description: Prompt plus completion tokens per second across the selected private models.
           plugin:
             kind: StatChart
             spec:
@@ -97,13 +112,14 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: sum(rate(kserve_vllm:prompt_tokens_total[$__rate_interval])) + sum(rate(kserve_vllm:generation_tokens_total[$__rate_interval]))
+                  query: sum(label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])), "model", "$1", "model_name",
+                    "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end()))
       effectiveLive:
         kind: Panel
         spec:
           display:
             name: Effective $/1M tokens (live)
-            description: 'Burn divided by live throughput: what one million tokens cost right now.'
+            description: Burn divided by live throughput; blank below 1 token per second.
           plugin:
             kind: StatChart
             spec:
@@ -118,14 +134,15 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: ($gpu_hourly_cost * $gpu_count) / clamp_min((sum(rate(kserve_vllm:prompt_tokens_total[$__rate_interval])) + sum(rate(kserve_vllm:generation_tokens_total[$__rate_interval]))) * 3600
-                    / 1e6, 0.001)
+                  query: (sum((label_replace(count by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)")) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour
+                    @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))) / ((sum(label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])),
+                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end())) > 1) * 3600 / 1e6)
       effectiveRange:
         kind: Panel
         spec:
           display:
             name: Effective $/1M tokens (Range)
-            description: Burn over the Range window divided by tokens served in it.
+            description: Worker spend over the Range window divided by tokens served in it.
           plugin:
             kind: StatChart
             spec:
@@ -140,14 +157,16 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: ($gpu_hourly_cost * $gpu_count) * count_over_time(vector(1)[$__range:1h]) / clamp_min((sum(increase(kserve_vllm:prompt_tokens_total[$__range])) + sum(increase(kserve_vllm:generation_tokens_total[$__range])))
-                    / 1e6, 0.001)
+                  query: (sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by
+                    (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))) / (((sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])),
+                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end()))) + (sum(label_replace(sum by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])),
+                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end())))) / 1e6)
       breakEven:
         kind: Panel
         spec:
           display:
             name: Break-even throughput (tokens/s)
-            description: Tokens per second at which self-hosting matches the hosted API's blended price.
+            description: Token rate at which the serving workers cost the same as the reference model.
           plugin:
             kind: StatChart
             spec:
@@ -162,13 +181,15 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: vector(($gpu_hourly_cost * $gpu_count) / (($api_price_prompt + $api_price_completion) / 2) * 1e6 / 3600)
+                  query: (sum((label_replace(count by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)")) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour
+                    @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))) / ((min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2) * 1e6 / 3600
       utilisation:
         kind: Panel
         spec:
           display:
             name: Throughput vs break-even
-            description: Live throughput as a percentage of the break-even throughput; above 100% self-hosting is cheaper than the hosted API.
+            description: Live throughput as a percentage of the break-even throughput; above 100% running privately is cheaper than the reference model.
           plugin:
             kind: GaugeChart
             spec:
@@ -190,14 +211,16 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (sum(rate(kserve_vllm:prompt_tokens_total[$__rate_interval])) + sum(rate(kserve_vllm:generation_tokens_total[$__rate_interval]))) / (($gpu_hourly_cost * $gpu_count) / (($api_price_prompt
-                    + $api_price_completion) / 2) * 1e6 / 3600) * 100
+                  query: (sum(label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])), "model", "$1", "model_name",
+                    "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end()))) / ((sum((label_replace(count by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)"))
+                    * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))) / ((min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 2) * 1e6 / 3600) * 100
       apiEquivalent:
         kind: Panel
         spec:
           display:
-            name: Hosted-API equivalent spend (Range)
-            description: What the tokens served in the Range window would have cost at the hosted API prices.
+            name: Reference-model spend (Range)
+            description: What the tokens served in the Range window would cost at the list prices.
           plugin:
             kind: StatChart
             spec:
@@ -212,13 +235,15 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (sum(increase(kserve_vllm:prompt_tokens_total[$__range])) / 1e6 * $api_price_prompt) + (sum(increase(kserve_vllm:generation_tokens_total[$__range])) / 1e6 * $api_price_completion)
+                  query: (sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"}
+                    @ end()))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum(label_replace(sum by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])),
+                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end()))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})
       infraSpend:
         kind: Panel
         spec:
           display:
             name: Infrastructure spend (Range)
-            description: Burn over the Range window.
+            description: Serving hours of each private model in the Range window times its worker price.
           plugin:
             kind: StatChart
             spec:
@@ -233,13 +258,14 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: ($gpu_hourly_cost * $gpu_count) * count_over_time(vector(1)[$__range:1h])
+                  query: sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by
+                    (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))
       savings:
         kind: Panel
         spec:
           display:
-            name: Savings vs hosted API (Range)
-            description: Hosted-API equivalent spend minus infrastructure spend; negative means the GPUs are under-utilised relative to the reference price.
+            name: Savings vs reference (Range)
+            description: Reference-model spend minus infrastructure spend; negative means the workers are under-used for this price.
           plugin:
             kind: StatChart
             spec:
@@ -254,14 +280,17 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (sum(increase(kserve_vllm:prompt_tokens_total[$__range])) / 1e6 * $api_price_prompt) + (sum(increase(kserve_vllm:generation_tokens_total[$__range])) / 1e6 * $api_price_completion)
-                    - ($gpu_hourly_cost * $gpu_count) * count_over_time(vector(1)[$__range:1h])
+                  query: ((sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"}
+                    @ end()))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum(label_replace(sum by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])),
+                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end()))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"}))
+                    - (sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by (model)
+                    (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end())))
       throughputTrend:
         kind: Panel
         spec:
           display:
             name: Throughput by model vs break-even
-            description: Tokens per second by model against the break-even line.
+            description: Tokens per second by private model against the break-even line.
           plugin:
             kind: TimeSeriesChart
             spec:
@@ -285,15 +314,18 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval]))
-                  seriesNameFormat: '{{model_name}}'
+                  query: label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])), "model", "$1", "model_name",
+                    "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end())
+                  seriesNameFormat: '{{model}}'
           - kind: TimeSeriesQuery
             spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: vector(($gpu_hourly_cost * $gpu_count) / (($api_price_prompt + $api_price_completion) / 2) * 1e6 / 3600)
+                  query: (sum((label_replace(count by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)")) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour
+                    @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))) / ((min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2) * 1e6 / 3600
                   seriesNameFormat: break-even
       gpuUtil:
         kind: Panel
@@ -329,6 +361,19 @@ spec:
                   query: avg by (exported_pod) (accelerator_gpu_utilization)
                   seriesNameFormat: '{{exported_pod}}'
     layouts:
+    - kind: Grid
+      spec:
+        display:
+          title: How this is calculated
+          collapse:
+            open: false
+        items:
+        - x: 0
+          y: 0
+          width: 24
+          height: 5
+          content:
+            $ref: '#/spec/panels/about'
     - kind: Grid
       spec:
         display:

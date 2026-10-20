@@ -4,7 +4,8 @@
 # Offline, no cluster access. Default: print both files. --check: read-only, fails when a committed file differs from
 # what this script generates. --write: replaces dashboard-5-cost-per-token.yaml and dashboard-6-tokenomics-break-even.yaml
 # under gitops/stages/040-governed-models-as-a-service/040-maas-platform/observability/ (review and commit them); safe
-# to rerun. The prices are dashboard text variables; this script does not read showback-ratecard.json.
+# to rerun. Cost per token prices are dashboard text variables; Tokenomics reads worker prices from the showback offer
+# catalog and reference prices from the external-metering price catalog.
 # Usage: stages/040-governed-models-as-a-service/showback/generate-dashboards.sh [--write|--check]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -123,44 +124,59 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
    grid("Breakdown"; [["costByModel", 0, 0, 24, 8], ["costByUser", 0, 8, 24, 10]])] as $cost_layouts
 
 # ── Tokenomics break-even ──
-| "($gpu_hourly_cost * $gpu_count)" as $burn
-| "sum(rate(kserve_vllm:prompt_tokens_total[$__rate_interval])) + sum(rate(kserve_vllm:generation_tokens_total[$__rate_interval]))" as $tps
-| "sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval]))" as $tps_model
-| "sum(increase(kserve_vllm:prompt_tokens_total[$__range])) + sum(increase(kserve_vllm:generation_tokens_total[$__range]))" as $tokens_range
-| "count_over_time(vector(1)[$__range:1h])" as $hours_range
-| "(($api_price_prompt + $api_price_completion) / 2)" as $api_blended
-| "(sum(increase(kserve_vllm:prompt_tokens_total[$__range])) / 1e6 * $api_price_prompt) + (sum(increase(kserve_vllm:generation_tokens_total[$__range])) / 1e6 * $api_price_completion)" as $api_spend_range
-| "\($burn) / \($api_blended) * 1e6 / 3600" as $break_even
-| [textvar("gpu_hourly_cost"; "2.24"; "GPU $/hour (per node)";
-       "Hourly infrastructure cost of one GPU worker; default is an AWS g6e.2xlarge (one L40S) on-demand list price."),
-   textvar("gpu_count"; "2"; "GPU workers"; "Number of GPU workers currently paid for."),
-   textvar("api_price_prompt"; "0.15"; "Hosted API $/1M prompt tokens";
-       "Reference price of a comparable hosted model for prompt tokens; the break-even is computed against it."),
-   textvar("api_price_completion"; "0.60"; "Hosted API $/1M completion tokens";
-       "Reference price of a comparable hosted model for completion tokens.")] as $tok_vars
-| {burn: stat("Infrastructure burn $/h"; "GPU workers times hourly cost."; "vector(\($burn))"; "decimal"; 2),
-   throughput: stat("Live throughput (tokens/s)"; "Prompt plus completion tokens per second across the private models.";
+# Prices come from data, not variables: GPU worker $/hour per private model from the showback offer catalog
+# (PrometheusRule showback-offer-catalog in the optional 040-showback-demo component) and the list
+# prices from the external-metering price catalog. Catalog series are read @ end() so ranges before a rule existed work.
+| "(showback_offer_info{model=~\"$model\"} @ end())" as $info
+| "max by (model) (showback_offer_worker_usd_per_hour @ end())" as $worker
+| "label_replace(count by (model_name) (kserve_vllm:num_requests_running), \"model\", \"$1\", \"model_name\", \"(.+)\")" as $running
+| "sum((\($running)) * on(model) group_left \($worker) and on(model) \($info))" as $burn
+| "label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])), \"model\", \"$1\", \"model_name\", \"(.+)\") and on(model) \($info)" as $tps_model
+| "sum(\($tps_model))" as $tps
+| "label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), \"model\", \"$1\", \"model_name\", \"(.+)\") / 60" as $worker_hours
+| "sum((\($worker_hours)) * on(model) group_left \($worker) and on(model) \($info))" as $spend
+| "sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), \"model\", \"$1\", \"model_name\", \"(.+)\") and on(model) \($info))" as $ptok
+| "sum(label_replace(sum by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])), \"model\", \"$1\", \"model_name\", \"(.+)\") and on(model) \($info))" as $gtok
+| "min(showback_external_metering_rate_usd_per_million{model=\"$reference\", category=\"input_uncached\"})" as $ref_in
+| "min(showback_external_metering_rate_usd_per_million{model=\"$reference\", category=\"output\"})" as $ref_out
+| "((\($ref_in) + \($ref_out)) / 2)" as $ref_blended
+| "(\($ptok)) / 1e6 * \($ref_in) + (\($gtok)) / 1e6 * \($ref_out)" as $api_spend_range
+| "(\($burn)) / \($ref_blended) * 1e6 / 3600" as $break_even
+| [listvar("model"; "model"; "showback_offer_info"; "Private model"),
+   {kind: "ListVariable", spec: {name: "reference", allowAllValue: false, allowMultiple: false, defaultValue: "gpt-6-luna",
+       display: {name: "Reference external model", hidden: false},
+       plugin: {kind: "PrometheusLabelValuesVariable", spec: {datasource: DS, labelName: "model",
+           matchers: ["showback_external_metering_rate_usd_per_million{category=\"output\"}"]}}}}] as $tok_vars
+| {about: {kind: "Panel", spec: {display: {name: "How this is calculated", description: ""},
+       plugin: {kind: "Markdown", spec: {text: ("**Private cost** counts only GPU workers that are serving: each running model costs its "
+           + "worker price per hour from the offer catalog. Parked workers cost nothing.\n\n**Reference cost** prices the same "
+           + "input and output tokens at the published list price of the selected external model.\n\n**Break-even throughput** is "
+           + "the token rate at which the private workers cost the same as the reference model; above it, running privately "
+           + "is cheaper.")}}, queries: []}},
+   burn: stat("Infrastructure burn $/h"; "Worker price of every serving private model, from the offer catalog."; $burn; "decimal"; 2),
+   throughput: stat("Live throughput (tokens/s)"; "Prompt plus completion tokens per second across the selected private models.";
        $tps; "decimal"; 0),
-   effectiveLive: stat("Effective $/1M tokens (live)"; "Burn divided by live throughput: what one million tokens cost right now.";
-       "\($burn) / clamp_min((\($tps)) * 3600 / 1e6, 0.001)"; "decimal"; 2),
-   effectiveRange: stat("Effective $/1M tokens (Range)"; "Burn over the Range window divided by tokens served in it.";
-       "\($burn) * \($hours_range) / clamp_min((\($tokens_range)) / 1e6, 0.001)"; "decimal"; 2),
-   breakEven: stat("Break-even throughput (tokens/s)"; "Tokens per second at which self-hosting matches the hosted API'"'"'s blended price.";
-       "vector(\($break_even))"; "decimal"; 0),
+   effectiveLive: stat("Effective $/1M tokens (live)"; "Burn divided by live throughput; blank below 1 token per second.";
+       "(\($burn)) / ((\($tps) > 1) * 3600 / 1e6)"; "decimal"; 2),
+   effectiveRange: stat("Effective $/1M tokens (Range)"; "Worker spend over the Range window divided by tokens served in it.";
+       "(\($spend)) / (((\($ptok)) + (\($gtok))) / 1e6)"; "decimal"; 2),
+   breakEven: stat("Break-even throughput (tokens/s)"; "Token rate at which the serving workers cost the same as the reference model.";
+       $break_even; "decimal"; 0),
    utilisation: gauge("Throughput vs break-even";
-       "Live throughput as a percentage of the break-even throughput; above 100% self-hosting is cheaper than the hosted API.";
+       "Live throughput as a percentage of the break-even throughput; above 100% running privately is cheaper than the reference model.";
        "(\($tps)) / (\($break_even)) * 100"),
-   apiEquivalent: stat("Hosted-API equivalent spend (Range)"; "What the tokens served in the Range window would have cost at the hosted API prices.";
+   apiEquivalent: stat("Reference-model spend (Range)"; "What the tokens served in the Range window would cost at the list prices.";
        $api_spend_range; "decimal"; 2),
-   infraSpend: stat("Infrastructure spend (Range)"; "Burn over the Range window."; "\($burn) * \($hours_range)"; "decimal"; 2),
-   savings: stat("Savings vs hosted API (Range)";
-       "Hosted-API equivalent spend minus infrastructure spend; negative means the GPUs are under-utilised relative to the reference price.";
-       "\($api_spend_range) - \($burn) * \($hours_range)"; "decimal"; 2),
-   throughputTrend: ts("Throughput by model vs break-even"; "Tokens per second by model against the break-even line.";
-       [[$tps_model, "{{model_name}}"], ["vector(\($break_even))", "break-even"]]; "decimal"; DS),
+   infraSpend: stat("Infrastructure spend (Range)"; "Serving hours of each private model in the Range window times its worker price."; $spend; "decimal"; 2),
+   savings: stat("Savings vs reference (Range)";
+       "Reference-model spend minus infrastructure spend; negative means the workers are under-used for this price.";
+       "(\($api_spend_range)) - (\($spend))"; "decimal"; 2),
+   throughputTrend: ts("Throughput by model vs break-even"; "Tokens per second by private model against the break-even line.";
+       [[$tps_model, "{{model}}"], [$break_even, "break-even"]]; "decimal"; DS),
    gpuUtil: ts("GPU utilisation"; "Accelerator utilisation from cluster monitoring (DCGM).";
        [["avg by (exported_pod) (accelerator_gpu_utilization)", "{{exported_pod}}"]]; "percent"; CDS)} as $tok_panels
-| [grid("Live"; [["burn", 0, 0, 6, 5], ["throughput", 6, 0, 6, 5], ["effectiveLive", 12, 0, 6, 5], ["breakEven", 18, 0, 6, 5]]),
+| [grid("How this is calculated"; [["about", 0, 0, 24, 5]]) | .spec.display.collapse.open = false,
+   grid("Live"; [["burn", 0, 0, 6, 5], ["throughput", 6, 0, 6, 5], ["effectiveLive", 12, 0, 6, 5], ["breakEven", 18, 0, 6, 5]]),
    grid("Break-even"; [["utilisation", 0, 0, 8, 8], ["throughputTrend", 8, 0, 16, 8]]),
    grid("Range economics"; [["effectiveRange", 0, 0, 6, 5], ["infraSpend", 6, 0, 6, 5], ["apiEquivalent", 12, 0, 6, 5],
        ["savings", 18, 0, 6, 5], ["gpuUtil", 0, 5, 24, 7]])] as $tok_layouts
@@ -169,7 +185,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
        "Showback: tokens served by the private models and governed MaaS users, priced with editable per-million-token prices.";
        $cost_vars; $cost_panels; $cost_layouts),
    "dashboard-6-tokenomics-break-even.yaml": dashboard("dashboard-6-tokenomics-break-even-admin"; "Tokenomics · break-even (live)";
-       "Self-hosting economics: infrastructure burn, effective cost per million tokens, and the throughput at which the private models beat a hosted API.";
+       "Self-hosting economics: infrastructure burn of the serving private models, effective cost per million tokens, and the throughput at which they beat a reference external model.";
        $tok_vars; $tok_panels; $tok_layouts),
    shared: DS}
 '
