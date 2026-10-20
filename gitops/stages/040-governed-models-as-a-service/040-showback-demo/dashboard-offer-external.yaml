@@ -57,6 +57,24 @@ spec:
             labelName: subscription
             matchers:
             - showback_external_metering_events
+    - kind: TextVariable
+      spec:
+        name: usage_hours
+        value: '168'
+        constant: false
+        display:
+          name: Usage hours / month
+          description: Hours a month the teams work at the pace seen in the time range (8 h x 21 working days = 168).
+          hidden: false
+    - kind: TextVariable
+      spec:
+        name: users
+        value: '1'
+        constant: false
+        display:
+          name: Users per team
+          description: Scales the observed usage; each demo team is one synthetic user.
+          hidden: false
     panels:
       about:
         kind: Panel
@@ -70,7 +88,7 @@ spec:
               text: |-
                 An **external model** is a provider service reached through the MaaS gateway, with no local GPU or idle cost. The gateway's metering plugin records every response with its input and output tokens and prices it once at the provider's **published list price** in force; later price changes never reprice earlier usage. Consumers pay the provider charge.
 
-                Figures are month-to-date estimates (UTC) until reconciled with the provider invoice. Requests without usage or without a catalog price stay visible as unpriced.
+                Figures are month-to-date estimates (UTC) until reconciled with the provider invoice. Requests without usage or without a catalog price stay visible as unpriced. The **projected** column scales the spend in the selected time range to a month (usage hours × users per team).
           queries: []
       spend:
         kind: Panel
@@ -247,6 +265,14 @@ spec:
                   decimalPlaces: 4
                   shortValues: false
                 sort: desc
+              - name: 'value #5'
+                header: Monthly estimate (proj.)
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 2
+                  shortValues: false
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -287,6 +313,15 @@ spec:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
                   query: sum by (subscription, model) (showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"})
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum by (subscription, model) ((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
       rates:
         kind: Panel
         spec:

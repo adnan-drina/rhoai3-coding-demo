@@ -38,6 +38,33 @@ spec:
             labelName: model
             matchers:
             - showback_offer_info{offer="dedicated"}
+    - kind: TextVariable
+      spec:
+        name: worker_hours
+        value: '730'
+        constant: false
+        display:
+          name: GPU hours / month
+          description: Hours a month a private GPU worker runs (730 = always on, 168 = working hours only).
+          hidden: false
+    - kind: TextVariable
+      spec:
+        name: usage_hours
+        value: '168'
+        constant: false
+        display:
+          name: Usage hours / month
+          description: Hours a month the teams work at the pace seen in the time range (8 h x 21 working days = 168).
+          hidden: false
+    - kind: TextVariable
+      spec:
+        name: users
+        value: '1'
+        constant: false
+        display:
+          name: Users per team
+          description: Scales the observed usage; each demo team is one synthetic user.
+          hidden: false
     panels:
       about:
         kind: Panel
@@ -51,7 +78,7 @@ spec:
               text: |-
                 A **dedicated private model** runs on GPU capacity reserved for one sponsoring team. The sponsor pays the **full running cost** of that capacity for every hour the model is up, whether it is busy or idle. Usage does not change the charge; it changes the effective cost per token. A low busy share is paid idle capacity: a reason to schedule the model, right-size it or move it to the shared offering.
 
-                Running cost = serving hours × GPU worker price from the offer catalog.
+                Running cost = serving hours × GPU worker price from the offer catalog. **Projected** columns scale the usage in the time range to a month (usage hours × users per team) and charge GPU hours per month.
           queries: []
       charge:
         kind: Panel
@@ -77,12 +104,12 @@ spec:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
                   query: sum(((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()))
-      hours:
+      monthly:
         kind: Panel
         spec:
           display:
-            name: Serving hours
-            description: Hours the selected dedicated models were up.
+            name: Monthly charge (projected)
+            description: Worker price × GPU hours per month, all selected dedicated models.
           plugin:
             kind: StatChart
             spec:
@@ -100,7 +127,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: sum((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end()))
+                  query: sum((max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end()))
       tokens:
         kind: Panel
         spec:
@@ -268,6 +295,22 @@ spec:
                   unit: decimal
                   decimalPlaces: 2
                   shortValues: false
+              - name: 'value #7'
+                header: Monthly charge (proj.)
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 0
+                  shortValues: false
+              - name: 'value #8'
+                header: "$/1M (proj.)"
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 2
+                  shortValues: false
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -326,6 +369,24 @@ spec:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
                   query: (((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end())) * (1 - (((sum by (model) (label_replace(count_over_time((sum by (model_name) (kserve_vllm:num_requests_running) > 0)[$__range:1m]), "model", "$1", "model_name", "(.+)"))) or (sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * 0) / on(model) ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: ((max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) / (((sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * 1e6
       throughput:
         kind: Panel
         spec:
@@ -457,7 +518,7 @@ spec:
           width: 4
           height: 4
           content:
-            "$ref": "#/spec/panels/hours"
+            "$ref": "#/spec/panels/monthly"
         - x: 8
           y: 0
           width: 4

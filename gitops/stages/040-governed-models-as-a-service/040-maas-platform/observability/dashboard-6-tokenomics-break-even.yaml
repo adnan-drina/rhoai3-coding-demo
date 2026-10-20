@@ -13,19 +13,18 @@ metadata:
 spec:
   config:
     display:
-      name: "Tokenomics \xB7 break-even (live)"
-      description: 'Self-hosting economics: infrastructure burn of the serving private models, effective cost per million tokens, and the throughput at which they beat a reference external model.'
+      name: "Tokenomics \xB7 break-even"
+      description: Should an external-model workload move to a private model? Projected monthly volume and cost against the break-even volume of a private worker.
     duration: 168h
     variables:
     - kind: ListVariable
       spec:
-        name: model
-        allowAllValue: true
-        allowMultiple: true
-        customAllValue: .*
-        defaultValue: $__all
+        name: reference
+        allowAllValue: false
+        allowMultiple: false
+        defaultValue: claude-sonnet-5-5
         display:
-          name: Private model
+          name: External model in use
           hidden: false
         plugin:
           kind: PrometheusLabelValuesVariable
@@ -35,15 +34,32 @@ spec:
               name: data-science-prometheus-datasource
             labelName: model
             matchers:
-            - showback_offer_info
+            - showback_external_metering_rate_usd_per_million{category="output"}
     - kind: ListVariable
       spec:
-        name: reference
+        name: subscription
+        allowAllValue: true
+        allowMultiple: true
+        customAllValue: .*
+        defaultValue: $__all
+        display:
+          name: Subscriptions
+          hidden: false
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            datasource: *id001
+            labelName: subscription
+            matchers:
+            - showback_external_metering_events
+    - kind: ListVariable
+      spec:
+        name: private
         allowAllValue: false
         allowMultiple: false
-        defaultValue: gpt-6-luna
+        defaultValue: qwen3-8-27b
         display:
-          name: Reference external model
+          name: Private candidate
           hidden: false
         plugin:
           kind: PrometheusLabelValuesVariable
@@ -51,145 +67,64 @@ spec:
             datasource: *id001
             labelName: model
             matchers:
-            - showback_external_metering_rate_usd_per_million{category="output"}
+            - showback_offer_info
+    - kind: TextVariable
+      spec:
+        name: usage_hours
+        value: '168'
+        constant: false
+        display:
+          name: Usage hours / month
+          description: Hours a month the teams work at the pace seen in the time range (8 h x 21 working days = 168).
+          hidden: false
+    - kind: TextVariable
+      spec:
+        name: users
+        value: '1'
+        constant: false
+        display:
+          name: Users per team
+          description: Scales the observed usage; each demo team is one synthetic user.
+          hidden: false
+    - kind: TextVariable
+      spec:
+        name: worker_hours
+        value: '730'
+        constant: false
+        display:
+          name: GPU hours / month
+          description: Hours a month a private GPU worker would run (730 = always on, 168 = working hours only).
+          hidden: false
     panels:
       about:
         kind: Panel
         spec:
           display:
-            name: How this is calculated
+            name: How the decision is calculated
             description: ''
           plugin:
             kind: Markdown
             spec:
-              text: '**Private cost** counts only GPU workers that are serving: each running model costs its worker price per hour from the offer catalog. Parked workers cost nothing.
+              text: '**Question:** should the selected external-model workload move to the private candidate?
 
 
-                **Reference cost** prices the same input and output tokens at the published list price of the selected external model.
+                1. **Projected monthly tokens** scale the usage in the time range to a month: usage hours per month x users per team.
+
+                2. **External cost** prices those tokens at the provider list price, using the workload own input/output mix.
+
+                3. **Private cost** is GPU workers x worker price x GPU hours per month. Workers needed = projected tokens / capacity of one worker (from the offer catalog).
+
+                4. **Break-even** is the monthly volume at which one private worker costs the same as the external model. Above 100% moving to private saves money; check quality and latency before switching.
 
 
-                **Break-even throughput** is the token rate at which the private workers cost the same as the reference model; above it, running privately is cheaper.'
+                Choose a time range that represents a typical working period, then raise users per team to see when the decision flips.'
           queries: []
-      burn:
+      ratio:
         kind: Panel
         spec:
           display:
-            name: Infrastructure burn $/h
-            description: Worker price of every serving private model, from the offer catalog.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: sum((label_replace(count by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)")) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour
-                    @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))
-      throughput:
-        kind: Panel
-        spec:
-          display:
-            name: Live throughput (tokens/s)
-            description: Prompt plus completion tokens per second across the selected private models.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: sum(label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])), "model", "$1", "model_name",
-                    "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end()))
-      effectiveLive:
-        kind: Panel
-        spec:
-          display:
-            name: Effective $/1M tokens (live)
-            description: Burn divided by live throughput; blank below 1 token per second.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: (sum((label_replace(count by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)")) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour
-                    @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))) / ((sum(label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])),
-                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end())) > 1) * 3600 / 1e6)
-      effectiveRange:
-        kind: Panel
-        spec:
-          display:
-            name: Effective $/1M tokens (Range)
-            description: Worker spend over the Range window divided by tokens served in it.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: (sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by
-                    (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))) / (((sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])),
-                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end()))) + (sum(label_replace(sum by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])),
-                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end())))) / 1e6)
-      breakEven:
-        kind: Panel
-        spec:
-          display:
-            name: Break-even throughput (tokens/s)
-            description: Token rate at which the serving workers cost the same as the reference model.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: (sum((label_replace(count by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)")) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour
-                    @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))) / ((min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 2) * 1e6 / 3600
-      utilisation:
-        kind: Panel
-        spec:
-          display:
-            name: Throughput vs break-even
-            description: Live throughput as a percentage of the break-even throughput; above 100% running privately is cheaper than the reference model.
+            name: Workload vs break-even
+            description: Projected monthly tokens as a share of the break-even volume; above 100% the private candidate is cheaper.
           plugin:
             kind: GaugeChart
             spec:
@@ -211,16 +146,185 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (sum(label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])), "model", "$1", "model_name",
-                    "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end()))) / ((sum((label_replace(count by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)"))
-                    * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))) / ((min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 2) * 1e6 / 3600) * 100
-      apiEquivalent:
+                  query: 100 * (((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / (max(showback_offer_worker_usd_per_hour{model="$private"} @ end())
+                    * $worker_hours / (((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 1e6 / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}))
+                    + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours
+                    * $users) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2)) * 1e6)
+      volume:
         kind: Panel
         spec:
           display:
-            name: Reference-model spend (Range)
-            description: What the tokens served in the Range window would cost at the list prices.
+            name: Projected tokens / month
+            description: Usage of the selected external workload in the time range, scaled to a month.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: ((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
+      breakeven:
+        kind: Panel
+        spec:
+          display:
+            name: Break-even tokens / month
+            description: Monthly volume at which one private worker costs the same as the external model.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: max(showback_offer_worker_usd_per_hour{model="$private"} @ end()) * $worker_hours / (((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}))
+                    * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}
+                    - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))
+                    * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 1e6 / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) /
+                    ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 2)) * 1e6
+      savings:
+        kind: Panel
+        spec:
+          display:
+            name: Monthly savings if moved (USD)
+            description: External cost minus private cost; negative means stay external.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: (((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 1e6 / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - ((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference",
+                    subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
+                    subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @ end()) * 3600 * $usage_hours)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
+                    @ end()) * $worker_hours)
+      workers:
+        kind: Panel
+        spec:
+          display:
+            name: Private workers needed
+            description: Projected tokens divided by the demonstrated capacity of one worker, rounded up.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @
+                    end()) * 3600 * $usage_hours)), 1)
+      spend:
+        kind: Panel
+        spec:
+          display:
+            name: External cost / month (USD)
+            description: Projected tokens at the provider list price.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: ((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 1e6 / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
+      privateCost:
+        kind: Panel
+        spec:
+          display:
+            name: Private cost / month (USD)
+            description: Workers needed x worker price x GPU hours per month.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: (clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
+                    subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @
+                    end()) * 3600 * $usage_hours)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end()) * $worker_hours
+      blended:
+        kind: Panel
+        spec:
+          display:
+            name: External $/1M tokens
+            description: Provider list price at the observed input/output mix of the workload.
           plugin:
             kind: StatChart
             spec:
@@ -235,15 +339,67 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"}
-                    @ end()))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum(label_replace(sum by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])),
-                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end()))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})
+                  query: ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 1e6 / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}))
+                    + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours
+                    * $users) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2)
+      capacity:
+        kind: Panel
+        spec:
+          display:
+            name: Capacity of one worker (tokens / month)
+            description: Demonstrated tokens per second x usage hours per month.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: max(showback_offer_capacity_tokens_per_second{model="$private"} @ end()) * 3600 * $usage_hours
+      effectiveRange:
+        kind: Panel
+        spec:
+          display:
+            name: Effective $/1M tokens
+            description: Private worker spend in the time range divided by tokens served.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 2
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: (sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by
+                    (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info @ end()))) / (((sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])),
+                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end()))) + (sum(label_replace(sum by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])),
+                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end())))) / 1e6)
       infraSpend:
         kind: Panel
         spec:
           display:
-            name: Infrastructure spend (Range)
-            description: Serving hours of each private model in the Range window times its worker price.
+            name: Private spend (USD)
+            description: Serving hours of each private model in the time range x its worker price.
           plugin:
             kind: StatChart
             spec:
@@ -259,13 +415,13 @@ spec:
                 spec:
                   datasource: *id001
                   query: sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by
-                    (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))
-      savings:
+                    (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info @ end()))
+      refSpend:
         kind: Panel
         spec:
           display:
-            name: Savings vs reference (Range)
-            description: Reference-model spend minus infrastructure spend; negative means the workers are under-used for this price.
+            name: Same tokens at the external price (USD)
+            description: Tokens the private models served in the time range, priced at the selected external model.
           plugin:
             kind: StatChart
             spec:
@@ -280,17 +436,40 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: ((sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"}
-                    @ end()))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum(label_replace(sum by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])),
-                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end()))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"}))
+                  query: (sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end())))
+                    / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum(label_replace(sum by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])),
+                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end()))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})
+      fleetSavings:
+        kind: Panel
+        spec:
+          display:
+            name: Savings vs external (USD)
+            description: External price minus private spend for the time range; negative means the workers were under-used.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 2
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: ((sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end())))
+                    / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum(label_replace(sum by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])),
+                    "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end()))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"}))
                     - (sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by (model)
-                    (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end())))
+                    (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info @ end())))
       throughputTrend:
         kind: Panel
         spec:
           display:
-            name: Throughput by model vs break-even
-            description: Tokens per second by private model against the break-even line.
+            name: Private throughput vs break-even
+            description: Tokens per second of the private models against the rate at which the serving workers match the external price.
           plugin:
             kind: TimeSeriesChart
             spec:
@@ -315,7 +494,7 @@ spec:
                 spec:
                   datasource: *id001
                   query: label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])), "model", "$1", "model_name",
-                    "(.+)") and on(model) (showback_offer_info{model=~"$model"} @ end())
+                    "(.+)") and on(model) (showback_offer_info @ end())
                   seriesNameFormat: '{{model}}'
           - kind: TimeSeriesQuery
             spec:
@@ -324,7 +503,7 @@ spec:
                 spec:
                   datasource: *id001
                   query: (sum((label_replace(count by (model_name) (kserve_vllm:num_requests_running), "model", "$1", "model_name", "(.+)")) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour
-                    @ end()) and on(model) (showback_offer_info{model=~"$model"} @ end()))) / ((min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    @ end()) and on(model) (showback_offer_info @ end()))) / ((min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
                     category="output"})) / 2) * 1e6 / 3600
                   seriesNameFormat: break-even
       gpuUtil:
@@ -364,51 +543,20 @@ spec:
     - kind: Grid
       spec:
         display:
-          title: How this is calculated
+          title: How the decision is calculated
           collapse:
             open: false
         items:
         - x: 0
           y: 0
           width: 24
-          height: 5
+          height: 7
           content:
             $ref: '#/spec/panels/about'
     - kind: Grid
       spec:
         display:
-          title: Live
-          collapse:
-            open: true
-        items:
-        - x: 0
-          y: 0
-          width: 6
-          height: 5
-          content:
-            $ref: '#/spec/panels/burn'
-        - x: 6
-          y: 0
-          width: 6
-          height: 5
-          content:
-            $ref: '#/spec/panels/throughput'
-        - x: 12
-          y: 0
-          width: 6
-          height: 5
-          content:
-            $ref: '#/spec/panels/effectiveLive'
-        - x: 18
-          y: 0
-          width: 6
-          height: 5
-          content:
-            $ref: '#/spec/panels/breakEven'
-    - kind: Grid
-      spec:
-        display:
-          title: Break-even
+          title: Recommendation
           collapse:
             open: true
         items:
@@ -417,17 +565,66 @@ spec:
           width: 8
           height: 8
           content:
-            $ref: '#/spec/panels/utilisation'
+            $ref: '#/spec/panels/ratio'
         - x: 8
           y: 0
-          width: 16
-          height: 8
+          width: 8
+          height: 4
           content:
-            $ref: '#/spec/panels/throughputTrend'
+            $ref: '#/spec/panels/volume'
+        - x: 16
+          y: 0
+          width: 8
+          height: 4
+          content:
+            $ref: '#/spec/panels/breakeven'
+        - x: 8
+          y: 4
+          width: 8
+          height: 4
+          content:
+            $ref: '#/spec/panels/savings'
+        - x: 16
+          y: 4
+          width: 8
+          height: 4
+          content:
+            $ref: '#/spec/panels/workers'
     - kind: Grid
       spec:
         display:
-          title: Range economics
+          title: Monthly comparison
+          collapse:
+            open: true
+        items:
+        - x: 0
+          y: 0
+          width: 6
+          height: 5
+          content:
+            $ref: '#/spec/panels/spend'
+        - x: 6
+          y: 0
+          width: 6
+          height: 5
+          content:
+            $ref: '#/spec/panels/privateCost'
+        - x: 12
+          y: 0
+          width: 6
+          height: 5
+          content:
+            $ref: '#/spec/panels/blended'
+        - x: 18
+          y: 0
+          width: 6
+          height: 5
+          content:
+            $ref: '#/spec/panels/capacity'
+    - kind: Grid
+      spec:
+        display:
+          title: Private fleet in the time range
           collapse:
             open: true
         items:
@@ -448,15 +645,21 @@ spec:
           width: 6
           height: 5
           content:
-            $ref: '#/spec/panels/apiEquivalent'
+            $ref: '#/spec/panels/refSpend'
         - x: 18
           y: 0
           width: 6
           height: 5
           content:
-            $ref: '#/spec/panels/savings'
+            $ref: '#/spec/panels/fleetSavings'
         - x: 0
           y: 5
+          width: 24
+          height: 7
+          content:
+            $ref: '#/spec/panels/throughputTrend'
+        - x: 0
+          y: 12
           width: 24
           height: 7
           content:

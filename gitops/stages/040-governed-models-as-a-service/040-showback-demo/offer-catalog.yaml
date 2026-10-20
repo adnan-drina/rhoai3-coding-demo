@@ -2,6 +2,8 @@
 # dedicated model, the GPU worker price behind each model and the published shared tariff. The dashboards read only
 # these series; onboarding another model or changing a price is an edit here, not a dashboard change.
 # Worker price: AWS g7e.2xlarge (one RTX PRO 6000) on-demand list price in us-east-2, saved 2026-10-15.
+# Capacity: tokens per second one worker sustained in the 2026-10-20 demo run (Qwen 3.8 NVFP4: 304 at 6 concurrent
+# requests; Mistral Small 4: 253 at 3). Projections size the private worker count from it.
 apiVersion: monitoring.rhobs/v1
 kind: PrometheusRule
 metadata:
@@ -28,6 +30,9 @@ spec:
         - record: showback_offer_tariff_usd_per_million
           expr: vector(4)
           labels: {offer: shared, model: qwen3-8-27b}
+        - record: showback_offer_capacity_tokens_per_second
+          expr: vector(300)
+          labels: {offer: shared, model: qwen3-8-27b}
         # Dedicated private: the sponsoring subscription pays the worker, busy or idle.
         - record: showback_offer_info
           expr: vector(1)
@@ -35,3 +40,6 @@ spec:
         - record: showback_offer_worker_usd_per_hour
           expr: vector(3.36312)
           labels: {offer: dedicated, model: mistral-small4-119b, instance_type: g7e.2xlarge}
+        - record: showback_offer_capacity_tokens_per_second
+          expr: vector(250)
+          labels: {offer: dedicated, model: mistral-small4-119b}

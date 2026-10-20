@@ -57,6 +57,33 @@ spec:
             labelName: subscription
             matchers:
             - authorized_hits_total{subscription!=""}
+    - kind: TextVariable
+      spec:
+        name: worker_hours
+        value: '730'
+        constant: false
+        display:
+          name: GPU hours / month
+          description: Hours a month a private GPU worker runs (730 = always on, 168 = working hours only).
+          hidden: false
+    - kind: TextVariable
+      spec:
+        name: usage_hours
+        value: '168'
+        constant: false
+        display:
+          name: Usage hours / month
+          description: Hours a month the teams work at the pace seen in the time range (8 h x 21 working days = 168).
+          hidden: false
+    - kind: TextVariable
+      spec:
+        name: users
+        value: '1'
+        constant: false
+        display:
+          name: Users per team
+          description: Scales the observed usage; each demo team is one synthetic user.
+          hidden: false
     panels:
       about:
         kind: Panel
@@ -70,7 +97,7 @@ spec:
               text: |-
                 A **shared private model** runs on platform-owned GPU capacity and serves many teams. Each consumer pays the published **tariff per million tokens** for what it uses. The platform pays the running cost and prices idle capacity into the tariff: when demand is below forecast the platform carries the shortfall, above forecast it keeps the surplus.
 
-                Running cost = serving hours × GPU worker price; charge = tokens × tariff. *Cost share* splits the running cost by token share, for comparison with the tariff.
+                Running cost = serving hours × GPU worker price; charge = tokens × tariff. *Cost share* splits the running cost by token share, for comparison with the tariff. **Projected** columns scale the usage in the time range to a month (usage hours × users per team) against GPU hours per month.
           queries: []
       cost:
         kind: Panel
@@ -223,6 +250,14 @@ spec:
                   unit: decimal
                   decimalPlaces: 2
                   shortValues: false
+              - name: 'value #5'
+                header: Monthly charge (proj.)
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 0
+                  shortValues: false
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -263,6 +298,15 @@ spec:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
                   query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / on(model) group_left() (sum by (model) (increase(authorized_hits_total[$__range]))) * on(model) group_left() ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6 / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
       models:
         kind: Panel
         spec:
@@ -321,6 +365,14 @@ spec:
                   unit: decimal
                   decimalPlaces: 2
                   shortValues: false
+              - name: 'value #6'
+                header: Monthly balance (proj.)
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 0
+                  shortValues: false
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -370,6 +422,15 @@ spec:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
                   query: (((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6) - on(model) ((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users - on(model) (max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
       throughput:
         kind: Panel
         spec:
