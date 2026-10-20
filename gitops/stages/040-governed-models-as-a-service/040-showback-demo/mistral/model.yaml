@@ -89,6 +89,13 @@ spec:
         ports:
           - containerPort: 8000
             name: http
+        # Reading ~66 GB of weights from the node's gp3 disk takes about 10 minutes; the platform default startup
+        # allowance (60 x 10 s) killed the first start seconds before the server opened. Allow 30 minutes.
+        startupProbe:
+          httpGet: {path: /health, port: 8000, scheme: HTTPS}
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 180
         readinessProbe:
           httpGet: {path: /health, port: 8000, scheme: HTTPS}
           initialDelaySeconds: 10
