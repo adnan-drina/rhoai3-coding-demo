@@ -4,7 +4,7 @@ This demo answers "What did AI cost us?" on a governed MaaS platform. Three team
 
 | Team | Offering | Model | How it is priced |
 |---|---|---|---|
-| Engineering | Shared private | Qwen 3.8 27B on a platform-owned RTX PRO 6000 worker | Published tariff per million tokens; the platform carries idle capacity |
+| Engineering | Shared private | Qwen 3.8 27B on a platform-owned RTX PRO 6000 worker | Committed tariff for 150M tokens a month, on demand above it; the platform carries idle capacity |
 | Support | Shared private and External | Qwen 3.8 27B; GPT-6 Luna, Claude Sonnet 5.5, Nemotron | Tariff for Qwen; provider list price per token for external models |
 | Marketing | Dedicated private | Mistral Small 4 119B on its own RTX PRO 6000 worker | Full running cost of the worker, busy or idle |
 
@@ -16,7 +16,7 @@ Open **Observe & monitor → Dashboard** in the OpenShift AI console. Each Offer
 
 | Tab | Shows |
 |---|---|
-| **Offer · Shared private** | Running cost, tariff revenue, platform balance and projected monthly balance; token rate by consumer; tokens, tariff charge and projected monthly charge per subscription |
+| **Offer · Shared private** | Monthly running cost, committed revenue floor, cost coverage, and the monthly platform balance with commitments and if every team paid on demand; token rate by consumer; per subscription: tokens, commitment, projected use, commitment used and monthly charge |
 | **Offer · Dedicated private** | Sponsor charges, paid idle, effective cost per million tokens and projected monthly charge; GPU utilisation; charges per dedicated model and sponsor |
 | **Offer · External model** | Month-to-date provider spend, requests and projected monthly spend; spend by subscription over the month; statement by subscription and model; the provider price list (collapsed) |
 
@@ -24,7 +24,7 @@ Each Offer dashboard also projects the selected time range to a month: **Usage h
 
 **Tokenomics · break-even** answers when an external workload should move to a private model. Pick the external model a team uses and its subscriptions, and a private candidate; the dashboard shows the projected monthly tokens and external cost, the private cost (GPU workers sized from the candidate's demonstrated capacity), the break-even volume of one worker and the monthly savings if moved. In the demo run, Support's Claude workload is about 3% of break-even with one user; raising **Users per team**, or scheduling the GPU for working hours only, shows where moving to private pays off.
 
-The dashboards name no model. The **offer catalog** (`offer-catalog.yaml` in the component, a PrometheusRule evaluated by the RHOAI Prometheus) records which private models are shared or dedicated, the sponsoring subscription of each dedicated model, the demonstrated capacity of one worker, the GPU worker price ($3.36312 per hour, AWS `g7e.2xlarge` on-demand in us-east-2, saved 2026-10-15) and the shared tariff ($4.00 per million tokens). To onboard another model or change a price, edit the catalog and redeploy the component. Running cost counts the minutes a model is serving; node start-up and model loading are not included. Every period is priced with the catalog values in force at the end of the selected time range.
+The dashboards name no model. The **offer catalog** (`offer-catalog.yaml` in the component, a PrometheusRule evaluated by the RHOAI Prometheus) records which private models are shared or dedicated, the sponsoring subscription of each dedicated model, the demonstrated capacity of one worker, the GPU worker price ($3.36312 per hour, AWS `g7e.2xlarge` on-demand in us-east-2, saved 2026-10-15) the shared tariffs ($4.00 per million tokens on demand, $3.00 committed) and each team’s shared commitment (Engineering 150M, Support 30M tokens a month). A committed team pays its commitment whether used or not and on-demand above it; its MaaS token-rate limit is sized to use it in working hours (Engineering 1M tokens/hour), which `validate.sh` checks. To onboard another model or change a price, edit the catalog and redeploy the component. Running cost counts the minutes a model is serving; node start-up and model loading are not included. Every period is priced with the catalog values in force at the end of the selected time range.
 
 ## Run the demo
 

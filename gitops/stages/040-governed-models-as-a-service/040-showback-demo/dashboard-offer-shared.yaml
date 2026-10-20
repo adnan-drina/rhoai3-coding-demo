@@ -16,7 +16,7 @@ spec:
   config:
     display:
       name: Offer · Shared private
-      description: 'Private models shared by many teams: consumers pay a published tariff per token, the platform pays the running cost and carries the balance. Models and tariffs come from the showback offer catalog.'
+      description: 'Private models shared by many teams: on-demand or committed tariffs per token; the platform pays the running cost and carries the balance. Models, tariffs and commitments come from the showback offer catalog.'
     duration: 1h
     variables:
     - kind: ListVariable
@@ -95,88 +95,19 @@ spec:
             kind: Markdown
             spec:
               text: |-
-                A **shared private model** runs on platform-owned GPU capacity and serves many teams. Each consumer pays the published **tariff per million tokens** for what it uses. The platform pays the running cost and prices idle capacity into the tariff: when demand is below forecast the platform carries the shortfall, above forecast it keeps the surplus.
+                A **shared private model** runs on platform-owned GPU capacity and serves many teams. Teams choose a tier:
 
-                Running cost = serving hours × GPU worker price; charge = tokens × tariff. *Cost share* splits the running cost by token share, for comparison with the tariff. **Projected** columns scale the usage in the time range to a month (usage hours × users per team) against GPU hours per month.
+                - **On demand:** the published tariff per million tokens, no commitment.
+                - **Committed:** a monthly token volume at a lower tariff, paid whether used or not; usage above it is billed on demand. The team's MaaS token-rate limit is sized so it can use its commitment.
+
+                The platform pays the running cost (GPU hours × worker price). Commitments give it a **revenue floor**; *cost coverage* is that floor as a share of the monthly running cost. All values are monthly projections: usage in the time range × usage hours × users per team, against GPU hours per month.
           queries: []
       cost:
         kind: Panel
         spec:
           display:
-            name: Running cost (USD)
-            description: Serving hours × worker price, selected shared models.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-                shortValues: false
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
-      revenue:
-        kind: Panel
-        spec:
-          display:
-            name: Tariff revenue (USD)
-            description: Tokens × published tariff.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-                shortValues: false
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum(((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6)
-      balance:
-        kind: Panel
-        spec:
-          display:
-            name: Platform balance (USD)
-            description: Tariff revenue minus running cost; negative is a shortfall.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-                shortValues: false
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: (sum(((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6) or vector(0)) - (sum((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) or vector(0))
-      monthlyBalance:
-        kind: Panel
-        spec:
-          display:
-            name: Monthly balance (projected)
-            description: Projected monthly tariff revenue minus GPU hours per month × worker price; negative is the shortfall the platform carries.
+            name: Monthly running cost (USD)
+            description: GPU hours per month × worker price, selected shared models.
           plugin:
             kind: StatChart
             spec:
@@ -194,7 +125,103 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum(((sum by (model) (increase(authorized_hits_total[$__range]))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users or vector(0)) - sum(max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+                  query: sum(max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+      floor:
+        kind: Panel
+        spec:
+          display:
+            name: Committed revenue floor (USD)
+            description: Monthly commitments × committed tariff, paid whether used or not.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: sum((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end()) / 1e6)
+      coverage:
+        kind: Panel
+        spec:
+          display:
+            name: Cost coverage %
+            description: Committed revenue floor as a share of the monthly running cost.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: 100 * sum((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end()) / 1e6) / sum(max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+      balanceCommitted:
+        kind: Panel
+        spec:
+          display:
+            name: Monthly balance · with commitments (USD)
+            description: Projected revenue with commitments minus running cost; negative is the platform shortfall.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (sum(((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end()) / 1e6 + on(subscription, model) ((clamp_min(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - on(subscription, model) (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())), 0)) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6 or (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * 0)) or ((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6) or vector(0)) - sum(max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+      balancePayg:
+        kind: Panel
+        spec:
+          display:
+            name: Monthly balance · all on demand (USD)
+            description: Projected revenue if every team paid the on-demand tariff, minus running cost.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (sum(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6) or vector(0)) - sum(max by (model) (showback_offer_worker_usd_per_hour @ end()) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
       throughput:
         kind: Panel
         spec:
@@ -233,7 +260,7 @@ spec:
         spec:
           display:
             name: Charges by consumer
-            description: Tokens and tariff charge per subscription and model, and the projected monthly charge.
+            description: Tokens in the time range, monthly commitment, projected monthly use and charge per subscription and model.
           plugin:
             kind: Table
             spec:
@@ -258,16 +285,31 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
-                sort: desc
               - name: 'value #2'
-                header: Tariff charge ($)
+                header: Commitment / month
                 align: right
                 enableSorting: true
                 format:
                   unit: decimal
-                  decimalPlaces: 2
+                  decimalPlaces: 0
                   shortValues: false
               - name: 'value #3'
+                header: Projected tokens / month
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 0
+                  shortValues: false
+              - name: 'value #4'
+                header: Commitment used %
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 0
+                  shortValues: false
+              - name: 'value #5'
                 header: Monthly charge (proj.)
                 align: right
                 enableSorting: true
@@ -275,6 +317,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
+                sort: desc
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -296,7 +339,7 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6
+                  query: max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -305,7 +348,25 @@ spec:
                   datasource:
                     kind: PrometheusDatasource
                     name: data-science-prometheus-datasource
-                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6 / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
+                  query: (sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: 100 * ((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / on(subscription, model) (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end()))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: ((max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * on(model) group_left max by (model) (showback_offer_committed_tariff_usd_per_million @ end()) / 1e6 + on(subscription, model) ((clamp_min(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - on(subscription, model) (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())), 0)) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6 or (max by (subscription, model) (showback_offer_commitment_tokens{subscription=~"$subscription"} @ end()) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) * 0)) or ((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end())) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) (showback_offer_tariff_usd_per_million @ end()) / 1e6
     layouts:
     - kind: Grid
       spec:
@@ -317,7 +378,7 @@ spec:
         - x: 0
           y: 0
           width: 24
-          height: 6
+          height: 7
           content:
             "$ref": "#/spec/panels/about"
     - kind: Grid
@@ -329,28 +390,34 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 6
+          width: 5
           height: 4
           content:
             "$ref": "#/spec/panels/cost"
-        - x: 6
+        - x: 5
           y: 0
-          width: 6
+          width: 5
           height: 4
           content:
-            "$ref": "#/spec/panels/revenue"
-        - x: 12
+            "$ref": "#/spec/panels/floor"
+        - x: 10
           y: 0
-          width: 6
+          width: 4
           height: 4
           content:
-            "$ref": "#/spec/panels/balance"
-        - x: 18
+            "$ref": "#/spec/panels/coverage"
+        - x: 14
           y: 0
-          width: 6
+          width: 5
           height: 4
           content:
-            "$ref": "#/spec/panels/monthlyBalance"
+            "$ref": "#/spec/panels/balanceCommitted"
+        - x: 19
+          y: 0
+          width: 5
+          height: 4
+          content:
+            "$ref": "#/spec/panels/balancePayg"
     - kind: Grid
       spec:
         display:

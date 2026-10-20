@@ -19,7 +19,8 @@ spec:
   - name: qwen3-8-27b
     namespace: internal-models
     tokenRateLimits:
-    - limit: 700000
+    # Sized for its shared-offering commitment: 150M tokens a month in 168 working hours is about 893K an hour.
+    - limit: 1000000
       window: 1h
   priority: 100
   tokenMetadata:

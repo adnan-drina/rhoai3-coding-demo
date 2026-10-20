@@ -63,6 +63,17 @@ if jq -e '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showbac
     record 'Offer catalog: every offered model has an offering, sponsor and price' pass
 else record 'Offer catalog: every offered model has an offering, sponsor and price' 'Catalog incomplete'; fi
 
+# A shared commitment names a team subscription on that shared model whose hourly token limit can carry it in
+# 168 working hours; otherwise the team could not use what it pays for.
+if jq -e '. as $b | [.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog")
+        | .spec.groups[].rules[] | select(.record == "showback_offer_commitment_tokens")] as $c | ($c | length) > 0
+    and all($c[]; (.expr | ltrimstr("vector(") | rtrimstr(")") | tonumber) as $tokens | .labels as $l
+        | any($b[]; .kind == "MaaSSubscription" and .metadata.name == $l.subscription
+            and any(.spec.modelRefs[]; .name == $l.model and any(.tokenRateLimits[]; .window == "1h" and .limit * 168 >= $tokens))))' \
+    "$work/bundle.json" >/dev/null; then
+    record 'Shared commitments fit their subscriptions and hourly token limits' pass
+else record 'Shared commitments fit their subscriptions and hourly token limits' 'Commitment exceeds or misses its subscription'; fi
+
 if jq -e '[.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $m
     | ([$m[] | select(.kind == "Deployment") | .metadata.name] | sort) == ["showback-external-metering", "showback-external-metering-db"]
     and all($m[] | select(.kind == "Deployment"); all(.spec.template.spec.containers[]; .image | test("@sha256:[a-f0-9]{64}$")))

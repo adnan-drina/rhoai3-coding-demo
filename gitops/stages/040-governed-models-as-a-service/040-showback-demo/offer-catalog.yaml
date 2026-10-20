@@ -4,6 +4,8 @@
 # Worker price: AWS g7e.2xlarge (one RTX PRO 6000) on-demand list price in us-east-2, saved 2026-10-15.
 # Capacity: tokens per second one worker sustained in the 2026-10-20 demo run (Qwen 3.8 NVFP4: 304 at 6 concurrent
 # requests; Mistral Small 4: 253 at 3). Projections size the private worker count from it.
+# Shared commitments: a subscription commits to monthly tokens at the committed tariff, paid whether used or not;
+# usage above it is billed at the on-demand tariff. Its MaaS token-rate limit must allow the commitment in working hours.
 apiVersion: monitoring.rhobs/v1
 kind: PrometheusRule
 metadata:
@@ -33,6 +35,15 @@ spec:
         - record: showback_offer_capacity_tokens_per_second
           expr: vector(300)
           labels: {offer: shared, model: qwen3-8-27b}
+        - record: showback_offer_committed_tariff_usd_per_million
+          expr: vector(3)
+          labels: {offer: shared, model: qwen3-8-27b}
+        - record: showback_offer_commitment_tokens
+          expr: vector(150000000)
+          labels: {offer: shared, model: qwen3-8-27b, subscription: team-engineering}
+        - record: showback_offer_commitment_tokens
+          expr: vector(30000000)
+          labels: {offer: shared, model: qwen3-8-27b, subscription: team-support}
         # Dedicated private: the sponsoring subscription pays the worker, busy or idle.
         - record: showback_offer_info
           expr: vector(1)
