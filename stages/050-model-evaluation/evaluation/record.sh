@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Record a completed EvalHub job on a registered model version in the model registry, as the logged-in user.
 # RHOAI 3.5 shows a model version's custom properties on its details page ("Editing model version metadata",
-# Properties). The version gets references to the evidence rather than copies of it: the EvalHub job, a one-line
+# Properties). The version gets references to the evidence rather than copies of it: the EvalHub job and its results
+# page in the dashboard, a one-line
 # verdict per benchmark (primary metric, threshold and direction, pass or fail), the MLflow experiment and runs, and for
 # pipeline-mode providers (garak-kfp) a link to the pipeline run in the dashboard. Earlier evalhub.* properties on the
 # version are replaced; its other properties are kept. Refuses a job that is not completed, an unreadable version, and
@@ -57,10 +58,11 @@ for pb in $(jq -r '.benchmarks // [] | .[] | "\(.provider_id)/\(.id)"' "$WORK/jo
 done
 
 # ── Pipeline runs of pipeline-mode benchmarks (garak-kfp names its run evalhub-garak-<job id>) ──────────────────
+DASHBOARD="https://$(oc $T get route data-science-gateway -n openshift-ingress -o jsonpath='{.spec.host}')"
+EVALUATION_URL="$DASHBOARD/evaluation/$TENANT/results/$JOB"
 PIPELINE_URLS=""
 if jq -e '[.benchmarks // [] | .[] | select(.provider_id == "garak-kfp")] | length > 0' "$WORK/job.json" >/dev/null; then
   KFP_URL="https://$(oc $T get route ds-pipeline-dspa -n "$TENANT" -o jsonpath='{.spec.host}')"
-  DASHBOARD="https://$(oc $T get route data-science-gateway -n openshift-ingress -o jsonpath='{.spec.host}')"
   filter="$(jq -rn --arg n "evalhub-garak-$JOB" '{predicates: [{key: "display_name", operation: "EQUALS", string_value: $n}]} | tojson | @uri')"
   PIPELINE_URLS="$(curl -sS -m 60 --config <(auth_config) "$KFP_URL/apis/v2beta1/runs?namespace=$TENANT&page_size=20&filter=$filter" |
     jq -r --arg d "$DASHBOARD" --arg ns "$TENANT" '[.runs // [] | .[] | "\($d)/develop-train/pipelines/runs/\($ns)/runs/\(.run_id)"] | join(" ")')"
@@ -68,7 +70,7 @@ if jq -e '[.benchmarks // [] | .[] | select(.provider_id == "garak-kfp")] | leng
 fi
 
 # ── Properties: earlier evalhub.* replaced, the version's other properties kept ───────────────────────────────
-RECORDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" PIPELINE_URLS="$PIPELINE_URLS" jq -c --slurpfile mv "$WORK/mv.json" --argjson lower "$LOWER" '
+RECORDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" PIPELINE_URLS="$PIPELINE_URLS" EVALUATION_URL="$EVALUATION_URL" jq -c --slurpfile mv "$WORK/mv.json" --argjson lower "$LOWER" '
   def s: {metadataType: "MetadataStringValue", string_value: tostring};
   def truthy: . != null and . != false and . != 0 and . != "" and . != [] and . != {};
   . as $job | (.results // {}) as $res
@@ -78,6 +80,7 @@ RECORDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" PIPELINE_URLS="$PIPELINE_URLS" jq -
   | ($mv[0].customProperties // {} | with_entries(select(.key | startswith("evalhub.") | not)))
   | .["evalhub.job_id"] = ($job.resource.id | s)
   | .["evalhub.job_name"] = ($job.name // "" | s)
+  | .["evalhub.evaluation_url"] = ($ENV.EVALUATION_URL | s)
   | .["evalhub.model_name"] = ($job.model.name // "" | s)
   | .["evalhub.benchmarks"] = ([$job.benchmarks // [] | .[] | (.provider_id // "") + ":" + (.id // "")] | join(",") | s)
   | if ($verdicts | length) > 0 then .["evalhub.result"] = ($verdicts | join("; ") | s)
