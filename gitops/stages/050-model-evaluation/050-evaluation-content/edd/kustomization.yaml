@@ -12,5 +12,6 @@ resources:
   - agentic-coding-python-tasks-v1.yaml
   - agentic-coding-security-quick-v2.yaml
   - agentic-coding-security-full-v2.yaml
+  - candidate-security-pipeline-v1.yaml
   - inspect-coding-provider.yaml
   - garak-coding-provider.yaml

@@ -67,6 +67,8 @@ spec:
     - agentic-coding-latency-v1
     - agentic-coding-throughput-v1
     - agentic-coding-throughput-v2
+    # garak-kfp scan of the candidate with the pipeline settings preset (edd/candidate-security-pipeline-v1.yaml).
+    - candidate-security-pipeline-v1
   env:
     # The deployment helper discovers the native HTTPS address only after
     # MLflow is Available. The operator owns TLS trust and projected tokens.

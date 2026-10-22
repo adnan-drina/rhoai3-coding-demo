@@ -52,13 +52,17 @@ stages/050-model-evaluation/evaluation/submit.sh --model-name qwen3-8-27b-int4 \
 With `--parameters`, the provider's own pass criterion applies unless `--threshold` is given (Garak's attack success
 rate is lower-is-better).
 
-From the dashboard (**Develop & train → Evaluations → Start evaluation run**, benchmark from **Garak KFP**): under
-**Model** choose **Other (External endpoint)**, not the project's model, and enter
+From the dashboard (**Develop & train → Evaluations → Start evaluation run**): select the benchmark suite
+**Candidate security scan (pipeline) v1** (`candidate-security-pipeline-v1`, `050-evaluation-content`), which carries
+the three parameters for the candidate. Under **Model** choose **Other (External endpoint)**, not the project's model,
+and enter
 
 - **Model name:** `qwen3-8-27b-int4`
 - **Endpoint URL:** `https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1`
 - **Authentication secret name:** `garak-kfp-model-auth`
-- **Benchmark parameters:** the JSON above.
+
+Leave **Benchmark parameters** empty: the form replaces a suite's parameters key by key, so a typed `kfp_config`
+replaces the preset one whole. For a single **Garak KFP** benchmark instead of the suite, paste the JSON above.
 
 A model picked from the project's **Model** list is submitted without an authentication Secret, so the job cannot
 reach the pipeline server; Red Hat support confirmed this as a dashboard limitation fixed in 3.6 (BACKLOG). Cancelling

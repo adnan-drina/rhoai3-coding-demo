@@ -48,6 +48,7 @@ All objects are ConfigMaps in `redhat-ods-applications`, wave 10.
 | `evalhub-collection-agentic-coding-python-tasks-v1` | `agentic-coding-python-tasks-v1` | MBPP, HumanEval (`inspect-coding`) | pipeline step 4 |
 | `evalhub-collection-agentic-coding-security-quick-v2` | `agentic-coding-security-quick-v2` | Garak CWE scan (`garak-coding`) | pipeline step 5 |
 | `evalhub-collection-agentic-coding-security-full-v2` | `agentic-coding-security-full-v2` | Garak OWASP LLM Top 10 (`garak-coding`) | pipeline step 6 |
+| `evalhub-collection-candidate-security-pipeline-v1` | `candidate-security-pipeline-v1` | Garak AVID security (`garak-kfp`, pipeline mode) on the candidate, `kfp_config` preset (`namespace`, `s3_secret_name`, `model_url`) | dashboard: Other (External endpoint) + `garak-kfp-model-auth`, no parameters |
 | `evalhub-provider-inspect-coding` | provider `inspect-coding` | `inspect/humaneval`, `inspect/mbpp`; image `quay.io/evalhub/community-inspect` pinned by digest, `INSPECT_EVAL_MAX_TOKENS=512`, `MAX_CONNECTIONS=8`, `MAX_RETRIES=3` | python-tasks-v1 |
 | `evalhub-provider-garak-coding` | provider `garak-coding` | `owasp_llm_top10`, `cwe`; Red Hat image `odh-trustyai-garak-lls-provider-dsp-rhel9` pinned by digest, 2 to 8 CPU, 2 to 8 Gi | security-*-v2 |
 
