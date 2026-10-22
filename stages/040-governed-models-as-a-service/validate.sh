@@ -355,8 +355,14 @@ serving_templates() {
                  then .metadata.annotations["opendatahub.io/supported-topologies"] == "[\"workload-single-node\"]" else true end)' \
             >/dev/null || { echo "$name"; return; }
     done < <(desired_of LLMInferenceServiceConfig | jq -c '.[]')
-    read_json llminferenceserviceconfigs.serving.kserve.io -n redhat-ods-applications | jq -e '[.items[]
-        | select(.metadata.labels["opendatahub.io/config-type"] == "accelerator" and (.metadata.name | endswith("single-node-template-nvidia-cuda")))]
+    # The operator keeps the previous release's well-known templates after a z-stream update (v3-5-1-… beside
+    # v3-5-2-…); check the one named for the installed release (rhods-operator.3.5.2 -> v3-5-2-).
+    local prefix
+    prefix=$(read_json subscription rhods-operator -n redhat-ods-operator | jq -r '.status.installedCSV // ""
+        | sub("^rhods-operator\\."; "v") | gsub("\\."; "-") + "-"')
+    read_json llminferenceserviceconfigs.serving.kserve.io -n redhat-ods-applications | jq -e --arg p "$prefix" '[.items[]
+        | select(.metadata.labels["opendatahub.io/config-type"] == "accelerator"
+            and (.metadata.name | startswith($p) and endswith("single-node-template-nvidia-cuda")))]
         | length == 1 and (.[0].metadata.annotations["opendatahub.io/support-status"] != "unsupported")
         and ([.[0].spec.template.containers[]? | select(.name == "main") | .image] | length == 1
             and (.[0] | test("^registry\\.redhat\\.io/.+@sha256:[0-9a-f]{64}$")))' >/dev/null && echo yes || echo "NVIDIA accelerator template"

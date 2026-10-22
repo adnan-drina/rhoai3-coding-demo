@@ -90,7 +90,7 @@ OpenShift Machine API creates GPU worker capacity from a declarative MachineSet.
 |---------|-----------------|
 | Red Hat OpenShift Container Platform | 4.22 (Machine API) |
 | Red Hat OpenShift AI Self-Managed | stable-3.5 (hardware profiles, Kueue integration) |
-| Node Feature Discovery Operator | stable, Automatic (installed nfd.4.22.0-202609291750 on 2026-10-14) |
+| Node Feature Discovery Operator | stable, Automatic (installed nfd.4.22.0-202610140833 on 2026-10-14) |
 | NVIDIA GPU Operator (certified) | v26.7, Automatic (installed v26.7.2 on 2026-10-14) |
 | Red Hat build of Kueue | stable-v1.4, Automatic (installed kueue-operator.v1.4.3 on 2026-10-14) |
 

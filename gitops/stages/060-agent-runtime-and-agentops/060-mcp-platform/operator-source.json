@@ -1,8 +1,8 @@
 {
-  "version": "v3.5.1",
+  "version": "v3.5.2",
   "source": "https://github.com/red-hat-data-services/mcp-lifecycle-operator",
-  "revision": "cc66894be8cd87d35064e67ec02dbc6e5b5c3c89",
-  "image": "registry.redhat.io/rhoai/odh-mcp-lifecycle-operator-rhel9@sha256:a0a984655c5beb3fc9e42d50472da57d1f17231e144f45673d8f5872caaf6963",
-  "amd64Digest": "sha256:bcc420355132106f61aee739c8354c9b3b63a4221c216c20503e14cdee37bb82",
-  "catalog": "https://catalog.redhat.com/api/containers/v1/images/id/6ab154fb4ca9d2da808d38ef"
+  "revision": "53bd6c070992da40a92a15d14801d94b09c7ed25",
+  "image": "registry.redhat.io/rhoai/odh-mcp-lifecycle-operator-rhel9@sha256:6448a10e29277ddf3cc4e7eb009a7af27302a8a84fefd6a2c5a23782ade166c1",
+  "amd64Digest": "sha256:047587ea5efe8761e839bd7422d8ce6cfa47813b8b31a5096fe55ec8785ff9c4",
+  "catalog": "https://catalog.redhat.com/api/containers/v1/images/id/6ad8a069116092e88465d787"
 }

@@ -20,7 +20,7 @@ The MCP Lifecycle Operator is the RHOAI 3.5 component that deploys, configures a
 Catalog's deploy action depends on it [1], [3]. It is a Technology Preview; the component defaults to `Removed` and is
 enabled by setting `spec.components.mcplifecycleoperator.managementState` to `Managed` on the DataScienceCluster [1].
 Using the RHOAI component, rather than installing the upstream operator, keeps the operator image and API version
-coupled to the installed RHOAI release (`v3.5.1`, image recorded in [`operator-source.json`](operator-source.json)
+coupled to the installed RHOAI release (`v3.5.2`, image recorded in [`operator-source.json`](operator-source.json)
 and matching the Red Hat catalog record [5]).
 
 The DataScienceCluster is a single shared object owned by Stage 010. This component changes only the one delegated
@@ -37,7 +37,7 @@ enabled, validated and disabled independently of the agent runtime and of the MC
 | Job | `enable-mcp-platform` | `redhat-ods-applications` | Sync hook, wave 5, `BeforeHookCreation`. Merge-patches `mcplifecycleoperator.managementState: Managed` and reads it back. Pinned `ose-cli` image by digest, restricted security context, 120 s deadline, `backoffLimit: 1`. |
 
 `operator-source.json` is not rendered. It records the expected operator image, its amd64 digest and the source
-revision `cc66894b` [4]; `stages/060-agent-runtime-and-agentops/validate.sh --component 060-mcp-platform` compares the running image with it.
+revision `53bd6c07` [4]; `stages/060-agent-runtime-and-agentops/validate.sh --component 060-mcp-platform` compares the running image with it.
 
 Objects not in Git, created by the RHOAI operator: the `MCPLifecycleOperator` component CR `default`, the
 `mcp-lifecycle-operator` Deployment in `redhat-ods-applications`, and the `mcpservers.mcp.x-k8s.io` CRD.
@@ -72,7 +72,7 @@ oc get deploy -n redhat-ods-applications -l app.kubernetes.io/name=mcp-lifecycle
 |---|---|---|---|
 | Enablement | Set `mcplifecycleoperator.managementState: Managed` on the DSC [1] | Hook Job patches exactly that field on `default-dsc` | Aligned |
 | Catalog flag | `mcpCatalog: true` required for the deploy action [1], [2] | Required as a precondition, set by Stage 030 | Aligned |
-| Prerequisites | RHOAI 3.5 on OpenShift 4.22 or later, cluster-admin [1] | RHOAI 3.5.1 on OpenShift 4.22 | Aligned |
+| Prerequisites | RHOAI 3.5 on OpenShift 4.22 or later, cluster-admin [1] | RHOAI 3.5.2 on OpenShift 4.22 | Aligned |
 | Verification | Running `mcp-lifecycle-operator` pod and component status [1] | Validator checks Deployment, component Ready, DSC condition and CRD | Aligned |
 | Support level | Technology Preview; `v1alpha1` API without compatibility commitment [1], [3] | Stated in the stage README | Aligned |
 | Governance | Lifecycle operator has no rate limiting or access control; MCP gateway Operator is separate [1], [7] | No MCP gateway installed; access control is per server (see `060-agent-tools`) | Gap (no central MCP governance; documented as blocked) |
@@ -83,7 +83,7 @@ oc get deploy -n redhat-ods-applications -l app.kubernetes.io/name=mcp-lifecycle
 1. Red Hat OpenShift AI Self-Managed 3.5, Working with the MCP catalog, "Enable MCP server lifecycle management". https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_the_mcp_catalog/enabling-mcp-lifecycle-management
 2. Red Hat OpenShift AI Self-Managed 3.5, Managing resources, "Customizing the dashboard" (dashboard configuration options). https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_resources/customizing-the-dashboard
 3. Red Hat OpenShift AI Self-Managed 3.5, Release notes, "Technology Preview features" (MCP Lifecycle Operator). https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/release_notes/technology-preview-features_relnotes
-4. red-hat-data-services/mcp-lifecycle-operator at `cc66894b` (upstream source of the installed image). https://github.com/red-hat-data-services/mcp-lifecycle-operator/tree/cc66894be8cd87d35064e67ec02dbc6e5b5c3c89
-5. Red Hat Ecosystem Catalog, image record `rhoai/odh-mcp-lifecycle-operator-rhel9` v3.5.1. https://catalog.redhat.com/api/containers/v1/images/id/6ab154fb4ca9d2da808d38ef
+4. red-hat-data-services/mcp-lifecycle-operator at `53bd6c07` (upstream source of the installed image). https://github.com/red-hat-data-services/mcp-lifecycle-operator/tree/53bd6c070992da40a92a15d14801d94b09c7ed25
+5. Red Hat Ecosystem Catalog, image record `rhoai/odh-mcp-lifecycle-operator-rhel9` v3.5.2. https://catalog.redhat.com/api/containers/v1/images/id/6ad8a069116092e88465d787
 6. Argo CD, "Sync Phases and Waves" (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
 7. Red Hat OpenShift AI Self-Managed 3.5, Working with the MCP catalog, "Set up the MCP gateway Operator as a prerequisite for MCP management". https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_the_mcp_catalog/assembly-mcp-gateway-operator-prerequisites_mcp-gateway-operator

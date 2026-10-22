@@ -33,7 +33,7 @@ Application from the foundation components.
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | UIPlugin | `monitoring` | (cluster) | `type: Monitoring`, `perses.enabled: true` |
-| Console (`operator.openshift.io/v1`) | `cluster` | (cluster) | Owns only `spec.plugins`: `monitoring-plugin`, `networking-console-plugin`, `monitoring-console-plugin`, `gitops-plugin`, `odf-console`, `kuadrant-console-plugin`, `lightspeed-console-plugin`, `pipelines-console-plugin` |
+| Console (`operator.openshift.io/v1`) | `cluster` | (cluster) | Owns only `spec.plugins`: `monitoring-plugin`, `networking-console-plugin`, `monitoring-console-plugin`, `gitops-plugin`, `odf-console`, `odf-client-console`, `kuadrant-console-plugin`, `lightspeed-console-plugin`, `pipelines-console-plugin` |
 
 There are no sync waves or hooks.
 

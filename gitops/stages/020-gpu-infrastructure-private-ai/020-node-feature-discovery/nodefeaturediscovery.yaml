@@ -14,9 +14,9 @@ spec:
   operand:
     imagePullPolicy: IfNotPresent
     servicePort: 12000
-    # The installed operator's own operand image (CSV NODE_FEATURE_DISCOVERY_IMAGE, nfd.4.22.0-202609291750). Stage 020
+    # The installed operator's own operand image (CSV NODE_FEATURE_DISCOVERY_IMAGE, nfd.4.22.0-202610140833). Stage 020
     # validate fails when they differ: after an Automatic operator update, copy the new CSV image here.
-    image: registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9@sha256:4ec1f7326663be130417583828fa6449d725ae8c636246d00a6b931aaf89fc1b
+    image: registry.redhat.io/openshift4/ose-node-feature-discovery-rhel9@sha256:babde57f6e48f53130367601b3d2c34a647661456cd436d2d537dd4c539e9bf5
   workerConfig:
     configData: |
       core:
