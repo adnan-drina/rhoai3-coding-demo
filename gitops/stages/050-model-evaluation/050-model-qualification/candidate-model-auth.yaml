@@ -169,9 +169,11 @@ spec:
               # (EvalHub rewrites every *_url in the adapter's copy to the sidecar). ca_cert trusts the service CA
               # (model, KFP API) and the cluster CA (Kubernetes API).
               cat /service-ca/service-ca.crt /kube-root-ca/ca.crt > "${WORK}/ca_cert"
-              # intents benchmarks also call a judge and an SDG model through MaaS; the guide (7.7.4) takes their keys
-              # from the same Secret as JUDGE_API_KEY and SDG_API_KEY. Both are the MaaS evaluation key that the
-              # provision-evalhub-model-auth hook (same wave) writes.
+              # intents benchmarks also call a judge, an SDG model and a translator; the guide (7.7.4) takes their keys
+              # from the same Secret per role. Judge and SDG are the abliterated helper model in this project
+              # (risk-assessment-gemma-2-9b-abliterated.yaml), so their key is the candidate-model-client token, which
+              # may get every InferenceService here; the translator is a MaaS model, so TRANSLATION_API_KEY is the MaaS
+              # evaluation key that the provision-evalhub-model-auth hook (same wave) writes.
               for i in $(seq 1 60); do
                 oc get secret evalhub-model-auth-maas -n evaluated-models -o jsonpath='{.data.api-key}' | base64 -d > "${WORK}/maas-key" \
                   && [ -s "${WORK}/maas-key" ] && break
@@ -180,14 +182,15 @@ spec:
               [ -s "${WORK}/maas-key" ]
               oc create secret generic garak-kfp-model-auth -n evaluated-models \
                 --from-file=api-key="${WORK}/api-key" --from-file=ca_cert="${WORK}/ca_cert" \
-                --from-file=JUDGE_API_KEY="${WORK}/maas-key" --from-file=SDG_API_KEY="${WORK}/maas-key" \
+                --from-file=JUDGE_API_KEY="${WORK}/api-key" --from-file=SDG_API_KEY="${WORK}/api-key" \
+                --from-file=TRANSLATION_API_KEY="${WORK}/maas-key" \
                 --from-literal=kfp_url=https://ds-pipeline-dspa.evaluated-models.svc.cluster.local:8443 \
                 --from-literal=kfp_sa_token= \
                 --from-literal=k8s_url=https://kubernetes.default.svc:443 \
                 --from-literal=k8s_sa_token= \
                 --dry-run=client -o yaml | oc apply --server-side --force-conflicts --field-manager=candidate-model-auth -f -
               oc annotate secret garak-kfp-model-auth -n evaluated-models kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true
-              echo "garak-kfp-model-auth ready (api-key, ca_cert, JUDGE_API_KEY, SDG_API_KEY, kfp_url, kfp_sa_token, k8s_url, k8s_sa_token)"
+              echo "garak-kfp-model-auth ready (api-key, ca_cert, JUDGE_API_KEY, SDG_API_KEY, TRANSLATION_API_KEY, kfp_url, kfp_sa_token, k8s_url, k8s_sa_token)"
           resources:
             requests: {cpu: 50m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}

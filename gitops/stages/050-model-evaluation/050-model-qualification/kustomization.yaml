@@ -19,5 +19,6 @@ resources:
   - maas-key-provisioner.yaml
   - candidate-qwen3-8-27b-int4.yaml
   - candidate-model-auth.yaml
+  - risk-assessment-gemma-2-9b-abliterated.yaml
   - garak-kfp-access.yaml
   - garak-kfp-pipeline-api-netpol.yaml

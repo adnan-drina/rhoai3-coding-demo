@@ -1,0 +1,59 @@
+---
+# Helper model for the Garak "intents" risk assessment (garak-kfp): attack prompt generation (SDG) and judge, which
+# also serves TAP's attacker and evaluator. Both roles need a model without safety alignment ("abliterated"): a
+# safety-aligned model (GPT-6 Luna, 2026-10-22) rewrote every harmful intent into a harmless request, so the scan
+# measured nothing. IlyaGusev/gemma-2-9b-it-abliterated is the model the provider's default SDG flow names
+# (sdg_hub red_team/prompt_generation flow.yaml, recommended_models.default); Gemma terms of use apply. It is not a
+# model under evaluation and must not be one: its outputs are attack prompts and verdicts on harmful content, so it is
+# served only in this admin-only project, with token authentication (the Secret garak-kfp-model-auth carries the
+# candidate-model-client token as JUDGE_API_KEY and SDG_API_KEY). One L40S (gpu-reserved-demo, second GPU of the
+# pool: GPU_POOL=l40s deploy.sh --gpus 2); stop it with serving.kserve.io/stop "true" to hand the GPU back.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: gemma-2-9b-abliterated
+  namespace: evaluated-models
+  labels:
+    kueue.x-k8s.io/queue-name: lq-gpu-reserved-demo
+  annotations:
+    openshift.io/display-name: Gemma 2 9B abliterated (risk assessment judge and SDG)
+    serving.kserve.io/stop: "false"
+    serving.kserve.io/deploymentMode: RawDeployment
+    security.opendatahub.io/enable-auth: "true"
+    opendatahub.io/hardware-profile-name: gpu-reserved-demo
+    opendatahub.io/hardware-profile-namespace: redhat-ods-applications
+    # Same last wave as the candidate: a stopped model reports Suspended and must not hold later waves.
+    argocd.argoproj.io/sync-wave: "40"
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 1
+    deploymentStrategy:
+      type: Recreate
+    model:
+      runtime: vllm-cuda-runtime
+      modelFormat:
+        name: vLLM
+      storageUri: hf://IlyaGusev/gemma-2-9b-it-abliterated:e2b6426b20a3a889f0c182056b0dbbb7fa585d25
+      args:
+        - --enable-force-include-usage
+        - --disable-uvicorn-access-log
+        - --enable-prefix-caching
+        # Gemma 2 context length; BF16 weights (~18.5 GB) leave the rest of the 48 GB for KV cache.
+        - --max-model-len=8192
+        - --dtype=bfloat16
+        - --gpu-memory-utilization=0.90
+        - --max-num-seqs=32
+      resources:
+        requests:
+          cpu: "2"
+          memory: 16Gi
+          nvidia.com/gpu: "1"
+        limits:
+          cpu: "4"
+          memory: 24Gi
+          nvidia.com/gpu: "1"
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
