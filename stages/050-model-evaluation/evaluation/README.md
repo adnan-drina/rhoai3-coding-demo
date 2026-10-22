@@ -49,8 +49,10 @@ stages/050-model-evaluation/evaluation/submit.sh --model-name qwen3-8-27b-int4 \
   --experiment models-onboarding --no-oci-export --wait
 ```
 
-With `--parameters`, the provider's own pass criterion applies unless `--threshold` is given (Garak's attack success
-rate is lower-is-better).
+A single benchmark is submitted with the provider catalog's primary metric, its direction and its pass threshold, as
+the dashboard form does (for `garak-kfp` `avid_security`: `attack_success_rate`, lower is better, at most 0.3);
+`--threshold` overrides the threshold. The Evaluations page shows the attack success rate itself as the score, so a
+23% score with Pass means 23% of the attacks succeeded, within the 30% allowed.
 
 From the dashboard (**Develop & train → Evaluations → Start evaluation run**): select the benchmark suite
 **Candidate security scan (pipeline) v1** (`candidate-security-pipeline-v1`, `050-evaluation-content`), which carries

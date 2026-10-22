@@ -35,8 +35,8 @@ Options:
   --max-new-tokens N       Generation cap per sample (default: 512; each 16-sample request must finish inside the sidecar's request timeout)
   --temperature T          Sampling temperature (default: 0.7)
   --top-p P                Nucleus sampling (default: 0.8)
-  --threshold T            Pass threshold on the primary score (default: 0.25, the coding-v1 definition;
-                           with --parameters only when given, otherwise the provider's own criterion applies)
+  --threshold T            Pass threshold on the primary score (default: the provider catalog's threshold for the
+                           benchmark, else 0.25, the coding-v1 definition)
   --parameters FILE        Benchmark parameters as a JSON object (providers other than lighteval, e.g.
                            evaluation/garak-kfp-quick.json); replaces the generated lighteval parameters
   --system-prompt TEXT     System prompt prepended by the adapter (default: code-only answer; pass '' to disable)
@@ -153,15 +153,26 @@ if [[ "$OCI_EXPORT" == "true" ]]; then
 fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+# A single benchmark carries the provider catalog's primary metric (with its direction) and pass threshold, as the
+# dashboard form sends them, so the Evaluations page names the right metric and judges lower-is-better metrics such as
+# Garak's attack_success_rate correctly; --threshold overrides the catalog threshold.
+BENCH_DEF=null
+if [[ -z "$COLLECTION" ]]; then
+  BENCH_DEF="$(api_get "/api/v1/evaluations/providers/$PROVIDER" | jq -c --arg b "$BENCHMARK" \
+    '[.benchmarks[]? | select(.id == $b) | {primary_score, pass_criteria}][0] // null' 2>/dev/null)" || BENCH_DEF=null
+  [[ -n "$BENCH_DEF" ]] || BENCH_DEF=null
+fi
 # Experiment tags make MLflow history queryable by model, benchmark and source (3.5 guide 2.20, ExperimentConfig.tags);
 # a collection carries its own weights and pass criteria; the queue is RHOAI 3.5 Evaluating AI systems 2.8/2.10.
 MODEL_NAME="$MODEL_NAME" MODEL_URL="$MODEL_URL" SECRET_REF="$SECRET_REF" NAME="$NAME" EXPERIMENT="$EXPERIMENT" \
 COLLECTION="$COLLECTION" PROVIDER="$PROVIDER" BENCHMARK="$BENCHMARK" NUM_EXAMPLES="$NUM_EXAMPLES" CONCURRENT="$CONCURRENT" \
 MAX_NEW_TOKENS="$MAX_NEW_TOKENS" TEMPERATURE="$TEMPERATURE" TOP_P="$TOP_P" THRESHOLD="$THRESHOLD" SYSTEM_PROMPT="$SYSTEM_PROMPT" \
 QUEUE="$QUEUE" OCI_HOST="$OCI_HOST" ACCEL="$ACCEL" TENANT_NS="$TENANT" THRESHOLD_SET="$THRESHOLD_SET" \
-  jq -n --argjson file_params "$PARAMS_JSON" '$ENV as $e
+  jq -n --argjson file_params "$PARAMS_JSON" --argjson bench "$BENCH_DEF" '$ENV as $e
   | ($e.COLLECTION | if . != "" then . else $e.BENCHMARK end) as $subject
-  | {name: $e.NAME, tags: ["agentic-coding", $subject],
+  | (if ($e.COLLECTION | startswith("agentic-coding")) or ($e.COLLECTION == "" and $e.PROVIDER == "lighteval")
+     then "agentic-coding" elif $e.COLLECTION != "" then "collection" else $e.PROVIDER end) as $family
+  | {name: $e.NAME, tags: [$family, $subject],
      model: {url: $e.MODEL_URL, name: $e.MODEL_NAME, auth: {secret_ref: $e.SECRET_REF}},
      experiment: {name: $e.EXPERIMENT, tags: [
        {key: "model", value: ($e.MODEL_NAME | split("/") | last)},
@@ -174,8 +185,10 @@ QUEUE="$QUEUE" OCI_HOST="$OCI_HOST" ACCEL="$ACCEL" TENANT_NS="$TENANT" THRESHOLD
   | if $e.ACCEL != "" then .experiment.tags += [{key: "accelerator", value: $e.ACCEL}] else . end
   | if $e.COLLECTION != "" then .collection = {id: $e.COLLECTION}
     else
-      ($file_params == null or $e.THRESHOLD_SET == "true") as $criteria
-      | (if $criteria then .pass_criteria = {threshold: ($e.THRESHOLD | tonumber)} else . end)
+      (if $e.THRESHOLD_SET == "true" then ($e.THRESHOLD | tonumber)
+       elif ($bench.pass_criteria.threshold // null) != null then $bench.pass_criteria.threshold
+       elif $file_params == null then ($e.THRESHOLD | tonumber) else null end) as $threshold
+      | (if $file_params == null and $threshold != null then .pass_criteria = {threshold: $threshold} else . end)
       | (if $file_params != null then $file_params
        elif $e.PROVIDER == "lighteval" then
         {provider: "endpoint", num_few_shot: 0, parameters: {concurrent_requests: ($e.CONCURRENT | tonumber), api_max_retry: 1,
@@ -185,7 +198,8 @@ QUEUE="$QUEUE" OCI_HOST="$OCI_HOST" ACCEL="$ACCEL" TENANT_NS="$TENANT" THRESHOLD
        else {} end) as $params
       | ($params | if $e.NUM_EXAMPLES != "" then .num_examples = ($e.NUM_EXAMPLES | tonumber) else . end) as $params
       | .benchmarks = [{id: $e.BENCHMARK, provider_id: $e.PROVIDER, parameters: $params}
-          + (if $criteria then {pass_criteria: {threshold: ($e.THRESHOLD | tonumber)}} else {} end)]
+          + (if ($bench.primary_score // null) != null then {primary_score: $bench.primary_score} else {} end)
+          + (if $threshold != null then {pass_criteria: {threshold: $threshold}} else {} end)]
     end' >"$WORK/body.json"
 if [[ "$DRY_RUN" == "true" ]]; then cat "$WORK/body.json"; exit 0; fi
 oc get secret "$SECRET_REF" -n "$TENANT" --request-timeout=10s -o name >/dev/null ||
