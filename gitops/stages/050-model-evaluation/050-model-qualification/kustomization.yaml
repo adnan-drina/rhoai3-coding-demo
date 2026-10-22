@@ -20,3 +20,4 @@ resources:
   - candidate-qwen3-8-27b-int4.yaml
   - candidate-model-auth.yaml
   - garak-kfp-access.yaml
+  - garak-kfp-pipeline-api-netpol.yaml

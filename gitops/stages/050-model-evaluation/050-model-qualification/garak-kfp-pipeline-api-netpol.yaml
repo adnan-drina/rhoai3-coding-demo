@@ -1,0 +1,30 @@
+# Test (2026-10-22): can a garak-kfp job started from a model picked in the dashboard's project list (no model auth
+# Secret on 3.5.2) reach the pipeline server? The pipeline API's in-cluster port 8888 serves without a token; the
+# pipeline server's own NetworkPolicy admits only its components, pipeline step pods and workbenches. This additive
+# policy also admits EvalHub evaluation pods of this project (labels EvalHub sets on every job pod), so such a job can
+# use kfp_config.endpoint https://ds-pipeline-dspa.evaluated-models.svc.cluster.local:8888.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: evalhub-jobs-to-pipeline-api
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: evalhub-jobs-to-pipeline-api
+    app.kubernetes.io/component: evaluation
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  podSelector:
+    matchLabels:
+      app: ds-pipeline-dspa
+      component: data-science-pipelines
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: evalhub
+              component: evaluation-job
+      ports:
+        - port: 8888
+          protocol: TCP
