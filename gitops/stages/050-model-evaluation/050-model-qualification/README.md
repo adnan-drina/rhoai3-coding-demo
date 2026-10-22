@@ -69,7 +69,14 @@ ready.
 | ServiceAccount, Secret (`kubernetes.io/service-account-token`), Role, RoleBinding | `candidate-model-client`, `candidate-model-client-token` | `evaluated-models` | Wave 12. A token that may only `get` InferenceServices in this project, used as the candidate API key. |
 | ConfigMap | `candidate-model-service-ca` | `evaluated-models` | Wave 12. Injected service CA. |
 | ServiceAccount, Role, RoleBinding | `candidate-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch Secrets. |
-| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `qualification-model-auth` (`api-key`, `ca_cert`). |
+| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `qualification-model-auth` (`api-key`, `ca_cert`) and Secret `garak-kfp-model-auth` (the same `api-key`; `ca_cert` with the service CA and the cluster CA; `model_url`, `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token`). |
+
+### Garak in pipeline mode (`garak-kfp-access.yaml`)
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| RoleBinding | `evalhub-job-dspa-api` | `evaluated-models` | Wave 12. Pipeline-server Role `ds-pipeline-user-access-dspa` (the DSPA API) for the job ServiceAccount `evalhub-evalhub-job`. |
+| RoleBinding | `evalhub-job-pipeline-management` | `evaluated-models` | Wave 12. Pipeline-server Role `ds-pipeline-dspa` (runs, workflows, and `get` on Secrets for the S3 connection) for the same ServiceAccount. |
 
 ### Pipeline server (`pipeline-server.yaml`)
 
@@ -141,6 +148,18 @@ parsers. The runtime comes from the platform vLLM NVIDIA GPU template and token 
 InferenceService, and, for adapters that send their own `Authorization` header, Secret `qualification-model-auth` with the
 token of `candidate-model-client` as `api-key` plus the service CA as `ca_cert`.
 
+**Garak in pipeline mode (`garak-kfp`).** The provider submits the scan as a run on this project's pipeline server and
+polls it. Its adapter pod has no ServiceAccount token, so a job names `garak-kfp-model-auth` as `model.auth.secret_ref`
+and leaves `kfp_config.endpoint` unset: the adapter then sends its pipeline and Kubernetes API calls to the job sidecar
+with the ref tokens `kfp_sa_token:ref` and `k8s_sa_token:ref`, and the sidecar injects the job ServiceAccount token
+(the keys are empty) and routes each call to `kfp_url` or `k8s_url`. The garak pipeline pods have no sidecar: they mount
+the same Secret at `/mnt/model-auth`, take the candidate's `api-key` from it and call `model_url`. This is the
+upstream EvalHub sidecar convention, also used by the upstream `garak-kfp` tests; the RoleBindings above give the job
+ServiceAccount the pipeline access those tests grant. Parameter files and the submit command are in
+[`stages/050-model-evaluation/evaluation/`](../../../../stages/050-model-evaluation/evaluation/README.md). A job that
+sets `kfp_config.endpoint` to the pipeline server calls it without a token and fails with HTTP 401
+([troubleshooting](../../../../docs/TROUBLESHOOTING.md#garak-kfp-evaluation-fails-with-401-unauthorized)).
+
 **MaaS key.** Production and judge models are reached through MaaS. The provisioner discovers the Gateway hostname, calls
 the MaaS API as its own ServiceAccount, and stores the key under the documented `api-key` key [1]. Keys use the server's
 maximum lifetime and are re-minted on the next sync once expired or revoked. The calls use `curl -k`.
@@ -173,6 +192,7 @@ oc get isvc,dspa,pipelineversion -n evaluated-models
 | Tenant namespace | Label `evalhub.trustyai.opendatahub.io/tenant` [1] | Set on `evaluated-models` | Aligned |
 | Tenant access | Role on `evaluations`, `collections`, `providers`, MLflow `experiments`, bound to users, groups or ServiceAccounts [1] | `evalhub-evaluator` with exactly those rules | Aligned |
 | Model credentials | Secret with `api-key`, referenced by `model.auth.secret_ref` [1] | `evalhub-model-auth-maas`, minted by a hook | Aligned |
+| Garak pipeline mode | Model auth Secret with `kfp_url` and an empty `kfp_sa_token`; the sidecar injects the job ServiceAccount token [10] | `garak-kfp-model-auth` from the candidate hook; job ServiceAccount bound to the pipeline-server Roles | Aligned with upstream (3.5 guide section not checked: docs site unavailable on 2026-10-22) |
 | Kueue | Namespace label `kueue.openshift.io/managed=true` and workloads carrying `kueue.x-k8s.io/queue-name` [3]; EvalHub Kueue routing [1] | Label, three LocalQueues, queue label on the InferenceService | Aligned |
 | Pipeline server | Configure from an S3 connection; default database for development and testing only [2] | Same values as the dashboard; default MariaDB | Deviation (justified: demo; not a production database) |
 | Pipeline server as code | Pipeline definitions stored as Kubernetes resources [2] | Pipeline and PipelineVersion in Git; DSPA created by a hook Job | Gap (DSPA not declared in Git; see findings) |
@@ -194,3 +214,4 @@ oc get isvc,dspa,pipelineversion -n evaluated-models
 7. Sync phases and waves, Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
 8. InferenceService health check (`Stopped` maps to `Suspended`), Argo CD resource customizations (upstream). https://raw.githubusercontent.com/argoproj/argo-cd/master/resource_customizations/serving.kserve.io/InferenceService/health.lua
 9. Diff strategies (Server-Side Diff), Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/diff-strategies/
+10. EvalHub runtime sidecar, model proxy ref tokens (`*_sa_token`, `*_url`), upstream. https://github.com/eval-hub/eval-hub/blob/main/internal/eval_runtime_sidecar/proxy/model_proxy.go

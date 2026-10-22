@@ -2668,6 +2668,22 @@ The guide's `mcp.port: 3001` and `oc expose service evalhub-mcp` steps do not ap
 oc logs deploy/evalhub-mcp -n evalhub -c evalhub-mcp --since=10m | grep -E 'Request failed|error'
 ```
 
+## Garak KFP Evaluation Fails With 401 Unauthorized
+
+**Affected stage:** Stage 050, EvalHub provider `garak-kfp`, RHOAI 3.5.2
+
+**Symptom:** A `garak-kfp` job fails within seconds with `Benchmark ... failed with message: (401) Reason: Unauthorized`. The adapter log ends in `kfp_server_api ... experiment_service_list_experiments` and earlier warns `Model URL is a sidecar address (http://localhost:8080) but could not be resolved to a real upstream URL`.
+
+**Likely cause:** The job set `kfp_config.endpoint` to the pipeline server and named no model auth Secret. The adapter pod runs without a ServiceAccount token by design, so its pipeline API calls carry none. Pipeline access goes through the job sidecar instead, which only injects a token for keys it finds in the model auth Secret (`kfp_url`, empty `kfp_sa_token`).
+
+**Recover:** Submit with `model.auth.secret_ref: garak-kfp-model-auth` and without `kfp_config.endpoint`, for example `stages/050-model-evaluation/evaluation/submit.sh --provider garak-kfp --benchmark quick --parameters stages/050-model-evaluation/evaluation/garak-kfp-quick.json --secret-ref garak-kfp-model-auth ...` ([evaluation README](../stages/050-model-evaluation/evaluation/README.md)). In the dashboard form, choose that Secret and remove `endpoint` from the parameters. The Secret and the job ServiceAccount's pipeline RoleBindings come from `050-model-qualification`.
+
+**Diagnose:**
+
+```bash
+oc logs -n evaluated-models -l provider_id=garak-kfp -c adapter --since=1h | grep -E 'KFP|401|sidecar address'
+```
+
 ## Evaluation Score Shows "-" Or Thousands Of Percent
 
 **Affected stage:** Stage 050, Evaluations page, RHOAI 3.5.1

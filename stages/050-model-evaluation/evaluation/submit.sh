@@ -35,7 +35,10 @@ Options:
   --max-new-tokens N       Generation cap per sample (default: 512; each 16-sample request must finish inside the sidecar's request timeout)
   --temperature T          Sampling temperature (default: 0.7)
   --top-p P                Nucleus sampling (default: 0.8)
-  --threshold T            Pass threshold on the primary score (default: 0.25, the coding-v1 definition)
+  --threshold T            Pass threshold on the primary score (default: 0.25, the coding-v1 definition;
+                           with --parameters only when given, otherwise the provider's own criterion applies)
+  --parameters FILE        Benchmark parameters as a JSON object (providers other than lighteval, e.g.
+                           evaluation/garak-kfp-quick.json); replaces the generated lighteval parameters
   --system-prompt TEXT     System prompt prepended by the adapter (default: code-only answer; pass '' to disable)
   --status ID              Show a job instead of submitting
   --wait                   Poll until the job reaches a terminal state
@@ -46,7 +49,7 @@ USAGE
 MODEL_NAME="" MODEL_URL="" SECRET_REF="evalhub-model-auth-maas" TENANT="evaluated-models" QUEUE="lq-cpu-default"
 OCI_EXPORT="true" NAME="" EXPERIMENT="model-evaluations" COLLECTION="" PROVIDER="lighteval"
 BENCHMARK="lcb:codegeneration_v6" NUM_EXAMPLES="" CONCURRENT="1" MAX_NEW_TOKENS="512" TEMPERATURE="0.7" TOP_P="0.8"
-THRESHOLD="0.25" STATUS_ID="" WAIT="false" DRY_RUN="false"
+THRESHOLD="0.25" THRESHOLD_SET="false" PARAMETERS_FILE="" STATUS_ID="" WAIT="false" DRY_RUN="false"
 SYSTEM_PROMPT="Answer with the complete Python program in a single \`\`\`python code block and nothing else."
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -66,7 +69,8 @@ while [[ $# -gt 0 ]]; do
     --max-new-tokens) MAX_NEW_TOKENS="${2:-}"; shift 2 ;;
     --temperature) TEMPERATURE="${2:-}"; shift 2 ;;
     --top-p) TOP_P="${2:-}"; shift 2 ;;
-    --threshold) THRESHOLD="${2:-}"; shift 2 ;;
+    --threshold) THRESHOLD="${2:-}"; THRESHOLD_SET="true"; shift 2 ;;
+    --parameters) PARAMETERS_FILE="${2:-}"; shift 2 ;;
     --system-prompt) SYSTEM_PROMPT="${2:-}"; shift 2 ;;
     --status) STATUS_ID="${2:-}"; shift 2 ;;
     --wait) WAIT="true"; shift ;;
@@ -116,6 +120,11 @@ if [[ -n "$STATUS_ID" ]]; then
 fi
 
 # ── Request body ──────────────────────────────────────────────────────────────
+PARAMS_JSON="null"
+if [[ -n "$PARAMETERS_FILE" ]]; then
+  PARAMS_JSON="$(jq -c 'if type == "object" then . else error("not a JSON object") end' "$PARAMETERS_FILE")" ||
+    { echo "[FAIL] --parameters $PARAMETERS_FILE is not a JSON object" >&2; exit 1; }
+fi
 [[ -n "$MODEL_NAME" ]] || { echo '[FAIL] --model-name is required' >&2; usage >&2; exit 1; }
 if [[ -z "$MODEL_URL" ]]; then
   host="$(oc get gateway maas-default-gateway -n openshift-ingress --request-timeout=10s \
@@ -149,14 +158,15 @@ trap 'rm -rf "$WORK"' EXIT
 MODEL_NAME="$MODEL_NAME" MODEL_URL="$MODEL_URL" SECRET_REF="$SECRET_REF" NAME="$NAME" EXPERIMENT="$EXPERIMENT" \
 COLLECTION="$COLLECTION" PROVIDER="$PROVIDER" BENCHMARK="$BENCHMARK" NUM_EXAMPLES="$NUM_EXAMPLES" CONCURRENT="$CONCURRENT" \
 MAX_NEW_TOKENS="$MAX_NEW_TOKENS" TEMPERATURE="$TEMPERATURE" TOP_P="$TOP_P" THRESHOLD="$THRESHOLD" SYSTEM_PROMPT="$SYSTEM_PROMPT" \
-QUEUE="$QUEUE" OCI_HOST="$OCI_HOST" ACCEL="$ACCEL" TENANT_NS="$TENANT" jq -n '$ENV as $e
+QUEUE="$QUEUE" OCI_HOST="$OCI_HOST" ACCEL="$ACCEL" TENANT_NS="$TENANT" THRESHOLD_SET="$THRESHOLD_SET" \
+  jq -n --argjson file_params "$PARAMS_JSON" '$ENV as $e
   | ($e.COLLECTION | if . != "" then . else $e.BENCHMARK end) as $subject
   | {name: $e.NAME, tags: ["agentic-coding", $subject],
      model: {url: $e.MODEL_URL, name: $e.MODEL_NAME, auth: {secret_ref: $e.SECRET_REF}},
      experiment: {name: $e.EXPERIMENT, tags: [
        {key: "model", value: ($e.MODEL_NAME | split("/") | last)},
        {key: "benchmark", value: ($e.COLLECTION | if . != "" then . else $e.PROVIDER + ":" + $e.BENCHMARK end)},
-       {key: "access_path", value: "maas"},
+       {key: "access_path", value: (if ($e.MODEL_URL | test("\\.svc(\\.cluster\\.local)?[:/]")) then "in-cluster" else "maas" end)},
        {key: "submitted_by", value: "submit-evaluation.sh"}]}}
   | if $e.OCI_HOST != "" then .exports = {oci: {coordinates: {oci_host: $e.OCI_HOST,
       oci_repository: ($e.TENANT_NS + "/evaluation-results")}, k8s: {connection: "evalhub-oci-registry"}}} else . end
@@ -164,16 +174,18 @@ QUEUE="$QUEUE" OCI_HOST="$OCI_HOST" ACCEL="$ACCEL" TENANT_NS="$TENANT" jq -n '$E
   | if $e.ACCEL != "" then .experiment.tags += [{key: "accelerator", value: $e.ACCEL}] else . end
   | if $e.COLLECTION != "" then .collection = {id: $e.COLLECTION}
     else
-      .pass_criteria = {threshold: ($e.THRESHOLD | tonumber)}
-      | (if $e.PROVIDER == "lighteval" then
+      ($file_params == null or $e.THRESHOLD_SET == "true") as $criteria
+      | (if $criteria then .pass_criteria = {threshold: ($e.THRESHOLD | tonumber)} else . end)
+      | (if $file_params != null then $file_params
+       elif $e.PROVIDER == "lighteval" then
         {provider: "endpoint", num_few_shot: 0, parameters: {concurrent_requests: ($e.CONCURRENT | tonumber), api_max_retry: 1,
           generation_parameters: {temperature: ($e.TEMPERATURE | tonumber), top_p: ($e.TOP_P | tonumber),
             max_new_tokens: ($e.MAX_NEW_TOKENS | tonumber)}}}
         | if $e.SYSTEM_PROMPT != "" then .parameters.system_prompt = $e.SYSTEM_PROMPT else . end
        else {} end) as $params
       | ($params | if $e.NUM_EXAMPLES != "" then .num_examples = ($e.NUM_EXAMPLES | tonumber) else . end) as $params
-      | .benchmarks = [{id: $e.BENCHMARK, provider_id: $e.PROVIDER, pass_criteria: {threshold: ($e.THRESHOLD | tonumber)},
-          parameters: $params}]
+      | .benchmarks = [{id: $e.BENCHMARK, provider_id: $e.PROVIDER, parameters: $params}
+          + (if $criteria then {pass_criteria: {threshold: ($e.THRESHOLD | tonumber)}} else {} end)]
     end' >"$WORK/body.json"
 if [[ "$DRY_RUN" == "true" ]]; then cat "$WORK/body.json"; exit 0; fi
 oc get secret "$SECRET_REF" -n "$TENANT" --request-timeout=10s -o name >/dev/null ||

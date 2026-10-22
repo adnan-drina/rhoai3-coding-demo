@@ -1,0 +1,9 @@
+{
+  "kfp_config": {
+    "namespace": "evaluated-models",
+    "s3_secret_name": "evaluation-models-pipelines-connection",
+    "experiment_name": "garak-risk-assessment",
+    "verify_ssl": false
+  },
+  "timeout": 3600
+}

@@ -1,0 +1,43 @@
+# garak-kfp (Garak in pipeline execution mode): the EvalHub job ServiceAccount submits and polls the scan as a run on
+# this project's pipeline server. Its sidecar injects that ServiceAccount's token on the adapter's KFP and Kubernetes
+# API calls (Secret garak-kfp-model-auth, candidate-model-auth.yaml), so the ServiceAccount needs the pipeline API and
+# the pipeline server's own run management, including reading the S3 connection Secret named by kfp_config.s3_secret_name.
+# Both Roles are created by the pipeline server (DSPA "dspa"); the bindings mirror the upstream garak-kfp test setup
+# (opendatahub-tests tests/ai_safety/evalhub, dsp_access_for_job_sa). The project is admin-only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-job-dspa-api
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: evalhub-job-dspa-api
+    app.kubernetes.io/component: authorization
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ds-pipeline-user-access-dspa
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-evalhub-job
+    namespace: evaluated-models
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-job-pipeline-management
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: evalhub-job-pipeline-management
+    app.kubernetes.io/component: authorization
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ds-pipeline-dspa
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-evalhub-job
+    namespace: evaluated-models
