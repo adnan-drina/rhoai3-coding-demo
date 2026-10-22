@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Record a completed EvalHub job on a registered model version in the model registry, as the logged-in user.
 # RHOAI 3.5 shows a model version's custom properties on its details page ("Editing model version metadata",
-# Properties). The version gets references to the evidence rather than copies of it: the EvalHub job and its results
-# page in the dashboard, a one-line
-# verdict per benchmark (primary metric, threshold and direction, pass or fail), the MLflow experiment and runs, and for
-# pipeline-mode providers (garak-kfp) a link to the pipeline run in the dashboard. Earlier evalhub.* properties on the
-# version are replaced; its other properties are kept. Refuses a job that is not completed, an unreadable version, and
+# Properties). The version gets references to the evidence rather than copies of it, keyed per benchmark
+# (evalhub.<benchmark>.<field>): the EvalHub job and its results page in the dashboard, a one-line verdict (primary
+# metric, threshold and direction, pass or fail), the MLflow experiment and run, and for pipeline-mode providers
+# (garak-kfp) a link to the pipeline run. A recording replaces only its own benchmarks' properties; the version's
+# other properties are kept. Refuses a job that is not completed, an unreadable version, and
 # a Garak result without per-probe metrics (the adapter skipped the results download, so the score is empty).
 # Usage: stages/050-model-evaluation/evaluation/record.sh --job JOB_ID --model-version VERSION_ID [--tenant NS] [--registry NAME] [--dry-run]
 set -euo pipefail
@@ -69,28 +69,35 @@ if jq -e '[.benchmarks // [] | .[] | select(.provider_id == "garak-kfp")] | leng
   [[ -n "$PIPELINE_URLS" ]] || echo "[WARN] no pipeline run named evalhub-garak-$JOB found in $TENANT" >&2
 fi
 
-# ── Properties: earlier evalhub.* replaced, the version's other properties kept ───────────────────────────────
+# ── Properties, keyed per benchmark: evalhub.<benchmark>.<field> ─────────────────────────────────────────────
+# Recording a job replaces the properties of its own benchmarks only, so the latest result of each benchmark stays
+# side by side (avid_security next to intents). Flat evalhub.<field> keys from older recordings are removed; the
+# version's other properties are kept.
 RECORDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" PIPELINE_URLS="$PIPELINE_URLS" EVALUATION_URL="$EVALUATION_URL" jq -c --slurpfile mv "$WORK/mv.json" --argjson lower "$LOWER" '
   def s: {metadataType: "MetadataStringValue", string_value: tostring};
   def truthy: . != null and . != false and . != 0 and . != "" and . != [] and . != {};
   . as $job | (.results // {}) as $res
-  | [$res.benchmarks // [] | .[] | select(.test != null) | .id as $id | .test as $t
-      | "\($id): \($t.primary_score_metric // "score") \($t.primary_score) (threshold \($t.threshold), "
-        + (if $lower[$id] then "lower" else "higher" end) + " is better) " + (if $t.pass then "pass" else "fail" end)] as $verdicts
-  | ($mv[0].customProperties // {} | with_entries(select(.key | startswith("evalhub.") | not)))
-  | .["evalhub.job_id"] = ($job.resource.id | s)
-  | .["evalhub.job_name"] = ($job.name // "" | s)
-  | .["evalhub.evaluation_url"] = ($ENV.EVALUATION_URL | s)
-  | .["evalhub.model_name"] = ($job.model.name // "" | s)
-  | .["evalhub.benchmarks"] = ([$job.benchmarks // [] | .[] | (.provider_id // "") + ":" + (.id // "")] | join(",") | s)
-  | if ($verdicts | length) > 0 then .["evalhub.result"] = ($verdicts | join("; ") | s)
-      | .["evalhub.pass"] = (if all($res.benchmarks[] | select(.test != null); .test.pass) then "true" else "false" end | s)
-    else . end
-  | if ($job.experiment.name | truthy) then .["evalhub.mlflow_experiment"] = ($job.experiment.name | s) else . end
-  | ([$res.benchmarks // [] | .[] | .mlflow_run_id // empty] | join(",")) as $runs
-  | if $runs != "" then .["evalhub.mlflow_run_ids"] = ($runs | s) else . end
-  | if $ENV.PIPELINE_URLS != "" then .["evalhub.pipeline_run_url"] = ($ENV.PIPELINE_URLS | s) else . end
-  | .["evalhub.recorded_at"] = ($ENV.RECORDED_AT | s)
+  | ([$res.benchmarks // [] | .[] | {key: .id, value: .}] | from_entries) as $results
+  | [$job.benchmarks // [] | .[] | .id] as $ids
+  | ($mv[0].customProperties // {} | with_entries(select(
+      (.key | startswith("evalhub.") | not)
+      or ((.key | ltrimstr("evalhub.") | contains(".")) and ([.key | startswith("evalhub." + $ids[] + ".")] | any | not)))))
+  | reduce ($job.benchmarks // [] | .[]) as $b (.;
+      ("evalhub." + $b.id + ".") as $k | ($results[$b.id] // {}) as $r | ($r.test // null) as $t
+      | .[$k + "job_id"] = ($job.resource.id | s)
+      | .[$k + "job_name"] = ($job.name // "" | s)
+      | .[$k + "evaluation_url"] = ($ENV.EVALUATION_URL | s)
+      | .[$k + "provider"] = ($b.provider_id // "" | s)
+      | .[$k + "model_name"] = ($job.model.name // "" | s)
+      | if $t != null then
+          .[$k + "result"] = ("\($t.primary_score_metric // "score") \($t.primary_score) (threshold \($t.threshold), "
+            + (if $lower[$b.id] then "lower" else "higher" end) + " is better) " + (if $t.pass then "pass" else "fail" end) | s)
+          | .[$k + "pass"] = (if $t.pass then "true" else "false" end | s)
+        else . end
+      | if ($job.experiment.name | truthy) then .[$k + "mlflow_experiment"] = ($job.experiment.name | s) else . end
+      | if ($r.mlflow_run_id | truthy) then .[$k + "mlflow_run_id"] = ($r.mlflow_run_id | s) else . end
+      | if $b.provider_id == "garak-kfp" and $ENV.PIPELINE_URLS != "" then .[$k + "pipeline_run_url"] = ($ENV.PIPELINE_URLS | s) else . end
+      | .[$k + "recorded_at"] = ($ENV.RECORDED_AT | s))
   | {customProperties: .}' "$WORK/job.json" >"$WORK/patch.json"
 jq -r '.customProperties | to_entries[] | select(.key | startswith("evalhub.")) | "  \(.key) = \(.value.string_value)"' "$WORK/patch.json"
 
