@@ -69,7 +69,7 @@ ready.
 | ServiceAccount, Secret (`kubernetes.io/service-account-token`), Role, RoleBinding | `candidate-model-client`, `candidate-model-client-token` | `evaluated-models` | Wave 12. A token that may only `get` InferenceServices in this project, used as the candidate API key. |
 | ConfigMap | `candidate-model-service-ca` | `evaluated-models` | Wave 12. Injected service CA. |
 | ServiceAccount, Role, RoleBinding | `candidate-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch Secrets. |
-| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `qualification-model-auth` (`api-key`, `ca_cert`) and Secret `garak-kfp-model-auth` (the same `api-key`; `ca_cert` with the service CA and the cluster CA; `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token`). |
+| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `qualification-model-auth` (`api-key`, `ca_cert`) and Secret `garak-kfp-model-auth` (the same `api-key`; `ca_cert` with the service CA and the cluster CA; `JUDGE_API_KEY` and `SDG_API_KEY`, the MaaS evaluation key for the `intents` judge and SDG models, guide 7.7.4; `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token`). |
 
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
 
