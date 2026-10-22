@@ -165,19 +165,19 @@ spec:
               # garak-kfp (pipeline execution mode): the adapter pod has no token, so it calls KFP and the
               # Kubernetes API through the job sidecar with ref tokens; an empty *_sa_token makes the sidecar inject
               # the job ServiceAccount token and route to the matching *_url. The garak pipeline pods mount this
-              # Secret at /mnt/model-auth (api-key) and call model_url directly. ca_cert trusts the service CA
+              # Secret at /mnt/model-auth (api-key) and call the model directly at the job's kfp_config.model_url
+              # (EvalHub rewrites every *_url in the adapter's copy to the sidecar). ca_cert trusts the service CA
               # (model, KFP API) and the cluster CA (Kubernetes API).
               cat /service-ca/service-ca.crt /kube-root-ca/ca.crt > "${WORK}/ca_cert"
               oc create secret generic garak-kfp-model-auth -n evaluated-models \
                 --from-file=api-key="${WORK}/api-key" --from-file=ca_cert="${WORK}/ca_cert" \
-                --from-literal=model_url=https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1 \
                 --from-literal=kfp_url=https://ds-pipeline-dspa.evaluated-models.svc.cluster.local:8443 \
                 --from-literal=kfp_sa_token= \
                 --from-literal=k8s_url=https://kubernetes.default.svc:443 \
                 --from-literal=k8s_sa_token= \
                 --dry-run=client -o yaml | oc apply --server-side --force-conflicts --field-manager=candidate-model-auth -f -
               oc annotate secret garak-kfp-model-auth -n evaluated-models kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true
-              echo "garak-kfp-model-auth ready (api-key, ca_cert, model_url, kfp_url, kfp_sa_token, k8s_url, k8s_sa_token)"
+              echo "garak-kfp-model-auth ready (api-key, ca_cert, kfp_url, kfp_sa_token, k8s_url, k8s_sa_token)"
           resources:
             requests: {cpu: 50m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}

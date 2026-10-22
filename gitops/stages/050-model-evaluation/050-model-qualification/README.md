@@ -69,7 +69,7 @@ ready.
 | ServiceAccount, Secret (`kubernetes.io/service-account-token`), Role, RoleBinding | `candidate-model-client`, `candidate-model-client-token` | `evaluated-models` | Wave 12. A token that may only `get` InferenceServices in this project, used as the candidate API key. |
 | ConfigMap | `candidate-model-service-ca` | `evaluated-models` | Wave 12. Injected service CA. |
 | ServiceAccount, Role, RoleBinding | `candidate-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch Secrets. |
-| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `qualification-model-auth` (`api-key`, `ca_cert`) and Secret `garak-kfp-model-auth` (the same `api-key`; `ca_cert` with the service CA and the cluster CA; `model_url`, `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token`). |
+| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `qualification-model-auth` (`api-key`, `ca_cert`) and Secret `garak-kfp-model-auth` (the same `api-key`; `ca_cert` with the service CA and the cluster CA; `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token`). |
 
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
 
@@ -153,7 +153,10 @@ polls it. Its adapter pod has no ServiceAccount token, so a job names `garak-kfp
 and leaves `kfp_config.endpoint` unset: the adapter then sends its pipeline and Kubernetes API calls to the job sidecar
 with the ref tokens `kfp_sa_token:ref` and `k8s_sa_token:ref`, and the sidecar injects the job ServiceAccount token
 (the keys are empty) and routes each call to `kfp_url` or `k8s_url`. The garak pipeline pods have no sidecar: they mount
-the same Secret at `/mnt/model-auth`, take the candidate's `api-key` from it and call `model_url`. This is the
+the same Secret at `/mnt/model-auth`, take the candidate's `api-key` from it and call the candidate at the job's
+`kfp_config.model_url` (EvalHub rewrites every `*_url` key of the adapter's copy of the Secret to the sidecar address, so
+the model address cannot come from the Secret). Cancelling the EvalHub job does not stop the pipeline run; terminate it
+under **Pipelines → Runs**. This is the
 upstream EvalHub sidecar convention, also used by the upstream `garak-kfp` tests; the RoleBindings above give the job
 ServiceAccount the pipeline access those tests grant. Parameter files and the submit command are in
 [`stages/050-model-evaluation/evaluation/`](../../../../stages/050-model-evaluation/evaluation/README.md). A job that

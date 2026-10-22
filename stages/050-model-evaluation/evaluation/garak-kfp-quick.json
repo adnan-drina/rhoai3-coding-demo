@@ -3,7 +3,8 @@
     "namespace": "evaluated-models",
     "s3_secret_name": "evaluation-models-pipelines-connection",
     "experiment_name": "garak-risk-assessment",
-    "verify_ssl": false
+    "verify_ssl": false,
+    "model_url": "https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1"
   },
   "timeout": 3600
 }

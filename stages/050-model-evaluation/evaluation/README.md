@@ -15,8 +15,9 @@ cluster guard first, and give the user's token to `curl` only through `--config`
 
 **Garak in pipeline mode (`garak-kfp`).** `garak-kfp-quick.json` (one DAN probe, a few minutes) and
 `garak-kfp-avid-security.json` are benchmark parameter files for `--parameters`. They name the pipeline server's
-namespace, S3 connection and KFP experiment, and deliberately no `endpoint`: the job reaches the pipeline server through
-its sidecar with Secret `garak-kfp-model-auth` (`050-model-qualification` README, "Garak in pipeline mode"). Against the
+namespace, S3 connection, KFP experiment and the candidate's in-cluster `model_url` for the pipeline pods, and
+deliberately no `endpoint`: the job reaches the pipeline server through its sidecar with Secret `garak-kfp-model-auth`
+(`050-model-qualification` README, "Garak in pipeline mode"). To scan another model, change `model_url`. Against the
 candidate:
 
 ```bash
