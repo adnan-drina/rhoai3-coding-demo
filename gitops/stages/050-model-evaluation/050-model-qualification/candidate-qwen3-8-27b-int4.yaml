@@ -53,8 +53,8 @@ metadata:
     openshift.io/display-name: Qwen3.8 27B INT4 (candidate)
     # Dashboard Stop/Start control. Runs on the L40S pool (gpu-reserved-demo), apart from the RTX PRO
     # 6000 GPU of production Qwen 3.8 in internal-models; set to "true" to hand the GPU back.
-    # Started 2026-10-22 for the models-onboarding evaluations (one L40S worker: GPU_POOL=l40s deploy.sh --gpus 1).
-    serving.kserve.io/stop: "false"
+    # Stopped 2026-10-22 evening for shutdown; set "false" and start an L40S worker (GPU_POOL=l40s deploy.sh --gpus 1) to resume.
+    serving.kserve.io/stop: "true"
     serving.kserve.io/deploymentMode: RawDeployment
     # Off for the 2026-10-22 test of garak-kfp from the dashboard's project model list: those jobs carry no model
     # auth Secret, so the scan pods have no api-key for the candidate.

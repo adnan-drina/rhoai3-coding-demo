@@ -17,7 +17,7 @@ metadata:
     kueue.x-k8s.io/queue-name: lq-gpu-reserved-demo
   annotations:
     openshift.io/display-name: Gemma 2 9B abliterated (risk assessment judge and SDG)
-    serving.kserve.io/stop: "false"
+    serving.kserve.io/stop: "true"
     serving.kserve.io/deploymentMode: RawDeployment
     security.opendatahub.io/enable-auth: "true"
     opendatahub.io/hardware-profile-name: gpu-reserved-demo
