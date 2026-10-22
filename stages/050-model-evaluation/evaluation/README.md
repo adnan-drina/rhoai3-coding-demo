@@ -11,14 +11,35 @@ cluster guard first, and give the user's token to `curl` only through `--config`
 | `submit.sh --status JOB_ID [--wait]` | To follow a job until it is completed, failed or cancelled. | Nothing. |
 | `record.sh --job JOB_ID --model-version VERSION_ID` | After a job completed, to put its results on the model's registry version (`demo-registry`), where the dashboard shows them under the version's **Properties**. | Merges `evalhub.*` custom properties (one per numeric metric, plus the job, experiment and MLflow references) into that model version. Rerunning rewrites the same properties. |
 
-`submit.sh` needs the tenant Secret `evalhub-model-auth-maas` that Stage 050 `deploy.sh` provisions.
+`submit.sh` needs the tenant Secret `evalhub-model-auth-maas` that Stage 050 `deploy.sh` provisions. Run sizing (16
+samples per problem, the sidecar's 30-second request limit, the adapter's one-hour limit) is described in the Stage 050
+README. Check a completed job together with its MLflow run with `validate.sh --job-id ID --mlflow-run-id RUN`.
 
-**Garak in pipeline mode (`garak-kfp`).** `garak-kfp-quick.json` (one DAN probe, a few minutes) and
-`garak-kfp-avid-security.json` are benchmark parameter files for `--parameters`. They name the pipeline server's
-namespace, S3 connection, KFP experiment and the candidate's in-cluster `model_url` for the pipeline pods, and
-deliberately no `endpoint`: the job reaches the pipeline server through its sidecar with Secret `garak-kfp-model-auth`
-(`050-model-qualification` README, "Garak in pipeline mode"). To scan another model, change `model_url`. Against the
-candidate:
+## Garak in pipeline mode (`garak-kfp`)
+
+`garak-kfp` runs the scan as a run on this project's pipeline server. A job needs the model auth Secret
+`garak-kfp-model-auth` (`model.auth.secret_ref`) and three benchmark parameters, the ones in `garak-kfp-quick.json` and
+`garak-kfp-avid-security.json`:
+
+```json
+{
+  "kfp_config": {
+    "namespace": "evaluated-models",
+    "s3_secret_name": "evaluation-models-pipelines-connection",
+    "model_url": "https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1"
+  }
+}
+```
+
+- `namespace` and `s3_secret_name` are required (3.5 guide, 7.7.4).
+- `model_url` is the scanned model's in-cluster address. The scan runs in pipeline pods without the job sidecar, and
+  EvalHub hands the adapter only the sidecar address, so the real address must be given. To scan another model,
+  change it.
+- No `endpoint`. The adapter reaches the pipeline server through the job sidecar with the Secret's `kfp_url` and empty
+  `kfp_sa_token` (upstream EvalHub *Model Authentication*, scenario 3); an explicit `endpoint` takes precedence, goes
+  around the sidecar and fails with 401. The 3.5 guide's example in 7.3 sets it; that example fails on 3.5.2 (BACKLOG).
+
+From the terminal:
 
 ```bash
 stages/050-model-evaluation/evaluation/submit.sh --model-name qwen3-8-27b-int4 \
@@ -29,6 +50,16 @@ stages/050-model-evaluation/evaluation/submit.sh --model-name qwen3-8-27b-int4 \
 ```
 
 With `--parameters`, the provider's own pass criterion applies unless `--threshold` is given (Garak's attack success
-rate is lower-is-better). Run sizing (16
-samples per problem, the sidecar's 30-second request limit, the adapter's one-hour limit) is described in the Stage 050
-README. Check a completed job together with its MLflow run with `validate.sh --job-id ID --mlflow-run-id RUN`.
+rate is lower-is-better).
+
+From the dashboard (**Develop & train → Evaluations → Start evaluation run**, benchmark from **Garak KFP**): under
+**Model** choose **Other (External endpoint)**, not the project's model, and enter
+
+- **Model name:** `qwen3-8-27b-int4`
+- **Endpoint URL:** `https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1`
+- **Authentication secret name:** `garak-kfp-model-auth`
+- **Benchmark parameters:** the JSON above.
+
+A model picked from the project's **Model** list is submitted without an authentication Secret, so the job cannot
+reach the pipeline server; Red Hat support confirmed this as a dashboard limitation fixed in 3.6 (BACKLOG). Cancelling
+the EvalHub job does not stop the pipeline run; terminate it under **Pipelines → Runs**.

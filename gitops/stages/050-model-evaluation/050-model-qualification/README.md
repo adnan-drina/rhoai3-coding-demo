@@ -158,10 +158,13 @@ the same Secret at `/mnt/model-auth`, take the candidate's `api-key` from it and
 the model address cannot come from the Secret). Cancelling the EvalHub job does not stop the pipeline run; terminate it
 under **Pipelines → Runs**. This is the
 upstream EvalHub sidecar convention, also used by the upstream `garak-kfp` tests; the RoleBindings above give the job
-ServiceAccount the pipeline access those tests grant. Parameter files and the submit command are in
-[`stages/050-model-evaluation/evaluation/`](../../../../stages/050-model-evaluation/evaluation/README.md). A job that
-sets `kfp_config.endpoint` to the pipeline server calls it without a token and fails with HTTP 401
-([troubleshooting](../../../../docs/TROUBLESHOOTING.md#garak-kfp-evaluation-fails-with-401-unauthorized)).
+ServiceAccount the pipeline access those tests grant. A job carries the Secret and the benchmark parameters
+`kfp_config.namespace`, `s3_secret_name` and `model_url`; the parameters, the submit command and the dashboard steps are
+in [`stages/050-model-evaluation/evaluation/`](../../../../stages/050-model-evaluation/evaluation/README.md#garak-in-pipeline-mode-garak-kfp).
+In the dashboard the model is entered under **Other (External endpoint)**: a model picked from the project's list is
+submitted without an authentication Secret, a dashboard limitation fixed in 3.6 (BACKLOG). A job that sets
+`kfp_config.endpoint` to the pipeline server, as the 3.5 guide's example in 7.3 does, calls it without a token and fails
+with HTTP 401 ([troubleshooting](../../../../docs/TROUBLESHOOTING.md#garak-kfp-evaluation-fails-with-401-unauthorized)).
 
 **MaaS key.** Production and judge models are reached through MaaS. The provisioner discovers the Gateway hostname, calls
 the MaaS API as its own ServiceAccount, and stores the key under the documented `api-key` key [1]. Keys use the server's
@@ -195,7 +198,7 @@ oc get isvc,dspa,pipelineversion -n evaluated-models
 | Tenant namespace | Label `evalhub.trustyai.opendatahub.io/tenant` [1] | Set on `evaluated-models` | Aligned |
 | Tenant access | Role on `evaluations`, `collections`, `providers`, MLflow `experiments`, bound to users, groups or ServiceAccounts [1] | `evalhub-evaluator` with exactly those rules | Aligned |
 | Model credentials | Secret with `api-key`, referenced by `model.auth.secret_ref` [1] | `evalhub-model-auth-maas`, minted by a hook | Aligned |
-| Garak pipeline mode | Model auth Secret with `kfp_url` and an empty `kfp_sa_token`; the sidecar injects the job ServiceAccount token [10] | `garak-kfp-model-auth` from the candidate hook; job ServiceAccount bound to the pipeline-server Roles | Aligned with upstream (3.5 guide section not checked: docs site unavailable on 2026-10-22) |
+| Garak pipeline mode | 3.5 guide 7.3/7.7.4: `model.auth.secret_ref`, `kfp_config.endpoint`, `namespace`, `s3_secret_name` [1]; upstream: Secret keys `kfp_url` and empty `kfp_sa_token`, the sidecar injects the job ServiceAccount token [10], [11] | `garak-kfp-model-auth` from the candidate hook; job ServiceAccount bound to the pipeline-server Roles; jobs set `namespace`, `s3_secret_name` and `model_url`, no `endpoint` | Deviation (justified: the guide's `endpoint` example fails with 401 on 3.5.2; Red Hat support confirmed, BACKLOG) |
 | Kueue | Namespace label `kueue.openshift.io/managed=true` and workloads carrying `kueue.x-k8s.io/queue-name` [3]; EvalHub Kueue routing [1] | Label, three LocalQueues, queue label on the InferenceService | Aligned |
 | Pipeline server | Configure from an S3 connection; default database for development and testing only [2] | Same values as the dashboard; default MariaDB | Deviation (justified: demo; not a production database) |
 | Pipeline server as code | Pipeline definitions stored as Kubernetes resources [2] | Pipeline and PipelineVersion in Git; DSPA created by a hook Job | Gap (DSPA not declared in Git; see findings) |
@@ -218,3 +221,4 @@ oc get isvc,dspa,pipelineversion -n evaluated-models
 8. InferenceService health check (`Stopped` maps to `Suspended`), Argo CD resource customizations (upstream). https://raw.githubusercontent.com/argoproj/argo-cd/master/resource_customizations/serving.kserve.io/InferenceService/health.lua
 9. Diff strategies (Server-Side Diff), Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/diff-strategies/
 10. EvalHub runtime sidecar, model proxy ref tokens (`*_sa_token`, `*_url`), upstream. https://github.com/eval-hub/eval-hub/blob/main/internal/eval_runtime_sidecar/proxy/model_proxy.go
+11. EvalHub *Model Authentication*, scenario 3 "In-cluster SA-token-authenticated services (KFP and others)", upstream. https://github.com/eval-hub/eval-hub.github.io/blob/main/src/content/docs/guides/model-authentication.mdx
