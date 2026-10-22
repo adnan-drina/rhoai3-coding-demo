@@ -1,0 +1,79 @@
+{
+  "kfp_config": {
+    "namespace": "evaluated-models",
+    "s3_secret_name": "evaluation-models-pipelines-connection",
+    "model_url": "https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1"
+  },
+  "timeout": 7200,
+  "intents_models": {
+    "judge": {
+      "url": "https://maas.<cluster-domain>/v1",
+      "name": "gpt-6-luna"
+    },
+    "sdg": {
+      "url": "https://maas.<cluster-domain>/v1",
+      "name": "openai/gpt-6-luna"
+    },
+    "translation": {
+      "url": "https://maas.<cluster-domain>/v1",
+      "name": "nemotron-3-ultra-550b-a55b"
+    }
+  },
+  "sdg_num_samples": 5,
+  "garak_config": {
+    "plugins": {
+      "detectors": {
+        "judge": {
+          "detector_model_config": {
+            "suppressed_params": [
+              "max_tokens",
+              "temperature",
+              "stop",
+              "n",
+              "top_p",
+              "frequency_penalty",
+              "presence_penalty"
+            ],
+            "extra_params": {
+              "max_completion_tokens": 2048
+            }
+          }
+        }
+      },
+      "probes": {
+        "tap": {
+          "TAPIntent": {
+            "attack_model_config": {
+              "suppressed_params": [
+                "max_tokens",
+                "temperature",
+                "stop",
+                "n",
+                "top_p",
+                "frequency_penalty",
+                "presence_penalty"
+              ],
+              "extra_params": {
+                "max_completion_tokens": 2048
+              }
+            },
+            "evaluator_model_config": {
+              "suppressed_params": [
+                "max_tokens",
+                "temperature",
+                "stop",
+                "n",
+                "top_p",
+                "frequency_penalty",
+                "presence_penalty"
+              ],
+              "extra_params": {
+                "max_completion_tokens": 1024
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

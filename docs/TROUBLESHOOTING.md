@@ -2676,13 +2676,23 @@ oc logs deploy/evalhub-mcp -n evalhub -c evalhub-mcp --since=10m | grep -E 'Requ
 
 **Likely cause:** The job set `kfp_config.endpoint` to the pipeline server and named no model auth Secret. The adapter pod runs without a ServiceAccount token by design, so its pipeline API calls carry none. Pipeline access goes through the job sidecar instead, which only injects a token for keys it finds in the model auth Secret (`kfp_url`, empty `kfp_sa_token`).
 
-**Recover:** Submit with `model.auth.secret_ref: garak-kfp-model-auth`, without `kfp_config.endpoint` and with `kfp_config.model_url` set to the model's in-cluster URL (otherwise the scan step targets `http://localhost:8080/v1`, the sidecar, which pipeline pods do not have), for example `stages/050-model-evaluation/evaluation/submit.sh --provider garak-kfp --benchmark quick --parameters stages/050-model-evaluation/evaluation/garak-kfp-quick.json --secret-ref garak-kfp-model-auth ...` ([evaluation README](../stages/050-model-evaluation/evaluation/README.md)). In the dashboard, choose **Other (External endpoint)** under **Model** with that Secret and the three parameters (`namespace`, `s3_secret_name`, `model_url`): a model picked from the project's list is submitted without an authentication Secret and fails with `KFP endpoint is required`, a dashboard limitation fixed in 3.6. The 3.5 guide's example in 7.3 sets `kfp_config.endpoint` and fails the same way on 3.5.2. The Secret and the job ServiceAccount's pipeline RoleBindings come from `050-model-qualification`.
+**Recover:** Submit with `model.auth.secret_ref: garak-kfp-model-auth`, without `kfp_config.endpoint` and with `kfp_config.model_url` set to the model's in-cluster URL (otherwise the scan step targets `http://localhost:8080/v1`, the sidecar, which pipeline pods do not have), for example `stages/050-model-evaluation/evaluation/submit.sh --provider garak-kfp --benchmark quick --parameters stages/050-model-evaluation/evaluation/avid-security.parameters.json --secret-ref garak-kfp-model-auth ...` ([evaluation README](../stages/050-model-evaluation/evaluation/README.md)). In the dashboard, choose **Other (External endpoint)** under **Model** with that Secret and the three parameters (`namespace`, `s3_secret_name`, `model_url`): a model picked from the project's list is submitted without an authentication Secret and fails with `KFP endpoint is required`, a dashboard limitation fixed in 3.6. The 3.5 guide's example in 7.3 sets `kfp_config.endpoint` and fails the same way on 3.5.2. The Secret and the job ServiceAccount's pipeline RoleBindings come from `050-model-qualification`.
 
 **Diagnose:**
 
 ```bash
 oc logs -n evaluated-models -l provider_id=garak-kfp -c adapter --since=1h | grep -E 'KFP|401|sidecar address'
 ```
+
+## Garak KFP Evaluation Passes With Attack Success Rate 0 And No Results
+
+**Affected stage:** Stage 050, EvalHub provider `garak-kfp`, RHOAI 3.5.2
+
+**Symptom:** A `garak-kfp` job started from a model picked in the dashboard's project **Model** list completes with Evaluation score 100% (attack success rate 0) and Pass, while garak's own report for the same scan (pipeline run artifacts, `scan.report.html`) shows many failed probes. The job's MLflow run has `num_examples_evaluated` 0 and only the `attack_success_rate` metric; the adapter log shows `Could not read S3 credentials from secret ...`, then `No S3 bucket configured; skipping result download`.
+
+**Likely cause:** The listed model is submitted without a model auth Secret. The pipeline still runs (for example when its API is reachable without a token), but after the scan the adapter must read the S3 connection Secret to download the results, and without the Secret's `k8s_url`/`k8s_sa_token` its sidecar cannot read it. The adapter then scores an empty result instead of failing.
+
+**Recover:** Treat the result as void and do not record it (`record.sh` refuses a Garak result without per-probe metrics). Rerun with the Secret `garak-kfp-model-auth`: dashboard **Other (External endpoint)** or `submit.sh` ([evaluation README](../stages/050-model-evaluation/evaluation/README.md)). A valid result lists one `<probe>_asr` metric per probe.
 
 ## Evaluation Score Shows "-" Or Thousands Of Percent
 

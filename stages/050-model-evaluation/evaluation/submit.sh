@@ -38,7 +38,7 @@ Options:
   --threshold T            Pass threshold on the primary score (default: the provider catalog's threshold for the
                            benchmark, else 0.25, the coding-v1 definition)
   --parameters FILE        Benchmark parameters as a JSON object (providers other than lighteval, e.g.
-                           evaluation/garak-kfp-quick.json); replaces the generated lighteval parameters
+                           evaluation/avid-security.parameters.json); replaces the generated lighteval parameters
   --system-prompt TEXT     System prompt prepended by the adapter (default: code-only answer; pass '' to disable)
   --status ID              Show a job instead of submitting
   --wait                   Poll until the job reaches a terminal state

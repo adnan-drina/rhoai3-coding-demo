@@ -1,7 +1,0 @@
-{
-  "kfp_config": {
-    "namespace": "evaluated-models",
-    "s3_secret_name": "evaluation-models-pipelines-connection",
-    "model_url": "https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1"
-  }
-}

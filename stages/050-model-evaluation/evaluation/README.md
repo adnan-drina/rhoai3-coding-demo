@@ -17,19 +17,15 @@ README. Check a completed job together with its MLflow run with `validate.sh --j
 
 ## Garak in pipeline mode (`garak-kfp`)
 
-`garak-kfp` runs the scan as a run on this project's pipeline server. A job needs the model auth Secret
-`garak-kfp-model-auth` (`model.auth.secret_ref`) and three benchmark parameters, the ones in `garak-kfp-quick.json` and
-`garak-kfp-avid-security.json`:
+`garak-kfp` runs the scan as a run on this project's pipeline server. Every job carries the model auth Secret
+`garak-kfp-model-auth` (`model.auth.secret_ref`) and the benchmark parameters in one of the two files here:
 
-```json
-{
-  "kfp_config": {
-    "namespace": "evaluated-models",
-    "s3_secret_name": "evaluation-models-pipelines-connection",
-    "model_url": "https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1"
-  }
-}
-```
+| File | Benchmarks | Verified |
+|---|---|---|
+| `avid-security.parameters.json` | `avid_security`, `quick`, `owasp_llm_top10`, `cwe` and the other probe-based scans | 2026-10-22: `avid_security`, 67 per-probe results in EvalHub; `quick` |
+| `intents.parameters.json` | `intents` (generated attack prompts, judge model, attack strategies) | 2026-10-22: with GPT-6 Luna as judge and SDG model, through the SPO strategies |
+
+Both name the pipeline server's project and S3 connection and the candidate's in-cluster address:
 
 - `namespace` and `s3_secret_name` are required (3.5 guide, 7.7.4).
 - `model_url` is the scanned model's in-cluster address. The scan runs in pipeline pods without the job sidecar, and
@@ -38,34 +34,52 @@ README. Check a completed job together with its MLflow run with `validate.sh --j
 - No `endpoint`. The adapter reaches the pipeline server through the job sidecar with the Secret's `kfp_url` and empty
   `kfp_sa_token` (upstream EvalHub *Model Authentication*, scenario 3); an explicit `endpoint` takes precedence, goes
   around the sidecar and fails with 401. The 3.5 guide's example in 7.3 sets it; that example fails on 3.5.2 (BACKLOG).
+- `timeout`, `experiment_name` (the KFP experiment) and `verify_ssl` keep their defaults; `intents` sets `timeout` to
+  7200 s because its attack strategies run after the baseline.
+
+`intents.parameters.json` also sets the models the scan uses besides the candidate, all through MaaS. Replace
+`<cluster-domain>` with the value of `oc get ingresses.config cluster -o jsonpath='{.spec.domain}'`.
+
+- `judge` and `sdg`: GPT-6 Luna. Its keys come from the Secret's `JUDGE_API_KEY` and `SDG_API_KEY` (the MaaS evaluation
+  key; guide 7.7.4), which the TAP attacker and evaluator and the translator also fall back to.
+- GPT-6 Luna accepts only `max_completion_tokens` and its own sampling, so `garak_config` sets, for the judge
+  (`detectors.judge.detector_model_config`) and for TAP's attacker and evaluator (`probes.tap.TAPIntent`),
+  `suppressed_params` (`max_tokens`, `temperature`, `stop`, `n`, `top_p`, `frequency_penalty`, `presence_penalty`)
+  and `extra_params.max_completion_tokens`. Without them GPT-6 Luna rejects the calls, the gateway holds the error
+  responses until the client times out, and the scan stalls until its `timeout`.
+- `translation`: Nemotron 3 Ultra. Garak's translator fixes its temperature at 0.1, which GPT-6 Luna rejects.
 
 From the terminal:
 
 ```bash
 stages/050-model-evaluation/evaluation/submit.sh --model-name qwen3-8-27b-int4 \
   --model-url https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1 \
-  --secret-ref garak-kfp-model-auth --provider garak-kfp --benchmark quick \
-  --parameters stages/050-model-evaluation/evaluation/garak-kfp-quick.json \
+  --secret-ref garak-kfp-model-auth --provider garak-kfp --benchmark avid_security \
+  --parameters stages/050-model-evaluation/evaluation/avid-security.parameters.json \
   --experiment models-onboarding --no-oci-export --wait
 ```
 
+For `intents`, use `--benchmark intents --parameters …/intents.parameters.json` (after replacing `<cluster-domain>`).
 A single benchmark is submitted with the provider catalog's primary metric, its direction and its pass threshold, as
 the dashboard form does (for `garak-kfp` `avid_security`: `attack_success_rate`, lower is better, at most 0.3);
 `--threshold` overrides the threshold. The Evaluations page shows the attack success rate itself as the score, so a
-23% score with Pass means 23% of the attacks succeeded, within the 30% allowed.
+23% score with Pass means 23% of the attacks succeeded, within the 30% allowed. Record a finished run on the model's
+registry version with `record.sh`.
 
-From the dashboard (**Develop & train → Evaluations → Start evaluation run**): select the benchmark suite
-**Candidate security scan (pipeline) v1** (`candidate-security-pipeline-v1`, `050-evaluation-content`), which carries
-the three parameters for the candidate. Under **Model** choose **Other (External endpoint)**, not the project's model,
-and enter
+From the dashboard (**Develop & train → Evaluations → Start evaluation run**, a **Garak KFP** benchmark): under
+**Model** choose **Other (External endpoint)**, not the project's model, and enter
 
 - **Model name:** `qwen3-8-27b-int4`
 - **Endpoint URL:** `https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1`
 - **Authentication secret name:** `garak-kfp-model-auth`
+- **Benchmark parameters:** the content of the matching file.
 
-Leave **Benchmark parameters** empty: the form replaces a suite's parameters key by key, so a typed `kfp_config`
-replaces the preset one whole. For a single **Garak KFP** benchmark instead of the suite, paste the JSON above.
+The suite **Candidate security scan (pipeline) v1** (`candidate-security-pipeline-v1`, `050-evaluation-content`)
+carries the `avid_security` parameters itself; with it, leave **Benchmark parameters** empty (a typed `kfp_config`
+replaces the preset one whole).
 
-A model picked from the project's **Model** list is submitted without an authentication Secret, so the job cannot
-reach the pipeline server; Red Hat support confirmed this as a dashboard limitation fixed in 3.6 (BACKLOG). Cancelling
-the EvalHub job does not stop the pipeline run; terminate it under **Pipelines → Runs**.
+Do not start `garak-kfp` from a model picked in the project's **Model** list. Such a job carries no authentication
+Secret (a dashboard limitation fixed in 3.6, BACKLOG): it cannot reach the pipeline server, and where it can, the
+adapter cannot read the S3 Secret, skips the results download and reports an empty result as attack success rate 0,
+Pass, `num_examples_evaluated` 0. `record.sh` refuses such a result. Cancelling the EvalHub job does not stop the
+pipeline run; terminate it under **Pipelines → Runs**.
