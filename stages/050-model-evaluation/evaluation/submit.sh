@@ -99,7 +99,10 @@ show_job() {
     | "job \(.resource.id | s) name \(.name | s) state \($st.state | s)",
       ($st.benchmarks // [] | .[] | "  benchmark \(.provider_id | s) \(.id | s) \(.status | s) \(msg | s)"),
       ($res.benchmarks // [] | .[] | "  metrics \(.id | s) \(.metrics | tojson)"),
-      (if ($res.test // null) | . != null and . != false and . != {} then "  test \($res.test | tojson)" else empty end),
+      # Each benchmark is judged on its own primary metric, threshold and direction; the job-level test applies
+      # the EvalHub default criterion and is wrong for lower-is-better metrics, so it is not shown.
+      ($res.benchmarks // [] | .[] | select(.test != null)
+        | "  result \(.id | s) \(.test.primary_score_metric // "score" | s) \(.test.primary_score | s) threshold \(.test.threshold | s) \(if .test.pass then "pass" else "fail" end)"),
       (if ($res.mlflow_experiment_url // "") != "" then "  mlflow \($res.mlflow_experiment_url)" else empty end),
       (if ($st.message | type) == "object" and ($st.message.message // "") != "" then "  message \($st.message.message)" else empty end)'
 }
@@ -139,6 +142,10 @@ short="${MODEL_NAME##*/}"
 node="$(oc get pods -n internal-models --request-timeout=10s -o json 2>/dev/null | jq -r --arg m "$short" '[.items[]
   | select((.metadata.name | startswith($m + "-kserve-")) and (.metadata.name | contains("router") | not)
     and .status.phase == "Running") | .spec.nodeName // ""][0] // ""' 2>/dev/null || true)"
+# A candidate served in the tenant project runs as an InferenceService predictor (<name>-predictor-...).
+[[ -n "$node" ]] || node="$(oc get pods -n "$TENANT" --request-timeout=10s -o json 2>/dev/null | jq -r --arg m "$short" '[.items[]
+  | select((.metadata.name | startswith($m + "-predictor-")) and .status.phase == "Running") | .spec.nodeName // ""][0] // ""' \
+  2>/dev/null || true)"
 ACCEL=""
 if [[ -n "$node" ]]; then
   ACCEL="$(oc get node "$node" --request-timeout=10s -o jsonpath='{.metadata.labels.nvidia\.com/gpu\.product}' 2>/dev/null || true)"

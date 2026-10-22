@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
 # Record a completed EvalHub job on a registered model version in the model registry, as the logged-in user.
 # RHOAI 3.5 shows a model version's custom properties on its details page ("Editing model version metadata",
-# Properties); the registry API also accepts metric artifacts and experiment runs, but the 3.5 dashboard does not render
-# those. Changes one model version: writes one evalhub.<metric> property per numeric benchmark metric plus the job,
-# experiment and MLflow references, merged with the properties already on the version. Safe to rerun: a rerun rewrites
-# the same evalhub.* properties (and evalhub.recorded_at). Refuses a job that is not completed and an unreadable version.
-# Usage: stages/050-model-evaluation/evaluation/record.sh --job JOB_ID --model-version VERSION_ID [--tenant NS] [--registry NAME]
+# Properties). The version gets references to the evidence rather than copies of it: the EvalHub job, a one-line
+# verdict per benchmark (primary metric, threshold and direction, pass or fail), the MLflow experiment and runs, and for
+# pipeline-mode providers (garak-kfp) a link to the pipeline run in the dashboard. Earlier evalhub.* properties on the
+# version are replaced; its other properties are kept. Refuses a job that is not completed, an unreadable version, and
+# a Garak result without per-probe metrics (the adapter skipped the results download, so the score is empty).
+# Usage: stages/050-model-evaluation/evaluation/record.sh --job JOB_ID --model-version VERSION_ID [--tenant NS] [--registry NAME] [--dry-run]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 
-JOB="" MV="" TENANT="evaluated-models" REGISTRY="demo-registry"
+JOB="" MV="" TENANT="evaluated-models" REGISTRY="demo-registry" DRY_RUN="false"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --job) JOB="${2:-}"; shift 2 ;;
     --model-version) MV="${2:-}"; shift 2 ;;
     --tenant) TENANT="${2:-}"; shift 2 ;;
     --registry) REGISTRY="${2:-}"; shift 2 ;;
+    --dry-run) DRY_RUN="true"; shift ;;
     *) sed -n 's/^# Usage: //p' "$0" >&2; exit 1 ;;
   esac
 done
@@ -40,30 +42,57 @@ curl -sS -m 60 --config <(auth_config) "$REGISTRY_URL/model_versions/$MV" >"$WOR
 state="$(jq -r '.status.state // "None"' "$WORK/job.json")"
 [[ "$state" == completed ]] || { echo "[FAIL] job $(jq -r '.resource.id // "None"' "$WORK/job.json") is $state, not completed" >&2; exit 1; }
 jq -e 'has("name")' "$WORK/mv.json" >/dev/null || { echo "[FAIL] model version not readable: $(jq -c . "$WORK/mv.json" | head -c 200)" >&2; exit 1; }
+# A Garak benchmark always reports one <probe>_asr metric per probe; only the aggregate means no results were read.
+empty="$(jq -r '[.results.benchmarks // [] | .[] | select((.provider_id // "") | startswith("garak"))
+  | select([.metrics // {} | keys[] | select(endswith("_asr"))] | length == 0) | .id] | join(",")' "$WORK/job.json")"
+[[ -z "$empty" ]] || { echo "[FAIL] benchmark(s) $empty carry no per-probe results: the adapter skipped the results download (job without a model auth Secret?); not recording an empty score" >&2; exit 1; }
 
-# ── Properties: existing ones kept, evalhub.* written ─────────────────────────
-# Numeric metrics (booleans count as 0/1) become doubles, except the all.* aggregates; the rest are strings.
-RECORDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" jq -c --slurpfile mv "$WORK/mv.json" '
+# Score direction per benchmark: the job's own primary_score, else the provider catalog (jobs submitted without it).
+LOWER='{}'
+for pb in $(jq -r '.benchmarks // [] | .[] | "\(.provider_id)/\(.id)"' "$WORK/job.json"); do
+  lower="$(jq -r --arg b "${pb#*/}" '[.benchmarks // [] | .[] | select(.id == $b) | .primary_score.lower_is_better // empty][0] // empty' "$WORK/job.json")"
+  [[ -n "$lower" ]] || lower="$(curl -sS -m 60 --config <(auth_config) -H "X-Tenant: $TENANT" "$EVALHUB_URL/api/v1/evaluations/providers/${pb%%/*}" |
+    jq -r --arg b "${pb#*/}" '[.benchmarks // [] | .[] | select(.id == $b) | .primary_score.lower_is_better // false][0] // false')"
+  LOWER="$(jq -c --arg b "${pb#*/}" --argjson v "$lower" '.[$b] = $v' <<<"$LOWER")"
+done
+
+# ── Pipeline runs of pipeline-mode benchmarks (garak-kfp names its run evalhub-garak-<job id>) ──────────────────
+PIPELINE_URLS=""
+if jq -e '[.benchmarks // [] | .[] | select(.provider_id == "garak-kfp")] | length > 0' "$WORK/job.json" >/dev/null; then
+  KFP_URL="https://$(oc $T get route ds-pipeline-dspa -n "$TENANT" -o jsonpath='{.spec.host}')"
+  DASHBOARD="https://$(oc $T get route data-science-gateway -n openshift-ingress -o jsonpath='{.spec.host}')"
+  filter="$(jq -rn --arg n "evalhub-garak-$JOB" '{predicates: [{key: "display_name", operation: "EQUALS", string_value: $n}]} | tojson | @uri')"
+  PIPELINE_URLS="$(curl -sS -m 60 --config <(auth_config) "$KFP_URL/apis/v2beta1/runs?namespace=$TENANT&page_size=20&filter=$filter" |
+    jq -r --arg d "$DASHBOARD" --arg ns "$TENANT" '[.runs // [] | .[] | "\($d)/develop-train/pipelines/runs/\($ns)/runs/\(.run_id)"] | join(" ")')"
+  [[ -n "$PIPELINE_URLS" ]] || echo "[WARN] no pipeline run named evalhub-garak-$JOB found in $TENANT" >&2
+fi
+
+# ── Properties: earlier evalhub.* replaced, the version's other properties kept ───────────────────────────────
+RECORDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" PIPELINE_URLS="$PIPELINE_URLS" jq -c --slurpfile mv "$WORK/mv.json" --argjson lower "$LOWER" '
   def s: {metadataType: "MetadataStringValue", string_value: tostring};
-  def d: {metadataType: "MetadataDoubleValue", double_value: (if type == "boolean" then (if . then 1 else 0 end) else . end)};
   def truthy: . != null and . != false and . != 0 and . != "" and . != [] and . != {};
   . as $job | (.results // {}) as $res
-  | reduce ($res.benchmarks // [] | .[] | .metrics // {} | to_entries[]
-      | select((.value | type == "number" or type == "boolean") and (.key | startswith("all.") | not))) as $m
-      ($mv[0].customProperties // {}; .["evalhub." + $m.key] = ($m.value | d))
-  | if ($res.test | type) == "object" and ($res.test | has("passed"))
-    then .["evalhub.pass"] = (if ($res.test.passed | truthy) then "true" else "false" end | s) else . end
+  | [$res.benchmarks // [] | .[] | select(.test != null) | .id as $id | .test as $t
+      | "\($id): \($t.primary_score_metric // "score") \($t.primary_score) (threshold \($t.threshold), "
+        + (if $lower[$id] then "lower" else "higher" end) + " is better) " + (if $t.pass then "pass" else "fail" end)] as $verdicts
+  | ($mv[0].customProperties // {} | with_entries(select(.key | startswith("evalhub.") | not)))
   | .["evalhub.job_id"] = ($job.resource.id | s)
   | .["evalhub.job_name"] = ($job.name // "" | s)
   | .["evalhub.model_name"] = ($job.model.name // "" | s)
   | .["evalhub.benchmarks"] = ([$job.benchmarks // [] | .[] | (.provider_id // "") + ":" + (.id // "")] | join(",") | s)
+  | if ($verdicts | length) > 0 then .["evalhub.result"] = ($verdicts | join("; ") | s)
+      | .["evalhub.pass"] = (if all($res.benchmarks[] | select(.test != null); .test.pass) then "true" else "false" end | s)
+    else . end
   | if ($job.experiment.name | truthy) then .["evalhub.mlflow_experiment"] = ($job.experiment.name | s) else . end
-  | if ($res.mlflow_experiment_url | truthy) then .["evalhub.mlflow_experiment_url"] = ($res.mlflow_experiment_url | s) else . end
+  | ([$res.benchmarks // [] | .[] | .mlflow_run_id // empty] | join(",")) as $runs
+  | if $runs != "" then .["evalhub.mlflow_run_ids"] = ($runs | s) else . end
+  | if $ENV.PIPELINE_URLS != "" then .["evalhub.pipeline_run_url"] = ($ENV.PIPELINE_URLS | s) else . end
   | .["evalhub.recorded_at"] = ($ENV.RECORDED_AT | s)
   | {customProperties: .}' "$WORK/job.json" >"$WORK/patch.json"
-echo "properties to write: $(jq -r '[.customProperties | keys_unsorted[] | select(startswith("evalhub."))] | join(", ")' "$WORK/patch.json")"
+jq -r '.customProperties | to_entries[] | select(.key | startswith("evalhub.")) | "  \(.key) = \(.value.string_value)"' "$WORK/patch.json"
 
 # ── Write (the only change) ───────────────────────────────────────────────────
+[[ "$DRY_RUN" == "false" ]] || { echo "dry run: model version $MV not changed"; exit 0; }
 code="$(curl -sS -m 60 -o "$WORK/mv.json" -w '%{http_code}' -X PATCH --config <(auth_config) -H 'Content-Type: application/json' \
   --data-binary "@$WORK/patch.json" "$REGISTRY_URL/model_versions/$MV")"
 [[ "$code" == "200" ]] || { echo "[FAIL] registry returned HTTP $code: $(head -c 400 "$WORK/mv.json")" >&2; exit 1; }
