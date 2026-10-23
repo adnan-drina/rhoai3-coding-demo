@@ -97,9 +97,12 @@ spec:
       configMaps:
         - candidate-guardrails-config
         - candidate-guardrails-prompts
-  # Service CA for the candidate predictor and the cluster's trusted CAs for the MaaS gateway.
+  # Service CA for the candidate predictor and the cluster's trusted CAs for the MaaS gateway. The namespace is
+  # required in 3.5.2 although the guide omits it: without it the operator reads the ConfigMap from an empty namespace
+  # (status ca.userCAError) and creates no Deployment.
   caBundleConfig:
     configMapName: candidate-guardrails-ca
+    configMapNamespace: evaluated-models
     configMapKeys:
       - ca-bundle.crt
   env:

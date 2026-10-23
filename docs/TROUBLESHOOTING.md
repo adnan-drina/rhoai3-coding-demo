@@ -2724,6 +2724,16 @@ oc logs -n evaluated-models -l provider_id=garak-kfp -c adapter --since=1h | gre
 
 **Recover:** Pipeline v19 gates each benchmark on its own `pass_criteria` and the code benchmarks on the weighted capability score; it no longer reads the collection score. Read latency and throughput by the per-benchmark Pass/Fail.
 
+## NeMo Guardrails Creates No Deployment: "an empty namespace may not be set"
+
+**Affected stage:** Stage 050, NemoGuardrails `candidate-guardrails` (RHOAI 3.5.2, seen 2026-10-23)
+
+**Symptom:** The NemoGuardrails CR exists but no guardrail pod starts; its status reads `userCAError: error reading configmap candidate-guardrails-ca in namespace : an empty namespace may not be set when a resource name is provided`.
+
+**Likely cause:** The operator does not default `spec.caBundleConfig.configMapNamespace` to the CR's namespace, although the guide's example sets only `configMapName`.
+
+**Recover:** Set `configMapNamespace` to the guardrail's namespace (the committed CR does) and sync Stage 050.
+
 ## Guarded Garak Scan Scores Far Better Than Expected
 
 **Affected stage:** Stage 050, `risk-assessment-guarded` (Garak through NeMo Guardrails `candidate-guardrails`)
