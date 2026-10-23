@@ -166,12 +166,17 @@ spec:
               # (model, KFP API) and the cluster CA (Kubernetes API).
               cat /service-ca/service-ca.crt /kube-root-ca/ca.crt > "${WORK}/ca_cert"
               # intents benchmarks also call a judge and an SDG model (TAP's attacker and evaluator default to the
-              # judge); the guide (7.7.4) takes their keys from the same Secret per role. Both are the abliterated helper
-              # model in this project (risk-assessment-gemma-2-9b-abliterated.yaml), so their key is the
-              # candidate-model-client token, which may get every InferenceService here. Translation uses the
-              # provider's default Helsinki-NLP models and needs no key.
+              # judge). Both are the abliterated helper model in this project (risk-assessment-gemma-2-9b-abliterated.yaml),
+              # so their key is the candidate-model-client token, which may get every InferenceService here. The
+              # qualification pipeline runs intents in the job pod (built-in garak provider): the adapter reads each role
+              # with the EvalHub multi-model convention <role>_url and <role>_api-key, and the sidecar routes the role's
+              # calls there with ca_cert. garak-kfp reads JUDGE_API_KEY and SDG_API_KEY instead (guide 7.7.4).
+              # Translation uses the provider's default Helsinki-NLP models and needs no key.
+              GEMMA=https://gemma-2-9b-abliterated-predictor.evaluated-models.svc.cluster.local:8443/v1
               oc create secret generic garak-kfp-model-auth -n evaluated-models \
                 --from-file=api-key="${WORK}/api-key" --from-file=ca_cert="${WORK}/ca_cert" \
+                --from-literal=judge_url="${GEMMA}" --from-file=judge_api-key="${WORK}/api-key" \
+                --from-literal=sdg_url="${GEMMA}" --from-file=sdg_api-key="${WORK}/api-key" \
                 --from-file=JUDGE_API_KEY="${WORK}/api-key" --from-file=SDG_API_KEY="${WORK}/api-key" \
                 --from-literal=kfp_url=https://ds-pipeline-dspa.evaluated-models.svc.cluster.local:8443 \
                 --from-literal=kfp_sa_token= \
@@ -179,7 +184,7 @@ spec:
                 --from-literal=k8s_sa_token= \
                 --dry-run=client -o yaml | oc apply --server-side --force-conflicts --field-manager=candidate-model-auth -f -
               oc annotate secret garak-kfp-model-auth -n evaluated-models kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
-              echo "garak-kfp-model-auth ready (api-key, ca_cert, JUDGE_API_KEY, SDG_API_KEY, kfp_url, kfp_sa_token, k8s_url, k8s_sa_token)"
+              echo "garak-kfp-model-auth ready (api-key, ca_cert, judge_url, judge_api-key, sdg_url, sdg_api-key, JUDGE_API_KEY, SDG_API_KEY, kfp_url, kfp_sa_token, k8s_url, k8s_sa_token)"
           resources:
             requests: {cpu: 50m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}
