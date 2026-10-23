@@ -1,0 +1,111 @@
+# Qwen 3.8 27B NVFP4 as a qualification candidate on one RTX PRO 6000: the format, revision, GPU type and serving
+# arguments of production MaaS (Stage 040 qwen3-8-27b in internal-models), so a result here carries over to the
+# production configuration. Added 2026-10-23 after the INT4 candidate on L40S missed the 2,000 ms first-token gate
+# (2,588 ms; the 2026-10-13 serving study measured 776 ms for NVFP4 on RTX PRO 6000). Model registry: Qwen3.8-27B-NVFP4
+# version 6. Uses the vllm-cuda-runtime ServingRuntime of candidate-qwen3-8-27b-int4.yaml. Token authentication is on.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qwen3-8-27b-nvfp4
+  namespace: evaluated-models
+  labels:
+    opendatahub.io/dashboard: "true"
+    kueue.x-k8s.io/queue-name: lq-gpu-rtxpro6000
+  annotations:
+    openshift.io/display-name: Qwen3.8 27B NVFP4 (candidate)
+    # Dashboard Stop/Start control. Runs on the RTX PRO 6000 pool (GPU_POOL=rtxpro6000 deploy.sh --gpus 1, or 2
+    # while production qwen3-8-27b also runs); set to "true" to hand the GPU back. Prepared stopped on 2026-10-23
+    # while the INT4 run holds the L40S pool; start it together with the 3.5.2 runtime image.
+    serving.kserve.io/stop: "true"
+    serving.kserve.io/deploymentMode: RawDeployment
+    security.opendatahub.io/enable-auth: "true"
+    opendatahub.io/hardware-profile-name: gpu-rtxpro6000
+    opendatahub.io/hardware-profile-namespace: redhat-ods-applications
+    # Last wave, as for the INT4 candidate: a stopped candidate reports Suspended and must not hold later waves.
+    argocd.argoproj.io/sync-wave: "40"
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 1
+    deploymentStrategy:
+      type: Recreate
+    model:
+      runtime: vllm-cuda-runtime
+      modelFormat:
+        name: vLLM
+      storageUri: hf://RedHatAI/Qwen3.8-27B-NVFP4:2889ddeeda282f17fc9e159a42125e535159a5e5
+      env:
+        - name: PYTORCH_ALLOC_CONF
+          value: expandable_segments:True
+      # Production arguments (040-local-models/qwen38-27b-llminferenceservice.yaml) without its TLS flags.
+      args:
+        - --enable-force-include-usage
+        - --disable-uvicorn-access-log
+        - --enable-prefix-caching
+        - --mamba-cache-mode=align
+        - --max-model-len=262144
+        - --kv-cache-dtype=fp8
+        - --gpu-memory-utilization=0.90
+        - --language-model-only
+        - --max-num-batched-tokens=16384
+        - --max-num-seqs=16
+        - --async-scheduling
+        - --speculative-config={"method":"mtp","num_speculative_tokens":3}
+        - --override-generation-config={"temperature":0.7,"top_p":0.8,"top_k":20,"min_p":0.0,"presence_penalty":1.5,"repetition_penalty":1.0}
+        - --default-chat-template-kwargs={"enable_thinking":false}
+        - --reasoning-parser=qwen3
+        - --enable-auto-tool-choice
+        - --tool-call-parser=qwen3_xml
+      resources:
+        requests:
+          cpu: "2"
+          memory: 16Gi
+          nvidia.com/gpu: "1"
+        limits:
+          cpu: "4"
+          memory: 24Gi
+          nvidia.com/gpu: "1"
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+---
+# Implicit authentication (pattern 1), as for the INT4 candidate.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: qwen3-8-27b-nvfp4-view-role
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: qwen3-8-27b-nvfp4
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+rules:
+  - apiGroups: [serving.kserve.io]
+    resources: [inferenceservices]
+    resourceNames: [qwen3-8-27b-nvfp4]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-job-model-access-nvfp4
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: qwen3-8-27b-nvfp4
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: qwen3-8-27b-nvfp4-view-role
+subjects:
+  - kind: ServiceAccount
+    name: evalhub-evalhub-job
+    namespace: evaluated-models

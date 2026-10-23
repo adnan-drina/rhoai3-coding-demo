@@ -65,6 +65,8 @@ ready.
 |---|---|---|---|
 | ServingRuntime | `vllm-cuda-runtime` | `evaluated-models` | Wave 20. Instance of the platform template `vllm-cuda-runtime-template`, same vLLM image digest as the MaaS deployments. |
 | InferenceService | `qwen3-8-27b-int4` | `evaluated-models` | Wave 40. `RedHatAI/Qwen3.8-27B-INT4` pinned to a Hugging Face commit, RawDeployment, token authentication on, hardware profile `gpu-reserved-demo`, queue `lq-gpu-reserved-demo`, one L40S-class GPU, `serving.kserve.io/stop: "true"`. |
+| InferenceService | `qwen3-8-27b-nvfp4` | `evaluated-models` | Wave 40. `RedHatAI/Qwen3.8-27B-NVFP4` at the production revision (registry Qwen3.8-27B-NVFP4 version 6) with production's serving arguments, hardware profile `gpu-rtxpro6000`, queue `lq-gpu-rtxpro6000`, one RTX PRO 6000: the candidate configuration that matches production MaaS, added after INT4 on L40S missed the first-token gate. |
+| Role / RoleBinding | `qwen3-8-27b-nvfp4-view-role` / `evalhub-job-model-access-nvfp4` | `evaluated-models` | Wave 21. `get` on this InferenceService for `evalhub-evalhub-job`. |
 | Role / RoleBinding | `qwen3-8-27b-int4-view-role` / `evalhub-job-model-access` | `evaluated-models` | Wave 21. `get` on this InferenceService for the tenant job ServiceAccount `evalhub-evalhub-job` (implicit authentication). |
 | ServiceAccount, Secret (`kubernetes.io/service-account-token`), Role, RoleBinding | `candidate-model-client`, `candidate-model-client-token` | `evaluated-models` | Wave 12. A token that may only `get` InferenceServices in this project, used as the candidate API key. |
 | ConfigMap | `candidate-model-service-ca` | `evaluated-models` | Wave 12. Injected service CA. |
