@@ -24,7 +24,7 @@ description: >
 
 Repo-specific skill: how this demo decides whether a model qualifies for the
 coding tools. Running the jobs is `rhoai-evaluation`. Detailed record:
-`stages/050-model-evaluation/edd/README.md`,
+`stages/050-model-evaluation/qualification/README.md`,
 `gitops/stages/050-model-evaluation/050-model-qualification/README.md`,
 `stages/050-model-evaluation/README.md` ("Model qualification pipeline").
 The legacy RAG judge, LMEvalJob templates and `backup/` scripts of the old
@@ -40,21 +40,21 @@ skill are not in this repo and are not used (LM-Eval is deprecated in 3.5).
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Criteria are defined before models are compared: versioned EvalHub collections for capability (LiveCodeBench alone; MBPP + HumanEval), latency and throughput, and the `garak` catalog gate for the risk assessment (`intents`, Context-aware vulnerability scan) | `gitops/stages/050-model-evaluation/050-evaluation-content/edd/`, `stages/050-model-evaluation/edd/README.md` | [Add a collection by ConfigMap][collcm], [Automated risk assessment][risk] |
+| Criteria are defined before models are compared: versioned EvalHub collections for capability (LiveCodeBench alone; MBPP + HumanEval), latency and throughput, and the `garak` catalog gate for the risk assessment (`intents`, Context-aware vulnerability scan) | `gitops/stages/050-model-evaluation/050-evaluation-content/edd/`, `stages/050-model-evaluation/qualification/README.md` | [Add a collection by ConfigMap][collcm], [Automated risk assessment][risk] |
 | The risk assessment runs as a single task in the evaluation job pod (built-in `garak` provider), not as a nested `garak-kfp` pipeline (decision 2026-10-23); `intents` needs abliterated SDG and judge models (a safety-aligned model sanitised every harmful intent), which it reads from the candidate Secret's `judge_url`/`sdg_url` | `stages/050-model-evaluation/qualification/pipeline.py`, `gitops/stages/050-model-evaluation/050-model-qualification/risk-assessment-gemma-2-9b-abliterated.yaml` | [Automated risk assessment][risk] |
-| One dimension per collection, because a job score is one weighted average against one threshold and the metrics do not share scale or direction | `stages/050-model-evaluation/edd/README.md` | [Create a custom collection][custom] |
+| One dimension per collection, because a job score is one weighted average against one threshold and the metrics do not share scale or direction | `stages/050-model-evaluation/qualification/README.md` | [Create a custom collection][custom] |
 | A changed criterion is a new `-vN` collection, never an in-place edit, so each MLflow run stays tied to the criteria that judged it; old versions stay registered | `gitops/stages/050-model-evaluation/050-evaluation-content/edd/` | [MLflow experiment tracking][mlflow] |
 | One candidate per pipeline run, judged on fixed gates only (no production baseline, decision 2026-10-23); the report reads only this run's jobs (tag `run=<pipeline run id>`); QUALIFIED needs every evaluation run and passed plus capability 3:2:1 at least 0.50 | `stages/050-model-evaluation/qualification/pipeline.py` | not product guidance |
 | The verdict and each benchmark's result, evaluation page, MLflow run and pipeline run are recorded on the model registry version (`model_version_id` run parameter); `record.sh` does the same for a manual job | `stages/050-model-evaluation/qualification/pipeline.py`, `stages/050-model-evaluation/evaluation/record.sh` | not product guidance |
 | A candidate is a project `InferenceService` with the same revision and serving arguments as production, so a pass carries over on promotion; it is stopped in Git between runs | `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Compare evaluation runs][compare] |
-| CI gating template uses the EvalHub CLI with a full job body | `stages/050-model-evaluation/edd/agentic-coding-python-tasks.ci.yaml` | [Install the SDK and CLI][cli] |
+| CI gating template uses the EvalHub CLI with a full job body | `stages/050-model-evaluation/evaluation/agentic-coding-python-tasks.ci.yaml` | [Install the SDK and CLI][cli] |
 
 ## Procedure
 
 1. New or changed criterion: add `agentic-coding-<dimension>-v<N+1>.yaml` under
    `gitops/stages/050-model-evaluation/050-evaluation-content/edd/`, list it in the
    EvalHub CR (`rhoai-evaluation`), update the table in
-   `stages/050-model-evaluation/edd/README.md`, and add a pipeline step only
+   `stages/050-model-evaluation/qualification/README.md`, and add a pipeline step only
    through `rhoai-kfp-pipeline-authoring` (new PipelineVersion).
 2. Deploy and validate Stage 050 at one SHA:
 

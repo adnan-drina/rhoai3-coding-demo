@@ -15,6 +15,10 @@ cluster guard first, and give the user's token to `curl` only through `--config`
 samples per problem, the sidecar's 30-second request limit, the adapter's one-hour limit) is described in the Stage 050
 README. Check a completed job together with its MLflow run with `validate.sh --job-id ID --mlflow-run-id RUN`.
 
+From CI, run one collection with the EvalHub CLI and a full job body: `evalhub eval run --config
+agentic-coding-python-tasks.ci.yaml --wait` exits non-zero when the job fails. The file is the template (RHOAI 3.5
+"Evaluating AI systems" 2.4, 2.10); replace `MODEL_URL` and pass a token of `evalhub-automation`.
+
 ## Garak in pipeline mode (`garak-kfp`)
 
 `garak-kfp` runs the scan as a run on this project's pipeline server. Every job carries the model auth Secret

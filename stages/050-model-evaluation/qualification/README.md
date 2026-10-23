@@ -1,4 +1,10 @@
-# Agentic coding evaluation (evaluation-driven development)
+# Agentic coding model qualification
+
+The qualification criteria and the AI pipeline that applies them to a candidate model. `pipeline.py` defines the
+pipeline and `compile.py` compiles it into the PipelineVersion that Stage 050 applies
+(`gitops/stages/050-model-evaluation/050-model-qualification/pipeline/`).
+
+## Criteria (evaluation-driven development)
 
 Criteria are defined before models are compared. Capability and performance live as four versioned EvalHub
 collections (`gitops/stages/050-model-evaluation/050-evaluation-content/edd/`, RHOAI 3.5 "Evaluating AI systems"
@@ -37,15 +43,25 @@ provider translated with the risk assessment model and one scan ran past its 2 h
 model and judge). The `garak-kfp` provider stays available for manual pipeline-mode scans
 ([evaluation README](../evaluation/README.md)).
 
-The qualification pipeline in the **Evaluated Models** project runs all five for one candidate per run, judges
-them against these gates and records the verdict on the candidate's model registry version (Stage 050 README,
-"Model qualification pipeline"). It runs the risk assessment twice, on the bare model and through the candidate's
-NeMo Guardrails (`candidate-guardrails`); the guarded result is the risk gate.
+Change criteria in a new `-v<N+1>` collection, never in place, so every MLflow run stays attributable to the
+criteria it was judged by.
 
-A single evaluation can also run by hand from **Develop & train → Evaluations** or with
-`../evaluation/submit.sh --model-name ID --collection NAME` (or `--provider garak --benchmark intents`, or `--provider garak-kfp --benchmark ...`, see
-[evaluation/README.md](../evaluation/README.md)).
+A single evaluation can also run by hand from **Develop & train → Evaluations**, with
+`../evaluation/submit.sh --model-name ID --collection NAME` (or `--provider garak --benchmark intents`, or
+`--provider garak-kfp --benchmark ...`), or from CI with the EvalHub CLI
+(`../evaluation/agentic-coding-python-tasks.ci.yaml`); see [evaluation/README.md](../evaluation/README.md).
 
-CI gating uses the CLI with a full job body (`evalhub eval run --config <file> --wait` exits non-zero when the
-job fails); `agentic-coding-python-tasks.ci.yaml` is the template. Change criteria in a new `-v<N+1>` collection,
-never in place, so every MLflow run stays attributable to the criteria it was judged by.
+## Pipeline
+
+The pipeline in the **Evaluated Models** project runs all five for one candidate per run, judges them against these
+gates and records the verdict on the candidate's model registry version (Stage 050 README, "Model qualification
+pipeline"). It runs the risk assessment twice, on the bare model and through the candidate's NeMo Guardrails
+(`candidate-guardrails`); the guarded result is the risk gate. The steps form one chain: `validate`, one step per
+evaluation, `verdict` (gates plus the weighted capability score) and `report` (HTML report and summary metrics).
+
+- **Run:** dashboard **Create run** with the latest version, MLflow experiment `models-onboarding`, `model_name` and
+  `model_version_id` (OPERATIONS, "Stage 050 model qualification pipeline").
+- **Change:** edit `pipeline.py`, compile with kfp 2.16.1 (`python compile.py v<N>`), commit, deploy Stage 050 at that
+  SHA, then delete the previous PipelineVersion (`oc delete pipelineversion
+  agentic-coding-model-qualification-v<N-1> -n evaluated-models`), which Argo CD does not prune. A new criterion
+  needs a new collection version first, then the pipeline step that names it (`EVALUATIONS` in `pipeline.py`).
