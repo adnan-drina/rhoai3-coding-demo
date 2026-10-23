@@ -47,7 +47,7 @@ skill are not in this repo and are not used (LM-Eval is deprecated in 3.5).
 | One candidate per pipeline run, judged on fixed gates only (no production baseline, decision 2026-10-23); the report reads only this run's jobs (tag `run=<pipeline run id>`); QUALIFIED needs every evaluation run and passed plus capability 3:2:1 at least 0.50 | `stages/050-model-evaluation/qualification/pipeline.py` | not product guidance |
 | The verdict and each benchmark's result, evaluation page, MLflow run and pipeline run are recorded on the model registry version (`model_version_id` run parameter); `record.sh` does the same for a manual job | `stages/050-model-evaluation/qualification/pipeline.py`, `stages/050-model-evaluation/evaluation/record.sh` | not product guidance |
 | A candidate is a project `InferenceService` with the same revision and serving arguments as production, so a pass carries over on promotion; it is stopped in Git between runs | `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Compare evaluation runs][compare] |
-| CI gating template uses the EvalHub CLI with a full job body | `stages/050-model-evaluation/evaluation/agentic-coding-python-tasks.ci.yaml` | [Install the SDK and CLI][cli] |
+| CI gating uses the EvalHub CLI with the job body `submit.sh --dry-run` prints; no template is kept | `stages/050-model-evaluation/evaluation/README.md` | [Install the SDK and CLI][cli] |
 
 ## Procedure
 

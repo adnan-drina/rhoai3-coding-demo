@@ -48,8 +48,7 @@ criteria it was judged by.
 
 A single evaluation can also run by hand from **Develop & train → Evaluations**, with
 `../evaluation/submit.sh --model-name ID --collection NAME` (or `--provider garak --benchmark intents`, or
-`--provider garak-kfp --benchmark ...`), or from CI with the EvalHub CLI
-(`../evaluation/agentic-coding-python-tasks.ci.yaml`); see [evaluation/README.md](../evaluation/README.md).
+`--provider garak-kfp --benchmark ...`); see [evaluation/README.md](../evaluation/README.md).
 
 ## Pipeline
 
