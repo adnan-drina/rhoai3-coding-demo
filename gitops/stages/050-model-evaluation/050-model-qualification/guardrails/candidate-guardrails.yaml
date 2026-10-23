@@ -85,7 +85,7 @@ metadata:
     app.kubernetes.io/name: candidate-guardrails
     app.kubernetes.io/component: guardrails
   annotations:
-    # The route and Service require a token with get on services/candidate-guardrails-service (kube-rbac-proxy).
+    # The route and Service require a token with get on services in this project (kube-rbac-proxy).
     security.opendatahub.io/enable-auth: "true"
     argocd.argoproj.io/sync-wave: "14"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
@@ -121,8 +121,9 @@ spec:
           key: api-key
 ---
 # Evaluation jobs reach the guardrail with the candidate-model-client token (Secret garak-kfp-model-auth, api-key);
-# kube-rbac-proxy admits a caller that may get services named <name>-service (the 3.5.2 operator's proxy config), which
-# is not the name of the Service it creates (<name>).
+# kube-rbac-proxy admits a caller that may get services in this project. The 3.5.2 operator's proxy config sets
+# resourceName: <name>-service, a key kube-rbac-proxy does not read (it reads name), so the check carries no name and
+# a Role limited by resourceNames never matches.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -136,7 +137,6 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: [services]
-    resourceNames: [candidate-guardrails-service]
     verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
