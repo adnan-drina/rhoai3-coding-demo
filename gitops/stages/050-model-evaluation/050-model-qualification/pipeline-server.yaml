@@ -157,11 +157,16 @@ spec:
               # By operator decision (2026-10-12) the plugin skips TLS verification for those calls. The flag is
               # set in a copy of the operator-generated server config, used through the DSPA's
               # apiServer.customServerConfigMap; delete the copy and the DSPA field to return to the default.
+              # The same copy sets the plugin's default MLflow experiment to models-onboarding (operator decision
+              # 2026-10-23): garak-kfp creates its runs with the KFP SDK, which sends no plugins_input, so their
+              # step runs would otherwise land in AIP-default instead of beside the EvalHub job's run.
               CUSTOM=ds-pipeline-server-config-custom
               base=$CUSTOM; oc $T get configmap "$CUSTOM" -n "$NS" >/dev/null 2>&1 || base=ds-pipeline-server-config-dspa
               config=$(oc $T get configmap "$base" -n "$NS" -o jsonpath='{.data.config\.json}')
               [[ "$config" == *'"insecureSkipVerify":'* ]] || { echo "ERROR: $base has no MLflow plugin TLS setting" >&2; exit 1; }
+              [[ "$config" == *'"defaultExperimentName":'* ]] || { echo "ERROR: $base has no MLflow default experiment" >&2; exit 1; }
               config=${config//'"insecureSkipVerify":false'/'"insecureSkipVerify":true'}
+              config=${config//'"defaultExperimentName":"AIP-default"'/'"defaultExperimentName":"models-onboarding"'}
               oc $T create configmap "$CUSTOM" -n "$NS" --from-literal=config.json="$config" --dry-run=client -o yaml | oc $T apply -f - >/dev/null
               if [[ "$(oc $T get dspa dspa -n "$NS" -o jsonpath='{.spec.apiServer.customServerConfigMap.name}')" != "$CUSTOM" ]]; then
                 oc $T patch dspa dspa -n "$NS" --type=merge -p "{\"spec\":{\"apiServer\":{\"customServerConfigMap\":{\"name\":\"$CUSTOM\",\"key\":\"config.json\"}}}}" >/dev/null

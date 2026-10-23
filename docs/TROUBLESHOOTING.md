@@ -2694,6 +2694,22 @@ oc logs -n evaluated-models -l provider_id=garak-kfp -c adapter --since=1h | gre
 
 **Recover:** Treat the result as void and do not record it (`record.sh` refuses a Garak result without per-probe metrics). Rerun with the Secret `garak-kfp-model-auth`: dashboard **Other (External endpoint)** or `submit.sh` ([evaluation README](../stages/050-model-evaluation/evaluation/README.md)). A valid result lists one `<probe>_asr` metric per probe.
 
+## EvalHub Rejects Every Job With "Workspace context is required"
+
+**Affected stage:** Stage 050, EvalHub, RHOAI 3.5.2 (seen 2026-10-23 after a cluster start)
+
+**Symptom:** Every job submission (dashboard or `submit.sh`) fails with HTTP 400 `mlflow_request_failed`: `Workspace context is required for this request.` Jobs that do not log to MLflow are not affected.
+
+**Likely cause:** EvalHub probes MLflow for workspace support once, at startup. When it starts before MLflow answers (both restart with the cluster), the probe fails, EvalHub logs `Could not probe MLflow workspace support; workspace headers will not be sent` and keeps sending requests without the workspace header until it restarts.
+
+**Recover:** Delete the EvalHub pod once MLflow is Ready (`oc delete pod -n evalhub -l app=eval-hub,component=api`). A `rollout restart` does not work: the EvalHub operator owns the Deployment and reverts the restart annotation. The new pod logs `MLflow workspace support probed` with `workspaces_enabled: true`.
+
+**Diagnose:**
+
+```bash
+oc logs -n evalhub deploy/evalhub -c evalhub | grep -E 'workspace support probed|Could not probe MLflow'
+```
+
 ## Evaluation Score Shows "-" Or Thousands Of Percent
 
 **Affected stage:** Stage 050, Evaluations page, RHOAI 3.5.1
