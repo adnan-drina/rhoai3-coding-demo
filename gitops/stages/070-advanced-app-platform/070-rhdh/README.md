@@ -26,9 +26,9 @@ Developer Hub is the last component in the deploy order. Its catalog hook needs 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | OperatorGroup | `rhdh-operator` | `rhdh-operator` | No target namespaces: all-namespaces mode (wave 1) |
-| Subscription | `rhdh` | `rhdh-operator` | Channel `fast-1.10`, `installPlanApproval: Manual`, `startingCSV: rhdh-operator.v1.10.5`, `redhat-operators` (wave 2) |
+| Subscription | `rhdh` | `rhdh-operator` | Channel `fast-1.10`, `installPlanApproval: Manual`, `startingCSV: rhdh-operator.v1.10.6`, `redhat-operators` (wave 2) |
 | ServiceAccount, Role, RoleBinding | `approve-installplan` | `rhdh-operator` | `get`/`list`/`patch` InstallPlans; `get` on Subscription `rhdh` only (wave 1) |
-| Job (Sync hook) | `approve-installplan` | `rhdh-operator` | Approves this operator's InstallPlan only if every CSV is on its allowlist (`rhdh-operator.v1.10.5`), then waits for that CSV (wave 2; `BeforeHookCreation,HookSucceeded`) |
+| Job (Sync hook) | `approve-installplan` | `rhdh-operator` | Approves this operator's InstallPlan only if every CSV is on its allowlist (`rhdh-operator.v1.10.6`), then waits for that CSV (wave 2; `BeforeHookCreation,HookSucceeded`) |
 
 The `rhdh-operator` and `rhdh` namespaces come from `070-namespaces`.
 
@@ -64,7 +64,7 @@ Not in Git: the Deployment `backstage-developer-hub`, StatefulSet `backstage-psq
 
 ## How
 
-- **Installation.** The Subscription uses the documented `fast-1.10` channel in the recommended `rhdh-operator` namespace with all-namespaces mode [1]. Approval is `Manual`. This component's own `approve-installplan` hook approves the plan only if every CSV in it is on its allowlist (`rhdh-operator.v1.10.5`) and waits until that CSV is installed; its Role reaches only `rhdh-operator` InstallPlans and the `rhdh` Subscription. The validator expects exactly `rhdh-operator.v1.10.5`, so a z-stream update is a reviewed change.
+- **Installation.** The Subscription uses the documented `fast-1.10` channel in the recommended `rhdh-operator` namespace with all-namespaces mode [1]. Approval is `Manual`. This component's own `approve-installplan` hook approves the plan only if every CSV in it is on its allowlist (`rhdh-operator.v1.10.6`) and waits until that CSV is installed; its Role reaches only `rhdh-operator` InstallPlans and the `rhdh` Subscription. The validator expects exactly `rhdh-operator.v1.10.6`, so a z-stream update is a reviewed change.
 - **Ordering inside the Application.** Wave 5 creates config; wave 7 the bundle and generator RBAC; wave 17 the catalog Job; wave 18 the `Backstage` CR and the configure Job; wave 19 the refresh CronJob, so a failed refresh cannot gate setup.
 - **Catalog generation.** `generate.sh` reads the synced revision from `070-rhdh` `status.operationState.syncResult.revision`. `render_catalog.py verify` reads every bundled file from the GitLab API with the read-only `gitlab-catalog-reader` token and refuses `FACTORY_BUNDLE_MISMATCH` when any byte differs. `render` substitutes the Dev Spaces, SonarQube, Coolstore, MaaS and GitLab values and refuses any unresolved placeholder. The result is stamped with `rhoai3.redhat.com/catalog-revision` and `catalog-bundle`. Template Locations of a previous revision are no longer emitted, so the catalog deletes them as orphans (`orphanStrategy: delete`); the generator has no database access.
 - **Catalog sources.** Only the file location may introduce `Template` entities. The GitLab discovery provider reads `catalog-info.yaml` on `main` in the `rhoai-workloads` group every minute and may not ingest templates. Templates publish private repositories and open an enrollment issue; they do not call `catalog:register`. `orphanStrategy: delete` removes retired entities.
@@ -80,7 +80,7 @@ Not in Git: the Deployment `backstage-developer-hub`, StatefulSet `backstage-psq
 
 `validate.sh` checks for this component:
 
-- `rhdh installed revision` and `rhdh-operator.v1.10.5 succeeded`.
+- `rhdh installed revision` and `rhdh-operator.v1.10.6 succeeded`.
 - `Portal instance exists`, `Portal catalog bundle stamped`, `Portal catalog has no unresolved placeholders`, `Portal templates use private GitLab mirror`, `Developer Hub reachable`.
 - `Scoped integration Secret rhdh/gitlab-publisher exists` and `rhdh/gitlab-catalog-reader exists`.
 - `Stage 070 corrected security boundaries` (`stages/070-advanced-app-platform/validate.sh`): no apply annotation on `rhdh-gitlab`, `rhdh-local-user` or any Secret in `rhdh`; Developer Hub's Argo CD token equals the operator's `rhdh-local-user` token; `job-configure-rhdh` cannot read the master admin Secret; `stage070-rhdh-provisioner` can read only its `platform` client and cannot administer `sso` or `master`; `platform-ingress` is installed in `rhdh`.

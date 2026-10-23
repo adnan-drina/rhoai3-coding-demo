@@ -35,7 +35,7 @@ linked only to translate Helm-only examples. Detailed record:
 
 | Helm chart concept | Operator equivalent in Git | Official section |
 |---|---|---|
-| Install (`helm install`) | `rhdh` Subscription `fast-1.10`, Manual approval, CSV `rhdh-operator.v1.10.5`: `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/` | [Install with the Operator][op-install], [Helm install (not used)][helm-install] |
+| Install (`helm install`) | `rhdh` Subscription `fast-1.10`, Manual approval, CSV `rhdh-operator.v1.10.6`: `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/` | [Install with the Operator][op-install], [Helm install (not used)][helm-install] |
 | `route.enabled` | Operator-created Route (Operator default); hostname read by the hooks: `070-rhdh/rhdh-instance/backstage.yaml` | [Route values][route] |
 | `global.dynamic.plugins`, `global.dynamic.includes` | ConfigMap `dynamic-plugins-rhdh` via `dynamicPluginsConfigMapName` (`rhdh-dynamic-plugins-install`) | [Global values][global] |
 | `upstream.backstage.appConfig`, `extraAppConfig` | ConfigMap `app-config-rhdh` via `spec.application.appConfig` | [Upstream values][upstream] |

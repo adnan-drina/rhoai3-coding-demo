@@ -11,4 +11,4 @@ spec:
   source: redhat-operators
   sourceNamespace: openshift-marketplace
   installPlanApproval: Manual
-  startingCSV: rhdh-operator.v1.10.5
+  startingCSV: rhdh-operator.v1.10.6

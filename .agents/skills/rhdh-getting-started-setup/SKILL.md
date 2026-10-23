@@ -34,7 +34,7 @@ day-2 notes: `docs/OPERATIONS.md#stage-070--developer-hub-rhdh-component`.
 
 | Decision (checklist step) | Where in Git | Official section |
 |---|---|---|
-| Install the Operator: `rhdh` Subscription, `fast-1.10`, Manual approval, `startingCSV: rhdh-operator.v1.10.5`, own allow-listing approval hook | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/` | [Install the Operator][install] |
+| Install the Operator: `rhdh` Subscription, `fast-1.10`, Manual approval, `startingCSV: rhdh-operator.v1.10.6`, own allow-listing approval hook | `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/` | [Install the Operator][install] |
 | External services: Operator-managed local PostgreSQL (Deviation: demo); GitLab mirror and tokens from `070-gitlab`; Keycloak from Stage 010 | `070-rhdh/README.md` ("Depends on") | [Prepare external services][external] |
 | Provision custom configuration: ConfigMaps `app-config-rhdh`, `dynamic-plugins-rhdh`, `rhdh-rbac-policies`; Secret `rhdh-secrets` filled by `job-configure-rhdh` | `070-rhdh/rhdh-instance/`, `070-rhdh/jobs/configure-rhdh.yaml` | [Provision custom configuration][provision] |
 | Authentication: OIDC to Keycloak realm `platform`, client `rhdh`, `auth.environment: production` (no guest), resolver `preferredUsernameMatchingUserEntityName`; Users `ai-admin`, `ai-developer` are static catalog entities (Deviation: no RHBK user import) | `070-rhdh/rhdh-instance/app-config-configmap.yaml`, `070-rhdh/catalog/all.yaml` | [Enable authentication with RHBK][rhbk], [Disable guest login][guest], [Import users from RHBK][import] |

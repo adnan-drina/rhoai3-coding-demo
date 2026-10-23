@@ -24,7 +24,7 @@ Developer Hub 1.10 sections. Detailed record:
 ## When to use
 
 - A new RHDH z-stream (1.10.x) or minor is to be adopted.
-- The installed CSV differs from `rhdh-operator.v1.10.5` or an InstallPlan
+- The installed CSV differs from `rhdh-operator.v1.10.6` or an InstallPlan
   stays pending in `rhdh-operator`.
 
 ## Repo decisions

@@ -8,7 +8,7 @@ metadata:
   skill-group: "Developer Hub"
 description: >
   Use when checking what Red Hat Developer Hub 1.10 release notes say about a
-  feature this demo depends on: fixed issues per z-stream (1.10.0 to 1.10.5),
+  feature this demo depends on: fixed issues per z-stream (1.10.0 to 1.10.6),
   Technology and Developer Preview status, deprecated and removed features
   (embedded Tekton and Argo CD wrappers, floating action button), and known
   issues before reporting a bug. Do NOT use for product concepts (use
@@ -19,7 +19,7 @@ description: >
 # Developer Hub release notes
 
 Thin skill: which release-note facts the repo depends on; the notes
-themselves are linked, not copied. Deployed version: `rhdh-operator.v1.10.5`
+themselves are linked, not copied. Deployed version: `rhdh-operator.v1.10.6`
 (`gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/subscription.yaml`).
 
 ## When to use
@@ -66,7 +66,7 @@ themselves are linked, not copied. Deployed version: `rhdh-operator.v1.10.5`
 | New features | [New features and enhancements][new] |
 | Preview posture | [Technology Preview][tp], [Developer Preview][dp] |
 | Deprecated, removed | [Deprecated features][deprecated], [Removed features][removed] |
-| Issues | [Known issues][known], [Fixed issues][fixed] ([1.10.5][fix-1105]), [Security fixes][sec] |
+| Issues | [Known issues][known], [Fixed issues][fixed] ([1.10.6][fix-1106], [1.10.5][fix-1105]), [Security fixes][sec] |
 
 ## Related skills
 
@@ -80,5 +80,6 @@ themselves are linked, not copied. Deployed version: `rhdh-operator.v1.10.5`
 [removed]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#removed-features
 [known]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#known-issues
 [fixed]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#fixed-issues
+[fix-1106]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#fixed-issues-in-1-10-6
 [fix-1105]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#fixed-issues-in-1-10-5
 [sec]: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/red_hat_developer_hub_release_notes/index#fixed-security-issues

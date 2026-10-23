@@ -65,9 +65,9 @@ spec:
         - name: SUBSCRIPTION
           value: rhdh
         - name: EXPECTED_CSV
-          value: rhdh-operator.v1.10.5
+          value: rhdh-operator.v1.10.6
         - name: ALLOWED_CSVS
-          value: rhdh-operator.v1.10.5
+          value: rhdh-operator.v1.10.6
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

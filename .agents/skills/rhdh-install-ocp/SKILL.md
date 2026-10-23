@@ -36,7 +36,7 @@ Developer Hub 1.10 sections. Detailed record:
 |---|---|---|
 | Operator path, not the Helm chart (Helm is not used) | `070-rhdh/rhdh-operator/`, `070-rhdh/rhdh-instance/backstage.yaml` | [Installation methods][methods] |
 | Namespace `rhdh-operator`, OperatorGroup without target namespaces (all-namespaces mode; a specific namespace is not supported) | `070-rhdh/rhdh-operator/operatorgroup.yaml` | [Install the Operator][install-op] |
-| Subscription `rhdh`: channel `fast-1.10` (z-streams only), `installPlanApproval: Manual`, `startingCSV: rhdh-operator.v1.10.5`, `redhat-operators` | `070-rhdh/rhdh-operator/subscription.yaml` | [Install the Operator][install-op] |
+| Subscription `rhdh`: channel `fast-1.10` (z-streams only), `installPlanApproval: Manual`, `startingCSV: rhdh-operator.v1.10.6`, `redhat-operators` | `070-rhdh/rhdh-operator/subscription.yaml` | [Install the Operator][install-op] |
 | Sync hook `approve-installplan` approves only InstallPlans whose CSVs are all on its allowlist, then waits for the CSV; its Role reaches only `rhdh-operator` InstallPlans and Subscription `rhdh` | `070-rhdh/rhdh-operator/approve-installplan.yaml` | — (repo control) |
 | Instance is the `Backstage` CR `developer-hub` in `rhdh` (wave 18), configured only through ConfigMaps, Secrets and the CR | `070-rhdh/rhdh-instance/` | [Provision custom configuration][provision], [Run with custom configuration][run-op] |
 | Namespaces `rhdh-operator` and `rhdh` come from `070-namespaces`; `070-rhdh` is deploy-order 8 (last) of Stage 070 | `gitops/stages/070-advanced-app-platform/070-namespaces/`, `gitops/applications/070-rhdh.yaml` | — |
@@ -48,7 +48,7 @@ Paths are relative to `gitops/stages/070-advanced-app-platform/` unless absolute
 1. Change the Subscription, allowlist and validator together: a new CSV is a
    reviewed change in `subscription.yaml`, `approve-installplan.yaml` and
    `stages/070-advanced-app-platform/validate.sh` (it expects exactly
-   `rhdh-operator.v1.10.5`). Keep the map pin consistent
+   `rhdh-operator.v1.10.6`). Keep the map pin consistent
    (`python3 .agents/tools/check-doc-links.py --family rhdh`).
 2. Deploy and validate through the stage scripts after the OpenShift safety
    guard in `AGENTS.md`:
