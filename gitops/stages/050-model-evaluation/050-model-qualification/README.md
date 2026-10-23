@@ -88,6 +88,7 @@ ready.
 | RoleBinding | `pipeline-runner-evalhub-access` | `evaluated-models` | Wave 15. `evalhub-evaluator` for `pipeline-runner-dspa`. |
 | RoleBinding | `pipeline-runner-dspa-api` | `evaluated-models` | Wave 15. `ds-pipeline-user-access-dspa` for `pipeline-runner-dspa`: the record step reads the garak-kfp pipeline run of each security job to link it. |
 | RoleBinding | `pipeline-runner-demo-registry` | `rhoai-model-registries` | Wave 15. The operator-created `registry-user-demo-registry` Role (the one the dashboard's registry permissions bind) for `pipeline-runner-dspa`: the record step writes the verdict on the candidate's model version. |
+| NetworkPolicy | `demo-registry-qualification-pipeline` | `rhoai-model-registries` | Wave 15. Admits the qualification pipeline's step pods (`pipelines.kubeflow.org/v2_component: "true"` in `evaluated-models`) to the registry API on 8443. The operator's own `demo-registry-https-route` admits only the router and RHOAI-generated namespaces, so an in-cluster call from this project timed out. |
 
 ### `pipeline/`
 
