@@ -21,4 +21,3 @@ resources:
   - candidate-model-auth.yaml
   - risk-assessment-gemma-2-9b-abliterated.yaml
   - garak-kfp-access.yaml
-  - garak-kfp-pipeline-api-netpol.yaml

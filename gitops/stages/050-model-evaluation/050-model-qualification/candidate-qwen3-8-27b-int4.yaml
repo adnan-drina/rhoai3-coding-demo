@@ -56,9 +56,7 @@ metadata:
     # Stopped 2026-10-22 evening for shutdown; set "false" and start an L40S worker (GPU_POOL=l40s deploy.sh --gpus 1) to resume.
     serving.kserve.io/stop: "true"
     serving.kserve.io/deploymentMode: RawDeployment
-    # Off for the 2026-10-22 test of garak-kfp from the dashboard's project model list: those jobs carry no model
-    # auth Secret, so the scan pods have no api-key for the candidate.
-    security.opendatahub.io/enable-auth: "false"
+    security.opendatahub.io/enable-auth: "true"
     opendatahub.io/hardware-profile-name: gpu-reserved-demo
     opendatahub.io/hardware-profile-namespace: redhat-ods-applications
     # Last wave: a stopped candidate (serving.kserve.io/stop) reports Suspended, and Argo CD waits for each
