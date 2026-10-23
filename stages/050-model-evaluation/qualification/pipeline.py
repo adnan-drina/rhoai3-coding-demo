@@ -5,11 +5,11 @@ Run parameters: model_name (an InferenceService in this project), model_version_
 plus one skip_<evaluation> switch per evaluation (all evaluations run unless a switch is set).
 
 Graph, one straight chain in the style of the garak-kfp pipeline (evalhub-garak-scan): validate -> latency ->
-throughput -> livecodebench -> python-tasks -> security -> risk-assessment -> verdict -> report. Every step runs
-after the step before it and takes run parameters; only verdict hands report its summary, as garak's steps hand on
-their datasets. The evaluation steps publish no artifacts (each job's results stay in EvalHub, MLflow and on the
-registry version); verdict judges the run and records it on the registry version, and the last step, report,
-publishes html_report and summary_metrics, like garak's write-kfp-outputs. A skipped evaluation step still runs in its place and ends without submitting an
+throughput -> livecodebench -> python-tasks -> security -> risk-assessment -> verdict -> report. As garak's steps
+hand on their datasets, each step hands the next a results ledger: validate starts it (candidate), every evaluation
+appends its job and benchmark results (results), so the graph shows the intermediate results between the steps;
+verdict reads the ledger, judges the run against the gates and records it on the registry version, and the last step,
+report, publishes html_report and summary_metrics, like garak's write-kfp-outputs. A skipped evaluation step still runs in its place and ends without submitting an
 EvalHub job, as garak's own steps do for benchmarks that do not need them.
 
 Each evaluation step follows the EvalHub CI/CD pattern ("Add automated AI evaluations to your CI/CD pipeline"):
@@ -19,8 +19,8 @@ each (avid_security, intents), because garak-kfp needs the candidate's own URL i
 cannot carry. Every job uses the candidate model auth Secret garak-kfp-model-auth (api-key and ca_cert for the
 evaluation sidecar, plus the pipeline, Kubernetes and helper-model keys garak-kfp needs) and logs to the MLflow
 experiment models-onboarding, where the pipeline server also tracks this run and the garak-kfp pipeline runs. Every
-job carries the tag run=<pipeline run id>; the verdict step reads exactly those jobs, so a verdict never mixes
-results of different runs.
+job carries the tag run=<pipeline run id>, and verdict judges exactly the jobs in this run's ledger, so a verdict
+never mixes results of different runs.
 
 Steps call EvalHub, the Kubernetes API, the pipeline server and the model registry as the pipeline server's
 pipeline-runner ServiceAccount (pod token and OpenShift service CA); no credential is a parameter. Compile with
@@ -77,9 +77,10 @@ CAPABILITY_THRESHOLD = 0.5
 
 @dsl.component(base_image=RUNTIME_IMAGE)
 def validate(model_name: str, model_version_id: str, registry_url: str, risk_model: str,
-             skip_risk_assessment: bool):
+             skip_risk_assessment: bool, candidate: dsl.Output[dsl.Dataset]):
     """Fail before any job when the candidate, its registry version or (unless skipped) the risk assessment model
-    is not ready, or the endpoints ConfigMap is missing."""
+    is not ready, or the endpoints ConfigMap is missing. Starts the results ledger that every evaluation step extends
+    (the candidate dataset: model, URL, registry version, no results yet)."""
     import json
     import ssl
     import urllib.error
@@ -112,7 +113,8 @@ def validate(model_name: str, model_version_id: str, registry_url: str, risk_mod
                                f"(Deployments) and run the pipeline again")
         return status.get("url")
 
-    print(f"candidate {model_name}: {ready(model_name)}")
+    url = ready(model_name)
+    print(f"candidate {model_name}: {url}")
     if not skip_risk_assessment:
         print(f"risk assessment model {risk_model}: {ready(risk_model)}")
     version = get(f"{registry_url}/model_versions/{model_version_id}", service_ctx)
@@ -123,6 +125,10 @@ def validate(model_name: str, model_version_id: str, registry_url: str, risk_mod
     if get(f"https://kubernetes.default.svc/api/v1/namespaces/{tenant}/configmaps/qualification-endpoints",
            kube_ctx) is None:
         raise RuntimeError("ConfigMap qualification-endpoints is missing (Stage 050 provisioner hook)")
+    with open(candidate.path, "w") as f:
+        json.dump({"model_name": model_name, "model_url": url, "model_version_id": model_version_id,
+                   "registered_model": registered.get("name"), "model_version": version["name"], "results": []},
+                  f, indent=1)
 
 
 @dsl.component(base_image=RUNTIME_IMAGE, packages_to_install=[EVALHUB_CLI], pip_index_urls=PIP_INDEX)
@@ -142,13 +148,26 @@ def evaluate(
     run_id: str,
     timeout_seconds: int,
     skip: bool,
+    previous: dsl.Input[dsl.Dataset],
+    results: dsl.Output[dsl.Dataset],
 ):
-    """Run one EvalHub collection, or one garak-kfp benchmark, on the candidate and wait for it."""
+    """Run one EvalHub collection, or one garak-kfp benchmark, on the candidate and wait for it. Reads the results
+    ledger of the step before, appends this evaluation (job, state, each benchmark's metric, value, gate and pass) and
+    hands it on, so the run graph shows the intermediate results between the steps as garak's datasets do."""
+    import json
     what = collection_id or f"garak-kfp/{benchmark_id}"
+    with open(previous.path) as f:
+        ledger = json.load(f)
+
+    def hand_on(entry):
+        ledger["results"].append(entry)
+        with open(results.path, "w") as f:
+            json.dump(ledger, f, indent=1)
+
     if skip:
         print(f"{what}: skipped by the run's skip parameter; no EvalHub job submitted")
+        hand_on({"evaluation": what, "skipped": True})
         return
-    import json
     import os
     import re
     import ssl
@@ -232,6 +251,11 @@ def evaluate(
     print(f"{what}: job {job_id} {state} (exit {run.returncode})")
     if state not in ("completed", "failed", "cancelled", "partially_failed"):
         raise RuntimeError(f"job {job_id} did not finish within {timeout_seconds}s (state {state})")
+    hand_on({"evaluation": what, "job_id": job_id, "job_name": body["name"], "state": state, "benchmarks": [
+        {"id": b.get("id"), "metric": (b.get("test") or {}).get("primary_score_metric"),
+         "value": (b.get("test") or {}).get("primary_score"), "threshold": (b.get("test") or {}).get("threshold"),
+         "pass": (b.get("test") or {}).get("pass")}
+        for b in (job.get("results") or {}).get("benchmarks") or []]})
 
 
 @dsl.component(base_image=RUNTIME_IMAGE)
@@ -244,8 +268,9 @@ def verdict(
     evaluations: list,
     run_name: str,
     run_id: str,
+    results: dsl.Input[dsl.Dataset],
 ) -> str:
-    """Judge this run's jobs against their gates (QUALIFIED only when every evaluation ran and passed) and record the
+    """Judge the jobs in this run's results ledger against their gates (QUALIFIED only when every evaluation ran and passed) and record the
     evidence on the model version: per benchmark evalhub.<benchmark>.* (job, results page, verdict, MLflow run,
     garak-kfp pipeline run) and evalhub.qualification.* (verdict and this pipeline run). References, not copies; the
     version's other properties are kept, as stages/050-model-evaluation/evaluation/record.sh does. Returns the summary
@@ -271,18 +296,15 @@ def verdict(
         with urllib.request.urlopen(req, context=context, timeout=60) as r:
             return json.load(r)
 
-    jobs, offset = [], 0
-    while True:
-        page = call(f"{evalhub_url}/api/v1/evaluations/jobs?" + urllib.parse.urlencode(
-            {"tags": f"run={run_id}", "limit": 100, "offset": offset}), tenant_header=True)
-        jobs += page.get("items") or []
-        offset += 100
-        if not page.get("next") or offset >= page.get("total_count", 0):
-            break
-    by_evaluation = {}
-    for job in sorted(jobs, key=lambda j: j["resource"]["created_at"]):
-        key = (job.get("collection") or {}).get("id") or "garak-kfp/" + (job.get("benchmarks") or [{}])[0].get("id", "")
-        by_evaluation[key] = job
+    # The ledger names this run's jobs; each job is read again from EvalHub, which holds the authoritative result.
+    with open(results.path) as f:
+        ledger = json.load(f)
+    by_evaluation, jobs = {}, []
+    for entry in ledger["results"]:
+        if entry.get("job_id"):
+            job = call(f"{evalhub_url}/api/v1/evaluations/jobs/{entry['job_id']}", tenant_header=True)
+            by_evaluation[entry["evaluation"]] = job
+            jobs.append(job)
 
     def benchmark_result(b):
         """(value, pass, note) for one benchmark result of a job."""
@@ -481,23 +503,25 @@ def qualification(
     skips = {"skip_latency": skip_latency, "skip_throughput": skip_throughput, "skip_livecodebench": skip_livecodebench,
              "skip_python_tasks": skip_python_tasks, "skip_security": skip_security,
              "skip_risk_assessment": skip_risk_assessment}
-    previous = _small(_named(validate, "validate")(
+    validated = _small(_named(validate, "validate")(
         model_name=model_name, model_version_id=model_version_id, registry_url=REGISTRY_URL, risk_model=RISK_MODEL,
         skip_risk_assessment=skip_risk_assessment))
-    # One straight chain: each step runs after the one before it and takes only run parameters.
+    ledger = validated.outputs["candidate"]
+    # One straight chain: each step extends the results ledger of the one before it.
     for label, skip_name, collection_id, benchmark_id, timeout in EVALUATIONS:
-        previous = _small(_named(evaluate, label)(
+        step = _small(_named(evaluate, label)(
             model_name=model_name, collection_id=collection_id, benchmark_id=benchmark_id,
             auth_secret=TENANT_SECRET, experiment=EXPERIMENT, evalhub_url=EVALHUB_URL, queue=QUEUE,
             s3_secret=S3_SECRET, risk_model=RISK_MODEL, intents_timeout=INTENTS_TIMEOUT, sdg_num_samples=SDG_NUM_SAMPLES,
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
-            timeout_seconds=timeout, skip=skips[skip_name],
-        ).after(previous))
+            timeout_seconds=timeout, skip=skips[skip_name], previous=ledger,
+        ))
+        ledger = step.outputs["results"]
     judged = _small(_named(verdict, "verdict")(
         model_version_id=model_version_id, evalhub_url=EVALHUB_URL, registry_url=REGISTRY_URL, kfp_url=KFP_URL,
         capability_threshold=CAPABILITY_THRESHOLD, evaluations=[c or f"garak-kfp/{b}" for _, _, c, b, _ in EVALUATIONS],
-        run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
-    ).after(previous))
+        run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER, results=ledger,
+    ))
     _small(_named(report, "report")(
         model_name=model_name, model_version_id=model_version_id, capability_threshold=CAPABILITY_THRESHOLD,
         run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, summary=judged.output,

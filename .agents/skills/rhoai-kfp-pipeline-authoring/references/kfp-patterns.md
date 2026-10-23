@@ -58,10 +58,12 @@ the OpenShift AI 3.5 "Working with AI pipelines" guide; see `rhoai-ai-pipelines`
 - Step names start with a letter; Argo rejects task names that begin with a
   digit.
 - Keep the run graph one straight chain, as the garak-kfp pipeline does: each
-  step takes only run parameters and runs `.after()` the previous one, and
-  intermediate steps publish no output artifacts. The dashboard draws every
-  output artifact as a side node and adds nodes in alphabetical order, so
-  artifacts on every step made the chain zig-zag (v12 worked around it with
+  step publishes one dataset that the next step takes as input (garak hands on
+  taxonomy, SDG and prompt datasets; the qualification pipeline hands on a
+  results ledger), and only the last step publishes result artifacts. The
+  dashboard draws an output artifact as a node: one consumed by the next step
+  sits on the chain, but artifacts nobody consumes hang off the side in
+  alphabetical order, which made v12's chain zig-zag (it worked around that with
   numbered `step-N-` names).
 - Optional steps take a `skip_*` parameter and exit early instead of using
   `dsl.If` when later steps must depend on them in a fixed order.
