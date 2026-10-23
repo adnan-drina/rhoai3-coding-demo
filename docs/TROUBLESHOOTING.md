@@ -2736,6 +2736,8 @@ oc logs -n evaluated-models -l provider_id=garak-kfp -c adapter --since=1h | gre
 
 The same CR also fails when one entry of `spec.nemoConfigs` lists two ConfigMaps, although the guide says it may: the operator log shows `volumeMounts[1].mountPath: Invalid value: "/app/config/<name>": must be unique`. Keep every file of a configuration in one ConfigMap; the Stage 050 hook copies the prompts and rails into `candidate-guardrails-config`.
 
+With `security.opendatahub.io/enable-auth`, a caller whose Role grants `get` on `services/candidate-guardrails` (the Service the operator creates) still gets `403 Forbidden (... verb=get, resource=services ...)`: the operator's kube-rbac-proxy checks `resourceName: <name>-service` (ConfigMap `<name>-rbac-proxy-config`). Grant `get` on `services/candidate-guardrails-service`, as the committed Role does.
+
 ## Guarded Garak Scan Scores Far Better Than Expected
 
 **Affected stage:** Stage 050, `risk-assessment-guarded` (Garak through NeMo Guardrails `candidate-guardrails`)

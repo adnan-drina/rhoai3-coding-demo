@@ -80,7 +80,7 @@ ready.
 | ConfigMap | `candidate-guardrails-prompts` | `evaluated-models` | Wave 12. `prompts.yml` (self-check input: jailbreak, prompt injection and harmful requests in any language; self-check output: harmful content and system-prompt disclosure) and `rails.co`, which the hook copies into `candidate-guardrails-config`; annotation `demo.rhoai.io/guarded-model` names the guarded candidate. |
 | ConfigMap | `candidate-guardrails-trusted-ca` | `evaluated-models` | Wave 12. Cluster trusted CA bundle (`config.openshift.io/inject-trusted-cabundle`), for the MaaS gateway's public certificate. |
 | NemoGuardrails | `candidate-guardrails` | `evaluated-models` | Wave 14, `enable-auth`. Loads `candidate-guardrails-config` only (written by the hook; one ConfigMap per configuration, because the 3.5.2 operator mounts every listed ConfigMap at the same path); CA bundle `candidate-guardrails-ca` with `configMapNamespace` set; `CANDIDATE_API_KEY` from `candidate-model-client-token`, `JUDGE_API_KEY` from `candidate-guardrails-maas`. The operator creates its Deployment, Service (443) and Route. |
-| Role / RoleBinding | `candidate-guardrails-client` | `evaluated-models` | Wave 12. `get` on Service `candidate-guardrails` for `candidate-model-client`, whose token evaluation jobs send through kube-rbac-proxy. |
+| Role / RoleBinding | `candidate-guardrails-client` | `evaluated-models` | Wave 12. `get` on `services/candidate-guardrails-service` for `candidate-model-client`, whose token evaluation jobs send through kube-rbac-proxy. |
 
 The `provision-evalhub-model-auth` hook also mints the `candidate-guardrails` MaaS key (Stage 040 subscription, Nemotron
 10,000,000 tokens/h) into Secret `candidate-guardrails-maas`, writes `candidate-guardrails-config` (`config.yaml`: the
