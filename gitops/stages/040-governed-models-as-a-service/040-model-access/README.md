@@ -36,7 +36,6 @@ All objects are in namespace `models-as-a-service`.
 | MaaSSubscription + MaaSAuthPolicy | `devspaces-coding-models` | ServiceAccount `wksp-ai-developer/devspace-maas-key-provisioner` | `qwen3-8-27b` 60,000,000 (local model only) | 100 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `playground-sandbox` | ServiceAccount `demo-sandbox/playground-maas-key-provisioner` | `gpt-6-luna` 1,000,000 | 50 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `model-qualification` | ServiceAccount `evaluated-models/evalhub-maas-key-provisioner` | `qwen3-8-27b` 5,000,000; each external model 1,000,000 | 70 | 30 |
-| MaaSSubscription + MaaSAuthPolicy | `candidate-guardrails` | ServiceAccount `evaluated-models/evalhub-maas-key-provisioner` | `nemotron-3-ultra-550b-a55b` 10,000,000 | 75 | 30 |
 
 Every subscription sets `tokenMetadata` (`organizationId: rhoai3-coding-demo`, `costCenter: ai-platform`, labels
 `environment`, `provider`, `modelSet`), and every auth policy sets the same `meteringMetadata`.
@@ -45,7 +44,7 @@ Every subscription sets `tokenMetadata` (`organizationId: rhoai3-coding-demo`, `
 
 | Object | Owner |
 |---|---|
-| API keys (stored in the MaaS PostgreSQL database) | Users (dashboard), Stage 070 Dev Spaces provisioner, `040-genai-studio` Job `provision-playground-endpoint`, Stage 050 provisioners (evaluation and guardrail keys), `stages/040-governed-models-as-a-service/validate.sh --functional` (temporary) |
+| API keys (stored in the MaaS PostgreSQL database) | Users (dashboard), Stage 070 Dev Spaces provisioner, `040-genai-studio` Job `provision-playground-endpoint`, Stage 050 provisioner (evaluation key), `stages/040-governed-models-as-a-service/validate.sh --functional` (temporary) |
 | Generated Kuadrant `AuthPolicy` and `TokenRateLimitPolicy` objects | MaaS controller |
 | Other subscriptions in the same namespace: `hermes-private-qwen38`, `opencode-private-qwen38` | `060-openshell-runtime` |
 | Subscription and auth policy `mta-migration-ai` | `070-mta` |
@@ -53,7 +52,7 @@ Every subscription sets `tokenMetadata` (`organizationId: rhoai3-coding-demo`, `
 ## How
 
 **Ordering.** Application wave 4, deploy-order 6, so the `MaaSModelRef`s from deploy-order 5 exist first. Objects use
-wave 18, except `model-qualification` and `candidate-guardrails` at wave 30.
+wave 18, except `model-qualification` at wave 30.
 
 **Owners are users and ServiceAccounts, not groups.** The product examples use groups [1]. This demo binds each
 personal subscription to one user so the demo can show per-person budgets, and binds service subscriptions to the one
@@ -71,10 +70,6 @@ metered as personal use. Service subscriptions have unique owners, so their prio
   external tokens are paid per use.
 - `model-qualification` meters evaluation without becoming its bottleneck: the local limit is above what one GPU
   produces. External models are included because they are evaluated and serve as judge models.
-- `candidate-guardrails` is the NeMo Guardrails judge in front of the Stage 050 qualification candidate: its
-  self-check rails call Nemotron 3 Ultra once or twice per request, a few million tokens an hour during a guarded Garak
-  scan. A separate subscription keeps that traffic off `model-qualification`'s 1,000,000 tokens/h, where a rate-limited
-  judge call would surface as an HTTP error that Garak counts as a refusal.
 - `playground-sandbox` exists only for the GPT-6 Luna playground custom endpoint (see `040-genai-studio`), a workaround
   for RHOAIENG-90257 in the 3.5.1 playground.
 

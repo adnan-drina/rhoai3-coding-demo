@@ -43,7 +43,8 @@ The scheduled archive's PostgreSQL 17.6 dump restored in an isolated, network-di
 
 The audit (`tmp/reviews/2026-10-15/REPORT.md`, local) R01-R15 corrections are on main (`d94519c4`..`05ce4def`). Left open:
 
-- **Qualification evidence identity (R06, second half).** Pipeline v13 to v19 (2026-10-23) binds the verdict to its own run (EvalHub tag `run=<pipeline run id>`) and records it on the model registry version. It is not yet bound to the exact deployment (model revision, quantization, runtime image, GPU type); until then Stage 050 stays pending and the verdict is advisory.
+- **Qualification evidence identity (R06, second half).** Pipeline v13 to v20 (2026-10-23) binds the verdict to its own run (EvalHub tag `run=<pipeline run id>`) and records it on the model registry version. It is not yet bound to the exact deployment (model revision, quantization, runtime image, GPU type); until then Stage 050 stays pending and the verdict is advisory.
+- **Full-depth TAP in the risk assessment (blocked on Garak).** The shipped Garak (`0.15.0+rhaiv.6`) sends empty attacks after TAP's first round, so pipeline v20 runs one round (`depth: 1`). Restore the default depth once a RHOAI release fixes the attacker conversation (TROUBLESHOOTING "Context-Aware Vulnerability Scan Times Out In TAP").
 - **One canonical `secret_writer.py` (R16).** Seven Stage 070 components carry byte-identical copies; generate them from one source with a parity check, keeping each component independently buildable.
 - **Not pursued by decision:** explicit resources on the 35 hook containers (R10) and further hardening, per the demo security posture in `.agents/rules/env.md`; no OOM has been observed.
 
@@ -100,7 +101,7 @@ Zero-replica provider MachineSets, the preinstalled Keycloak PVC and platform re
 - [x] Stage 060 runtime redeployed at `c26d900c` (2026-10-13): `hermes-private-qwen38` and `opencode-private-qwen38` reference `qwen3-8-27b` and are Active/Ready. The emptied `openshell-credentials` key was restored from the running gateway's container config (not rotated; PVC data retained), `setup-runtime.py` now accepts the `/data` delegation from `a769444a`. Open: `setup-ai-agents.py` needs the pinned OpenShell CLI (`RHOAI_STAGE060_OPENSHELL_CLI`), not installed on the operator workstation; local `argocd` v1.7.7 lacks `--core`, so `deploy-runtime.sh` cannot run unmodified (steps were run with `oc`, see `tmp/stage060-redeploy-runtime.sh`).
 - [ ] Publish the Stage 120 OpenCode scaffold and the Stage 130 golden scaffold (`run-defaults.json` now defaults to `qwen3-8-27b`) to their live repositories; the drift checks flag the difference until then.
 - [ ] Stage 050 qualification pipeline: summary metrics/params/tags on the parent MLflow run via the documented `injectUserEnvVars` path, `dsl.If` for skipped steps (verified plan in `tmp/model-study/STUDY.md`).
-- [x] Stage 050 qualification baseline: pipeline v13 (2026-10-23, v19 since) qualifies a candidate on fixed gates only; the production baseline path and its leaderboard were removed.
+- [x] Stage 050 qualification baseline: pipeline v13 (2026-10-23, v20 since) qualifies a candidate on fixed gates only; the production baseline path and its leaderboard were removed.
 
 ## Migration reliability package M-1..M-7 (2026-09-30, unpublished)
 

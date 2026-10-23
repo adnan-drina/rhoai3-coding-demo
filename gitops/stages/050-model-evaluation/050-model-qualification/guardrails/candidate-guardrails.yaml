@@ -1,12 +1,12 @@
 # NeMo Guardrails in front of the qualification candidate ("Enabling AI safety with Guardrails" 3.5, chapter 1):
-# self-check input and output rails judged by Nemotron 3 Ultra through MaaS (subscription candidate-guardrails), so the
+# self-check input and output rails judged by the candidate model itself, as in the guide's basic configuration, so the
 # guarded endpoint can be scanned with the same Garak Context-aware vulnerability scan as the bare model. The
 # guardrail serves chat-style use; its /v1/chat/completions is not a transparent proxy and does not carry tool calls,
 # so it is not placed in front of the coding agents.
 #
 # Files: ConfigMap candidate-guardrails-config, which the provision-evalhub-model-auth hook writes: config.yaml (it
-# carries the cluster's MaaS hostname) plus prompts.yml and rails.co copied from candidate-guardrails-prompts below. The guarded model is named by the
-# demo.rhoai.io/guarded-model annotation and read by that hook.
+# names the guarded model) plus prompts.yml and rails.co copied from candidate-guardrails-prompts below. The guarded
+# model is named by the demo.rhoai.io/guarded-model annotation and read by that hook.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -62,7 +62,7 @@ data:
   rails.co: |
     # Built-in self-check rails only (self check input, self check output).
 ---
-# The cluster's trusted CA bundle (public CAs; the MaaS gateway certificate), injected by the network operator. The
+# The cluster's trusted CA bundle (public CAs), injected by the network operator. The
 # hook combines it with the service CA into candidate-guardrails-ca.
 apiVersion: v1
 kind: ConfigMap
@@ -98,7 +98,7 @@ spec:
       # rejected ("mountPath must be unique"); the hook copies prompts.yml and rails.co into it.
       configMaps:
         - candidate-guardrails-config
-  # Service CA for the candidate predictor and the cluster's trusted CAs for the MaaS gateway. The namespace is
+  # Service CA for the candidate predictor and the cluster's trusted CAs. The namespace is
   # required in 3.5.2 although the guide omits it: without it the operator reads the ConfigMap from an empty namespace
   # (status ca.userCAError) and creates no Deployment.
   caBundleConfig:
@@ -107,18 +107,13 @@ spec:
     configMapKeys:
       - ca-bundle.crt
   env:
-    # The candidate: the token of candidate-model-client, which may get InferenceServices in this project.
+    # The candidate (main model and self-check judge): the token of candidate-model-client, which may get
+    # InferenceServices in this project.
     - name: CANDIDATE_API_KEY
       valueFrom:
         secretKeyRef:
           name: candidate-model-client-token
           key: token
-    # The Nemotron judge: the candidate-guardrails MaaS key.
-    - name: JUDGE_API_KEY
-      valueFrom:
-        secretKeyRef:
-          name: candidate-guardrails-maas
-          key: api-key
 ---
 # Evaluation jobs reach the guardrail with the candidate-model-client token (Secret garak-kfp-model-auth, api-key);
 # kube-rbac-proxy admits a caller that may get services in this project. The 3.5.2 operator's proxy config sets

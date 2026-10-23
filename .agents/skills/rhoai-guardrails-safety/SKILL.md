@@ -39,7 +39,7 @@ dashboard creates one on request. Detailed record:
 | Playground: no guardrail CR in Git; the dashboard's own initialization creates it once the flag is on (the former wrapper `studio-api.sh --initialize-guardrails`, which accepted only a resource named `nemoguardrails`, is in git history at `82092e01`) | — | [CR configuration reference][crref] |
 | NeMo Guardrails only; no FMS `GuardrailsOrchestrator` (3.5 documents migrating from FMS to NeMo) | not in Git | [Migrate from FMS to NeMo][migrate] |
 | Playground guardrail: guarded models are reached through MaaS; no detector or self-check model is deployed | `gitops/stages/040-governed-models-as-a-service/040-local-models/` | [Separate self-check model][selfcheck] |
-| Qualification candidate guardrail `candidate-guardrails` (`evaluated-models`, Git-managed, 2026-10-23): self-check input and output rails judged by Nemotron 3 Ultra through its own MaaS subscription `candidate-guardrails`, `enable_thinking: false` (about 0.5 s per check instead of 8 to 14 s); the guarded model through its internal predictor Service; `config.yaml` written by the Stage 050 hook because it carries the MaaS hostname | `gitops/stages/050-model-evaluation/050-model-qualification/guardrails/`, `.../maas-key-provisioner.yaml`, `gitops/stages/040-governed-models-as-a-service/040-model-access/candidate-guardrails-access.yaml` | [Separate self-check model][selfcheck], [Jailbreak detection][withllm] |
+| Qualification candidate guardrail `candidate-guardrails` (`evaluated-models`, Git-managed, 2026-10-23): self-check input and output rails judged by the candidate model itself through its internal predictor Service (the guide's basic configuration; an external Nemotron 3 Ultra judge was rate-limited by NVIDIA's API under a scan), main output capped at 512 tokens; `config.yaml` written by the Stage 050 hook from the guarded-model annotation | `gitops/stages/050-model-evaluation/050-model-qualification/guardrails/`, `.../maas-key-provisioner.yaml` | [Self-check rails][selfcheckrails], [Jailbreak detection][withllm] |
 | The qualification pipeline scans the guarded endpoint with the same Context-aware vulnerability scan as the bare model; the guarded attack success rate is the risk gate, the bare model's is reported | `stages/050-model-evaluation/qualification/pipeline.py` | not product guidance |
 
 ## Procedure
@@ -75,16 +75,18 @@ dashboard creates one on request. Detailed record:
   ([OGX guardrails security][ogxguard]).
 - `/v1/chat/completions` is not a transparent proxy and does not carry tool
   calls: keep the guardrail away from the coding agents' traffic.
-- Garak counts an HTTP error as a refusal, so a failing or rate-limited judge
-  makes a guarded scan look safer than it is; check the guardrail's errors
-  before trusting a guarded attack success rate.
+- Garak counts an HTTP error as a refusal, so a failing, slow or rate-limited judge
+  makes a guarded scan look safer than it is; the qualification verdict counts
+  unanswered attempts and voids a result above 2%.
+- A guarded call must finish inside the evaluation sidecar's 30 s request limit:
+  input check, generation and output check together. Keep the judge in the
+  cluster and cap the main model's output (`max_tokens` under its `parameters`).
 - The MaaS gateway answers TLS only for its listener hostnames and the
   `NemoGuardrails` CR has no `hostAliases`, so a guardrail reaches MaaS through
   the public hostname, not the gateway's internal Service.
-- Nemotron 3 Ultra reasons by default; send
-  `chat_template_kwargs.enable_thinking: false` for yes/no judging, directly
-  under the model's `parameters`: the 3.5.2 server (nemoguardrails 0.24) sends
-  `parameters` verbatim, so a LangChain `extra_body` gets HTTP 400.
+- The 3.5.2 server (nemoguardrails 0.24) sends a model's `parameters` verbatim,
+  so request options such as `chat_template_kwargs` sit directly under
+  `parameters`; a LangChain `extra_body` gets HTTP 400.
 - 3.5.2 operator quirks: set `caBundleConfig.configMapNamespace`; keep one
   ConfigMap per `nemoConfigs` entry (several mount at the same path); with
   `enable-auth`, callers need unnamed `get` on services in the project.

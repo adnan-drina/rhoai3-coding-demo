@@ -78,16 +78,16 @@ ready.
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | ConfigMap | `candidate-guardrails-prompts` | `evaluated-models` | Wave 12. `prompts.yml` (self-check input: jailbreak, prompt injection and harmful requests in any language; self-check output: harmful content and system-prompt disclosure) and `rails.co`, which the hook copies into `candidate-guardrails-config`; annotation `demo.rhoai.io/guarded-model` names the guarded candidate. |
-| ConfigMap | `candidate-guardrails-trusted-ca` | `evaluated-models` | Wave 12. Cluster trusted CA bundle (`config.openshift.io/inject-trusted-cabundle`), for the MaaS gateway's public certificate. |
-| NemoGuardrails | `candidate-guardrails` | `evaluated-models` | Wave 14, `enable-auth`. Loads `candidate-guardrails-config` only (written by the hook; one ConfigMap per configuration, because the 3.5.2 operator mounts every listed ConfigMap at the same path); CA bundle `candidate-guardrails-ca` with `configMapNamespace` set; `CANDIDATE_API_KEY` from `candidate-model-client-token`, `JUDGE_API_KEY` from `candidate-guardrails-maas`. The operator creates its Deployment, Service (443) and Route. |
+| ConfigMap | `candidate-guardrails-trusted-ca` | `evaluated-models` | Wave 12. Cluster trusted CA bundle (`config.openshift.io/inject-trusted-cabundle`), added to the guardrail's CA bundle. |
+| NemoGuardrails | `candidate-guardrails` | `evaluated-models` | Wave 14, `enable-auth`. Loads `candidate-guardrails-config` only (written by the hook; one ConfigMap per configuration, because the 3.5.2 operator mounts every listed ConfigMap at the same path); CA bundle `candidate-guardrails-ca` with `configMapNamespace` set; `CANDIDATE_API_KEY` from `candidate-model-client-token`. The operator creates its Deployment, Service (443) and Route. |
 | Role / RoleBinding | `candidate-guardrails-client` | `evaluated-models` | Wave 12. `get` on services in the project (the operator's proxy check carries no Service name) for `candidate-model-client`, whose token evaluation jobs send through kube-rbac-proxy. |
 
-The `provision-evalhub-model-auth` hook also mints the `candidate-guardrails` MaaS key (Stage 040 subscription, Nemotron
-10,000,000 tokens/h) into Secret `candidate-guardrails-maas`, writes `candidate-guardrails-config` (`config.yaml`: the
-candidate through its internal predictor Service, Nemotron through the MaaS public hostname with `enable_thinking: false`;
-plus `prompts.yml` and `rails.co` copied from `candidate-guardrails-prompts`)
-and `candidate-guardrails-ca` (service CA plus the trusted bundle). The judge uses the public MaaS hostname because the
-gateway answers TLS only for its listener hostnames and the `NemoGuardrails` CR offers no `hostAliases`.
+The `provision-evalhub-model-auth` hook also writes `candidate-guardrails-config` (`config.yaml`: the candidate
+through its internal predictor Service as the main model, capped at 512 output tokens like the bare scan, and as the
+judge of both self-check rails, as in the guide's basic configuration; plus `prompts.yml` and `rails.co` copied from
+`candidate-guardrails-prompts`) and `candidate-guardrails-ca` (service CA plus the trusted bundle). Until 2026-10-23 the
+judge was Nemotron 3 Ultra through MaaS; under a guarded scan NVIDIA's hosted API answered HTTP 429 and the guardrail
+timed out (TROUBLESHOOTING).
 
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
 
@@ -112,7 +112,7 @@ gateway answers TLS only for its listener hostnames and the `NemoGuardrails` CR 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | Pipeline | `agentic-coding-model-qualification` | `evaluated-models` | Wave 16 (kustomize patch), `SkipDryRunOnMissingResource`. |
-| PipelineVersion | `agentic-coding-model-qualification-v19` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `risk-assessment` (built-in `garak` `intents`, the Context-aware vulnerability scan, as a single task in the job pod), `risk-assessment-guarded` (the same scan through `candidate-guardrails`; the risk gate), `verdict` (judges the run and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
+| PipelineVersion | `agentic-coding-model-qualification-v20` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `risk-assessment` (built-in `garak` `intents`, the Context-aware vulnerability scan, as a single task in the job pod), `risk-assessment-guarded` (the same scan through `candidate-guardrails`; the risk gate), `verdict` (judges the run, counts each Garak job's unanswered attempts in its `scan.report.jsonl` from MLflow, and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
 
 ### `storage/`
 
@@ -128,7 +128,7 @@ gateway answers TLS only for its listener hostnames and the `NemoGuardrails` CR 
 
 | Object | Created by |
 |---|---|
-| Secrets `evalhub-model-auth-maas`, `candidate-guardrails-maas`, `garak-kfp-model-auth`, `dashboard-dspa-secret`; ConfigMaps `qualification-endpoints`, `candidate-guardrails-config`, `candidate-guardrails-ca`, `ds-pipeline-server-config-custom` | Hook Jobs above |
+| Secrets `evalhub-model-auth-maas`, `garak-kfp-model-auth`, `dashboard-dspa-secret`; ConfigMaps `qualification-endpoints`, `candidate-guardrails-config`, `candidate-guardrails-ca`, `ds-pipeline-server-config-custom` | Hook Jobs above |
 | DataSciencePipelinesApplication `dspa` | `configure-pipeline-server` hook (not tracked by Argo CD) |
 | PVC `evaluated-models-storage` (20 Gi `gp3-csi`) | `evaluated-models-s3-connections` hook, so a `WaitForFirstConsumer` PVC does not hold the sync |
 | Pipeline server Deployments, MariaDB, `pipeline-runner-dspa` ServiceAccount, `ds-pipeline-server-config-dspa` | Data Science Pipelines operator from `dspa` |

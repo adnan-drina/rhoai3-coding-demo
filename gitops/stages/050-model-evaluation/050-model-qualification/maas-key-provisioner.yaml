@@ -31,7 +31,7 @@ rules:
   # Only the tenant key Secret and the endpoint ConfigMap; create cannot be limited by name.
   - apiGroups: [""]
     resources: [secrets]
-    resourceNames: [evalhub-model-auth-maas, candidate-guardrails-maas]
+    resourceNames: [evalhub-model-auth-maas]
     verbs: [get, patch, update]
   - apiGroups: [""]
     resources: [configmaps]
@@ -113,9 +113,8 @@ subjects:
     name: evalhub-maas-key-provisioner
     namespace: evaluated-models
 ---
-# Sync hook: provision the tenant Secret that EvalHub jobs reference for model authentication, the candidate
-# guardrail's Nemotron key (Secret candidate-guardrails-maas, subscription candidate-guardrails) and the guardrail's
-# generated configuration and CA bundle (guardrails/). For the evaluation key:
+# Sync hook: provision the tenant Secret that EvalHub jobs reference for model authentication and the candidate
+# guardrail's generated configuration and CA bundle (guardrails/). For the evaluation key:
 # (model.auth.secret_ref, RHOAI 3.5 "Evaluating AI systems", Configure API key authentication).
 # It serves every evaluation in this tenant, the qualification pipeline and manual evaluations alike:
 # production models and judge models are reached through MaaS with the model-qualification subscription.
@@ -203,9 +202,8 @@ spec:
                 rm -f "${WORK}/api-key"
                 echo "Secret ${NS}/${SECRET_NAME} holds the ${SUBSCRIPTION} key"
               }
-              # The evaluation key (EvalHub model.auth.secret_ref) and the candidate guardrail's Nemotron judge key.
+              # The evaluation key (EvalHub model.auth.secret_ref).
               provision_key model-qualification evalhub-model-auth-maas model-qualification-evalhub
-              provision_key candidate-guardrails candidate-guardrails-maas candidate-guardrails-nemo
               # The qualification pipeline reads the dashboard address (links it records on the model registry version)
               # from this ConfigMap.
               DASHBOARD_HOST="$(oc get route data-science-gateway -n openshift-ingress -o jsonpath='{.spec.host}')"
@@ -213,13 +211,11 @@ spec:
               oc create configmap qualification-endpoints -n "${NS}" --from-literal=dashboard_url="https://${DASHBOARD_HOST}" \
                 --dry-run=client -o yaml | oc apply -f -
               # NeMo Guardrails configuration of the qualification candidate's guardrail (guardrails/): the guarded model
-              # through its internal predictor Service, and Nemotron through the MaaS gateway's public hostname as the
-              # self-check judge. The gateway only accepts TLS for its listener hostnames and the NemoGuardrails pod
-              # takes no hostAliases, so the judge cannot use the gateway's internal Service. The hostname is the
-              # cluster's, so this file is written here rather than kept in Git. enable_thinking false makes Nemotron
-              # answer the yes/no self-check in about half a second instead of 8 to 14 s of reasoning (2026-10-23). The
-              # guardrail server (nemoguardrails 0.24, default framework) sends parameters to the endpoint verbatim, so
-              # chat_template_kwargs sits directly under parameters; LangChain's extra_body is rejected with HTTP 400.
+              # through its internal predictor Service, which also judges the self-check rails, as in the guide's basic
+              # configuration. The external Nemotron judge was dropped on 2026-10-23: under a scan, NVIDIA's hosted API
+              # answered 429 and the guardrail timed out. max_tokens 512 matches what Garak asks of the bare model; the
+              # candidate serves enable_thinking false by default. The predictor name comes from the prompts ConfigMap's
+              # annotation, so this file is written here.
               CANDIDATE="$(oc get configmap candidate-guardrails-prompts -n "${NS}" -o jsonpath='{.metadata.annotations.demo\.rhoai\.io/guarded-model}' 2>/dev/null || true)"
               CANDIDATE="${CANDIDATE:-qwen3-8-27b-nvfp4}"
               cat > "${WORK}/config.yaml" <<YAML
@@ -230,26 +226,23 @@ spec:
                   api_key_env_var: CANDIDATE_API_KEY
                   parameters:
                     base_url: https://${CANDIDATE}-predictor.${NS}.svc.cluster.local:8443/v1
+                    max_tokens: 512
                 - type: self_check_input
                   engine: openai
-                  model: nemotron-3-ultra-550b-a55b
-                  api_key_env_var: JUDGE_API_KEY
+                  model: ${CANDIDATE}
+                  api_key_env_var: CANDIDATE_API_KEY
                   parameters:
-                    base_url: ${MAAS_BASE_URL}/v1
+                    base_url: https://${CANDIDATE}-predictor.${NS}.svc.cluster.local:8443/v1
                     temperature: 0
                     max_tokens: 5
-                    chat_template_kwargs:
-                      enable_thinking: false
                 - type: self_check_output
                   engine: openai
-                  model: nemotron-3-ultra-550b-a55b
-                  api_key_env_var: JUDGE_API_KEY
+                  model: ${CANDIDATE}
+                  api_key_env_var: CANDIDATE_API_KEY
                   parameters:
-                    base_url: ${MAAS_BASE_URL}/v1
+                    base_url: https://${CANDIDATE}-predictor.${NS}.svc.cluster.local:8443/v1
                     temperature: 0
                     max_tokens: 5
-                    chat_template_kwargs:
-                      enable_thinking: false
               rails:
                 input:
                   flows:
@@ -265,7 +258,7 @@ spec:
               oc create configmap candidate-guardrails-config -n "${NS}" --from-file=config.yaml="${WORK}/config.yaml" \
                 --from-file="${WORK}/rails/prompts.yml" --from-file="${WORK}/rails/rails.co" \
                 --dry-run=client -o yaml | oc apply -f -
-              # CA bundle for the guardrail: the service CA (candidate predictor) and the cluster's trusted CAs (MaaS gateway).
+              # CA bundle for the guardrail: the service CA (candidate predictor) and the cluster's trusted CAs.
               for i in $(seq 1 30); do
                 oc get configmap candidate-model-service-ca -n "${NS}" -o jsonpath='{.data.service-ca\.crt}' > "${WORK}/service-ca.crt" 2>/dev/null
                 oc get configmap candidate-guardrails-trusted-ca -n "${NS}" -o jsonpath='{.data.ca-bundle\.crt}' > "${WORK}/trusted.crt" 2>/dev/null

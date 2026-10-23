@@ -49,10 +49,13 @@ Both name the pipeline server's project and S3 connection and the candidate's in
   Their keys are the Secret's `JUDGE_API_KEY` and `SDG_API_KEY` (the `candidate-model-client` token; guide 7.7.4),
   which the TAP attacker and evaluator also use.
 - Translation: with no translator named, the 3.5.2 provider translates with the attacker LLM (`gemma-2-9b-abliterated`;
-  the job log shows `Translation mode: attacker LLM`), not with the Helsinki-NLP models guide 7.2 describes, and one
-  scan with translation ran past its 2-hour limit. The qualification pipeline turns translation off with the guide's
-  `garak_config` (`run.langproviders: null` and a `probe_spec` of the four SPO strategies and TAP); add the same
-  `garak_config` to a manual run that must finish in time. Until 2026-10-23 an undocumented
+  the job log shows `Translation mode: attacker LLM`), not with the Helsinki-NLP models guide 7.2 describes. The
+  qualification pipeline turns translation off with the guide's `garak_config` (`run.langproviders: null` and a
+  `probe_spec` of the four SPO strategies and TAP).
+- TAP: in the shipped Garak (`0.15.0+rhaiv.6`) only the first round produces attacks; every later round drops the
+  attacker's instructions and sends empty prompts, and the default ten rounds take about 30 minutes per intent. The
+  pipeline sets `plugins.probes.tap.TAPIntent.depth: 1` in the same `garak_config`; add both settings to a manual run
+  that must finish in time. Until 2026-10-23 an undocumented
   `intents_models.translation` role sent translation to Nemotron 3 Ultra through MaaS.
 - Automated risk assessment is a Technology Preview feature in RHOAI 3.5 (guide 7): read its attack success rate as
   advisory, and spot-check the judge's classifications (Complied, Rejected, Alternative, Other) against the answers in

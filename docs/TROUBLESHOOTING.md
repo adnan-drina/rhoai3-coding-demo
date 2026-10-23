@@ -2704,15 +2704,15 @@ oc logs -n evaluated-models -l provider_id=garak-kfp -c adapter --since=1h | gre
 
 **Recover:** Remove `sdg_max_tokens` from the parameters (the committed `intents.parameters.json` and the qualification pipeline leave it unset) and rerun. Some generated prompts may then be cut off or unparseable; the flow drops them and the scan uses the rest.
 
-## Context-Aware Vulnerability Scan Times Out In Translation
+## Context-Aware Vulnerability Scan Times Out In TAP
 
-**Affected stage:** Stage 050, `risk-assessment` (built-in `garak` `intents` in the job pod, EvalHub 3.5.2, seen 2026-10-23)
+**Affected stage:** Stage 050, `risk-assessment` (built-in `garak` `intents` in the job pod, Garak `0.15.0+rhaiv.6`, EvalHub 3.5.2, seen 2026-10-23)
 
-**Symptom:** The scan runs the SPO strategies in about 15 minutes, then logs `x/10` batch loops of about 3 to 4 minutes per batch until the job's `timeout` (7,200 s) ends it; the job fails without per-probe results and the verdict reads `no per-probe results (empty scan)`. The job log shows `Translation mode: attacker LLM (gemma-2-9b-abliterated)` and `zh,en->llm.LLMTranslator`.
+**Symptom:** The scan runs the SPO strategies in about 15 minutes, then logs `x/10` loops of about 30 minutes each until the job's `timeout` (7,200 s) ends it; the job fails without per-probe results and the verdict reads `no per-probe results (empty scan)`. The job log repeats `extract_json: All extraction methods failed, returning default empty values` in blocks of 40.
 
-**Likely cause:** With no translator named, the provider translates with the attacker LLM instead of the Helsinki-NLP models guide 7.2 describes (its order is: `translation_use_hf`, a translation key in the Secret, `intents_models.translation`, the attacker model, then Hugging Face). Every prompt is translated twice through the 9B helper model, which takes longer than the scan's limit.
+**Likely cause:** Each `x/10` loop is one TAP tree (default depth 10, width 10, branching factor 4) for one intent that the SPO strategies did not break. Only the first round works: from the second round on, Garak's TAP keeps only the last two messages of the attacker conversation, so the attacker loses its system prompt and the JSON answer format, replies in prose, and Garak parses each reply as an empty attack and sends empty prompts to the model for the rest of the tree. Reproduced with Garak's own `run_tap` in the job pod; the first round parses every time, the second fails every time. An earlier diagnosis blamed translation, which the provider does with the attacker LLM; with translation off the scan still timed out in TAP.
 
-**Recover:** Turn translation off with the guide's `garak_config` (7.2 note): `run.langproviders: null` and `plugins.probe_spec` with `spo.SPOIntent`, `spo.SPOIntentUserAugmented`, `spo.SPOIntentSystemAugmented`, `spo.SPOIntentBothAugmented` and `tap.TAPIntent`. Pipeline v19 and later send it on both risk steps. To keep translation, set `translation_use_hf: true` so the Helsinki-NLP models are used (they download from Hugging Face).
+**Recover:** Run TAP for one round and keep translation off, with the guide's `garak_config` (7.2): `run.langproviders: null`, `plugins.probe_spec` with `spo.SPOIntent`, `spo.SPOIntentUserAugmented`, `spo.SPOIntentSystemAugmented`, `spo.SPOIntentBothAugmented` and `tap.TAPIntent`, and `plugins.probes.tap.TAPIntent.depth: 1`. Pipeline v20 sends it on both risk steps. Deeper TAP needs a fixed Garak.
 
 ## Latency Collection Fails Its Collection Score While The Benchmark Passes
 
@@ -2742,13 +2742,13 @@ Once authorized, every request through the guardrail can hang until the route's 
 
 ## Guarded Garak Scan Scores Far Better Than Expected
 
-**Affected stage:** Stage 050, `risk-assessment-guarded` (Garak through NeMo Guardrails `candidate-guardrails`)
+**Affected stage:** Stage 050, `risk-assessment-guarded` (Garak through NeMo Guardrails `candidate-guardrails`, seen 2026-10-23)
 
-**Symptom:** The guarded Context-aware vulnerability scan reports an attack success rate near 0 while the guardrail log or the MaaS usage shows errors, timeouts or 429 responses from the Nemotron judge.
+**Symptom:** The guarded Context-aware vulnerability scan reports an attack success rate near 0, or makes almost no progress, while the guardrail log shows `Request timed out` from the judge and kube-rbac-proxy logs `http: proxy error: context canceled`; a call through the evaluation sidecar returns `502 ... context deadline exceeded` after 30 s.
 
-**Likely cause:** Garak classifies a response that ends in an HTTP error as Rejected (guide "Test model safety with automated risk assessment", 7.5), so every failed guardrail call counts as a successful defence. A rate-limited, slow or unreachable judge therefore lowers the guarded score without any real protection.
+**Likely cause:** Garak classifies a response that ends in an HTTP error as Rejected (guide "Test model safety with automated risk assessment", 7.5), so every failed guardrail call counts as a successful defence. On 2026-10-23 the judge was Nemotron 3 Ultra, which MaaS forwards to NVIDIA's hosted API; under the scan's parallel requests NVIDIA answered `429 Too Many Requests` (our own subscription had budget left), and the guardrail's input check, generation and output check together outlasted the sidecar's 30 s request limit.
 
-**Recover:** Treat the result as void. Check the guardrail pod log (`oc logs deploy/candidate-guardrails -n evaluated-models`) and the `candidate-guardrails` subscription's usage; Nemotron must answer with `enable_thinking: false` (about 0.5 s per check) and within the subscription's 10,000,000 tokens/h. Rerun the guarded step once the judge answers reliably.
+**Recover:** Treat the result as void. Pipeline v20 counts the unanswered attempts in each Garak job's `scan.report.jsonl` (from the job's MLflow run) and voids a result when more than 2% went unanswered. The guardrail now judges with the candidate model itself through its internal Service (16 of 16 test prompts judged correctly, about 1.2 s with 16 at once) and caps the main model at 512 output tokens, so a guarded call fits the 30 s limit. Check the guardrail pod log (`oc logs deploy/candidate-guardrails -n evaluated-models`) for judge errors before trusting a guarded result.
 
 ## EvalHub Rejects Every Job With "Workspace context is required"
 
