@@ -50,6 +50,10 @@ rules:
   - apiGroups: [""]
     resources: [configmaps]
     verbs: [create]
+  # Restart the pipeline API server when the custom server config changes: the operator's configHash does not cover it.
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -167,10 +171,16 @@ spec:
               [[ "$config" == *'"defaultExperimentName":'* ]] || { echo "ERROR: $base has no MLflow default experiment" >&2; exit 1; }
               config=${config//'"insecureSkipVerify":false'/'"insecureSkipVerify":true'}
               config=${config//'"defaultExperimentName":"AIP-default"'/'"defaultExperimentName":"models-onboarding"'}
-              oc $T create configmap "$CUSTOM" -n "$NS" --from-literal=config.json="$config" --dry-run=client -o yaml | oc $T apply -f - >/dev/null
+              applied=$(oc $T create configmap "$CUSTOM" -n "$NS" --from-literal=config.json="$config" --dry-run=client -o yaml | oc $T apply -f -)
               if [[ "$(oc $T get dspa dspa -n "$NS" -o jsonpath='{.spec.apiServer.customServerConfigMap.name}')" != "$CUSTOM" ]]; then
                 oc $T patch dspa dspa -n "$NS" --type=merge -p "{\"spec\":{\"apiServer\":{\"customServerConfigMap\":{\"name\":\"$CUSTOM\",\"key\":\"config.json\"}}}}" >/dev/null
-                echo "Pipeline server uses $CUSTOM (MLflow plugin insecureSkipVerify)"
+                echo "Pipeline server uses $CUSTOM (MLflow plugin insecureSkipVerify, default experiment models-onboarding)"
+                sleep 10
+                wait_ready
+              elif [[ "$applied" == *configured* ]]; then
+                # The API server reads its config at start, and the operator's configHash does not cover the copy.
+                oc $T delete pod -n "$NS" -l app=ds-pipeline-dspa >/dev/null
+                echo "Pipeline API server restarted for the changed $CUSTOM"
                 sleep 10
                 wait_ready
               fi
