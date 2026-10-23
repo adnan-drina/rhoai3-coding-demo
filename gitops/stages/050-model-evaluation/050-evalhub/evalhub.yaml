@@ -56,8 +56,8 @@ spec:
     - safety-and-fairness-v1
     - standard-llm-evals-v1
     - toxicity-and-ethical-principles
-    # Evaluation-driven development criteria for the agentic coding demo (edd/ ConfigMaps). Security and risk
-    # assessment run as garak-kfp benchmark jobs, which need the candidate's URL and so cannot be a collection.
+    # Evaluation-driven development criteria for the agentic coding demo (edd/ ConfigMaps). The risk assessment
+    # runs as a built-in garak intents job, not a collection.
     - agentic-coding-livecodebench-v2
     - agentic-coding-python-tasks-v1
     - agentic-coding-latency-v1

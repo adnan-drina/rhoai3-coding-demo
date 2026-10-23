@@ -5,20 +5,20 @@ metadata:
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
-    the garak-kfp security and risk assessments, and records the verdict on its model
+    the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
   displayName: Agentic coding model qualification
 ---
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v15
+  name: agentic-coding-model-qualification-v16
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
-    the garak-kfp security and risk assessments, and records the verdict on its model
+    the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v15
+  displayName: agentic-coding-model-qualification v16
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -52,8 +52,6 @@ spec:
             run_id:
               parameterType: STRING
             run_name:
-              parameterType: STRING
-            s3_secret:
               parameterType: STRING
             sdg_num_samples:
               parameterType: NUMBER_INTEGER
@@ -98,8 +96,6 @@ spec:
               parameterType: STRING
             run_name:
               parameterType: STRING
-            s3_secret:
-              parameterType: STRING
             sdg_num_samples:
               parameterType: NUMBER_INTEGER
             skip:
@@ -142,8 +138,6 @@ spec:
             run_id:
               parameterType: STRING
             run_name:
-              parameterType: STRING
-            s3_secret:
               parameterType: STRING
             sdg_num_samples:
               parameterType: NUMBER_INTEGER
@@ -212,53 +206,6 @@ spec:
               parameterType: STRING
             run_name:
               parameterType: STRING
-            s3_secret:
-              parameterType: STRING
-            sdg_num_samples:
-              parameterType: NUMBER_INTEGER
-            skip:
-              parameterType: BOOLEAN
-            timeout_seconds:
-              parameterType: NUMBER_INTEGER
-        outputDefinitions:
-          artifacts:
-            results:
-              artifactType:
-                schemaTitle: system.Dataset
-                schemaVersion: 0.0.1
-      comp-security:
-        executorLabel: exec-security
-        inputDefinitions:
-          artifacts:
-            previous:
-              artifactType:
-                schemaTitle: system.Dataset
-                schemaVersion: 0.0.1
-          parameters:
-            auth_secret:
-              parameterType: STRING
-            benchmark_id:
-              parameterType: STRING
-            collection_id:
-              parameterType: STRING
-            evalhub_url:
-              parameterType: STRING
-            experiment:
-              parameterType: STRING
-            intents_timeout:
-              parameterType: NUMBER_INTEGER
-            model_name:
-              parameterType: STRING
-            queue:
-              parameterType: STRING
-            risk_model:
-              parameterType: STRING
-            run_id:
-              parameterType: STRING
-            run_name:
-              parameterType: STRING
-            s3_secret:
-              parameterType: STRING
             sdg_num_samples:
               parameterType: NUMBER_INTEGER
             skip:
@@ -301,8 +248,6 @@ spec:
             run_id:
               parameterType: STRING
             run_name:
-              parameterType: STRING
-            s3_secret:
               parameterType: STRING
             sdg_num_samples:
               parameterType: NUMBER_INTEGER
@@ -351,8 +296,6 @@ spec:
               parameterType: STRING
             evaluations:
               parameterType: LIST
-            kfp_url:
-              parameterType: STRING
             model_version_id:
               parameterType: STRING
             registry_url:
@@ -398,32 +341,32 @@ spec:
             - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
               \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
-              \ str,\n    evalhub_url: str,\n    queue: str,\n    s3_secret: str,\n\
-              \    risk_model: str,\n    intents_timeout: int,\n    sdg_num_samples:\
-              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
-              \    skip: bool,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
-              \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak-kfp benchmark, on the candidate and wait for it. Reads\
-              \ the results\n    ledger of the step before, appends this evaluation\
-              \ (job, state, each benchmark's metric, value, gate and pass) and\n\
-              \    hands it on, so the run graph shows the intermediate results between\
-              \ the steps as garak's datasets do.\"\"\"\n    import json\n    what\
-              \ = collection_id or f\"garak-kfp/{benchmark_id}\"\n    with open(previous.path)\
-              \ as f:\n        ledger = json.load(f)\n\n    def hand_on(entry):\n\
-              \        ledger[\"results\"].append(entry)\n        with open(results.path,\
-              \ \"w\") as f:\n            json.dump(ledger, f, indent=1)\n\n    if\
-              \ skip:\n        print(f\"{what}: skipped by the run's skip parameter;\
-              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
-              \ \"skipped\": True})\n        return\n    import os\n    import re\n\
-              \    import ssl\n    import subprocess\n    import tempfile\n    import\
-              \ urllib.request\n\n    import httpx\n    import yaml\n\n    sa = \"\
-              /var/run/secrets/kubernetes.io/serviceaccount\"\n    tenant = open(f\"\
-              {sa}/namespace\").read().strip()\n    token = open(f\"{sa}/token\").read().strip()\n\
-              \    kube_ctx = ssl.create_default_context(cafile=f\"{sa}/ca.crt\")\n\
-              \n    def kube(path):\n        req = urllib.request.Request(f\"https://kubernetes.default.svc{path}\"\
-              , headers={\"Authorization\": f\"Bearer {token}\"})\n        with urllib.request.urlopen(req,\
-              \ context=kube_ctx, timeout=30) as r:\n            return json.load(r)\n\
-              \n    model_url = kube(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
+              \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
+              \    intents_timeout: int,\n    sdg_num_samples: int,\n    run_name:\
+              \ str,\n    run_id: str,\n    timeout_seconds: int,\n    skip: bool,\n\
+              \    previous: dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n\
+              ):\n    \"\"\"Run one EvalHub collection, or one garak benchmark, on\
+              \ the candidate and wait for it. Reads the results\n    ledger of the\
+              \ step before, appends this evaluation (job, state, each benchmark's\
+              \ metric, value, gate and pass) and\n    hands it on, so the run graph\
+              \ shows the intermediate results between the steps as garak's datasets\
+              \ do.\"\"\"\n    import json\n    what = collection_id or f\"garak/{benchmark_id}\"\
+              \n    with open(previous.path) as f:\n        ledger = json.load(f)\n\
+              \n    def hand_on(entry):\n        ledger[\"results\"].append(entry)\n\
+              \        with open(results.path, \"w\") as f:\n            json.dump(ledger,\
+              \ f, indent=1)\n\n    if skip:\n        print(f\"{what}: skipped by\
+              \ the run's skip parameter; no EvalHub job submitted\")\n        hand_on({\"\
+              evaluation\": what, \"skipped\": True})\n        return\n    import\
+              \ os\n    import re\n    import ssl\n    import subprocess\n    import\
+              \ tempfile\n    import urllib.request\n\n    import httpx\n    import\
+              \ yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
+              \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
+              {sa}/ca.crt\")\n\n    def kube(path):\n        req = urllib.request.Request(f\"\
+              https://kubernetes.default.svc{path}\", headers={\"Authorization\":\
+              \ f\"Bearer {token}\"})\n        with urllib.request.urlopen(req, context=kube_ctx,\
+              \ timeout=30) as r:\n            return json.load(r)\n\n    model_url\
+              \ = kube(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
               )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    client\
               \ = httpx.Client(base_url=evalhub_url, timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
               ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
@@ -446,27 +389,23 @@ spec:
               : queue},\n    }\n    if collection_id:\n        body[\"collection\"\
               ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
               \ primary metric, direction and threshold, as the dashboard form sends\
-              \ them.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak-kfp\"\
+              \ them.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
               ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
               benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
-              \ = {\"kfp_config\": {\"namespace\": tenant, \"s3_secret_name\": s3_secret,\
-              \ \"model_url\": model_url}}\n        if benchmark_id == \"intents\"\
-              :\n            risk_url = f\"https://{risk_model}-predictor.{tenant}.svc.cluster.local:8443/v1\"\
-              \n            parameters.update({\n                \"timeout\": intents_timeout,\
-              \ \"disable_cache\": True, \"sdg_num_samples\": sdg_num_samples,\n \
-              \               \"intents_models\": {\n                    \"judge\"\
-              : {\"url\": risk_url, \"name\": risk_model},\n                    \"\
-              sdg\": {\"url\": risk_url, \"name\": f\"hosted_vllm/{risk_model}\"},\n\
-              \                }})\n        body[\"benchmarks\"] = [{\"id\": benchmark_id,\
-              \ \"provider_id\": \"garak-kfp\", \"parameters\": parameters,\n    \
-              \                           \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \ = {}\n        if benchmark_id == \"intents\":\n            parameters\
+              \ = {\"timeout\": intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n\
+              \                          \"intents_models\": {\"judge\": {\"name\"\
+              : risk_model},\n                                             \"sdg\"\
+              : {\"name\": f\"hosted_vllm/{risk_model}\"}}}\n        body[\"benchmarks\"\
+              ] = [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
               \                          \"--format\", \"json\"], env=env, capture_output=True,\
               \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
               Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
@@ -532,32 +471,32 @@ spec:
             - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
               \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
-              \ str,\n    evalhub_url: str,\n    queue: str,\n    s3_secret: str,\n\
-              \    risk_model: str,\n    intents_timeout: int,\n    sdg_num_samples:\
-              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
-              \    skip: bool,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
-              \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak-kfp benchmark, on the candidate and wait for it. Reads\
-              \ the results\n    ledger of the step before, appends this evaluation\
-              \ (job, state, each benchmark's metric, value, gate and pass) and\n\
-              \    hands it on, so the run graph shows the intermediate results between\
-              \ the steps as garak's datasets do.\"\"\"\n    import json\n    what\
-              \ = collection_id or f\"garak-kfp/{benchmark_id}\"\n    with open(previous.path)\
-              \ as f:\n        ledger = json.load(f)\n\n    def hand_on(entry):\n\
-              \        ledger[\"results\"].append(entry)\n        with open(results.path,\
-              \ \"w\") as f:\n            json.dump(ledger, f, indent=1)\n\n    if\
-              \ skip:\n        print(f\"{what}: skipped by the run's skip parameter;\
-              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
-              \ \"skipped\": True})\n        return\n    import os\n    import re\n\
-              \    import ssl\n    import subprocess\n    import tempfile\n    import\
-              \ urllib.request\n\n    import httpx\n    import yaml\n\n    sa = \"\
-              /var/run/secrets/kubernetes.io/serviceaccount\"\n    tenant = open(f\"\
-              {sa}/namespace\").read().strip()\n    token = open(f\"{sa}/token\").read().strip()\n\
-              \    kube_ctx = ssl.create_default_context(cafile=f\"{sa}/ca.crt\")\n\
-              \n    def kube(path):\n        req = urllib.request.Request(f\"https://kubernetes.default.svc{path}\"\
-              , headers={\"Authorization\": f\"Bearer {token}\"})\n        with urllib.request.urlopen(req,\
-              \ context=kube_ctx, timeout=30) as r:\n            return json.load(r)\n\
-              \n    model_url = kube(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
+              \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
+              \    intents_timeout: int,\n    sdg_num_samples: int,\n    run_name:\
+              \ str,\n    run_id: str,\n    timeout_seconds: int,\n    skip: bool,\n\
+              \    previous: dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n\
+              ):\n    \"\"\"Run one EvalHub collection, or one garak benchmark, on\
+              \ the candidate and wait for it. Reads the results\n    ledger of the\
+              \ step before, appends this evaluation (job, state, each benchmark's\
+              \ metric, value, gate and pass) and\n    hands it on, so the run graph\
+              \ shows the intermediate results between the steps as garak's datasets\
+              \ do.\"\"\"\n    import json\n    what = collection_id or f\"garak/{benchmark_id}\"\
+              \n    with open(previous.path) as f:\n        ledger = json.load(f)\n\
+              \n    def hand_on(entry):\n        ledger[\"results\"].append(entry)\n\
+              \        with open(results.path, \"w\") as f:\n            json.dump(ledger,\
+              \ f, indent=1)\n\n    if skip:\n        print(f\"{what}: skipped by\
+              \ the run's skip parameter; no EvalHub job submitted\")\n        hand_on({\"\
+              evaluation\": what, \"skipped\": True})\n        return\n    import\
+              \ os\n    import re\n    import ssl\n    import subprocess\n    import\
+              \ tempfile\n    import urllib.request\n\n    import httpx\n    import\
+              \ yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
+              \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
+              {sa}/ca.crt\")\n\n    def kube(path):\n        req = urllib.request.Request(f\"\
+              https://kubernetes.default.svc{path}\", headers={\"Authorization\":\
+              \ f\"Bearer {token}\"})\n        with urllib.request.urlopen(req, context=kube_ctx,\
+              \ timeout=30) as r:\n            return json.load(r)\n\n    model_url\
+              \ = kube(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
               )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    client\
               \ = httpx.Client(base_url=evalhub_url, timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
               ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
@@ -580,27 +519,23 @@ spec:
               : queue},\n    }\n    if collection_id:\n        body[\"collection\"\
               ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
               \ primary metric, direction and threshold, as the dashboard form sends\
-              \ them.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak-kfp\"\
+              \ them.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
               ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
               benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
-              \ = {\"kfp_config\": {\"namespace\": tenant, \"s3_secret_name\": s3_secret,\
-              \ \"model_url\": model_url}}\n        if benchmark_id == \"intents\"\
-              :\n            risk_url = f\"https://{risk_model}-predictor.{tenant}.svc.cluster.local:8443/v1\"\
-              \n            parameters.update({\n                \"timeout\": intents_timeout,\
-              \ \"disable_cache\": True, \"sdg_num_samples\": sdg_num_samples,\n \
-              \               \"intents_models\": {\n                    \"judge\"\
-              : {\"url\": risk_url, \"name\": risk_model},\n                    \"\
-              sdg\": {\"url\": risk_url, \"name\": f\"hosted_vllm/{risk_model}\"},\n\
-              \                }})\n        body[\"benchmarks\"] = [{\"id\": benchmark_id,\
-              \ \"provider_id\": \"garak-kfp\", \"parameters\": parameters,\n    \
-              \                           \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \ = {}\n        if benchmark_id == \"intents\":\n            parameters\
+              \ = {\"timeout\": intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n\
+              \                          \"intents_models\": {\"judge\": {\"name\"\
+              : risk_model},\n                                             \"sdg\"\
+              : {\"name\": f\"hosted_vllm/{risk_model}\"}}}\n        body[\"benchmarks\"\
+              ] = [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
               \                          \"--format\", \"json\"], env=env, capture_output=True,\
               \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
               Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
@@ -666,32 +601,32 @@ spec:
             - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
               \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
-              \ str,\n    evalhub_url: str,\n    queue: str,\n    s3_secret: str,\n\
-              \    risk_model: str,\n    intents_timeout: int,\n    sdg_num_samples:\
-              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
-              \    skip: bool,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
-              \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak-kfp benchmark, on the candidate and wait for it. Reads\
-              \ the results\n    ledger of the step before, appends this evaluation\
-              \ (job, state, each benchmark's metric, value, gate and pass) and\n\
-              \    hands it on, so the run graph shows the intermediate results between\
-              \ the steps as garak's datasets do.\"\"\"\n    import json\n    what\
-              \ = collection_id or f\"garak-kfp/{benchmark_id}\"\n    with open(previous.path)\
-              \ as f:\n        ledger = json.load(f)\n\n    def hand_on(entry):\n\
-              \        ledger[\"results\"].append(entry)\n        with open(results.path,\
-              \ \"w\") as f:\n            json.dump(ledger, f, indent=1)\n\n    if\
-              \ skip:\n        print(f\"{what}: skipped by the run's skip parameter;\
-              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
-              \ \"skipped\": True})\n        return\n    import os\n    import re\n\
-              \    import ssl\n    import subprocess\n    import tempfile\n    import\
-              \ urllib.request\n\n    import httpx\n    import yaml\n\n    sa = \"\
-              /var/run/secrets/kubernetes.io/serviceaccount\"\n    tenant = open(f\"\
-              {sa}/namespace\").read().strip()\n    token = open(f\"{sa}/token\").read().strip()\n\
-              \    kube_ctx = ssl.create_default_context(cafile=f\"{sa}/ca.crt\")\n\
-              \n    def kube(path):\n        req = urllib.request.Request(f\"https://kubernetes.default.svc{path}\"\
-              , headers={\"Authorization\": f\"Bearer {token}\"})\n        with urllib.request.urlopen(req,\
-              \ context=kube_ctx, timeout=30) as r:\n            return json.load(r)\n\
-              \n    model_url = kube(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
+              \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
+              \    intents_timeout: int,\n    sdg_num_samples: int,\n    run_name:\
+              \ str,\n    run_id: str,\n    timeout_seconds: int,\n    skip: bool,\n\
+              \    previous: dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n\
+              ):\n    \"\"\"Run one EvalHub collection, or one garak benchmark, on\
+              \ the candidate and wait for it. Reads the results\n    ledger of the\
+              \ step before, appends this evaluation (job, state, each benchmark's\
+              \ metric, value, gate and pass) and\n    hands it on, so the run graph\
+              \ shows the intermediate results between the steps as garak's datasets\
+              \ do.\"\"\"\n    import json\n    what = collection_id or f\"garak/{benchmark_id}\"\
+              \n    with open(previous.path) as f:\n        ledger = json.load(f)\n\
+              \n    def hand_on(entry):\n        ledger[\"results\"].append(entry)\n\
+              \        with open(results.path, \"w\") as f:\n            json.dump(ledger,\
+              \ f, indent=1)\n\n    if skip:\n        print(f\"{what}: skipped by\
+              \ the run's skip parameter; no EvalHub job submitted\")\n        hand_on({\"\
+              evaluation\": what, \"skipped\": True})\n        return\n    import\
+              \ os\n    import re\n    import ssl\n    import subprocess\n    import\
+              \ tempfile\n    import urllib.request\n\n    import httpx\n    import\
+              \ yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
+              \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
+              {sa}/ca.crt\")\n\n    def kube(path):\n        req = urllib.request.Request(f\"\
+              https://kubernetes.default.svc{path}\", headers={\"Authorization\":\
+              \ f\"Bearer {token}\"})\n        with urllib.request.urlopen(req, context=kube_ctx,\
+              \ timeout=30) as r:\n            return json.load(r)\n\n    model_url\
+              \ = kube(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
               )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    client\
               \ = httpx.Client(base_url=evalhub_url, timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
               ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
@@ -714,27 +649,23 @@ spec:
               : queue},\n    }\n    if collection_id:\n        body[\"collection\"\
               ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
               \ primary metric, direction and threshold, as the dashboard form sends\
-              \ them.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak-kfp\"\
+              \ them.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
               ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
               benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
-              \ = {\"kfp_config\": {\"namespace\": tenant, \"s3_secret_name\": s3_secret,\
-              \ \"model_url\": model_url}}\n        if benchmark_id == \"intents\"\
-              :\n            risk_url = f\"https://{risk_model}-predictor.{tenant}.svc.cluster.local:8443/v1\"\
-              \n            parameters.update({\n                \"timeout\": intents_timeout,\
-              \ \"disable_cache\": True, \"sdg_num_samples\": sdg_num_samples,\n \
-              \               \"intents_models\": {\n                    \"judge\"\
-              : {\"url\": risk_url, \"name\": risk_model},\n                    \"\
-              sdg\": {\"url\": risk_url, \"name\": f\"hosted_vllm/{risk_model}\"},\n\
-              \                }})\n        body[\"benchmarks\"] = [{\"id\": benchmark_id,\
-              \ \"provider_id\": \"garak-kfp\", \"parameters\": parameters,\n    \
-              \                           \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \ = {}\n        if benchmark_id == \"intents\":\n            parameters\
+              \ = {\"timeout\": intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n\
+              \                          \"intents_models\": {\"judge\": {\"name\"\
+              : risk_model},\n                                             \"sdg\"\
+              : {\"name\": f\"hosted_vllm/{risk_model}\"}}}\n        body[\"benchmarks\"\
+              ] = [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
               \                          \"--format\", \"json\"], env=env, capture_output=True,\
               \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
               Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
@@ -822,7 +753,7 @@ spec:
               \ ran and passed its gate.</p>\",\n         f\"<h3>Capability (weighted\
               \ 3:2:1, gate {capability_threshold}): {fmt(cap)}</h3>\",\n        \
               \ f\"<table><tr><th>Evaluation</th><th>Benchmark</th><th>Score</th><th>Gate</th></tr>{body}</table>\"\
-              ,\n         \"<p class=note>Attack success rates (security, risk assessment)\
+              ,\n         \"<p class=note>The attack success rate (risk assessment)\
               \ and latency pass at or below their gate; \"\n         \"every other\
               \ score passes at or above it. Each job is under Develop &amp; train\
               \ &gt; Evaluations and in the \"\n         \"MLflow experiment models-onboarding;\
@@ -875,32 +806,32 @@ spec:
             - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
               \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
-              \ str,\n    evalhub_url: str,\n    queue: str,\n    s3_secret: str,\n\
-              \    risk_model: str,\n    intents_timeout: int,\n    sdg_num_samples:\
-              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
-              \    skip: bool,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
-              \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak-kfp benchmark, on the candidate and wait for it. Reads\
-              \ the results\n    ledger of the step before, appends this evaluation\
-              \ (job, state, each benchmark's metric, value, gate and pass) and\n\
-              \    hands it on, so the run graph shows the intermediate results between\
-              \ the steps as garak's datasets do.\"\"\"\n    import json\n    what\
-              \ = collection_id or f\"garak-kfp/{benchmark_id}\"\n    with open(previous.path)\
-              \ as f:\n        ledger = json.load(f)\n\n    def hand_on(entry):\n\
-              \        ledger[\"results\"].append(entry)\n        with open(results.path,\
-              \ \"w\") as f:\n            json.dump(ledger, f, indent=1)\n\n    if\
-              \ skip:\n        print(f\"{what}: skipped by the run's skip parameter;\
-              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
-              \ \"skipped\": True})\n        return\n    import os\n    import re\n\
-              \    import ssl\n    import subprocess\n    import tempfile\n    import\
-              \ urllib.request\n\n    import httpx\n    import yaml\n\n    sa = \"\
-              /var/run/secrets/kubernetes.io/serviceaccount\"\n    tenant = open(f\"\
-              {sa}/namespace\").read().strip()\n    token = open(f\"{sa}/token\").read().strip()\n\
-              \    kube_ctx = ssl.create_default_context(cafile=f\"{sa}/ca.crt\")\n\
-              \n    def kube(path):\n        req = urllib.request.Request(f\"https://kubernetes.default.svc{path}\"\
-              , headers={\"Authorization\": f\"Bearer {token}\"})\n        with urllib.request.urlopen(req,\
-              \ context=kube_ctx, timeout=30) as r:\n            return json.load(r)\n\
-              \n    model_url = kube(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
+              \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
+              \    intents_timeout: int,\n    sdg_num_samples: int,\n    run_name:\
+              \ str,\n    run_id: str,\n    timeout_seconds: int,\n    skip: bool,\n\
+              \    previous: dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n\
+              ):\n    \"\"\"Run one EvalHub collection, or one garak benchmark, on\
+              \ the candidate and wait for it. Reads the results\n    ledger of the\
+              \ step before, appends this evaluation (job, state, each benchmark's\
+              \ metric, value, gate and pass) and\n    hands it on, so the run graph\
+              \ shows the intermediate results between the steps as garak's datasets\
+              \ do.\"\"\"\n    import json\n    what = collection_id or f\"garak/{benchmark_id}\"\
+              \n    with open(previous.path) as f:\n        ledger = json.load(f)\n\
+              \n    def hand_on(entry):\n        ledger[\"results\"].append(entry)\n\
+              \        with open(results.path, \"w\") as f:\n            json.dump(ledger,\
+              \ f, indent=1)\n\n    if skip:\n        print(f\"{what}: skipped by\
+              \ the run's skip parameter; no EvalHub job submitted\")\n        hand_on({\"\
+              evaluation\": what, \"skipped\": True})\n        return\n    import\
+              \ os\n    import re\n    import ssl\n    import subprocess\n    import\
+              \ tempfile\n    import urllib.request\n\n    import httpx\n    import\
+              \ yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
+              \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
+              {sa}/ca.crt\")\n\n    def kube(path):\n        req = urllib.request.Request(f\"\
+              https://kubernetes.default.svc{path}\", headers={\"Authorization\":\
+              \ f\"Bearer {token}\"})\n        with urllib.request.urlopen(req, context=kube_ctx,\
+              \ timeout=30) as r:\n            return json.load(r)\n\n    model_url\
+              \ = kube(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
               )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    client\
               \ = httpx.Client(base_url=evalhub_url, timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
               ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
@@ -923,161 +854,23 @@ spec:
               : queue},\n    }\n    if collection_id:\n        body[\"collection\"\
               ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
               \ primary metric, direction and threshold, as the dashboard form sends\
-              \ them.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak-kfp\"\
+              \ them.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
               ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
               benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
-              \ = {\"kfp_config\": {\"namespace\": tenant, \"s3_secret_name\": s3_secret,\
-              \ \"model_url\": model_url}}\n        if benchmark_id == \"intents\"\
-              :\n            risk_url = f\"https://{risk_model}-predictor.{tenant}.svc.cluster.local:8443/v1\"\
-              \n            parameters.update({\n                \"timeout\": intents_timeout,\
-              \ \"disable_cache\": True, \"sdg_num_samples\": sdg_num_samples,\n \
-              \               \"intents_models\": {\n                    \"judge\"\
-              : {\"url\": risk_url, \"name\": risk_model},\n                    \"\
-              sdg\": {\"url\": risk_url, \"name\": f\"hosted_vllm/{risk_model}\"},\n\
-              \                }})\n        body[\"benchmarks\"] = [{\"id\": benchmark_id,\
-              \ \"provider_id\": \"garak-kfp\", \"parameters\": parameters,\n    \
-              \                           \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
-              \                          \"--format\", \"json\"], env=env, capture_output=True,\
-              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
-              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
-              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
-              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
-              \ drops the gate results (results.test, benchmarks[].test), so the job\
-              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
-              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
-              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
-              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
-              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
-              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
-              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
-              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
-              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
-              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
-              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
-              : job_id, \"job_name\": body[\"name\"], \"state\": state, \"benchmarks\"\
-              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
-              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
-              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
-              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
-              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
-              benchmarks\") or []]})\n\n"
-            image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
-            resources:
-              cpuLimit: 0.5
-              cpuRequest: 0.1
-              memoryLimit: 0.536870912
-              memoryRequest: 0.268435456
-              resourceCpuLimit: 500m
-              resourceCpuRequest: 100m
-              resourceMemoryLimit: 512Mi
-              resourceMemoryRequest: 256Mi
-        exec-security:
-          container:
-            args:
-            - --executor_input
-            - '{{$}}'
-            - --function_to_execute
-            - evaluate
-            command:
-            - sh
-            - -c
-            - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
-              \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
-              \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
-              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
-              \ 'eval-hub-sdk[cli]==1.0.5'  &&  python3 -m pip install --quiet --no-warn-script-location\
-              \ --index-url https://pypi.org/simple --trusted-host https://pypi.org/simple\
-              \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
-              3.9\"' && \"$0\" \"$@\"\n"
-            - sh
-            - -ec
-            - 'program_path=$(mktemp -d)
-
-
-              printf "%s" "$0" > "$program_path/ephemeral_component.py"
-
-              _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
-
-              '
-            - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
-              \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
-              \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
-              \ str,\n    evalhub_url: str,\n    queue: str,\n    s3_secret: str,\n\
-              \    risk_model: str,\n    intents_timeout: int,\n    sdg_num_samples:\
-              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
-              \    skip: bool,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
-              \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak-kfp benchmark, on the candidate and wait for it. Reads\
-              \ the results\n    ledger of the step before, appends this evaluation\
-              \ (job, state, each benchmark's metric, value, gate and pass) and\n\
-              \    hands it on, so the run graph shows the intermediate results between\
-              \ the steps as garak's datasets do.\"\"\"\n    import json\n    what\
-              \ = collection_id or f\"garak-kfp/{benchmark_id}\"\n    with open(previous.path)\
-              \ as f:\n        ledger = json.load(f)\n\n    def hand_on(entry):\n\
-              \        ledger[\"results\"].append(entry)\n        with open(results.path,\
-              \ \"w\") as f:\n            json.dump(ledger, f, indent=1)\n\n    if\
-              \ skip:\n        print(f\"{what}: skipped by the run's skip parameter;\
-              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
-              \ \"skipped\": True})\n        return\n    import os\n    import re\n\
-              \    import ssl\n    import subprocess\n    import tempfile\n    import\
-              \ urllib.request\n\n    import httpx\n    import yaml\n\n    sa = \"\
-              /var/run/secrets/kubernetes.io/serviceaccount\"\n    tenant = open(f\"\
-              {sa}/namespace\").read().strip()\n    token = open(f\"{sa}/token\").read().strip()\n\
-              \    kube_ctx = ssl.create_default_context(cafile=f\"{sa}/ca.crt\")\n\
-              \n    def kube(path):\n        req = urllib.request.Request(f\"https://kubernetes.default.svc{path}\"\
-              , headers={\"Authorization\": f\"Bearer {token}\"})\n        with urllib.request.urlopen(req,\
-              \ context=kube_ctx, timeout=30) as r:\n            return json.load(r)\n\
-              \n    model_url = kube(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
-              )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    client\
-              \ = httpx.Client(base_url=evalhub_url, timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
-              ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
-              , \"X-Tenant\": tenant})\n    work = tempfile.mkdtemp()\n    profile\
-              \ = os.path.join(work, \"evalhub.yaml\")\n    with open(profile, \"\
-              w\") as f:\n        yaml.safe_dump({\"active_profile\": \"default\"\
-              ,\n                        \"profiles\": {\"default\": {\"base_url\"\
-              : evalhub_url, \"tenant\": tenant}}}, f)\n    env = dict(os.environ,\
-              \ EVALHUB_CONFIG=profile)\n    subprocess.run([\"evalhub\", \"health\"\
-              ], env=env, check=True)\n\n    tags = {\"run\": run_id, \"run_name\"\
-              : run_name, \"model\": model_name, \"evaluation\": what}\n    body =\
-              \ {\n        \"name\": f\"{(collection_id or benchmark_id).replace('_',\
-              \ '-')}-{model_name}-{run_name}\"[:120],\n        \"description\": f\"\
-              Onboarding qualification run {run_name}: {model_name} on {what}\",\n\
-              \        \"tags\": [\"model-onboarding\", f\"run={run_id}\", f\"model={model_name}\"\
-              ],\n        \"model\": {\"url\": model_url, \"name\": model_name, \"\
-              auth\": {\"secret_ref\": auth_secret}},\n        \"experiment\": {\"\
-              name\": experiment, \"tags\": [{\"key\": k, \"value\": v} for k, v in\
-              \ tags.items()]},\n        \"queue\": {\"kind\": \"kueue\", \"name\"\
-              : queue},\n    }\n    if collection_id:\n        body[\"collection\"\
-              ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
-              \ primary metric, direction and threshold, as the dashboard form sends\
-              \ them.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak-kfp\"\
-              ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
-              benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
-              \ = {\"kfp_config\": {\"namespace\": tenant, \"s3_secret_name\": s3_secret,\
-              \ \"model_url\": model_url}}\n        if benchmark_id == \"intents\"\
-              :\n            risk_url = f\"https://{risk_model}-predictor.{tenant}.svc.cluster.local:8443/v1\"\
-              \n            parameters.update({\n                \"timeout\": intents_timeout,\
-              \ \"disable_cache\": True, \"sdg_num_samples\": sdg_num_samples,\n \
-              \               \"intents_models\": {\n                    \"judge\"\
-              : {\"url\": risk_url, \"name\": risk_model},\n                    \"\
-              sdg\": {\"url\": risk_url, \"name\": f\"hosted_vllm/{risk_model}\"},\n\
-              \                }})\n        body[\"benchmarks\"] = [{\"id\": benchmark_id,\
-              \ \"provider_id\": \"garak-kfp\", \"parameters\": parameters,\n    \
-              \                           \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \ = {}\n        if benchmark_id == \"intents\":\n            parameters\
+              \ = {\"timeout\": intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n\
+              \                          \"intents_models\": {\"judge\": {\"name\"\
+              : risk_model},\n                                             \"sdg\"\
+              : {\"name\": f\"hosted_vllm/{risk_model}\"}}}\n        body[\"benchmarks\"\
+              ] = [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
               \                          \"--format\", \"json\"], env=env, capture_output=True,\
               \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
               Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
@@ -1143,32 +936,32 @@ spec:
             - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
               \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
-              \ str,\n    evalhub_url: str,\n    queue: str,\n    s3_secret: str,\n\
-              \    risk_model: str,\n    intents_timeout: int,\n    sdg_num_samples:\
-              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
-              \    skip: bool,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
-              \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak-kfp benchmark, on the candidate and wait for it. Reads\
-              \ the results\n    ledger of the step before, appends this evaluation\
-              \ (job, state, each benchmark's metric, value, gate and pass) and\n\
-              \    hands it on, so the run graph shows the intermediate results between\
-              \ the steps as garak's datasets do.\"\"\"\n    import json\n    what\
-              \ = collection_id or f\"garak-kfp/{benchmark_id}\"\n    with open(previous.path)\
-              \ as f:\n        ledger = json.load(f)\n\n    def hand_on(entry):\n\
-              \        ledger[\"results\"].append(entry)\n        with open(results.path,\
-              \ \"w\") as f:\n            json.dump(ledger, f, indent=1)\n\n    if\
-              \ skip:\n        print(f\"{what}: skipped by the run's skip parameter;\
-              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
-              \ \"skipped\": True})\n        return\n    import os\n    import re\n\
-              \    import ssl\n    import subprocess\n    import tempfile\n    import\
-              \ urllib.request\n\n    import httpx\n    import yaml\n\n    sa = \"\
-              /var/run/secrets/kubernetes.io/serviceaccount\"\n    tenant = open(f\"\
-              {sa}/namespace\").read().strip()\n    token = open(f\"{sa}/token\").read().strip()\n\
-              \    kube_ctx = ssl.create_default_context(cafile=f\"{sa}/ca.crt\")\n\
-              \n    def kube(path):\n        req = urllib.request.Request(f\"https://kubernetes.default.svc{path}\"\
-              , headers={\"Authorization\": f\"Bearer {token}\"})\n        with urllib.request.urlopen(req,\
-              \ context=kube_ctx, timeout=30) as r:\n            return json.load(r)\n\
-              \n    model_url = kube(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
+              \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
+              \    intents_timeout: int,\n    sdg_num_samples: int,\n    run_name:\
+              \ str,\n    run_id: str,\n    timeout_seconds: int,\n    skip: bool,\n\
+              \    previous: dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n\
+              ):\n    \"\"\"Run one EvalHub collection, or one garak benchmark, on\
+              \ the candidate and wait for it. Reads the results\n    ledger of the\
+              \ step before, appends this evaluation (job, state, each benchmark's\
+              \ metric, value, gate and pass) and\n    hands it on, so the run graph\
+              \ shows the intermediate results between the steps as garak's datasets\
+              \ do.\"\"\"\n    import json\n    what = collection_id or f\"garak/{benchmark_id}\"\
+              \n    with open(previous.path) as f:\n        ledger = json.load(f)\n\
+              \n    def hand_on(entry):\n        ledger[\"results\"].append(entry)\n\
+              \        with open(results.path, \"w\") as f:\n            json.dump(ledger,\
+              \ f, indent=1)\n\n    if skip:\n        print(f\"{what}: skipped by\
+              \ the run's skip parameter; no EvalHub job submitted\")\n        hand_on({\"\
+              evaluation\": what, \"skipped\": True})\n        return\n    import\
+              \ os\n    import re\n    import ssl\n    import subprocess\n    import\
+              \ tempfile\n    import urllib.request\n\n    import httpx\n    import\
+              \ yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
+              \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
+              {sa}/ca.crt\")\n\n    def kube(path):\n        req = urllib.request.Request(f\"\
+              https://kubernetes.default.svc{path}\", headers={\"Authorization\":\
+              \ f\"Bearer {token}\"})\n        with urllib.request.urlopen(req, context=kube_ctx,\
+              \ timeout=30) as r:\n            return json.load(r)\n\n    model_url\
+              \ = kube(f\"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}\"\
               )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    client\
               \ = httpx.Client(base_url=evalhub_url, timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
               ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
@@ -1191,27 +984,23 @@ spec:
               : queue},\n    }\n    if collection_id:\n        body[\"collection\"\
               ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
               \ primary metric, direction and threshold, as the dashboard form sends\
-              \ them.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak-kfp\"\
+              \ them.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
               ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
               benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
-              \ = {\"kfp_config\": {\"namespace\": tenant, \"s3_secret_name\": s3_secret,\
-              \ \"model_url\": model_url}}\n        if benchmark_id == \"intents\"\
-              :\n            risk_url = f\"https://{risk_model}-predictor.{tenant}.svc.cluster.local:8443/v1\"\
-              \n            parameters.update({\n                \"timeout\": intents_timeout,\
-              \ \"disable_cache\": True, \"sdg_num_samples\": sdg_num_samples,\n \
-              \               \"intents_models\": {\n                    \"judge\"\
-              : {\"url\": risk_url, \"name\": risk_model},\n                    \"\
-              sdg\": {\"url\": risk_url, \"name\": f\"hosted_vllm/{risk_model}\"},\n\
-              \                }})\n        body[\"benchmarks\"] = [{\"id\": benchmark_id,\
-              \ \"provider_id\": \"garak-kfp\", \"parameters\": parameters,\n    \
-              \                           \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \ = {}\n        if benchmark_id == \"intents\":\n            parameters\
+              \ = {\"timeout\": intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n\
+              \                          \"intents_models\": {\"judge\": {\"name\"\
+              : risk_model},\n                                             \"sdg\"\
+              : {\"name\": f\"hosted_vllm/{risk_model}\"}}}\n        body[\"benchmarks\"\
+              ] = [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
               \                          \"--format\", \"json\"], env=env, capture_output=True,\
               \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
               Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
@@ -1353,17 +1142,17 @@ spec:
               '
             - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
               \ import *\n\ndef verdict(\n    model_version_id: str,\n    evalhub_url:\
-              \ str,\n    registry_url: str,\n    kfp_url: str,\n    capability_threshold:\
-              \ float,\n    evaluations: list,\n    run_name: str,\n    run_id: str,\n\
-              \    results: dsl.Input[dsl.Dataset],\n) -> str:\n    \"\"\"Judge the\
-              \ jobs in this run's results ledger against their gates (QUALIFIED only\
-              \ when every evaluation ran and passed) and record the\n    evidence\
-              \ on the model version: per benchmark evalhub.<benchmark>.* (job, results\
-              \ page, verdict, MLflow run,\n    garak-kfp pipeline run) and evalhub.qualification.*\
-              \ (verdict and this pipeline run). References, not copies; the\n   \
-              \ version's other properties are kept, as stages/050-model-evaluation/evaluation/record.sh\
-              \ does. Returns the summary\n    (verdict, reasons, capability score,\
-              \ one row per benchmark) as JSON for the report step.\"\"\"\n    import\
+              \ str,\n    registry_url: str,\n    capability_threshold: float,\n \
+              \   evaluations: list,\n    run_name: str,\n    run_id: str,\n    results:\
+              \ dsl.Input[dsl.Dataset],\n) -> str:\n    \"\"\"Judge the jobs in this\
+              \ run's results ledger against their gates (QUALIFIED only when every\
+              \ evaluation ran and passed) and record the\n    evidence on the model\
+              \ version: per benchmark evalhub.<benchmark>.* (job, results page, verdict,\
+              \ MLflow run) and\n    evalhub.qualification.* (verdict and this pipeline\
+              \ run). References, not copies; the\n    version's other properties\
+              \ are kept, as stages/050-model-evaluation/evaluation/record.sh does.\
+              \ Returns the summary\n    (verdict, reasons, capability score, one\
+              \ row per benchmark) as JSON for the report step.\"\"\"\n    import\
               \ datetime\n    import json\n    import ssl\n    import urllib.parse\n\
               \    import urllib.request\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
               \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
@@ -1441,21 +1230,9 @@ spec:
               evalhub.{b}.\") for b in benchmark_ids)}\n    for job in completed:\n\
               \        jid = job[\"resource\"][\"id\"]\n        results = {b.get(\"\
               id\"): b for b in (job.get(\"results\") or {}).get(\"benchmarks\") or\
-              \ []}\n        garak_run = \"\"\n        if any(b.get(\"provider_id\"\
-              ) == \"garak-kfp\" for b in job.get(\"benchmarks\") or []):\n      \
-              \      flt = json.dumps({\"predicates\": [{\"key\": \"display_name\"\
-              , \"operation\": \"EQUALS\",\n                                     \
-              \         \"string_value\": f\"evalhub-garak-{jid}\"}]})\n         \
-              \   try:\n                runs = call(f\"{kfp_url}/apis/v2beta1/runs?\"\
-              \ + urllib.parse.urlencode(\n                    {\"namespace\": tenant,\
-              \ \"page_size\": 5, \"filter\": flt})).get(\"runs\") or []\n       \
-              \         garak_run = \" \".join(f\"{dashboard_url}/develop-train/pipelines/runs/{tenant}/runs/{r['run_id']}\"\
-              \n                                     for r in runs)\n            except\
-              \ Exception as e:  # the link is a convenience; the job id and results\
-              \ page remain\n                print(f\"garak-kfp pipeline run of job\
-              \ {jid} not found: {e}\")\n        for b in job.get(\"benchmarks\")\
-              \ or []:\n            k = f\"evalhub.{b['id']}.\"\n            r = results.get(b[\"\
-              id\"]) or {}\n            t = r.get(\"test\")\n            lower = bool((b.get(\"\
+              \ []}\n        for b in job.get(\"benchmarks\") or []:\n           \
+              \ k = f\"evalhub.{b['id']}.\"\n            r = results.get(b[\"id\"\
+              ]) or {}\n            t = r.get(\"test\")\n            lower = bool((b.get(\"\
               primary_score\") or {}).get(\"lower_is_better\"))\n            props[k\
               \ + \"job_id\"] = s(jid)\n            props[k + \"job_name\"] = s(job.get(\"\
               name\", \"\"))\n            props[k + \"evaluation_url\"] = s(f\"{dashboard_url}/evaluation/{tenant}/results/{jid}\"\
@@ -1470,11 +1247,10 @@ spec:
               ) else \"false\")\n            props[k + \"mlflow_experiment\"] = s((job.get(\"\
               experiment\") or {}).get(\"name\", \"\"))\n            if r.get(\"mlflow_run_id\"\
               ):\n                props[k + \"mlflow_run_id\"] = s(r[\"mlflow_run_id\"\
-              ])\n            if garak_run:\n                props[k + \"pipeline_run_url\"\
-              ] = s(garak_run)\n            props[k + \"recorded_at\"] = s(now)\n\
-              \    props[\"evalhub.qualification.verdict\"] = s(result)\n    props[\"\
-              evalhub.qualification.pipeline_run\"] = s(run_name)\n    props[\"evalhub.qualification.pipeline_run_url\"\
-              ] = s(\n        f\"{dashboard_url}/develop-train/pipelines/runs/{tenant}/runs/{run_id}\"\
+              ])\n            props[k + \"recorded_at\"] = s(now)\n    props[\"evalhub.qualification.verdict\"\
+              ] = s(result)\n    props[\"evalhub.qualification.pipeline_run\"] = s(run_name)\n\
+              \    props[\"evalhub.qualification.pipeline_run_url\"] = s(\n      \
+              \  f\"{dashboard_url}/develop-train/pipelines/runs/{tenant}/runs/{run_id}\"\
               )\n    props[\"evalhub.qualification.recorded_at\"] = s(now)\n    updated\
               \ = call(f\"{registry_url}/model_versions/{model_version_id}\", \"PATCH\"\
               , {\"customProperties\": props})\n    count = len([k for k in updated.get(\"\
@@ -1496,7 +1272,7 @@ spec:
               resourceMemoryRequest: 256Mi
     pipelineInfo:
       description: Evaluates one candidate model on the agentic coding collections
-        and the garak-kfp security and risk assessments, and records the verdict on
+        and the Garak context-aware vulnerability scan, and records the verdict on
         its model registry version.
       name: agentic-coding-model-qualification
     root:
@@ -1547,9 +1323,6 @@ spec:
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
-                s3_secret:
-                  runtimeValue:
-                    constant: evaluation-models-pipelines-connection
                 sdg_num_samples:
                   runtimeValue:
                     constant: 5.0
@@ -1605,9 +1378,6 @@ spec:
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
-                s3_secret:
-                  runtimeValue:
-                    constant: evaluation-models-pipelines-connection
                 sdg_num_samples:
                   runtimeValue:
                     constant: 5.0
@@ -1663,9 +1433,6 @@ spec:
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
-                s3_secret:
-                  runtimeValue:
-                    constant: evaluation-models-pipelines-connection
                 sdg_num_samples:
                   runtimeValue:
                     constant: 5.0
@@ -1705,13 +1472,13 @@ spec:
             componentRef:
               name: comp-risk-assessment
             dependentTasks:
-            - security
+            - python-tasks
             inputs:
               artifacts:
                 previous:
                   taskOutputArtifact:
                     outputArtifactKey: results
-                    producerTask: security
+                    producerTask: python-tasks
               parameters:
                 auth_secret:
                   runtimeValue:
@@ -1745,9 +1512,6 @@ spec:
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
-                s3_secret:
-                  runtimeValue:
-                    constant: evaluation-models-pipelines-connection
                 sdg_num_samples:
                   runtimeValue:
                     constant: 5.0
@@ -1755,67 +1519,9 @@ spec:
                   componentInputParameter: skip_risk_assessment
                 timeout_seconds:
                   runtimeValue:
-                    constant: 18000.0
-            taskInfo:
-              name: risk-assessment
-          security:
-            cachingOptions: {}
-            componentRef:
-              name: comp-security
-            dependentTasks:
-            - python-tasks
-            inputs:
-              artifacts:
-                previous:
-                  taskOutputArtifact:
-                    outputArtifactKey: results
-                    producerTask: python-tasks
-              parameters:
-                auth_secret:
-                  runtimeValue:
-                    constant: garak-kfp-model-auth
-                benchmark_id:
-                  runtimeValue:
-                    constant: avid_security
-                collection_id:
-                  runtimeValue:
-                    constant: ''
-                evalhub_url:
-                  runtimeValue:
-                    constant: https://evalhub.evalhub.svc.cluster.local:8443
-                experiment:
-                  runtimeValue:
-                    constant: models-onboarding
-                intents_timeout:
-                  runtimeValue:
-                    constant: 7200.0
-                model_name:
-                  componentInputParameter: model_name
-                queue:
-                  runtimeValue:
-                    constant: lq-cpu-default
-                risk_model:
-                  runtimeValue:
-                    constant: gemma-2-9b-abliterated
-                run_id:
-                  runtimeValue:
-                    constant: '{{$.pipeline_job_uuid}}'
-                run_name:
-                  runtimeValue:
-                    constant: '{{$.pipeline_job_name}}'
-                s3_secret:
-                  runtimeValue:
-                    constant: evaluation-models-pipelines-connection
-                sdg_num_samples:
-                  runtimeValue:
-                    constant: 5.0
-                skip:
-                  componentInputParameter: skip_security
-                timeout_seconds:
-                  runtimeValue:
                     constant: 10800.0
             taskInfo:
-              name: security
+              name: risk-assessment
           throughput:
             cachingOptions: {}
             componentRef:
@@ -1861,9 +1567,6 @@ spec:
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
-                s3_secret:
-                  runtimeValue:
-                    constant: evaluation-models-pipelines-connection
                 sdg_num_samples:
                   runtimeValue:
                     constant: 5.0
@@ -1920,11 +1623,7 @@ spec:
                     - agentic-coding-throughput-v2
                     - agentic-coding-livecodebench-v2
                     - agentic-coding-python-tasks-v1
-                    - garak-kfp/avid_security
-                    - garak-kfp/intents
-                kfp_url:
-                  runtimeValue:
-                    constant: https://ds-pipeline-dspa.evaluated-models.svc.cluster.local:8443
+                    - garak/intents
                 model_version_id:
                   componentInputParameter: model_version_id
                 registry_url:
@@ -1957,10 +1656,6 @@ spec:
             isOptional: true
             parameterType: BOOLEAN
           skip_risk_assessment:
-            defaultValue: false
-            isOptional: true
-            parameterType: BOOLEAN
-          skip_security:
             defaultValue: false
             isOptional: true
             parameterType: BOOLEAN
@@ -2008,14 +1703,6 @@ spec:
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
             exec-risk-assessment:
-              configMapAsVolume:
-              - configMapName: pipeline-tasks-service-ca
-                configMapNameParameter:
-                  runtimeValue:
-                    constant: pipeline-tasks-service-ca
-                mountPath: /etc/pki/ca-trust/source/anchors
-                optional: false
-            exec-security:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:

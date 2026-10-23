@@ -63,7 +63,7 @@ ready.
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| ServingRuntime | `vllm-cuda-runtime` | `evaluated-models` | Wave 20. Instance of the platform template `vllm-cuda-runtime-template`, same vLLM image digest as the MaaS deployments. |
+| ServingRuntime | `vllm-cuda-runtime` | `evaluated-models` | Wave 20. Instance of the platform template `vllm-cuda-runtime-template`: the 3.5.2 vLLM image, the same digest as the platform's 3.5.2 LLMInferenceService templates that production MaaS uses (updated 2026-10-23 from the 3.5.1 image). |
 | InferenceService | `qwen3-8-27b-int4` | `evaluated-models` | Wave 40. `RedHatAI/Qwen3.8-27B-INT4` pinned to a Hugging Face commit, RawDeployment, token authentication on, hardware profile `gpu-reserved-demo`, queue `lq-gpu-reserved-demo`, one L40S-class GPU, `serving.kserve.io/stop: "true"`. |
 | InferenceService | `qwen3-8-27b-nvfp4` | `evaluated-models` | Wave 40. `RedHatAI/Qwen3.8-27B-NVFP4` at the production revision (registry Qwen3.8-27B-NVFP4 version 6) with production's serving arguments, hardware profile `gpu-rtxpro6000`, queue `lq-gpu-rtxpro6000`, one RTX PRO 6000: the candidate configuration that matches production MaaS, added after INT4 on L40S missed the first-token gate. |
 | Role / RoleBinding | `qwen3-8-27b-nvfp4-view-role` / `evalhub-job-model-access-nvfp4` | `evaluated-models` | Wave 21. `get` on this InferenceService for `evalhub-evalhub-job`. |
@@ -71,7 +71,7 @@ ready.
 | ServiceAccount, Secret (`kubernetes.io/service-account-token`), Role, RoleBinding | `candidate-model-client`, `candidate-model-client-token` | `evaluated-models` | Wave 12. A token that may only `get` InferenceServices in this project, used as the candidate API key. |
 | ConfigMap | `candidate-model-service-ca` | `evaluated-models` | Wave 12. Injected service CA. |
 | ServiceAccount, Role, RoleBinding | `candidate-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch Secrets. |
-| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `garak-kfp-model-auth`, the one model auth Secret for every candidate evaluation: `api-key` (the `candidate-model-client` token); `ca_cert` with the service CA and the cluster CA; `JUDGE_API_KEY` and `SDG_API_KEY` (the same token, for the abliterated risk assessment model in this project, which TAP's attacker and evaluator also use, guide 7.7.4); `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token` for `garak-kfp`. Other adapters ignore the extra keys. Until 2026-10-23 a second Secret `qualification-model-auth` held only `api-key` and `ca_cert`. |
+| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `garak-kfp-model-auth`, the one model auth Secret for every candidate evaluation: `api-key` (the `candidate-model-client` token); `ca_cert` with the service CA and the cluster CA; `judge_url`/`judge_api-key` and `sdg_url`/`sdg_api-key` (the abliterated risk assessment model and the same token, EvalHub's multi-model convention that the in-pod `garak` `intents` scan reads; TAP's attacker and evaluator inherit the judge); `JUDGE_API_KEY` and `SDG_API_KEY` (the same token under the names `garak-kfp` reads, guide 7.7.4); `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token` for `garak-kfp`. Other adapters ignore the extra keys. Until 2026-10-23 a second Secret `qualification-model-auth` held only `api-key` and `ca_cert`. |
 
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
 
@@ -88,7 +88,6 @@ ready.
 | Job | `configure-pipeline-server` | `evaluated-models` | `Sync` hook, wave 14, `BeforeHookCreation,HookSucceeded`, 900 s deadline. Creates DSPA `dspa` the way the dashboard's **Configure pipeline server** does, then points it at a copied server config with the MLflow plugin's `insecureSkipVerify: true`. |
 | ConfigMap | `pipeline-tasks-service-ca` | `evaluated-models` | Wave 12. Injected service CA for pipeline task containers that call EvalHub. |
 | RoleBinding | `pipeline-runner-evalhub-access` | `evaluated-models` | Wave 15. `evalhub-evaluator` for `pipeline-runner-dspa`. |
-| RoleBinding | `pipeline-runner-dspa-api` | `evaluated-models` | Wave 15. `ds-pipeline-user-access-dspa` for `pipeline-runner-dspa`: the verdict step reads the garak-kfp pipeline run of each security job to link it. |
 | RoleBinding | `pipeline-runner-demo-registry` | `rhoai-model-registries` | Wave 15. The operator-created `registry-user-demo-registry` Role (the one the dashboard's registry permissions bind) for `pipeline-runner-dspa`: the record step writes the verdict on the candidate's model version. |
 | NetworkPolicy | `demo-registry-qualification-pipeline` | `rhoai-model-registries` | Wave 15. Admits the qualification pipeline's step pods (`pipelines.kubeflow.org/v2_component: "true"` in `evaluated-models`) to the registry API on 8443. The operator's own `demo-registry-https-route` admits only the router and RHOAI-generated namespaces, so an in-cluster call from this project timed out. |
 
@@ -97,7 +96,7 @@ ready.
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | Pipeline | `agentic-coding-model-qualification` | `evaluated-models` | Wave 16 (kustomize patch), `SkipDryRunOnMissingResource`. |
-| PipelineVersion | `agentic-coding-model-qualification-v15` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `security` (`garak-kfp` `avid_security`), `risk-assessment` (`garak-kfp` `intents`), `verdict` (judges the run and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
+| PipelineVersion | `agentic-coding-model-qualification-v16` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `risk-assessment` (built-in `garak` `intents`, the Context-aware vulnerability scan, as a single task in the job pod), `verdict` (judges the run and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
 
 ### `storage/`
 

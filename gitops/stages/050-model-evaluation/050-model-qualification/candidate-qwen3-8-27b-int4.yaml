@@ -23,7 +23,7 @@ spec:
     prometheus.io/port: "8080"
   containers:
     - name: kserve-container
-      image: registry.redhat.io/rhaii/vllm-cuda-rhel9@sha256:c056e61672b6aea489ad5dde0bd2f8497230f5333e87f7cf6c494eba3bfdc808
+      image: registry.redhat.io/rhaii/vllm-cuda-rhel9@sha256:fd9540f3882b9aae5f862eba6c295d0e9c6b43f8c17b27b179481bfa330bfbc1
       command: [python, -m, vllm.entrypoints.openai.api_server]
       args: [--port=8080, --model=/mnt/models, "--served-model-name={{.Name}}"]
       env:
@@ -53,9 +53,9 @@ metadata:
     openshift.io/display-name: Qwen3.8 27B INT4 (candidate)
     # Dashboard Stop/Start control. Runs on the L40S pool (gpu-reserved-demo), apart from the RTX PRO
     # 6000 GPU of production Qwen 3.8 in internal-models; set to "true" to hand the GPU back.
-    # Started 2026-10-23 for the garak-kfp evaluations (two L40S workers with the risk-assessment model:
-    # GPU_POOL=l40s deploy.sh --gpus 2).
-    serving.kserve.io/stop: "false"
+    # Stopped 2026-10-23: INT4 on L40S misses the 2,000 ms first-token gate (2,588 ms); onboarding is evaluated
+    # on the production configuration, qwen3-8-27b-nvfp4 on RTX PRO 6000.
+    serving.kserve.io/stop: "true"
     serving.kserve.io/deploymentMode: RawDeployment
     security.opendatahub.io/enable-auth: "true"
     opendatahub.io/hardware-profile-name: gpu-reserved-demo

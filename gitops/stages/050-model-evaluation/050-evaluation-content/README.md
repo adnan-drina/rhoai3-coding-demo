@@ -13,7 +13,7 @@ API consume it through `050-evalhub`. Criteria change more often than the servic
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced and Healthy at the stage revision); EvalHub start-up validates the ids (see How). No content-specific check. |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. |
 | Depends on | `050-evalhub` (lists every id in its CR); `050-model-qualification` (namespace `evaluated-models`, OBC `evaluation-models-workbench`, tenant job ServiceAccount); ODF Route `s3`; Stage 040 MaaS (models under test). |
-| Used by | `050-evalhub`; the qualification pipeline steps 1 to 4 (`latency-v1`, `throughput-v2`, `livecodebench-v2`, `python-tasks-v1`; steps 5 and 6 are `garak-kfp` benchmark jobs, not collections); jobs submitted from **Develop & train → Evaluations** or the EvalHub REST API, or `stages/050-model-evaluation/evaluation/submit.sh` (the former SWE-bench driver `swebench-run.sh` is in git history at `82092e01`). |
+| Used by | `050-evalhub`; the qualification pipeline steps 1 to 4 (`latency-v1`, `throughput-v2`, `livecodebench-v2`, `python-tasks-v1`; its risk assessment step is a built-in `garak` `intents` job, not a collection); jobs submitted from **Develop & train → Evaluations** or the EvalHub REST API, or `stages/050-model-evaluation/evaluation/submit.sh` (the former SWE-bench driver `swebench-run.sh` is in git history at `82092e01`). |
 
 ## Why
 
@@ -24,10 +24,9 @@ benchmark, so a collection is a versioned qualification gate [1]. Changing a gat
 which keeps older results comparable.
 
 The custom provider reuses the built-in Inspect adapter image with different limits: a 512-token cap, eight connections
-and three retries so samples stay inside the evaluation sidecar's 30-second model request limit. Security and risk
-assessment use the built-in `garak-kfp` provider as benchmark jobs, because its `kfp_config.model_url` is the
-candidate's own URL, which a collection cannot carry per model; the in-pod `garak-coding` provider and the
-`security-*-v2` collections were retired on 2026-10-23.
+and three retries so samples stay inside the evaluation sidecar's 30-second model request limit. The risk
+assessment uses the built-in `garak` provider's `intents` benchmark as a single job, not a collection; the
+`garak-coding` provider and the `security-*-v2` collections were retired on 2026-10-23.
 
 SWE-bench is not a 3.5.1 built-in provider. It is staged from the community `eval-hub-contrib` adapter. Patch generation
 works; grading inside EvalHub does not run on 3.5.1 because the adapter needs Kubernetes API credentials and EvalHub runs

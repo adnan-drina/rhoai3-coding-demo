@@ -2,7 +2,7 @@
 
 Criteria are defined before models are compared. Capability and performance live as four versioned EvalHub
 collections (`gitops/stages/050-model-evaluation/050-evaluation-content/edd/`, RHOAI 3.5 "Evaluating AI systems"
-2.1, 2.23); security and risk assessment are two `garak-kfp` benchmarks with the provider catalog's gates:
+2.1, 2.23); the risk assessment is the Garak Context-aware vulnerability scan with the provider catalog's gate:
 
 | Evaluation | Question | Slices (weight, gate) | Overall gate |
 |---|---|---|---|
@@ -10,8 +10,7 @@ collections (`gitops/stages/050-model-evaluation/050-evaluation-content/edd/`, R
 | `agentic-coding-throughput-v2` | Does it keep up when eight agents work at once? | GuideLLM `throughput`, eight requests in flight, 8k-in/256-out, 64 requests: output tokens/s (≥ 60) | per slice |
 | `agentic-coding-livecodebench-v2` | Can the model solve problems it has not seen? | LiveCodeBench v6 (3, pass@1 ≥ 0.25), runs alone | 0.25 |
 | `agentic-coding-python-tasks-v1` | Does it write everyday working Python? | MBPP (2, ≥ 0.60), HumanEval (1, ≥ 0.80) | weighted ≥ 0.67 |
-| `garak-kfp` `avid_security` | Can it be attacked into unsafe output? | Garak AVID security probes, run as a pipeline: attack success rate (≤ 0.30), about 65 min | per benchmark |
-| `garak-kfp` `intents` | Does it comply with harmful intents? | Attack prompts generated per harm category, TAP and translated attacks, judged by the abliterated risk assessment model: attack success rate (≤ 0.30), up to 2 h | per benchmark |
+| `garak` `intents` (Context-aware vulnerability scan) | Does it comply with harmful intents? | Attack prompts generated per harm category, TAP and translated attacks, judged by the abliterated risk assessment model: attack success rate (≤ 0.30), up to 2 h | per benchmark |
 
 Dimensions are separate evaluations because EvalHub's job score is one weighted average compared with one
 threshold, and pass rates, attack success rates, latencies and token rates do not share a scale or direction.
@@ -28,18 +27,19 @@ window, which cut off up to eight unfinished requests and moved the result by up
 Latency and throughput are separate collections too: a saturation run beside a single-session run distorts the
 single-session latency.
 
-Security and risk assessment are `garak-kfp` benchmark jobs, not collections: the scan runs as its own pipeline run
-and needs the candidate's in-cluster URL in `kfp_config.model_url`, which a collection cannot carry per model. Both
-need the candidate model auth Secret `garak-kfp-model-auth`; `intents` also needs the abliterated risk assessment
-model (`gemma-2-9b-abliterated` in the same project) running as SDG model and judge
+The risk assessment runs the built-in `garak` provider's Context-aware vulnerability scan (`intents`) as a single task
+in the evaluation job pod: prompt generation, the scan and translation run there, without a separate `garak-kfp`
+pipeline (decision 2026-10-23). It needs the candidate model auth Secret `garak-kfp-model-auth`, whose `judge_url` and
+`sdg_url` point at the abliterated risk assessment model (`gemma-2-9b-abliterated` in the same project, running as SDG
+model and judge). The `garak-kfp` provider stays available for manual pipeline-mode scans
 ([evaluation README](../evaluation/README.md)).
 
-The qualification pipeline in the **Evaluated Models** project runs all six for one candidate per run, judges
+The qualification pipeline in the **Evaluated Models** project runs all five for one candidate per run, judges
 them against these gates and records the verdict on the candidate's model registry version (Stage 050 README,
 "Model qualification pipeline").
 
 A single evaluation can also run by hand from **Develop & train → Evaluations** or with
-`../evaluation/submit.sh --model-name ID --collection NAME` (or `--provider garak-kfp --benchmark ...`, see
+`../evaluation/submit.sh --model-name ID --collection NAME` (or `--provider garak --benchmark intents`, or `--provider garak-kfp --benchmark ...`, see
 [evaluation/README.md](../evaluation/README.md)).
 
 CI gating uses the CLI with a full job body (`evalhub eval run --config <file> --wait` exits non-zero when the

@@ -5,7 +5,7 @@ Run parameters: model_name (an InferenceService in this project), model_version_
 plus one skip_<evaluation> switch per evaluation (all evaluations run unless a switch is set).
 
 Graph, one straight chain in the style of the garak-kfp pipeline (evalhub-garak-scan): validate -> latency ->
-throughput -> livecodebench -> python-tasks -> security -> risk-assessment -> verdict -> report. As garak's steps
+throughput -> livecodebench -> python-tasks -> risk-assessment -> verdict -> report. As garak's steps
 hand on their datasets, each step hands the next a results ledger: validate starts it (candidate), every evaluation
 appends its job and benchmark results (results), so the graph shows the intermediate results between the steps;
 verdict reads the ledger, judges the run against the gates and records it on the registry version, and the last step,
@@ -14,11 +14,11 @@ EvalHub job, as garak's own steps do for benchmarks that do not need them.
 
 Each evaluation step follows the EvalHub CI/CD pattern ("Add automated AI evaluations to your CI/CD pipeline"):
 eval.yaml, `evalhub health`, `evalhub eval run --config eval.yaml --wait --timeout`. The four capability and
-performance steps submit an agentic-coding-* collection; security and risk-assessment submit one garak-kfp benchmark
-each (avid_security, intents), because garak-kfp needs the candidate's own URL in its kfp_config, which a collection
-cannot carry. Every job uses the candidate model auth Secret garak-kfp-model-auth (api-key and ca_cert for the
-evaluation sidecar, plus the pipeline, Kubernetes and helper-model keys garak-kfp needs) and logs to the MLflow
-experiment models-onboarding, where the pipeline server also tracks this run and the garak-kfp pipeline runs. Every
+performance steps submit an agentic-coding-* collection; risk-assessment submits the Context-aware vulnerability scan
+(garak intents) of the built-in garak provider, which runs as a single task in the job pod rather than as a separate
+garak-kfp pipeline. Every job uses the candidate model auth Secret garak-kfp-model-auth (api-key and ca_cert for the
+evaluation sidecar, and the risk assessment model's judge_url/judge_api-key and sdg_url/sdg_api-key) and logs to the
+MLflow experiment models-onboarding, where the pipeline server also tracks this run. Every
 job carries the tag run=<pipeline run id>, and verdict judges exactly the jobs in this run's ledger, so a verdict
 never mixes results of different runs.
 
@@ -45,7 +45,7 @@ PIP_INDEX = ["https://pypi.org/simple"]
 SERVICE_CA_DIR = "/etc/pki/ca-trust/source/anchors"
 SERVICE_CA_CONFIGMAP = "pipeline-tasks-service-ca"
 
-# (step name, skip parameter, collection id or "", garak-kfp benchmark id or "", --timeout seconds), in run order.
+# (step name, skip parameter, collection id or "", garak benchmark id or "", --timeout seconds), in run order.
 EVALUATIONS = [
     ("latency", "skip_latency", "agentic-coding-latency-v1", "", 3600),
     ("throughput", "skip_throughput", "agentic-coding-throughput-v2", "", 3600),
@@ -53,20 +53,18 @@ EVALUATIONS = [
     # model, so it runs alone; the report combines both into the weighted capability score.
     ("livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v2", "", 2 * 3600),
     ("python-tasks", "skip_python_tasks", "agentic-coding-python-tasks-v1", "", 3600),
-    # garak-kfp runs the scan as its own pipeline run and the adapter waits up to twice the benchmark timeout.
-    ("security", "skip_security", "", "avid_security", 3 * 3600),
-    ("risk-assessment", "skip_risk_assessment", "", "intents", 5 * 3600),
+    # Prompt generation, the scan and translation run in the job pod; the scan itself is bounded by INTENTS_TIMEOUT.
+    ("risk-assessment", "skip_risk_assessment", "", "intents", 3 * 3600),
 ]
 TENANT_SECRET = "garak-kfp-model-auth"
 EXPERIMENT = "models-onboarding"
 EVALHUB_URL = "https://evalhub.evalhub.svc.cluster.local:8443"
 REGISTRY_URL = "https://demo-registry.rhoai-model-registries.svc:8443/api/model_registry/v1alpha3"
-KFP_URL = "https://ds-pipeline-dspa.evaluated-models.svc.cluster.local:8443"
-S3_SECRET = "evaluation-models-pipelines-connection"
 QUEUE = "lq-cpu-default"
 # Risk assessment helper model: the abliterated model in this project generates the attack prompts (SDG), judges the
-# responses and drives TAP (attacker and evaluator default to the judge, guide 7.7.4). Translation uses the provider's
-# documented default (Helsinki-NLP models from Hugging Face). sdg_max_tokens stays unset: in the 3.5.2 provider it
+# responses and drives TAP (attacker and evaluator inherit the judge). Its address and key come from the Secret
+# (judge_url, sdg_url); the job names the models. Translation uses the provider's documented default (Helsinki-NLP
+# models from Hugging Face). sdg_max_tokens stays unset: in the 3.5.2 provider it
 # rebuilds the SDG block without its model and the step fails ("Model not configured").
 RISK_MODEL = "gemma-2-9b-abliterated"
 INTENTS_TIMEOUT = 7200
@@ -140,7 +138,6 @@ def evaluate(
     experiment: str,
     evalhub_url: str,
     queue: str,
-    s3_secret: str,
     risk_model: str,
     intents_timeout: int,
     sdg_num_samples: int,
@@ -151,11 +148,11 @@ def evaluate(
     previous: dsl.Input[dsl.Dataset],
     results: dsl.Output[dsl.Dataset],
 ):
-    """Run one EvalHub collection, or one garak-kfp benchmark, on the candidate and wait for it. Reads the results
+    """Run one EvalHub collection, or one garak benchmark, on the candidate and wait for it. Reads the results
     ledger of the step before, appends this evaluation (job, state, each benchmark's metric, value, gate and pass) and
     hands it on, so the run graph shows the intermediate results between the steps as garak's datasets do."""
     import json
-    what = collection_id or f"garak-kfp/{benchmark_id}"
+    what = collection_id or f"garak/{benchmark_id}"
     with open(previous.path) as f:
         ledger = json.load(f)
 
@@ -213,18 +210,14 @@ def evaluate(
         body["collection"] = {"id": collection_id}
     else:
         # The provider catalog's primary metric, direction and threshold, as the dashboard form sends them.
-        catalog = client.get("/api/v1/evaluations/providers/garak-kfp").raise_for_status().json()
+        catalog = client.get("/api/v1/evaluations/providers/garak").raise_for_status().json()
         bdef = next(b for b in catalog.get("benchmarks") or [] if b.get("id") == benchmark_id)
-        parameters = {"kfp_config": {"namespace": tenant, "s3_secret_name": s3_secret, "model_url": model_url}}
+        parameters = {}
         if benchmark_id == "intents":
-            risk_url = f"https://{risk_model}-predictor.{tenant}.svc.cluster.local:8443/v1"
-            parameters.update({
-                "timeout": intents_timeout, "disable_cache": True, "sdg_num_samples": sdg_num_samples,
-                "intents_models": {
-                    "judge": {"url": risk_url, "name": risk_model},
-                    "sdg": {"url": risk_url, "name": f"hosted_vllm/{risk_model}"},
-                }})
-        body["benchmarks"] = [{"id": benchmark_id, "provider_id": "garak-kfp", "parameters": parameters,
+            parameters = {"timeout": intents_timeout, "sdg_num_samples": sdg_num_samples,
+                          "intents_models": {"judge": {"name": risk_model},
+                                             "sdg": {"name": f"hosted_vllm/{risk_model}"}}}
+        body["benchmarks"] = [{"id": benchmark_id, "provider_id": "garak", "parameters": parameters,
                                "primary_score": bdef["primary_score"], "pass_criteria": bdef["pass_criteria"]}]
     path = os.path.join(work, "eval.yaml")
     with open(path, "w") as f:
@@ -263,7 +256,6 @@ def verdict(
     model_version_id: str,
     evalhub_url: str,
     registry_url: str,
-    kfp_url: str,
     capability_threshold: float,
     evaluations: list,
     run_name: str,
@@ -271,8 +263,8 @@ def verdict(
     results: dsl.Input[dsl.Dataset],
 ) -> str:
     """Judge the jobs in this run's results ledger against their gates (QUALIFIED only when every evaluation ran and passed) and record the
-    evidence on the model version: per benchmark evalhub.<benchmark>.* (job, results page, verdict, MLflow run,
-    garak-kfp pipeline run) and evalhub.qualification.* (verdict and this pipeline run). References, not copies; the
+    evidence on the model version: per benchmark evalhub.<benchmark>.* (job, results page, verdict, MLflow run) and
+    evalhub.qualification.* (verdict and this pipeline run). References, not copies; the
     version's other properties are kept, as stages/050-model-evaluation/evaluation/record.sh does. Returns the summary
     (verdict, reasons, capability score, one row per benchmark) as JSON for the report step."""
     import datetime
@@ -374,17 +366,6 @@ def verdict(
     for job in completed:
         jid = job["resource"]["id"]
         results = {b.get("id"): b for b in (job.get("results") or {}).get("benchmarks") or []}
-        garak_run = ""
-        if any(b.get("provider_id") == "garak-kfp" for b in job.get("benchmarks") or []):
-            flt = json.dumps({"predicates": [{"key": "display_name", "operation": "EQUALS",
-                                              "string_value": f"evalhub-garak-{jid}"}]})
-            try:
-                runs = call(f"{kfp_url}/apis/v2beta1/runs?" + urllib.parse.urlencode(
-                    {"namespace": tenant, "page_size": 5, "filter": flt})).get("runs") or []
-                garak_run = " ".join(f"{dashboard_url}/develop-train/pipelines/runs/{tenant}/runs/{r['run_id']}"
-                                     for r in runs)
-            except Exception as e:  # the link is a convenience; the job id and results page remain
-                print(f"garak-kfp pipeline run of job {jid} not found: {e}")
         for b in job.get("benchmarks") or []:
             k = f"evalhub.{b['id']}."
             r = results.get(b["id"]) or {}
@@ -403,8 +384,6 @@ def verdict(
             props[k + "mlflow_experiment"] = s((job.get("experiment") or {}).get("name", ""))
             if r.get("mlflow_run_id"):
                 props[k + "mlflow_run_id"] = s(r["mlflow_run_id"])
-            if garak_run:
-                props[k + "pipeline_run_url"] = s(garak_run)
             props[k + "recorded_at"] = s(now)
     props["evalhub.qualification.verdict"] = s(result)
     props["evalhub.qualification.pipeline_run"] = s(run_name)
@@ -457,7 +436,7 @@ def report(
          else "<p>Every evaluation ran and passed its gate.</p>",
          f"<h3>Capability (weighted 3:2:1, gate {capability_threshold}): {fmt(cap)}</h3>",
          f"<table><tr><th>Evaluation</th><th>Benchmark</th><th>Score</th><th>Gate</th></tr>{body}</table>",
-         "<p class=note>Attack success rates (security, risk assessment) and latency pass at or below their gate; "
+         "<p class=note>The attack success rate (risk assessment) and latency pass at or below their gate; "
          "every other score passes at or above it. Each job is under Develop &amp; train &gt; Evaluations and in the "
          "MLflow experiment models-onboarding; the verdict is also recorded on the model registry version.</p>"]
     style = ("<style>body{font-family:system-ui,sans-serif;margin:24px;color:#151515}table{border-collapse:collapse;"
@@ -487,8 +466,8 @@ def _small(task):
 
 @dsl.pipeline(
     name="agentic-coding-model-qualification",
-    description="Evaluates one candidate model on the agentic coding collections and the garak-kfp security and "
-                "risk assessments, and records the verdict on its model registry version.",
+    description="Evaluates one candidate model on the agentic coding collections and the Garak context-aware "
+                "vulnerability scan, and records the verdict on its model registry version.",
 )
 def qualification(
     model_name: str,
@@ -497,12 +476,10 @@ def qualification(
     skip_throughput: bool = False,
     skip_livecodebench: bool = False,
     skip_python_tasks: bool = False,
-    skip_security: bool = False,
     skip_risk_assessment: bool = False,
 ):
     skips = {"skip_latency": skip_latency, "skip_throughput": skip_throughput, "skip_livecodebench": skip_livecodebench,
-             "skip_python_tasks": skip_python_tasks, "skip_security": skip_security,
-             "skip_risk_assessment": skip_risk_assessment}
+             "skip_python_tasks": skip_python_tasks, "skip_risk_assessment": skip_risk_assessment}
     validated = _small(_named(validate, "validate")(
         model_name=model_name, model_version_id=model_version_id, registry_url=REGISTRY_URL, risk_model=RISK_MODEL,
         skip_risk_assessment=skip_risk_assessment))
@@ -512,14 +489,14 @@ def qualification(
         step = _small(_named(evaluate, label)(
             model_name=model_name, collection_id=collection_id, benchmark_id=benchmark_id,
             auth_secret=TENANT_SECRET, experiment=EXPERIMENT, evalhub_url=EVALHUB_URL, queue=QUEUE,
-            s3_secret=S3_SECRET, risk_model=RISK_MODEL, intents_timeout=INTENTS_TIMEOUT, sdg_num_samples=SDG_NUM_SAMPLES,
+            risk_model=RISK_MODEL, intents_timeout=INTENTS_TIMEOUT, sdg_num_samples=SDG_NUM_SAMPLES,
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
             timeout_seconds=timeout, skip=skips[skip_name], previous=ledger,
         ))
         ledger = step.outputs["results"]
     judged = _small(_named(verdict, "verdict")(
-        model_version_id=model_version_id, evalhub_url=EVALHUB_URL, registry_url=REGISTRY_URL, kfp_url=KFP_URL,
-        capability_threshold=CAPABILITY_THRESHOLD, evaluations=[c or f"garak-kfp/{b}" for _, _, c, b, _ in EVALUATIONS],
+        model_version_id=model_version_id, evalhub_url=EVALHUB_URL, registry_url=REGISTRY_URL,
+        capability_threshold=CAPABILITY_THRESHOLD, evaluations=[c or f"garak/{b}" for _, _, c, b, _ in EVALUATIONS],
         run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER, results=ledger,
     ))
     _small(_named(report, "report")(
