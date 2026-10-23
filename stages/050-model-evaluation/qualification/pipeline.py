@@ -5,10 +5,11 @@ Run parameters: model_name (an InferenceService in this project), model_version_
 plus one skip_<evaluation> switch per evaluation (all evaluations run unless a switch is set).
 
 Graph, one straight chain in the style of the garak-kfp pipeline (evalhub-garak-scan): validate -> latency ->
-throughput -> livecodebench -> python-tasks -> security -> risk-assessment -> report -> record. Every step takes
-only run parameters and runs after the step before it; the evaluation steps publish no artifacts (each job's results
-stay in EvalHub, MLflow and on the registry version), and only report publishes html_report and summary_metrics,
-like garak's write-kfp-outputs. A skipped evaluation step still runs in its place and ends without submitting an
+throughput -> livecodebench -> python-tasks -> security -> risk-assessment -> verdict -> report. Every step runs
+after the step before it and takes run parameters; only verdict hands report its summary, as garak's steps hand on
+their datasets. The evaluation steps publish no artifacts (each job's results stay in EvalHub, MLflow and on the
+registry version); verdict judges the run and records it on the registry version, and the last step, report,
+publishes html_report and summary_metrics, like garak's write-kfp-outputs. A skipped evaluation step still runs in its place and ends without submitting an
 EvalHub job, as garak's own steps do for benchmarks that do not need them.
 
 Each evaluation step follows the EvalHub CI/CD pattern ("Add automated AI evaluations to your CI/CD pipeline"):
@@ -18,7 +19,7 @@ each (avid_security, intents), because garak-kfp needs the candidate's own URL i
 cannot carry. Every job uses the candidate model auth Secret garak-kfp-model-auth (api-key and ca_cert for the
 evaluation sidecar, plus the pipeline, Kubernetes and helper-model keys garak-kfp needs) and logs to the MLflow
 experiment models-onboarding, where the pipeline server also tracks this run and the garak-kfp pipeline runs. Every
-job carries the tag run=<pipeline run id>; report and record read exactly those jobs, so a verdict never mixes
+job carries the tag run=<pipeline run id>; the verdict step reads exactly those jobs, so a verdict never mixes
 results of different runs.
 
 Steps call EvalHub, the Kubernetes API, the pipeline server and the model registry as the pipeline server's
@@ -234,19 +235,22 @@ def evaluate(
 
 
 @dsl.component(base_image=RUNTIME_IMAGE)
-def report(
-    model_name: str,
+def verdict(
     model_version_id: str,
     evalhub_url: str,
+    registry_url: str,
+    kfp_url: str,
     capability_threshold: float,
     evaluations: list,
     run_name: str,
     run_id: str,
-    html_report: dsl.Output[dsl.HTML],
-    summary_metrics: dsl.Output[dsl.Metrics],
 ) -> str:
-    """Judge this run's jobs against their gates: QUALIFIED only when every evaluation ran and passed."""
-    import html
+    """Judge this run's jobs against their gates (QUALIFIED only when every evaluation ran and passed) and record the
+    evidence on the model version: per benchmark evalhub.<benchmark>.* (job, results page, verdict, MLflow run,
+    garak-kfp pipeline run) and evalhub.qualification.* (verdict and this pipeline run). References, not copies; the
+    version's other properties are kept, as stages/050-model-evaluation/evaluation/record.sh does. Returns the summary
+    (verdict, reasons, capability score, one row per benchmark) as JSON for the report step."""
+    import datetime
     import json
     import ssl
     import urllib.parse
@@ -255,17 +259,22 @@ def report(
     sa = "/var/run/secrets/kubernetes.io/serviceaccount"
     tenant = open(f"{sa}/namespace").read().strip()
     token = open(f"{sa}/token").read().strip()
+    kube_ctx = ssl.create_default_context(cafile=f"{sa}/ca.crt")
     ctx = ssl.create_default_context(cafile="/etc/pki/ca-trust/source/anchors/service-ca.crt")
 
-    def get(path, **params):
-        url = f"{evalhub_url}{path}" + (f"?{urllib.parse.urlencode(params)}" if params else "")
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "X-Tenant": tenant})
-        with urllib.request.urlopen(req, context=ctx, timeout=60) as r:
+    def call(url, method="GET", data=None, tenant_header=False, context=ctx):
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        if tenant_header:
+            headers["X-Tenant"] = tenant
+        req = urllib.request.Request(url, method=method, headers=headers,
+                                     data=json.dumps(data).encode() if data is not None else None)
+        with urllib.request.urlopen(req, context=context, timeout=60) as r:
             return json.load(r)
 
     jobs, offset = [], 0
     while True:
-        page = get("/api/v1/evaluations/jobs", tags=f"run={run_id}", limit=100, offset=offset)
+        page = call(f"{evalhub_url}/api/v1/evaluations/jobs?" + urllib.parse.urlencode(
+            {"tags": f"run={run_id}", "limit": 100, "offset": offset}), tenant_header=True)
         jobs += page.get("items") or []
         offset += 100
         if not page.get("next") or offset >= page.get("total_count", 0):
@@ -294,7 +303,7 @@ def report(
         job = by_evaluation.get(evaluation)
         if job is None:
             reasons.append(f"{evaluation}: not run in this pipeline run")
-            rows.append((evaluation, "-", None, None, "not run", None))
+            rows.append([evaluation, "-", None, None, "not run", None])
             continue
         state = (job.get("status") or {}).get("state")
         results = job.get("results") or {}
@@ -306,11 +315,9 @@ def report(
             threshold = thresholds.get(b["id"])
             if threshold is None:
                 threshold = (b.get("test") or {}).get("threshold")
-            rows.append((evaluation, b["id"], value, passed, note, threshold))
+            rows.append([evaluation, b["id"], value, passed, note, threshold])
             if passed is not True:
                 reasons.append(f"{evaluation}/{b['id']}: misses its gate ({note} {value}, threshold {threshold})")
-            if isinstance(value, (int, float)):
-                summary_metrics.log_metric(f"{b['id']}.{note}".replace("/", "_").replace(":", "_"), float(value))
             if b["id"] in weights:
                 capability.append((weights[b["id"]], value))
         col_test = results.get("test") or {}
@@ -321,82 +328,16 @@ def report(
            if len(capability) == len(weights) and all(isinstance(v, (int, float)) for _, v in capability) else None)
     if cap is None:
         reasons.append("no complete capability result (LiveCodeBench, MBPP and HumanEval)")
-    else:
-        summary_metrics.log_metric("capability.weighted", float(cap))
-        if cap < capability_threshold:
-            reasons.append(f"capability score {cap:.3f} misses its gate {capability_threshold}")
-    verdict = "QUALIFIED" if not reasons else "NOT QUALIFIED"
-    summary_metrics.log_metric("qualified", 1.0 if verdict == "QUALIFIED" else 0.0)
-
-    def fmt(v):
-        return f"{v:.4g}" if isinstance(v, (int, float)) else "-"
-
-    def css(p):
-        return {True: "pass", False: "fail"}.get(p, "na")
-
-    body = "".join(
-        f"<tr><td>{html.escape(e)}</td><td>{html.escape(b)}<br><small>{html.escape(n or '')}</small></td>"
-        f"<td class={css(p)}>{fmt(v)}</td><td>{fmt(t)}</td></tr>" for e, b, v, p, n, t in rows)
-    h = [f"<h1>Model onboarding qualification</h1><p class=note>Run {html.escape(run_name)}: "
-         f"<b>{html.escape(model_name)}</b>, model registry version {html.escape(model_version_id)}</p>",
-         f"<h2 class={'pass' if verdict == 'QUALIFIED' else 'fail'}>{verdict}</h2>",
-         "<ul>" + "".join(f"<li>{html.escape(r)}</li>" for r in reasons) + "</ul>" if reasons
-         else "<p>Every evaluation ran and passed its gate.</p>",
-         f"<h3>Capability (weighted 3:2:1, gate {capability_threshold}): {fmt(cap)}</h3>",
-         f"<table><tr><th>Evaluation</th><th>Benchmark</th><th>Score</th><th>Gate</th></tr>{body}</table>",
-         "<p class=note>Attack success rates (security, risk assessment) and latency pass at or below their gate; "
-         "every other score passes at or above it. Each job is under Develop &amp; train &gt; Evaluations and in the "
-         "MLflow experiment models-onboarding.</p>"]
-    style = ("<style>body{font-family:system-ui,sans-serif;margin:24px;color:#151515}table{border-collapse:collapse;"
-             "margin:8px 0 20px}th,td{border:1px solid #d2d2d2;padding:6px 10px;text-align:left;vertical-align:top}"
-             "th{background:#f0f0f0}td.pass{background:#f3faf2}td.fail{background:#faeaea}small{color:#555}"
-             "h2.pass{color:#3e8635}h2.fail{color:#c9190b}.note{color:#555;font-size:.9em}</style>")
-    with open(html_report.path, "w") as f:
-        f.write(f"<!doctype html><html><head><meta charset=utf-8>{style}</head><body>{''.join(h)}</body></html>")
-    print(verdict)
+    elif cap < capability_threshold:
+        reasons.append(f"capability score {cap:.3f} misses its gate {capability_threshold}")
+    result = "QUALIFIED" if not reasons else "NOT QUALIFIED"
+    print(result)
     for r in reasons:
         print(f"  - {r}")
-    return verdict
 
-
-@dsl.component(base_image=RUNTIME_IMAGE)
-def record(
-    model_version_id: str,
-    verdict: str,
-    evalhub_url: str,
-    registry_url: str,
-    kfp_url: str,
-    run_name: str,
-    run_id: str,
-):
-    """Attach this run's evidence to the model version: per benchmark evalhub.<benchmark>.* (job, results page, verdict,
-    MLflow run, garak-kfp pipeline run) and evalhub.qualification.* (verdict and this pipeline run). References, not
-    copies; the version's other properties are kept, as stages/050-model-evaluation/evaluation/record.sh does."""
-    import datetime
-    import json
-    import ssl
-    import urllib.parse
-    import urllib.request
-
-    sa = "/var/run/secrets/kubernetes.io/serviceaccount"
-    tenant = open(f"{sa}/namespace").read().strip()
-    token = open(f"{sa}/token").read().strip()
-    kube_ctx = ssl.create_default_context(cafile=f"{sa}/ca.crt")
-    ctx = ssl.create_default_context(cafile="/etc/pki/ca-trust/source/anchors/service-ca.crt")
-
-    def call(url, method="GET", data=None, tenant_header=False, context=ctx):
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        if tenant_header:
-            headers["X-Tenant"] = tenant
-        req = urllib.request.Request(url, method=method, headers=headers,
-                                     data=json.dumps(data).encode() if data is not None else None)
-        with urllib.request.urlopen(req, context=context, timeout=60) as r:
-            return json.load(r)
-
+    # Record on the model registry version.
     dashboard_url = call(f"https://kubernetes.default.svc/api/v1/namespaces/{tenant}/configmaps/qualification-endpoints",
                          context=kube_ctx)["data"]["dashboard_url"]
-    jobs = call(f"{evalhub_url}/api/v1/evaluations/jobs?" + urllib.parse.urlencode(
-        {"tags": f"run={run_id}", "limit": 100}), tenant_header=True).get("items") or []
     completed = [j for j in jobs if (j.get("status") or {}).get("state") == "completed"]
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -443,15 +384,67 @@ def record(
             if garak_run:
                 props[k + "pipeline_run_url"] = s(garak_run)
             props[k + "recorded_at"] = s(now)
-    props["evalhub.qualification.verdict"] = s(verdict)
+    props["evalhub.qualification.verdict"] = s(result)
     props["evalhub.qualification.pipeline_run"] = s(run_name)
     props["evalhub.qualification.pipeline_run_url"] = s(
         f"{dashboard_url}/develop-train/pipelines/runs/{tenant}/runs/{run_id}")
     props["evalhub.qualification.recorded_at"] = s(now)
     updated = call(f"{registry_url}/model_versions/{model_version_id}", "PATCH", {"customProperties": props})
     count = len([k for k in updated.get("customProperties") or {} if k.startswith("evalhub.")])
-    print(f"recorded {len(completed)} completed jobs and verdict {verdict} on model version {model_version_id} "
+    print(f"recorded {len(completed)} completed jobs and verdict {result} on model version {model_version_id} "
           f"({updated.get('name')}, {count} evalhub properties)")
+    return json.dumps({"verdict": result, "reasons": reasons, "capability": cap, "rows": rows})
+
+
+@dsl.component(base_image=RUNTIME_IMAGE)
+def report(
+    model_name: str,
+    model_version_id: str,
+    capability_threshold: float,
+    run_name: str,
+    summary: str,
+    html_report: dsl.Output[dsl.HTML],
+    summary_metrics: dsl.Output[dsl.Metrics],
+):
+    """Publish the run's result like garak's write-kfp-outputs: an HTML report and the summary metrics."""
+    import html
+    import json
+
+    data = json.loads(summary)
+    result, reasons, cap, rows = data["verdict"], data["reasons"], data["capability"], data["rows"]
+    for _, bid, value, _, note, _ in rows:
+        if isinstance(value, (int, float)):
+            summary_metrics.log_metric(f"{bid}.{note}".replace("/", "_").replace(":", "_"), float(value))
+    if isinstance(cap, (int, float)):
+        summary_metrics.log_metric("capability.weighted", float(cap))
+    summary_metrics.log_metric("qualified", 1.0 if result == "QUALIFIED" else 0.0)
+
+    def fmt(v):
+        return f"{v:.4g}" if isinstance(v, (int, float)) else "-"
+
+    def css(p):
+        return {True: "pass", False: "fail"}.get(p, "na")
+
+    body = "".join(
+        f"<tr><td>{html.escape(e)}</td><td>{html.escape(b)}<br><small>{html.escape(n or '')}</small></td>"
+        f"<td class={css(p)}>{fmt(v)}</td><td>{fmt(t)}</td></tr>" for e, b, v, p, n, t in rows)
+    h = [f"<h1>Model onboarding qualification</h1><p class=note>Run {html.escape(run_name)}: "
+         f"<b>{html.escape(model_name)}</b>, model registry version {html.escape(model_version_id)}</p>",
+         f"<h2 class={'pass' if result == 'QUALIFIED' else 'fail'}>{result}</h2>",
+         "<ul>" + "".join(f"<li>{html.escape(r)}</li>" for r in reasons) + "</ul>" if reasons
+         else "<p>Every evaluation ran and passed its gate.</p>",
+         f"<h3>Capability (weighted 3:2:1, gate {capability_threshold}): {fmt(cap)}</h3>",
+         f"<table><tr><th>Evaluation</th><th>Benchmark</th><th>Score</th><th>Gate</th></tr>{body}</table>",
+         "<p class=note>Attack success rates (security, risk assessment) and latency pass at or below their gate; "
+         "every other score passes at or above it. Each job is under Develop &amp; train &gt; Evaluations and in the "
+         "MLflow experiment models-onboarding; the verdict is also recorded on the model registry version.</p>"]
+    style = ("<style>body{font-family:system-ui,sans-serif;margin:24px;color:#151515}table{border-collapse:collapse;"
+             "margin:8px 0 20px}th,td{border:1px solid #d2d2d2;padding:6px 10px;text-align:left;vertical-align:top}"
+             "th{background:#f0f0f0}td.pass{background:#f3faf2}td.fail{background:#faeaea}small{color:#555}"
+             "h2.pass{color:#3e8635}h2.fail{color:#c9190b}.note{color:#555;font-size:.9em}</style>")
+    with open(html_report.path, "w") as f:
+        f.write(f"<!doctype html><html><head><meta charset=utf-8>{style}</head><body>{''.join(h)}</body></html>")
+    print(result)
 
 
 def _named(component, name):
@@ -500,13 +493,12 @@ def qualification(
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
             timeout_seconds=timeout, skip=skips[skip_name],
         ).after(previous))
-    verdict = _small(_named(report, "report")(
-        model_name=model_name, model_version_id=model_version_id, evalhub_url=EVALHUB_URL,
+    judged = _small(_named(verdict, "verdict")(
+        model_version_id=model_version_id, evalhub_url=EVALHUB_URL, registry_url=REGISTRY_URL, kfp_url=KFP_URL,
         capability_threshold=CAPABILITY_THRESHOLD, evaluations=[c or f"garak-kfp/{b}" for _, _, c, b, _ in EVALUATIONS],
         run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
     ).after(previous))
-    _small(_named(record, "record")(
-        model_version_id=model_version_id, verdict=verdict.outputs["Output"], evalhub_url=EVALHUB_URL,
-        registry_url=REGISTRY_URL, kfp_url=KFP_URL, run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER,
-        run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
+    _small(_named(report, "report")(
+        model_name=model_name, model_version_id=model_version_id, capability_threshold=CAPABILITY_THRESHOLD,
+        run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, summary=judged.output,
     ))

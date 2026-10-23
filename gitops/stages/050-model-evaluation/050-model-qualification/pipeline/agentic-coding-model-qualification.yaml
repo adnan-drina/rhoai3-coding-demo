@@ -12,13 +12,13 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v13
+  name: agentic-coding-model-qualification-v14
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
     the garak-kfp security and risk assessments, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v13
+  displayName: agentic-coding-model-qualification v14
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -124,41 +124,19 @@ spec:
               parameterType: BOOLEAN
             timeout_seconds:
               parameterType: NUMBER_INTEGER
-      comp-record:
-        executorLabel: exec-record
-        inputDefinitions:
-          parameters:
-            evalhub_url:
-              parameterType: STRING
-            kfp_url:
-              parameterType: STRING
-            model_version_id:
-              parameterType: STRING
-            registry_url:
-              parameterType: STRING
-            run_id:
-              parameterType: STRING
-            run_name:
-              parameterType: STRING
-            verdict:
-              parameterType: STRING
       comp-report:
         executorLabel: exec-report
         inputDefinitions:
           parameters:
             capability_threshold:
               parameterType: NUMBER_DOUBLE
-            evalhub_url:
-              parameterType: STRING
-            evaluations:
-              parameterType: LIST
             model_name:
               parameterType: STRING
             model_version_id:
               parameterType: STRING
-            run_id:
-              parameterType: STRING
             run_name:
+              parameterType: STRING
+            summary:
               parameterType: STRING
         outputDefinitions:
           artifacts:
@@ -170,9 +148,6 @@ spec:
               artifactType:
                 schemaTitle: system.Metrics
                 schemaVersion: 0.0.1
-          parameters:
-            Output:
-              parameterType: STRING
       comp-risk-assessment:
         executorLabel: exec-risk-assessment
         inputDefinitions:
@@ -289,6 +264,30 @@ spec:
               parameterType: STRING
             skip_risk_assessment:
               parameterType: BOOLEAN
+      comp-verdict:
+        executorLabel: exec-verdict
+        inputDefinitions:
+          parameters:
+            capability_threshold:
+              parameterType: NUMBER_DOUBLE
+            evalhub_url:
+              parameterType: STRING
+            evaluations:
+              parameterType: LIST
+            kfp_url:
+              parameterType: STRING
+            model_version_id:
+              parameterType: STRING
+            registry_url:
+              parameterType: STRING
+            run_id:
+              parameterType: STRING
+            run_name:
+              parameterType: STRING
+        outputDefinitions:
+          parameters:
+            Output:
+              parameterType: STRING
     deploymentSpec:
       executors:
         exec-latency:
@@ -645,119 +644,6 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
-        exec-record:
-          container:
-            args:
-            - --executor_input
-            - '{{$}}'
-            - --function_to_execute
-            - record
-            command:
-            - sh
-            - -c
-            - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
-              \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
-              \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
-              \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
-              3.9\"' && \"$0\" \"$@\"\n"
-            - sh
-            - -ec
-            - 'program_path=$(mktemp -d)
-
-
-              printf "%s" "$0" > "$program_path/ephemeral_component.py"
-
-              _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
-
-              '
-            - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
-              \ import *\n\ndef record(\n    model_version_id: str,\n    verdict:\
-              \ str,\n    evalhub_url: str,\n    registry_url: str,\n    kfp_url:\
-              \ str,\n    run_name: str,\n    run_id: str,\n):\n    \"\"\"Attach this\
-              \ run's evidence to the model version: per benchmark evalhub.<benchmark>.*\
-              \ (job, results page, verdict,\n    MLflow run, garak-kfp pipeline run)\
-              \ and evalhub.qualification.* (verdict and this pipeline run). References,\
-              \ not\n    copies; the version's other properties are kept, as stages/050-model-evaluation/evaluation/record.sh\
-              \ does.\"\"\"\n    import datetime\n    import json\n    import ssl\n\
-              \    import urllib.parse\n    import urllib.request\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
-              \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
-              \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
-              {sa}/ca.crt\")\n    ctx = ssl.create_default_context(cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
-              )\n\n    def call(url, method=\"GET\", data=None, tenant_header=False,\
-              \ context=ctx):\n        headers = {\"Authorization\": f\"Bearer {token}\"\
-              , \"Content-Type\": \"application/json\"}\n        if tenant_header:\n\
-              \            headers[\"X-Tenant\"] = tenant\n        req = urllib.request.Request(url,\
-              \ method=method, headers=headers,\n                                \
-              \     data=json.dumps(data).encode() if data is not None else None)\n\
-              \        with urllib.request.urlopen(req, context=context, timeout=60)\
-              \ as r:\n            return json.load(r)\n\n    dashboard_url = call(f\"\
-              https://kubernetes.default.svc/api/v1/namespaces/{tenant}/configmaps/qualification-endpoints\"\
-              ,\n                         context=kube_ctx)[\"data\"][\"dashboard_url\"\
-              ]\n    jobs = call(f\"{evalhub_url}/api/v1/evaluations/jobs?\" + urllib.parse.urlencode(\n\
-              \        {\"tags\": f\"run={run_id}\", \"limit\": 100}), tenant_header=True).get(\"\
-              items\") or []\n    completed = [j for j in jobs if (j.get(\"status\"\
-              ) or {}).get(\"state\") == \"completed\"]\n    now = datetime.datetime.now(datetime.timezone.utc).strftime(\"\
-              %Y-%m-%dT%H:%M:%SZ\")\n\n    def s(v):\n        return {\"metadataType\"\
-              : \"MetadataStringValue\", \"string_value\": str(v)}\n\n    version\
-              \ = call(f\"{registry_url}/model_versions/{model_version_id}\")\n  \
-              \  benchmark_ids = {b.get(\"id\") for j in completed for b in (j.get(\"\
-              benchmarks\") or [])}\n    props = {k: v for k, v in (version.get(\"\
-              customProperties\") or {}).items()\n             if not k.startswith(\"\
-              evalhub.qualification.\")\n             and not any(k.startswith(f\"\
-              evalhub.{b}.\") for b in benchmark_ids)}\n    for job in completed:\n\
-              \        jid = job[\"resource\"][\"id\"]\n        results = {b.get(\"\
-              id\"): b for b in (job.get(\"results\") or {}).get(\"benchmarks\") or\
-              \ []}\n        garak_run = \"\"\n        if any(b.get(\"provider_id\"\
-              ) == \"garak-kfp\" for b in job.get(\"benchmarks\") or []):\n      \
-              \      flt = json.dumps({\"predicates\": [{\"key\": \"display_name\"\
-              , \"operation\": \"EQUALS\",\n                                     \
-              \         \"string_value\": f\"evalhub-garak-{jid}\"}]})\n         \
-              \   try:\n                runs = call(f\"{kfp_url}/apis/v2beta1/runs?\"\
-              \ + urllib.parse.urlencode(\n                    {\"namespace\": tenant,\
-              \ \"page_size\": 5, \"filter\": flt})).get(\"runs\") or []\n       \
-              \         garak_run = \" \".join(f\"{dashboard_url}/develop-train/pipelines/runs/{tenant}/runs/{r['run_id']}\"\
-              \n                                     for r in runs)\n            except\
-              \ Exception as e:  # the link is a convenience; the job id and results\
-              \ page remain\n                print(f\"garak-kfp pipeline run of job\
-              \ {jid} not found: {e}\")\n        for b in job.get(\"benchmarks\")\
-              \ or []:\n            k = f\"evalhub.{b['id']}.\"\n            r = results.get(b[\"\
-              id\"]) or {}\n            t = r.get(\"test\")\n            lower = bool((b.get(\"\
-              primary_score\") or {}).get(\"lower_is_better\"))\n            props[k\
-              \ + \"job_id\"] = s(jid)\n            props[k + \"job_name\"] = s(job.get(\"\
-              name\", \"\"))\n            props[k + \"evaluation_url\"] = s(f\"{dashboard_url}/evaluation/{tenant}/results/{jid}\"\
-              )\n            props[k + \"provider\"] = s(b.get(\"provider_id\", \"\
-              \"))\n            props[k + \"model_name\"] = s((job.get(\"model\")\
-              \ or {}).get(\"name\", \"\"))\n            if t:\n                props[k\
-              \ + \"result\"] = s(f\"{t.get('primary_score_metric') or 'score'} {t.get('primary_score')}\
-              \ \"\n                                        f\"(threshold {t.get('threshold')},\
-              \ {'lower' if lower else 'higher'} is better) \"\n                 \
-              \                       f\"{'pass' if t.get('pass') else 'fail'}\")\n\
-              \                props[k + \"pass\"] = s(\"true\" if t.get(\"pass\"\
-              ) else \"false\")\n            props[k + \"mlflow_experiment\"] = s((job.get(\"\
-              experiment\") or {}).get(\"name\", \"\"))\n            if r.get(\"mlflow_run_id\"\
-              ):\n                props[k + \"mlflow_run_id\"] = s(r[\"mlflow_run_id\"\
-              ])\n            if garak_run:\n                props[k + \"pipeline_run_url\"\
-              ] = s(garak_run)\n            props[k + \"recorded_at\"] = s(now)\n\
-              \    props[\"evalhub.qualification.verdict\"] = s(verdict)\n    props[\"\
-              evalhub.qualification.pipeline_run\"] = s(run_name)\n    props[\"evalhub.qualification.pipeline_run_url\"\
-              ] = s(\n        f\"{dashboard_url}/develop-train/pipelines/runs/{tenant}/runs/{run_id}\"\
-              )\n    props[\"evalhub.qualification.recorded_at\"] = s(now)\n    updated\
-              \ = call(f\"{registry_url}/model_versions/{model_version_id}\", \"PATCH\"\
-              , {\"customProperties\": props})\n    count = len([k for k in updated.get(\"\
-              customProperties\") or {} if k.startswith(\"evalhub.\")])\n    print(f\"\
-              recorded {len(completed)} completed jobs and verdict {verdict} on model\
-              \ version {model_version_id} \"\n          f\"({updated.get('name')},\
-              \ {count} evalhub properties)\")\n\n"
-            image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
-            resources:
-              cpuLimit: 0.5
-              cpuRequest: 0.1
-              memoryLimit: 0.536870912
-              memoryRequest: 0.268435456
-              resourceCpuLimit: 500m
-              resourceCpuRequest: 100m
-              resourceMemoryLimit: 512Mi
-              resourceMemoryRequest: 256Mi
         exec-report:
           container:
             args:
@@ -785,84 +671,27 @@ spec:
               '
             - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
               \ import *\n\ndef report(\n    model_name: str,\n    model_version_id:\
-              \ str,\n    evalhub_url: str,\n    capability_threshold: float,\n  \
-              \  evaluations: list,\n    run_name: str,\n    run_id: str,\n    html_report:\
-              \ dsl.Output[dsl.HTML],\n    summary_metrics: dsl.Output[dsl.Metrics],\n\
-              ) -> str:\n    \"\"\"Judge this run's jobs against their gates: QUALIFIED\
-              \ only when every evaluation ran and passed.\"\"\"\n    import html\n\
-              \    import json\n    import ssl\n    import urllib.parse\n    import\
-              \ urllib.request\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
-              \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
-              \ open(f\"{sa}/token\").read().strip()\n    ctx = ssl.create_default_context(cafile=\"\
-              /etc/pki/ca-trust/source/anchors/service-ca.crt\")\n\n    def get(path,\
-              \ **params):\n        url = f\"{evalhub_url}{path}\" + (f\"?{urllib.parse.urlencode(params)}\"\
-              \ if params else \"\")\n        req = urllib.request.Request(url, headers={\"\
-              Authorization\": f\"Bearer {token}\", \"X-Tenant\": tenant})\n     \
-              \   with urllib.request.urlopen(req, context=ctx, timeout=60) as r:\n\
-              \            return json.load(r)\n\n    jobs, offset = [], 0\n    while\
-              \ True:\n        page = get(\"/api/v1/evaluations/jobs\", tags=f\"run={run_id}\"\
-              , limit=100, offset=offset)\n        jobs += page.get(\"items\") or\
-              \ []\n        offset += 100\n        if not page.get(\"next\") or offset\
-              \ >= page.get(\"total_count\", 0):\n            break\n    by_evaluation\
-              \ = {}\n    for job in sorted(jobs, key=lambda j: j[\"resource\"][\"\
-              created_at\"]):\n        key = (job.get(\"collection\") or {}).get(\"\
-              id\") or \"garak-kfp/\" + (job.get(\"benchmarks\") or [{}])[0].get(\"\
-              id\", \"\")\n        by_evaluation[key] = job\n\n    def benchmark_result(b):\n\
-              \        \"\"\"(value, pass, note) for one benchmark result of a job.\"\
-              \"\"\n        t = b.get(\"test\") or {}\n        metrics = b.get(\"\
-              metrics\") or {}\n        if (b.get(\"provider_id\") or \"\").startswith(\"\
-              garak\") or \"attack_success_rate\" in metrics:\n            # A Garak\
-              \ result always has one <probe>_asr per probe; only the aggregate means\
-              \ the adapter skipped the\n            # results download and scored\
-              \ an empty scan.\n            if not any(k.endswith(\"_asr\") and k\
-              \ != \"attack_success_rate\" for k in metrics):\n                return\
-              \ None, False, \"no per-probe results (empty scan)\"\n        elif not\
-              \ any(isinstance(v, (int, float)) and v for v in metrics.values()):\n\
-              \            return None, False, \"no successful requests\"\n      \
-              \  return t.get(\"primary_score\"), t.get(\"pass\"), t.get(\"primary_score_metric\"\
-              ) or \"\"\n\n    rows, reasons, capability = [], [], []\n    weights\
-              \ = {\"lcb:codegeneration_v6\": 3, \"inspect/mbpp\": 2, \"inspect/humaneval\"\
-              : 1}\n    for evaluation in evaluations:\n        job = by_evaluation.get(evaluation)\n\
-              \        if job is None:\n            reasons.append(f\"{evaluation}:\
-              \ not run in this pipeline run\")\n            rows.append((evaluation,\
-              \ \"-\", None, None, \"not run\", None))\n            continue\n   \
-              \     state = (job.get(\"status\") or {}).get(\"state\")\n        results\
-              \ = job.get(\"results\") or {}\n        if state != \"completed\":\n\
-              \            reasons.append(f\"{evaluation}: job {job['resource']['id']}\
-              \ {state}\")\n        thresholds = {b.get(\"id\"): (b.get(\"pass_criteria\"\
-              ) or {}).get(\"threshold\") for b in job.get(\"benchmarks\") or []}\n\
-              \        for b in results.get(\"benchmarks\") or []:\n            value,\
-              \ passed, note = benchmark_result(b)\n            threshold = thresholds.get(b[\"\
-              id\"])\n            if threshold is None:\n                threshold\
-              \ = (b.get(\"test\") or {}).get(\"threshold\")\n            rows.append((evaluation,\
-              \ b[\"id\"], value, passed, note, threshold))\n            if passed\
-              \ is not True:\n                reasons.append(f\"{evaluation}/{b['id']}:\
-              \ misses its gate ({note} {value}, threshold {threshold})\")\n     \
-              \       if isinstance(value, (int, float)):\n                summary_metrics.log_metric(f\"\
-              {b['id']}.{note}\".replace(\"/\", \"_\").replace(\":\", \"_\"), float(value))\n\
-              \            if b[\"id\"] in weights:\n                capability.append((weights[b[\"\
-              id\"]], value))\n        col_test = results.get(\"test\") or {}\n  \
-              \      if job.get(\"collection\") and col_test.get(\"pass\") is False:\n\
-              \            reasons.append(f\"{evaluation}: collection score {col_test.get('score')}\
-              \ misses \"\n                           f\"{col_test.get('threshold')}\"\
-              )\n    cap = (sum(w * v for w, v in capability) / sum(w for w, _ in\
-              \ capability)\n           if len(capability) == len(weights) and all(isinstance(v,\
-              \ (int, float)) for _, v in capability) else None)\n    if cap is None:\n\
-              \        reasons.append(\"no complete capability result (LiveCodeBench,\
-              \ MBPP and HumanEval)\")\n    else:\n        summary_metrics.log_metric(\"\
-              capability.weighted\", float(cap))\n        if cap < capability_threshold:\n\
-              \            reasons.append(f\"capability score {cap:.3f} misses its\
-              \ gate {capability_threshold}\")\n    verdict = \"QUALIFIED\" if not\
-              \ reasons else \"NOT QUALIFIED\"\n    summary_metrics.log_metric(\"\
-              qualified\", 1.0 if verdict == \"QUALIFIED\" else 0.0)\n\n    def fmt(v):\n\
-              \        return f\"{v:.4g}\" if isinstance(v, (int, float)) else \"\
-              -\"\n\n    def css(p):\n        return {True: \"pass\", False: \"fail\"\
-              }.get(p, \"na\")\n\n    body = \"\".join(\n        f\"<tr><td>{html.escape(e)}</td><td>{html.escape(b)}<br><small>{html.escape(n\
+              \ str,\n    capability_threshold: float,\n    run_name: str,\n    summary:\
+              \ str,\n    html_report: dsl.Output[dsl.HTML],\n    summary_metrics:\
+              \ dsl.Output[dsl.Metrics],\n):\n    \"\"\"Publish the run's result like\
+              \ garak's write-kfp-outputs: an HTML report and the summary metrics.\"\
+              \"\"\n    import html\n    import json\n\n    data = json.loads(summary)\n\
+              \    result, reasons, cap, rows = data[\"verdict\"], data[\"reasons\"\
+              ], data[\"capability\"], data[\"rows\"]\n    for _, bid, value, _, note,\
+              \ _ in rows:\n        if isinstance(value, (int, float)):\n        \
+              \    summary_metrics.log_metric(f\"{bid}.{note}\".replace(\"/\", \"\
+              _\").replace(\":\", \"_\"), float(value))\n    if isinstance(cap, (int,\
+              \ float)):\n        summary_metrics.log_metric(\"capability.weighted\"\
+              , float(cap))\n    summary_metrics.log_metric(\"qualified\", 1.0 if\
+              \ result == \"QUALIFIED\" else 0.0)\n\n    def fmt(v):\n        return\
+              \ f\"{v:.4g}\" if isinstance(v, (int, float)) else \"-\"\n\n    def\
+              \ css(p):\n        return {True: \"pass\", False: \"fail\"}.get(p, \"\
+              na\")\n\n    body = \"\".join(\n        f\"<tr><td>{html.escape(e)}</td><td>{html.escape(b)}<br><small>{html.escape(n\
               \ or '')}</small></td>\"\n        f\"<td class={css(p)}>{fmt(v)}</td><td>{fmt(t)}</td></tr>\"\
               \ for e, b, v, p, n, t in rows)\n    h = [f\"<h1>Model onboarding qualification</h1><p\
               \ class=note>Run {html.escape(run_name)}: \"\n         f\"<b>{html.escape(model_name)}</b>,\
               \ model registry version {html.escape(model_version_id)}</p>\",\n  \
-              \       f\"<h2 class={'pass' if verdict == 'QUALIFIED' else 'fail'}>{verdict}</h2>\"\
+              \       f\"<h2 class={'pass' if result == 'QUALIFIED' else 'fail'}>{result}</h2>\"\
               ,\n         \"<ul>\" + \"\".join(f\"<li>{html.escape(r)}</li>\" for\
               \ r in reasons) + \"</ul>\" if reasons\n         else \"<p>Every evaluation\
               \ ran and passed its gate.</p>\",\n         f\"<h3>Capability (weighted\
@@ -871,15 +700,15 @@ spec:
               ,\n         \"<p class=note>Attack success rates (security, risk assessment)\
               \ and latency pass at or below their gate; \"\n         \"every other\
               \ score passes at or above it. Each job is under Develop &amp; train\
-              \ &gt; Evaluations and in the \"\n         \"MLflow experiment models-onboarding.</p>\"\
+              \ &gt; Evaluations and in the \"\n         \"MLflow experiment models-onboarding;\
+              \ the verdict is also recorded on the model registry version.</p>\"\
               ]\n    style = (\"<style>body{font-family:system-ui,sans-serif;margin:24px;color:#151515}table{border-collapse:collapse;\"\
               \n             \"margin:8px 0 20px}th,td{border:1px solid #d2d2d2;padding:6px\
               \ 10px;text-align:left;vertical-align:top}\"\n             \"th{background:#f0f0f0}td.pass{background:#f3faf2}td.fail{background:#faeaea}small{color:#555}\"\
               \n             \"h2.pass{color:#3e8635}h2.fail{color:#c9190b}.note{color:#555;font-size:.9em}</style>\"\
               )\n    with open(html_report.path, \"w\") as f:\n        f.write(f\"\
               <!doctype html><html><head><meta charset=utf-8>{style}</head><body>{''.join(h)}</body></html>\"\
-              )\n    print(verdict)\n    for r in reasons:\n        print(f\"  - {r}\"\
-              )\n    return verdict\n\n"
+              )\n    print(result)\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -1318,6 +1147,177 @@ spec:
               resourceCpuRequest: 100m
               resourceMemoryLimit: 512Mi
               resourceMemoryRequest: 256Mi
+        exec-verdict:
+          container:
+            args:
+            - --executor_input
+            - '{{$}}'
+            - --function_to_execute
+            - verdict
+            command:
+            - sh
+            - -c
+            - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip\
+              \ || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\
+              \nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location\
+              \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+              3.9\"' && \"$0\" \"$@\"\n"
+            - sh
+            - -ec
+            - 'program_path=$(mktemp -d)
+
+
+              printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+              _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+              '
+            - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
+              \ import *\n\ndef verdict(\n    model_version_id: str,\n    evalhub_url:\
+              \ str,\n    registry_url: str,\n    kfp_url: str,\n    capability_threshold:\
+              \ float,\n    evaluations: list,\n    run_name: str,\n    run_id: str,\n\
+              ) -> str:\n    \"\"\"Judge this run's jobs against their gates (QUALIFIED\
+              \ only when every evaluation ran and passed) and record the\n    evidence\
+              \ on the model version: per benchmark evalhub.<benchmark>.* (job, results\
+              \ page, verdict, MLflow run,\n    garak-kfp pipeline run) and evalhub.qualification.*\
+              \ (verdict and this pipeline run). References, not copies; the\n   \
+              \ version's other properties are kept, as stages/050-model-evaluation/evaluation/record.sh\
+              \ does. Returns the summary\n    (verdict, reasons, capability score,\
+              \ one row per benchmark) as JSON for the report step.\"\"\"\n    import\
+              \ datetime\n    import json\n    import ssl\n    import urllib.parse\n\
+              \    import urllib.request\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
+              \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
+              {sa}/ca.crt\")\n    ctx = ssl.create_default_context(cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              )\n\n    def call(url, method=\"GET\", data=None, tenant_header=False,\
+              \ context=ctx):\n        headers = {\"Authorization\": f\"Bearer {token}\"\
+              , \"Content-Type\": \"application/json\"}\n        if tenant_header:\n\
+              \            headers[\"X-Tenant\"] = tenant\n        req = urllib.request.Request(url,\
+              \ method=method, headers=headers,\n                                \
+              \     data=json.dumps(data).encode() if data is not None else None)\n\
+              \        with urllib.request.urlopen(req, context=context, timeout=60)\
+              \ as r:\n            return json.load(r)\n\n    jobs, offset = [], 0\n\
+              \    while True:\n        page = call(f\"{evalhub_url}/api/v1/evaluations/jobs?\"\
+              \ + urllib.parse.urlencode(\n            {\"tags\": f\"run={run_id}\"\
+              , \"limit\": 100, \"offset\": offset}), tenant_header=True)\n      \
+              \  jobs += page.get(\"items\") or []\n        offset += 100\n      \
+              \  if not page.get(\"next\") or offset >= page.get(\"total_count\",\
+              \ 0):\n            break\n    by_evaluation = {}\n    for job in sorted(jobs,\
+              \ key=lambda j: j[\"resource\"][\"created_at\"]):\n        key = (job.get(\"\
+              collection\") or {}).get(\"id\") or \"garak-kfp/\" + (job.get(\"benchmarks\"\
+              ) or [{}])[0].get(\"id\", \"\")\n        by_evaluation[key] = job\n\n\
+              \    def benchmark_result(b):\n        \"\"\"(value, pass, note) for\
+              \ one benchmark result of a job.\"\"\"\n        t = b.get(\"test\")\
+              \ or {}\n        metrics = b.get(\"metrics\") or {}\n        if (b.get(\"\
+              provider_id\") or \"\").startswith(\"garak\") or \"attack_success_rate\"\
+              \ in metrics:\n            # A Garak result always has one <probe>_asr\
+              \ per probe; only the aggregate means the adapter skipped the\n    \
+              \        # results download and scored an empty scan.\n            if\
+              \ not any(k.endswith(\"_asr\") and k != \"attack_success_rate\" for\
+              \ k in metrics):\n                return None, False, \"no per-probe\
+              \ results (empty scan)\"\n        elif not any(isinstance(v, (int, float))\
+              \ and v for v in metrics.values()):\n            return None, False,\
+              \ \"no successful requests\"\n        return t.get(\"primary_score\"\
+              ), t.get(\"pass\"), t.get(\"primary_score_metric\") or \"\"\n\n    rows,\
+              \ reasons, capability = [], [], []\n    weights = {\"lcb:codegeneration_v6\"\
+              : 3, \"inspect/mbpp\": 2, \"inspect/humaneval\": 1}\n    for evaluation\
+              \ in evaluations:\n        job = by_evaluation.get(evaluation)\n   \
+              \     if job is None:\n            reasons.append(f\"{evaluation}: not\
+              \ run in this pipeline run\")\n            rows.append([evaluation,\
+              \ \"-\", None, None, \"not run\", None])\n            continue\n   \
+              \     state = (job.get(\"status\") or {}).get(\"state\")\n        results\
+              \ = job.get(\"results\") or {}\n        if state != \"completed\":\n\
+              \            reasons.append(f\"{evaluation}: job {job['resource']['id']}\
+              \ {state}\")\n        thresholds = {b.get(\"id\"): (b.get(\"pass_criteria\"\
+              ) or {}).get(\"threshold\") for b in job.get(\"benchmarks\") or []}\n\
+              \        for b in results.get(\"benchmarks\") or []:\n            value,\
+              \ passed, note = benchmark_result(b)\n            threshold = thresholds.get(b[\"\
+              id\"])\n            if threshold is None:\n                threshold\
+              \ = (b.get(\"test\") or {}).get(\"threshold\")\n            rows.append([evaluation,\
+              \ b[\"id\"], value, passed, note, threshold])\n            if passed\
+              \ is not True:\n                reasons.append(f\"{evaluation}/{b['id']}:\
+              \ misses its gate ({note} {value}, threshold {threshold})\")\n     \
+              \       if b[\"id\"] in weights:\n                capability.append((weights[b[\"\
+              id\"]], value))\n        col_test = results.get(\"test\") or {}\n  \
+              \      if job.get(\"collection\") and col_test.get(\"pass\") is False:\n\
+              \            reasons.append(f\"{evaluation}: collection score {col_test.get('score')}\
+              \ misses \"\n                           f\"{col_test.get('threshold')}\"\
+              )\n    cap = (sum(w * v for w, v in capability) / sum(w for w, _ in\
+              \ capability)\n           if len(capability) == len(weights) and all(isinstance(v,\
+              \ (int, float)) for _, v in capability) else None)\n    if cap is None:\n\
+              \        reasons.append(\"no complete capability result (LiveCodeBench,\
+              \ MBPP and HumanEval)\")\n    elif cap < capability_threshold:\n   \
+              \     reasons.append(f\"capability score {cap:.3f} misses its gate {capability_threshold}\"\
+              )\n    result = \"QUALIFIED\" if not reasons else \"NOT QUALIFIED\"\n\
+              \    print(result)\n    for r in reasons:\n        print(f\"  - {r}\"\
+              )\n\n    # Record on the model registry version.\n    dashboard_url\
+              \ = call(f\"https://kubernetes.default.svc/api/v1/namespaces/{tenant}/configmaps/qualification-endpoints\"\
+              ,\n                         context=kube_ctx)[\"data\"][\"dashboard_url\"\
+              ]\n    completed = [j for j in jobs if (j.get(\"status\") or {}).get(\"\
+              state\") == \"completed\"]\n    now = datetime.datetime.now(datetime.timezone.utc).strftime(\"\
+              %Y-%m-%dT%H:%M:%SZ\")\n\n    def s(v):\n        return {\"metadataType\"\
+              : \"MetadataStringValue\", \"string_value\": str(v)}\n\n    version\
+              \ = call(f\"{registry_url}/model_versions/{model_version_id}\")\n  \
+              \  benchmark_ids = {b.get(\"id\") for j in completed for b in (j.get(\"\
+              benchmarks\") or [])}\n    props = {k: v for k, v in (version.get(\"\
+              customProperties\") or {}).items()\n             if not k.startswith(\"\
+              evalhub.qualification.\")\n             and not any(k.startswith(f\"\
+              evalhub.{b}.\") for b in benchmark_ids)}\n    for job in completed:\n\
+              \        jid = job[\"resource\"][\"id\"]\n        results = {b.get(\"\
+              id\"): b for b in (job.get(\"results\") or {}).get(\"benchmarks\") or\
+              \ []}\n        garak_run = \"\"\n        if any(b.get(\"provider_id\"\
+              ) == \"garak-kfp\" for b in job.get(\"benchmarks\") or []):\n      \
+              \      flt = json.dumps({\"predicates\": [{\"key\": \"display_name\"\
+              , \"operation\": \"EQUALS\",\n                                     \
+              \         \"string_value\": f\"evalhub-garak-{jid}\"}]})\n         \
+              \   try:\n                runs = call(f\"{kfp_url}/apis/v2beta1/runs?\"\
+              \ + urllib.parse.urlencode(\n                    {\"namespace\": tenant,\
+              \ \"page_size\": 5, \"filter\": flt})).get(\"runs\") or []\n       \
+              \         garak_run = \" \".join(f\"{dashboard_url}/develop-train/pipelines/runs/{tenant}/runs/{r['run_id']}\"\
+              \n                                     for r in runs)\n            except\
+              \ Exception as e:  # the link is a convenience; the job id and results\
+              \ page remain\n                print(f\"garak-kfp pipeline run of job\
+              \ {jid} not found: {e}\")\n        for b in job.get(\"benchmarks\")\
+              \ or []:\n            k = f\"evalhub.{b['id']}.\"\n            r = results.get(b[\"\
+              id\"]) or {}\n            t = r.get(\"test\")\n            lower = bool((b.get(\"\
+              primary_score\") or {}).get(\"lower_is_better\"))\n            props[k\
+              \ + \"job_id\"] = s(jid)\n            props[k + \"job_name\"] = s(job.get(\"\
+              name\", \"\"))\n            props[k + \"evaluation_url\"] = s(f\"{dashboard_url}/evaluation/{tenant}/results/{jid}\"\
+              )\n            props[k + \"provider\"] = s(b.get(\"provider_id\", \"\
+              \"))\n            props[k + \"model_name\"] = s((job.get(\"model\")\
+              \ or {}).get(\"name\", \"\"))\n            if t:\n                props[k\
+              \ + \"result\"] = s(f\"{t.get('primary_score_metric') or 'score'} {t.get('primary_score')}\
+              \ \"\n                                        f\"(threshold {t.get('threshold')},\
+              \ {'lower' if lower else 'higher'} is better) \"\n                 \
+              \                       f\"{'pass' if t.get('pass') else 'fail'}\")\n\
+              \                props[k + \"pass\"] = s(\"true\" if t.get(\"pass\"\
+              ) else \"false\")\n            props[k + \"mlflow_experiment\"] = s((job.get(\"\
+              experiment\") or {}).get(\"name\", \"\"))\n            if r.get(\"mlflow_run_id\"\
+              ):\n                props[k + \"mlflow_run_id\"] = s(r[\"mlflow_run_id\"\
+              ])\n            if garak_run:\n                props[k + \"pipeline_run_url\"\
+              ] = s(garak_run)\n            props[k + \"recorded_at\"] = s(now)\n\
+              \    props[\"evalhub.qualification.verdict\"] = s(result)\n    props[\"\
+              evalhub.qualification.pipeline_run\"] = s(run_name)\n    props[\"evalhub.qualification.pipeline_run_url\"\
+              ] = s(\n        f\"{dashboard_url}/develop-train/pipelines/runs/{tenant}/runs/{run_id}\"\
+              )\n    props[\"evalhub.qualification.recorded_at\"] = s(now)\n    updated\
+              \ = call(f\"{registry_url}/model_versions/{model_version_id}\", \"PATCH\"\
+              , {\"customProperties\": props})\n    count = len([k for k in updated.get(\"\
+              customProperties\") or {} if k.startswith(\"evalhub.\")])\n    print(f\"\
+              recorded {len(completed)} completed jobs and verdict {result} on model\
+              \ version {model_version_id} \"\n          f\"({updated.get('name')},\
+              \ {count} evalhub properties)\")\n    return json.dumps({\"verdict\"\
+              : result, \"reasons\": reasons, \"capability\": cap, \"rows\": rows})\n\
+              \n"
+            image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
+            resources:
+              cpuLimit: 0.5
+              cpuRequest: 0.1
+              memoryLimit: 0.536870912
+              memoryRequest: 0.268435456
+              resourceCpuLimit: 500m
+              resourceCpuRequest: 100m
+              resourceMemoryLimit: 512Mi
+              resourceMemoryRequest: 256Mi
     pipelineInfo:
       description: Evaluates one candidate model on the agentic coding collections
         and the garak-kfp security and risk assessments, and records the verdict on
@@ -1485,70 +1485,28 @@ spec:
                     constant: 3600.0
             taskInfo:
               name: python-tasks
-          record:
-            cachingOptions: {}
-            componentRef:
-              name: comp-record
-            dependentTasks:
-            - report
-            inputs:
-              parameters:
-                evalhub_url:
-                  runtimeValue:
-                    constant: https://evalhub.evalhub.svc.cluster.local:8443
-                kfp_url:
-                  runtimeValue:
-                    constant: https://ds-pipeline-dspa.evaluated-models.svc.cluster.local:8443
-                model_version_id:
-                  componentInputParameter: model_version_id
-                registry_url:
-                  runtimeValue:
-                    constant: https://demo-registry.rhoai-model-registries.svc:8443/api/model_registry/v1alpha3
-                run_id:
-                  runtimeValue:
-                    constant: '{{$.pipeline_job_uuid}}'
-                run_name:
-                  runtimeValue:
-                    constant: '{{$.pipeline_job_name}}'
-                verdict:
-                  taskOutputParameter:
-                    outputParameterKey: Output
-                    producerTask: report
-            taskInfo:
-              name: record
           report:
             cachingOptions: {}
             componentRef:
               name: comp-report
             dependentTasks:
-            - risk-assessment
+            - verdict
             inputs:
               parameters:
                 capability_threshold:
                   runtimeValue:
                     constant: 0.5
-                evalhub_url:
-                  runtimeValue:
-                    constant: https://evalhub.evalhub.svc.cluster.local:8443
-                evaluations:
-                  runtimeValue:
-                    constant:
-                    - agentic-coding-latency-v1
-                    - agentic-coding-throughput-v2
-                    - agentic-coding-livecodebench-v2
-                    - agentic-coding-python-tasks-v1
-                    - garak-kfp/avid_security
-                    - garak-kfp/intents
                 model_name:
                   componentInputParameter: model_name
                 model_version_id:
                   componentInputParameter: model_version_id
-                run_id:
-                  runtimeValue:
-                    constant: '{{$.pipeline_job_uuid}}'
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
+                summary:
+                  taskOutputParameter:
+                    outputParameterKey: Output
+                    producerTask: verdict
             taskInfo:
               name: report
           risk-assessment:
@@ -1730,6 +1688,45 @@ spec:
                   componentInputParameter: skip_risk_assessment
             taskInfo:
               name: validate
+          verdict:
+            cachingOptions: {}
+            componentRef:
+              name: comp-verdict
+            dependentTasks:
+            - risk-assessment
+            inputs:
+              parameters:
+                capability_threshold:
+                  runtimeValue:
+                    constant: 0.5
+                evalhub_url:
+                  runtimeValue:
+                    constant: https://evalhub.evalhub.svc.cluster.local:8443
+                evaluations:
+                  runtimeValue:
+                    constant:
+                    - agentic-coding-latency-v1
+                    - agentic-coding-throughput-v2
+                    - agentic-coding-livecodebench-v2
+                    - agentic-coding-python-tasks-v1
+                    - garak-kfp/avid_security
+                    - garak-kfp/intents
+                kfp_url:
+                  runtimeValue:
+                    constant: https://ds-pipeline-dspa.evaluated-models.svc.cluster.local:8443
+                model_version_id:
+                  componentInputParameter: model_version_id
+                registry_url:
+                  runtimeValue:
+                    constant: https://demo-registry.rhoai-model-registries.svc:8443/api/model_registry/v1alpha3
+                run_id:
+                  runtimeValue:
+                    constant: '{{$.pipeline_job_uuid}}'
+                run_name:
+                  runtimeValue:
+                    constant: '{{$.pipeline_job_name}}'
+            taskInfo:
+              name: verdict
       inputDefinitions:
         parameters:
           model_name:
@@ -1791,14 +1788,6 @@ spec:
                     constant: pipeline-tasks-service-ca
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
-            exec-record:
-              configMapAsVolume:
-              - configMapName: pipeline-tasks-service-ca
-                configMapNameParameter:
-                  runtimeValue:
-                    constant: pipeline-tasks-service-ca
-                mountPath: /etc/pki/ca-trust/source/anchors
-                optional: false
             exec-report:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
@@ -1832,6 +1821,14 @@ spec:
                 mountPath: /etc/pki/ca-trust/source/anchors
                 optional: false
             exec-validate:
+              configMapAsVolume:
+              - configMapName: pipeline-tasks-service-ca
+                configMapNameParameter:
+                  runtimeValue:
+                    constant: pipeline-tasks-service-ca
+                mountPath: /etc/pki/ca-trust/source/anchors
+                optional: false
+            exec-verdict:
               configMapAsVolume:
               - configMapName: pipeline-tasks-service-ca
                 configMapNameParameter:

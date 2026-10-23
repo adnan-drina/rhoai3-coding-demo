@@ -221,7 +221,7 @@ subjects:
     name: pipeline-runner-dspa
     namespace: evaluated-models
 ---
-# The qualification pipeline's record step links each garak-kfp job to its pipeline run (pipeline API, read).
+# The qualification pipeline's verdict step links each garak-kfp job to its pipeline run (pipeline API, read).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -262,7 +262,7 @@ subjects:
     name: pipeline-runner-dspa
     namespace: evaluated-models
 ---
-# The record step calls the registry API in-cluster. The operator's NetworkPolicy demo-registry-https-route admits
+# The verdict step calls the registry API in-cluster. The operator's NetworkPolicy demo-registry-https-route admits
 # port 8443 only from the router and from RHOAI-generated namespaces; this one adds the qualification pipeline's step
 # pods in evaluated-models, nothing else (NetworkPolicies are additive, the operator's policy stays unchanged).
 apiVersion: networking.k8s.io/v1
