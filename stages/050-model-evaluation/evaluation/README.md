@@ -37,17 +37,24 @@ Both name the pipeline server's project and S3 connection and the candidate's in
 - `timeout`, `experiment_name` (the KFP experiment) and `verify_ssl` keep their defaults; `intents` sets `timeout` to
   7200 s because its attack strategies run after the baseline.
 
-`intents.parameters.json` also sets the models the scan uses besides the candidate, all through MaaS. Replace
-`<cluster-domain>` with the value of `oc get ingresses.config cluster -o jsonpath='{.spec.domain}'`.
+`intents.parameters.json` also sets the models the scan uses besides the candidate; every address is in-cluster.
 
-- `judge` and `sdg`: GPT-6 Luna. Its keys come from the Secret's `JUDGE_API_KEY` and `SDG_API_KEY` (the MaaS evaluation
-  key; guide 7.7.4), which the TAP attacker and evaluator and the translator also fall back to.
-- GPT-6 Luna accepts only `max_completion_tokens` and its own sampling, so `garak_config` sets, for the judge
-  (`detectors.judge.detector_model_config`) and for TAP's attacker and evaluator (`probes.tap.TAPIntent`),
-  `suppressed_params` (`max_tokens`, `temperature`, `stop`, `n`, `top_p`, `frequency_penalty`, `presence_penalty`)
-  and `extra_params.max_completion_tokens`. Without them GPT-6 Luna rejects the calls, the gateway holds the error
-  responses until the client times out, and the scan stalls until its `timeout`.
-- `translation`: Nemotron 3 Ultra. Garak's translator fixes its temperature at 0.1, which GPT-6 Luna rejects.
+- `judge` and `sdg`: `gemma-2-9b-abliterated`, served in this project
+  (`050-model-qualification/risk-assessment-gemma-2-9b-abliterated.yaml`, one L40S; start it with
+  `serving.kserve.io/stop: "false"`). Both roles need a model without safety alignment: a safety-aligned judge and SDG
+  model (GPT-6 Luna, 2026-10-22) rewrote every harmful intent into a harmless request, so the scan measured nothing.
+  Their keys are the Secret's `JUDGE_API_KEY` and `SDG_API_KEY` (the `candidate-model-client` token; guide 7.7.4),
+  which the TAP attacker and evaluator also use.
+- Translation uses the provider's documented default, the Helsinki-NLP `opus-mt` models that the scan downloads
+  from Hugging Face (guide 7.2); `intents_models` names no translator, so no further key is involved. Until
+  2026-10-23 an undocumented `intents_models.translation` role sent translation to Nemotron 3 Ultra through MaaS,
+  which put the MaaS key into the scan configuration.
+- Automated risk assessment is a Technology Preview feature in RHOAI 3.5 (guide 7): read its attack success rate as
+  advisory, and spot-check the judge's classifications (Complied, Rejected, Alternative, Other) against the answers in
+  the HTML report before relying on a verdict.
+- `sdg_num_samples: 5` prompts per harm category; `disable_cache: true` so a rerun generates fresh prompts instead of
+  reusing the cached SDG step. Do not set `sdg_max_tokens`: in the 3.5.2 provider it rebuilds the SDG block without
+  its model and the step fails with `Model not configured for block 'generate_adversarial_prompt'` (TROUBLESHOOTING).
 
 From the terminal:
 
@@ -59,7 +66,7 @@ stages/050-model-evaluation/evaluation/submit.sh --model-name qwen3-8-27b-int4 \
   --experiment models-onboarding --no-oci-export --wait
 ```
 
-For `intents`, use `--benchmark intents --parameters …/intents.parameters.json` (after replacing `<cluster-domain>`).
+For `intents`, use `--benchmark intents --parameters …/intents.parameters.json`.
 A single benchmark is submitted with the provider catalog's primary metric, its direction and its pass threshold, as
 the dashboard form does (for `garak-kfp` `avid_security`: `attack_success_rate`, lower is better, at most 0.3);
 `--threshold` overrides the threshold. The Evaluations page shows the attack success rate itself as the score, so a
@@ -74,9 +81,7 @@ From the dashboard (**Develop & train → Evaluations → Start evaluation run**
 - **Authentication secret name:** `garak-kfp-model-auth`
 - **Benchmark parameters:** the content of the matching file.
 
-The suite **Candidate security scan (pipeline) v1** (`candidate-security-pipeline-v1`, `050-evaluation-content`)
-carries the `avid_security` parameters itself; with it, leave **Benchmark parameters** empty (a typed `kfp_config`
-replaces the preset one whole).
+The qualification pipeline (Stage 050 README) submits both benchmarks with these settings and the candidate's URL.
 
 Do not start `garak-kfp` from a model picked in the project's **Model** list. Such a job carries no authentication
 Secret (a dashboard limitation fixed in 3.6, BACKLOG): it cannot reach the pipeline server, and where it can, the

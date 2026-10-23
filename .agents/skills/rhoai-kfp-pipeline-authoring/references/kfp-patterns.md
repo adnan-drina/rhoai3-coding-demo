@@ -55,9 +55,14 @@ the OpenShift AI 3.5 "Working with AI pipelines" guide; see `rhoai-ai-pipelines`
 - One named component per step: deep-copy the component and set
   `component_spec.name`. Do not use `set_display_name`; the dashboard looks up
   logs and inputs by task key, which must equal the label.
-- Step names start with a letter (`step-0-...`); Argo rejects task names that
-  begin with a digit. The dashboard lays the graph out alphabetically, so
-  numbered names keep the order readable.
+- Step names start with a letter; Argo rejects task names that begin with a
+  digit.
+- Keep the run graph one straight chain, as the garak-kfp pipeline does: each
+  step takes only run parameters and runs `.after()` the previous one, and
+  intermediate steps publish no output artifacts. The dashboard draws every
+  output artifact as a side node and adds nodes in alphabetical order, so
+  artifacts on every step made the chain zig-zag (v12 worked around it with
+  numbered `step-N-` names).
 - Optional steps take a `skip_*` parameter and exit early instead of using
   `dsl.If` when later steps must depend on them in a fixed order.
 - Set requests and limits on every task, and `set_caching_options(False)` on

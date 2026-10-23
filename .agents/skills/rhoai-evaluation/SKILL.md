@@ -10,8 +10,8 @@ description: >
   Use when running, changing or debugging Stage 050 EvalHub evaluations: the
   `EvalHub` CR in namespace `evalhub`, the single tenant `evaluated-models`,
   the MaaS key Secret `evalhub-model-auth-maas`, Kueue queue `lq-cpu-default`,
-  custom `agentic-coding-*` collections and `inspect-coding`/`garak-coding`/
-  `swebench` providers, the EvalHub MCP server, or OCI result export
+  custom `agentic-coding-*` collections and `inspect-coding`/`swebench`
+  providers, `garak-kfp` pipeline-mode jobs and their Secret `garak-kfp-model-auth`, the EvalHub MCP server, or OCI result export
   (gitops/stages/050-model-evaluation/). Do NOT use for the MLflow server (use
   rhoai-mlflow), the qualification pipeline server (use rhoai-ai-pipelines),
   or TrustyAI bias and drift monitoring (use rhoai-monitoring-trustyai).

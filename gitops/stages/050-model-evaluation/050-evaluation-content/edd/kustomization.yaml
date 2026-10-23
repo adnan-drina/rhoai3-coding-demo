@@ -3,15 +3,8 @@ kind: Kustomization
 # Collection and provider ids are at most 36 characters: EvalHub 1.0 validates them at start-up, and one
 # invalid id keeps the new EvalHub pod from starting (the old pod keeps serving the previous set).
 resources:
-  - agentic-coding-capability-v1.yaml
   - agentic-coding-latency-v1.yaml
-  - agentic-coding-throughput-v1.yaml
   - agentic-coding-throughput-v2.yaml
-  - agentic-coding-livecodebench-v1.yaml
   - agentic-coding-livecodebench-v2.yaml
   - agentic-coding-python-tasks-v1.yaml
-  - agentic-coding-security-quick-v2.yaml
-  - agentic-coding-security-full-v2.yaml
-  - candidate-security-pipeline-v1.yaml
   - inspect-coding-provider.yaml
-  - garak-coding-provider.yaml

@@ -62,7 +62,8 @@ subjects:
     name: evalhub-maas-key-provisioner
     namespace: evaluated-models
 ---
-# The provisioner discovers the MaaS gateway hostname from the Gateway instead of carrying a cluster URL in Git.
+# The provisioner discovers the MaaS gateway hostname from the Gateway, and the dashboard hostname from its Route,
+# instead of carrying cluster URLs in Git.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -79,6 +80,10 @@ rules:
   - apiGroups: [gateway.networking.k8s.io]
     resources: [gateways]
     resourceNames: [maas-default-gateway]
+    verbs: [get]
+  - apiGroups: [route.openshift.io]
+    resources: [routes]
+    resourceNames: [data-science-gateway]
     verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -188,6 +193,9 @@ spec:
                 | oc apply --server-side --force-conflicts --field-manager=evalhub-maas-key-provisioner -f -
               oc annotate secret "${SECRET_NAME}" -n "${NS}" kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
               echo "Secret ${NS}/${SECRET_NAME} holds the ${SUBSCRIPTION} key for EvalHub model.auth.secret_ref"
-              # The qualification pipeline reads the MaaS endpoint for production models from this ConfigMap.
-              oc create configmap qualification-endpoints -n "${NS}" --from-literal=maas_base_url="${MAAS_BASE_URL}/v1" \
+              # The qualification pipeline reads the dashboard address (links it records on the model registry version)
+              # from this ConfigMap.
+              DASHBOARD_HOST="$(oc get route data-science-gateway -n openshift-ingress -o jsonpath='{.spec.host}')"
+              [ -n "${DASHBOARD_HOST}" ] || { echo "ERROR: dashboard Route data-science-gateway has no host" >&2; exit 1; }
+              oc create configmap qualification-endpoints -n "${NS}" --from-literal=dashboard_url="https://${DASHBOARD_HOST}" \
                 --dry-run=client -o yaml | oc apply -f -

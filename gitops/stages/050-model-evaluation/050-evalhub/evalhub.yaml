@@ -31,10 +31,9 @@ spec:
     # Community SWE-bench adapter (eval-hub-contrib, pinned by digest in swebench/provider-configmap.yaml),
     # approved by the operator on 2026-10-09; not a Red Hat built-in provider.
     - swebench
-    # Bounded Inspect coding benchmarks and larger-CPU Garak scans for the agentic coding v2 collections
-    # (edd/inspect-coding-provider.yaml, edd/garak-coding-provider.yaml).
+    # Bounded Inspect coding benchmarks for the agentic coding Python tasks collection
+    # (edd/inspect-coding-provider.yaml).
     - inspect-coding
-    - garak-coding
   # EvalHub MCP server for AI coding agents (RHOAI 3.5 "Evaluating AI systems", 4.3 Deploy the EvalHub MCP
   # server). The 3.5.1 CRD has no port field; the operator chooses the port and exposes the evalhub-mcp
   # Service and its re-encrypt Route; mcp-access-rolebinding.yaml admits the MCP principal.
@@ -57,18 +56,12 @@ spec:
     - safety-and-fairness-v1
     - standard-llm-evals-v1
     - toxicity-and-ethical-principles
-    # Evaluation-driven development criteria for the agentic coding demo (edd/ ConfigMaps).
-    - agentic-coding-capability-v1
-    - agentic-coding-livecodebench-v1
+    # Evaluation-driven development criteria for the agentic coding demo (edd/ ConfigMaps). Security and risk
+    # assessment run as garak-kfp benchmark jobs, which need the candidate's URL and so cannot be a collection.
     - agentic-coding-livecodebench-v2
     - agentic-coding-python-tasks-v1
-    - agentic-coding-security-quick-v2
-    - agentic-coding-security-full-v2
     - agentic-coding-latency-v1
-    - agentic-coding-throughput-v1
     - agentic-coding-throughput-v2
-    # garak-kfp scan of the candidate with the pipeline settings preset (edd/candidate-security-pipeline-v1.yaml).
-    - candidate-security-pipeline-v1
   env:
     # The deployment helper discovers the native HTTPS address only after
     # MLflow is Available. The operator owns TLS trust and projected tokens.

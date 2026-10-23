@@ -1,8 +1,8 @@
 # Evaluation content (`050-evaluation-content`)
 
-This Application holds the evaluation definitions EvalHub serves: nine versioned `agentic-coding-*` collections (the
-evaluation-driven development criteria for coding models), two bounded custom providers (`inspect-coding`,
-`garak-coding`), and the staged SWE-bench provider with the RBAC, agent configuration and S3 test-data Secret its runs
+This Application holds the evaluation definitions EvalHub serves: four versioned `agentic-coding-*` collections (the
+evaluation-driven development criteria for coding models), one bounded custom provider (`inspect-coding`), and the
+staged SWE-bench provider with the RBAC, agent configuration and S3 test-data Secret its runs
 need. The qualification pipeline (`050-model-qualification`) and jobs submitted from the dashboard or the EvalHub REST
 API consume it through `050-evalhub`. Criteria change more often than the service, so they are a separate Application.
 
@@ -13,7 +13,7 @@ API consume it through `050-evalhub`. Criteria change more often than the servic
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced and Healthy at the stage revision); EvalHub start-up validates the ids (see How). No content-specific check. |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. |
 | Depends on | `050-evalhub` (lists every id in its CR); `050-model-qualification` (namespace `evaluated-models`, OBC `evaluation-models-workbench`, tenant job ServiceAccount); ODF Route `s3`; Stage 040 MaaS (models under test). |
-| Used by | `050-evalhub`; the qualification pipeline (`latency-v1`, `throughput-v2`, `livecodebench-v2`, `python-tasks-v1`, `security-quick-v2`, `security-full-v2`); jobs submitted from **Develop & train → Evaluations** or the EvalHub REST API, or `stages/050-model-evaluation/evaluation/submit.sh` (the former SWE-bench driver `swebench-run.sh` is in git history at `82092e01`). |
+| Used by | `050-evalhub`; the qualification pipeline steps 1 to 4 (`latency-v1`, `throughput-v2`, `livecodebench-v2`, `python-tasks-v1`; steps 5 and 6 are `garak-kfp` benchmark jobs, not collections); jobs submitted from **Develop & train → Evaluations** or the EvalHub REST API, or `stages/050-model-evaluation/evaluation/submit.sh` (the former SWE-bench driver `swebench-run.sh` is in git history at `82092e01`). |
 
 ## Why
 
@@ -23,9 +23,11 @@ by label and mounts them once the id is listed in the `EvalHub` CR [1]. Collecti
 benchmark, so a collection is a versioned qualification gate [1]. Changing a gate means adding a new `-vN` collection,
 which keeps older results comparable.
 
-The two custom providers reuse the built-in adapter images with different limits: Inspect with a 512-token cap, eight
-connections and three retries so samples stay inside the evaluation sidecar's 30-second model request limit; Garak with
-2 to 8 CPU because its detector models score on the job pod's CPU.
+The custom provider reuses the built-in Inspect adapter image with different limits: a 512-token cap, eight connections
+and three retries so samples stay inside the evaluation sidecar's 30-second model request limit. Security and risk
+assessment use the built-in `garak-kfp` provider as benchmark jobs, because its `kfp_config.model_url` is the
+candidate's own URL, which a collection cannot carry per model; the in-pod `garak-coding` provider and the
+`security-*-v2` collections were retired on 2026-10-23.
 
 SWE-bench is not a 3.5.1 built-in provider. It is staged from the community `eval-hub-contrib` adapter. Patch generation
 works; grading inside EvalHub does not run on 3.5.1 because the adapter needs Kubernetes API credentials and EvalHub runs
@@ -40,17 +42,10 @@ All objects are ConfigMaps in `redhat-ods-applications`, wave 10.
 | Name | Id | Benchmarks (provider) | Used by |
 |---|---|---|---|
 | `evalhub-collection-agentic-coding-latency-v1` | `agentic-coding-latency-v1` | interactive TTFT, 8,000/256 tokens, one session (`guidellm`) | pipeline step 1 |
-| `evalhub-collection-agentic-coding-throughput-v1` | `agentic-coding-throughput-v1` | output tokens/s, 8 turns in flight, 180 s window (`guidellm`) | superseded by v2 |
 | `evalhub-collection-agentic-coding-throughput-v2` | `agentic-coding-throughput-v2` | same, fixed 64 requests (`guidellm`) | pipeline step 2 |
-| `evalhub-collection-agentic-coding-capability-v1` | `agentic-coding-capability-v1` | LiveCodeBench v6 (`lighteval`), MBPP and HumanEval (`inspect`), weighted | `stages/050-model-evaluation/edd/agentic-coding-capability.ci.yaml` |
-| `evalhub-collection-agentic-coding-livecodebench-v1` | `agentic-coding-livecodebench-v1` | LiveCodeBench v6 (`lighteval`) | superseded by v2 |
 | `evalhub-collection-agentic-coding-livecodebench-v2` | `agentic-coding-livecodebench-v2` | LiveCodeBench v6 (`lighteval`) | pipeline step 3 |
-| `evalhub-collection-agentic-coding-python-tasks-v1` | `agentic-coding-python-tasks-v1` | MBPP, HumanEval (`inspect-coding`) | pipeline step 4 |
-| `evalhub-collection-agentic-coding-security-quick-v2` | `agentic-coding-security-quick-v2` | Garak CWE scan (`garak-coding`) | pipeline step 5 |
-| `evalhub-collection-agentic-coding-security-full-v2` | `agentic-coding-security-full-v2` | Garak OWASP LLM Top 10 (`garak-coding`) | pipeline step 6 |
-| `evalhub-collection-candidate-security-pipeline-v1` | `candidate-security-pipeline-v1` | Garak AVID security (`garak-kfp`, pipeline mode) on the candidate, `kfp_config` preset (`namespace`, `s3_secret_name`, `model_url`) | dashboard: Other (External endpoint) + `garak-kfp-model-auth`, no parameters |
+| `evalhub-collection-agentic-coding-python-tasks-v1` | `agentic-coding-python-tasks-v1` | MBPP, HumanEval (`inspect-coding`) | pipeline step 4; CI template `stages/050-model-evaluation/edd/agentic-coding-python-tasks.ci.yaml` |
 | `evalhub-provider-inspect-coding` | provider `inspect-coding` | `inspect/humaneval`, `inspect/mbpp`; image `quay.io/evalhub/community-inspect` pinned by digest, `INSPECT_EVAL_MAX_TOKENS=512`, `MAX_CONNECTIONS=8`, `MAX_RETRIES=3` | python-tasks-v1 |
-| `evalhub-provider-garak-coding` | provider `garak-coding` | `owasp_llm_top10`, `cwe`; Red Hat image `odh-trustyai-garak-lls-provider-dsp-rhel9` pinned by digest, 2 to 8 CPU, 2 to 8 Gi | security-*-v2 |
 
 ### `swebench/`
 
@@ -120,7 +115,7 @@ oc get configmap -n redhat-ods-applications -l trustyai.opendatahub.io/evalhub-p
 | Custom providers | ConfigMap with type/name labels, discovered by the operator, id in `spec.providers` [1] | Three providers, ids listed in `050-evalhub` | Aligned |
 | Custom collections | ConfigMap with type/name labels, id in `spec.collections`; pass criteria and weights [1] | Nine collections | Aligned |
 | ConfigMap namespace | Guide says "Operator namespace" in the introduction and "EvalHub custom resource namespace" in the procedure [1] | Operator namespace `redhat-ods-applications`, where the built-in provider ConfigMaps live | Aligned (doc is inconsistent; behaviour verified on the cluster) |
-| Image provenance | Red Hat registry images or a documented exception | `garak-coding` uses a Red Hat image; `inspect-coding` and `swebench` use `quay.io/evalhub` community images pinned by digest | Deviation (justified: the operator's own built-in `inspect` provider uses `quay.io/evalhub/community-inspect:v0.5.0`; SWE-bench has no built-in) |
+| Image provenance | Red Hat registry images or a documented exception | `inspect-coding` and `swebench` use `quay.io/evalhub` community images pinned by digest | Deviation (justified: the operator's own built-in `inspect` provider uses `quay.io/evalhub/community-inspect:v0.5.0`; SWE-bench has no built-in) |
 | S3 test data | Documented credential Secret for custom S3 data [1] | Composed by a hook | Aligned |
 | SCC | Grant SCCs to specific ServiceAccounts; `anyuid` allows any UID/GID [3] | Two ServiceAccounts | Deviation (justified: SWE-bench images require root; operator approval) |
 | Kueue for evaluation jobs | Route evaluation jobs through Kueue [1][2] | Tenant uses `lq-cpu-default` (in `050-model-qualification`) | Aligned |

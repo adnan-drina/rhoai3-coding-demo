@@ -44,7 +44,7 @@ OpenShift AI 3.5 sections. Detailed record:
 | The Pipelines connection carries the external ODF S3 Route so signed artifact links open in a browser | `gitops/stages/050-model-evaluation/050-model-qualification/storage/` | [Data storage with pipelines][storage] |
 | Pipeline definitions stored as Kubernetes `Pipeline` (wave 16) and `PipelineVersion` (wave 17) objects compiled into Git | `gitops/stages/050-model-evaluation/050-model-qualification/pipeline/` | [Define a pipeline by using the Kubernetes API][k8sapi], [Kubernetes-native manifests][k8scompile] |
 | MLflow plugin `insecureSkipVerify: true` in a copied server config (`ds-pipeline-server-config-custom`, `apiServer.customServerConfigMap`); operator decision 2026-10-12 | `gitops/stages/050-model-evaluation/050-model-qualification/pipeline-server.yaml` | [Enable MLflow integration for pipeline runs][mlflow-enable] |
-| Pipeline runs tracked in MLflow experiment `agentic-coding-qualification`, chosen in the run form | `stages/050-model-evaluation/README.md` | [MLflow experiment tracking for pipeline runs][mlflow] |
+| Pipeline runs tracked in MLflow experiment `models-onboarding`, chosen in the run form and set as the MLflow plugin's `defaultExperimentName` (runs created through the KFP SDK, such as garak-kfp's, send no experiment) | `stages/050-model-evaluation/README.md`, `gitops/stages/050-model-evaluation/050-model-qualification/pipeline-server.yaml` | [MLflow experiment tracking for pipeline runs][mlflow] |
 | `pipeline-runner-dspa` is bound to the EvalHub Role; task containers mount the service CA ConfigMap `pipeline-tasks-service-ca` | `gitops/stages/050-model-evaluation/050-model-qualification/pipeline-server.yaml` | not product guidance |
 
 ## Procedure

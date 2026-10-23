@@ -1,21 +1,21 @@
-# Full job body for `evalhub eval run --config agentic-coding-capability.ci.yaml --wait` (RHOAI 3.5 2.4, 2.10).
+# Full job body for `evalhub eval run --config agentic-coding-python-tasks.ci.yaml --wait` (RHOAI 3.5 2.4, 2.10).
 # Token: oc create token evalhub-automation -n evaluated-models. Replace MODEL_URL with the MaaS gateway URL.
-name: ci-agentic-coding-capability
-tags: [agentic-coding, agentic-coding-capability-v1, ci]
+name: ci-agentic-coding-python-tasks
+tags: [agentic-coding, agentic-coding-python-tasks-v1, ci]
 model:
   url: https://MODEL_URL/v1
   name: publishers/internal-models/models/qwen3-8-27b
   auth:
     secret_ref: evalhub-model-auth-maas
 collection:
-  id: agentic-coding-capability-v1
+  id: agentic-coding-python-tasks-v1
 experiment:
   name: model-evaluations
   tags:
     - key: model
       value: qwen3-8-27b
     - key: benchmark
-      value: agentic-coding-capability-v1
+      value: agentic-coding-python-tasks-v1
     - key: submitted_by
       value: ci
 queue:

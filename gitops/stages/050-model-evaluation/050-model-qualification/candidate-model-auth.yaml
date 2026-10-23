@@ -1,11 +1,12 @@
-# Model auth Secret for candidates served in this project ("Connect EvalHub to protected production model
-# servers", pattern 3: api-key plus ca_cert). A candidate InferenceService listens on HTTPS with an OpenShift
-# service-serving certificate and authorizes callers with a SubjectAccessReview (get on the
+# Model auth Secret garak-kfp-model-auth for candidates served in this project, used by every evaluation of a
+# candidate: the qualification pipeline's collection and garak-kfp jobs and manual runs ("Connect EvalHub to
+# protected production model servers", pattern 3: api-key plus ca_cert). A candidate InferenceService listens on
+# HTTPS with an OpenShift service-serving certificate and authorizes callers with a SubjectAccessReview (get on the
 # InferenceService). The job sidecar needs ca_cert to trust that certificate, and an api-key because the
 # LightEval and Inspect adapters send their own Authorization header, which the sidecar forwards instead of
 # its ServiceAccount token. The api-key is the token of candidate-model-client, a ServiceAccount that may
 # only get InferenceServices in this admin-only project; a Sync hook assembles the Secret in the cluster,
-# so no credential is stored in Git.
+# so no credential is stored in Git. The keys garak-kfp adds (below) are ignored by the other adapters.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -157,11 +158,6 @@ spec:
                 sleep 5
               done
               [ -s "${WORK}/api-key" ] && grep -q 'BEGIN CERTIFICATE' /service-ca/service-ca.crt
-              oc create secret generic qualification-model-auth -n evaluated-models \
-                --from-file=api-key="${WORK}/api-key" --from-file=ca_cert=/service-ca/service-ca.crt \
-                --dry-run=client -o yaml | oc apply --server-side --force-conflicts --field-manager=candidate-model-auth -f -
-              oc annotate secret qualification-model-auth -n evaluated-models kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
-              echo "qualification-model-auth ready (api-key, ca_cert)"
               # garak-kfp (pipeline execution mode): the adapter pod has no token, so it calls KFP and the
               # Kubernetes API through the job sidecar with ref tokens; an empty *_sa_token makes the sidecar inject
               # the job ServiceAccount token and route to the matching *_url. The garak pipeline pods mount this
@@ -169,28 +165,21 @@ spec:
               # (EvalHub rewrites every *_url in the adapter's copy to the sidecar). ca_cert trusts the service CA
               # (model, KFP API) and the cluster CA (Kubernetes API).
               cat /service-ca/service-ca.crt /kube-root-ca/ca.crt > "${WORK}/ca_cert"
-              # intents benchmarks also call a judge, an SDG model and a translator; the guide (7.7.4) takes their keys
-              # from the same Secret per role. Judge and SDG are the abliterated helper model in this project
-              # (risk-assessment-gemma-2-9b-abliterated.yaml), so their key is the candidate-model-client token, which
-              # may get every InferenceService here; the translator is a MaaS model, so TRANSLATION_API_KEY is the MaaS
-              # evaluation key that the provision-evalhub-model-auth hook (same wave) writes.
-              for i in $(seq 1 60); do
-                oc get secret evalhub-model-auth-maas -n evaluated-models -o jsonpath='{.data.api-key}' | base64 -d > "${WORK}/maas-key" \
-                  && [ -s "${WORK}/maas-key" ] && break
-                sleep 5
-              done
-              [ -s "${WORK}/maas-key" ]
+              # intents benchmarks also call a judge and an SDG model (TAP's attacker and evaluator default to the
+              # judge); the guide (7.7.4) takes their keys from the same Secret per role. Both are the abliterated helper
+              # model in this project (risk-assessment-gemma-2-9b-abliterated.yaml), so their key is the
+              # candidate-model-client token, which may get every InferenceService here. Translation uses the
+              # provider's default Helsinki-NLP models and needs no key.
               oc create secret generic garak-kfp-model-auth -n evaluated-models \
                 --from-file=api-key="${WORK}/api-key" --from-file=ca_cert="${WORK}/ca_cert" \
                 --from-file=JUDGE_API_KEY="${WORK}/api-key" --from-file=SDG_API_KEY="${WORK}/api-key" \
-                --from-file=TRANSLATION_API_KEY="${WORK}/maas-key" \
                 --from-literal=kfp_url=https://ds-pipeline-dspa.evaluated-models.svc.cluster.local:8443 \
                 --from-literal=kfp_sa_token= \
                 --from-literal=k8s_url=https://kubernetes.default.svc:443 \
                 --from-literal=k8s_sa_token= \
                 --dry-run=client -o yaml | oc apply --server-side --force-conflicts --field-manager=candidate-model-auth -f -
-              oc annotate secret garak-kfp-model-auth -n evaluated-models kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true
-              echo "garak-kfp-model-auth ready (api-key, ca_cert, JUDGE_API_KEY, SDG_API_KEY, TRANSLATION_API_KEY, kfp_url, kfp_sa_token, k8s_url, k8s_sa_token)"
+              oc annotate secret garak-kfp-model-auth -n evaluated-models kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
+              echo "garak-kfp-model-auth ready (api-key, ca_cert, JUDGE_API_KEY, SDG_API_KEY, kfp_url, kfp_sa_token, k8s_url, k8s_sa_token)"
           resources:
             requests: {cpu: 50m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}

@@ -5,75 +5,16 @@
     "model_url": "https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1"
   },
   "timeout": 7200,
+  "disable_cache": true,
   "intents_models": {
     "judge": {
-      "url": "https://maas.<cluster-domain>/v1",
-      "name": "gpt-6-luna"
+      "url": "https://gemma-2-9b-abliterated-predictor.evaluated-models.svc.cluster.local:8443/v1",
+      "name": "gemma-2-9b-abliterated"
     },
     "sdg": {
-      "url": "https://maas.<cluster-domain>/v1",
-      "name": "openai/gpt-6-luna"
-    },
-    "translation": {
-      "url": "https://maas.<cluster-domain>/v1",
-      "name": "nemotron-3-ultra-550b-a55b"
+      "url": "https://gemma-2-9b-abliterated-predictor.evaluated-models.svc.cluster.local:8443/v1",
+      "name": "hosted_vllm/gemma-2-9b-abliterated"
     }
   },
-  "sdg_num_samples": 5,
-  "garak_config": {
-    "plugins": {
-      "detectors": {
-        "judge": {
-          "detector_model_config": {
-            "suppressed_params": [
-              "max_tokens",
-              "temperature",
-              "stop",
-              "n",
-              "top_p",
-              "frequency_penalty",
-              "presence_penalty"
-            ],
-            "extra_params": {
-              "max_completion_tokens": 2048
-            }
-          }
-        }
-      },
-      "probes": {
-        "tap": {
-          "TAPIntent": {
-            "attack_model_config": {
-              "suppressed_params": [
-                "max_tokens",
-                "temperature",
-                "stop",
-                "n",
-                "top_p",
-                "frequency_penalty",
-                "presence_penalty"
-              ],
-              "extra_params": {
-                "max_completion_tokens": 2048
-              }
-            },
-            "evaluator_model_config": {
-              "suppressed_params": [
-                "max_tokens",
-                "temperature",
-                "stop",
-                "n",
-                "top_p",
-                "frequency_penalty",
-                "presence_penalty"
-              ],
-              "extra_params": {
-                "max_completion_tokens": 1024
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+  "sdg_num_samples": 5
 }

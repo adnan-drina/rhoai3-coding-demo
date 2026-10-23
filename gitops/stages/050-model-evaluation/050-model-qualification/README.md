@@ -56,8 +56,8 @@ ready.
 |---|---|---|---|
 | ServiceAccount | `evalhub-maas-key-provisioner` | `evaluated-models` | Wave 12. Owner of the MaaS key for subscription `model-qualification`. |
 | Role / RoleBinding | `evalhub-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch/update Secrets and ConfigMaps in the project. |
-| Role / RoleBinding | `qualification-model-auth-gateway-reader` | `openshift-ingress` | Wave 12. `get` on Gateway `maas-default-gateway` only, to read its API hostname. |
-| Job | `provision-evalhub-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Keeps the stored key while the MaaS API reports it active, otherwise revokes it and mints a new one; writes Secret `evalhub-model-auth-maas` (`api-key`, `key_id`, `expires_at`, `subscription`) and ConfigMap `qualification-endpoints` (`maas_base_url`). |
+| Role / RoleBinding | `qualification-model-auth-gateway-reader` | `openshift-ingress` | Wave 12. `get` on Gateway `maas-default-gateway` and Route `data-science-gateway` only, to read the MaaS API and dashboard hostnames. |
+| Job | `provision-evalhub-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Keeps the stored key while the MaaS API reports it active, otherwise revokes it and mints a new one; writes Secret `evalhub-model-auth-maas` (`api-key`, `key_id`, `expires_at`, `subscription`) and ConfigMap `qualification-endpoints` (`dashboard_url`, for the links the pipeline records). |
 
 ### Candidate model (`candidate-qwen3-8-27b-int4.yaml`, `candidate-model-auth.yaml`)
 
@@ -69,7 +69,7 @@ ready.
 | ServiceAccount, Secret (`kubernetes.io/service-account-token`), Role, RoleBinding | `candidate-model-client`, `candidate-model-client-token` | `evaluated-models` | Wave 12. A token that may only `get` InferenceServices in this project, used as the candidate API key. |
 | ConfigMap | `candidate-model-service-ca` | `evaluated-models` | Wave 12. Injected service CA. |
 | ServiceAccount, Role, RoleBinding | `candidate-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch Secrets. |
-| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `qualification-model-auth` (`api-key`, `ca_cert`) and Secret `garak-kfp-model-auth` (the same `api-key`; `ca_cert` with the service CA and the cluster CA; `JUDGE_API_KEY` and `SDG_API_KEY`, the MaaS evaluation key for the `intents` judge and SDG models, guide 7.7.4; `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token`). |
+| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `garak-kfp-model-auth`, the one model auth Secret for every candidate evaluation: `api-key` (the `candidate-model-client` token); `ca_cert` with the service CA and the cluster CA; `JUDGE_API_KEY` and `SDG_API_KEY` (the same token, for the abliterated risk assessment model in this project, which TAP's attacker and evaluator also use, guide 7.7.4); `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token` for `garak-kfp`. Other adapters ignore the extra keys. Until 2026-10-23 a second Secret `qualification-model-auth` held only `api-key` and `ca_cert`. |
 
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
 
@@ -86,13 +86,15 @@ ready.
 | Job | `configure-pipeline-server` | `evaluated-models` | `Sync` hook, wave 14, `BeforeHookCreation,HookSucceeded`, 900 s deadline. Creates DSPA `dspa` the way the dashboard's **Configure pipeline server** does, then points it at a copied server config with the MLflow plugin's `insecureSkipVerify: true`. |
 | ConfigMap | `pipeline-tasks-service-ca` | `evaluated-models` | Wave 12. Injected service CA for pipeline task containers that call EvalHub. |
 | RoleBinding | `pipeline-runner-evalhub-access` | `evaluated-models` | Wave 15. `evalhub-evaluator` for `pipeline-runner-dspa`. |
+| RoleBinding | `pipeline-runner-dspa-api` | `evaluated-models` | Wave 15. `ds-pipeline-user-access-dspa` for `pipeline-runner-dspa`: the record step reads the garak-kfp pipeline run of each security job to link it. |
+| RoleBinding | `pipeline-runner-demo-registry` | `rhoai-model-registries` | Wave 15. The operator-created `registry-user-demo-registry` Role (the one the dashboard's registry permissions bind) for `pipeline-runner-dspa`: the record step writes the verdict on the candidate's model version. |
 
 ### `pipeline/`
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | Pipeline | `agentic-coding-model-qualification` | `evaluated-models` | Wave 16 (kustomize patch), `SkipDryRunOnMissingResource`. |
-| PipelineVersion | `agentic-coding-model-qualification-v12` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. Steps 0 to 7: resolve model, latency, throughput, LiveCodeBench, Python tasks, security quick, security full, leaderboard. |
+| PipelineVersion | `agentic-coding-model-qualification-v13` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `security` (`garak-kfp` `avid_security`), `risk-assessment` (`garak-kfp` `intents`), `report` (HTML report, summary metrics), `record` (verdict and evidence on the registry version). |
 
 ### `storage/`
 
@@ -108,7 +110,7 @@ ready.
 
 | Object | Created by |
 |---|---|
-| Secrets `evalhub-model-auth-maas`, `qualification-model-auth`, `dashboard-dspa-secret`; ConfigMaps `qualification-endpoints`, `ds-pipeline-server-config-custom` | Hook Jobs above |
+| Secrets `evalhub-model-auth-maas`, `garak-kfp-model-auth`, `dashboard-dspa-secret`; ConfigMaps `qualification-endpoints`, `ds-pipeline-server-config-custom` | Hook Jobs above |
 | DataSciencePipelinesApplication `dspa` | `configure-pipeline-server` hook (not tracked by Argo CD) |
 | PVC `evaluated-models-storage` (20 Gi `gp3-csi`) | `evaluated-models-s3-connections` hook, so a `WaitForFirstConsumer` PVC does not hold the sync |
 | Pipeline server Deployments, MariaDB, `pipeline-runner-dspa` ServiceAccount, `ds-pipeline-server-config-dspa` | Data Science Pipelines operator from `dspa` |
@@ -131,8 +133,9 @@ The DSPA is created by the Job rather than declared in Git, and is therefore not
 **MLflow TLS for pipeline steps.** Each step's driver and launcher call the in-cluster MLflow service, whose certificate
 the service CA signs, and 3.5.1 passes them no CA bundle for that call. By operator decision (2026-10-12) the hook copies
 the generated server config, sets the MLflow plugin's `insecureSkipVerify` to `true`, and sets
-`apiServer.customServerConfigMap`. Delete the copy and the DSPA field to return to the default. Choose the MLflow experiment
-`agentic-coding-qualification` in the run form.
+`apiServer.customServerConfigMap`. Delete the copy and the DSPA field to return to the default. The same copy sets the plugin's default experiment to
+`models-onboarding`, so runs started without one (garak-kfp submits through the KFP SDK) and runs started from the form
+land beside the onboarding evaluations; the hook restarts the API server when it changes the copy.
 
 **Pipeline tasks.** Each task uses the pinned `odh-pipeline-runtime-minimal-cpu-py312-rhel9` image and installs
 `eval-hub-sdk[cli]==1.0.5` and `kfp==2.16.1` from `pypi.org` at run time, so tasks need egress to PyPI.
@@ -145,8 +148,12 @@ speculative decoding with three draft tokens, the model card's non-thinking samp
 parsers. The runtime comes from the platform vLLM NVIDIA GPU template and token authentication is on [4].
 
 **Candidate authentication.** Jobs reach the candidate in two ways: the job ServiceAccount's own token with `get` on the
-InferenceService, and, for adapters that send their own `Authorization` header, Secret `qualification-model-auth` with the
-token of `candidate-model-client` as `api-key` plus the service CA as `ca_cert`.
+InferenceService, and, for adapters that send their own `Authorization` header, Secret `garak-kfp-model-auth` with the
+token of `candidate-model-client` as `api-key` plus the service and cluster CAs as `ca_cert`. These are the article's patterns 1 (implicit ServiceAccount token with the InferenceService view Role) and 3
+(`api-key` plus `ca_cert`, mounted for the adapter at `/var/run/secrets/model/`) [Connect EvalHub to protected production
+model servers](https://developers.redhat.com/articles/2026/06/23/connect-evalhub-protected-production-model-servers); pattern 3
+is needed because LightEval and Inspect send their own `Authorization` header and the garak-kfp pipeline pods have no
+sidecar.
 
 **Garak in pipeline mode (`garak-kfp`).** The provider submits the scan as a run on this project's pipeline server and
 polls it. Its adapter pod has no ServiceAccount token, so a job names `garak-kfp-model-auth` as `model.auth.secret_ref`
