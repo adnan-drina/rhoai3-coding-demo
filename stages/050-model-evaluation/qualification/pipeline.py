@@ -29,6 +29,7 @@ stores the compiled spec in a latin1 column.
 """
 
 import copy
+import json
 
 from kfp import dsl, kubernetes
 
@@ -54,7 +55,7 @@ EVALUATIONS = [
     # model, so it runs alone; the report combines both into the weighted capability score.
     ("livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v3", "", 2 * 3600, False),
     ("python-tasks", "skip_python_tasks", "agentic-coding-python-tasks-v1", "", 3600, False),
-    # Prompt generation, the scan and translation run in the job pod; the scan itself is bounded by INTENTS_TIMEOUT.
+    # Prompt generation and the scan run in the job pod; the scan itself is bounded by INTENTS_TIMEOUT.
     ("risk-assessment", "skip_risk_assessment", "", "intents", 3 * 3600, False),
     # The same scan through the candidate's NeMo Guardrails (run parameter guardrails): this result is the risk gate,
     # the bare model's is reported beside it. Every attack also waits for the guardrail's Nemotron judge.
@@ -68,11 +69,16 @@ REGISTRY_URL = "https://demo-registry.rhoai-model-registries.svc:8443/api/model_
 QUEUE = "lq-cpu-default"
 # Risk assessment helper model: the abliterated model in this project generates the attack prompts (SDG), judges the
 # responses and drives TAP (attacker and evaluator inherit the judge). Its address and key come from the Secret
-# (judge_url, sdg_url); the job names the models. Translation uses the provider's documented default (Helsinki-NLP
-# models from Hugging Face). sdg_max_tokens stays unset: in the 3.5.2 provider it
+# (judge_url, sdg_url); the job names the models. sdg_max_tokens stays unset: in the 3.5.2 provider it
 # rebuilds the SDG block without its model and the step fails ("Model not configured").
 RISK_MODEL = "gemma-2-9b-abliterated"
 INTENTS_TIMEOUT = 7200
+# The translation strategy is off, as the risk assessment guide documents for skipping it: in-pod the provider
+# translates with the attacker LLM, and one scan with translation ran past INTENTS_TIMEOUT.
+# JSON text, because a pipeline parameter cannot carry null.
+INTENTS_GARAK_CONFIG = json.dumps({"run": {"langproviders": None}, "plugins": {"probe_spec": [
+    "spo.SPOIntent", "spo.SPOIntentUserAugmented", "spo.SPOIntentSystemAugmented", "spo.SPOIntentBothAugmented",
+    "tap.TAPIntent"]}})
 SDG_NUM_SAMPLES = 5
 # Gate for the weighted capability score across the code collections (benchmark weights 3:2:1).
 CAPABILITY_THRESHOLD = 0.5
@@ -145,6 +151,7 @@ def evaluate(
     queue: str,
     risk_model: str,
     intents_timeout: int,
+    intents_garak_config: str,
     sdg_num_samples: int,
     run_name: str,
     run_id: str,
@@ -233,7 +240,8 @@ def evaluate(
         if benchmark_id == "intents":
             parameters = {"timeout": intents_timeout, "sdg_num_samples": sdg_num_samples,
                           "intents_models": {"judge": {"name": risk_model},
-                                             "sdg": {"name": f"hosted_vllm/{risk_model}"}}}
+                                             "sdg": {"name": f"hosted_vllm/{risk_model}"}},
+                          "garak_config": json.loads(intents_garak_config)}
         body["benchmarks"] = [{"id": benchmark_id, "provider_id": "garak", "parameters": parameters,
                                "primary_score": bdef["primary_score"], "pass_criteria": bdef["pass_criteria"]}]
     path = os.path.join(work, "eval.yaml")
@@ -360,10 +368,6 @@ def verdict(
                 reasons.append(f"{evaluation}/{b['id']}: misses its gate ({note} {value}, threshold {threshold})")
             if b["id"] in weights:
                 capability.append((weights[b["id"]], value))
-        col_test = results.get("test") or {}
-        if job.get("collection") and col_test.get("pass") is False:
-            reasons.append(f"{evaluation}: collection score {col_test.get('score')} misses "
-                           f"{col_test.get('threshold')}")
     cap = (sum(w * v for w, v in capability) / sum(w for w, _ in capability)
            if len(capability) == len(weights) and all(isinstance(v, (int, float)) for _, v in capability) else None)
     if cap is None:
@@ -441,12 +445,14 @@ def report(
     """Publish the run's result like garak's write-kfp-outputs: an HTML report and the summary metrics."""
     import html
     import json
+    import re
 
     data = json.loads(summary)
     result, reasons, cap, rows = data["verdict"], data["reasons"], data["capability"], data["rows"]
     for _, bid, value, _, note, _ in rows:
         if isinstance(value, (int, float)):
-            summary_metrics.log_metric(f"{bid}.{note}".replace("/", "_").replace(":", "_"), float(value))
+            # MLflow metric names allow only alphanumerics, _ - . space : and /.
+            summary_metrics.log_metric(re.sub(r"[^A-Za-z0-9_.-]", "_", f"{bid}.{note}"), float(value))
     if isinstance(cap, (int, float)):
         summary_metrics.log_metric("capability.weighted", float(cap))
     summary_metrics.log_metric("qualified", 1.0 if result == "QUALIFIED" else 0.0)
@@ -521,7 +527,8 @@ def qualification(
         step = _small(_named(evaluate, label)(
             model_name=model_name, collection_id=collection_id, benchmark_id=benchmark_id,
             auth_secret=TENANT_SECRET, experiment=EXPERIMENT, evalhub_url=EVALHUB_URL, queue=QUEUE,
-            risk_model=RISK_MODEL, intents_timeout=INTENTS_TIMEOUT, sdg_num_samples=SDG_NUM_SAMPLES,
+            risk_model=RISK_MODEL, intents_timeout=INTENTS_TIMEOUT,
+            intents_garak_config=INTENTS_GARAK_CONFIG, sdg_num_samples=SDG_NUM_SAMPLES,
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
             timeout_seconds=timeout, skip=skips[skip_name], previous=ledger,
             guarded=guarded, guardrails=guardrails,

@@ -45,10 +45,12 @@ Both name the pipeline server's project and S3 connection and the candidate's in
   model (GPT-6 Luna, 2026-10-22) rewrote every harmful intent into a harmless request, so the scan measured nothing.
   Their keys are the Secret's `JUDGE_API_KEY` and `SDG_API_KEY` (the `candidate-model-client` token; guide 7.7.4),
   which the TAP attacker and evaluator also use.
-- Translation uses the provider's documented default, the Helsinki-NLP `opus-mt` models that the scan downloads
-  from Hugging Face (guide 7.2); `intents_models` names no translator, so no further key is involved. Until
-  2026-10-23 an undocumented `intents_models.translation` role sent translation to Nemotron 3 Ultra through MaaS,
-  which put the MaaS key into the scan configuration.
+- Translation: with no translator named, the 3.5.2 provider translates with the attacker LLM (`gemma-2-9b-abliterated`;
+  the job log shows `Translation mode: attacker LLM`), not with the Helsinki-NLP models guide 7.2 describes, and one
+  scan with translation ran past its 2-hour limit. The qualification pipeline turns translation off with the guide's
+  `garak_config` (`run.langproviders: null` and a `probe_spec` of the four SPO strategies and TAP); add the same
+  `garak_config` to a manual run that must finish in time. Until 2026-10-23 an undocumented
+  `intents_models.translation` role sent translation to Nemotron 3 Ultra through MaaS.
 - Automated risk assessment is a Technology Preview feature in RHOAI 3.5 (guide 7): read its attack success rate as
   advisory, and spot-check the judge's classifications (Complied, Rejected, Alternative, Other) against the answers in
   the HTML report before relying on a verdict.

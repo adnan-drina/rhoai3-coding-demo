@@ -2704,6 +2704,26 @@ oc logs -n evaluated-models -l provider_id=garak-kfp -c adapter --since=1h | gre
 
 **Recover:** Remove `sdg_max_tokens` from the parameters (the committed `intents.parameters.json` and the qualification pipeline leave it unset) and rerun. Some generated prompts may then be cut off or unparseable; the flow drops them and the scan uses the rest.
 
+## Context-Aware Vulnerability Scan Times Out In Translation
+
+**Affected stage:** Stage 050, `risk-assessment` (built-in `garak` `intents` in the job pod, EvalHub 3.5.2, seen 2026-10-23)
+
+**Symptom:** The scan runs the SPO strategies in about 15 minutes, then logs `x/10` batch loops of about 3 to 4 minutes per batch until the job's `timeout` (7,200 s) ends it; the job fails without per-probe results and the verdict reads `no per-probe results (empty scan)`. The job log shows `Translation mode: attacker LLM (gemma-2-9b-abliterated)` and `zh,en->llm.LLMTranslator`.
+
+**Likely cause:** With no translator named, the provider translates with the attacker LLM instead of the Helsinki-NLP models guide 7.2 describes (its order is: `translation_use_hf`, a translation key in the Secret, `intents_models.translation`, the attacker model, then Hugging Face). Every prompt is translated twice through the 9B helper model, which takes longer than the scan's limit.
+
+**Recover:** Turn translation off with the guide's `garak_config` (7.2 note): `run.langproviders: null` and `plugins.probe_spec` with `spo.SPOIntent`, `spo.SPOIntentUserAugmented`, `spo.SPOIntentSystemAugmented`, `spo.SPOIntentBothAugmented` and `tap.TAPIntent`. Pipeline v19 and later send it on both risk steps. To keep translation, set `translation_use_hf: true` so the Helsinki-NLP models are used (they download from Hugging Face).
+
+## Latency Collection Fails Its Collection Score While The Benchmark Passes
+
+**Affected stage:** Stage 050, `agentic-coding-latency-v1`, qualification pipeline v18 and earlier
+
+**Symptom:** The verdict lists `agentic-coding-latency-v1: collection score -775.2252 misses 0.5` although the `concurrent` benchmark passes (776 ms against 2,000 ms).
+
+**Likely cause:** EvalHub negates a lower-is-better metric to compute the collection score and compares it with the collection's default threshold of 0.5, so a latency collection never passes at collection level (the headline percentage is meaningless for latency, see "Evaluation Score Shows "-" Or Thousands Of Percent").
+
+**Recover:** Pipeline v19 gates each benchmark on its own `pass_criteria` and the code benchmarks on the weighted capability score; it no longer reads the collection score. Read latency and throughput by the per-benchmark Pass/Fail.
+
 ## Guarded Garak Scan Scores Far Better Than Expected
 
 **Affected stage:** Stage 050, `risk-assessment-guarded` (Garak through NeMo Guardrails `candidate-guardrails`)

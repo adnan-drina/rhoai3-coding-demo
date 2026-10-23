@@ -12,13 +12,13 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v18
+  name: agentic-coding-model-qualification-v19
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
     the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v18
+  displayName: agentic-coding-model-qualification v19
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -44,6 +44,8 @@ spec:
             guarded:
               parameterType: BOOLEAN
             guardrails:
+              parameterType: STRING
+            intents_garak_config:
               parameterType: STRING
             intents_timeout:
               parameterType: NUMBER_INTEGER
@@ -92,6 +94,8 @@ spec:
               parameterType: BOOLEAN
             guardrails:
               parameterType: STRING
+            intents_garak_config:
+              parameterType: STRING
             intents_timeout:
               parameterType: NUMBER_INTEGER
             model_name:
@@ -138,6 +142,8 @@ spec:
             guarded:
               parameterType: BOOLEAN
             guardrails:
+              parameterType: STRING
+            intents_garak_config:
               parameterType: STRING
             intents_timeout:
               parameterType: NUMBER_INTEGER
@@ -210,6 +216,8 @@ spec:
               parameterType: BOOLEAN
             guardrails:
               parameterType: STRING
+            intents_garak_config:
+              parameterType: STRING
             intents_timeout:
               parameterType: NUMBER_INTEGER
             model_name:
@@ -257,6 +265,8 @@ spec:
               parameterType: BOOLEAN
             guardrails:
               parameterType: STRING
+            intents_garak_config:
+              parameterType: STRING
             intents_timeout:
               parameterType: NUMBER_INTEGER
             model_name:
@@ -303,6 +313,8 @@ spec:
             guarded:
               parameterType: BOOLEAN
             guardrails:
+              parameterType: STRING
+            intents_garak_config:
               parameterType: STRING
             intents_timeout:
               parameterType: NUMBER_INTEGER
@@ -409,29 +421,30 @@ spec:
               \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
-              \    intents_timeout: int,\n    sdg_num_samples: int,\n    run_name:\
-              \ str,\n    run_id: str,\n    timeout_seconds: int,\n    skip: bool,\n\
-              \    guarded: bool,\n    guardrails: str,\n    previous: dsl.Input[dsl.Dataset],\n\
-              \    results: dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub\
-              \ collection, or one garak benchmark, on the candidate and wait for\
-              \ it. Reads the results\n    ledger of the step before, appends this\
-              \ evaluation (job, state, each benchmark's metric, value, gate and pass)\
-              \ and\n    hands it on, so the run graph shows the intermediate results\
-              \ between the steps as garak's datasets do.\"\"\"\n    import json\n\
-              \    what = (collection_id or f\"garak/{benchmark_id}\") + (\" (guarded)\"\
-              \ if guarded else \"\")\n    guardrails = guardrails.strip() if guarded\
-              \ else \"\"\n    with open(previous.path) as f:\n        ledger = json.load(f)\n\
-              \n    def hand_on(entry):\n        ledger[\"results\"].append(entry)\n\
-              \        with open(results.path, \"w\") as f:\n            json.dump(ledger,\
-              \ f, indent=1)\n\n    if skip:\n        print(f\"{what}: skipped by\
-              \ the run's skip parameter; no EvalHub job submitted\")\n        hand_on({\"\
-              evaluation\": what, \"skipped\": True})\n        return\n    if guarded\
-              \ and not guardrails:\n        print(f\"{what}: no guardrails named\
-              \ in the run's guardrails parameter; no EvalHub job submitted\")\n \
-              \       hand_on({\"evaluation\": what, \"skipped\": True, \"no_guardrails\"\
-              : True})\n        return\n    import os\n    import re\n    import ssl\n\
-              \    import subprocess\n    import tempfile\n    import urllib.request\n\
-              \n    import httpx\n    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \    intents_timeout: int,\n    intents_garak_config: str,\n    sdg_num_samples:\
+              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
+              \    skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
+              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
+              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
+              \ candidate and wait for it. Reads the results\n    ledger of the step\
+              \ before, appends this evaluation (job, state, each benchmark's metric,\
+              \ value, gate and pass) and\n    hands it on, so the run graph shows\
+              \ the intermediate results between the steps as garak's datasets do.\"\
+              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
+              \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
+              \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
+              results\"].append(entry)\n        with open(results.path, \"w\") as\
+              \ f:\n            json.dump(ledger, f, indent=1)\n\n    if skip:\n \
+              \       print(f\"{what}: skipped by the run's skip parameter; no EvalHub\
+              \ job submitted\")\n        hand_on({\"evaluation\": what, \"skipped\"\
+              : True})\n        return\n    if guarded and not guardrails:\n     \
+              \   print(f\"{what}: no guardrails named in the run's guardrails parameter;\
+              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
+              \ \"skipped\": True, \"no_guardrails\": True})\n        return\n   \
+              \ import os\n    import re\n    import ssl\n    import subprocess\n\
+              \    import tempfile\n    import urllib.request\n\n    import httpx\n\
+              \    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
               \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
               \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
               {sa}/ca.crt\")\n\n    def kube(path):\n        req = urllib.request.Request(f\"\
@@ -473,16 +486,17 @@ spec:
               : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
-              hosted_vllm/{risk_model}\"}}}\n        body[\"benchmarks\"] = [{\"id\"\
-              : benchmark_id, \"provider_id\": \"garak\", \"parameters\": parameters,\n\
-              \                               \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
+              : json.loads(intents_garak_config)}\n        body[\"benchmarks\"] =\
+              \ [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
               \                          \"--format\", \"json\"], env=env, capture_output=True,\
               \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
               Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
@@ -550,29 +564,30 @@ spec:
               \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
-              \    intents_timeout: int,\n    sdg_num_samples: int,\n    run_name:\
-              \ str,\n    run_id: str,\n    timeout_seconds: int,\n    skip: bool,\n\
-              \    guarded: bool,\n    guardrails: str,\n    previous: dsl.Input[dsl.Dataset],\n\
-              \    results: dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub\
-              \ collection, or one garak benchmark, on the candidate and wait for\
-              \ it. Reads the results\n    ledger of the step before, appends this\
-              \ evaluation (job, state, each benchmark's metric, value, gate and pass)\
-              \ and\n    hands it on, so the run graph shows the intermediate results\
-              \ between the steps as garak's datasets do.\"\"\"\n    import json\n\
-              \    what = (collection_id or f\"garak/{benchmark_id}\") + (\" (guarded)\"\
-              \ if guarded else \"\")\n    guardrails = guardrails.strip() if guarded\
-              \ else \"\"\n    with open(previous.path) as f:\n        ledger = json.load(f)\n\
-              \n    def hand_on(entry):\n        ledger[\"results\"].append(entry)\n\
-              \        with open(results.path, \"w\") as f:\n            json.dump(ledger,\
-              \ f, indent=1)\n\n    if skip:\n        print(f\"{what}: skipped by\
-              \ the run's skip parameter; no EvalHub job submitted\")\n        hand_on({\"\
-              evaluation\": what, \"skipped\": True})\n        return\n    if guarded\
-              \ and not guardrails:\n        print(f\"{what}: no guardrails named\
-              \ in the run's guardrails parameter; no EvalHub job submitted\")\n \
-              \       hand_on({\"evaluation\": what, \"skipped\": True, \"no_guardrails\"\
-              : True})\n        return\n    import os\n    import re\n    import ssl\n\
-              \    import subprocess\n    import tempfile\n    import urllib.request\n\
-              \n    import httpx\n    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \    intents_timeout: int,\n    intents_garak_config: str,\n    sdg_num_samples:\
+              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
+              \    skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
+              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
+              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
+              \ candidate and wait for it. Reads the results\n    ledger of the step\
+              \ before, appends this evaluation (job, state, each benchmark's metric,\
+              \ value, gate and pass) and\n    hands it on, so the run graph shows\
+              \ the intermediate results between the steps as garak's datasets do.\"\
+              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
+              \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
+              \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
+              results\"].append(entry)\n        with open(results.path, \"w\") as\
+              \ f:\n            json.dump(ledger, f, indent=1)\n\n    if skip:\n \
+              \       print(f\"{what}: skipped by the run's skip parameter; no EvalHub\
+              \ job submitted\")\n        hand_on({\"evaluation\": what, \"skipped\"\
+              : True})\n        return\n    if guarded and not guardrails:\n     \
+              \   print(f\"{what}: no guardrails named in the run's guardrails parameter;\
+              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
+              \ \"skipped\": True, \"no_guardrails\": True})\n        return\n   \
+              \ import os\n    import re\n    import ssl\n    import subprocess\n\
+              \    import tempfile\n    import urllib.request\n\n    import httpx\n\
+              \    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
               \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
               \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
               {sa}/ca.crt\")\n\n    def kube(path):\n        req = urllib.request.Request(f\"\
@@ -614,16 +629,17 @@ spec:
               : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
-              hosted_vllm/{risk_model}\"}}}\n        body[\"benchmarks\"] = [{\"id\"\
-              : benchmark_id, \"provider_id\": \"garak\", \"parameters\": parameters,\n\
-              \                               \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
+              : json.loads(intents_garak_config)}\n        body[\"benchmarks\"] =\
+              \ [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
               \                          \"--format\", \"json\"], env=env, capture_output=True,\
               \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
               Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
@@ -691,29 +707,30 @@ spec:
               \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
-              \    intents_timeout: int,\n    sdg_num_samples: int,\n    run_name:\
-              \ str,\n    run_id: str,\n    timeout_seconds: int,\n    skip: bool,\n\
-              \    guarded: bool,\n    guardrails: str,\n    previous: dsl.Input[dsl.Dataset],\n\
-              \    results: dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub\
-              \ collection, or one garak benchmark, on the candidate and wait for\
-              \ it. Reads the results\n    ledger of the step before, appends this\
-              \ evaluation (job, state, each benchmark's metric, value, gate and pass)\
-              \ and\n    hands it on, so the run graph shows the intermediate results\
-              \ between the steps as garak's datasets do.\"\"\"\n    import json\n\
-              \    what = (collection_id or f\"garak/{benchmark_id}\") + (\" (guarded)\"\
-              \ if guarded else \"\")\n    guardrails = guardrails.strip() if guarded\
-              \ else \"\"\n    with open(previous.path) as f:\n        ledger = json.load(f)\n\
-              \n    def hand_on(entry):\n        ledger[\"results\"].append(entry)\n\
-              \        with open(results.path, \"w\") as f:\n            json.dump(ledger,\
-              \ f, indent=1)\n\n    if skip:\n        print(f\"{what}: skipped by\
-              \ the run's skip parameter; no EvalHub job submitted\")\n        hand_on({\"\
-              evaluation\": what, \"skipped\": True})\n        return\n    if guarded\
-              \ and not guardrails:\n        print(f\"{what}: no guardrails named\
-              \ in the run's guardrails parameter; no EvalHub job submitted\")\n \
-              \       hand_on({\"evaluation\": what, \"skipped\": True, \"no_guardrails\"\
-              : True})\n        return\n    import os\n    import re\n    import ssl\n\
-              \    import subprocess\n    import tempfile\n    import urllib.request\n\
-              \n    import httpx\n    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \    intents_timeout: int,\n    intents_garak_config: str,\n    sdg_num_samples:\
+              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
+              \    skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
+              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
+              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
+              \ candidate and wait for it. Reads the results\n    ledger of the step\
+              \ before, appends this evaluation (job, state, each benchmark's metric,\
+              \ value, gate and pass) and\n    hands it on, so the run graph shows\
+              \ the intermediate results between the steps as garak's datasets do.\"\
+              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
+              \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
+              \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
+              results\"].append(entry)\n        with open(results.path, \"w\") as\
+              \ f:\n            json.dump(ledger, f, indent=1)\n\n    if skip:\n \
+              \       print(f\"{what}: skipped by the run's skip parameter; no EvalHub\
+              \ job submitted\")\n        hand_on({\"evaluation\": what, \"skipped\"\
+              : True})\n        return\n    if guarded and not guardrails:\n     \
+              \   print(f\"{what}: no guardrails named in the run's guardrails parameter;\
+              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
+              \ \"skipped\": True, \"no_guardrails\": True})\n        return\n   \
+              \ import os\n    import re\n    import ssl\n    import subprocess\n\
+              \    import tempfile\n    import urllib.request\n\n    import httpx\n\
+              \    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
               \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
               \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
               {sa}/ca.crt\")\n\n    def kube(path):\n        req = urllib.request.Request(f\"\
@@ -755,16 +772,17 @@ spec:
               : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
-              hosted_vllm/{risk_model}\"}}}\n        body[\"benchmarks\"] = [{\"id\"\
-              : benchmark_id, \"provider_id\": \"garak\", \"parameters\": parameters,\n\
-              \                               \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
+              : json.loads(intents_garak_config)}\n        body[\"benchmarks\"] =\
+              \ [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
               \                          \"--format\", \"json\"], env=env, capture_output=True,\
               \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
               Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
@@ -831,18 +849,19 @@ spec:
               \ str,\n    html_report: dsl.Output[dsl.HTML],\n    summary_metrics:\
               \ dsl.Output[dsl.Metrics],\n):\n    \"\"\"Publish the run's result like\
               \ garak's write-kfp-outputs: an HTML report and the summary metrics.\"\
-              \"\"\n    import html\n    import json\n\n    data = json.loads(summary)\n\
-              \    result, reasons, cap, rows = data[\"verdict\"], data[\"reasons\"\
-              ], data[\"capability\"], data[\"rows\"]\n    for _, bid, value, _, note,\
-              \ _ in rows:\n        if isinstance(value, (int, float)):\n        \
-              \    summary_metrics.log_metric(f\"{bid}.{note}\".replace(\"/\", \"\
-              _\").replace(\":\", \"_\"), float(value))\n    if isinstance(cap, (int,\
-              \ float)):\n        summary_metrics.log_metric(\"capability.weighted\"\
-              , float(cap))\n    summary_metrics.log_metric(\"qualified\", 1.0 if\
-              \ result == \"QUALIFIED\" else 0.0)\n\n    def fmt(v):\n        return\
-              \ f\"{v:.4g}\" if isinstance(v, (int, float)) else \"-\"\n\n    def\
-              \ css(p):\n        return {True: \"pass\", False: \"fail\"}.get(p, \"\
-              na\")\n\n    body = \"\".join(\n        f\"<tr><td>{html.escape(e)}</td><td>{html.escape(b)}<br><small>{html.escape(n\
+              \"\"\n    import html\n    import json\n    import re\n\n    data =\
+              \ json.loads(summary)\n    result, reasons, cap, rows = data[\"verdict\"\
+              ], data[\"reasons\"], data[\"capability\"], data[\"rows\"]\n    for\
+              \ _, bid, value, _, note, _ in rows:\n        if isinstance(value, (int,\
+              \ float)):\n            # MLflow metric names allow only alphanumerics,\
+              \ _ - . space : and /.\n            summary_metrics.log_metric(re.sub(r\"\
+              [^A-Za-z0-9_.-]\", \"_\", f\"{bid}.{note}\"), float(value))\n    if\
+              \ isinstance(cap, (int, float)):\n        summary_metrics.log_metric(\"\
+              capability.weighted\", float(cap))\n    summary_metrics.log_metric(\"\
+              qualified\", 1.0 if result == \"QUALIFIED\" else 0.0)\n\n    def fmt(v):\n\
+              \        return f\"{v:.4g}\" if isinstance(v, (int, float)) else \"\
+              -\"\n\n    def css(p):\n        return {True: \"pass\", False: \"fail\"\
+              }.get(p, \"na\")\n\n    body = \"\".join(\n        f\"<tr><td>{html.escape(e)}</td><td>{html.escape(b)}<br><small>{html.escape(n\
               \ or '')}</small></td>\"\n        f\"<td class={css(p)}>{fmt(v)}</td><td>{fmt(t)}</td></tr>\"\
               \ for e, b, v, p, n, t in rows)\n    h = [f\"<h1>Model onboarding qualification</h1><p\
               \ class=note>Run {html.escape(run_name)}: \"\n         f\"<b>{html.escape(model_name)}</b>,\
@@ -907,29 +926,30 @@ spec:
               \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
-              \    intents_timeout: int,\n    sdg_num_samples: int,\n    run_name:\
-              \ str,\n    run_id: str,\n    timeout_seconds: int,\n    skip: bool,\n\
-              \    guarded: bool,\n    guardrails: str,\n    previous: dsl.Input[dsl.Dataset],\n\
-              \    results: dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub\
-              \ collection, or one garak benchmark, on the candidate and wait for\
-              \ it. Reads the results\n    ledger of the step before, appends this\
-              \ evaluation (job, state, each benchmark's metric, value, gate and pass)\
-              \ and\n    hands it on, so the run graph shows the intermediate results\
-              \ between the steps as garak's datasets do.\"\"\"\n    import json\n\
-              \    what = (collection_id or f\"garak/{benchmark_id}\") + (\" (guarded)\"\
-              \ if guarded else \"\")\n    guardrails = guardrails.strip() if guarded\
-              \ else \"\"\n    with open(previous.path) as f:\n        ledger = json.load(f)\n\
-              \n    def hand_on(entry):\n        ledger[\"results\"].append(entry)\n\
-              \        with open(results.path, \"w\") as f:\n            json.dump(ledger,\
-              \ f, indent=1)\n\n    if skip:\n        print(f\"{what}: skipped by\
-              \ the run's skip parameter; no EvalHub job submitted\")\n        hand_on({\"\
-              evaluation\": what, \"skipped\": True})\n        return\n    if guarded\
-              \ and not guardrails:\n        print(f\"{what}: no guardrails named\
-              \ in the run's guardrails parameter; no EvalHub job submitted\")\n \
-              \       hand_on({\"evaluation\": what, \"skipped\": True, \"no_guardrails\"\
-              : True})\n        return\n    import os\n    import re\n    import ssl\n\
-              \    import subprocess\n    import tempfile\n    import urllib.request\n\
-              \n    import httpx\n    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \    intents_timeout: int,\n    intents_garak_config: str,\n    sdg_num_samples:\
+              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
+              \    skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
+              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
+              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
+              \ candidate and wait for it. Reads the results\n    ledger of the step\
+              \ before, appends this evaluation (job, state, each benchmark's metric,\
+              \ value, gate and pass) and\n    hands it on, so the run graph shows\
+              \ the intermediate results between the steps as garak's datasets do.\"\
+              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
+              \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
+              \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
+              results\"].append(entry)\n        with open(results.path, \"w\") as\
+              \ f:\n            json.dump(ledger, f, indent=1)\n\n    if skip:\n \
+              \       print(f\"{what}: skipped by the run's skip parameter; no EvalHub\
+              \ job submitted\")\n        hand_on({\"evaluation\": what, \"skipped\"\
+              : True})\n        return\n    if guarded and not guardrails:\n     \
+              \   print(f\"{what}: no guardrails named in the run's guardrails parameter;\
+              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
+              \ \"skipped\": True, \"no_guardrails\": True})\n        return\n   \
+              \ import os\n    import re\n    import ssl\n    import subprocess\n\
+              \    import tempfile\n    import urllib.request\n\n    import httpx\n\
+              \    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
               \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
               \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
               {sa}/ca.crt\")\n\n    def kube(path):\n        req = urllib.request.Request(f\"\
@@ -971,16 +991,17 @@ spec:
               : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
-              hosted_vllm/{risk_model}\"}}}\n        body[\"benchmarks\"] = [{\"id\"\
-              : benchmark_id, \"provider_id\": \"garak\", \"parameters\": parameters,\n\
-              \                               \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
+              : json.loads(intents_garak_config)}\n        body[\"benchmarks\"] =\
+              \ [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
               \                          \"--format\", \"json\"], env=env, capture_output=True,\
               \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
               Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
@@ -1048,29 +1069,30 @@ spec:
               \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
-              \    intents_timeout: int,\n    sdg_num_samples: int,\n    run_name:\
-              \ str,\n    run_id: str,\n    timeout_seconds: int,\n    skip: bool,\n\
-              \    guarded: bool,\n    guardrails: str,\n    previous: dsl.Input[dsl.Dataset],\n\
-              \    results: dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub\
-              \ collection, or one garak benchmark, on the candidate and wait for\
-              \ it. Reads the results\n    ledger of the step before, appends this\
-              \ evaluation (job, state, each benchmark's metric, value, gate and pass)\
-              \ and\n    hands it on, so the run graph shows the intermediate results\
-              \ between the steps as garak's datasets do.\"\"\"\n    import json\n\
-              \    what = (collection_id or f\"garak/{benchmark_id}\") + (\" (guarded)\"\
-              \ if guarded else \"\")\n    guardrails = guardrails.strip() if guarded\
-              \ else \"\"\n    with open(previous.path) as f:\n        ledger = json.load(f)\n\
-              \n    def hand_on(entry):\n        ledger[\"results\"].append(entry)\n\
-              \        with open(results.path, \"w\") as f:\n            json.dump(ledger,\
-              \ f, indent=1)\n\n    if skip:\n        print(f\"{what}: skipped by\
-              \ the run's skip parameter; no EvalHub job submitted\")\n        hand_on({\"\
-              evaluation\": what, \"skipped\": True})\n        return\n    if guarded\
-              \ and not guardrails:\n        print(f\"{what}: no guardrails named\
-              \ in the run's guardrails parameter; no EvalHub job submitted\")\n \
-              \       hand_on({\"evaluation\": what, \"skipped\": True, \"no_guardrails\"\
-              : True})\n        return\n    import os\n    import re\n    import ssl\n\
-              \    import subprocess\n    import tempfile\n    import urllib.request\n\
-              \n    import httpx\n    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \    intents_timeout: int,\n    intents_garak_config: str,\n    sdg_num_samples:\
+              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
+              \    skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
+              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
+              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
+              \ candidate and wait for it. Reads the results\n    ledger of the step\
+              \ before, appends this evaluation (job, state, each benchmark's metric,\
+              \ value, gate and pass) and\n    hands it on, so the run graph shows\
+              \ the intermediate results between the steps as garak's datasets do.\"\
+              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
+              \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
+              \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
+              results\"].append(entry)\n        with open(results.path, \"w\") as\
+              \ f:\n            json.dump(ledger, f, indent=1)\n\n    if skip:\n \
+              \       print(f\"{what}: skipped by the run's skip parameter; no EvalHub\
+              \ job submitted\")\n        hand_on({\"evaluation\": what, \"skipped\"\
+              : True})\n        return\n    if guarded and not guardrails:\n     \
+              \   print(f\"{what}: no guardrails named in the run's guardrails parameter;\
+              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
+              \ \"skipped\": True, \"no_guardrails\": True})\n        return\n   \
+              \ import os\n    import re\n    import ssl\n    import subprocess\n\
+              \    import tempfile\n    import urllib.request\n\n    import httpx\n\
+              \    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
               \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
               \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
               {sa}/ca.crt\")\n\n    def kube(path):\n        req = urllib.request.Request(f\"\
@@ -1112,16 +1134,17 @@ spec:
               : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
-              hosted_vllm/{risk_model}\"}}}\n        body[\"benchmarks\"] = [{\"id\"\
-              : benchmark_id, \"provider_id\": \"garak\", \"parameters\": parameters,\n\
-              \                               \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
+              : json.loads(intents_garak_config)}\n        body[\"benchmarks\"] =\
+              \ [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
               \                          \"--format\", \"json\"], env=env, capture_output=True,\
               \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
               Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
@@ -1189,29 +1212,30 @@ spec:
               \ import *\n\ndef evaluate(\n    model_name: str,\n    collection_id:\
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
-              \    intents_timeout: int,\n    sdg_num_samples: int,\n    run_name:\
-              \ str,\n    run_id: str,\n    timeout_seconds: int,\n    skip: bool,\n\
-              \    guarded: bool,\n    guardrails: str,\n    previous: dsl.Input[dsl.Dataset],\n\
-              \    results: dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub\
-              \ collection, or one garak benchmark, on the candidate and wait for\
-              \ it. Reads the results\n    ledger of the step before, appends this\
-              \ evaluation (job, state, each benchmark's metric, value, gate and pass)\
-              \ and\n    hands it on, so the run graph shows the intermediate results\
-              \ between the steps as garak's datasets do.\"\"\"\n    import json\n\
-              \    what = (collection_id or f\"garak/{benchmark_id}\") + (\" (guarded)\"\
-              \ if guarded else \"\")\n    guardrails = guardrails.strip() if guarded\
-              \ else \"\"\n    with open(previous.path) as f:\n        ledger = json.load(f)\n\
-              \n    def hand_on(entry):\n        ledger[\"results\"].append(entry)\n\
-              \        with open(results.path, \"w\") as f:\n            json.dump(ledger,\
-              \ f, indent=1)\n\n    if skip:\n        print(f\"{what}: skipped by\
-              \ the run's skip parameter; no EvalHub job submitted\")\n        hand_on({\"\
-              evaluation\": what, \"skipped\": True})\n        return\n    if guarded\
-              \ and not guardrails:\n        print(f\"{what}: no guardrails named\
-              \ in the run's guardrails parameter; no EvalHub job submitted\")\n \
-              \       hand_on({\"evaluation\": what, \"skipped\": True, \"no_guardrails\"\
-              : True})\n        return\n    import os\n    import re\n    import ssl\n\
-              \    import subprocess\n    import tempfile\n    import urllib.request\n\
-              \n    import httpx\n    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
+              \    intents_timeout: int,\n    intents_garak_config: str,\n    sdg_num_samples:\
+              \ int,\n    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n\
+              \    skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
+              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
+              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
+              \ candidate and wait for it. Reads the results\n    ledger of the step\
+              \ before, appends this evaluation (job, state, each benchmark's metric,\
+              \ value, gate and pass) and\n    hands it on, so the run graph shows\
+              \ the intermediate results between the steps as garak's datasets do.\"\
+              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
+              \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
+              \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
+              results\"].append(entry)\n        with open(results.path, \"w\") as\
+              \ f:\n            json.dump(ledger, f, indent=1)\n\n    if skip:\n \
+              \       print(f\"{what}: skipped by the run's skip parameter; no EvalHub\
+              \ job submitted\")\n        hand_on({\"evaluation\": what, \"skipped\"\
+              : True})\n        return\n    if guarded and not guardrails:\n     \
+              \   print(f\"{what}: no guardrails named in the run's guardrails parameter;\
+              \ no EvalHub job submitted\")\n        hand_on({\"evaluation\": what,\
+              \ \"skipped\": True, \"no_guardrails\": True})\n        return\n   \
+              \ import os\n    import re\n    import ssl\n    import subprocess\n\
+              \    import tempfile\n    import urllib.request\n\n    import httpx\n\
+              \    import yaml\n\n    sa = \"/var/run/secrets/kubernetes.io/serviceaccount\"\
               \n    tenant = open(f\"{sa}/namespace\").read().strip()\n    token =\
               \ open(f\"{sa}/token\").read().strip()\n    kube_ctx = ssl.create_default_context(cafile=f\"\
               {sa}/ca.crt\")\n\n    def kube(path):\n        req = urllib.request.Request(f\"\
@@ -1253,16 +1277,17 @@ spec:
               : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
-              hosted_vllm/{risk_model}\"}}}\n        body[\"benchmarks\"] = [{\"id\"\
-              : benchmark_id, \"provider_id\": \"garak\", \"parameters\": parameters,\n\
-              \                               \"primary_score\": bdef[\"primary_score\"\
-              ], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n    path = os.path.join(work,\
-              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
-              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
-              \ blocks until the job is terminal and exits 1 when the job fails (before\
-              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
-              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
-              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
+              : json.loads(intents_garak_config)}\n        body[\"benchmarks\"] =\
+              \ [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
               \                          \"--format\", \"json\"], env=env, capture_output=True,\
               \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
               Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
@@ -1477,20 +1502,16 @@ spec:
               \                reasons.append(f\"{evaluation}/{b['id']}: misses its\
               \ gate ({note} {value}, threshold {threshold})\")\n            if b[\"\
               id\"] in weights:\n                capability.append((weights[b[\"id\"\
-              ]], value))\n        col_test = results.get(\"test\") or {}\n      \
-              \  if job.get(\"collection\") and col_test.get(\"pass\") is False:\n\
-              \            reasons.append(f\"{evaluation}: collection score {col_test.get('score')}\
-              \ misses \"\n                           f\"{col_test.get('threshold')}\"\
-              )\n    cap = (sum(w * v for w, v in capability) / sum(w for w, _ in\
-              \ capability)\n           if len(capability) == len(weights) and all(isinstance(v,\
-              \ (int, float)) for _, v in capability) else None)\n    if cap is None:\n\
-              \        reasons.append(\"no complete capability result (LiveCodeBench,\
-              \ MBPP and HumanEval)\")\n    elif cap < capability_threshold:\n   \
-              \     reasons.append(f\"capability score {cap:.3f} misses its gate {capability_threshold}\"\
-              )\n    result = \"QUALIFIED\" if not reasons else \"NOT QUALIFIED\"\n\
-              \    print(result)\n    for r in reasons:\n        print(f\"  - {r}\"\
-              )\n\n    # Record on the model registry version.\n    dashboard_url\
-              \ = call(f\"https://kubernetes.default.svc/api/v1/namespaces/{tenant}/configmaps/qualification-endpoints\"\
+              ]], value))\n    cap = (sum(w * v for w, v in capability) / sum(w for\
+              \ w, _ in capability)\n           if len(capability) == len(weights)\
+              \ and all(isinstance(v, (int, float)) for _, v in capability) else None)\n\
+              \    if cap is None:\n        reasons.append(\"no complete capability\
+              \ result (LiveCodeBench, MBPP and HumanEval)\")\n    elif cap < capability_threshold:\n\
+              \        reasons.append(f\"capability score {cap:.3f} misses its gate\
+              \ {capability_threshold}\")\n    result = \"QUALIFIED\" if not reasons\
+              \ else \"NOT QUALIFIED\"\n    print(result)\n    for r in reasons:\n\
+              \        print(f\"  - {r}\")\n\n    # Record on the model registry version.\n\
+              \    dashboard_url = call(f\"https://kubernetes.default.svc/api/v1/namespaces/{tenant}/configmaps/qualification-endpoints\"\
               ,\n                         context=kube_ctx)[\"data\"][\"dashboard_url\"\
               ]\n    completed = [j for j in jobs if (j.get(\"status\") or {}).get(\"\
               state\") == \"completed\"]\n    now = datetime.datetime.now(datetime.timezone.utc).strftime(\"\
@@ -1589,6 +1610,11 @@ spec:
                     constant: false
                 guardrails:
                   componentInputParameter: guardrails
+                intents_garak_config:
+                  runtimeValue:
+                    constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
+                      ["spo.SPOIntent", "spo.SPOIntentUserAugmented", "spo.SPOIntentSystemAugmented",
+                      "spo.SPOIntentBothAugmented", "tap.TAPIntent"]}}'
                 intents_timeout:
                   runtimeValue:
                     constant: 7200.0
@@ -1649,6 +1675,11 @@ spec:
                     constant: false
                 guardrails:
                   componentInputParameter: guardrails
+                intents_garak_config:
+                  runtimeValue:
+                    constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
+                      ["spo.SPOIntent", "spo.SPOIntentUserAugmented", "spo.SPOIntentSystemAugmented",
+                      "spo.SPOIntentBothAugmented", "tap.TAPIntent"]}}'
                 intents_timeout:
                   runtimeValue:
                     constant: 7200.0
@@ -1709,6 +1740,11 @@ spec:
                     constant: false
                 guardrails:
                   componentInputParameter: guardrails
+                intents_garak_config:
+                  runtimeValue:
+                    constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
+                      ["spo.SPOIntent", "spo.SPOIntentUserAugmented", "spo.SPOIntentSystemAugmented",
+                      "spo.SPOIntentBothAugmented", "tap.TAPIntent"]}}'
                 intents_timeout:
                   runtimeValue:
                     constant: 7200.0
@@ -1793,6 +1829,11 @@ spec:
                     constant: false
                 guardrails:
                   componentInputParameter: guardrails
+                intents_garak_config:
+                  runtimeValue:
+                    constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
+                      ["spo.SPOIntent", "spo.SPOIntentUserAugmented", "spo.SPOIntentSystemAugmented",
+                      "spo.SPOIntentBothAugmented", "tap.TAPIntent"]}}'
                 intents_timeout:
                   runtimeValue:
                     constant: 7200.0
@@ -1853,6 +1894,11 @@ spec:
                     constant: true
                 guardrails:
                   componentInputParameter: guardrails
+                intents_garak_config:
+                  runtimeValue:
+                    constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
+                      ["spo.SPOIntent", "spo.SPOIntentUserAugmented", "spo.SPOIntentSystemAugmented",
+                      "spo.SPOIntentBothAugmented", "tap.TAPIntent"]}}'
                 intents_timeout:
                   runtimeValue:
                     constant: 7200.0
@@ -1913,6 +1959,11 @@ spec:
                     constant: false
                 guardrails:
                   componentInputParameter: guardrails
+                intents_garak_config:
+                  runtimeValue:
+                    constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
+                      ["spo.SPOIntent", "spo.SPOIntentUserAugmented", "spo.SPOIntentSystemAugmented",
+                      "spo.SPOIntentBothAugmented", "tap.TAPIntent"]}}'
                 intents_timeout:
                   runtimeValue:
                     constant: 7200.0
