@@ -2734,6 +2734,8 @@ oc logs -n evaluated-models -l provider_id=garak-kfp -c adapter --since=1h | gre
 
 **Recover:** Set `configMapNamespace` to the guardrail's namespace (the committed CR does) and sync Stage 050.
 
+The same CR also fails when one entry of `spec.nemoConfigs` lists two ConfigMaps, although the guide says it may: the operator log shows `volumeMounts[1].mountPath: Invalid value: "/app/config/<name>": must be unique`. Keep every file of a configuration in one ConfigMap; the Stage 050 hook copies the prompts and rails into `candidate-guardrails-config`.
+
 ## Guarded Garak Scan Scores Far Better Than Expected
 
 **Affected stage:** Stage 050, `risk-assessment-guarded` (Garak through NeMo Guardrails `candidate-guardrails`)

@@ -4,8 +4,8 @@
 # guardrail serves chat-style use; its /v1/chat/completions is not a transparent proxy and does not carry tool calls,
 # so it is not placed in front of the coding agents.
 #
-# Files: config.yaml comes from ConfigMap candidate-guardrails-config, which the provision-evalhub-model-auth hook
-# writes (it carries the cluster's MaaS hostname); prompts.yml and rails.co are below. The guarded model is named by the
+# Files: ConfigMap candidate-guardrails-config, which the provision-evalhub-model-auth hook writes: config.yaml (it
+# carries the cluster's MaaS hostname) plus prompts.yml and rails.co copied from candidate-guardrails-prompts below. The guarded model is named by the
 # demo.rhoai.io/guarded-model annotation and read by that hook.
 apiVersion: v1
 kind: ConfigMap
@@ -94,9 +94,10 @@ spec:
   nemoConfigs:
     - name: candidate-guardrails
       default: true
+      # One ConfigMap: the 3.5.2 operator mounts each listed ConfigMap at the same path and the Deployment is
+      # rejected ("mountPath must be unique"); the hook copies prompts.yml and rails.co into it.
       configMaps:
         - candidate-guardrails-config
-        - candidate-guardrails-prompts
   # Service CA for the candidate predictor and the cluster's trusted CAs for the MaaS gateway. The namespace is
   # required in 3.5.2 although the guide omits it: without it the operator reads the ConfigMap from an empty namespace
   # (status ca.userCAError) and creates no Deployment.

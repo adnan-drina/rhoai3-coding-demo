@@ -37,10 +37,11 @@ rules:
     resources: [configmaps]
     resourceNames: [qualification-endpoints, candidate-guardrails-config, candidate-guardrails-ca]
     verbs: [get, patch, update]
-  # CA sources for the guardrail's bundle: the injected service CA and the cluster's trusted CA bundle.
+  # CA sources for the guardrail's bundle (the injected service CA and the cluster's trusted CA bundle) and the
+  # guardrail's prompts and rails from Git.
   - apiGroups: [""]
     resources: [configmaps]
-    resourceNames: [candidate-model-service-ca, candidate-guardrails-trusted-ca]
+    resourceNames: [candidate-model-service-ca, candidate-guardrails-trusted-ca, candidate-guardrails-prompts]
     verbs: [get]
   - apiGroups: [""]
     resources: [secrets, configmaps]
@@ -257,7 +258,12 @@ spec:
                   flows:
                     - self check output
               YAML
+              # One ConfigMap per configuration: the 3.5.2 operator mounts every ConfigMap of a configuration at the same
+              # path, so the prompts and rails from Git (candidate-guardrails-prompts) are copied in beside config.yaml.
+              mkdir -p "${WORK}/rails"
+              oc extract configmap/candidate-guardrails-prompts -n "${NS}" --to="${WORK}/rails" --confirm >/dev/null
               oc create configmap candidate-guardrails-config -n "${NS}" --from-file=config.yaml="${WORK}/config.yaml" \
+                --from-file="${WORK}/rails/prompts.yml" --from-file="${WORK}/rails/rails.co" \
                 --dry-run=client -o yaml | oc apply -f -
               # CA bundle for the guardrail: the service CA (candidate predictor) and the cluster's trusted CAs (MaaS gateway).
               for i in $(seq 1 30); do
