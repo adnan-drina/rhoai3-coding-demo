@@ -217,7 +217,9 @@ spec:
               # self-check judge. The gateway only accepts TLS for its listener hostnames and the NemoGuardrails pod
               # takes no hostAliases, so the judge cannot use the gateway's internal Service. The hostname is the
               # cluster's, so this file is written here rather than kept in Git. enable_thinking false makes Nemotron
-              # answer the yes/no self-check in about half a second instead of 8 to 14 s of reasoning (2026-10-23).
+              # answer the yes/no self-check in about half a second instead of 8 to 14 s of reasoning (2026-10-23). The
+              # guardrail server (nemoguardrails 0.24, default framework) sends parameters to the endpoint verbatim, so
+              # chat_template_kwargs sits directly under parameters; LangChain's extra_body is rejected with HTTP 400.
               CANDIDATE="$(oc get configmap candidate-guardrails-prompts -n "${NS}" -o jsonpath='{.metadata.annotations.demo\.rhoai\.io/guarded-model}' 2>/dev/null || true)"
               CANDIDATE="${CANDIDATE:-qwen3-8-27b-nvfp4}"
               cat > "${WORK}/config.yaml" <<YAML
@@ -236,9 +238,8 @@ spec:
                     base_url: ${MAAS_BASE_URL}/v1
                     temperature: 0
                     max_tokens: 5
-                    extra_body:
-                      chat_template_kwargs:
-                        enable_thinking: false
+                    chat_template_kwargs:
+                      enable_thinking: false
                 - type: self_check_output
                   engine: openai
                   model: nemotron-3-ultra-550b-a55b
@@ -247,9 +248,8 @@ spec:
                     base_url: ${MAAS_BASE_URL}/v1
                     temperature: 0
                     max_tokens: 5
-                    extra_body:
-                      chat_template_kwargs:
-                        enable_thinking: false
+                    chat_template_kwargs:
+                      enable_thinking: false
               rails:
                 input:
                   flows:

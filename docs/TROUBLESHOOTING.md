@@ -2738,6 +2738,8 @@ The same CR also fails when one entry of `spec.nemoConfigs` lists two ConfigMaps
 
 With `security.opendatahub.io/enable-auth`, a caller whose Role grants `get` on the guardrail's Service by name still gets `403 Forbidden (... verb=get, resource=services, subresource=)`. The operator's proxy config (ConfigMap `<name>-rbac-proxy-config`) sets `resourceName: <name>-service`, a key kube-rbac-proxy does not read (its key is `name`), so the access check has no resource name and only an unrestricted `get` on services in the project passes. The committed Role `candidate-guardrails-client` grants that.
 
+Once authorized, every request through the guardrail can hang until the route's 30 s timeout (`504 Gateway Time-out`) while the judge answers `400 Bad Request`: the 3.5.2 server (nemoguardrails 0.24, default framework) sends a model's `parameters` to the endpoint verbatim, so a LangChain-style `extra_body` arrives as an unknown field. Put request fields such as `chat_template_kwargs` directly under `parameters`, as the Stage 050 hook does.
+
 ## Guarded Garak Scan Scores Far Better Than Expected
 
 **Affected stage:** Stage 050, `risk-assessment-guarded` (Garak through NeMo Guardrails `candidate-guardrails`)

@@ -82,7 +82,12 @@ dashboard creates one on request. Detailed record:
   `NemoGuardrails` CR has no `hostAliases`, so a guardrail reaches MaaS through
   the public hostname, not the gateway's internal Service.
 - Nemotron 3 Ultra reasons by default; send
-  `extra_body.chat_template_kwargs.enable_thinking: false` for yes/no judging.
+  `chat_template_kwargs.enable_thinking: false` for yes/no judging, directly
+  under the model's `parameters`: the 3.5.2 server (nemoguardrails 0.24) sends
+  `parameters` verbatim, so a LangChain `extra_body` gets HTTP 400.
+- 3.5.2 operator quirks: set `caBundleConfig.configMapNamespace`; keep one
+  ConfigMap per `nemoConfigs` entry (several mount at the same path); with
+  `enable-auth`, callers need unnamed `get` on services in the project.
 
 ## Official documentation (OpenShift AI 3.5)
 
