@@ -36,9 +36,11 @@ dashboard creates one on request. Detailed record:
 |---|---|---|
 | Dashboard flag `guardrails: true` set by the `job-enable-dsc-maas` Sync hook on a delegated Stage 010 field; `stages/040-governed-models-as-a-service/validate.sh` requires it | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [NeMo Guardrails][nemo] |
 | TrustyAI component `Managed` from Stage 050 (the `NemoGuardrails` API group is `trustyai.opendatahub.io`) | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/` | [Basic deployment][basic] |
-| No guardrail CR in Git; the dashboard's own initialization creates it once the flag is on (the former wrapper `studio-api.sh --initialize-guardrails`, which accepted only a resource named `nemoguardrails`, is in git history at `82092e01`) | — | [CR configuration reference][crref] |
+| Playground: no guardrail CR in Git; the dashboard's own initialization creates it once the flag is on (the former wrapper `studio-api.sh --initialize-guardrails`, which accepted only a resource named `nemoguardrails`, is in git history at `82092e01`) | — | [CR configuration reference][crref] |
 | NeMo Guardrails only; no FMS `GuardrailsOrchestrator` (3.5 documents migrating from FMS to NeMo) | not in Git | [Migrate from FMS to NeMo][migrate] |
-| Guarded models are reached through MaaS; no detector or self-check model is deployed | `gitops/stages/040-governed-models-as-a-service/040-local-models/` | [Separate self-check model][selfcheck] |
+| Playground guardrail: guarded models are reached through MaaS; no detector or self-check model is deployed | `gitops/stages/040-governed-models-as-a-service/040-local-models/` | [Separate self-check model][selfcheck] |
+| Qualification candidate guardrail `candidate-guardrails` (`evaluated-models`, Git-managed, 2026-10-23): self-check input and output rails judged by Nemotron 3 Ultra through its own MaaS subscription `candidate-guardrails`, `enable_thinking: false` (about 0.5 s per check instead of 8 to 14 s); the guarded model through its internal predictor Service; `config.yaml` written by the Stage 050 hook because it carries the MaaS hostname | `gitops/stages/050-model-evaluation/050-model-qualification/guardrails/`, `.../maas-key-provisioner.yaml`, `gitops/stages/040-governed-models-as-a-service/040-model-access/candidate-guardrails-access.yaml` | [Separate self-check model][selfcheck], [Jailbreak detection][withllm] |
+| The qualification pipeline scans the guarded endpoint with the same Context-aware vulnerability scan as the bare model; the guarded attack success rate is the risk gate, the bare model's is reported | `stages/050-model-evaluation/qualification/pipeline.py` | not product guidance |
 
 ## Procedure
 
@@ -71,6 +73,16 @@ dashboard creates one on request. Detailed record:
   [Configure authentication][auth].
 - Guardrails on OGX Responses API traffic are a separate integration
   ([OGX guardrails security][ogxguard]).
+- `/v1/chat/completions` is not a transparent proxy and does not carry tool
+  calls: keep the guardrail away from the coding agents' traffic.
+- Garak counts an HTTP error as a refusal, so a failing or rate-limited judge
+  makes a guarded scan look safer than it is; check the guardrail's errors
+  before trusting a guarded attack success rate.
+- The MaaS gateway answers TLS only for its listener hostnames and the
+  `NemoGuardrails` CR has no `hostAliases`, so a guardrail reaches MaaS through
+  the public hostname, not the gateway's internal Service.
+- Nemotron 3 Ultra reasons by default; send
+  `extra_body.chat_template_kwargs.enable_thinking: false` for yes/no judging.
 
 ## Official documentation (OpenShift AI 3.5)
 

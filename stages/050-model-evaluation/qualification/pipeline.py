@@ -45,17 +45,22 @@ PIP_INDEX = ["https://pypi.org/simple"]
 SERVICE_CA_DIR = "/etc/pki/ca-trust/source/anchors"
 SERVICE_CA_CONFIGMAP = "pipeline-tasks-service-ca"
 
-# (step name, skip parameter, collection id or "", garak benchmark id or "", --timeout seconds), in run order.
+# (step name, skip parameter, collection id or "", garak benchmark id or "", --timeout seconds, through the guardrail),
+# in run order.
 EVALUATIONS = [
-    ("latency", "skip_latency", "agentic-coding-latency-v1", "", 3600),
-    ("throughput", "skip_throughput", "agentic-coding-throughput-v2", "", 3600),
+    ("latency", "skip_latency", "agentic-coding-latency-v1", "", 3600, False),
+    ("throughput", "skip_throughput", "agentic-coding-throughput-v2", "", 3600, False),
     # Capability runs as two collections one after the other: LiveCodeBench needs every sequence slot of the
     # model, so it runs alone; the report combines both into the weighted capability score.
-    ("livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v3", "", 2 * 3600),
-    ("python-tasks", "skip_python_tasks", "agentic-coding-python-tasks-v1", "", 3600),
+    ("livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v3", "", 2 * 3600, False),
+    ("python-tasks", "skip_python_tasks", "agentic-coding-python-tasks-v1", "", 3600, False),
     # Prompt generation, the scan and translation run in the job pod; the scan itself is bounded by INTENTS_TIMEOUT.
-    ("risk-assessment", "skip_risk_assessment", "", "intents", 3 * 3600),
+    ("risk-assessment", "skip_risk_assessment", "", "intents", 3 * 3600, False),
+    # The same scan through the candidate's NeMo Guardrails (run parameter guardrails): this result is the risk gate,
+    # the bare model's is reported beside it. Every attack also waits for the guardrail's Nemotron judge.
+    ("risk-assessment-guarded", "skip_risk_assessment", "", "intents", 4 * 3600, True),
 ]
+GUARDED = " (guarded)"
 TENANT_SECRET = "garak-kfp-model-auth"
 EXPERIMENT = "models-onboarding"
 EVALHUB_URL = "https://evalhub.evalhub.svc.cluster.local:8443"
@@ -145,6 +150,8 @@ def evaluate(
     run_id: str,
     timeout_seconds: int,
     skip: bool,
+    guarded: bool,
+    guardrails: str,
     previous: dsl.Input[dsl.Dataset],
     results: dsl.Output[dsl.Dataset],
 ):
@@ -152,7 +159,8 @@ def evaluate(
     ledger of the step before, appends this evaluation (job, state, each benchmark's metric, value, gate and pass) and
     hands it on, so the run graph shows the intermediate results between the steps as garak's datasets do."""
     import json
-    what = collection_id or f"garak/{benchmark_id}"
+    what = (collection_id or f"garak/{benchmark_id}") + (" (guarded)" if guarded else "")
+    guardrails = guardrails.strip() if guarded else ""
     with open(previous.path) as f:
         ledger = json.load(f)
 
@@ -164,6 +172,10 @@ def evaluate(
     if skip:
         print(f"{what}: skipped by the run's skip parameter; no EvalHub job submitted")
         hand_on({"evaluation": what, "skipped": True})
+        return
+    if guarded and not guardrails:
+        print(f"{what}: no guardrails named in the run's guardrails parameter; no EvalHub job submitted")
+        hand_on({"evaluation": what, "skipped": True, "no_guardrails": True})
         return
     import os
     import re
@@ -187,6 +199,9 @@ def evaluate(
 
     model_url = kube(f"/apis/serving.kserve.io/v1beta1/namespaces/{tenant}/inferenceservices/{model_name}")[
         "status"]["url"].rstrip("/") + "/v1"
+    if guardrails:
+        # The guardrail's internal Service (NemoGuardrails, port 443 behind kube-rbac-proxy, service CA certificate).
+        model_url = f"https://{guardrails}.{tenant}.svc:443/v1"
     client = httpx.Client(base_url=evalhub_url, timeout=60, verify="/etc/pki/ca-trust/source/anchors/service-ca.crt",
                           headers={"Authorization": f"Bearer {token}", "X-Tenant": tenant})
     work = tempfile.mkdtemp()
@@ -198,8 +213,10 @@ def evaluate(
     subprocess.run(["evalhub", "health"], env=env, check=True)
 
     tags = {"run": run_id, "run_name": run_name, "model": model_name, "evaluation": what}
+    if guardrails:
+        tags["guardrails"] = guardrails
     body = {
-        "name": f"{(collection_id or benchmark_id).replace('_', '-')}-{model_name}-{run_name}"[:120],
+        "name": f"{(collection_id or benchmark_id).replace('_', '-')}{'-guarded' if guardrails else ''}-{model_name}-{run_name}"[:120],
         "description": f"Onboarding qualification run {run_name}: {model_name} on {what}",
         "tags": ["model-onboarding", f"run={run_id}", f"model={model_name}"],
         "model": {"url": model_url, "name": model_name, "auth": {"secret_ref": auth_secret}},
@@ -244,7 +261,8 @@ def evaluate(
     print(f"{what}: job {job_id} {state} (exit {run.returncode})")
     if state not in ("completed", "failed", "cancelled", "partially_failed"):
         raise RuntimeError(f"job {job_id} did not finish within {timeout_seconds}s (state {state})")
-    hand_on({"evaluation": what, "job_id": job_id, "job_name": body["name"], "state": state, "benchmarks": [
+    hand_on({"evaluation": what, "job_id": job_id, "job_name": body["name"], "state": state,
+             "target": model_url, "guardrails": guardrails, "benchmarks": [
         {"id": b.get("id"), "metric": (b.get("test") or {}).get("primary_score_metric"),
          "value": (b.get("test") or {}).get("primary_score"), "threshold": (b.get("test") or {}).get("threshold"),
          "pass": (b.get("test") or {}).get("pass")}
@@ -291,7 +309,7 @@ def verdict(
     # The ledger names this run's jobs; each job is read again from EvalHub, which holds the authoritative result.
     with open(results.path) as f:
         ledger = json.load(f)
-    by_evaluation, jobs = {}, []
+    by_evaluation, jobs, entries = {}, [], {e["evaluation"]: e for e in ledger["results"]}
     for entry in ledger["results"]:
         if entry.get("job_id"):
             job = call(f"{evalhub_url}/api/v1/evaluations/jobs/{entry['job_id']}", tenant_header=True)
@@ -313,7 +331,14 @@ def verdict(
 
     rows, reasons, capability = [], [], []
     weights = {"lcb:codegeneration_v6": 3, "inspect/mbpp": 2, "inspect/humaneval": 1}
+    # With guardrails, the guarded risk assessment is the gate and the bare model's result is reported only; without
+    # guardrails (empty run parameter) the bare model's result is the gate.
+    informative = {e[:-len(" (guarded)")] for e in evaluations if e.endswith(" (guarded)")
+                   and not (entries.get(e) or {}).get("no_guardrails")}
     for evaluation in evaluations:
+        if (entries.get(evaluation) or {}).get("no_guardrails"):
+            rows.append([evaluation, "-", None, None, "no guardrails", None])
+            continue
         job = by_evaluation.get(evaluation)
         if job is None:
             reasons.append(f"{evaluation}: not run in this pipeline run")
@@ -321,7 +346,7 @@ def verdict(
             continue
         state = (job.get("status") or {}).get("state")
         results = job.get("results") or {}
-        if state != "completed":
+        if state != "completed" and evaluation not in informative:
             reasons.append(f"{evaluation}: job {job['resource']['id']} {state}")
         thresholds = {b.get("id"): (b.get("pass_criteria") or {}).get("threshold") for b in job.get("benchmarks") or []}
         for b in results.get("benchmarks") or []:
@@ -329,8 +354,9 @@ def verdict(
             threshold = thresholds.get(b["id"])
             if threshold is None:
                 threshold = (b.get("test") or {}).get("threshold")
-            rows.append([evaluation, b["id"], value, passed, note, threshold])
-            if passed is not True:
+            rows.append([evaluation, b["id"], value, passed, note + (" (reported)" if evaluation in informative else ""),
+                         threshold])
+            if passed is not True and evaluation not in informative:
                 reasons.append(f"{evaluation}/{b['id']}: misses its gate ({note} {value}, threshold {threshold})")
             if b["id"] in weights:
                 capability.append((weights[b["id"]], value))
@@ -359,7 +385,12 @@ def verdict(
         return {"metadataType": "MetadataStringValue", "string_value": str(v)}
 
     version = call(f"{registry_url}/model_versions/{model_version_id}")
-    benchmark_ids = {b.get("id") for j in completed for b in (j.get("benchmarks") or [])}
+    guarded_jobs = {j["resource"]["id"] for e, j in by_evaluation.items() if e.endswith(" (guarded)")}
+
+    def key_of(job, bid):
+        return f"{bid}_guarded" if job["resource"]["id"] in guarded_jobs else bid
+
+    benchmark_ids = {key_of(j, b.get("id")) for j in completed for b in (j.get("benchmarks") or [])}
     props = {k: v for k, v in (version.get("customProperties") or {}).items()
              if not k.startswith("evalhub.qualification.")
              and not any(k.startswith(f"evalhub.{b}.") for b in benchmark_ids)}
@@ -367,7 +398,7 @@ def verdict(
         jid = job["resource"]["id"]
         results = {b.get("id"): b for b in (job.get("results") or {}).get("benchmarks") or []}
         for b in job.get("benchmarks") or []:
-            k = f"evalhub.{b['id']}."
+            k = f"evalhub.{key_of(job, b['id'])}."
             r = results.get(b["id"]) or {}
             t = r.get("test")
             lower = bool((b.get("primary_score") or {}).get("lower_is_better"))
@@ -477,6 +508,7 @@ def qualification(
     skip_livecodebench: bool = False,
     skip_python_tasks: bool = False,
     skip_risk_assessment: bool = False,
+    guardrails: str = "candidate-guardrails",
 ):
     skips = {"skip_latency": skip_latency, "skip_throughput": skip_throughput, "skip_livecodebench": skip_livecodebench,
              "skip_python_tasks": skip_python_tasks, "skip_risk_assessment": skip_risk_assessment}
@@ -485,18 +517,19 @@ def qualification(
         skip_risk_assessment=skip_risk_assessment))
     ledger = validated.outputs["candidate"]
     # One straight chain: each step extends the results ledger of the one before it.
-    for label, skip_name, collection_id, benchmark_id, timeout in EVALUATIONS:
+    for label, skip_name, collection_id, benchmark_id, timeout, guarded in EVALUATIONS:
         step = _small(_named(evaluate, label)(
             model_name=model_name, collection_id=collection_id, benchmark_id=benchmark_id,
             auth_secret=TENANT_SECRET, experiment=EXPERIMENT, evalhub_url=EVALHUB_URL, queue=QUEUE,
             risk_model=RISK_MODEL, intents_timeout=INTENTS_TIMEOUT, sdg_num_samples=SDG_NUM_SAMPLES,
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
             timeout_seconds=timeout, skip=skips[skip_name], previous=ledger,
+            guarded=guarded, guardrails=guardrails,
         ))
         ledger = step.outputs["results"]
     judged = _small(_named(verdict, "verdict")(
         model_version_id=model_version_id, evalhub_url=EVALHUB_URL, registry_url=REGISTRY_URL,
-        capability_threshold=CAPABILITY_THRESHOLD, evaluations=[c or f"garak/{b}" for _, _, c, b, _ in EVALUATIONS],
+        capability_threshold=CAPABILITY_THRESHOLD, evaluations=[(c or f"garak/{b}") + (GUARDED if g else "") for _, _, c, b, _, g in EVALUATIONS],
         run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER, results=ledger,
     ))
     _small(_named(report, "report")(

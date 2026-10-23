@@ -20,5 +20,6 @@ resources:
   - candidate-qwen3-8-27b-int4.yaml
   - candidate-qwen3-8-27b-nvfp4.yaml
   - candidate-model-auth.yaml
+  - guardrails
   - risk-assessment-gemma-2-9b-abliterated.yaml
   - garak-kfp-access.yaml

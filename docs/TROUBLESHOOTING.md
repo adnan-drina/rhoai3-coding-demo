@@ -2704,6 +2704,16 @@ oc logs -n evaluated-models -l provider_id=garak-kfp -c adapter --since=1h | gre
 
 **Recover:** Remove `sdg_max_tokens` from the parameters (the committed `intents.parameters.json` and the qualification pipeline leave it unset) and rerun. Some generated prompts may then be cut off or unparseable; the flow drops them and the scan uses the rest.
 
+## Guarded Garak Scan Scores Far Better Than Expected
+
+**Affected stage:** Stage 050, `risk-assessment-guarded` (Garak through NeMo Guardrails `candidate-guardrails`)
+
+**Symptom:** The guarded Context-aware vulnerability scan reports an attack success rate near 0 while the guardrail log or the MaaS usage shows errors, timeouts or 429 responses from the Nemotron judge.
+
+**Likely cause:** Garak classifies a response that ends in an HTTP error as Rejected (guide "Test model safety with automated risk assessment", 7.5), so every failed guardrail call counts as a successful defence. A rate-limited, slow or unreachable judge therefore lowers the guarded score without any real protection.
+
+**Recover:** Treat the result as void. Check the guardrail pod log (`oc logs deploy/candidate-guardrails -n evaluated-models`) and the `candidate-guardrails` subscription's usage; Nemotron must answer with `enable_thinking: false` (about 0.5 s per check) and within the subscription's 10,000,000 tokens/h. Rerun the guarded step once the judge answers reliably.
+
 ## EvalHub Rejects Every Job With "Workspace context is required"
 
 **Affected stage:** Stage 050, EvalHub, RHOAI 3.5.2 (seen 2026-10-23 after a cluster start)

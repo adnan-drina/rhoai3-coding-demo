@@ -1,0 +1,64 @@
+# Governed access for the qualification candidate's NeMo Guardrails (Stage 050, project evaluated-models): the
+# guardrail's self-check input and output rails use Nemotron 3 Ultra as their judge ("Enabling AI safety with
+# Guardrails" 3.5, 1.2.5 separate self-check model). A guarded Garak scan sends one or two judge calls per attack, a few
+# million tokens an hour, so the guardrail has its own subscription instead of sharing model-qualification's 1M
+# tokens/h with the evaluations: a rate-limited judge call would surface as an HTTP error, which Garak counts as a
+# refusal. The key is minted by the same evaluated-models ServiceAccount as the evaluation key (Stage 050 Sync hook
+# provision-evalhub-model-auth), which names the subscription explicitly for each key.
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: candidate-guardrails
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: candidate-guardrails
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: governed-access
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  owner:
+    users:
+      - system:serviceaccount:evaluated-models:evalhub-maas-key-provisioner
+  priority: 75
+  modelRefs:
+    - name: nemotron-3-ultra-550b-a55b
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 10000000
+          window: 1h
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      modelSet: candidate-guardrails
+      provider: governed-models
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: candidate-guardrails
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: candidate-guardrails
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/component: governed-access
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  subjects:
+    users:
+      - system:serviceaccount:evaluated-models:evalhub-maas-key-provisioner
+  modelRefs:
+    - name: nemotron-3-ultra-550b-a55b
+      namespace: external-models
+  meteringMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      modelSet: candidate-guardrails
+      provider: governed-models

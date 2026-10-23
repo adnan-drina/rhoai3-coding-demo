@@ -73,6 +73,21 @@ ready.
 | ServiceAccount, Role, RoleBinding | `candidate-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch Secrets. |
 | Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `garak-kfp-model-auth`, the one model auth Secret for every candidate evaluation: `api-key` (the `candidate-model-client` token); `ca_cert` with the service CA and the cluster CA; `judge_url`/`judge_api-key` and `sdg_url`/`sdg_api-key` (the abliterated risk assessment model and the same token, EvalHub's multi-model convention that the in-pod `garak` `intents` scan reads; TAP's attacker and evaluator inherit the judge); `JUDGE_API_KEY` and `SDG_API_KEY` (the same token under the names `garak-kfp` reads, guide 7.7.4); `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token` for `garak-kfp`. Other adapters ignore the extra keys. Until 2026-10-23 a second Secret `qualification-model-auth` held only `api-key` and `ca_cert`. |
 
+### Candidate guardrail (`guardrails/`)
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| ConfigMap | `candidate-guardrails-prompts` | `evaluated-models` | Wave 12. `prompts.yml` (self-check input: jailbreak, prompt injection and harmful requests in any language; self-check output: harmful content and system-prompt disclosure) and `rails.co`; annotation `demo.rhoai.io/guarded-model` names the guarded candidate. |
+| ConfigMap | `candidate-guardrails-trusted-ca` | `evaluated-models` | Wave 12. Cluster trusted CA bundle (`config.openshift.io/inject-trusted-cabundle`), for the MaaS gateway's public certificate. |
+| NemoGuardrails | `candidate-guardrails` | `evaluated-models` | Wave 14, `enable-auth`. Loads `candidate-guardrails-config` (written by the hook) and `candidate-guardrails-prompts`; CA bundle `candidate-guardrails-ca`; `CANDIDATE_API_KEY` from `candidate-model-client-token`, `JUDGE_API_KEY` from `candidate-guardrails-maas`. The operator creates its Deployment, Service (443) and Route. |
+| Role / RoleBinding | `candidate-guardrails-client` | `evaluated-models` | Wave 12. `get` on Service `candidate-guardrails` for `candidate-model-client`, whose token evaluation jobs send through kube-rbac-proxy. |
+
+The `provision-evalhub-model-auth` hook also mints the `candidate-guardrails` MaaS key (Stage 040 subscription, Nemotron
+10,000,000 tokens/h) into Secret `candidate-guardrails-maas`, writes `candidate-guardrails-config` (`config.yaml`: the
+candidate through its internal predictor Service, Nemotron through the MaaS public hostname with `enable_thinking: false`)
+and `candidate-guardrails-ca` (service CA plus the trusted bundle). The judge uses the public MaaS hostname because the
+gateway answers TLS only for its listener hostnames and the `NemoGuardrails` CR offers no `hostAliases`.
+
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
 
 | Kind | Name | Namespace | Purpose |
@@ -96,7 +111,7 @@ ready.
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | Pipeline | `agentic-coding-model-qualification` | `evaluated-models` | Wave 16 (kustomize patch), `SkipDryRunOnMissingResource`. |
-| PipelineVersion | `agentic-coding-model-qualification-v17` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `risk-assessment` (built-in `garak` `intents`, the Context-aware vulnerability scan, as a single task in the job pod), `verdict` (judges the run and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
+| PipelineVersion | `agentic-coding-model-qualification-v18` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `risk-assessment` (built-in `garak` `intents`, the Context-aware vulnerability scan, as a single task in the job pod), `risk-assessment-guarded` (the same scan through `candidate-guardrails`; the risk gate), `verdict` (judges the run and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
 
 ### `storage/`
 
@@ -112,7 +127,7 @@ ready.
 
 | Object | Created by |
 |---|---|
-| Secrets `evalhub-model-auth-maas`, `garak-kfp-model-auth`, `dashboard-dspa-secret`; ConfigMaps `qualification-endpoints`, `ds-pipeline-server-config-custom` | Hook Jobs above |
+| Secrets `evalhub-model-auth-maas`, `candidate-guardrails-maas`, `garak-kfp-model-auth`, `dashboard-dspa-secret`; ConfigMaps `qualification-endpoints`, `candidate-guardrails-config`, `candidate-guardrails-ca`, `ds-pipeline-server-config-custom` | Hook Jobs above |
 | DataSciencePipelinesApplication `dspa` | `configure-pipeline-server` hook (not tracked by Argo CD) |
 | PVC `evaluated-models-storage` (20 Gi `gp3-csi`) | `evaluated-models-s3-connections` hook, so a `WaitForFirstConsumer` PVC does not hold the sync |
 | Pipeline server Deployments, MariaDB, `pipeline-runner-dspa` ServiceAccount, `ds-pipeline-server-config-dspa` | Data Science Pipelines operator from `dspa` |

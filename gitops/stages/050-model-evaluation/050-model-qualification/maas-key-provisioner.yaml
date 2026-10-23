@@ -31,12 +31,17 @@ rules:
   # Only the tenant key Secret and the endpoint ConfigMap; create cannot be limited by name.
   - apiGroups: [""]
     resources: [secrets]
-    resourceNames: [evalhub-model-auth-maas]
+    resourceNames: [evalhub-model-auth-maas, candidate-guardrails-maas]
     verbs: [get, patch, update]
   - apiGroups: [""]
     resources: [configmaps]
-    resourceNames: [qualification-endpoints]
+    resourceNames: [qualification-endpoints, candidate-guardrails-config, candidate-guardrails-ca]
     verbs: [get, patch, update]
+  # CA sources for the guardrail's bundle: the injected service CA and the cluster's trusted CA bundle.
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [candidate-model-service-ca, candidate-guardrails-trusted-ca]
+    verbs: [get]
   - apiGroups: [""]
     resources: [secrets, configmaps]
     verbs: [create]
@@ -107,7 +112,9 @@ subjects:
     name: evalhub-maas-key-provisioner
     namespace: evaluated-models
 ---
-# Sync hook: provision the tenant Secret that EvalHub jobs reference for model authentication
+# Sync hook: provision the tenant Secret that EvalHub jobs reference for model authentication, the candidate
+# guardrail's Nemotron key (Secret candidate-guardrails-maas, subscription candidate-guardrails) and the guardrail's
+# generated configuration and CA bundle (guardrails/). For the evaluation key:
 # (model.auth.secret_ref, RHOAI 3.5 "Evaluating AI systems", Configure API key authentication).
 # It serves every evaluation in this tenant, the qualification pipeline and manual evaluations alike:
 # production models and judge models are reached through MaaS with the model-qualification subscription.
@@ -145,8 +152,6 @@ spec:
             - -ceu
             - |
               NS="evaluated-models"
-              SUBSCRIPTION="model-qualification"
-              SECRET_NAME="evalhub-model-auth-maas"
               MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[?(@.name=="api")].hostname}')"
               if [ -z "${MAAS_HOST}" ] || echo "${MAAS_HOST}" | grep -q placeholder; then echo "ERROR: MaaS Gateway api hostname is not ready" >&2; exit 1; fi
               MAAS_BASE_URL="https://${MAAS_HOST}"
@@ -154,48 +159,115 @@ spec:
               # Key material only ever lives in shell variables, private temp files and the Secret; never in logs or argv.
               umask 077; WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"' EXIT
 
-              secret_value() { oc get secret "${SECRET_NAME}" -n "${NS}" -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true; }
               # The stored key is re-used while the MaaS API still reports it active for this subscription
               # (public GET /maas-api/v1/api-keys/{id} as the owning ServiceAccount).
               key_state() {
                 curl -s -m 20 -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/$1" \
                   | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""), d.get("subscription",""))' 2>/dev/null || true
               }
-
-              current_key="$(secret_value api-key)"; current_id="$(secret_value key_id)"; current_state=""
-              [ -n "${current_key}" ] && [ -n "${current_id}" ] && current_state="$(key_state "${current_id}")"
-              if [ "${current_state}" = "active ${SUBSCRIPTION}" ]; then
-                echo "Keeping the existing MaaS API key for ${SUBSCRIPTION}"
-                key="${current_key}"; id="${current_id}"; expires_at="$(secret_value expires_at)"
-              else
-                if [ -n "${current_id}" ]; then
-                  status=$(curl -s --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
-                  echo "Revoked previous key ${current_id} (HTTP ${status})"
+              # provision_key SUBSCRIPTION SECRET_NAME KEY_NAME: keep or mint the subscription's key into the Secret.
+              provision_key() {
+                local SUBSCRIPTION="$1" SECRET_NAME="$2" KEY_NAME="$3" key id expires_at status response current_key current_id current_state
+                secret_value() { oc get secret "${SECRET_NAME}" -n "${NS}" -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true; }
+                current_key="$(secret_value api-key)"; current_id="$(secret_value key_id)"; current_state=""
+                [ -n "${current_key}" ] && [ -n "${current_id}" ] && current_state="$(key_state "${current_id}")"
+                if [ "${current_state}" = "active ${SUBSCRIPTION}" ]; then
+                  echo "Keeping the existing MaaS API key for ${SUBSCRIPTION}"
+                  key="${current_key}"; id="${current_id}"; expires_at="$(secret_value expires_at)"
+                else
+                  if [ -n "${current_id}" ]; then
+                    status=$(curl -s --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
+                    echo "Revoked previous key ${current_id} (HTTP ${status})"
+                  fi
+                  response="${WORK}/response.json"; key=""
+                  # The subscription and its models may still be reconciling in the same sync; retry briefly.
+                  for attempt in $(seq 1 18); do
+                    status=$(curl -s -o "${response}" -w '%{http_code}' -X POST -H "Authorization: Bearer ${SA_TOKEN}" -H "Content-Type: application/json" \
+                      -d "{\"name\":\"${KEY_NAME}\",\"subscription\":\"${SUBSCRIPTION}\"}" "${MAAS_BASE_URL}/maas-api/v1/api-keys")
+                    key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("key",""))' "${response}" 2>/dev/null || true)"
+                    if [ "${status}" -ge 200 ] && [ "${status}" -lt 300 ] && echo "${key}" | grep -q '^sk-oai-'; then break; fi
+                    echo "Key creation attempt ${attempt} for ${SUBSCRIPTION}: HTTP ${status}; retrying in 10s"; key=""; sleep 10
+                  done
+                  [ -n "${key}" ] || { echo "ERROR: MaaS API did not return a valid key for ${SUBSCRIPTION}" >&2; exit 1; }
+                  id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "${response}")"
+                  expires_at="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("expiresAt",""))' "${response}")"
+                  echo "Provisioned a MaaS API key for ${SUBSCRIPTION} (id ${id}, expires ${expires_at:-unset})"
                 fi
-                response="${WORK}/response.json"; key=""
-                # The subscription and its models may still be reconciling in the same sync; retry briefly.
-                for attempt in $(seq 1 18); do
-                  status=$(curl -s -o "${response}" -w '%{http_code}' -X POST -H "Authorization: Bearer ${SA_TOKEN}" -H "Content-Type: application/json" \
-                    -d "{\"name\":\"${SUBSCRIPTION}-evalhub\",\"subscription\":\"${SUBSCRIPTION}\"}" "${MAAS_BASE_URL}/maas-api/v1/api-keys")
-                  key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("key",""))' "${response}" 2>/dev/null || true)"
-                  if [ "${status}" -ge 200 ] && [ "${status}" -lt 300 ] && echo "${key}" | grep -q '^sk-oai-'; then break; fi
-                  echo "Key creation attempt ${attempt}: HTTP ${status}; retrying in 10s"; key=""; sleep 10
-                done
-                [ -n "${key}" ] || { echo "ERROR: MaaS API did not return a valid key for ${SUBSCRIPTION}" >&2; exit 1; }
-                id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "${response}")"
-                expires_at="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("expiresAt",""))' "${response}")"
-                echo "Provisioned a MaaS API key for ${SUBSCRIPTION} (id ${id}, expires ${expires_at:-unset})"
-              fi
-              printf '%s' "${key}" > "${WORK}/api-key"; printf '%s' "${id}" > "${WORK}/key_id"
-              printf '%s' "${expires_at}" > "${WORK}/expires_at"; printf '%s' "${SUBSCRIPTION}" > "${WORK}/subscription"
-              oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-file=api-key="${WORK}/api-key" --from-file=key_id="${WORK}/key_id" \
-                --from-file=expires_at="${WORK}/expires_at" --from-file=subscription="${WORK}/subscription" --dry-run=client -o yaml \
-                | oc apply --server-side --force-conflicts --field-manager=evalhub-maas-key-provisioner -f -
-              oc annotate secret "${SECRET_NAME}" -n "${NS}" kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
-              echo "Secret ${NS}/${SECRET_NAME} holds the ${SUBSCRIPTION} key for EvalHub model.auth.secret_ref"
+                printf '%s' "${key}" > "${WORK}/api-key"; printf '%s' "${id}" > "${WORK}/key_id"
+                printf '%s' "${expires_at}" > "${WORK}/expires_at"; printf '%s' "${SUBSCRIPTION}" > "${WORK}/subscription"
+                oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-file=api-key="${WORK}/api-key" --from-file=key_id="${WORK}/key_id" \
+                  --from-file=expires_at="${WORK}/expires_at" --from-file=subscription="${WORK}/subscription" --dry-run=client -o yaml \
+                  | oc apply --server-side --force-conflicts --field-manager=evalhub-maas-key-provisioner -f -
+                oc annotate secret "${SECRET_NAME}" -n "${NS}" kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
+                rm -f "${WORK}/api-key"
+                echo "Secret ${NS}/${SECRET_NAME} holds the ${SUBSCRIPTION} key"
+              }
+              # The evaluation key (EvalHub model.auth.secret_ref) and the candidate guardrail's Nemotron judge key.
+              provision_key model-qualification evalhub-model-auth-maas model-qualification-evalhub
+              provision_key candidate-guardrails candidate-guardrails-maas candidate-guardrails-nemo
               # The qualification pipeline reads the dashboard address (links it records on the model registry version)
               # from this ConfigMap.
               DASHBOARD_HOST="$(oc get route data-science-gateway -n openshift-ingress -o jsonpath='{.spec.host}')"
               [ -n "${DASHBOARD_HOST}" ] || { echo "ERROR: dashboard Route data-science-gateway has no host" >&2; exit 1; }
               oc create configmap qualification-endpoints -n "${NS}" --from-literal=dashboard_url="https://${DASHBOARD_HOST}" \
                 --dry-run=client -o yaml | oc apply -f -
+              # NeMo Guardrails configuration of the qualification candidate's guardrail (guardrails/): the guarded model
+              # through its internal predictor Service, and Nemotron through the MaaS gateway's public hostname as the
+              # self-check judge. The gateway only accepts TLS for its listener hostnames and the NemoGuardrails pod
+              # takes no hostAliases, so the judge cannot use the gateway's internal Service. The hostname is the
+              # cluster's, so this file is written here rather than kept in Git. enable_thinking false makes Nemotron
+              # answer the yes/no self-check in about half a second instead of 8 to 14 s of reasoning (2026-10-23).
+              CANDIDATE="$(oc get configmap candidate-guardrails-prompts -n "${NS}" -o jsonpath='{.metadata.annotations.demo\.rhoai\.io/guarded-model}' 2>/dev/null || true)"
+              CANDIDATE="${CANDIDATE:-qwen3-8-27b-nvfp4}"
+              cat > "${WORK}/config.yaml" <<YAML
+              models:
+                - type: main
+                  engine: openai
+                  model: ${CANDIDATE}
+                  api_key_env_var: CANDIDATE_API_KEY
+                  parameters:
+                    base_url: https://${CANDIDATE}-predictor.${NS}.svc.cluster.local:8443/v1
+                - type: self_check_input
+                  engine: openai
+                  model: nemotron-3-ultra-550b-a55b
+                  api_key_env_var: JUDGE_API_KEY
+                  parameters:
+                    base_url: ${MAAS_BASE_URL}/v1
+                    temperature: 0
+                    max_tokens: 5
+                    extra_body:
+                      chat_template_kwargs:
+                        enable_thinking: false
+                - type: self_check_output
+                  engine: openai
+                  model: nemotron-3-ultra-550b-a55b
+                  api_key_env_var: JUDGE_API_KEY
+                  parameters:
+                    base_url: ${MAAS_BASE_URL}/v1
+                    temperature: 0
+                    max_tokens: 5
+                    extra_body:
+                      chat_template_kwargs:
+                        enable_thinking: false
+              rails:
+                input:
+                  flows:
+                    - self check input
+                output:
+                  flows:
+                    - self check output
+              YAML
+              oc create configmap candidate-guardrails-config -n "${NS}" --from-file=config.yaml="${WORK}/config.yaml" \
+                --dry-run=client -o yaml | oc apply -f -
+              # CA bundle for the guardrail: the service CA (candidate predictor) and the cluster's trusted CAs (MaaS gateway).
+              for i in $(seq 1 30); do
+                oc get configmap candidate-model-service-ca -n "${NS}" -o jsonpath='{.data.service-ca\.crt}' > "${WORK}/service-ca.crt" 2>/dev/null
+                oc get configmap candidate-guardrails-trusted-ca -n "${NS}" -o jsonpath='{.data.ca-bundle\.crt}' > "${WORK}/trusted.crt" 2>/dev/null
+                grep -q 'BEGIN CERTIFICATE' "${WORK}/service-ca.crt" && grep -q 'BEGIN CERTIFICATE' "${WORK}/trusted.crt" && break
+                sleep 5
+              done
+              grep -q 'BEGIN CERTIFICATE' "${WORK}/service-ca.crt" && grep -q 'BEGIN CERTIFICATE' "${WORK}/trusted.crt"
+              cat "${WORK}/service-ca.crt" "${WORK}/trusted.crt" > "${WORK}/ca-bundle.crt"
+              oc create configmap candidate-guardrails-ca -n "${NS}" --from-file=ca-bundle.crt="${WORK}/ca-bundle.crt" \
+                --dry-run=client -o yaml | oc apply -f -
+              echo "candidate-guardrails-config (guarded model ${CANDIDATE}) and candidate-guardrails-ca ready"
