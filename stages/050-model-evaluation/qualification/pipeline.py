@@ -51,7 +51,7 @@ EVALUATIONS = [
     ("throughput", "skip_throughput", "agentic-coding-throughput-v2", "", 3600),
     # Capability runs as two collections one after the other: LiveCodeBench needs every sequence slot of the
     # model, so it runs alone; the report combines both into the weighted capability score.
-    ("livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v2", "", 2 * 3600),
+    ("livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v3", "", 2 * 3600),
     ("python-tasks", "skip_python_tasks", "agentic-coding-python-tasks-v1", "", 3600),
     # Prompt generation, the scan and translation run in the job pod; the scan itself is bounded by INTENTS_TIMEOUT.
     ("risk-assessment", "skip_risk_assessment", "", "intents", 3 * 3600),

@@ -8,7 +8,7 @@ collections (`gitops/stages/050-model-evaluation/050-evaluation-content/edd/`, R
 |---|---|---|---|
 | `agentic-coding-latency-v1` | Does one agent turn start fast enough? | GuideLLM `concurrent`, one session, 8k-in/256-out for 120 s: mean TTFT (≤ 2,000 ms) | per slice |
 | `agentic-coding-throughput-v2` | Does it keep up when eight agents work at once? | GuideLLM `throughput`, eight requests in flight, 8k-in/256-out, 64 requests: output tokens/s (≥ 60) | per slice |
-| `agentic-coding-livecodebench-v2` | Can the model solve problems it has not seen? | LiveCodeBench v6 (3, pass@1 ≥ 0.25), runs alone | 0.25 |
+| `agentic-coding-livecodebench-v3` | Can the model solve problems it has not seen? | LiveCodeBench v6 (3, pass@1 ≥ 0.20), runs alone | 0.20 |
 | `agentic-coding-python-tasks-v1` | Does it write everyday working Python? | MBPP (2, ≥ 0.60), HumanEval (1, ≥ 0.80) | weighted ≥ 0.67 |
 | `garak` `intents` (Context-aware vulnerability scan) | Does it comply with harmful intents? | Attack prompts generated per harm category, TAP and translated attacks, judged by the abliterated risk assessment model: attack success rate (≤ 0.30), up to 2 h | per benchmark |
 
@@ -21,8 +21,10 @@ report combines both into one capability score (weights 3:2:1, gate 0.50).
 
 MBPP and HumanEval use the `inspect-coding` provider (Inspect with a 512-token cap, eight concurrent requests and
 three retries): Inspect's uncapped answers outlived the evaluation sidecar's 30 s request limit and were retried
-without end. LiveCodeBench v2 names the metric key LightEval reports (`lcb:codegeneration_v6.codegen_pass@1`);
-EvalHub matches the primary metric by exact key. Throughput v2 measures a fixed 64 requests instead of a time
+without end. LiveCodeBench names the metric key LightEval reports (`lcb:codegeneration_v6.codegen_pass@1`), which EvalHub matches
+by exact key (v2). v3 (2026-10-23) lowers the gate from 0.25 to 0.20: every Qwen 3.8 build measured, including the
+NVFP4 build production serves (0.21), missed 0.25. Runs vary by about 0.03, so a model at production's level can
+fail 0.20 on a rerun. Throughput v2 measures a fixed 64 requests instead of a time
 window, which cut off up to eight unfinished requests and moved the result by up to about 20% between runs.
 Latency and throughput are separate collections too: a saturation run beside a single-session run distorts the
 single-session latency.

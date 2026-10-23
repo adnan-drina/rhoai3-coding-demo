@@ -6,8 +6,9 @@
 # (sdg_hub red_team/prompt_generation flow.yaml, recommended_models.default); Gemma terms of use apply. It is not a
 # model under evaluation and must not be one: its outputs are attack prompts and verdicts on harmful content, so it is
 # served only in this admin-only project, with token authentication (the Secret garak-kfp-model-auth carries the
-# candidate-model-client token as JUDGE_API_KEY and SDG_API_KEY). One L40S (gpu-reserved-demo, second GPU of the
-# pool: GPU_POOL=l40s deploy.sh --gpus 2); stop it with serving.kserve.io/stop "true" to hand the GPU back.
+# candidate-model-client token as judge_url/sdg_url keys and as JUDGE_API_KEY/SDG_API_KEY). One L40S (gpu-reserved-demo:
+# GPU_POOL=l40s deploy.sh --gpus 1, the candidate runs on the RTX PRO 6000 pool); stop it with serving.kserve.io/stop
+# "true" to hand the GPU back.
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:

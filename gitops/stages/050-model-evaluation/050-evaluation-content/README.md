@@ -13,7 +13,7 @@ API consume it through `050-evalhub`. Criteria change more often than the servic
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced and Healthy at the stage revision); EvalHub start-up validates the ids (see How). No content-specific check. |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. |
 | Depends on | `050-evalhub` (lists every id in its CR); `050-model-qualification` (namespace `evaluated-models`, OBC `evaluation-models-workbench`, tenant job ServiceAccount); ODF Route `s3`; Stage 040 MaaS (models under test). |
-| Used by | `050-evalhub`; the qualification pipeline steps 1 to 4 (`latency-v1`, `throughput-v2`, `livecodebench-v2`, `python-tasks-v1`; its risk assessment step is a built-in `garak` `intents` job, not a collection); jobs submitted from **Develop & train → Evaluations** or the EvalHub REST API, or `stages/050-model-evaluation/evaluation/submit.sh` (the former SWE-bench driver `swebench-run.sh` is in git history at `82092e01`). |
+| Used by | `050-evalhub`; the qualification pipeline steps 1 to 4 (`latency-v1`, `throughput-v2`, `livecodebench-v3`, `python-tasks-v1`; its risk assessment step is a built-in `garak` `intents` job, not a collection); jobs submitted from **Develop & train → Evaluations** or the EvalHub REST API, or `stages/050-model-evaluation/evaluation/submit.sh` (the former SWE-bench driver `swebench-run.sh` is in git history at `82092e01`). |
 
 ## Why
 
@@ -42,7 +42,7 @@ All objects are ConfigMaps in `redhat-ods-applications`, wave 10.
 |---|---|---|---|
 | `evalhub-collection-agentic-coding-latency-v1` | `agentic-coding-latency-v1` | interactive TTFT, 8,000/256 tokens, one session (`guidellm`) | pipeline step 1 |
 | `evalhub-collection-agentic-coding-throughput-v2` | `agentic-coding-throughput-v2` | same, fixed 64 requests (`guidellm`) | pipeline step 2 |
-| `evalhub-collection-agentic-coding-livecodebench-v2` | `agentic-coding-livecodebench-v2` | LiveCodeBench v6 (`lighteval`) | pipeline step 3 |
+| `evalhub-collection-agentic-coding-livecodebench-v3` | `agentic-coding-livecodebench-v3` | LiveCodeBench v6 (`lighteval`), gate 0.20 (v2 had 0.25) | pipeline step 3 |
 | `evalhub-collection-agentic-coding-python-tasks-v1` | `agentic-coding-python-tasks-v1` | MBPP, HumanEval (`inspect-coding`) | pipeline step 4; CI template `stages/050-model-evaluation/edd/agentic-coding-python-tasks.ci.yaml` |
 | `evalhub-provider-inspect-coding` | provider `inspect-coding` | `inspect/humaneval`, `inspect/mbpp`; image `quay.io/evalhub/community-inspect` pinned by digest, `INSPECT_EVAL_MAX_TOKENS=512`, `MAX_CONNECTIONS=8`, `MAX_RETRIES=3` | python-tasks-v1 |
 

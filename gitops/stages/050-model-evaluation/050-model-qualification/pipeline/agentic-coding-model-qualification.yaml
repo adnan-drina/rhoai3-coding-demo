@@ -12,13 +12,13 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v16
+  name: agentic-coding-model-qualification-v17
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
     the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v16
+  displayName: agentic-coding-model-qualification v17
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -1354,7 +1354,7 @@ spec:
                     constant: ''
                 collection_id:
                   runtimeValue:
-                    constant: agentic-coding-livecodebench-v2
+                    constant: agentic-coding-livecodebench-v3
                 evalhub_url:
                   runtimeValue:
                     constant: https://evalhub.evalhub.svc.cluster.local:8443
@@ -1621,7 +1621,7 @@ spec:
                     constant:
                     - agentic-coding-latency-v1
                     - agentic-coding-throughput-v2
-                    - agentic-coding-livecodebench-v2
+                    - agentic-coding-livecodebench-v3
                     - agentic-coding-python-tasks-v1
                     - garak/intents
                 model_version_id:

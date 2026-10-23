@@ -96,7 +96,7 @@ ready.
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | Pipeline | `agentic-coding-model-qualification` | `evaluated-models` | Wave 16 (kustomize patch), `SkipDryRunOnMissingResource`. |
-| PipelineVersion | `agentic-coding-model-qualification-v16` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `risk-assessment` (built-in `garak` `intents`, the Context-aware vulnerability scan, as a single task in the job pod), `verdict` (judges the run and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
+| PipelineVersion | `agentic-coding-model-qualification-v17` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `risk-assessment` (built-in `garak` `intents`, the Context-aware vulnerability scan, as a single task in the job pod), `verdict` (judges the run and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
 
 ### `storage/`
 

@@ -58,7 +58,7 @@ spec:
     - toxicity-and-ethical-principles
     # Evaluation-driven development criteria for the agentic coding demo (edd/ ConfigMaps). The risk assessment
     # runs as a built-in garak intents job, not a collection.
-    - agentic-coding-livecodebench-v2
+    - agentic-coding-livecodebench-v3
     - agentic-coding-python-tasks-v1
     - agentic-coding-latency-v1
     - agentic-coding-throughput-v2
