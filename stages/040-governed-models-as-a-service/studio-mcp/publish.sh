@@ -181,7 +181,7 @@ publish_studio_mcp() {
     # An empty data map is omitted by the API server, so the first key must create the map itself.
     op=add; [[ "$changed" == true ]] && op=replace
     after=$(jq -c --arg k "$KEY" --arg v "$VALUE" --arg op "$op" --argjson cm "$cm" \
-        'if $cm | has("data") then [{op: "test", path: "/data", value: .}, {op: $op, path: "/data/" + $k, value: $v}]
+        'if $cm | has("data") then [{op: "test", path: "/data", value: .}, {op: $op, path: ("/data/" + ($k | gsub("~"; "~0") | gsub("/"; "~1"))), value: $v}]
          else [{op: "add", path: "/data", value: {($k): $v}}] end' <<<"$OLD" | guarded_patch configmap "$CM" "$NS" "$cm")
     jq -e --arg u "$CM_UID" --argjson old "$OLD" --arg k "$KEY" --arg v "$VALUE" '.metadata.uid == $u and .data == ($old + {($k): $v})' \
         <<<"$after" >/dev/null || fail "Unexpected discovery ConfigMap change"
