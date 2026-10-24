@@ -186,9 +186,10 @@ start_syncs() {
         if [[ "$resync" == false ]] && jq -e '(.status.operationState // {}) as $op | $op.phase == "Succeeded"
             and $op.syncResult.revision == .spec.source.targetRevision and $op.syncResult.source.path == .spec.source.path' \
             <<<"$app" >/dev/null; then continue; fi
-        jq -c '{operation: {initiatedBy: {username: "stage-deploy"}, sync: ({revision: .spec.source.targetRevision, syncStrategy: {hook: {}}}
+        jq -c '{operation: ({initiatedBy: {username: "stage-deploy"}, sync: ({revision: .spec.source.targetRevision, syncStrategy: {hook: {}}}
             + (if (.spec.syncPolicy.syncOptions // []) | length > 0 then {syncOptions: .spec.syncPolicy.syncOptions} else {} end)
-            + (if .spec.syncPolicy.automated.prune then {prune: true} else {} end))}}' <<<"$app" |
+            + (if .spec.syncPolicy.automated.prune then {prune: true} else {} end))}
+            + (if .spec.syncPolicy.retry then {retry: .spec.syncPolicy.retry} else {} end))}' <<<"$app" |
             oc --request-timeout=10s patch applications.argoproj.io "$name" -n "$NS" --type merge --patch-file=/dev/stdin >/dev/null ||
             die "Could not start a sync of $name"
         echo "$name"
@@ -233,7 +234,7 @@ deploy() {
         names_=$(jq -r '.[].metadata.name' <<<"$group")
         while IFS= read -r app; do apply_app "$app" | sed 's/^/  /'; done < <(jq -c '.[]' <<<"$group")
         started=$(start_syncs "$stage" "$resync" $names_ | paste -sd, - | sed 's/,/, /g')
-        echo "applied $(paste -sd, - <<<"$names_" | sed 's/,/, /g') at ${revision:0:12}${started:+; started sync of $started}${started:-; no sync needed}"
+        echo "applied $(paste -sd, - <<<"$names_" | sed 's/,/, /g') at ${revision:0:12}${started:+; started sync of $started}$([[ -n "$started" ]] || echo "; no sync needed")"
         [[ "$wait" == true ]] || return 0
         wait_for "$stage" "$revision" "$repo" "$timeout" $names_
         echo "PASS $(paste -sd, - <<<"$names_" | sed 's/,/, /g') Synced and Healthy at ${revision:0:12}"
