@@ -3,6 +3,8 @@ kind: ImageStream
 metadata:
   namespace: redhat-ods-monitoring
   name: showback-external-metering
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
   labels:
     app.kubernetes.io/name: showback-external-metering
 spec:

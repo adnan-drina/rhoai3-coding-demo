@@ -1,18 +1,23 @@
 # Sync hook: starts a build of BuildConfig showback-external-metering when no build exists for its current inputs
 # (git ref, Dockerfile, patch ConfigMap), when the latest such build failed or was cancelled, or when the image tag is
 # missing. A BuildConfig's ConfigChange trigger fires only at creation, so changed inputs need this hook. It does not
-# wait for the build; the Deployment pulls the tag once it is pushed. Wave 1: after the BuildConfig and ConfigMap.
+# wait for the build; the Deployment pulls the tag once it is pushed. Wave -1: after the BuildConfig, ConfigMap and
+# RBAC (-2), before the Deployment (0), which Argo CD would otherwise wait on while it has no image.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   namespace: redhat-ods-monitoring
   name: showback-metering-build-starter
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   namespace: redhat-ods-monitoring
   name: showback-metering-build-starter
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
 rules:
 - apiGroups: [build.openshift.io]
   resources: [buildconfigs]
@@ -35,6 +40,8 @@ kind: RoleBinding
 metadata:
   namespace: redhat-ods-monitoring
   name: showback-metering-build-starter
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -51,7 +58,7 @@ metadata:
   name: start-showback-metering-build
   annotations:
     argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 2

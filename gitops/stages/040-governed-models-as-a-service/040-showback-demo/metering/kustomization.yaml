@@ -27,6 +27,9 @@ configMapGenerator:
   - provider-pricing.json
 - name: showback-metering-patches
   namespace: redhat-ods-monitoring
+  options:
+    annotations:
+      argocd.argoproj.io/sync-wave: "-2"
   files:
   - build/0001-metering-correctness.patch
   - build/0002-continuous-showback.patch
