@@ -96,6 +96,10 @@ one lifecycle and one readiness gate. Helm is not run by Argo CD: the chart is r
 
 All at wave 10.
 
+The earlier `opencode-runtime` ImageStream, BuildConfig and pull Role/RoleBinding in `openshell` were retired on
+2026-10-24. A sync with prune removes the BuildConfig and RBAC; the ImageStream keeps `Prune=false`, so delete it once on
+a cluster that has it: `oc delete imagestream opencode-runtime -n openshell`.
+
 ### `opencode/`, `hermes/` — agent model access and contracts
 
 | Kind | Name | Namespace | Purpose |
