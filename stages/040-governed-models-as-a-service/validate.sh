@@ -150,7 +150,7 @@ check_operator_policy "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service
 DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" |
     ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' |
     jq -c --argjson optional "$SHOWBACK_DESIRED" 'def id: [.apiVersion, .kind, .metadata.namespace, .metadata.name];
-        ($optional | map(id)) as $excluded | map(select(id as $i | $excluded | index($i) | not))')
+        ($optional | map(id)) as $excluded | map(select(id as $i | any($excluded[]; . == $i) | not))')
 desired_of() { jq -c --arg k "$1" '[.[] | select(.kind == $k)]' <<<"$DESIRED"; }
 
 components_reconciled() {
@@ -338,7 +338,7 @@ local_model() {
                 and .value == $canonical)) else true end)' <<<"$route" >/dev/null || { echo "model route listeners or header"; return; }
     # Every declared local model, including the showback dedicated model, owns exactly one gateway route.
     jq -e --argjson n "$(desired_of LLMInferenceService | jq length)" '[.items[] | select(any(.spec.parentRefs[]?; .name == "maas-default-gateway"))]
-        | length == $n' <<<"$routes" >/dev/null || { echo "extra inference route"; return; }
+        | length == $n' <<<"$routes" >/dev/null || { echo "inference route count differs from the declared local models"; return; }
     if [[ "$parked" == true ]]; then echo yes-parked; else echo yes; fi
 }
 serving_templates() {
