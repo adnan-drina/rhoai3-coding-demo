@@ -70,10 +70,16 @@ kc_login() {
 # kc METHOD PATH [optional]: an admin API call (request body on stdin for POST/PUT); prints the response body.
 # A 404 is empty output when optional. Redirects are not followed.
 kc() {
-  local method=$1 path=$2 status body=()
-  [[ "$method" == GET ]] || body=(-H 'Content-Type: application/json' --data-binary @-)
-  status=$(curl -s --max-time 15 --max-filesize 2097152 -X "$method" --config <(printf 'header = "Authorization: Bearer %s"\n' "$KC_TOKEN") \
-    ${body[@]+"${body[@]}"} -D "$W/kc.headers" -o "$W/kc.body" -w '%{http_code}' "$KC_BASE$path") || status=000
+  local method=$1 path=$2 status body=() data="" attempt
+  # A request body stays in memory and is replayed once if the short-lived administrator token has to be renewed.
+  [[ "$method" == GET ]] || { data=$(cat); body=(-H 'Content-Type: application/json' --data-binary @-); }
+  for attempt in 1 2; do
+    status=$(printf '%s' "$data" | curl -s --max-time 15 --max-filesize 2097152 -X "$method" \
+      --config <(printf 'header = "Authorization: Bearer %s"\n' "$KC_TOKEN") \
+      ${body[@]+"${body[@]}"} -D "$W/kc.headers" -o "$W/kc.body" -w '%{http_code}' "$KC_BASE$path") || status=000
+    [[ "$status" == 401 && $attempt == 1 ]] || break
+    kc_login
+  done
   if [[ "$status" == 404 && "${3:-}" == optional ]]; then return 0; fi
   [[ "$status" =~ ^2 ]] || fail "Identity API status $status ($method ${path%%\?*})"
   cat "$W/kc.body"
@@ -267,7 +273,6 @@ identity_setup() {
   done
   # Broker-only realm: personas are pre-linked to immutable OpenShift identities and never use profile attributes, so
   # the default user profile's required email and names must not stop their first login with an update-profile form.
-  kc_login  # the master administrator token is short-lived; the steps above can outlast it
   ra=$(realm /authentication/required-actions/VERIFY_PROFILE)
   if jq -e '.enabled != false' <<<"$ra" >/dev/null; then
     jq -c '.enabled = false | .defaultAction = false' <<<"$ra" | realm_write PUT /authentication/required-actions/VERIFY_PROFILE
