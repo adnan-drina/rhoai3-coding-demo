@@ -275,6 +275,9 @@ preflight() {
             (.metadata.ownerReferences // [] | length) == 0 and .spec.sources == null and .spec.project == "rhoai-demo"
             and .spec.destination == $dest and .spec.source.repoURL == $repo and .spec.source.path == $want.spec.source.path' \
             <<<"$live" >/dev/null || echo "$name: existing Application has another owner, repository, project, destination or path"
+        # Rendered here, not in a process substitution, so a failed build stops the preflight instead of passing it.
+        render "$(jq -r '.spec.source.path' <<<"$want")" >"$CACHE/preflight-render.json"
+        jq -c '.[]' "$CACHE/preflight-render.json" >"$CACHE/preflight-objects.jsonl"
         while IFS= read -r obj; do
             kind=$(jq -r '.kind' <<<"$obj")
             [[ ",$skip," == *",$kind,"* ]] && continue
@@ -293,10 +296,14 @@ preflight() {
                 (suffix) as $s | ($owners[0][$s] + ":" + $s) as $expected
                 | (.metadata.annotations["argocd.argoproj.io/tracking-id"] // "") as $t
                 | if $t == $expected then empty
+                  # OpenShift creates cluster configuration singletons (Console, image registry Config) once and
+                  # leaves them to the administrator: owner ClusterVersion, release.openshift.io/create-only.
+                  elif .metadata.annotations["release.openshift.io/create-only"] == "true"
+                    and all(.metadata.ownerReferences[]?; .kind == "ClusterVersion") then empty
                   elif (.metadata.ownerReferences // [] | length) > 0 then "\($s): owned by another object and not tracked by this stage"
                   elif $kind == "Namespace" and $t == "" then empty
                   else "\($s): exists without this stage'"'"'s tracking id (needs a reviewed adoption)" end' <<<"$live"
-        done < <(render "$(jq -r '.spec.source.path' <<<"$want")" | jq -c '.[]')
+        done < "$CACHE/preflight-objects.jsonl"
     done < <(components "$stage" "$all" | jq -c '.[]')
 }
 # Components render disjoint object sets whose union equals the stage base render; namespaced objects set a namespace.
