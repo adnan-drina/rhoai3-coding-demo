@@ -747,10 +747,10 @@ The project-owned `external-models` namespace contains the native ExternalProvid
 ```bash
 ./stages/040-governed-models-as-a-service/deploy.sh
 ./stages/040-governed-models-as-a-service/validate.sh --readiness
-RHOAI_STAGE040_PERSONA_KUBECONFIG=/private/path/persona-kubeconfig \
 ./stages/040-governed-models-as-a-service/validate.sh --functional
-./stages/040-governed-models-as-a-service/deploy.sh
 ```
+
+`--functional` signs in with the developer persona session (`RHOAI_DEVELOPER_KUBECONFIG`, refreshed by Stage 010 `personas/login.sh`); set `RHOAI_STAGE040_PERSONA_KUBECONFIG` to use another persona login.
 
 Functional validation creates and revokes only its own expiring synthetic key, with bounded chat/stream/tool-call/authorization/traffic checks. Quota enforcement, per-request EPP proof and user Studio interaction are recorded separately; an API response does not establish all stage acceptance. No GuideLLM benchmark runs implicitly.
 

@@ -514,8 +514,11 @@ functional() {
     fail() { echo "[FAIL] $*"; exit 1; }
     pending() { echo "[PENDING] $*"; exit 2; }
 
-    PERSONA="${RHOAI_STAGE040_PERSONA_KUBECONFIG:-}"
-    [[ -n "$PERSONA" ]] || pending "Set RHOAI_STAGE040_PERSONA_KUBECONFIG to an existing private ai-admin or ai-developer login"
+    # The developer persona session from Stage 010 personas/login.sh, unless another persona login is named.
+    PERSONA="${RHOAI_STAGE040_PERSONA_KUBECONFIG:-${RHOAI_DEVELOPER_KUBECONFIG:-}}"
+    PERSONA="${PERSONA/#\~/$HOME}"
+    [[ -n "$PERSONA" ]] ||
+        pending "Set RHOAI_DEVELOPER_KUBECONFIG (or RHOAI_STAGE040_PERSONA_KUBECONFIG) to a private ai-admin or ai-developer login"
     [[ -f "$PERSONA" && -z "$(find "$PERSONA" -maxdepth 0 \( -perm -001 -o -perm -002 -o -perm -004 -o -perm -010 -o -perm -020 -o -perm -040 \))" ]] ||
         fail "Persona kubeconfig must be a private existing login"
     KUBECONFIG="$PERSONA" bash -c 'source "$1/scripts/lib.sh"; load_env; check_oc_logged_in' guard "$REPO_ROOT" >/dev/null 2>&1 ||
@@ -680,7 +683,10 @@ functional() {
         fi
         endpoint=$(jq -r --arg m "$model_id" '.data[] | select(.id == $m and .ready == true) | .url' <<<"$CATALOG")
         [[ -n "$endpoint" ]] || { echo "[FAIL] Approved model $name is missing or not ready in the persona catalog"; exit 1; }
-        [[ "$endpoint" == "https://$host"* ]] || { echo "[FAIL] Native model discovery selects the wrong listener hostname"; exit 1; }
+        # A local model is reachable on both of its listeners; native discovery advertises the shared api listener
+        # (RHOAI 3.5.2) or the model's own compatibility listener. Any other host is wrong.
+        [[ "$endpoint" == "https://$host"* || ( "$external" == false && "$endpoint" == "https://$API_HOST"* ) ]] ||
+            { echo "[FAIL] Native model discovery selects the wrong listener hostname"; exit 1; }
         case "${endpoint%/}" in */v1) url="${endpoint%/}/chat/completions" ;; *) url="${endpoint%/}/v1/chat/completions" ;; esac
         payload=$(jq -n --arg m "$model_id" --arg name "$name" --argjson ext "$external" '{model: $m,
             messages: [{role: "user", content: "Reply with exactly OK."}]}

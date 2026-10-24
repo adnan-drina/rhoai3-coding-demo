@@ -82,8 +82,8 @@ users.
 ## Validation
 
 `validate.sh --readiness` requires this Application to be Synced and Healthy at the deployed revision; `stages/040-governed-models-as-a-service/validate.sh`
-does not read the subscriptions or auth policies individually. `validate.sh --functional` (with
-`RHOAI_STAGE040_PERSONA_KUBECONFIG`) checks that the persona can discover `personal-<user>`, mints a temporary key for
+does not read the subscriptions or auth policies individually. `validate.sh --functional` (as the
+developer persona from `RHOAI_DEVELOPER_KUBECONFIG`, or `RHOAI_STAGE040_PERSONA_KUBECONFIG`) checks that the persona can discover `personal-<user>`, mints a temporary key for
 it, sends bounded requests and revokes the key.
 
 By hand (read-only):
