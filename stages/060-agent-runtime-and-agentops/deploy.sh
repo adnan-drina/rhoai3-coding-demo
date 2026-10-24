@@ -324,7 +324,9 @@ runtime_setup() {
     [[ $(oc --request-timeout=15s get secret openshell-credentials -n openshell -o jsonpath='{.data.key-encryption-key}' | base64 -d | base64 -d | wc -c | tr -d ' ') == 32 ]] ||
       fail "Invalid retained encryption key"
   else
-    [[ $(get pvc -n openshell | jq '.items | length') == 0 ]] || fail "Missing key with retained storage; rotation refused"
+    # Not get(): --ignore-not-found prints nothing for an empty list, which would read as retained storage.
+    [[ $(oc --request-timeout=15s get pvc -n openshell -o json | jq '.items | length') == 0 ]] ||
+      fail "Missing key with retained storage; rotation refused"
     KEY=$(openssl rand 32 | base64 | tr -d '\n' | base64 | tr -d '\n') jq -n -c '{"key-encryption-key": $ENV.KEY}' |
       patch_data secret openshell-credentials openshell
   fi
