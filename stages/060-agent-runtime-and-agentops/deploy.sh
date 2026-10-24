@@ -384,8 +384,9 @@ forward() {
   done
   fail "Port-forward to $2 unavailable"
 }
-# The ai-agents gateway workspace with ai-admin as its only administrator, through the pinned native CLI and a
-# private temporary profile holding the bootstrap token (removed on exit). No sandbox, provider or model changes.
+# The native gateway workspaces and their only member, through the pinned native CLI and a private temporary profile
+# holding the bootstrap token (removed on exit): ai-agents with ai-admin as administrator, and openshell-developer with
+# ai-developer as user (the developer's own OpenCode sandbox). No sandbox, provider or model changes.
 ai_agents_setup() {
   local pins="$REPO_ROOT/$RUNTIME_PATH/chart/source-pins.json" cli issuer user uid id token port home dir labels
   cli=${RHOAI_STAGE060_OPENSHELL_CLI:-$HOME/.local/share/rhoai3-demo/openshell-$(jq -r '.cliRelease' "$pins")/bin/openshell}
@@ -396,18 +397,15 @@ ai_agents_setup() {
     fail "Exact runtime GitOps revision is not ready"
   get namespace ai-agents | jq -e '.metadata.labels["rhoai3.redhat.com/openshell-workspace"] == "true" and .metadata.labels["opendatahub.io/dashboard"] == "true"
     and .metadata.deletionTimestamp == null' >/dev/null || fail "GitOps workspace namespace is not admitted"
-  get rolebinding openshell-sandbox -n ai-agents | jq -e '.roleRef == {apiGroup: "rbac.authorization.k8s.io", kind: "Role", name: "openshell-sandbox"}
-    and .subjects == [{kind: "ServiceAccount", name: "openshell", namespace: "openshell"}]' >/dev/null || fail "Native gateway workspace binding differs"
+  get namespace openshell-developer | jq -e '.metadata.labels["rhoai3.redhat.com/openshell-workspace"] == "true" and .metadata.deletionTimestamp == null' \
+    >/dev/null || fail "GitOps developer workspace namespace is not admitted"
+  for ns in ai-agents openshell-developer; do
+    get rolebinding openshell-sandbox -n "$ns" | jq -e '.roleRef == {apiGroup: "rbac.authorization.k8s.io", kind: "Role", name: "openshell-sandbox"}
+      and .subjects == [{kind: "ServiceAccount", name: "openshell", namespace: "openshell"}]' >/dev/null || fail "Native gateway workspace binding differs in $ns"
+  done
   issuer=$(oc --request-timeout=15s get configmap openshell-identity -n openshell -o jsonpath='{.data.issuer}')
   [[ "$issuer" == https://*/realms/openshell ]] || fail "Unexpected native issuer"
   keycloak_base; kc_login
-  user=$(realm "/users?username=ai-admin&exact=true")
-  uid=$(oc --request-timeout=15s get user ai-admin -o jsonpath='{.metadata.uid}')
-  jq -e --arg m "$MARKER" --arg u "$uid" 'length == 1 and .[0].enabled and .[0].attributes["openshell-managed"] == [$m] and .[0].attributes["openshift-uid"] == [$u]' \
-    <<<"$user" >/dev/null || fail "Managed ai-admin identity is absent, ambiguous or mapped differently"
-  id=$(jq -r '.[0].id' <<<"$user")
-  realm "/users/$id/federated-identity" | jq -e --arg u "$uid" '. == [{identityProvider: "openshift-v4", userId: $u, userName: "ai-admin"}]' >/dev/null ||
-    fail "Native broker identity mapping differs"
   token=$(get secret openshell-auth -n keycloak | jq -j '"grant_type=client_credentials&client_id=openshell-bootstrap&client_secret=\(.data["bootstrap-client-secret"] | @base64d | @uri)"' |
     curl -s --max-time 15 --data-binary @- "$issuer/protocol/openid-connect/token" | jq -r '.access_token // empty')
   [[ -n "$token" ]] || fail "Bootstrap token request failed"
@@ -427,22 +425,35 @@ ai_agents_setup() {
   listed() { ocli "$@" -o json | jq -e -c 'if (.next_page_token // "") != "" then error("more than one page") else . end' ||
     fail "Native workspace inventory exceeds one page; no partial reconciliation"; }
   LABELS='{"app.kubernetes.io/managed-by":"openshell-runtime","app.kubernetes.io/part-of":"rhoai3-coding-demo"}'
-  case "$(listed workspace list | jq -r --argjson l "$LABELS" '[.workspaces[] | select(.name == "ai-agents")]
-      | if length == 0 then "absent" elif length == 1 and .[0].labels == $l and .[0].status == "Active" then "ours" else "foreign" end')" in
-    absent) ocli workspace create --name ai-agents --label app.kubernetes.io/managed-by=openshell-runtime --label app.kubernetes.io/part-of=rhoai3-coding-demo >/dev/null ;;
-    ours) ;;
-    *) fail "Foreign, ambiguous or inactive ai-agents workspace; takeover refused" ;;
-  esac
-  case "$(listed workspace member list --workspace ai-agents | jq -r --arg id "$id" '.members
-      | if length == 0 then "none" elif length == 1 and .[0].subject == $id and .[0].role == "admin" then "ours" else "foreign" end')" in
-    none) ocli workspace member add --workspace ai-agents --subject "$id" --role admin >/dev/null ;;
-    ours) ;;
-    *) fail "Unexpected native membership; rewriting refused" ;;
-  esac
-  listed workspace member list --workspace ai-agents | jq -e --arg id "$id" '.members | length == 1 and .[0].subject == $id and .[0].role == "admin"' >/dev/null ||
-    fail "Native membership readback differs"
+  # native_workspace WORKSPACE PERSONA ROLE: the workspace exists with our labels and PERSONA is its only member.
+  native_workspace() {
+    local ws=$1 persona=$2 role=$3
+    user=$(realm "/users?username=$persona&exact=true")
+    uid=$(oc --request-timeout=15s get user "$persona" -o jsonpath='{.metadata.uid}')
+    jq -e --arg m "$MARKER" --arg u "$uid" 'length == 1 and .[0].enabled and .[0].attributes["openshell-managed"] == [$m] and .[0].attributes["openshift-uid"] == [$u]' \
+      <<<"$user" >/dev/null || fail "Managed $persona identity is absent, ambiguous or mapped differently"
+    id=$(jq -r '.[0].id' <<<"$user")
+    realm "/users/$id/federated-identity" | jq -e --arg u "$uid" --arg n "$persona" '. == [{identityProvider: "openshift-v4", userId: $u, userName: $n}]' >/dev/null ||
+      fail "Native broker identity mapping differs for $persona"
+    case "$(listed workspace list | jq -r --arg w "$ws" --argjson l "$LABELS" '[.workspaces[] | select(.name == $w)]
+        | if length == 0 then "absent" elif length == 1 and .[0].labels == $l and .[0].status == "Active" then "ours" else "foreign" end')" in
+      absent) ocli workspace create --name "$ws" --label app.kubernetes.io/managed-by=openshell-runtime --label app.kubernetes.io/part-of=rhoai3-coding-demo >/dev/null ;;
+      ours) ;;
+      *) fail "Foreign, ambiguous or inactive $ws workspace; takeover refused" ;;
+    esac
+    case "$(listed workspace member list --workspace "$ws" | jq -r --arg id "$id" --arg r "$role" '.members
+        | if length == 0 then "none" elif length == 1 and .[0].subject == $id and .[0].role == $r then "ours" else "foreign" end')" in
+      none) ocli workspace member add --workspace "$ws" --subject "$id" --role "$role" >/dev/null ;;
+      ours) ;;
+      *) fail "Unexpected native membership in $ws; rewriting refused" ;;
+    esac
+    listed workspace member list --workspace "$ws" | jq -e --arg id "$id" --arg r "$role" '.members | length == 1 and .[0].subject == $id and .[0].role == $r' >/dev/null ||
+      fail "Native membership readback differs in $ws"
+  }
+  native_workspace ai-agents ai-admin admin
+  native_workspace openshell-developer ai-developer user
   rm -rf "$home"
-  log_success "Workspace ai-agents with ai-admin as its native administrator (configuration only; no agent or inference)"
+  log_success "Workspaces ai-agents (ai-admin, admin) and openshell-developer (ai-developer, user) (configuration only; no agent or inference)"
 }
 
 deploy_runtime() {
