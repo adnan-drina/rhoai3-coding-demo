@@ -142,7 +142,7 @@ identity_preflight() {
 }
 # Configure the broker, clients and curated personas; idempotent and never rotates credentials.
 identity_setup() {
-  local candidate status import_uid profile missing name uid users id old client found cid roles bootstrap
+  local candidate status import_uid profile missing name uid users id old client found cid roles bootstrap ra
   # A native offline realm import can leave the master administrator's composite cache stale (upstream #45966):
   # one supported cache refresh, only after this demo's exact import completed.
   candidate=$(realm "")
@@ -265,7 +265,14 @@ identity_setup() {
     realm "/users/$id/role-mappings/realm/composite" | jq -e 'all(.[]; .name != "openshell-platform-admin")' >/dev/null || fail "Administrative grant for $name"
     jq -c '[.["openshell-user"]]' <<<"$roles" | realm_write POST "/users/$id/role-mappings/realm"
   done
-  log_success "Identity: realm openshell, broker scope user:info, personas ai-admin and ai-developer with role openshell-user; unknown broker logins denied"
+  # Broker-only realm: personas are pre-linked to immutable OpenShift identities and never use profile attributes, so
+  # the default user profile's required email and names must not stop their first login with an update-profile form.
+  ra=$(realm /authentication/required-actions/VERIFY_PROFILE)
+  if jq -e '.enabled != false' <<<"$ra" >/dev/null; then
+    jq -c '.enabled = false | .defaultAction = false' <<<"$ra" | realm_write PUT /authentication/required-actions/VERIFY_PROFILE
+  fi
+  realm /authentication/required-actions/VERIFY_PROFILE | jq -e '.enabled == false' >/dev/null || fail "Verify Profile required action still enabled"
+  log_success "Identity: realm openshell, broker scope user:info, personas ai-admin and ai-developer with role openshell-user; unknown broker logins denied; no profile prompt"
 }
 realm_write() { kc "$1" "/admin/realms/openshell$2" >/dev/null; }
 
