@@ -2973,6 +2973,19 @@ The reused RHBK 26.4 operator serves `KeycloakRealmImport` at `k8s.keycloak.org/
 
 The hook validates the whole linking plan before it changes any user or client, and it never deletes a federated-identity link. An existing `platform` realm user is linked to `base-sso` only when its OpenShift identity and user UID agree and its single `openshift` link carries that UID, or when it already has a `base-sso` link to the same base user. A missing, stale or foreign link refuses the run instead of being repaired. Inspect the user's federated identities in the `platform` realm and the OpenShift `User`/`Identity` objects, correct the conflicting record, then resync.
 
+## Stage 070 TektonConfig hook fails: tekton-operator-webhook service not found
+
+**Symptom:** `070-pipelines` retries `job-configure-tektonconfig`, which fails with `failed calling webhook
+"webhook.operator.tekton.dev" ... service "tekton-operator-webhook" not found`; the Pipelines CSV is Succeeded and the
+webhook pod runs, but `openshift-operators/tekton-operator-webhook` (a bundle Service) is missing.
+
+**Likely cause:** A fresh install started below the channel head: OLM installed the `startingCSV`, upgraded at once,
+recorded the bundle Service as present for the new InstallPlan, and garbage collection removed it with the replaced
+CSV. Git now starts at the channel head (`pipelines-subscription.yaml`).
+
+**Recover:** Let OLM install the bundle again: delete the current Pipelines CSV in `openshift-operators`; the
+Subscription reinstalls it and recreates its Services (TektonConfig and other operands are kept). Then redeploy Stage 070.
+
 ## Stage 070 shared-namespace upgrades or MaaS discovery refuse
 
 Pipelines and TAS keep Automatic approval on versioned channels in the shared `openshift-operators` namespace. Dedicated Dev Spaces/RHDH/MTA installs use the exact reviewed allowlist, including DWO 0.43.0; their approval hook does not approve unrelated shared-namespace plans. MaaS consumers select the unique listener with a `maas.` hostname, independent of the listener name; zero or multiple matches refuse. Historical analyzer nonzero exceptions remain limited to the measured 8.2.1 defect and do not waive MTA 8.3 failures.

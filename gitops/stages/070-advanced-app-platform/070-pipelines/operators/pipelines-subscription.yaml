@@ -11,4 +11,6 @@ spec:
   installPlanApproval: Automatic
   source: redhat-operators
   sourceNamespace: openshift-marketplace
-  startingCSV: openshift-pipelines-operator-rh.v1.24.0
+  # The channel head: a lower floor upgrades during the fresh install, and OLM then loses the operator webhook Service
+  # it had recorded as present for the replaced CSV.
+  startingCSV: openshift-pipelines-operator-rh.v1.24.1
