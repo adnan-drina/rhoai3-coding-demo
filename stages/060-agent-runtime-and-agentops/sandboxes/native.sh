@@ -407,7 +407,7 @@ setup_inventory() {
   state_save "$(jq -n -c --argjson b "$binding" '{binding: $b}')"
   FLEET=$(ncli admin - 30 sandbox list --all-workspaces -o json)
   printf '%s' "$FLEET" | jq -e '(.next_page_token // "") == ""' >/dev/null || fail "Fleet inventory is incomplete"
-  POLICY=$(ncli admin - 30 policy get --global --full -o json)
+  POLICY=$(global_policy_get)
   providers=$(ncli "$SETUP_ROLE" "$WORKSPACE" 30 provider list -o json)
   templates=$(ncli "$SETUP_ROLE" "$WORKSPACE" 30 sandbox template list -o json)
   jq -n -e --argjson p "$providers" --argjson t "$templates" '($p.next_page_token // "") == "" and ($t.next_page_token // "") == ""' >/dev/null ||
@@ -415,30 +415,42 @@ setup_inventory() {
   PROVIDERS=$(printf '%s' "$providers" | jq -c '.providers')
   TEMPLATES=$(printf '%s' "$templates" | jq -c '.templates')
 }
+# global_policy_get: the gateway-global policy (--full JSON). A fresh gateway has no revision yet; its baseline is the
+# empty policy with hash "none", which --expected-policy-hash none confirms. Any other error stays suppressed.
+global_policy_get() {
+  local out rc=0
+  session_refresh
+  out=$(export XDG_CONFIG_HOME="$WORK/native-admin"; bounded 30 "$CLI" --gateway openshell policy get --global --full -o json 2>"$WORK/policy.err") || rc=$?
+  if (( rc == 0 )); then rm -f "$WORK/policy.err"; printf '%s' "$out"; return 0; fi
+  if grep -q 'no global policy revision found' "$WORK/policy.err"; then rm -f "$WORK/policy.err"; echo '{"policy":{},"hash":"none"}'; return 0; fi
+  rm -f "$WORK/policy.err"
+  fail "Bounded native operation failed: policy get; raw errors/credentials suppressed"
+}
 # setup_policy_input: the complete intended gateway-global policy (INTENDED). It is set only with APPLY=true, an empty
 # fleet, an unchanged no-network original and the reviewed EXPECTED_POLICY_HASH.
 setup_policy_input() {
   local authored original current fleet applied
   authored=$(sed "s/__MAAS_COMMON_HOST__/$HOST/g" "$POLICY_FILE" | yaml_json | jq -c '.[0]')
   original=$(state -c --argjson p "$POLICY" '.original_policy // $p.policy')
-  jq -n -e --argjson o "$original" --argjson a "$authored" '($o.filesystem_policy // {}) as $f | $f.include_workdir == false
+  # An empty original (fresh gateway) has no denials to preserve.
+  jq -n -e --argjson o "$original" --argjson a "$authored" '$o == {} or (($o.filesystem_policy // {}) as $f | $f.include_workdir == false
     and $f.read_write == $a.filesystem_policy.read_write and (($f.read_only // []) - $a.filesystem_policy.read_only) == []
-    and $o.landlock == $a.landlock' >/dev/null || fail "Original filesystem or Landlock denials differ"
+    and $o.landlock == $a.landlock)' >/dev/null || fail "Original filesystem or Landlock denials differ"
   INTENDED=$(jq -n -c --argjson o "$original" --argjson a "$authored" \
-    '$o + {filesystem_policy: $a.filesystem_policy, landlock: $a.landlock, network_policies: $a.network_policies}')
+    '(if $o == {} then {version: $a.version} else {} end) + $o + {filesystem_policy: $a.filesystem_policy, landlock: $a.landlock, network_policies: $a.network_policies}')
   jq -n -e --argjson p "$POLICY" --argjson i "$INTENDED" '$p.policy == $i' >/dev/null && return 0
   [[ "${APPLY:-false}" == true ]] && jq -n -e --argjson f "$FLEET" --argjson o "$original" --argjson p "$POLICY" --arg h "${EXPECTED_POLICY_HASH:-}" \
     '($f.sandboxes // [] | length) == 0 and ($o.network_policies // {}) == {} and $p.hash == $h' >/dev/null ||
     fail "Durable global policy requires the reviewed unchanged empty-fleet baseline"
   state_save "$(jq -n -c --argjson o "$original" --argjson p "$POLICY" '{original_policy: $o, original_policy_hash: $p.hash}')"
   (umask 077; printf '%s' "$INTENDED" >"$STATE_DIR/policy.json")
-  current=$(ncli admin - 30 policy get --global --full -o json)
+  current=$(global_policy_get)
   jq -n -e --argjson c "$current" --argjson p "$POLICY" '$c.hash == $p.hash' >/dev/null || fail "Concurrent global policy change; refused"
   fleet=$(ncli admin - 30 sandbox list --all-workspaces -o json)
   printf '%s' "$fleet" | jq -e '(.next_page_token // "") == "" and .sandboxes == []' >/dev/null ||
     fail "Concurrent fleet change before global policy update; refused"
   ncli admin - 30 policy set --global --yes --policy "$STATE_DIR/policy.json" >/dev/null
-  applied=$(ncli admin - 30 policy get --global --full -o json)
+  applied=$(global_policy_get)
   jq -n -e --argjson a "$applied" --argjson i "$INTENDED" '$a.policy == $i' >/dev/null || fail "Applied global policy differs"
   state_save "$(jq -n -c --argjson a "$applied" '{applied_policy_hash: $a.hash}')"
   # The applied policy is now the current one, so the second call in setup_provision passes. (The Python helper kept
@@ -598,7 +610,7 @@ setup_check() {
     '$x.id == $s.sandbox_id and $r == $s.sandbox_record' >/dev/null || fail "Owned sandbox identity/provenance/restart policy differs"
   printf '%s' "$sandbox" | jq -e --arg n "$NAME" '.restart_policy == "on-failure" and .policy_source == "global"
     and .created_from_workload_template.name == $n' >/dev/null || fail "Sandbox native template/global-policy contract differs"
-  policy=$(ncli admin - 30 policy get --global --full -o json)
+  policy=$(global_policy_get)
   jq -n -e --argjson p "$policy" --argjson i "$INTENDED" '$p.policy == $i' >/dev/null || fail "Durable policy changed"
   providers=$(ncli "$SETUP_ROLE" "$WORKSPACE" 30 provider list -o json)
   printf '%s' "$providers" | jq -e '(.next_page_token // "") == ""' >/dev/null || fail "Provider check inventory incomplete"
