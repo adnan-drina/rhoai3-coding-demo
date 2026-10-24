@@ -61,7 +61,11 @@ KServe provides model-serving orchestration. Model Registry records models, vers
 
 ## Deploy And Validate
 
+Start one GPU worker first: `deploy.sh` checks the serving prerequisites (a Ready GPU worker with its full GPU, the
+NVIDIA validator and DCGM exporter) and refuses before any change when none is running.
+
 ```bash
+./stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1
 ./stages/030-private-model-serving/deploy.sh --revision "$GIT_REPO_BRANCH"
 ./stages/030-private-model-serving/validate.sh
 ```
