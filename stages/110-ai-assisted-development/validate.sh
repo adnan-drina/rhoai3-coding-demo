@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage 070: Dev Spaces — Validation Script
+# Stage 110: AI-Assisted Development — Validation (the Stage 070 Dev Spaces and AI-tools resources it consumes)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,7 +31,7 @@ kilo_provider() {
 }
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║  Stage 070: Dev Spaces & AI Code Assistant — Validation          ║"
+echo "║  Stage 110: AI-Assisted Development — Validation                 ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo ""
 
