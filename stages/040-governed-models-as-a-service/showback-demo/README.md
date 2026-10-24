@@ -71,7 +71,7 @@ The MaaS gateway's `external-metering-streaming` plugin (Developer Preview in RH
 - **Disable:** set `enabled: 'false'`, publish and redeploy the component; keep the PVC. Reverting the Application alone does not remove the plugin.
 - **After a cluster start** the backend restarts a few times until PostgreSQL is ready.
 - **Limits:** one delivery attempt per event, and a response without usage may produce no event. Estimates are list prices, not invoices.
-- **Rebuild the image** (it exists only in the cluster registry) with [metering-backend/](metering-backend/README.md).
+- **The metering image** is built in the cluster by the component's BuildConfig; see [metering build](../../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/metering/build/README.md).
 
 ## Files
 
@@ -80,7 +80,6 @@ The MaaS gateway's `external-metering-streaming` plugin (Developer Preview in RH
 | `team-keys.sh` | Team users and their MaaS keys |
 | `generate-load.sh` | Demo load per offering |
 | `validate.sh` | Offline checks: script syntax, access matrix, dashboards, metering bundle |
-| `metering-backend/` | Patches, Containerfile and build/publish scripts for the metering image |
 | `tests/test-metering-profile.sh` | Mocked test of the metering activation in the Stage 040 deploy script |
 
 The earlier report pipeline (offline allocation, report publisher, MLflow archive, monthly statements and their dashboards) was retired on 2026-10-20 and is in Git history at `87aaf9c1`.

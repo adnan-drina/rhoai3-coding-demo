@@ -24,8 +24,9 @@ spec:
           type: RuntimeDefault
       containers:
       - name: metering
-        # Source-bound local build, independently validated; registry digest verified on publication.
-        image: image-registry.openshift-image-registry.svc:5000/redhat-ods-monitoring/showback-external-metering@sha256:cd5b3dec76e01c9392bea32a4eaad811c7cde3ed5460d2909ee19e5d902cb495
+        # Built in the cluster by BuildConfig showback-external-metering (build/buildconfig.yaml). Until the first build
+        # pushes the tag, the kubelet retries the pull.
+        image: image-registry.openshift-image-registry.svc:5000/redhat-ods-monitoring/showback-external-metering:continuous
         env:
         - name: SHOWBACK_PRICING_FILE
           value: /etc/showback/provider-pricing.json

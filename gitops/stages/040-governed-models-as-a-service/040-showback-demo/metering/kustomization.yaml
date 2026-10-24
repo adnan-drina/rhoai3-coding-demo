@@ -16,6 +16,7 @@ resources:
 - service.yaml
 - servicemonitor.yaml
 - imagestream.yaml
+- build/buildconfig.yaml
 - profile.yaml
 - networkpolicy.yaml
 configMapGenerator:
@@ -23,6 +24,13 @@ configMapGenerator:
   namespace: redhat-ods-monitoring
   files:
   - provider-pricing.json
+- name: showback-metering-patches
+  namespace: redhat-ods-monitoring
+  files:
+  - build/0001-metering-correctness.patch
+  - build/0002-continuous-showback.patch
+configurations:
+- build/kustomize-config.yaml
 generatorOptions:
   labels:
     app.kubernetes.io/name: showback-external-metering-config

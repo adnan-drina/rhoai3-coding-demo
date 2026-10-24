@@ -34,31 +34,18 @@ A legacy row without raw content cannot prove an identical replay and returns a
 conflict. Legacy `usage_complete=NULL` means unknown; existing prices and legacy
 backfill estimates are preserved, not newly qualified.
 
-## Local build
+## Build
 
-Use `build-local.sh` when explicitly authorized to build locally. Supply a clean
-checkout at the pinned revision, an already running local Podman connection and
-an existing empty output directory. Both digest-pinned base images must already
-be present (`--pull=never`). Go module/toolchain downloads need network access on
-a cold cache. The helper archives the source, applies the reviewed patch in its
-output directory, and builds the runtime and test-builder images. It does not
-start a VM, run the backend, push an image or contact OpenShift.
+The image is built in the cluster: `buildconfig.yaml` (OpenShift Docker-strategy BuildConfig) checks out the pinned
+upstream commit, applies `0001-metering-correctness.patch` then `0002-continuous-showback.patch` (mounted from the
+generated ConfigMap `showback-metering-patches-<hash>`), builds with the original digest-pinned Go and UBI minimal base
+images and pushes `redhat-ods-monitoring/showback-external-metering:continuous`, which the Deployment pulls. A fresh
+environment therefore needs no workstation build. Changing a patch changes the ConfigMap hash and the BuildConfig, and
+the ConfigChange trigger builds again; follow it with `oc logs -f bc/showback-external-metering -n redhat-ods-monitoring`.
 
-```bash
-bash build-local.sh \
-  --source /absolute/path/to/clean-pinned-noyitz \
-  --connection podman-machine-default \
-  --output /absolute/path/to/empty-build-directory
-```
-
-The image name includes the source prefix and patch hash. Labels retain the full
-source revision and `io.showback.patch.sha256`. `build.json`, logs, the exact patch,
-Containerfile, source archive and image metadata bind the local artifact to its
-inputs. Containerfile bases and Go 1.26.0 remain pinned to the original build.
-Compiler parallelism is bounded to two workers for the local emulated build.
-
-The local runtime probe (`native/test-backend-local.sh`) and the Go test procedure used to qualify this backend
-are in Git history at `ea5ad451`; rerun them after changing a patch.
+The earlier workstation build and publish scripts (`build-local.sh`, `publish-local.sh`, `Containerfile`) and the
+local runtime probe and Go test procedure used to qualify this backend are in Git history (`ea5ad451` for the probe);
+rerun the Go tests after changing a patch.
 
 ## Remaining limits and rollback
 
@@ -81,11 +68,8 @@ conflicts and does not retain the new raw/completeness fields.
 
 ## Continuous captured-event mode
 
-`0002-continuous-showback.patch` applies after the unchanged correctness patch.
-Build with `build-local.sh ... --continuous`; the image patch label and
-`build.json.patch_sha256` are the SHA-256 of the two patches concatenated in
-application order. Both exact patches remain with build evidence. The default
-build still produces the original correctness derivative.
+`0002-continuous-showback.patch` applies after the unchanged correctness patch; the in-cluster build always applies
+both.
 
 Setting `SHOWBACK_PRICING_FILE` selects a mode exposing only ingestion,
 metering-only entitlements, `/health`, `/ready` and `/metrics`. Both health routes
@@ -132,7 +116,7 @@ A response without usage or a recognized error may emit no event. Delivery has
 one attempt and no durable retry queue. Continuous capture covers delivered
 events; it does not establish a complete request or invoice ledger.
 
-GitOps resources and the separate activation/rollback profile are in
+GitOps resources and the separate activation/rollback profile are in the parent folder
 `gitops/stages/040-governed-models-as-a-service/040-showback-demo/metering/`.
 The hashed catalog ConfigMap rolls the backend on a catalog change while past
 estimates remain frozen. Disable profile intent and restore its baseline before

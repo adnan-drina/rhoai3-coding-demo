@@ -9,7 +9,6 @@ The [showback demo](stages/040-governed-models-as-a-service/showback-demo/README
 - [ ] Deploy the reworked component, mint Marketing's key and run all three load profiles; check every dashboard panel in the browser.
 - [ ] Qualify Mistral Small 4 119B NVFP4 on one RTX PRO 6000 (first token, memory headroom, cold load).
 - [ ] Accept external metering live: load on an external model must match the ledger and the External dashboard.
-- [ ] Rebuildability: the metering backend image exists only in the cluster registry; rebuild it with `showback-demo/metering-backend/` on a fresh cluster.
 
 ## Stage 070 shared base SSO
 

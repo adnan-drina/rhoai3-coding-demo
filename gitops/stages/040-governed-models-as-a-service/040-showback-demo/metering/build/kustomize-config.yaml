@@ -1,0 +1,9 @@
+# Lets kustomize rewrite the BuildConfig's patch ConfigMap reference to the generated (content-hashed) name, so a patch
+# change renames the ConfigMap, changes the BuildConfig and starts a new build.
+nameReference:
+- kind: ConfigMap
+  version: v1
+  fieldSpecs:
+  - kind: BuildConfig
+    group: build.openshift.io
+    path: spec/source/configMaps/configMap/name

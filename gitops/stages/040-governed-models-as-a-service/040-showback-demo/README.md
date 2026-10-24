@@ -14,7 +14,7 @@ The demo needs its own team subscriptions, a dedicated model, dashboards and a m
 | `mistral/` | `LLMInferenceService` and `MaaSModelRef` for Mistral Small 4 119B NVFP4 in `internal-models`, zero replicas in Git, one RTX PRO 6000 when scaled up |
 | `offer-catalog.yaml` | `PrometheusRule` (`monitoring.rhobs/v1`) in `redhat-ods-monitoring` recording, per private model, its offering, sponsor, GPU worker price, demonstrated capacity, and (shared only) on-demand and committed tariffs and per-subscription commitments |
 | `dashboard-offer-*.yaml` | Model-agnostic `PersesDashboard`s **Offer · Shared private**, **Offer · Dedicated private** and **Offer · External model** in `redhat-ods-monitoring`, querying the RHOAI datasource live and joining on the offer catalog |
-| `metering/` | Metering backend and PostgreSQL 16 (retained PVC), database Secret, price catalog, profile ConfigMap, ImageStream, Services, ServiceMonitor and the NetworkPolicy for gateway-to-backend traffic |
+| `metering/` | Metering backend and PostgreSQL 16 (retained PVC), database Secret, price catalog, profile ConfigMap, ImageStream, Services, ServiceMonitor and the NetworkPolicy for gateway-to-backend traffic; `metering/build/` holds the BuildConfig and the two reviewed patches that build the backend image in the cluster ([build README](metering/build/README.md)) |
 
 The Application owns no shared Namespace, Qwen resource, Gateway, operator or MaaS `Config`. Qwen stays with `040-local-models` and GPU capacity with Stage 020. The metering plugin entry in the MaaS-owned `openshift-ingress/payload-processing-plugins` ConfigMap is written by the targeted deployment from `metering/profile.yaml`, not by Argo CD, so reverting the Application alone does not remove it.
 

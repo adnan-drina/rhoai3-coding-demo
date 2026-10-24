@@ -1,0 +1,58 @@
+# Builds the metering backend in the cluster (OCP "Builds using BuildConfig", Docker strategy), so a fresh environment
+# needs no workstation build: the pinned upstream commit, the two reviewed patches (ConfigMap
+# showback-metering-patches, generated from this folder) and the original digest-pinned base images. ConfigChange
+# starts a build when this object or its patch ConfigMap name (content hash) changes; the result is the ImageStreamTag
+# showback-external-metering:continuous that the Deployment pulls.
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  namespace: redhat-ods-monitoring
+  name: showback-external-metering
+  labels:
+    app.kubernetes.io/name: showback-external-metering
+spec:
+  runPolicy: Serial
+  successfulBuildsHistoryLimit: 2
+  failedBuildsHistoryLimit: 2
+  source:
+    type: Git
+    git:
+      uri: https://github.com/noyitz/ai-gateway-metering-service
+      ref: f9a56b1769b0933e3fe7454a174b1f42a229f07a
+    configMaps:
+    - configMap:
+        name: showback-metering-patches
+      destinationDir: .showback-patches
+    dockerfile: |
+      FROM docker.io/library/golang@sha256:78c9e40f10516d7070156948a1747347cc5093022f06deeff3c9decd5faa3af7 AS builder
+      ENV GOTOOLCHAIN=go1.26.0
+      WORKDIR /src
+      COPY . .
+      RUN git apply .showback-patches/0001-metering-correctness.patch \
+       && git apply .showback-patches/0002-continuous-showback.patch \
+       && rm -rf .showback-patches
+      RUN go mod download
+      RUN GOMAXPROCS=2 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -p=2 -trimpath -ldflags="-s -w" -o /metering-service ./cmd
+
+      FROM registry.access.redhat.com/ubi9/ubi-minimal@sha256:865c6a875328a1174ff7f17599574412edd327aa47812951b9bead902806dc53
+      LABEL org.opencontainers.image.source=https://github.com/noyitz/ai-gateway-metering-service \
+            org.opencontainers.image.revision=f9a56b1769b0933e3fe7454a174b1f42a229f07a
+      WORKDIR /
+      COPY --from=builder /metering-service /metering-service
+      USER 1001
+      ENTRYPOINT ["/metering-service"]
+  strategy:
+    type: Docker
+    dockerStrategy: {}
+  output:
+    to:
+      kind: ImageStreamTag
+      name: showback-external-metering:continuous
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+  triggers:
+  - type: ConfigChange

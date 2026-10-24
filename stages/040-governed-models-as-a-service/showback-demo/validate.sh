@@ -11,7 +11,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 syntax=pass
-for script in "$SCRIPT_DIR"/*.sh "$SCRIPT_DIR"/metering-backend/*.sh "$SCRIPT_DIR"/tests/*.sh; do
+for script in "$SCRIPT_DIR"/*.sh "$SCRIPT_DIR"/tests/*.sh; do
     bash -n "$script" || syntax="syntax error in ${script#"$REPO_ROOT"/}"
 done
 record 'Shell scripts parse' "$syntax"
@@ -76,12 +76,21 @@ else record 'Shared commitments fit their subscriptions and hourly token limits'
 
 if jq -e '[.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $m
     | ([$m[] | select(.kind == "Deployment") | .metadata.name] | sort) == ["showback-external-metering", "showback-external-metering-db"]
-    and all($m[] | select(.kind == "Deployment"); all(.spec.template.spec.containers[]; .image | test("@sha256:[a-f0-9]{64}$")))
+    # The database image is digest-pinned; the backend is the in-cluster build of a pinned commit on pinned bases.
+    and all($m[] | select(.kind == "Deployment" and .metadata.name == "showback-external-metering-db");
+        all(.spec.template.spec.containers[]; .image | test("@sha256:[a-f0-9]{64}$")))
+    and all($m[] | select(.kind == "Deployment" and .metadata.name == "showback-external-metering");
+        all(.spec.template.spec.containers[]; .image
+            == "image-registry.openshift-image-registry.svc:5000/redhat-ods-monitoring/showback-external-metering:continuous"))
+    and any($m[]; .kind == "BuildConfig" and (.spec.source.git.ref | test("^[a-f0-9]{40}$"))
+        and .spec.output.to == {kind: "ImageStreamTag", name: "showback-external-metering:continuous"}
+        and ([.spec.source.dockerfile | splits("\n") | select(startswith("FROM "))] as $from
+            | ($from | length) == 2 and all($from[]; test("@sha256:[a-f0-9]{64}( AS [a-z]+)?$"))))
     and any($m[]; .kind == "PersistentVolumeClaim" and .metadata.annotations["argocd.argoproj.io/sync-options"] == "Prune=false,Delete=false")
     and any($m[]; .kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile" and (.data.enabled | IN("true", "false")))' \
     "$work/bundle.json" >/dev/null; then
-    record 'External metering: pinned backend, retained database, explicit profile' pass
-else record 'External metering: pinned backend, retained database, explicit profile' 'Metering bundle differs'; fi
+    record 'External metering: pinned backend build, retained database, explicit profile' pass
+else record 'External metering: pinned backend build, retained database, explicit profile' 'Metering bundle differs'; fi
 
 if bash "$SCRIPT_DIR/tests/test-metering-profile.sh" > "$work/profile.log" 2>&1; then
     record 'Metering profile activation helper (mocked cluster)' pass
