@@ -1,7 +1,7 @@
 {
   "name": "hermes",
   "workspace": "ai-agents",
-  "image": "image-registry.openshift-image-registry.svc:5000/ai-agents/hermes-runtime-api@sha256:b20974ad1bd66f081a48455458f1a7e9f882efa882bbbfb173f94d395a32116c",
+  "image": "image-registry.openshift-image-registry.svc:5000/ai-agents/hermes-runtime-api@sha256:12ce55e0b107eaa75ae17def2fc7e5e7c8eba8109144a9e22257b89b439d5ea6",
   "cpu": "1",
   "memory": "1Gi",
   "env": {

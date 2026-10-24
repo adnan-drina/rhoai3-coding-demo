@@ -42,7 +42,7 @@ data:
           the console's generic Sandbox wizard: that path does not establish
           the gateway's supervisor and workspace-policy guarantees.
 
-          The image is pinned to sha256:86922260052003a80883880b40fa4245ae7645b25a4ee5f988ec7f1daca93d09.
+          The image is built in the cluster and pinned by digest in that template.
           HTTP and event-stream transport, restart and session persistence
           were qualified under the reviewed PR4150 runtime. Model-backed
           generation, task cancellation and selected-call MLflow traces

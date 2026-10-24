@@ -1,7 +1,7 @@
 {
   "name": "opencode",
   "workspace": "ai-agents",
-  "image": "image-registry.openshift-image-registry.svc:5000/ai-agents/opencode-runtime@sha256:86922260052003a80883880b40fa4245ae7645b25a4ee5f988ec7f1daca93d09",
+  "image": "image-registry.openshift-image-registry.svc:5000/ai-agents/opencode-runtime@sha256:077351c9f43dbb2f3a1d2745e37ec43ee964881ea7852c3881ab78356dd18d48",
   "cpu": "1",
   "memory": "1Gi",
   "env": {

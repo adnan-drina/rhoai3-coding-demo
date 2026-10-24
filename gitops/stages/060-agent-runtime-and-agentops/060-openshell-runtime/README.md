@@ -106,7 +106,7 @@ a cluster that has it: `oc delete imagestream opencode-runtime -n openshell`.
 |---|---|---|---|
 | MaaSSubscription | `opencode-private-qwen38`, `hermes-private-qwen38` | `models-as-a-service` | Owner `ai-admin`, only `internal-models/qwen3-8-27b`, 100,000 tokens per hour, priority 140 / 130, cost metadata. Wave 18, `SkipDryRunOnMissingResource=true`. |
 | MaaSSubscription | `opencode-developer-qwen38` | `models-as-a-service` | The same scope for owner `ai-developer`'s OpenCode sandbox, priority 135. |
-| ConfigMap | `opencode-runtime-contract`, `hermes-runtime-contract` | `ai-agents` | Non-secret names read by the setup helpers: workspace, sandbox, provider, subscription, model, key expiry (30 d), Hermes image digest. Wave 18. |
+| ConfigMap | `opencode-runtime-contract`, `hermes-runtime-contract` | `ai-agents` | Non-secret names read by the setup helpers: workspace, sandbox, provider, subscription, model, key expiry (30 d). Image digests live in the sandbox templates. Wave 18. |
 
 ### `client-traces/` — selected-call tracing
 

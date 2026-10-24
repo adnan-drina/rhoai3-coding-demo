@@ -60,9 +60,8 @@ writes only under `/sandbox`, and sees a placeholder instead of the MaaS key.
 ## Data
 
 - `opencode/`, `hermes/`: per agent the provider profile, sandbox template, start script and agent config;
-  `opencode/developer/` holds the developer sandbox's template and config. The developer template pins the image with
-  ripgrep (`sha256:1cb03b2c…`); `ai-admin`'s `opencode/template.json` still pins the earlier image, where OpenCode's
-  file search fails, until that sandbox is recreated on the new digest.
+  `opencode/developer/` holds the developer sandbox's template and config. The templates pin the digests that
+  `../images/build-opencode.sh` and `build-hermes.sh` print; a new cluster or rebuild needs a reviewed template change.
 - `global-policy.yaml`: the complete gateway-global policy both agents share (hard filesystem and Landlock denials,
   one MaaS route per agent binary). `__MAAS_COMMON_HOST__` is rendered from the live MaaS gateway at run time.
 - `qualification/`: the inference suite's run profile and temporary policy, and the no-network restore policy.
