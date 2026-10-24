@@ -1,0 +1,94 @@
+# Sync hook: starts a build of BuildConfig showback-external-metering when no build exists for its current inputs
+# (git ref, Dockerfile, patch ConfigMap), when the latest such build failed or was cancelled, or when the image tag is
+# missing. A BuildConfig's ConfigChange trigger fires only at creation, so changed inputs need this hook. It does not
+# wait for the build; the Deployment pulls the tag once it is pushed. Wave 1: after the BuildConfig and ConfigMap.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: redhat-ods-monitoring
+  name: showback-metering-build-starter
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: redhat-ods-monitoring
+  name: showback-metering-build-starter
+rules:
+- apiGroups: [build.openshift.io]
+  resources: [buildconfigs]
+  resourceNames: [showback-external-metering]
+  verbs: [get]
+- apiGroups: [build.openshift.io]
+  resources: [buildconfigs/instantiate]
+  resourceNames: [showback-external-metering]
+  verbs: [create]
+- apiGroups: [build.openshift.io]
+  resources: [builds]
+  verbs: [get, list]
+- apiGroups: [image.openshift.io]
+  resources: [imagestreamtags]
+  resourceNames: ['showback-external-metering:continuous']
+  verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: redhat-ods-monitoring
+  name: showback-metering-build-starter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: showback-metering-build-starter
+subjects:
+- kind: ServiceAccount
+  name: showback-metering-build-starter
+  namespace: redhat-ods-monitoring
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  namespace: redhat-ods-monitoring
+  name: start-showback-metering-build
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: showback-metering-build-starter
+      containers:
+      - name: start-build
+        image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities: {drop: [ALL]}
+          runAsNonRoot: true
+          seccompProfile: {type: RuntimeDefault}
+        resources:
+          requests: {cpu: 50m, memory: 256Mi}
+          limits: {cpu: 500m, memory: 1Gi}
+        command:
+        - /bin/bash
+        - -ceu
+        - |
+          BC=showback-external-metering
+          INPUTS='{.spec.source.git.ref}{"\n"}{.spec.source.dockerfile}{"\n"}{.spec.source.configMaps[*].configMap.name}'
+          want=$(oc get bc "$BC" -o jsonpath="$INPUTS" | sha256sum | cut -d' ' -f1)
+          latest=$(oc get builds -l "openshift.io/build-config.name=$BC" --sort-by=.metadata.creationTimestamp \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | tail -1)
+          if [ -n "$latest" ]; then
+            have=$(oc get build "$latest" -o jsonpath="$INPUTS" | sha256sum | cut -d' ' -f1)
+            phase=$(oc get build "$latest" -o jsonpath='{.status.phase}')
+            if [ "$have" = "$want" ]; then
+              case "$phase" in
+                New|Pending|Running) echo "Build $latest for the current inputs is $phase"; exit 0 ;;
+                Complete)
+                  if oc get istag "$BC:continuous" >/dev/null 2>&1; then echo "Build $latest is current"; exit 0; fi ;;
+              esac
+            fi
+          fi
+          oc start-build "$BC"

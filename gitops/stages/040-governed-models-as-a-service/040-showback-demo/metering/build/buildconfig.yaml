@@ -1,8 +1,9 @@
 # Builds the metering backend in the cluster (OCP "Builds using BuildConfig", Docker strategy), so a fresh environment
 # needs no workstation build: the pinned upstream commit, the two reviewed patches (ConfigMap
 # showback-metering-patches, generated from this folder) and the original digest-pinned base images. ConfigChange
-# starts a build when this object or its patch ConfigMap name (content hash) changes; the result is the ImageStreamTag
-# showback-external-metering:continuous that the Deployment pulls.
+# builds once at creation; the Sync hook start-build-job.yaml starts a build whenever the inputs (including the patch
+# ConfigMap's content-hashed name) change. The result is the ImageStreamTag showback-external-metering:continuous that
+# the Deployment pulls.
 apiVersion: build.openshift.io/v1
 kind: BuildConfig
 metadata:

@@ -17,6 +17,7 @@ resources:
 - servicemonitor.yaml
 - imagestream.yaml
 - build/buildconfig.yaml
+- build/start-build-job.yaml
 - profile.yaml
 - networkpolicy.yaml
 configMapGenerator:

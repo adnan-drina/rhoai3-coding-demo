@@ -40,8 +40,10 @@ The image is built in the cluster: `buildconfig.yaml` (OpenShift Docker-strategy
 upstream commit, applies `0001-metering-correctness.patch` then `0002-continuous-showback.patch` (mounted from the
 generated ConfigMap `showback-metering-patches-<hash>`; applied in a UBI stage because the Go base image has no git), builds with the original digest-pinned Go and UBI minimal base
 images and pushes `redhat-ods-monitoring/showback-external-metering:continuous`, which the Deployment pulls. A fresh
-environment therefore needs no workstation build. Changing a patch changes the ConfigMap hash and the BuildConfig, and
-the ConfigChange trigger builds again; follow it with `oc logs -f bc/showback-external-metering -n redhat-ods-monitoring`.
+environment therefore needs no workstation build. A BuildConfig's ConfigChange trigger fires only when it is created,
+so the Sync hook `start-build-job.yaml` starts a build on every sync whose inputs (git ref, Dockerfile, patch ConfigMap
+hash) have no running or completed build, or whose last build failed. Follow a build with
+`oc logs -f bc/showback-external-metering -n redhat-ods-monitoring`.
 
 The earlier workstation build and publish scripts (`build-local.sh`, `publish-local.sh`, `Containerfile`) and the
 local runtime probe and Go test procedure used to qualify this backend are in Git history (`ea5ad451` for the probe);

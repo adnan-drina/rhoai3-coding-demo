@@ -116,7 +116,7 @@ showback_source_state() {
             and (if .kind == "PersistentVolumeClaim" then .status.phase == "Bound" else true end)' <<<"$live" >/dev/null || {
                     echo "$kind $name source, ownership or readiness differs"; return;
                 }
-    done < <(jq -c '.[]' <<<"$SHOWBACK_DESIRED")
+    done < <(jq -c '.[] | select(.metadata.annotations["argocd.argoproj.io/hook"] == null)' <<<"$SHOWBACK_DESIRED")  # hooks are deleted on success
     profile=$(jq -c '.[] | select(.kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile")' \
         <<<"$SHOWBACK_DESIRED")
     if [[ -n "$profile" ]]; then

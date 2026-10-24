@@ -1,8 +1,9 @@
 # Evaluation runs from the terminal
 
 Two task scripts for the governed evaluation path, as an alternative to **Develop & train → Evaluations** in the
-dashboard. Both act as the logged-in OpenShift user (an Evaluated Models administrator, `rhods-admins`), run the
-cluster guard first, and give the user's token to `curl` only through `--config`.
+dashboard. Both act as the logged-in OpenShift user, run the cluster guard first, and give the user's token to `curl` only
+through `--config`. Run them as the installation administrator: besides EvalHub's tenant check they read the EvalHub
+and registry Routes and the model's pods, which `rhods-admins` members such as `ai-admin` cannot read.
 
 | Script | When to run | What it changes |
 |---|---|---|
