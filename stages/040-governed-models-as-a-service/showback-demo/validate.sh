@@ -85,7 +85,7 @@ if jq -e '[.[] | select(.metadata.labels["app.kubernetes.io/component"] == "exte
     and any($m[]; .kind == "BuildConfig" and (.spec.source.git.ref | test("^[a-f0-9]{40}$"))
         and .spec.output.to == {kind: "ImageStreamTag", name: "showback-external-metering:continuous"}
         and ([.spec.source.dockerfile | splits("\n") | select(startswith("FROM "))] as $from
-            | ($from | length) == 2 and all($from[]; test("@sha256:[a-f0-9]{64}( AS [a-z]+)?$"))))
+            | ($from | length) == 3 and all($from[]; test("@sha256:[a-f0-9]{64}( AS [a-z]+)?$"))))
     and any($m[]; .kind == "PersistentVolumeClaim" and .metadata.annotations["argocd.argoproj.io/sync-options"] == "Prune=false,Delete=false")
     and any($m[]; .kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile" and (.data.enabled | IN("true", "false")))' \
     "$work/bundle.json" >/dev/null; then

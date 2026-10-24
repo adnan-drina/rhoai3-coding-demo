@@ -23,14 +23,20 @@ spec:
     - configMap:
         name: showback-metering-patches
       destinationDir: .showback-patches
+    # The Go base image is Alpine without git, so the patches are applied in a UBI stage (git-core from the UBI repos).
     dockerfile: |
-      FROM docker.io/library/golang@sha256:78c9e40f10516d7070156948a1747347cc5093022f06deeff3c9decd5faa3af7 AS builder
-      ENV GOTOOLCHAIN=go1.26.0
+      FROM registry.access.redhat.com/ubi9/ubi-minimal@sha256:865c6a875328a1174ff7f17599574412edd327aa47812951b9bead902806dc53 AS patched
+      RUN microdnf install -y git-core && microdnf clean all
       WORKDIR /src
       COPY . .
       RUN git apply .showback-patches/0001-metering-correctness.patch \
        && git apply .showback-patches/0002-continuous-showback.patch \
-       && rm -rf .showback-patches
+       && rm -rf .showback-patches .git
+
+      FROM docker.io/library/golang@sha256:78c9e40f10516d7070156948a1747347cc5093022f06deeff3c9decd5faa3af7 AS builder
+      ENV GOTOOLCHAIN=go1.26.0
+      WORKDIR /src
+      COPY --from=patched /src/ ./
       RUN go mod download
       RUN GOMAXPROCS=2 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -p=2 -trimpath -ldflags="-s -w" -o /metering-service ./cmd
 
