@@ -7,7 +7,7 @@ kind: MachineSet
 metadata:
   annotations:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
-    demo.rhoai.io/source-machineset: ocp-wzxl7-worker-us-east-2a-compute
+    demo.rhoai.io/source-machineset: ocp-8h46r-worker-us-east-2a-compute
     machine.openshift.io/GPU: '1'
     machine.openshift.io/memoryMb: '65536'
     machine.openshift.io/vCPU: '8'
@@ -17,22 +17,22 @@ metadata:
     app.kubernetes.io/component: gpu-worker
     app.kubernetes.io/managed-by: argocd
     cluster-api/accelerator: nvidia-gpu
-    machine.openshift.io/cluster-api-cluster: ocp-wzxl7
-  name: ocp-wzxl7-gpu-us-east-2a
+    machine.openshift.io/cluster-api-cluster: ocp-8h46r
+  name: ocp-8h46r-gpu-us-east-2a
   namespace: openshift-machine-api
 spec:
   replicas: 0
   selector:
     matchLabels:
-      machine.openshift.io/cluster-api-cluster: ocp-wzxl7
-      machine.openshift.io/cluster-api-machineset: ocp-wzxl7-gpu-us-east-2a
+      machine.openshift.io/cluster-api-cluster: ocp-8h46r
+      machine.openshift.io/cluster-api-machineset: ocp-8h46r-gpu-us-east-2a
   template:
     metadata:
       labels:
-        machine.openshift.io/cluster-api-cluster: ocp-wzxl7
+        machine.openshift.io/cluster-api-cluster: ocp-8h46r
         machine.openshift.io/cluster-api-machine-role: worker
         machine.openshift.io/cluster-api-machine-type: worker
-        machine.openshift.io/cluster-api-machineset: ocp-wzxl7-gpu-us-east-2a
+        machine.openshift.io/cluster-api-machineset: ocp-8h46r-gpu-us-east-2a
         cluster-api/accelerator: nvidia-gpu
         node-role.kubernetes.io/gpu: ''
     spec:
@@ -59,7 +59,7 @@ spec:
             name: aws-cloud-credentials
           deviceIndex: 0
           iamInstanceProfile:
-            id: ocp-wzxl7-worker-profile
+            id: ocp-8h46r-worker-profile
           instanceType: g6e.2xlarge
           kind: AWSMachineProviderConfig
           metadata: {}
@@ -71,29 +71,29 @@ spec:
           - filters:
             - name: tag:Name
               values:
-              - ocp-wzxl7-node
+              - ocp-8h46r-node
           - filters:
             - name: tag:Name
               values:
-              - ocp-wzxl7-lb
+              - ocp-8h46r-lb
           subnet:
             filters:
             - name: tag:Name
               values:
-              - ocp-wzxl7-subnet-private-us-east-2a
+              - ocp-8h46r-subnet-private-us-east-2a
           tags:
-          - name: kubernetes.io/cluster/ocp-wzxl7
+          - name: kubernetes.io/cluster/ocp-8h46r
             value: owned
           - name: Stack
-            value: project openshift-cluster-h275t
+            value: project openshift-cluster-vlmvn
           - name: config
             value: openshift-cluster
           - name: guid
-            value: h275t
+            value: vlmvn
           - name: owner
             value: unknown
           - name: uuid
-            value: c9cb960c-03b8-54a1-a793-d504657163e3
+            value: 634d0b46-7ec1-5deb-96de-2dcfecbc54aa
           userDataSecret:
             name: worker-user-data
       taints:
