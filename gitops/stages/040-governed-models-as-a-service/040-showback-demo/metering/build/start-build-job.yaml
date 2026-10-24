@@ -1,8 +1,8 @@
 # Sync hook: starts a build of BuildConfig showback-external-metering when no build exists for its current inputs
 # (git ref, Dockerfile, patch ConfigMap), when the latest such build failed or was cancelled, or when the image tag is
-# missing. A BuildConfig's ConfigChange trigger fires only at creation, so changed inputs need this hook. It does not
-# wait for the build; the Deployment pulls the tag once it is pushed. Wave -1: after the BuildConfig, ConfigMap and
-# RBAC (-2), before the Deployment (0), which Argo CD would otherwise wait on while it has no image.
+# missing. A BuildConfig's ConfigChange trigger fires only at creation, so changed inputs need this hook. It waits for
+# the build and fails when the build fails, so the sync result reports the image. Wave -1: after the BuildConfig,
+# ConfigMap and RBAC (-2), before the Deployment (0); the Deployment's image trigger rolls it to the pushed digest.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -62,7 +62,7 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 2
-  activeDeadlineSeconds: 300
+  activeDeadlineSeconds: 1200
   template:
     spec:
       restartPolicy: OnFailure
@@ -84,6 +84,16 @@ spec:
         - |
           BC=showback-external-metering
           INPUTS='{.spec.source.git.ref}{"\n"}{.spec.source.dockerfile}{"\n"}{.spec.source.configMaps[*].configMap.name}'
+          await() {
+            while :; do
+              phase=$(oc get build "$1" -o jsonpath='{.status.phase}')
+              case "$phase" in
+                Complete) echo "Build $1 Complete"; return 0 ;;
+                Failed|Error|Cancelled) echo "Build $1 $phase" >&2; return 1 ;;
+              esac
+              sleep 10
+            done
+          }
           want=$(oc get bc "$BC" -o jsonpath="$INPUTS" | sha256sum | cut -d' ' -f1)
           latest=$(oc get builds -l "openshift.io/build-config.name=$BC" --sort-by=.metadata.creationTimestamp \
             -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | tail -1)
@@ -92,10 +102,10 @@ spec:
             phase=$(oc get build "$latest" -o jsonpath='{.status.phase}')
             if [ "$have" = "$want" ]; then
               case "$phase" in
-                New|Pending|Running) echo "Build $latest for the current inputs is $phase"; exit 0 ;;
+                New|Pending|Running) echo "Waiting for build $latest for the current inputs"; await "$latest"; exit ;;
                 Complete)
                   if oc get istag "$BC:continuous" >/dev/null 2>&1; then echo "Build $latest is current"; exit 0; fi ;;
               esac
             fi
           fi
-          oc start-build "$BC"
+          await "$(oc start-build "$BC" -o name | cut -d/ -f2)"

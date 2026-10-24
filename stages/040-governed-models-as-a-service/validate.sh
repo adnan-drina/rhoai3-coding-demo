@@ -81,13 +81,19 @@ showback_source_state() {
             == ["team-engineering","team-marketing","team-support"]
         and ([.[] | select(.kind == "LLMInferenceService") | .metadata.name] == ["mistral-small4-119b"])
         and ([.[] | select(.kind == "PersesDashboard")] | length) == 3
-        and all(.[]; .kind != "Job" and .kind != "CronJob" and .kind != "HorizontalPodAutoscaler"
+        and all(.[]; (.kind != "Job" or (.metadata.name == "start-showback-metering-build"
+                and .metadata.annotations["argocd.argoproj.io/hook"] == "Sync"))
+            and .kind != "CronJob" and .kind != "HorizontalPodAutoscaler"
             and .kind != "Config" and .kind != "LokiStack")
         and ([.[] | select(.kind == "Deployment") | .metadata.name] | sort)
             == ["showback-external-metering","showback-external-metering-db"]
-        and all($metering[]; (.metadata.name | startswith("showback-external-metering"))
-            and (.kind | IN("ConfigMap","Secret","Deployment","Service","PersistentVolumeClaim",
-                "ServiceMonitor","NetworkPolicy","ImageStream")))
+        and all($metering[]; ((.metadata.name | startswith("showback-external-metering"))
+                and (.kind | IN("ConfigMap","Secret","Deployment","Service","PersistentVolumeClaim",
+                    "ServiceMonitor","NetworkPolicy","ImageStream","BuildConfig")))
+            # In-cluster image build: patch ConfigMap and the Sync hook that starts the build, with its RBAC.
+            or (.kind == "ConfigMap" and (.metadata.name | startswith("showback-metering-patches-")))
+            or (.metadata.name == "showback-metering-build-starter" and (.kind | IN("ServiceAccount","Role","RoleBinding")))
+            or (.kind == "Job" and .metadata.name == "start-showback-metering-build"))
         and any($metering[]; .kind == "ConfigMap" and .metadata.name == "showback-external-metering-profile"
             and (.data.enabled | IN("true","false")))
         and any($metering[]; .kind == "PersistentVolumeClaim"
@@ -106,6 +112,9 @@ showback_source_state() {
             and .metadata.annotations["argocd.argoproj.io/tracking-id"] == $t
             and covers($d | if .kind == "ConfigMap" and .data == {} then del(.data)
                 elif .kind == "LLMInferenceService" then del(.spec.replicas)
+                # The image trigger resolves the metering tag to the digest of the latest in-cluster build.
+                elif .kind == "Deployment" and .metadata.name == "showback-external-metering"
+                    then del(.spec.template.spec.containers[].image)
                 elif .kind == "Secret" and .stringData != null
                     then .data = ((.data // {}) + (.stringData | map_values(@base64))) | del(.stringData)
                 else . end)
@@ -113,6 +122,9 @@ showback_source_state() {
                 if $d.spec.replicas == 0 then .spec.replicas == 0 and (.status.replicas // 0) == 0
                     and (.status.readyReplicas // 0) == 0 and (.status.availableReplicas // 0) == 0
                 else workload and ready_cond("Available") end else true end)
+            and (if .kind == "Deployment" and .metadata.name == "showback-external-metering" then
+                all(.spec.template.spec.containers[]; .image | test("^image-registry\\.openshift-image-registry\\.svc:5000/redhat-ods-monitoring/showback-external-metering@sha256:[a-f0-9]{64}$"))
+                else true end)
             and (if .kind == "PersistentVolumeClaim" then .status.phase == "Bound" else true end)' <<<"$live" >/dev/null || {
                     echo "$kind $name source, ownership or readiness differs"; return;
                 }

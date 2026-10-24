@@ -81,7 +81,9 @@ if jq -e '[.[] | select(.metadata.labels["app.kubernetes.io/component"] == "exte
         all(.spec.template.spec.containers[]; .image | test("@sha256:[a-f0-9]{64}$")))
     and all($m[] | select(.kind == "Deployment" and .metadata.name == "showback-external-metering");
         all(.spec.template.spec.containers[]; .image
-            == "image-registry.openshift-image-registry.svc:5000/redhat-ods-monitoring/showback-external-metering:continuous"))
+            == "image-registry.openshift-image-registry.svc:5000/redhat-ods-monitoring/showback-external-metering:continuous")
+        and (.metadata.annotations["image.openshift.io/triggers"] | fromjson
+            | any(.[]; .from == {kind: "ImageStreamTag", name: "showback-external-metering:continuous"})))
     and any($m[]; .kind == "BuildConfig" and (.spec.source.git.ref | test("^[a-f0-9]{40}$"))
         and .spec.output.to == {kind: "ImageStreamTag", name: "showback-external-metering:continuous"}
         and ([.spec.source.dockerfile | splits("\n") | select(startswith("FROM "))] as $from

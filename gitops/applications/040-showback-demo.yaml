@@ -32,6 +32,13 @@ spec:
       namespace: internal-models
       jsonPointers:
         - /spec/replicas
+    # The OpenShift image trigger resolves the metering image to the digest of each in-cluster build.
+    - group: apps
+      kind: Deployment
+      name: showback-external-metering
+      namespace: redhat-ods-monitoring
+      jqPathExpressions:
+        - .spec.template.spec.containers[] | select(.name == "metering") | .image
   # A published source change must not activate this optional demo unattended.
   syncPolicy:
     syncOptions:

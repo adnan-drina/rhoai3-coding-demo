@@ -5,6 +5,10 @@ metadata:
   name: showback-external-metering
   labels:
     app.kubernetes.io/name: showback-external-metering
+  annotations:
+    # OpenShift image trigger: each push to the tag rolls the Deployment to the new digest. Argo CD ignores the
+    # resolved image (gitops/applications/040-showback-demo.yaml).
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"showback-external-metering:continuous"},"fieldPath":"spec.template.spec.containers[?(@.name==\"metering\")].image"}]'
 spec:
   replicas: 1
   strategy:
@@ -24,8 +28,8 @@ spec:
           type: RuntimeDefault
       containers:
       - name: metering
-        # Built in the cluster by BuildConfig showback-external-metering (build/buildconfig.yaml). Until the first build
-        # pushes the tag, the kubelet retries the pull.
+        # Built in the cluster by BuildConfig showback-external-metering (build/buildconfig.yaml); the image trigger
+        # above replaces this tag with the pushed digest.
         image: image-registry.openshift-image-registry.svc:5000/redhat-ods-monitoring/showback-external-metering:continuous
         env:
         - name: SHOWBACK_PRICING_FILE

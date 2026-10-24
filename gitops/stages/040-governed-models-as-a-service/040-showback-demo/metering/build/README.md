@@ -39,10 +39,12 @@ backfill estimates are preserved, not newly qualified.
 The image is built in the cluster: `buildconfig.yaml` (OpenShift Docker-strategy BuildConfig) checks out the pinned
 upstream commit, applies `0001-metering-correctness.patch` then `0002-continuous-showback.patch` (mounted from the
 generated ConfigMap `showback-metering-patches-<hash>`; applied in a UBI stage because the Go base image has no git), builds with the original digest-pinned Go and UBI minimal base
-images and pushes `redhat-ods-monitoring/showback-external-metering:continuous`, which the Deployment pulls. A fresh
+images and pushes `redhat-ods-monitoring/showback-external-metering:continuous`; the Deployment's
+`image.openshift.io/triggers` annotation rolls it to each pushed digest (Argo CD ignores that resolved image). A fresh
 environment therefore needs no workstation build. A BuildConfig's ConfigChange trigger fires only when it is created,
 so the Sync hook `start-build-job.yaml` starts a build on every sync whose inputs (git ref, Dockerfile, patch ConfigMap
-hash) have no running or completed build, or whose last build failed. Follow a build with
+hash) have no running or completed build, or whose last build failed, and waits for it: a failed build fails the
+sync. Follow a build with
 `oc logs -f bc/showback-external-metering -n redhat-ods-monitoring`.
 
 The earlier workstation build and publish scripts (`build-local.sh`, `publish-local.sh`, `Containerfile`) and the
