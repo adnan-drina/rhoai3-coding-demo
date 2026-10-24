@@ -267,6 +267,7 @@ identity_setup() {
   done
   # Broker-only realm: personas are pre-linked to immutable OpenShift identities and never use profile attributes, so
   # the default user profile's required email and names must not stop their first login with an update-profile form.
+  kc_login  # the master administrator token is short-lived; the steps above can outlast it
   ra=$(realm /authentication/required-actions/VERIFY_PROFILE)
   if jq -e '.enabled != false' <<<"$ra" >/dev/null; then
     jq -c '.enabled = false | .defaultAction = false' <<<"$ra" | realm_write PUT /authentication/required-actions/VERIFY_PROFILE
