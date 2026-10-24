@@ -422,7 +422,8 @@ global_policy_get() {
   session_refresh
   out=$(export XDG_CONFIG_HOME="$WORK/native-admin"; bounded 30 "$CLI" --gateway openshell policy get --global --full -o json 2>"$WORK/policy.err") || rc=$?
   if (( rc == 0 )); then rm -f "$WORK/policy.err"; printf '%s' "$out"; return 0; fi
-  if grep -q 'no global policy revision found' "$WORK/policy.err"; then rm -f "$WORK/policy.err"; echo '{"policy":{},"hash":"none"}'; return 0; fi
+  # The CLI wraps its message across lines with a box-drawing margin.
+  if tr '\n' ' ' <"$WORK/policy.err" | sed 's/│/ /g' | tr -s ' ' | grep -q 'no global policy revision found'; then rm -f "$WORK/policy.err"; echo '{"policy":{},"hash":"none"}'; return 0; fi
   rm -f "$WORK/policy.err"
   fail "Bounded native operation failed: policy get; raw errors/credentials suppressed"
 }
