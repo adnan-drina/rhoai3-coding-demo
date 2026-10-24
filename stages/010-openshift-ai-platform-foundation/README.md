@@ -150,7 +150,7 @@ OpenShift GitOps provides declarative reconciliation through Argo CD. OpenShift 
 
 Persona sign-in is a task script, described in [`personas/README.md`](personas/README.md).
 
-The deploy script bootstraps OpenShift GitOps, then applies five component Argo CD Applications that reconcile the Stage 010 resources: `010-rhoai-operator`, `010-odf`, `010-observability-operators`, `010-rhoai-platform` and `010-access`. It then deploys the separate `010-sandbox-storage` and `010-console-observability` Applications (each alone with `deploy.sh --component NAME`, checked with `validate.sh --component NAME`) and adds the existing provider identities `RHOAI_ADMIN_USER` and `RHOAI_DEVELOPER_USER` to their demo groups (`rhods-admins` is operator-owned, so membership stays out of Git).
+The deploy script bootstraps OpenShift GitOps, then applies five component Argo CD Applications that reconcile the Stage 010 resources: `010-rhoai-operator`, `010-odf`, `010-observability-operators`, `010-rhoai-platform` and `010-access`. It then deploys the separate `010-sandbox-storage` and `010-console-observability` Applications (each alone with `deploy.sh --component NAME`, checked with `validate.sh --component NAME`) creates `RHOAI_ADMIN_USER` and `RHOAI_DEVELOPER_USER` in the Keycloak realm `sso` when an account is missing (a fresh environment ships only `admin`; the passwords come from `AI_ADMIN_PASSWORD` and `AI_DEVELOPER_PASSWORD` in `.env`, and existing accounts are never changed), and adds both to their demo groups (`rhods-admins` is operator-owned, so membership stays out of Git). Sign each persona in once with `personas/login.sh` before Stage 070, which links their OpenShift identities.
 
 ## References
 
