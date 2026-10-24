@@ -650,6 +650,27 @@ oc exec -n kuadrant-system deploy/limitador-limitador -- curl -s localhost:8080/
 
 Not every 503 is this reset: NVIDIA's shared endpoint returns its own `503 {"error":{"message":"Service temporarily overloaded"}}` for `nemotron-3-ultra-550b-a55b` under load (2 of 5 direct calls on 2026-10-09). Tell them apart by the body and by the gateway access log flags (`UC` for the reset, none for a forwarded provider error); the provider error is also subject to the held-response limitation above because its body carries no `usage`.
 
+## Qwen Calls Through MaaS Hang, Then Return 503
+
+**Affected stage:** Stage 040 and every consumer of Qwen through MaaS (Stage 050 evaluation, Stage 060 agents, Stage 070 and later developer tools)
+
+**Symptom:** Every `qwen3-8-27b` request through `https://maas.<apps-domain>/v1/...` waits until the client gives up, then
+the gateway logs `503 DC` with no upstream host; external models still answer. vLLM answers directly in its pod. An
+evaluation run "completes" with all scores 0. Seen on RHOAI 3.5.2 (2026-10-24) once the showback Mistral model was installed.
+
+**Likely cause:** A second `LLMInferenceService` in `internal-models` on the gateway's shared `api` listener. Istio
+merges both models' routes into one generated configuration for that listener, and the Qwen route receives the other
+model's endpoint picker (EPP). The Mistral EPP finds no Qwen endpoint (`failed to find endpoint candidates`) whether
+Mistral is stopped or running. Qwen's own `qwen3-8` listener keeps the right picker.
+
+**Diagnose:** `oc logs -n internal-models deploy/mistral-small4-119b-kserve-router-scheduler` shows `EPP received request`
+for the Qwen request IDs; in the gateway's `config_dump`, the `v1-model-routing` entries for
+`publishers/internal-models/models/qwen3-8-27b` on the `api` listener name the other model's `epp-service` cluster.
+
+**Recover:** Keep one local model in `internal-models` on the shared listener. The showback dedicated offer is opt-in for
+this reason (`040-showback-demo/dedicated/`); remove it from the component, publish, redeploy and prune its objects
+(`argocd app sync openshift-gitops/040-showback-demo --core --prune` limited to its resources). Raise with Red Hat.
+
 ## Gen AI Playground Gets No Answer From External Models
 
 **Affected stage:** Stage 040 external models used from the Gen AI Studio playground (RHOAI 3.5.1)

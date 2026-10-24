@@ -75,11 +75,12 @@ showback_source_state() {
         ${RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION:+--revision "$RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION"} \
         >/dev/null 2>&1 || { echo "showback Application not Synced and Healthy at its reviewed revision"; return; }
     jq -e '[.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $metering |
-        ([.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort)
-            == ["team-engineering","team-marketing","team-support"]
-        and ([.[] | select(.kind == "MaaSAuthPolicy") | .metadata.name] | sort)
-            == ["team-engineering","team-marketing","team-support"]
-        and ([.[] | select(.kind == "LLMInferenceService") | .metadata.name] == ["mistral-small4-119b"])
+        # The dedicated offer (team-marketing with its Mistral model) is opt-in.
+        ([.[] | select(.kind == "LLMInferenceService") | .metadata.name]) as $local
+        | (if $local == [] then ["team-engineering","team-support"] else ["team-engineering","team-marketing","team-support"] end) as $teams
+        | ($local == [] or $local == ["mistral-small4-119b"])
+        and ([.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort) == $teams
+        and ([.[] | select(.kind == "MaaSAuthPolicy") | .metadata.name] | sort) == $teams
         and ([.[] | select(.kind == "PersesDashboard")] | length) == 3
         and all(.[]; (.kind != "Job" or (.metadata.name == "start-showback-metering-build"
                 and .metadata.annotations["argocd.argoproj.io/hook"] == "Sync"))

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Offline checks for the showback demo: script syntax, the rendered component (team access matrix, dedicated model,
-# live dashboards, metering) and the metering-profile activation helper. Contacts no cluster.
+# Offline checks for the showback demo: script syntax, the rendered component (team access matrix, opt-in dedicated
+# model, live dashboards, metering) and the metering-profile activation helper. Contacts no cluster.
 # Usage: stages/040-governed-models-as-a-service/showback-demo/validate.sh
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,6 +17,9 @@ done
 record 'Shell scripts parse' "$syntax"
 
 kustomize build "$COMPONENT" | yaml_json > "$work/bundle.json"
+# The opt-in dedicated offer (Marketing's Mistral) is rendered separately; the access matrix covers both.
+kustomize build "$COMPONENT/dedicated" | yaml_json > "$work/dedicated.json"
+jq -s 'add' "$work/bundle.json" "$work/dedicated.json" > "$work/all.json"
 # Engineering and Support share Qwen; Marketing owns Mistral; Support alone reaches the external models.
 if jq -e '
     def refs($kind; $name): [.[] | select(.kind == $kind and .metadata.name == $name) | .spec.modelRefs[] |
@@ -28,15 +31,21 @@ if jq -e '
     and (. as $b | all("team-engineering", "team-marketing", "team-support"; . as $t |
         ($b | refs("MaaSSubscription"; $t)) == ($b | refs("MaaSAuthPolicy"; $t))))
     and all(.[] | select(.kind == "MaaSSubscription"); .spec.owner.users == ["showback-" + (.metadata.name | ltrimstr("team-"))])
-' "$work/bundle.json" >/dev/null; then
+' "$work/all.json" >/dev/null; then
     record 'Team access matrix: shared Qwen, dedicated Mistral, external for Support' pass
 else record 'Team access matrix: shared Qwen, dedicated Mistral, external for Support' 'Subscriptions or policies differ'; fi
 
 if jq -e '[.[] | select(.kind == "LLMInferenceService")] as $m | ($m | length) == 1
     and $m[0].metadata.name == "mistral-small4-119b" and $m[0].spec.replicas == 0
-    and any(.[]; .kind == "MaaSModelRef" and .metadata.name == "mistral-small4-119b")' "$work/bundle.json" >/dev/null; then
-    record 'Dedicated Mistral model is declared and stopped in Git' pass
-else record 'Dedicated Mistral model is declared and stopped in Git' 'Model or reference differs'; fi
+    and any(.[]; .kind == "MaaSModelRef" and .metadata.name == "mistral-small4-119b")' "$work/dedicated.json" >/dev/null; then
+    record 'Opt-in dedicated Mistral model is declared and stopped in Git' pass
+else record 'Opt-in dedicated Mistral model is declared and stopped in Git' 'Model or reference differs'; fi
+
+# A second local model on the shared api listener breaks Qwen routing on RHOAI 3.5.2, so the default installs none.
+if jq -e 'all(.[]; .kind != "LLMInferenceService" and .kind != "MaaSModelRef")
+    and all(.[]; .metadata.name != "team-marketing")' "$work/bundle.json" >/dev/null; then
+    record 'Default bundle installs no second local model' pass
+else record 'Default bundle installs no second local model' 'The default bundle declares a local model or the dedicated offer'; fi
 
 # Every dashboard panel is laid out, reads the RHOAI datasource and no financial number comes from a static report.
 if jq -e '[.[] | select(.kind == "PersesDashboard")] as $d
@@ -59,7 +68,7 @@ if jq -e '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showbac
         and (if .offer == "shared" then any($r[]; .record == "showback_offer_tariff_usd_per_million" and .labels.model == $i.model)
              else .offer == "dedicated" end))
     and ([$info[] | select(.offer == "dedicated") | .model] - [.[] | select(.kind == "LLMInferenceService") | .metadata.name]
-        | length) == 0' "$work/bundle.json" >/dev/null; then
+        | length) == 0' "$work/all.json" >/dev/null; then
     record 'Offer catalog: every offered model has an offering, sponsor and price' pass
 else record 'Offer catalog: every offered model has an offering, sponsor and price' 'Catalog incomplete'; fi
 

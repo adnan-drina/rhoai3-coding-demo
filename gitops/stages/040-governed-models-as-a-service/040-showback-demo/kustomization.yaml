@@ -1,14 +1,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Three-team showback demo: team access, the dedicated Mistral model, live offer dashboards and external metering.
+# Showback demo: Engineering and Support team access, live offer dashboards and external metering. The dedicated
+# Mistral offer (Marketing) is opt-in: add `- dedicated` below, publish and redeploy (see the showback README).
 resources:
   - team-engineering-subscription.yaml
   - team-engineering-auth-policy.yaml
-  - team-marketing-subscription.yaml
-  - team-marketing-auth-policy.yaml
   - team-support-subscription.yaml
   - team-support-auth-policy.yaml
-  - mistral
   - offer-catalog.yaml
   - dashboard-offer-external.yaml
   - dashboard-offer-dedicated.yaml
