@@ -126,10 +126,41 @@ check_operator_policy "$ROOT_DIR/gitops/stages/010-openshift-ai-platform-foundat
 deploy_component 010-sandbox-storage
 deploy_component 010-console-observability
 
-# ── Step 5: Demo group membership ───────────────────────────────────────────
+# ── Step 5: Persona accounts and demo group membership ──────────────────────
+# The personas sign in through the environment's Keycloak realm `sso` (the OpenShift `rhbk` provider). A fresh
+# environment ships only `admin` there, so a missing persona account is created with its .env password
+# (AI_ADMIN_PASSWORD, AI_DEVELOPER_PASSWORD). An existing account, its password, OAuth and the realm settings are
+# never changed. Uses the Keycloak Admin REST API with the operator's initial admin credential.
+keycloak_admin_token() {
+  oc get secret keycloak-initial-admin -n keycloak -o json \
+    | jq -j '"grant_type=password&client_id=admin-cli&username=\(.data.username | @base64d | @uri)"
+             + "&password=\(.data.password | @base64d | @uri)"' \
+    | curl -sSk --fail --data-binary @- "https://${KEYCLOAK_HOST}/realms/master/protocol/openid-connect/token" \
+    | jq -r '.access_token'
+}
+ensure_persona_account() {
+  local user="$1" first="$2" last="$3" password_var="$4" token count
+  token=$(keycloak_admin_token)
+  count=$(curl -sSk --fail --config <(printf 'header = "Authorization: Bearer %s"\n' "$token") \
+    "https://${KEYCLOAK_HOST}/admin/realms/sso/users?username=${user}&exact=true" | jq 'length')
+  if [[ "$count" != 0 ]]; then
+    log_success "Keycloak account $user exists in realm sso (unchanged)"
+    return
+  fi
+  [[ -n "${!password_var:-}" ]] || { log_error "Set $password_var in .env to create the $user account"; return 1; }
+  PERSONA_PASSWORD="${!password_var}" jq -n --arg user "$user" --arg first "$first" --arg last "$last" \
+    '{username: $user, enabled: true, emailVerified: true, email: "\($user)@rhoai3-demo.local",
+      firstName: $first, lastName: $last,
+      credentials: [{type: "password", value: $ENV.PERSONA_PASSWORD, temporary: false}]}' \
+    | curl -sSk --fail -o /dev/null --config <(printf 'header = "Authorization: Bearer %s"\n' "$token") \
+        -H 'Content-Type: application/json' --data-binary @- "https://${KEYCLOAK_HOST}/admin/realms/sso/users"
+  log_success "Keycloak account $user created in realm sso"
+}
 # Existing provider identities join the demo groups (rhods-admins is operator-owned, so membership is not in GitOps).
-# OAuth, passwords and the provider's realm are not changed here.
 if [[ -n "${RHOAI_ADMIN_USER:-}" && -n "${RHOAI_DEVELOPER_USER:-}" ]]; then
+  KEYCLOAK_HOST=$(oc get route keycloak -n keycloak -o jsonpath='{.spec.host}')
+  ensure_persona_account "$RHOAI_ADMIN_USER" AI Admin AI_ADMIN_PASSWORD
+  ensure_persona_account "$RHOAI_DEVELOPER_USER" AI Developer AI_DEVELOPER_PASSWORD
   for persona in "$RHOAI_ADMIN_USER" "$RHOAI_DEVELOPER_USER"; do
     oc get user "$persona" >/dev/null 2>&1 || log_warn "$persona has not completed a first provider login yet"
   done
