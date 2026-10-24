@@ -374,8 +374,10 @@ def bootstrap_project(api, row, project, commit, config, import_receipt=None):
             oc('get', 'secret', 'migration-source-' + name, '-n', 'app-platform-build', '-o', 'json')
         except subprocess.CalledProcessError as error:
             if '(NotFound)' not in error.stderr: raise
-            token = api.request('POST', f"projects/{project['id']}/access_tokens", {'name': 'run-declaration-reader', 'scopes': ['read_api'], 'access_level': 20})
-            ensure_secret('migration-source-' + name, 'app-platform-build', {'token': token['token']})
+            # GitLab requires an expiry for project access tokens (HTTP 400 without one); same 90 days as the delivery writer.
+            expiry = (datetime.date.today() + datetime.timedelta(days=90)).isoformat()
+            token = api.request('POST', f"projects/{project['id']}/access_tokens", {'name': 'run-declaration-reader', 'scopes': ['read_api'], 'access_level': 20, 'expires_at': expiry})
+            ensure_secret('migration-source-' + name, 'app-platform-build', {'token': token['token'], 'expires_at': expiry})
         # Only the platform coordinator may dispatch the privileged provisioner.
 
 
