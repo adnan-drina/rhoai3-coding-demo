@@ -65,8 +65,7 @@ writes only under `/sandbox`, and sees a placeholder instead of the MaaS key.
   file search fails, until that sandbox is recreated on the new digest.
 - `global-policy.yaml`: the complete gateway-global policy both agents share (hard filesystem and Landlock denials,
   one MaaS route per agent binary). `__MAAS_COMMON_HOST__` is rendered from the live MaaS gateway at run time.
-- `qualification/`: the inference suite's run profile and temporary policy, the no-network restore policy, the
-  transport template it expects in `openshell-developer`, and the historical host capability receipt.
+- `qualification/`: the inference suite's run profile and temporary policy, and the no-network restore policy.
 - `native.sh`: functions both scripts source (sessions, CLI, journal, setup steps); not run on its own.
 
 Images are built separately: [../images/README.md](../images/README.md).
