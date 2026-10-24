@@ -246,6 +246,25 @@ else
     record "Exact MLflow run FINISHED with metrics in the evaluation experiment" "$(api "api/2.0/mlflow/runs/get?run_id=$RUN_ID" |
       jq -r --arg r "$RUN_ID" --arg e "$EXPERIMENT_ID" '.run as $run | if $e != "" and $run.info.run_id == $r and $run.info.experiment_id == $e
         and $run.info.status == "FINISHED" and ($run.data.metrics // [] | length) > 0 then "pass" else "run, experiment or metrics differ" end' || echo "run not readable")"
+    # A run whose model calls all failed still completes, with every score 0; prove the job's own endpoint and Secret
+    # reach the model now, and do not accept an all-zero run as evaluation proof.
+    model_answers() {
+      local url name secret
+      url=$(jq -r '.model.url // ""' <<<"$JOB"); name=$(jq -r '.model.name // ""' <<<"$JOB"); secret=$(jq -r '.model.auth.secret_ref // ""' <<<"$JOB")
+      [[ "$url" == https://* && -n "$name" && -n "$secret" ]] || { echo "job model endpoint, name or Secret missing"; return; }
+      [[ "$url" == */v1 ]] || url="${url%/}/v1"
+      oc --request-timeout=10s get secret "$secret" -n "$TENANT" -o jsonpath='{.data.api-key}' | base64 -d |
+        awk '{ printf "header = \"Authorization: Bearer %s\"\n", $0 }' |
+        curl --config - -sk --max-time 60 -o "$WORK/answer" -w '%{http_code}' -H 'Content-Type: application/json' \
+          --data-binary "$(jq -cn --arg m "$name" '{model: $m, messages: [{role: "user", content: "Reply with OK."}], max_tokens: 16}')" \
+          "$url/chat/completions" > "$WORK/answer.code" || true
+      [[ $(cat "$WORK/answer.code") == 200 ]] && jq -e '(.choices[0].message.content // "") | length > 0' "$WORK/answer" >/dev/null &&
+        echo yes || echo "HTTP $(cat "$WORK/answer.code") without an answer"
+    }
+    check "Evaluated model answers through the job's endpoint with its tenant Secret" model_answers yes
+    if jq -e '[.results.benchmarks[].metrics[]] | all(. == 0)' <<<"$JOB" >/dev/null; then
+      record_warn "Evaluation scores" "every metric is 0; confirm the model answered during the run before accepting it"
+    fi
   fi
 fi
 echo "Scope: service/storage configuration, configured-group authorization and API discovery; persona sessions and dashboard checks are separate."
