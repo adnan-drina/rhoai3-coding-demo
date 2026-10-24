@@ -22,6 +22,15 @@ rules:
   - keycloak-initial-admin
   verbs:
   - get
+# The script reads its own realm import before a one-time master cache refresh.
+- apiGroups:
+  - k8s.keycloak.org
+  resources:
+  - keycloakrealmimports
+  resourceNames:
+  - platform-realm
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

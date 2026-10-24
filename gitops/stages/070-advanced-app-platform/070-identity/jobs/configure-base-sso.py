@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import subprocess
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -87,12 +88,30 @@ def main():
     issuer = checked_base_issuer(oc('get', 'oauth.config.openshift.io', 'cluster'), host)
     admin = oc('get', 'secret', 'keycloak-initial-admin', '-n', 'keycloak')['data']
     credentials = {k: base64.b64decode(admin[k]).decode() for k in ('username', 'password')}
-    request = urllib.request.Request(base + '/realms/master/protocol/openid-connect/token',
-        urllib.parse.urlencode(dict(grant_type='password', client_id='admin-cli', **credentials)).encode())
-    with urllib.request.urlopen(request, timeout=30) as response:
-        token = json.load(response)['access_token']
+    def login():
+        request = urllib.request.Request(base + '/realms/master/protocol/openid-connect/token',
+            urllib.parse.urlencode(dict(grant_type='password', client_id='admin-cli', **credentials)).encode())
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)['access_token']
+    session = {'token': login()}
     def realm(realm_name, method, path, data=None):
-        return api(base, token, method, '/admin/realms/' + realm_name + '/' + path, data)
+        return api(base, session['token'], method, '/admin/realms/' + realm_name + '/' + path, data)
+    # A native offline realm import can leave the master administrator's composite cache stale (upstream #45966),
+    # so the new platform realm answers 403: one supported cache refresh, only after this demo's import completed.
+    try:
+        realm('platform', 'GET', 'roles')
+    except urllib.error.HTTPError as error:
+        if error.code != 403:
+            raise
+        seed = oc('get', 'keycloakrealmimport', 'platform-realm', '-n', 'keycloak')
+        done = any(c.get('type') == 'Done' and c.get('status') == 'True' for c in seed.get('status', {}).get('conditions', []))
+        if (seed['metadata'].get('annotations', {}).get('argocd.argoproj.io/tracking-id')
+                != '070-identity:k8s.keycloak.org/KeycloakRealmImport:keycloak/platform-realm'
+                or seed['spec'].get('keycloakCRName') != 'keycloak' or not done):
+            raise ValueError('Platform realm import is not this demo\'s completed import; cache refresh refused')
+        api(base, session['token'], 'POST', '/admin/realms/master/clear-realm-cache')
+        session['token'] = login()
+        print('Native master cache refreshed once after the platform realm import')
     def existing_link(name, subject, target):
         return (oc('get', 'users.user.openshift.io', name),
                 oc('get', 'identities.user.openshift.io', 'rhbk:' + subject),
@@ -184,7 +203,7 @@ def main():
             realm('platform', 'PUT', 'identity-provider/instances/openshift', provider)
     ensure_client(sonar_client(sonar_host))
     os.environ['SCM_IDENTITY_URL'] = base
-    os.environ['SCM_ADMIN_TOKEN'] = token
+    os.environ['SCM_ADMIN_TOKEN'] = session['token']
     subprocess.run(['python3', '/scripts/configure-scm-identity.py'], check=True)
     print('Base SSO linked; application subjects, roles, credentials and base-platform clients preserved')
 
