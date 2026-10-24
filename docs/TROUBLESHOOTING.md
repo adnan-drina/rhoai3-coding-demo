@@ -671,6 +671,20 @@ for the Qwen request IDs; in the gateway's `config_dump`, the `v1-model-routing`
 this reason (`040-showback-demo/dedicated/`); remove it from the component, publish, redeploy and prune its objects
 (`argocd app sync openshift-gitops/040-showback-demo --core --prune` limited to its resources). Raise with Red Hat.
 
+## A MaaSAuthPolicy Stays Not Ready After A Conflict
+
+**Affected stage:** Stage 040 (`validate.sh` readiness: "Declared MaaS subscriptions and auth policies Active and Ready")
+
+**Symptom:** One MaaSAuthPolicy keeps `Ready=False`, reason `ReconcileFailed`, message `failed to update gateway
+AuthPolicy ... the object has been modified`, while the other policies are Ready and later reconciles report the
+gateway AuthPolicy unchanged. Seen on RHOAI 3.5.2 when several MaaS objects changed at once (2026-10-24, a showback prune).
+
+**Likely cause:** The MaaS controller does not retry a MaaSAuthPolicy after an optimistic-lock conflict on the shared
+gateway AuthPolicy `openshift-ingress/maas-gateway-auth`. The gateway policy itself is current; only the status is stale.
+
+**Recover:** Restart the controller so it reconciles every policy at start; no configuration changes:
+`oc delete pod -n redhat-ods-applications -l control-plane=maas-controller`. Raise with Red Hat.
+
 ## Gen AI Playground Gets No Answer From External Models
 
 **Affected stage:** Stage 040 external models used from the Gen AI Studio playground (RHOAI 3.5.1)
