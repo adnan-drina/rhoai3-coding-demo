@@ -56,9 +56,9 @@ done < <(jq -r '.wheels[] | [.url, .filename, .sha256] | @tsv' "$SCRIPT_DIR/herm
 
 # ── Build, then read back the immutable output digest ──────────────────────────────────────────────────────────────
 BUILD=$(oc --request-timeout=120s start-build "$NAME" -n ai-agents --from-dir="$CONTEXT" -o name)
-# A terminal failed build must not wait for the successful-completion deadline.
+# A terminal failed build must not wait for the successful-completion deadline (BuildConfig: 1800 s).
 phase=""
-for _ in $(seq 1 120); do
+for _ in $(seq 1 370); do
   phase=$(oc --request-timeout=15s get "$BUILD" -n ai-agents -o jsonpath='{.status.phase}')
   case "$phase" in
     Complete) break ;;

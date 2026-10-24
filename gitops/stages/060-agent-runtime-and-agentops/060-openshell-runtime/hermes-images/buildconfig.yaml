@@ -12,7 +12,8 @@ spec:
   runPolicy: Serial
   successfulBuildsHistoryLimit: 1
   failedBuildsHistoryLimit: 1
-  completionDeadlineSeconds: 600
+  # A node without the large Stage 130 workspace base image cached spends about 9 minutes pulling it.
+  completionDeadlineSeconds: 1800
   source:
     type: Binary
     binary: {}
