@@ -9,12 +9,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '10'
     argocd.argoproj.io/sync-options: Delete=false,Prune=false
+# The tag opencode-runtime:1.18.16 is created by BuildConfig opencode-runtime (images/build-opencode.sh); sandbox
+# templates pin the resulting digest.
 spec:
-  tags:
-  - name: 1.18.16
-    from:
-      kind: ImageStreamImage
-      namespace: openshell
-      name: opencode-runtime@sha256:86922260052003a80883880b40fa4245ae7645b25a4ee5f988ec7f1daca93d09
-    referencePolicy:
-      type: Local
+  lookupPolicy:
+    local: false

@@ -85,15 +85,14 @@ one lifecycle and one readiness gate. Helm is not run by Argo CD: the chart is r
 | Job | `openshell-runtime-prerequisites` | `openshell` | Sync hook, wave -5, `BeforeHookCreation,HookSucceeded`, deadline 360 s. The startup gate (see How). |
 | NetworkPolicy | `deny-direct-sandbox-router` | `agent-sandbox-system` | Empty ingress for the operator's `sandbox-router` pods: sandboxes are reached only through the gateway. Wave -25. |
 
-### `images/`, `hermes-images/`, `compatibility-images/` — agent images
+### `images/`, `hermes-images/` — agent images
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| ImageStream | `opencode-runtime` | `ai-agents` | Tag `1.18.16` from the qualified digest in `openshell/opencode-runtime`, `referencePolicy: Local`. `Delete=false,Prune=false`. |
+| ImageStream | `opencode-runtime` | `ai-agents` | Receives `opencode-runtime:1.18.16` from the BuildConfig below; no spec tags. `Delete=false,Prune=false`. |
 | BuildConfig | `opencode-runtime` | `ai-agents` | Binary Docker build [14] to `opencode-runtime:1.18.16`; started by [`images/build-opencode.sh`](../../../../stages/060-agent-runtime-and-agentops/images/README.md). |
 | ImageStream, BuildConfig | `hermes-runtime-api` | `ai-agents` | Binary Docker build to `hermes-runtime-api:0.20.5-api`; started by [`images/build-hermes.sh`](../../../../stages/060-agent-runtime-and-agentops/images/README.md). ImageStream `Delete=false,Prune=false`. |
-| ImageStream, BuildConfig | `opencode-runtime` | `openshell` | Earlier build location, kept for sandboxes in `openshell-developer`. |
-| Role, RoleBinding | `opencode-runtime-pull`, `hermes-runtime-api-pull` | `ai-agents`, `openshell` | `imagestreams/layers` get for the workspace `openshell-sandbox` account; in `ai-agents`, `opencode-runtime-pull` also admits the `openshell-developer` account for the developer's OpenCode sandbox. |
+| Role, RoleBinding | `opencode-runtime-pull`, `hermes-runtime-api-pull` | `ai-agents` | `imagestreams/layers` get for the workspace `openshell-sandbox` account; in `ai-agents`, `opencode-runtime-pull` also admits the `openshell-developer` account for the developer's OpenCode sandbox. |
 
 All at wave 10.
 
