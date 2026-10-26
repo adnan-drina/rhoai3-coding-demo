@@ -2991,7 +2991,7 @@ webhook pod runs, but `openshift-operators/tekton-operator-webhook` (a bundle Se
 
 **Likely cause:** A fresh install started below the channel head: OLM installed the `startingCSV`, upgraded at once,
 recorded the bundle Service as present for the new InstallPlan, and garbage collection removed it with the replaced
-CSV. Git now starts at the channel head (`pipelines-subscription.yaml`).
+CSV. `pipelines-subscription.yaml` now sets no `startingCSV`, so OLM installs the channel head.
 
 **Recover:** Let OLM install the bundle again: delete the current Pipelines CSV in `openshift-operators`; the
 Subscription reinstalls it and recreates its Services (TektonConfig and other operands are kept). Then redeploy Stage 070.
@@ -3008,8 +3008,8 @@ exists and is not referenced by a subscription`. The new Pipelines CSV is Pendin
 webhook mutates ServiceMonitors, was still starting. A failed InstallPlan is terminal, and once its CSV is removed the
 Subscription still names it as installed, so the old CSV is orphaned and resolution blocks the whole namespace.
 
-**Recover:** confirm `rhods-operator-service` has endpoints, bump `startingCSV` in `pipelines-subscription.yaml` to the
-channel head (see the entry above) and push, then delete the Pipelines CSVs and the
+**Recover:** confirm `rhods-operator-service` has endpoints and that `pipelines-subscription.yaml` sets no
+`startingCSV` (OLM then installs the channel head; see the entry above), then delete the Pipelines CSVs and the
 `openshift-pipelines-operator-rh` Subscription in `openshift-operators`. Argo CD recreates the Subscription from Git and
 OLM installs the head; operands and CRDs are kept. Then redeploy Stage 070.
 

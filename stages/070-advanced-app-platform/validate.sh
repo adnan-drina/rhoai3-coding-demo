@@ -107,7 +107,7 @@ for row in \
   read -r ns subscription csv <<< "$row"
   if [[ "$ns" == openshift-operators ]]; then
     # Automatic versioned channels admit patch updates. startingCSV is an
-    # installation floor, not an installed-version lock (1.24.2 observed live).
+    # installation floor, not an installed-version lock; Pipelines sets none (1.24.2 observed live).
     installed=$(oc get subscription "$subscription" -n "$ns" -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)
     pattern="^${csv//./\\.}[0-9]+$"
     check "$subscription stays on selected minor" "printf '%s' '$installed' | contains -E '$pattern' && echo SELECTED" 'SELECTED'
