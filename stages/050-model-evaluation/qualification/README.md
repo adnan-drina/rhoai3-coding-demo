@@ -42,7 +42,8 @@ translates with the risk assessment model. TAP runs one round (`depth: 1`, pipel
 later round sends empty attack prompts, and the default ten rounds took about 30 minutes per intent, so two scans ran
 past their 2 h limit. Garak counts an attempt without a response as a refusal, so the verdict counts unanswered
 attempts in each scan's report and voids a result above 2%. Both scans suppress Garak's default `stop` sequences
-(`#`, `;`; pipeline v21): they cut answers short and the guardrail server rejects a request that carries them. It needs the candidate model auth Secret `garak-kfp-model-auth`, whose `judge_url` and
+(`#`, `;`; pipeline v21): they cut answers short and the guardrail server rejects a request that carries them. The guardrail answers such a failure with HTTP 200 and the
+text `Internal server error`, which the verdict counts as unanswered (v22). It needs the candidate model auth Secret `garak-kfp-model-auth`, whose `judge_url` and
 `sdg_url` point at the abliterated risk assessment model (`gemma-2-9b-abliterated` in the same project, running as SDG
 model and judge). The `garak-kfp` provider stays available for manual pipeline-mode scans
 ([evaluation README](../evaluation/README.md)).

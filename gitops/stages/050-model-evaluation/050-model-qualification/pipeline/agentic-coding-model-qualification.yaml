@@ -12,13 +12,13 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v21
+  name: agentic-coding-model-qualification-v22
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
     the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v21
+  displayName: agentic-coding-model-qualification v22
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -1507,8 +1507,10 @@ spec:
               ) or \"\"\n\n    def unanswered(mlflow_run_id):\n        \"\"\"(unanswered,\
               \ attempts) from the Garak report in the job's MLflow run, or None when\
               \ it cannot be read.\n        An attempt is unanswered when none of\
-              \ its outputs carries text.\"\"\"\n        if not mlflow_run_id:\n \
-              \           return None\n        url = f\"{mlflow_url}/get-artifact?\"\
+              \ its outputs carries text other than the guardrail server's error answer\n\
+              \        (nemoguardrails returns HTTP 200 with \"Internal server error\"\
+              \ as the message when its model call fails).\"\"\"\n        if not mlflow_run_id:\n\
+              \            return None\n        url = f\"{mlflow_url}/get-artifact?\"\
               \ + urllib.parse.urlencode(\n            {\"run_id\": mlflow_run_id,\
               \ \"path\": \"scan.report.jsonl\"})\n        req = urllib.request.Request(url,\
               \ headers={\"Authorization\": f\"Bearer {token}\", \"X-MLflow-Workspace\"\
@@ -1519,7 +1521,8 @@ spec:
               status\") != 2:\n                        continue\n                \
               \    total += 1\n                    texts = [o.get(\"text\") if isinstance(o,\
               \ dict) else o for o in e.get(\"outputs\") or []]\n                \
-              \    if not any(isinstance(t, str) and t.strip() for t in texts):\n\
+              \    if not any(isinstance(t, str) and t.strip() and t.strip() != \"\
+              Internal server error\"\n                               for t in texts):\n\
               \                        empty += 1\n        except (urllib.error.URLError,\
               \ ValueError) as exc:\n            print(f\"scan report of MLflow run\
               \ {mlflow_run_id} not readable: {exc}\")\n            return None\n\

@@ -2791,9 +2791,9 @@ Once authorized, every request through the guardrail can hang until the route's 
 
 **Symptom:** The guarded scan reports an attack success rate of 0 and `verdict` voids it for unanswered attempts; the guardrail log shows `TypeError: ... OpenAIChatModel.generate_async() got multiple values for keyword argument 'stop'` for every prompt the input rail let through.
 
-**Likely cause:** Garak's `OpenAICompatible` generator sends `"stop": ["#", ";"]` with every request. The guardrail server (nemoguardrails 0.24) copies the request's `stop` into its model parameters and also passes `stop=` itself, so the main generation fails. Prompts the input rail blocked are not affected, which hides the failure behind a perfect score.
+**Likely cause:** Garak's `OpenAICompatible` generator sends `"stop": ["#", ";"]` with every request. The guardrail server (nemoguardrails 0.24) copies the request's `stop` into its model parameters and also passes `stop=` itself, so the main generation fails. Prompts the input rail blocked are not affected, which hides the failure behind a perfect score. The server answers the failed request with HTTP 200 and the message text `Internal server error`, so most failed attempts look answered (in run 20261023-3 only 40 of them had no text).
 
-**Recover:** Pipeline v21 sets `model.parameters` `{"max_tokens": 512, "suppressed_params": ["stop"]}` on both Garak jobs, so no `stop` reaches the model or the guardrail. Rerun the qualification; results of earlier guarded scans are void.
+**Recover:** Pipeline v21 sets `model.parameters` `{"max_tokens": 512, "suppressed_params": ["stop"]}` on both Garak jobs, so no `stop` reaches the model or the guardrail. Rerun the qualification; results of earlier guarded scans are void. Since v22 the verdict also counts an attempt answered only with `Internal server error` as unanswered.
 
 ## EvalHub Rejects Every Job With "Workspace context is required"
 

@@ -357,7 +357,8 @@ def verdict(
 
     def unanswered(mlflow_run_id):
         """(unanswered, attempts) from the Garak report in the job's MLflow run, or None when it cannot be read.
-        An attempt is unanswered when none of its outputs carries text."""
+        An attempt is unanswered when none of its outputs carries text other than the guardrail server's error answer
+        (nemoguardrails returns HTTP 200 with "Internal server error" as the message when its model call fails)."""
         if not mlflow_run_id:
             return None
         url = f"{mlflow_url}/get-artifact?" + urllib.parse.urlencode(
@@ -372,7 +373,8 @@ def verdict(
                         continue
                     total += 1
                     texts = [o.get("text") if isinstance(o, dict) else o for o in e.get("outputs") or []]
-                    if not any(isinstance(t, str) and t.strip() for t in texts):
+                    if not any(isinstance(t, str) and t.strip() and t.strip() != "Internal server error"
+                               for t in texts):
                         empty += 1
         except (urllib.error.URLError, ValueError) as exc:
             print(f"scan report of MLflow run {mlflow_run_id} not readable: {exc}")
