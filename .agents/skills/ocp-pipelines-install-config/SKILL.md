@@ -34,7 +34,7 @@ OpenShift Pipelines 1.24 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Subscription `openshift-pipelines-operator-rh` in `openshift-operators`, channel `pipelines-1.24`, Automatic; `startingCSV` v1.24.1 (channel head; an older floor upgraded mid-install and OLM lost the operator webhook Service) | `070-pipelines/operators/pipelines-subscription.yaml` | [Install by using the CLI][install-cli] |
+| Subscription `openshift-pipelines-operator-rh` in `openshift-operators`, channel `pipelines-1.24`, Automatic; `startingCSV` v1.24.2 (channel head; an older floor upgraded mid-install and OLM lost the operator webhook Service) | `070-pipelines/operators/pipelines-subscription.yaml` | [Install by using the CLI][install-cli] |
 | Automatic approval because `openshift-operators` is shared (RHTAS too); Dev Spaces, RHDH and MTA use Manual approval with their own approver hooks | same; `stages/070-advanced-app-platform/validate.sh` (minor check) | [Install by using the CLI][install-cli] |
 | `TektonConfig` `config` is operator-owned: Sync-hook Jobs patch single fields, never declare the CR | `070-pipelines/operators/configure-tekton-pruner.yaml`, `070-pipelines/build/tektonconfig-affinity.yaml` | [Customizing TektonConfig][tektonconfig] |
 | Pruner: PipelineRuns only, keep 10, hourly (product default keep 100, daily at 08:00) | `070-pipelines/operators/configure-tekton-pruner.yaml` | [Configuring the pruner][pruner] |

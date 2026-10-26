@@ -25,7 +25,7 @@ One Application holds these parts because they change together: the per-project 
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| Subscription | `openshift-pipelines-operator-rh` | `openshift-operators` | Channel `pipelines-1.24`, Automatic, `startingCSV` v1.24.1, the channel head, so a fresh install does not upgrade mid-install (wave 2) |
+| Subscription | `openshift-pipelines-operator-rh` | `openshift-operators` | Channel `pipelines-1.24`, Automatic, `startingCSV` v1.24.2, the channel head, so a fresh install does not upgrade mid-install (wave 2) |
 | Subscription | `rhtas-operator` | `openshift-operators` | Channel `stable-v1.5`, Automatic, `startingCSV` v1.5.0 (wave 2) |
 | ClusterRole | `pipeline-userns-builder` | cluster | `use` on the default `nested-container` SCC (wave 3) |
 | SA, ClusterRole, ClusterRoleBinding, Job (Sync hook) | `configure-tekton-pruner` | `app-platform-build` | Patches `TektonConfig` pruner: PipelineRuns, keep 10, hourly (Job wave 12) |

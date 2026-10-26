@@ -2986,6 +2986,23 @@ CSV. Git now starts at the channel head (`pipelines-subscription.yaml`).
 **Recover:** Let OLM install the bundle again: delete the current Pipelines CSV in `openshift-operators`; the
 Subscription reinstalls it and recreates its Services (TektonConfig and other operands are kept). Then redeploy Stage 070.
 
+## Shared-namespace Subscriptions report ConstraintsNotSatisfiable after a cluster restart
+
+**Symptom:** after the cluster resumes, `040-maas-operators`, `070-devspaces` and `070-pipelines` are Degraded; every
+Subscription in `openshift-operators` reports `constraints not satisfiable: ... openshift-pipelines-operator-rh.v1.24.1
+exists and is not referenced by a subscription`. The new Pipelines CSV is Pending and its InstallPlan is Failed with
+`failed calling webhook "servicemonitor-injector.opendatahub.io" ... no endpoints available for service
+"rhods-operator-service"`.
+
+**Likely cause:** an Automatic z-stream upgrade (seen with 1.24.1 → 1.24.2) ran while the RHOAI operator, whose
+webhook mutates ServiceMonitors, was still starting. A failed InstallPlan is terminal, and once its CSV is removed the
+Subscription still names it as installed, so the old CSV is orphaned and resolution blocks the whole namespace.
+
+**Recover:** confirm `rhods-operator-service` has endpoints, bump `startingCSV` in `pipelines-subscription.yaml` to the
+channel head (see the entry above) and push, then delete the Pipelines CSVs and the
+`openshift-pipelines-operator-rh` Subscription in `openshift-operators`. Argo CD recreates the Subscription from Git and
+OLM installs the head; operands and CRDs are kept. Then redeploy Stage 070.
+
 ## Stage 070 shared-namespace upgrades or MaaS discovery refuse
 
 Pipelines and TAS keep Automatic approval on versioned channels in the shared `openshift-operators` namespace. Dedicated Dev Spaces/RHDH/MTA installs use the exact reviewed allowlist, including DWO 0.43.0; their approval hook does not approve unrelated shared-namespace plans. MaaS consumers select the unique listener with a `maas.` hostname, independent of the listener name; zero or multiple matches refuse. Historical analyzer nonzero exceptions remain limited to the measured 8.2.1 defect and do not waive MTA 8.3 failures.
