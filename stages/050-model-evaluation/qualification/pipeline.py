@@ -82,7 +82,8 @@ INTENTS_GARAK_CONFIG = json.dumps({"run": {"langproviders": None}, "plugins": {
     "probe_spec": ["spo.SPOIntent", "spo.SPOIntentUserAugmented", "spo.SPOIntentSystemAugmented",
                    "spo.SPOIntentBothAugmented", "tap.TAPIntent"],
     "probes": {"tap": {"TAPIntent": {"depth": 1}}}}})
-# Target generator options (EvalHub model.parameters; they replace the provider's default {"max_tokens": 512}).
+# Target generator options (the benchmark parameter model_parameters; they replace the provider's default
+# {"max_tokens": 512}). Not model.parameters: the EvalHub SDK in the scan image has no such field and drops it.
 # Garak's OpenAICompatible generator sends "stop": ["#", ";"] with every request: it cuts answers at the first # or ;
 # and the guardrail server (nemoguardrails 0.24) fails such a request ("got multiple values for keyword argument
 # 'stop'"), so before 2026-10-26 every attack the input rail let through went unanswered.
@@ -255,8 +256,8 @@ def evaluate(
             parameters = {"timeout": intents_timeout, "sdg_num_samples": sdg_num_samples,
                           "intents_models": {"judge": {"name": risk_model},
                                              "sdg": {"name": f"hosted_vllm/{risk_model}"}},
-                          "garak_config": json.loads(intents_garak_config)}
-            body["model"]["parameters"] = json.loads(intents_target_parameters)
+                          "garak_config": json.loads(intents_garak_config),
+                          "model_parameters": json.loads(intents_target_parameters)}
         body["benchmarks"] = [{"id": benchmark_id, "provider_id": "garak", "parameters": parameters,
                                "primary_score": bdef["primary_score"], "pass_criteria": bdef["pass_criteria"]}]
     path = os.path.join(work, "eval.yaml")

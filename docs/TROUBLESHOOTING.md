@@ -2793,7 +2793,7 @@ Once authorized, every request through the guardrail can hang until the route's 
 
 **Likely cause:** Garak's `OpenAICompatible` generator sends `"stop": ["#", ";"]` with every request. The guardrail server (nemoguardrails 0.24) copies the request's `stop` into its model parameters and also passes `stop=` itself, so the main generation fails. Prompts the input rail blocked are not affected, which hides the failure behind a perfect score. The server answers the failed request with HTTP 200 and the message text `Internal server error`, so most failed attempts look answered (in run 20261023-3 only 40 of them had no text).
 
-**Recover:** Pipeline v21 sets `model.parameters` `{"max_tokens": 512, "suppressed_params": ["stop"]}` on both Garak jobs, so no `stop` reaches the model or the guardrail. Rerun the qualification; results of earlier guarded scans are void. Since v22 the verdict also counts an attempt answered only with `Internal server error` as unanswered.
+**Recover:** Pipeline v23 sets the benchmark parameter `model_parameters` `{"max_tokens": 512, "suppressed_params": ["stop"]}` on both Garak jobs, so no `stop` reaches the model or the guardrail. (v21 and v22 set `model.parameters`, which the EvalHub SDK in the scan image drops: the job's `/meta/job.json` has no `model.parameters`, and the scan's `config.json` shows `suppressed_params: null`.) Check a running scan with `cat /tmp/.cache/trustyai_garak_scans/*/config.json` in its `adapter` container. Rerun the qualification; results of earlier guarded scans are void. Since v22 the verdict also counts an attempt answered only with `Internal server error` as unanswered.
 
 ## EvalHub Rejects Every Job With "Workspace context is required"
 

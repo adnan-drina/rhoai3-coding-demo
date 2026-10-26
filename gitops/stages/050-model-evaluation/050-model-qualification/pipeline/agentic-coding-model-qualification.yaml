@@ -12,13 +12,13 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v22
+  name: agentic-coding-model-qualification-v23
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
     the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v22
+  displayName: agentic-coding-model-qualification v23
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -503,42 +503,42 @@ spec:
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
               hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
-              : json.loads(intents_garak_config)}\n            body[\"model\"][\"\
-              parameters\"] = json.loads(intents_target_parameters)\n        body[\"\
-              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
-              \ \"parameters\": parameters,\n                               \"primary_score\"\
-              : bdef[\"primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"\
-              ]}]\n    path = os.path.join(work, \"eval.yaml\")\n    with open(path,\
-              \ \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n \
-              \   print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
-              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
-              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
-              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
-              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
-              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
-              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
-              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
-              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
-              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
-              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
-              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
-              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
-              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
-              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
-              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
+              : json.loads(intents_garak_config),\n                          \"model_parameters\"\
+              : json.loads(intents_target_parameters)}\n        body[\"benchmarks\"\
+              ] = [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
+              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
+              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
+              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
+              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
+              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
+              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
+              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
+              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
+              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
+              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
+              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
+              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
+              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
+              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
+              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
+              benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -647,42 +647,42 @@ spec:
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
               hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
-              : json.loads(intents_garak_config)}\n            body[\"model\"][\"\
-              parameters\"] = json.loads(intents_target_parameters)\n        body[\"\
-              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
-              \ \"parameters\": parameters,\n                               \"primary_score\"\
-              : bdef[\"primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"\
-              ]}]\n    path = os.path.join(work, \"eval.yaml\")\n    with open(path,\
-              \ \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n \
-              \   print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
-              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
-              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
-              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
-              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
-              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
-              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
-              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
-              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
-              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
-              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
-              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
-              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
-              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
-              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
-              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
+              : json.loads(intents_garak_config),\n                          \"model_parameters\"\
+              : json.loads(intents_target_parameters)}\n        body[\"benchmarks\"\
+              ] = [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
+              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
+              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
+              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
+              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
+              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
+              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
+              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
+              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
+              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
+              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
+              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
+              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
+              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
+              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
+              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
+              benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -791,42 +791,42 @@ spec:
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
               hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
-              : json.loads(intents_garak_config)}\n            body[\"model\"][\"\
-              parameters\"] = json.loads(intents_target_parameters)\n        body[\"\
-              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
-              \ \"parameters\": parameters,\n                               \"primary_score\"\
-              : bdef[\"primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"\
-              ]}]\n    path = os.path.join(work, \"eval.yaml\")\n    with open(path,\
-              \ \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n \
-              \   print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
-              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
-              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
-              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
-              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
-              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
-              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
-              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
-              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
-              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
-              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
-              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
-              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
-              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
-              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
-              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
+              : json.loads(intents_garak_config),\n                          \"model_parameters\"\
+              : json.loads(intents_target_parameters)}\n        body[\"benchmarks\"\
+              ] = [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
+              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
+              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
+              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
+              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
+              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
+              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
+              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
+              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
+              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
+              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
+              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
+              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
+              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
+              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
+              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
+              benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -1020,42 +1020,42 @@ spec:
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
               hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
-              : json.loads(intents_garak_config)}\n            body[\"model\"][\"\
-              parameters\"] = json.loads(intents_target_parameters)\n        body[\"\
-              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
-              \ \"parameters\": parameters,\n                               \"primary_score\"\
-              : bdef[\"primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"\
-              ]}]\n    path = os.path.join(work, \"eval.yaml\")\n    with open(path,\
-              \ \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n \
-              \   print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
-              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
-              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
-              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
-              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
-              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
-              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
-              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
-              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
-              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
-              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
-              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
-              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
-              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
-              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
-              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
+              : json.loads(intents_garak_config),\n                          \"model_parameters\"\
+              : json.loads(intents_target_parameters)}\n        body[\"benchmarks\"\
+              ] = [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
+              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
+              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
+              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
+              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
+              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
+              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
+              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
+              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
+              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
+              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
+              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
+              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
+              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
+              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
+              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
+              benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -1164,42 +1164,42 @@ spec:
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
               hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
-              : json.loads(intents_garak_config)}\n            body[\"model\"][\"\
-              parameters\"] = json.loads(intents_target_parameters)\n        body[\"\
-              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
-              \ \"parameters\": parameters,\n                               \"primary_score\"\
-              : bdef[\"primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"\
-              ]}]\n    path = os.path.join(work, \"eval.yaml\")\n    with open(path,\
-              \ \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n \
-              \   print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
-              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
-              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
-              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
-              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
-              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
-              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
-              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
-              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
-              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
-              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
-              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
-              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
-              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
-              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
-              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
+              : json.loads(intents_garak_config),\n                          \"model_parameters\"\
+              : json.loads(intents_target_parameters)}\n        body[\"benchmarks\"\
+              ] = [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
+              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
+              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
+              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
+              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
+              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
+              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
+              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
+              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
+              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
+              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
+              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
+              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
+              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
+              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
+              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
+              benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -1308,42 +1308,42 @@ spec:
               \                 \"intents_models\": {\"judge\": {\"name\": risk_model},\n\
               \                                             \"sdg\": {\"name\": f\"\
               hosted_vllm/{risk_model}\"}},\n                          \"garak_config\"\
-              : json.loads(intents_garak_config)}\n            body[\"model\"][\"\
-              parameters\"] = json.loads(intents_target_parameters)\n        body[\"\
-              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
-              \ \"parameters\": parameters,\n                               \"primary_score\"\
-              : bdef[\"primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"\
-              ]}]\n    path = os.path.join(work, \"eval.yaml\")\n    with open(path,\
-              \ \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n \
-              \   print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
-              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
-              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
-              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
-              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
-              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
-              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
-              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
-              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
-              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
-              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
-              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
-              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
-              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
-              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
-              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
+              : json.loads(intents_garak_config),\n                          \"model_parameters\"\
+              : json.loads(intents_target_parameters)}\n        body[\"benchmarks\"\
+              ] = [{\"id\": benchmark_id, \"provider_id\": \"garak\", \"parameters\"\
+              : parameters,\n                               \"primary_score\": bdef[\"\
+              primary_score\"], \"pass_criteria\": bdef[\"pass_criteria\"]}]\n   \
+              \ path = os.path.join(work, \"eval.yaml\")\n    with open(path, \"w\"\
+              ) as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n    print(open(path).read())\n\
+              \n    # --wait blocks until the job is terminal and exits 1 when the\
+              \ job fails (before printing it), so the job id\n    # comes from the\
+              \ \"Job submitted\" line.\n    run = subprocess.run([\"evalhub\", \"\
+              eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
+              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
+              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
+              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
+              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
+              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
+              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
+              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
+              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
+              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
+              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
+              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
+              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
+              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
+              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
+              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
+              benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5

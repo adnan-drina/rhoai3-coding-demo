@@ -87,7 +87,8 @@ dashboard creates one on request. Detailed record:
 - The 3.5.2 server (nemoguardrails 0.24) fails any chat request that carries `stop`
   (`got multiple values for keyword argument 'stop'`), and Garak's
   `OpenAICompatible` sends `stop: ["#", ";"]` by default: the qualification
-  pipeline sets `suppressed_params: ["stop"]` in the target's `model.parameters`.
+  pipeline sets `suppressed_params: ["stop"]` in the Garak benchmark parameter
+  `model_parameters` (the scan image's EvalHub SDK drops `model.parameters`).
 - The 3.5.2 server (nemoguardrails 0.24) sends a model's `parameters` verbatim,
   so request options such as `chat_template_kwargs` sit directly under
   `parameters`; a LangChain `extra_body` gets HTTP 400.
