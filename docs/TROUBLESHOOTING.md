@@ -2803,7 +2803,7 @@ Once authorized, every request through the guardrail can hang until the route's 
 
 **Likely cause:** EvalHub probes MLflow for workspace support once, at startup. When it starts before MLflow answers (both restart with the cluster), the probe fails, EvalHub logs `Could not probe MLflow workspace support; workspace headers will not be sent` and keeps sending requests without the workspace header until it restarts.
 
-**Recover:** Delete the EvalHub pod once MLflow is Ready (`oc delete pod -n evalhub -l app=eval-hub,component=api`). A `rollout restart` does not work: the EvalHub operator owns the Deployment and reverts the restart annotation. The new pod logs `MLflow workspace support probed` with `workspaces_enabled: true`.
+**Recover:** Delete the EvalHub pod once MLflow is Ready (`oc delete pod -n evalhub -l app=eval-hub,component=api`). A `rollout restart` does not work: the EvalHub operator owns the Deployment and reverts the restart annotation. The new pod logs `MLflow workspace support probed` with `workspaces_enabled: true`. The Stage 050 `deploy.sh` does this itself when the probe failed, and `validate.sh` fails "EvalHub sends MLflow workspace headers" until it is fixed; a cluster restart can reintroduce it (seen 2026-10-26).
 
 **Diagnose:**
 

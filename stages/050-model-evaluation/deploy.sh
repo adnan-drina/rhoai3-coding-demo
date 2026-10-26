@@ -148,6 +148,20 @@ jq -n --arg uri "$tracking_uri" --arg m "$MANAGED_BY" '{apiVersion: "v1", kind: 
 "$STAGE_APPS" wait 050 --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 1200
 evalhub_ready() { [[ $(oc --request-timeout=10s get evalhub evalhub -n evalhub -o jsonpath='{.status.ready}' 2>/dev/null) == True ]]; }
 wait_until 900 "EvalHub ready" evalhub_ready
+# EvalHub probes MLflow workspace support once at start; started before MLflow answered, it sends no workspace header
+# and every job fails "Workspace context is required" (TROUBLESHOOTING). The operator owns the Deployment, so restart
+# by deleting the pod.
+evalhub_probe() { oc --request-timeout=10s logs -n evalhub deploy/evalhub -c evalhub 2>/dev/null |
+  grep 'MLflow workspace support probed' | tail -1; }
+evalhub_probed() { [[ -n $(evalhub_probe) ]]; }
+evalhub_workspaces() { evalhub_probe | grep -q '"workspaces_enabled":true'; }
+wait_until 120 "EvalHub MLflow workspace probe" evalhub_probed
+if ! evalhub_workspaces; then
+  log_warn "EvalHub started before MLflow answered; restarting its pod"
+  oc --request-timeout=30s delete pod -n evalhub -l app=eval-hub,component=api --wait=true
+  wait_until 900 "EvalHub ready" evalhub_ready
+  wait_until 300 "EvalHub MLflow workspace probe" evalhub_workspaces
+fi
 
 # Stage 040's Studio hook registers the Ops Assistant prompt in MLflow, which this stage installs; on a fresh install
 # that hook deferred. Re-run 040-genai-studio's hooks at Stage 040's deployed revision now that MLflow is ready.

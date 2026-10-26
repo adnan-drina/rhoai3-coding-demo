@@ -164,6 +164,10 @@ all_allowed() { local user=$1 groups=$2 api=$3 resource=$4 ns=$5 verb; shift 5; 
 SA_GROUPS=system:serviceaccounts,system:serviceaccounts:evalhub,system:authenticated
 [[ -n "$SERVICE_ACCOUNT" ]] && all_allowed "system:serviceaccount:evalhub:$SERVICE_ACCOUNT" "$SA_GROUPS" mlflow.kubeflow.org experiments evalhub create get update && R=pass || R=denied
 record "EvalHub service authorized for MLflow in its workspace" "$R"
+# Started before MLflow answered, EvalHub sends no workspace header until restarted (TROUBLESHOOTING).
+oc --request-timeout=10s logs -n evalhub deploy/evalhub -c evalhub 2>/dev/null | grep 'MLflow workspace support probed' |
+  tail -1 | grep -q '"workspaces_enabled":true' && R=pass || R="not probed; delete the EvalHub pod"
+record "EvalHub sends MLflow workspace headers" "$R"
 [[ -n "$SERVICE_ACCOUNT" ]] && allowed "system:serviceaccount:evalhub:$SERVICE_ACCOUNT" "$SA_GROUPS" batch jobs create "$TENANT" && R=pass || R=denied
 record "EvalHub service authorized to create tenant jobs" "$R"
 all_allowed "system:serviceaccount:$TENANT:$JOB_ACCOUNT" "system:serviceaccounts,system:serviceaccounts:$TENANT,system:authenticated" \
