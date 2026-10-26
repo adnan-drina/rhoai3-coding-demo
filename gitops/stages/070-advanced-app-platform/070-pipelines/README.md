@@ -52,7 +52,7 @@ One Application holds these parts because they change together: the per-project 
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| CronJob | `project-provisioner` | `app-platform-build` | Every 2 minutes runs `reconcile.py`: imported seeds, then open `platform-enrollment` issues (wave 13) |
+| CronJob | `project-provisioner` | `app-platform-build` | Every 2 minutes runs `reconcile.py`: imported seeds, then open `platform-enrollment` issues; a refused request whose project is archived (retired) is closed rather than failing the run (wave 13) |
 | SA, Roles, bindings | `project-provisioner`, `project-provisioner-applications`, `project-enrollment-inputs` | `app-platform-build`, `openshift-gitops` | Create namespaces; read named inputs; create PipelineRuns; create/patch Applications |
 | ConfigMap | `gitlab-project-reconciler-<hash>` | `app-platform-build` | `reconcile.py` and `secret_writer.py` |
 | AppProject | `platform-projects` | `openshift-gitops` | Pinned project setup into `*-dev` (wave 12) |

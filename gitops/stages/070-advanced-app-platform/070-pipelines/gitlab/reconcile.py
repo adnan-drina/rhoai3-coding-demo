@@ -174,6 +174,20 @@ class GitLab:
             return json.loads(body) if body else None
 
 
+def retired_request(api, issue, config):
+    # demo-reset/delete-project.sh archives a retired project (the persistent guard) but cannot see this private
+    # registration project; a refused request for an archived workload project is closed instead of failing every run.
+    if issue['author']['id'] != int(config['GITLAB_PUBLISHER_USER_ID']):
+        return False
+    try:
+        row = json.loads(issue['description'])
+        project = api.request('GET', 'projects/' + str(row['project_id']))
+    except (ValueError, KeyError, TypeError, urllib.error.URLError):
+        return False
+    return (project.get('archived') is True and project['id'] == row['project_id']
+            and project['namespace']['id'] == int(config['GITLAB_WORKLOAD_GROUP_ID']))
+
+
 def validate_request(row, project, commit, group_id, import_receipt=None):
     if project.get('archived'):
         raise ValueError('Archived project is retired; refuse resource recreation')
@@ -500,6 +514,10 @@ def main():
         issues = api.request('GET', "projects/%s/issues?state=opened&labels=platform-enrollment&per_page=100&page=%s" % (config['GITLAB_REGISTRATION_PROJECT_ID'],page))
         for issue in issues:
             if 'platform-enrollment-refused' in issue.get('labels', []):
+                if retired_request(api, issue, config):
+                    api.request('PUT','projects/%s/issues/%s' % (config['GITLAB_REGISTRATION_PROJECT_ID'],issue['iid']),{'state_event':'close'})
+                    print('Enrollment retired:', issue['iid'], 'project archived; refused request closed')
+                    continue
                 failures += 1
                 print('REFUSE enrollment:', issue['iid'], 'requires correction of the recorded request')
                 continue

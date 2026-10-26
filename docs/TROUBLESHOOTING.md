@@ -3146,3 +3146,16 @@ The reviewed correction is published and deployed at `5c16b8c9`. Real browser lo
 GitLab OAuth tokens expire after two hours in the current supported configuration. Native reauthorization can renew the user token while the running workspace’s separate Git credential carrier still holds the expired value. On 2026-10-14, the renewed token authenticated as `platform-developer` (200), while the Git carrier returned401; temporary clone still refused and the product tree stayed unchanged. This is not a proven rotation-induced revocation.
 
 Inspect carrier metadata and provider status without printing values. Keep the same user, application, scopes and expiry when renewing. Do not inject a shared PAT, extend token lifetime or recreate a workspace to hide the failure. Normal dashboard Stop then Open, after native reauthorization, refreshed the carrier and passed private clone on the same validation workspace. The UID/PVC, images, complete workspace specification and clean product tree were retained; it finished Running. Check for active work and snapshot first. This qualifies that bounded renewal/restart path, not uninterrupted hot refresh of a running Git mount.
+
+## Stage 070 project-provisioner fails: Enrollment has terminal refusals
+
+**Symptom:** `070-pipelines` is Degraded because the `app-platform-build/project-provisioner` CronJob fails each run
+with `REFUSE enrollment: <iid> requires correction of the recorded request`.
+
+**Likely cause:** an open `platform-enrollment` issue in the private registration project carries
+`platform-enrollment-refused` (for example a migration run whose first enrollment hit a GitLab error). The reconciler
+never retries a refused request.
+
+**Recover:** retire the project with `stages/070-advanced-app-platform/demo-reset/delete-project.sh NAME --yes`. Once
+the GitLab project is archived, the reconciler closes its refused request on the next run. To keep the project instead,
+file a corrected enrollment request from the Developer Hub template.
