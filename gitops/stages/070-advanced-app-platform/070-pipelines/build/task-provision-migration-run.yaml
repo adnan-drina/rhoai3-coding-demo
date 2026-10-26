@@ -413,8 +413,9 @@ spec:
 
         # The server's own credentials. Never automounted: no workspace has any
         # use for the superuser-side names, and a secret nothing mounts is a
-        # secret no workspace can read.
-        oc apply -f - <<YAML
+        # secret no workspace can read. Secrets use server-side apply: client-side
+        # apply copies the values into the last-applied-configuration annotation.
+        oc apply -f - --server-side --force-conflicts --field-manager=provision-migration-run <<YAML
         apiVersion: v1
         kind: Secret
         metadata:
@@ -435,7 +436,7 @@ spec:
         # The workspace's secret: labels AND annotations in one object, so the
         # watch label, the mount label and the exact targeting become visible
         # together or not at all.
-        oc apply -f - <<YAML
+        oc apply -f - --server-side --force-conflicts --field-manager=provision-migration-run <<YAML
         apiVersion: v1
         kind: Secret
         metadata:
@@ -496,7 +497,10 @@ spec:
             printf '  %s: %s\n' "${key}" \
               "$(oc get secret "${FIXTURE_SRC}" -n "${WSNS}" -o go-template="{{index .data \"${key}\"}}")"
           done
-        } | oc apply -f -
+        } | oc apply -f - --server-side --force-conflicts --field-manager=provision-migration-run
+        # A run provisioned before server-side apply keeps the client-side annotation; drop it.
+        oc annotate secret "${SERVER_SECRET}" "${WORKSPACE_SECRET}" "${FIXTURE_SECRET}" -n "${WSNS}" \
+          kubectl.kubernetes.io/last-applied-configuration-
 
         oc apply -f - <<YAML
         apiVersion: apps/v1
