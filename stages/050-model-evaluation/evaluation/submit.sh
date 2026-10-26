@@ -26,7 +26,7 @@ Options:
   --no-oci-export          Do not export result artifacts to the internal registry (default: export, 3.5 guide 2.19)
   --queue NAME             Kueue LocalQueue in the tenant (default: lq-cpu-default; '' to submit without a queue)
   --name NAME              Job name (default: <collection or benchmark>-<model>-<UTC timestamp>)
-  --experiment NAME        MLflow experiment (default: model-evaluations)
+  --experiment NAME        MLflow experiment (default: models-onboarding, the one experiment the stage uses)
   --collection ID          Submit a native collection unbounded instead of the benchmark (no parameters apply)
   --provider ID            EvalHub provider id (default: lighteval)
   --benchmark ID           Benchmark id within the provider (default: lcb:codegeneration_v6)
@@ -47,7 +47,7 @@ USAGE
 }
 
 MODEL_NAME="" MODEL_URL="" SECRET_REF="evalhub-model-auth-maas" TENANT="evaluated-models" QUEUE="lq-cpu-default"
-OCI_EXPORT="true" NAME="" EXPERIMENT="model-evaluations" COLLECTION="" PROVIDER="lighteval"
+OCI_EXPORT="true" NAME="" EXPERIMENT="models-onboarding" COLLECTION="" PROVIDER="lighteval"
 BENCHMARK="lcb:codegeneration_v6" NUM_EXAMPLES="" CONCURRENT="1" MAX_NEW_TOKENS="512" TEMPERATURE="0.7" TOP_P="0.8"
 THRESHOLD="0.25" THRESHOLD_SET="false" PARAMETERS_FILE="" STATUS_ID="" WAIT="false" DRY_RUN="false"
 SYSTEM_PROMPT="Answer with the complete Python program in a single \`\`\`python code block and nothing else."
