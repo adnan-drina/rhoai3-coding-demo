@@ -3174,3 +3174,14 @@ project's bootstrap Job.
 **Recover:** the run control is written once, so a run provisioned without its request cannot be repaired in place.
 Make sure the platform includes the `run-provisioning-binding.yaml` subject for `migration-run-provisioner`, retire the
 run with `demo-reset/delete-project.sh <run> --yes`, and create a new run from the Developer Hub template.
+
+## Developer Hub sign-in returns 500 ECONNRESET after a cluster restart
+
+**Symptom:** after the cluster resumes, every Developer Hub sign-in fails; `/api/auth/oidc/start` returns HTTP 500 with
+`Client network socket disconnected before secure TLS connection was established` (`ECONNRESET`, host `sso.apps.<cluster
+domain>`). `curl` and a plain `node` request from the same pod reach the Keycloak Route.
+
+**Likely cause:** the long-running Backstage process keeps connection state from before the restart (ingress load
+balancer addresses can change when the lab resumes).
+
+**Recover:** delete the `backstage-developer-hub` pod in `rhdh`; the operator recreates it with the unchanged spec.
