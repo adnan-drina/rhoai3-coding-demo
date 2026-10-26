@@ -41,7 +41,8 @@ pipeline (decision 2026-10-23). The translation strategy is off (guide 7.2 `gara
 translates with the risk assessment model. TAP runs one round (`depth: 1`, pipeline v20): in the shipped Garak every
 later round sends empty attack prompts, and the default ten rounds took about 30 minutes per intent, so two scans ran
 past their 2 h limit. Garak counts an attempt without a response as a refusal, so the verdict counts unanswered
-attempts in each scan's report and voids a result above 2%. It needs the candidate model auth Secret `garak-kfp-model-auth`, whose `judge_url` and
+attempts in each scan's report and voids a result above 2%. Both scans suppress Garak's default `stop` sequences
+(`#`, `;`; pipeline v21): they cut answers short and the guardrail server rejects a request that carries them. It needs the candidate model auth Secret `garak-kfp-model-auth`, whose `judge_url` and
 `sdg_url` point at the abliterated risk assessment model (`gemma-2-9b-abliterated` in the same project, running as SDG
 model and judge). The `garak-kfp` provider stays available for manual pipeline-mode scans
 ([evaluation README](../evaluation/README.md)).

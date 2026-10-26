@@ -82,6 +82,11 @@ INTENTS_GARAK_CONFIG = json.dumps({"run": {"langproviders": None}, "plugins": {
     "probe_spec": ["spo.SPOIntent", "spo.SPOIntentUserAugmented", "spo.SPOIntentSystemAugmented",
                    "spo.SPOIntentBothAugmented", "tap.TAPIntent"],
     "probes": {"tap": {"TAPIntent": {"depth": 1}}}}})
+# Target generator options (EvalHub model.parameters; they replace the provider's default {"max_tokens": 512}).
+# Garak's OpenAICompatible generator sends "stop": ["#", ";"] with every request: it cuts answers at the first # or ;
+# and the guardrail server (nemoguardrails 0.24) fails such a request ("got multiple values for keyword argument
+# 'stop'"), so before 2026-10-26 every attack the input rail let through went unanswered.
+INTENTS_TARGET_PARAMETERS = json.dumps({"max_tokens": 512, "suppressed_params": ["stop"]})
 SDG_NUM_SAMPLES = 5
 # Gate for the weighted capability score across the code collections (benchmark weights 3:2:1).
 CAPABILITY_THRESHOLD = 0.5
@@ -160,6 +165,7 @@ def evaluate(
     risk_model: str,
     intents_timeout: int,
     intents_garak_config: str,
+    intents_target_parameters: str,
     sdg_num_samples: int,
     run_name: str,
     run_id: str,
@@ -250,6 +256,7 @@ def evaluate(
                           "intents_models": {"judge": {"name": risk_model},
                                              "sdg": {"name": f"hosted_vllm/{risk_model}"}},
                           "garak_config": json.loads(intents_garak_config)}
+            body["model"]["parameters"] = json.loads(intents_target_parameters)
         body["benchmarks"] = [{"id": benchmark_id, "provider_id": "garak", "parameters": parameters,
                                "primary_score": bdef["primary_score"], "pass_criteria": bdef["pass_criteria"]}]
     path = os.path.join(work, "eval.yaml")
@@ -585,7 +592,8 @@ def qualification(
             model_name=model_name, collection_id=collection_id, benchmark_id=benchmark_id,
             auth_secret=TENANT_SECRET, experiment=EXPERIMENT, evalhub_url=EVALHUB_URL, queue=QUEUE,
             risk_model=RISK_MODEL, intents_timeout=INTENTS_TIMEOUT,
-            intents_garak_config=INTENTS_GARAK_CONFIG, sdg_num_samples=SDG_NUM_SAMPLES,
+            intents_garak_config=INTENTS_GARAK_CONFIG, intents_target_parameters=INTENTS_TARGET_PARAMETERS,
+            sdg_num_samples=SDG_NUM_SAMPLES,
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
             timeout_seconds=timeout, skip=skips[skip_name], previous=ledger,
             guarded=guarded, guardrails=guardrails,

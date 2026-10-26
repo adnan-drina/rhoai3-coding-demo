@@ -2785,6 +2785,16 @@ Once authorized, every request through the guardrail can hang until the route's 
 
 **Recover:** Treat the result as void. Pipeline v20 counts the unanswered attempts in each Garak job's `scan.report.jsonl` (from the job's MLflow run) and voids a result when more than 2% went unanswered. The guardrail now judges with the candidate model itself through its internal Service (16 of 16 test prompts judged correctly, about 1.2 s with 16 at once) and caps the main model at 512 output tokens, so a guarded call fits the 30 s limit. Check the guardrail pod log (`oc logs deploy/candidate-guardrails -n evaluated-models`) for judge errors before trusting a guarded result.
 
+## Guarded Garak Attempts Fail With "multiple values for keyword argument 'stop'"
+
+**Affected stage:** Stage 050, `risk-assessment-guarded` (Garak through NeMo Guardrails `candidate-guardrails`, RHOAI 3.5.2, seen 2026-10-23)
+
+**Symptom:** The guarded scan reports an attack success rate of 0 and `verdict` voids it for unanswered attempts; the guardrail log shows `TypeError: ... OpenAIChatModel.generate_async() got multiple values for keyword argument 'stop'` for every prompt the input rail let through.
+
+**Likely cause:** Garak's `OpenAICompatible` generator sends `"stop": ["#", ";"]` with every request. The guardrail server (nemoguardrails 0.24) copies the request's `stop` into its model parameters and also passes `stop=` itself, so the main generation fails. Prompts the input rail blocked are not affected, which hides the failure behind a perfect score.
+
+**Recover:** Pipeline v21 sets `model.parameters` `{"max_tokens": 512, "suppressed_params": ["stop"]}` on both Garak jobs, so no `stop` reaches the model or the guardrail. Rerun the qualification; results of earlier guarded scans are void.
+
 ## EvalHub Rejects Every Job With "Workspace context is required"
 
 **Affected stage:** Stage 050, EvalHub, RHOAI 3.5.2 (seen 2026-10-23 after a cluster start)
