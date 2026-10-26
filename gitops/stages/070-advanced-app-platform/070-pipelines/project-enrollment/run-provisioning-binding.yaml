@@ -19,3 +19,8 @@ subjects:
 - kind: ServiceAccount
   name: project-enrollment
   namespace: unassigned-dev
+# The provisioning PipelineRun runs as migration-run-provisioner and reads this run's declaration through the
+# migration-source-<run> reader token; without this subject the request is unreadable and no board protocol is selected.
+- kind: ServiceAccount
+  name: migration-run-provisioner
+  namespace: app-platform-build

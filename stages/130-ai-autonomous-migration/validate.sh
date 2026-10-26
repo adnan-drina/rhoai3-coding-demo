@@ -539,6 +539,11 @@ check "runtime catalog placeholders are resolved" \
 check "runtime catalog app-migration Location is pinned to the catalog revision" \
   "rev=\$(oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\\.redhat\\.com/catalog-revision}'); oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep 'templates/app-migration/template.yaml' | grep -oE '/blob/[0-9a-f]{40}/' | sort -u | grep -cx \"/blob/\$rev/\" || echo 0" \
   "1"
+# The provisioner reads each run's own request (run-budget.json at the scaffold commit) through the run's reader
+# token; an unreadable request selects no board protocol and dest-init refuses PROTOCOL_UNBOUND at workspace start.
+check "provisioned migration runs read their own request (run control)" \
+  "oc get configmaps -A -o json | jq '[.items[] | select(.metadata.namespace | startswith(\"wksp-\")) | select(.metadata.name | endswith(\"-run-control\")) | .data[\"contract.json\"] // \"{}\" | fromjson | .protocol_request.state // \"\" | select(startswith(\"unreadable\"))] | length'" \
+  "0"
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     GOLDEN_SHA=$(gh api repos/adnan-drina/quarkus-migration-scaffold-v2/git/refs/heads/main --jq '.object.sha' 2>/dev/null || echo "")
     if [[ -n "$GOLDEN_SHA" ]]; then

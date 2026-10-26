@@ -3159,3 +3159,18 @@ never retries a refused request.
 **Recover:** retire the project with `stages/070-advanced-app-platform/demo-reset/delete-project.sh NAME --yes`. Once
 the GitLab project is archived, the reconciler closes its refused request on the next run. To keep the project instead,
 file a corrected enrollment request from the Developer Hub template.
+
+## Stage 130 workspace autostart refuses PROTOCOL_UNBOUND
+
+**Symptom:** a new migration workspace starts, but `/projects/modernized/.hermes/AUTOSTART-STATUS` reads `"state":
+"failed"` with `REFUSE PROTOCOL_UNBOUND: the run requested outcome-board/v2 in its initial commit and the run control
+selects no board protocol`. The run's `<run>-run-control` ConfigMap shows `protocol_request.state: "unreadable
+(CalledProcessError)"`; Stage 130 validate fails "provisioned migration runs read their own request".
+
+**Likely cause:** the provisioning PipelineRun (service account `migration-run-provisioner`) could not read the run's
+`migration-source-<run>` reader token in `app-platform-build`. Before the fix, Role `<run>.runs` was bound only to the
+project's bootstrap Job.
+
+**Recover:** the run control is written once, so a run provisioned without its request cannot be repaired in place.
+Make sure the platform includes the `run-provisioning-binding.yaml` subject for `migration-run-provisioner`, retire the
+run with `demo-reset/delete-project.sh <run> --yes`, and create a new run from the Developer Hub template.
