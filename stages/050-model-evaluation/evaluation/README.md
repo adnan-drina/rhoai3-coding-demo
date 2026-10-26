@@ -26,8 +26,8 @@ For CI, save the body that `submit.sh --dry-run` prints and pass it to the EvalH
 
 | File | Benchmarks | Verified |
 |---|---|---|
-| `avid-security.parameters.json` | `avid_security`, `quick`, `owasp_llm_top10`, `cwe` and the other probe-based scans | 2026-10-22: `avid_security`, 67 per-probe results in EvalHub; `quick` |
-| `intents.parameters.json` | `intents` (generated attack prompts, judge model, attack strategies) | 2026-10-22: with GPT-6 Luna as judge and SDG model, through the SPO strategies |
+| `avid-security.parameters.json` | `avid_security`, `quick`, `owasp_llm_top10`, `cwe` and the other probe-based scans | 2026-10-22 on the former INT4 candidate: `avid_security`, 67 per-probe results in EvalHub; `quick` |
+| `intents.parameters.json` | `intents` (generated attack prompts, judge model, attack strategies) | 2026-10-22 on the former INT4 candidate: with GPT-6 Luna as judge and SDG model, through the SPO strategies |
 
 Both name the pipeline server's project and S3 connection and the candidate's in-cluster address:
 
@@ -68,8 +68,8 @@ Both name the pipeline server's project and S3 connection and the candidate's in
 From the terminal:
 
 ```bash
-stages/050-model-evaluation/evaluation/submit.sh --model-name qwen3-8-27b-int4 \
-  --model-url https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1 \
+stages/050-model-evaluation/evaluation/submit.sh --model-name qwen3-8-27b-nvfp4 \
+  --model-url https://qwen3-8-27b-nvfp4-predictor.evaluated-models.svc.cluster.local:8443/v1 \
   --secret-ref garak-kfp-model-auth --provider garak-kfp --benchmark avid_security \
   --parameters stages/050-model-evaluation/evaluation/avid-security.parameters.json \
   --experiment models-onboarding --no-oci-export --wait
@@ -85,8 +85,8 @@ registry version with `record.sh`.
 From the dashboard (**Develop & train → Evaluations → Start evaluation run**, a **Garak KFP** benchmark): under
 **Model** choose **Other (External endpoint)**, not the project's model, and enter
 
-- **Model name:** `qwen3-8-27b-int4`
-- **Endpoint URL:** `https://qwen3-8-27b-int4-predictor.evaluated-models.svc.cluster.local:8443/v1`
+- **Model name:** `qwen3-8-27b-nvfp4`
+- **Endpoint URL:** `https://qwen3-8-27b-nvfp4-predictor.evaluated-models.svc.cluster.local:8443/v1`
 - **Authentication secret name:** `garak-kfp-model-auth`
 - **Benchmark parameters:** the content of the matching file.
 

@@ -8,7 +8,7 @@ metadata:
   skill-group: "RHOAI Platform"
 description: >
   Use when deploying, stopping, or querying a model in this repo outside the
-  llm-d path: the Stage 050 candidate InferenceService qwen3-8-27b-int4 in
+  llm-d path: the Stage 050 candidate InferenceService qwen3-8-27b-nvfp4 in
   evaluated-models (RawDeployment, Recreate, token auth, stop annotation),
   model storage choice (pinned Hugging Face URI vs OCI modelcar, PVC, S3),
   hardware profile and Kueue labels on a deployment, the Deploy a model wizard
@@ -28,7 +28,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
 ## When to use
 
-- A change touches `candidate-qwen3-8-27b-int4.yaml` or adds a model
+- A change touches `candidate-qwen3-8-27b-nvfp4.yaml` or adds a model
   deployment to Git.
 - Someone deploys a model from the dashboard into `demo-sandbox` or
   `internal-models` and asks which storage, profile or runtime to pick.
@@ -39,12 +39,12 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Model deployments are Git manifests, not wizard output: Stage 040 `LLMInferenceService` for the served model, Stage 050 `InferenceService` (`serving.kserve.io/v1beta1`) for the evaluation candidate | `gitops/stages/040-governed-models-as-a-service/040-local-models/`, `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Deploy on the model serving platform][deploy] |
+| Model deployments are Git manifests, not wizard output: Stage 040 `LLMInferenceService` for the served model, Stage 050 `InferenceService` (`serving.kserve.io/v1beta1`) for the evaluation candidate | `gitops/stages/040-governed-models-as-a-service/040-local-models/`, `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-nvfp4.yaml` | [Deploy on the model serving platform][deploy] |
 | Model source is a URI pinned to a 40-character Hugging Face revision (`hf://RedHatAI/...:<sha>`); no Red Hat OCI modelcar exists for these checkpoints | both manifests (`storageUri`, `spec.model.uri`) | [Storing models][storing], [OCI model storage][oci] |
 | Candidate: `serving.kserve.io/deploymentMode: RawDeployment`, `deploymentStrategy.type: Recreate`, one replica | candidate manifest | [KServe deployment modes][modes], [Deployment strategies][strategies] |
 | Candidate runs stopped in Git (`serving.kserve.io/stop: "true"`) so it holds no GPU; Argo CD reports it `Suspended` | candidate manifest; model-qualification README ("Why the Application is Suspended") | — (Argo CD health check) |
-| Token authentication on (`security.opendatahub.io/enable-auth: "true"`) with a project-scoped client ServiceAccount token; no external route of its own | `candidate-qwen3-8-27b-int4.yaml`, `candidate-model-auth.yaml` | [Token for a deployed model][token], [Inference endpoint][endpoint] |
-| GPU placement by hardware-profile annotations plus the `kueue.x-k8s.io/queue-name` label (`gpu-reserved-demo`/`lq-gpu-reserved-demo` for the candidate, `gpu-rtxpro6000`/`lq-gpu-rtxpro6000` for the served model) | both manifests; profiles in `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/` | [Hardware profile matching][hw-match]; see `rhoai-kueue-workload-management` |
+| Token authentication on (`security.opendatahub.io/enable-auth: "true"`) with a project-scoped client ServiceAccount token; no external route of its own | `candidate-qwen3-8-27b-nvfp4.yaml`, `candidate-model-auth.yaml` | [Token for a deployed model][token], [Inference endpoint][endpoint] |
+| GPU placement by hardware-profile annotations plus the `kueue.x-k8s.io/queue-name` label (`gpu-rtxpro6000`/`lq-gpu-rtxpro6000` for the served model and the candidate, `gpu-reserved-demo`/`lq-gpu-reserved-demo` for the risk assessment model) | both manifests; profiles in `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/` | [Hardware profile matching][hw-match]; see `rhoai-kueue-workload-management` |
 | Developers and tools reach models only through MaaS, never the deployment endpoint; `opendatahub.io/genai-asset: "true"` marks the served model for Gen AI studio | `040-local-models/qwen38-27b-llminferenceservice.yaml` | [Deploy on the model serving platform][deploy] (AI asset endpoint); see `rhoai-maas-governance` |
 
 ## Procedure
@@ -64,7 +64,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
    ```bash
    oc get inferenceservice -n evaluated-models
-   oc get inferenceservice qwen3-8-27b-int4 -n evaluated-models \
+   oc get inferenceservice qwen3-8-27b-nvfp4 -n evaluated-models \
      -o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}{"\n"}'
    oc get workload -n evaluated-models
    ```

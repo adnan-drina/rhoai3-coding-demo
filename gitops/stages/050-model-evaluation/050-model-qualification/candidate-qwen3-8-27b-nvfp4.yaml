@@ -1,8 +1,10 @@
 # Qwen 3.8 27B NVFP4 as a qualification candidate on one RTX PRO 6000: the format, revision, GPU type and serving
 # arguments of production MaaS (Stage 040 qwen3-8-27b in internal-models), so a result here carries over to the
 # production configuration. Added 2026-10-23 after the INT4 candidate on L40S missed the 2,000 ms first-token gate
-# (2,588 ms; the 2026-10-13 serving study measured 776 ms for NVFP4 on RTX PRO 6000). Model registry: Qwen3.8-27B-NVFP4
-# version 6. Uses the vllm-cuda-runtime ServingRuntime of candidate-qwen3-8-27b-int4.yaml. Token authentication is on.
+# (2,588 ms; the 2026-10-13 serving study measured 776 ms for NVFP4 on RTX PRO 6000); the INT4 candidate was removed
+# on 2026-10-26. Model registry: Qwen3.8-27B-NVFP4 (version id per environment). Uses the vllm-cuda-runtime
+# ServingRuntime of serving-runtime.yaml. Token authentication is on; evaluation jobs authenticate with their
+# ServiceAccount token (implicit authentication, bindings below).
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
@@ -21,7 +23,8 @@ metadata:
     security.opendatahub.io/enable-auth: "true"
     opendatahub.io/hardware-profile-name: gpu-rtxpro6000
     opendatahub.io/hardware-profile-namespace: redhat-ods-applications
-    # Last wave, as for the INT4 candidate: a stopped candidate reports Suspended and must not hold later waves.
+    # Last wave: a stopped candidate (serving.kserve.io/stop) reports Suspended, and Argo CD waits for each
+    # wave to be healthy, so any later wave would never sync while the candidate is stopped.
     argocd.argoproj.io/sync-wave: "40"
 spec:
   predictor:
@@ -70,7 +73,8 @@ spec:
         operator: Exists
         effect: NoSchedule
 ---
-# Implicit authentication (pattern 1), as for the INT4 candidate.
+# Implicit authentication (Red Hat Developer "Connect EvalHub to protected production model servers",
+# pattern 1): the model's view Role, bound to the tenant's EvalHub job ServiceAccount.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

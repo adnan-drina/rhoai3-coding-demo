@@ -2,7 +2,7 @@
 
 This Application creates the **Evaluated Models** project (`evaluated-models`): the single EvalHub tenant, its access
 and Kueue queues, three S3 connections and project storage, a pipeline server, the **Agentic coding model qualification**
-pipeline, the MaaS key that evaluations use, and a candidate model (`qwen3-8-27b-int4`) served next to production.
+pipeline, the MaaS key that evaluations use, and a candidate model (`qwen3-8-27b-nvfp4`) served next to production.
 Platform administrators use it to qualify a model before it is promoted to Models-as-a-Service; developers have no
 access. The Application reports **Suspended** by design while the candidate model is stopped.
 
@@ -59,15 +59,13 @@ ready.
 | Role / RoleBinding | `qualification-model-auth-gateway-reader` | `openshift-ingress` | Wave 12. `get` on Gateway `maas-default-gateway` and Route `data-science-gateway` only, to read the MaaS API and dashboard hostnames. |
 | Job | `provision-evalhub-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Keeps the stored key while the MaaS API reports it active, otherwise revokes it and mints a new one; writes Secret `evalhub-model-auth-maas` (`api-key`, `key_id`, `expires_at`, `subscription`) and ConfigMap `qualification-endpoints` (`dashboard_url`, for the links the pipeline records). |
 
-### Candidate model (`candidate-qwen3-8-27b-int4.yaml`, `candidate-model-auth.yaml`)
+### Candidate model (`serving-runtime.yaml`, `candidate-qwen3-8-27b-nvfp4.yaml`, `candidate-model-auth.yaml`)
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| ServingRuntime | `vllm-cuda-runtime` | `evaluated-models` | Wave 20. Instance of the platform template `vllm-cuda-runtime-template`: the 3.5.2 vLLM image, the same digest as the platform's 3.5.2 LLMInferenceService templates that production MaaS uses (updated 2026-10-23 from the 3.5.1 image). |
-| InferenceService | `qwen3-8-27b-int4` | `evaluated-models` | Wave 40. `RedHatAI/Qwen3.8-27B-INT4` pinned to a Hugging Face commit, RawDeployment, token authentication on, hardware profile `gpu-reserved-demo`, queue `lq-gpu-reserved-demo`, one L40S-class GPU, `serving.kserve.io/stop: "true"`. |
-| InferenceService | `qwen3-8-27b-nvfp4` | `evaluated-models` | Wave 40. `RedHatAI/Qwen3.8-27B-NVFP4` at the production revision (registry Qwen3.8-27B-NVFP4 version 6) with production's serving arguments, hardware profile `gpu-rtxpro6000`, queue `lq-gpu-rtxpro6000`, one RTX PRO 6000: the candidate configuration that matches production MaaS, added after INT4 on L40S missed the first-token gate. |
-| Role / RoleBinding | `qwen3-8-27b-nvfp4-view-role` / `evalhub-job-model-access-nvfp4` | `evaluated-models` | Wave 21. `get` on this InferenceService for `evalhub-evalhub-job`. |
-| Role / RoleBinding | `qwen3-8-27b-int4-view-role` / `evalhub-job-model-access` | `evaluated-models` | Wave 21. `get` on this InferenceService for the tenant job ServiceAccount `evalhub-evalhub-job` (implicit authentication). |
+| ServingRuntime | `vllm-cuda-runtime` | `evaluated-models` | Wave 20. Instance of the platform template `vllm-cuda-runtime-template`: the 3.5.2 vLLM image, the same digest as the platform's 3.5.2 LLMInferenceService templates that production MaaS uses (updated 2026-10-23 from the 3.5.1 image). Serves the candidate and the risk assessment model. |
+| InferenceService | `qwen3-8-27b-nvfp4` | `evaluated-models` | Wave 40. `RedHatAI/Qwen3.8-27B-NVFP4` at the production revision (registered as Qwen3.8-27B-NVFP4; the version id differs per environment) with production's serving arguments, RawDeployment, token authentication on, hardware profile `gpu-rtxpro6000`, queue `lq-gpu-rtxpro6000`, one RTX PRO 6000, `serving.kserve.io/stop: "true"` between runs. It replaced an INT4 candidate on L40S, which missed the first-token gate and was removed on 2026-10-26. |
+| Role / RoleBinding | `qwen3-8-27b-nvfp4-view-role` / `evalhub-job-model-access-nvfp4` | `evaluated-models` | Wave 21. `get` on this InferenceService for the tenant job ServiceAccount `evalhub-evalhub-job` (implicit authentication). |
 | ServiceAccount, Secret (`kubernetes.io/service-account-token`), Role, RoleBinding | `candidate-model-client`, `candidate-model-client-token` | `evaluated-models` | Wave 12. A token that may only `get` InferenceServices in this project, used as the candidate API key. |
 | ConfigMap | `candidate-model-service-ca` | `evaluated-models` | Wave 12. Injected service CA. |
 | ServiceAccount, Role, RoleBinding | `candidate-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch Secrets. |
@@ -158,9 +156,9 @@ land beside the onboarding evaluations; the hook restarts the API server when it
 **Pipeline tasks.** Each task uses the pinned `odh-pipeline-runtime-minimal-cpu-py312-rhel9` image and installs
 `eval-hub-sdk[cli]==1.0.5` and `kfp==2.16.1` from `pypi.org` at run time, so tasks need egress to PyPI.
 
-**Candidate serving arguments.** The candidate shares the Stage 040 serving arguments but not its format or hardware:
-it is INT4 on an L40S, while production is NVFP4 on an RTX PRO 6000. A passing result therefore qualifies this candidate
-configuration only; a different quantization, runtime or GPU must be evaluated again before promotion. Shared arguments:
+**Candidate serving arguments.** The candidate matches Stage 040 production: NVFP4 at the same revision on an RTX PRO
+6000 with the same serving arguments, so a passing result carries over to production. A different quantization, runtime
+or GPU must be evaluated again before promotion. Shared arguments:
 262,144-token context, FP8 KV cache, 16 sequences, 16,384 batched tokens, async scheduling, MTP
 speculative decoding with three draft tokens, the model card's non-thinking sampling, Qwen3 reasoning and XML tool-call
 parsers. The runtime comes from the platform vLLM NVIDIA GPU template and token authentication is on [4].
@@ -229,7 +227,7 @@ oc get isvc,dspa,pipelineversion -n evaluated-models
 | Pipeline server as code | Pipeline definitions stored as Kubernetes resources [2] | Pipeline and PipelineVersion in Git; DSPA created by a hook Job | Gap (DSPA not declared in Git; see findings) |
 | MLflow for pipeline runs | MLflow integration per DSPA (`spec.mlflow`) [2] | Default detection plus plugin `insecureSkipVerify: true` | Deviation (justified: 3.5.1 passes no CA to step MLflow calls; operator decision 2026-10-12) |
 | Model runtime | vLLM NVIDIA GPU ServingRuntime for KServe; token authentication option [4] | Template instance, auth on | Aligned |
-| Model provenance | Use validated models where possible | `RedHatAI/Qwen3.8-27B-INT4` from Hugging Face, not in the validated-model list (OPERATIONS) | Deviation (justified: candidate under qualification) |
+| Model provenance | Use validated models where possible | `RedHatAI/Qwen3.8-27B-NVFP4` from Hugging Face at the production revision, the same source as production MaaS (Stage 040) | As production |
 | Stop a model | Stopped InferenceService reports `Suspended` in Argo CD [8] | Accepted health `Suspended`, validated | Aligned |
 | Bucket provisioning | OBC on `openshift-storage.noobaa.io` [5] | Fixed `bucketName` | Deviation (justified: connection skeletons reference known names) |
 | Argo CD | Server-Side Diff by annotation [9]; `Prune=false,Delete=false` for data [6] | Both; connection Secrets also `ServerSideApply=true` | Deviation (repository rule forbids `ServerSideApply=true`; see findings) |

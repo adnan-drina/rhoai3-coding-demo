@@ -1,0 +1,39 @@
+---
+# vLLM NVIDIA GPU ServingRuntime instantiated from the platform template vllm-cuda-runtime-template
+# (RHOAI 3.5 "Deploying models"); same image digest as the MaaS deployments. Serves the candidate
+# (candidate-qwen3-8-27b-nvfp4.yaml) and the risk assessment model (risk-assessment-gemma-2-9b-abliterated.yaml).
+apiVersion: serving.kserve.io/v1alpha1
+kind: ServingRuntime
+metadata:
+  name: vllm-cuda-runtime
+  namespace: evaluated-models
+  labels:
+    opendatahub.io/dashboard: "true"
+  annotations:
+    opendatahub.io/recommended-accelerators: '["nvidia.com/gpu"]'
+    opendatahub.io/runtime-version: v0.24.0
+    opendatahub.io/template-name: vllm-cuda-runtime-template
+    opendatahub.io/template-display-name: vLLM NVIDIA GPU ServingRuntime for KServe
+    opendatahub.io/apiProtocol: REST
+    openshift.io/display-name: vLLM NVIDIA GPU ServingRuntime for KServe
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  annotations:
+    opendatahub.io/kserve-runtime: vllm
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8080"
+  containers:
+    - name: kserve-container
+      image: registry.redhat.io/rhaii/vllm-cuda-rhel9@sha256:fd9540f3882b9aae5f862eba6c295d0e9c6b43f8c17b27b179481bfa330bfbc1
+      command: [python, -m, vllm.entrypoints.openai.api_server]
+      args: [--port=8080, --model=/mnt/models, "--served-model-name={{.Name}}"]
+      env:
+        - name: HF_HOME
+          value: /tmp/hf_home
+      ports:
+        - containerPort: 8080
+          protocol: TCP
+  multiModel: false
+  supportedModelFormats:
+    - autoSelect: true
+      name: vLLM

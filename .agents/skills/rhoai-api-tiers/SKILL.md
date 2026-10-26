@@ -43,7 +43,7 @@ API inventory (kinds this repo writes; one example path each):
 | `opendatahub.io/v1alpha` | OdhDashboardConfig | `010-rhoai-platform/odhdashboardconfig.yaml` |
 | `infrastructure.opendatahub.io/v1` | HardwareProfile | `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-quotas/hardware-profiles/` |
 | `serving.kserve.io/v1alpha2` | LLMInferenceService, LLMInferenceServiceConfig | `gitops/stages/040-governed-models-as-a-service/040-local-models/` |
-| `serving.kserve.io/v1beta1`, `serving.kserve.io/v1alpha1` | InferenceService, ServingRuntime | `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-int4.yaml` |
+| `serving.kserve.io/v1beta1`, `serving.kserve.io/v1alpha1` | InferenceService, ServingRuntime | `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-nvfp4.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/serving-runtime.yaml` |
 | `maas.opendatahub.io/v1alpha1` | MaaSModelRef, MaaSSubscription, MaaSAuthPolicy | `gitops/stages/040-governed-models-as-a-service/040-model-access/`, `.../local-models/qwen38-27b-maas-modelref.yaml` |
 | `inference.opendatahub.io/v1alpha1` | ExternalProvider, ExternalModel | `gitops/stages/040-governed-models-as-a-service/040-external-models/` |
 | `mlflow.opendatahub.io/v1` | MLflow | `gitops/stages/050-model-evaluation/050-mlflow/mlflow.yaml` |

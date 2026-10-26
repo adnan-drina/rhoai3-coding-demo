@@ -17,7 +17,7 @@ resources:
   - pipeline-server.yaml
   - pipeline
   - maas-key-provisioner.yaml
-  - candidate-qwen3-8-27b-int4.yaml
+  - serving-runtime.yaml
   - candidate-qwen3-8-27b-nvfp4.yaml
   - candidate-model-auth.yaml
   - guardrails

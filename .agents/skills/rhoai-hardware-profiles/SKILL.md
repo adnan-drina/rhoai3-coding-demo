@@ -41,8 +41,8 @@ OpenShift AI 3.5 sections. Detailed record:
 | Accelerator identifier `nvidia.com/gpu`, exactly 1 per workload (min = max = 1); one physical GPU per unit, no time-slicing | `020-gpu-quotas/hardware-profiles/gpu-*.yaml` | [Create a hardware profile][hwp-create]; time slicing not used ([GPU time slicing][timeslice]) |
 | `gpu-rtxpro6000` caps CPU at 7 and memory at 56Gi so one pod fits one `g7e.2xlarge` worker (about 7.5 CPU / 58 GiB allocatable) | `020-gpu-quotas/hardware-profiles/gpu-rtxpro6000.yaml`, comment in `queues/cq-gpu-rtxpro6000.yaml` | [Create a hardware profile][hwp-create] |
 | The profiles' LocalQueues exist only in `demo-sandbox` (Stage 020), `internal-models` (Stage 040) and `evaluated-models` (Stage 050); recorded deviation from "a queue name that exists in all user projects" | `020-gpu-quotas/queues/lq-*.yaml`, `020-gpu-quotas/README.md` (Alignment table) | [Create a hardware profile][hwp-create] |
-| Stage 040 Qwen model names `gpu-rtxpro6000` plus label `kueue.x-k8s.io/queue-name: lq-gpu-rtxpro6000`; Stage 050 INT4 candidate names `gpu-reserved-demo` / `lq-gpu-reserved-demo` | `gitops/stages/040-governed-models-as-a-service/040-local-models/qwen38-27b-llminferenceservice.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Kueue workflow][kueue-flow] |
-| ServingRuntime `vllm-cuda-runtime` carries `opendatahub.io/recommended-accelerators: '["nvidia.com/gpu"]'` | `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Recommended accelerator for serving runtimes][rec-runtime] |
+| Stage 040 Qwen model names `gpu-rtxpro6000` plus label `kueue.x-k8s.io/queue-name: lq-gpu-rtxpro6000`; Stage 050 candidate names `gpu-rtxpro6000` / `lq-gpu-rtxpro6000`, the risk assessment model `gpu-reserved-demo` / `lq-gpu-reserved-demo` | `gitops/stages/040-governed-models-as-a-service/040-local-models/qwen38-27b-llminferenceservice.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-nvfp4.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/risk-assessment-gemma-2-9b-abliterated.yaml` | [Kueue workflow][kueue-flow] |
+| ServingRuntime `vllm-cuda-runtime` carries `opendatahub.io/recommended-accelerators: '["nvidia.com/gpu"]'` | `gitops/stages/050-model-evaluation/050-model-qualification/serving-runtime.yaml` | [Recommended accelerator for serving runtimes][rec-runtime] |
 | Profiles are GitOps objects of `020-gpu-quotas` at sync-wave 5 (after their ClusterQueues at wave 4), `SkipDryRunOnMissingResource` because the CRD comes from OpenShift AI | `gitops/applications/020-gpu-quotas.yaml` | — (repo GitOps rule) |
 
 The `default-profile` HardwareProfile is created by OpenShift AI and is not in Git.
@@ -79,7 +79,7 @@ The `default-profile` HardwareProfile is created by OpenShift AI and is not in G
 - Profile maximums stay below one worker's allocatable capacity:
   `gpu-reserved-demo` allows at most 7 CPU / 56Gi on an 8 vCPU / 64 GiB L40S
   instance, like the RTX profile. `gpu-reserved-demo`'s display name still says "NVIDIA L40S (48 GB)";
-  the L40S pool is parked at zero and used only by the Stage 050 candidate.
+  the L40S pool is parked at zero and used only by the Stage 050 risk assessment model.
 - Profiles appear in the dashboard only while `disableKueue: false`
   (`gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/odhdashboardconfig.yaml`).
 

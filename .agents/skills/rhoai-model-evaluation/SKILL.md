@@ -12,7 +12,7 @@ description: >
   collections and their gates), adding or changing a criterion as a new `-vN`
   collection, the qualification verdict (QUALIFIED or NOT QUALIFIED against
   fixed gates, recorded on the model registry version), onboarding a candidate
-  model such as `qwen3-8-27b-int4`, or reading and recording qualification
+  model such as `qwen3-8-27b-nvfp4`, or reading and recording qualification
   results. Do NOT
   use for running and debugging EvalHub jobs, providers and access (use
   rhoai-evaluation), pipeline code (use rhoai-kfp-pipeline-authoring), the
@@ -46,7 +46,7 @@ skill are not in this repo and are not used (LM-Eval is deprecated in 3.5).
 | A changed criterion is a new `-vN` collection, never an in-place edit, so each MLflow run stays tied to the criteria that judged it; old versions stay registered | `gitops/stages/050-model-evaluation/050-evaluation-content/edd/` | [MLflow experiment tracking][mlflow] |
 | One candidate per pipeline run, judged on fixed gates only (no production baseline, decision 2026-10-23); the report reads only this run's jobs (tag `run=<pipeline run id>`); QUALIFIED needs every evaluation run and passed plus capability 3:2:1 at least 0.50 | `stages/050-model-evaluation/qualification/pipeline.py` | not product guidance |
 | The verdict and each benchmark's result, evaluation page, MLflow run and pipeline run are recorded on the model registry version (`model_version_id` run parameter); `record.sh` does the same for a manual job | `stages/050-model-evaluation/qualification/pipeline.py`, `stages/050-model-evaluation/evaluation/record.sh` | not product guidance |
-| A candidate is a project `InferenceService` with the same revision and serving arguments as production, so a pass carries over on promotion; it is stopped in Git between runs | `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-int4.yaml` | [Compare evaluation runs][compare] |
+| A candidate is a project `InferenceService` with the same revision and serving arguments as production, so a pass carries over on promotion; it is stopped in Git between runs | `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-nvfp4.yaml` | [Compare evaluation runs][compare] |
 | CI gating uses the EvalHub CLI with the job body `submit.sh --dry-run` prints; no template is kept | `stages/050-model-evaluation/evaluation/README.md` | [Install the SDK and CLI][cli] |
 
 ## Procedure
@@ -66,8 +66,10 @@ skill are not in this repo and are not used (LM-Eval is deprecated in 3.5).
 3. Qualify: start a pipeline run with `model_name`, `model_version_id` and
    MLflow experiment `models-onboarding`
    (`docs/OPERATIONS.md#stage-050-model-qualification-pipeline-2026-10-12`);
-   the candidate and `gemma-2-9b-abliterated` on the L40S queue need two GPUs
-   (`GPU_POOL=l40s stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 2`).
+   the candidate needs a second RTX PRO 6000 next to production
+   (`stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 2`) and
+   `gemma-2-9b-abliterated` one L40S
+   (`GPU_POOL=l40s stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 1`).
 4. The last step records the verdict on the model version (dashboard model
    version **Properties**); a promotion is a Stage 040 change, not an
    evaluation change.
