@@ -20,6 +20,7 @@ data:
     import json, os, random, socket, ssl, sys, time, urllib.request
 
     import mlflow
+    from mlflow.entities import AssessmentSource, Feedback
     from mlflow.genai.judges import make_judge
 
     WINDOW_MIN = int(os.environ.get("WINDOW_MINUTES", "1500"))
@@ -88,8 +89,9 @@ data:
             "evasive or answers a different question."), **kw)
         completeness = make_judge(name="completeness", description="The response covers every part of the request.",
             instructions=("Request: {{ inputs }}\nResponse: {{ outputs }}\n"
-            "Return true if the response covers every part of the request and is not cut off mid-sentence, "
-            "false if a requested part is missing or the response is truncated."), **kw)
+            "Return true if the response covers every part of the request, false if a requested part is missing. "
+            "Judge the content only: whether the text was cut off is checked separately from the model's stop "
+            "reason."), **kw)
         team = {sub: make_judge(name="team_guidelines", description="The response meets the team's quality guideline.",
             instructions=("Request: {{ inputs }}\nResponse: {{ outputs }}\nGuideline: " + rules + "\n"
             "Return true if the response meets the guideline, false if it does not."), **kw)
@@ -148,7 +150,13 @@ data:
         RELEVANCE, COMPLETENESS, TEAM_JUDGES = JUDGE_SETS[SELF_JUDGE if own else JUDGE]
         traces = mlflow.search_traces(locations=[exp.experiment_id], return_type="list", max_results=500,
                                       filter_string=f"trace.timestamp_ms > {cutoff} AND trace.status = 'OK'")
-        todo = [t for t in traces if not any(a.name == "relevance" for a in (t.info.assessments or []))]
+        # Only traces that record why the answer stopped (generator since 2026-10-27) and still miss a verdict;
+        # each trace gets only the verdicts it does not have yet, so a half-scored trace is completed, never doubled.
+        def missing(t):
+            tags, have = t.info.tags or {}, {a.name for a in (t.info.assessments or [])}
+            want = {"finished", "relevance", "completeness"} | ({"team_guidelines"} if tags.get("subscription") in GUIDELINES else set())
+            return want - have if tags.get("finish_reason") else set()
+        todo = [t for t in traces if missing(t)]
         picked = [t for t in todo if random.random() < SAMPLE][:LIMIT]
         print(f"{exp.name}: {len(traces)} recent, {len(todo)} unscored, {len(picked)} sampled", flush=True)
         for trace in picked:
@@ -158,8 +166,20 @@ data:
             prompt, response = root_io(trace)
             if not prompt or response is None:
                 continue
+            need = missing(trace)
+            if "finished" in need:
+                # A fact, not a judgement: the model stopped on its own, or the max-tokens cap cut the answer off.
+                reason = trace.info.tags["finish_reason"]
+                mlflow.log_assessment(trace_id=trace.info.trace_id, assessment=Feedback(
+                    name="finished", value=reason != "length",
+                    rationale=f"The model's stop reason is '{reason}'" + (": the max-tokens cap cut the answer off."
+                                                                         if reason == "length" else "."),
+                    source=AssessmentSource(source_type="CODE", source_id="finish_reason")))
+                scored += 1
             team_judge = TEAM_JUDGES.get((trace.info.tags or {}).get("subscription"))
             for judge in [RELEVANCE, COMPLETENESS] + ([team_judge] if team_judge else []):
+                if judge.name not in need:
+                    continue
                 try:
                     feedback = judge(inputs={"request": prompt}, outputs={"response": response})
                     mlflow.log_assessment(trace_id=trace.info.trace_id, assessment=feedback)
