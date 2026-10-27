@@ -659,7 +659,8 @@ fi
 "$SCRIPT_DIR/studio-mcp/publish.sh" --defer-if-absent
 
 deadline=$((SECONDS + 900))
-until RHOAI_STAGE040_SKIP_REGISTRY=true "$SCRIPT_DIR/validate.sh" --readiness; do
+# Exit 2 (warnings only) is ready: a warning reports user state, such as a playground created before its state mount.
+until ready_rc=0; RHOAI_STAGE040_SKIP_REGISTRY=true "$SCRIPT_DIR/validate.sh" --readiness || ready_rc=$?; (( ready_rc == 0 || ready_rc == 2 )); do
   (( SECONDS < deadline )) || { log_error "Stage 040 readiness timed out; inspect the operator and component conditions."; exit 1; }
   sleep 10
 done
