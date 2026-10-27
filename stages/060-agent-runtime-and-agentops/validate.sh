@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stage 060 validation (read-only): the five component Applications, the agent console's dashboard flag and
-# read-only discovery permissions, the native MCP lifecycle operator, and the two native OpenShift MCP servers.
+# read-only discovery permissions, the native MCP lifecycle operator, the two native OpenShift MCP servers, and that
+# the three agent sandboxes exist (ai-agents opencode and hermes, openshell-developer opencode).
 # Full-stage acceptance (persona handshake, agent lifecycle) is pending by design, so a complete run exits 2 at best;
 # --component checks one component and exits 0 when it passes. --static checks only the repository render.
 # Usage: stages/060-agent-runtime-and-agentops/validate.sh [--static | --component 060-agent-console|060-mcp-platform|060-agent-tools]
@@ -149,6 +150,18 @@ case "$COMPONENT" in
     log_step "Stage 060 component Applications"
     check_stage_applications 060 "${RHOAI_STAGE060_EXPECTED_REVISION:-}"
     validate_console; validate_mcp_platform; validate_agent_tools
+    # The agent sandboxes are created by the opt-in sandboxes/create.sh (persona sessions), never by deploy.sh; a
+    # missing one is a pending provisioning step, so name the command that creates it.
+    log_step "Agent sandboxes (sandboxes/create.sh)"
+    for sandbox in ai-agents/opencode ai-agents/hermes openshell-developer/opencode; do
+      ns=${sandbox%/*} name=${sandbox#*/}
+      if oc --request-timeout=10s get sandboxes.agents.x-k8s.io "$name" -n "$ns" -o name >/dev/null 2>&1; then
+        record "Agent sandbox $sandbox exists" pass
+      else
+        owner=""; [[ "$ns" == openshell-developer ]] && owner=" --owner ai-developer"
+        record_warn "Agent sandbox $sandbox exists" "pending: sandboxes/create.sh $name$owner --revision SHA --apply"
+      fi
+    done
     record_warn "Full-stage acceptance" "persona handshake and agent lifecycle remain pending by design" ;;
   060-agent-console) validate_console ;;
   060-mcp-platform) validate_mcp_platform ;;

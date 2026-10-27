@@ -4,6 +4,8 @@
 as its native administrator. These task scripts create and qualify the persistent OpenCode and Hermes sandboxes that
 `ai-admin` owns there, and the developer's own OpenCode sandbox in `openshell-developer`, through the native OpenShell
 API and the pinned CLI only. They are opt-in and never run by `deploy.sh` or `validate.sh`.
+A new environment needs all three (`create.sh opencode`, `create.sh hermes`, `create.sh opencode --owner ai-developer`);
+Stage 060 `validate.sh` reports each missing sandbox as pending with the command that creates it.
 
 | Script | When to run |
 |---|---|
