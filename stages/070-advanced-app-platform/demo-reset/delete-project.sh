@@ -3,8 +3,8 @@
 # such as Coolstore). In order: an immutable retirement record (ConfigMap retired-project-NAME in app-platform-build),
 # stop the DevWorkspaces that clone it, archive the GitLab project (the persistent guard: the reconciler cannot
 # recreate its resources), run the platform retirement pipeline for a migration run, then delete its Applications
-# project-NAME and runtime-NAME, its cross-namespace grants, delivery reader Secret and listener binding, and its
-# namespace. Kept: the GitLab repository (archived), workspace PVCs, delivery history; no GitHub/Quay deletion.
+# project-NAME and runtime-NAME, its cross-namespace grants, delivery reader Secret, listener binding and workspace
+# scanner credential mirror (NAME-sonar-credentials in the persona workspace namespaces), and its namespace. Kept: the GitLab repository (archived), workspace PVCs, delivery history; no GitHub/Quay deletion.
 # Without --yes it only prints the plan (read-only) and refuses; safe to rerun (every step accepts the retired state).
 # Acts as the GitLab user demo-operator (token in Secret gitlab-system/gitlab-demo-operator).
 # Usage: stages/070-advanced-app-platform/demo-reset/delete-project.sh NAME [--yes]
@@ -59,7 +59,7 @@ while read -r namespace name; do
 done <<<"$WORKSPACES"
 log_info "Archive:    GitLab project ($([[ $(printf '%s' "$PROJECT" | jq -r '.archived // false') == true ]] && echo already archived || echo archive))"
 [[ "$KIND" != migration ]] || log_info "Pipeline:   PipelineRun $BUILD_NS/retire-$NAME (provision-migration-run, mode retire)"
-log_info "Delete:     Applications project-$NAME, runtime-$NAME; grants, delivery reader, listener binding; namespace $PROJECT_NS"
+log_info "Delete:     Applications project-$NAME, runtime-$NAME; grants, delivery reader, listener binding, scanner credential mirror; namespace $PROJECT_NS"
 if [[ "$CONFIRMED" != true ]]; then
   log_error "Pass --yes after reviewing the registered project and retained data."
   exit 1
@@ -102,5 +102,9 @@ oc delete rolebinding "$NAME.delivery" "$NAME.readback" -n "$GITOPS_NS" --ignore
 oc delete role "$NAME.delivery" "$NAME.readback" -n "$GITOPS_NS" --ignore-not-found
 oc delete secret "gitlab-delivery-reader-$NAME" -n "$GITOPS_NS" --ignore-not-found
 oc delete clusterrolebinding "$NAME.listener" --ignore-not-found
+# The reconciler mirrors the project's SonarQube token into the requester's workspace namespace for the scanner.
+for ws_ns in wksp-ai-developer wksp-ai-admin; do
+  oc delete secret "$NAME-sonar-credentials" -n "$ws_ns" --ignore-not-found
+done
 oc delete namespace "$PROJECT_NS" --ignore-not-found
 log_success "Project retired. GitLab repository archived; workspace PVCs and delivery history retained."
