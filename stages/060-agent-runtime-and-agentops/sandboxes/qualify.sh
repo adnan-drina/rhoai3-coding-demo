@@ -1477,7 +1477,7 @@ hermes_static() {
 # ── OpenCode / Hermes run: lock, deadline, receipt on every exit ──────────────────────────────────────────────────
 INTERRUPTED=""
 q_exit() {
-  local rc=$? failure path
+  local rc=$? failure path passed
   set +e
   trap '' INT TERM ALRM
   [[ -z "${WATCHDOG_PID:-}" ]] || kill "$WATCHDOG_PID" 2>/dev/null
@@ -1496,9 +1496,11 @@ q_exit() {
   path="$STATE_DIR/qualification-$(uuid_hex 16).json"
   private_receipt "$path" "$(cat "$WORK/receipt.json")"
   jq -c . "$WORK/receipt.json"
+  # Read the verdict before native_cleanup removes $WORK.
+  passed=$(jq -r '.passed == true' "$WORK/receipt.json" 2>/dev/null || echo false)
   native_cleanup
   locks_release
-  if ! jq -e '.passed == true' "$WORK/receipt.json" >/dev/null 2>&1; then
+  if [[ "$passed" != true ]]; then
     if [[ "$SUITE" == opencode ]]; then
       echo "[FAIL] Qualification incomplete; preserved setup state and retained key" >&2
     else
