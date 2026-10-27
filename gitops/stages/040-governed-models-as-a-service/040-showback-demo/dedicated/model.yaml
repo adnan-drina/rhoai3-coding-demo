@@ -27,6 +27,15 @@ metadata:
     opendatahub.io/hardware-profile-namespace: redhat-ods-applications
 spec:
   replicas: 0
+  # Distributed tracing of vLLM, the scheduler and the routing sidecar (RHOAI 3.5 llm-d guide, "Configure distributed
+  # tracing"): OTLP gRPC to the RHOAI collector (Tempo). Phase 0 of MaaS request tracing: what the spans carry. Every
+  # request is sampled. A change here restarts the model, which on one GPU needs the model stopped first (the rolling
+  # update adds the new pod before removing the old one).
+  tracing:
+    exporter: otlp
+    exporterEndpoint: http://data-science-collector-collector.redhat-ods-monitoring.svc.cluster.local:4317
+    sampler: parentbased_traceidratio
+    samplerArg: "1.0"
   model:
     name: mistral-small4-119b
     uri: hf://RedHatAI/Mistral-Small-4-119B-2603-NVFP4:a7b11eb3bdf01f38077f6704e96cc1d9b83a4cfc
