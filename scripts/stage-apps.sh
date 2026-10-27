@@ -328,13 +328,14 @@ check_static() {
         >/dev/null || exit 1
     echo "PASS Stage $stage: $(jq length <<<"$apps") components render $(jq length "$CACHE/union.json") objects, disjoint and equal to gitops/stages/$(basename "$dir")"
 }
-# Hook Jobs in later stages declare the shared-singleton fields they patch (demo.rhoai.io/writes-delegated,
-# "Kind:/json/pointer"); 010-rhoai-platform must delegate exactly those fields, each to one writer.
+# Hook Jobs declare the shared-singleton fields they patch (demo.rhoai.io/writes-delegated, "Kind:/json/pointer"),
+# in later stages and in the other Stage 010 components (010-mlflow); 010-rhoai-platform must delegate exactly those
+# fields, each to one writer.
 check_delegations() {
     local delegated_fields writers stage path app
     delegated_fields=$(yaml_json <"$REPO_ROOT/gitops/applications/010-rhoai-platform.yaml" | jq -c '[.[0].spec.ignoreDifferences[]?
         | select(.kind == "DataScienceCluster" or .kind == "OdhDashboardConfig") | .kind as $k | .jsonPointers[] | "\($k):\(.)"] | unique')
-    writers=$(for path in "$REPO_ROOT"/gitops/stages/0[2-9]0-*/; do
+    writers=$(for path in "$REPO_ROOT"/gitops/stages/0[1-9]0-*/; do
         stage=$(basename "$path" | cut -c1-3)
         compgen -G "$REPO_ROOT/gitops/applications/$stage-*.yaml" >/dev/null || continue
         for app in $(components "$stage" true | jq -r '.[] | "\(.metadata.name)=\(.spec.source.path)"'); do

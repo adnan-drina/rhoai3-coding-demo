@@ -18,7 +18,6 @@ rules:
     resources: [customresourcedefinitions]
     resourceNames:
       - evalhubs.trustyai.opendatahub.io
-      - mlflows.mlflow.opendatahub.io
       - datasciencepipelinesapplications.datasciencepipelinesapplications.opendatahub.io
       - pipelineversions.pipelines.kubeflow.org
     verbs: [get]

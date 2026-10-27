@@ -41,7 +41,7 @@ documentation examples.
 Existing claims to copy from:
 
 - `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/obc-models.yaml`, `obc-workbench.yaml`
-- `gitops/stages/050-model-evaluation/050-mlflow/objectbucketclaim.yaml`
+- `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/objectbucketclaim.yaml`
 - `gitops/stages/050-model-evaluation/050-model-qualification/storage/obc-*.yaml`
 - `gitops/stages/070-advanced-app-platform/070-gitlab/buckets.yaml`
 

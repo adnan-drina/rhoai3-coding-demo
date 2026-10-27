@@ -87,6 +87,7 @@ A durable demo AI platform foundation that all subsequent stages build on.
 - **Dashboard capabilities** — native metrics dashboards; AutoRAG and AutoML are disabled
 - **Platform access** — existing provider identities mapped to explicit `rhods-admins` and `rhoai-developers` groups; administrators and developers receive separate project permissions
 - **Demo storage** — native NooBaa local object storage and separate persistent PostgreSQL databases; finite capacity and single-instance databases suit the workshop rather than an HA production deployment
+- **MLflow tracking** — the shared OpenShift AI MLflow server (`010-mlflow`) with its PostgreSQL database, an ODF artifact bucket and the curated prompt workspace; each project is its own MLflow workspace, used by GenAI Studio tracing, evaluation, pipelines and agents
 - **S3 connections** — two project-scoped `ObjectBucketClaim` buckets exposed as the **Models** and **Workbench** connections (`010-sandbox-storage`) using the dashboard's pre-installed S3 connection type
 
 ## What To Notice And Why It Matters
@@ -150,7 +151,7 @@ OpenShift GitOps provides declarative reconciliation through Argo CD. OpenShift 
 
 Persona sign-in is a task script, described in [`personas/README.md`](personas/README.md).
 
-The deploy script bootstraps OpenShift GitOps, then applies five component Argo CD Applications that reconcile the Stage 010 resources: `010-rhoai-operator`, `010-odf`, `010-observability-operators`, `010-rhoai-platform` and `010-access`. It then deploys the separate `010-sandbox-storage` and `010-console-observability` Applications (each alone with `deploy.sh --component NAME`, checked with `validate.sh --component NAME`) creates `RHOAI_ADMIN_USER` and `RHOAI_DEVELOPER_USER` in the Keycloak realm `sso` when an account is missing (a fresh environment ships only `admin`; the passwords come from `AI_ADMIN_PASSWORD` and `AI_DEVELOPER_PASSWORD` in `.env`, and existing accounts are never changed), and adds both to their demo groups (`rhods-admins` is operator-owned, so membership stays out of Git). Sign each persona in once with `personas/login.sh` before Stage 070, which links their OpenShift identities.
+The deploy script bootstraps OpenShift GitOps, then applies five component Argo CD Applications that reconcile the Stage 010 resources: `010-rhoai-operator`, `010-odf`, `010-observability-operators`, `010-rhoai-platform` and `010-access`. It then deploys the separate `010-sandbox-storage`, `010-console-observability` and `010-mlflow` Applications (each alone with `deploy.sh --component NAME`, checked with `validate.sh --component NAME`) creates `RHOAI_ADMIN_USER` and `RHOAI_DEVELOPER_USER` in the Keycloak realm `sso` when an account is missing (a fresh environment ships only `admin`; the passwords come from `AI_ADMIN_PASSWORD` and `AI_DEVELOPER_PASSWORD` in `.env`, and existing accounts are never changed), and adds both to their demo groups (`rhods-admins` is operator-owned, so membership stays out of Git). Sign each persona in once with `personas/login.sh` before Stage 070, which links their OpenShift identities.
 
 ## References
 

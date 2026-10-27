@@ -13,7 +13,7 @@ later stages that need buckets.
 | Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (Application Synced/Healthy; `odf-operator` CSV `Succeeded`; `NooBaa/noobaa` phase `Ready`); `check_operator_policy --verify` |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation; no `ignoreDifferences` |
 | Depends on | OpenShift GitOps bootstrap; the `gp3-csi` StorageClass (AWS EBS CSI, provided by the cluster) |
-| Used by | `010-sandbox-storage` (OBCs `rhoai-models`, `rhoai-workbench`), Stage 050 (`050-mlflow/objectbucketclaim.yaml`, `050-model-qualification/storage/`), Stage 070 GitLab buckets (`gitops/stages/070-advanced-app-platform/070-gitlab/buckets.yaml`) |
+| Used by | `010-sandbox-storage` (OBCs `rhoai-models`, `rhoai-workbench`), `010-mlflow` (`objectbucketclaim.yaml`), Stage 050 (`050-model-qualification/storage/`), Stage 070 GitLab buckets (`gitops/stages/070-advanced-app-platform/070-gitlab/buckets.yaml`) |
 
 ## Why
 

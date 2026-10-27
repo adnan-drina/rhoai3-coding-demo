@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Stage 010 validation: OpenShift GitOps, the component Applications, ODF, RHOAI and its observability stack, access,
-# the sandbox bucket connections, the console Perses integration, and native metrics and trace round trips.
+# the sandbox bucket connections, the console Perses integration, the shared MLflow tracking service, and native
+# metrics and trace round trips.
 # Read-only (local port-forwards only); credential values are compared inside jq, never printed or passed as arguments.
-# Usage: stages/010-openshift-ai-platform-foundation/validate.sh [--component 010-sandbox-storage|010-console-observability]
+# Usage: stages/010-openshift-ai-platform-foundation/validate.sh [--component 010-sandbox-storage|010-console-observability|010-mlflow]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -364,6 +365,70 @@ validate_console_observability() {
   echo "Scope: native console/Perses readiness; datasource persona permissions and browser checks are separate."
 }
 
+# ── 010-mlflow: the shared MLflow tracking service, its PostgreSQL, artifact bucket and curated prompt workspace ──
+validate_mlflow() {
+  local APPS=redhat-ods-applications BUCKET=rhoai-mlflow-artifacts
+  read_json() { oc --request-timeout=10s get "$@" -o json 2>/dev/null || echo '{}'; }
+  yes_no() { jq -e "$@" >/dev/null && echo yes || echo no; }
+  # Secret key names only; credential values never reach the validator.
+  has_keys() {
+    local name=$1 ns=$2 key keys; shift 2
+    keys=$(oc --request-timeout=10s get secret "$name" -n "$ns" -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}' 2>/dev/null || true)
+    for key in "$@"; do grep -qx "$key" <<<"$keys" || return 1; done
+  }
+  # jq: a workload with current, fully ready replicas.
+  FRESH='def fresh: (.spec.replicas // 1) as $n | .status as $s | $n > 0 and .metadata.generation != null
+    and $s.observedGeneration == .metadata.generation and ($s.readyReplicas // 0) >= $n
+    and ($s.updatedReplicas // 0) == $n and ($s.replicas // 0) == $n and ($s.availableReplicas // 0) == $n;'
+  record "010-mlflow Synced and Healthy" "$(read_json applications.argoproj.io 010-mlflow -n openshift-gitops |
+    yes_no '.status.sync.status == "Synced" and .status.health.status == "Healthy"')"
+  record "MLflow and global prompt dashboard configuration" "$(read_json odhdashboardconfig odh-dashboard-config -n "$APPS" |
+    yes_no '.spec | .dashboardConfig.globalProjectPrompts == true and .globalMLflowNamespaces == ["ai-curated-prompts"]')"
+  record "MLflow operator Managed" "$(read_json datasciencecluster default-dsc |
+    yes_no '.spec.components.mlflowoperator.managementState == "Managed"')"
+  record "Curated prompt workspace references the shared native MLflow" "$(read_json namespace ai-curated-prompts |
+    yes_no '.metadata.labels["opendatahub.io/global-mlflow-workspace"] == "mlflow"')"
+  for pair in mlflow:"$APPS":backend-store-uri; do
+    IFS=: read -r feature ns uri_key <<<"$pair"
+    record "$feature PostgreSQL current and ready" "$(read_json statefulset "$feature-postgresql" -n "$ns" |
+      yes_no "$FRESH"' fresh and (.status.currentRevision // "") != "" and .status.currentRevision == .status.updateRevision')"
+    record "$feature durable gp3 PostgreSQL PVC Bound" "$(read_json pvc "$feature-postgresql" -n "$ns" |
+      yes_no '.status.phase == "Bound" and .spec.storageClassName == "gp3-csi"')"
+    has_keys "$feature-db-credentials" "$ns" database-user database-password database-name "$uri_key" && R=pass || R="keys missing"
+    record "$feature database Secret has its required keys" "$R"
+  done
+  record "MLflow artifact ObjectBucketClaim bound to its exact bucket" "$(read_json objectbucketclaim "$BUCKET" -n "$APPS" |
+    yes_no --arg b "$BUCKET" '.status.phase == "Bound" and .spec.bucketName == $b')"
+  has_keys "$BUCKET" "$APPS" AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY && R=pass || R="keys missing"
+  record "MLflow artifact credentials provisioned by the claim" "$R"
+  record "MLflow artifact endpoint is the internal HTTPS service" "$(read_json configmap "$BUCKET" -n "$APPS" |
+    yes_no --arg b "$BUCKET" '.data | .BUCKET_NAME == $b and .BUCKET_PORT == "443"
+      and (.BUCKET_HOST // "" | test("\\.openshift-storage\\.svc(\\.cluster\\.local)?$"))')"
+  record "MLflow service CA bundle injected" "$(read_json configmap mlflow-service-ca -n "$APPS" | yes_no '(.data["service-ca.crt"] // "") != ""')"
+  MLFLOW=$(read_json mlflows.mlflow.opendatahub.io mlflow)
+  record "MLflow Available at its current generation" "$(yes_no '.metadata.generation as $g | $g != null
+    and any(.status.conditions[]?; .type == "Available" and .status == "True")
+    and ([.status.conditions[]? | select((.type == "MLflowOperatorReady" or .type == "Migration") and .status == "True"
+         and .observedGeneration == $g) | .type] | unique | length) == 2' <<<"$MLFLOW")"
+  record "MLflow uses the PostgreSQL Secret and proxied claim artifacts" "$(yes_no --arg b "$BUCKET" '.spec
+    | .backendStoreUriFrom == {name: "mlflow-db-credentials", key: "backend-store-uri"} and .serveArtifacts == true
+    and .artifactsDestination == "s3://\($b)/artifacts" and (.defaultArtifactRoot // "mlflow-artifacts:/") == "mlflow-artifacts:/"' <<<"$MLFLOW")"
+  # The operator-owned server Deployment carries the custom resource's name (EvalHub with spec.mcp also owns evalhub-mcp).
+  owned_deployment() {
+    read_json deployments -n "$3" | jq -c --arg kind "$1" --argjson cr "$2" "$FRESH"' [.items[]
+      | select(.metadata.name == $cr.metadata.name and any(.metadata.ownerReferences[]?;
+          .kind == $kind and .uid == $cr.metadata.uid and .controller == true))]
+      | if length == 1 and (.[0] | fresh) then .[0] else {} end'
+  }
+  MLFLOW_DEPLOYMENT=$(owned_deployment MLflow "$MLFLOW" "$APPS")
+  record "MLflow has one current operator-owned Deployment" "$(yes_no 'length > 0' <<<"$MLFLOW_DEPLOYMENT")"
+  record "MLflow workload uses the backend Secret and verifies S3 TLS" "$(yes_no --arg b "$BUCKET" '[.spec.template.spec.containers[]?] as $c
+    | ([$c[].env[]?] | map({key: .name, value: (.value // "")}) | from_entries) as $env
+    | any($c[].env[]?; .valueFrom.secretKeyRef.name == "mlflow-db-credentials" and .valueFrom.secretKeyRef.key == "backend-store-uri")
+    and ($env.AWS_CA_BUNDLE // "") != "" and $env.MLFLOW_S3_IGNORE_TLS == "false"
+    and any($c[].envFrom[]?; .secretRef.name == $b)' <<<"$MLFLOW_DEPLOYMENT")"
+}
+
 # ── Native data plane as the administrator: a metrics query and one synthetic trace through the collector ──────
 validate_foundation_services() {
   read_json() { oc --request-timeout=20s get "$@" -o json; }
@@ -489,9 +554,10 @@ validate_foundation_services() {
 }
 
 case "$COMPONENT" in
-  "") validate_core; validate_sandbox_storage; validate_console_observability; validate_foundation_services ;;
+  "") validate_core; validate_sandbox_storage; validate_console_observability; validate_mlflow; validate_foundation_services ;;
   010-sandbox-storage) validate_sandbox_storage ;;
   010-console-observability) validate_console_observability ;;
+  010-mlflow) validate_mlflow ;;
   *) echo "Unknown component $COMPONENT" >&2; exit 1 ;;
 esac
 validation_summary

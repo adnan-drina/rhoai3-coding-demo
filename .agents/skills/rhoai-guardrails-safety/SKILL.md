@@ -35,7 +35,7 @@ dashboard creates one on request. Detailed record:
 | Decision | Where in Git | Official section |
 |---|---|---|
 | Dashboard flag `guardrails: true` set by the `job-enable-dsc-maas` Sync hook on a delegated Stage 010 field; `stages/040-governed-models-as-a-service/validate.sh` requires it | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml` | [NeMo Guardrails][nemo] |
-| TrustyAI component `Managed` from Stage 050 (the `NemoGuardrails` API group is `trustyai.opendatahub.io`) | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/` | [Basic deployment][basic] |
+| TrustyAI component `Managed` from Stage 050 (the `NemoGuardrails` API group is `trustyai.opendatahub.io`) | `gitops/stages/050-model-evaluation/050-model-qualification/evaluation-enablement/` | [Basic deployment][basic] |
 | Playground: no guardrail CR in Git; the dashboard's own initialization creates it once the flag is on (the former wrapper `studio-api.sh --initialize-guardrails`, which accepted only a resource named `nemoguardrails`, is in git history at `82092e01`) | — | [CR configuration reference][crref] |
 | NeMo Guardrails only; no FMS `GuardrailsOrchestrator` (3.5 documents migrating from FMS to NeMo) | not in Git | [Migrate from FMS to NeMo][migrate] |
 | Playground guardrail: guarded models are reached through MaaS; no detector or self-check model is deployed | `gitops/stages/040-governed-models-as-a-service/040-local-models/` | [Separate self-check model][selfcheck] |

@@ -20,6 +20,7 @@ resources:
   - serving-runtime.yaml
   - candidate-qwen3-8-27b-nvfp4.yaml
   - candidate-model-auth.yaml
+  - evaluation-enablement
   - guardrails
   - risk-assessment-gemma-2-9b-abliterated.yaml
   - garak-kfp-access.yaml

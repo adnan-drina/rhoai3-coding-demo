@@ -45,7 +45,7 @@ and `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/READM
 | Native observability stack in `redhat-ods-monitoring`; the namespace is created in Git before the DSCI | `010-rhoai-platform/monitoring-namespace.yaml`, `010-rhoai-platform/dsc-init.yaml` | [Enable the observability stack][obs] |
 | Demo workloads stay out of OpenShift AI namespaces: dashboard projects `demo-sandbox`, `internal-models`, `evaluated-models` (label `opendatahub.io/dashboard: "true"`), plus `external-models`, `evalhub`, `rhoai-model-registries` | `gitops/stages/010-openshift-ai-platform-foundation/010-access/namespace-demo-sandbox.yaml`, `gitops/stages/040-governed-models-as-a-service/040-local-models/namespace.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/namespace.yaml` | [Architecture][arch] (no ISV applications in OpenShift AI namespaces) |
 | Developer tools (Dev Spaces, Developer Hub, GitLab, MTA, SonarQube) get their own namespaces in Stage 070 | `gitops/stages/070-advanced-app-platform/070-namespaces/namespaces.yaml` | [Architecture][arch] |
-| Generated per-component CRs (`*.components.platform.opendatahub.io`) stay out of Git; enablement Jobs only read them for readiness | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/enable-job.yaml` | [View installed components][view] |
+| Generated per-component CRs (`*.components.platform.opendatahub.io`) stay out of Git; enablement Jobs only read them for readiness | `gitops/stages/050-model-evaluation/050-model-qualification/evaluation-enablement/enable-job.yaml` | [View installed components][view] |
 
 Workshop architecture lives in `README.md` and the stage list in `AGENTS.md`
 (Demo stages). Stage 130 keeps its own solution architecture in

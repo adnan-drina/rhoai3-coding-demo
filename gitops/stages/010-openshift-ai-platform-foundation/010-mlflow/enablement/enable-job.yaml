@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: enable-mlflow
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: enable-mlflow
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: platform-configuration
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    demo.rhoai.io/writes-delegated: "DataScienceCluster:/spec/components/mlflowoperator,OdhDashboardConfig:/spec/dashboardConfig/globalProjectPrompts,OdhDashboardConfig:/spec/globalMLflowNamespaces"
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: enable-mlflow
+        app.kubernetes.io/part-of: rhoai-platform
+        app.kubernetes.io/component: platform-configuration
+        app.kubernetes.io/managed-by: argocd
+    spec:
+      serviceAccountName: enable-mlflow
+      restartPolicy: Never
+      containers:
+        - name: enable
+          # Same reviewed OpenShift CLI image as Stage 030.
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          command: [/bin/bash, -ceu]
+          args:
+            - |
+              dsc_rv=$(oc get datasciencecluster default-dsc --request-timeout=10s -o jsonpath='{.metadata.resourceVersion}')
+              oc patch datasciencecluster default-dsc --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$dsc_rv\"},{\"op\":\"replace\",\"path\":\"/spec/components/mlflowoperator/managementState\",\"value\":\"Managed\"}]"
+              # The shared MLflow instance serves every project workspace and the curated (global) prompt workspace.
+              dashboard=$(oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s -o go-template='{{.metadata.resourceVersion}}|{{range .spec.globalMLflowNamespaces}}{{.}} {{end}}')
+              dashboard_rv=${dashboard%%|*};globals=${dashboard#*|}
+              [[ "$dashboard_rv" =~ ^[0-9]+$ && ( -z "$globals" || "$globals" == 'ai-curated-prompts ' ) ]] || { echo 'Concurrent or foreign global prompt configuration requires reviewed merge'; exit 1; }
+              oc patch odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$dashboard_rv\"},{\"op\":\"add\",\"path\":\"/spec/dashboardConfig/globalProjectPrompts\",\"value\":true},{\"op\":\"add\",\"path\":\"/spec/globalMLflowNamespaces\",\"value\":[\"ai-curated-prompts\"]}]"
+              [[ $(oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s -o jsonpath='{.spec.dashboardConfig.globalProjectPrompts}') == true ]]
+              [[ $(oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s -o jsonpath='{.spec.globalMLflowNamespaces[*]}') == ai-curated-prompts ]]
+              deadline=$((SECONDS + 840))
+              until [[ $(oc get crd mlflows.mlflow.opendatahub.io --request-timeout=10s -o jsonpath='{.status.conditions[?(@.type=="Established")].status}' 2>/dev/null || true) == True ]]; do
+                (( SECONDS < deadline )) || { echo 'MLflow API initialization timed out' >&2; exit 1; }
+                sleep 5
+              done

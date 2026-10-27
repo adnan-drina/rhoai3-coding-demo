@@ -6,7 +6,7 @@ labels:
   - pairs:
       app.kubernetes.io/part-of: rhoai-platform
       app.kubernetes.io/managed-by: argocd
-      demo.rhoai.io/stage: "050"
+      demo.rhoai.io/stage: "010"
     includeSelectors: false
 
 resources:
@@ -17,5 +17,5 @@ resources:
   - objectbucketclaim.yaml
   - service-ca.yaml
   - mlflow.yaml
-  - dsc-enablement
+  - enablement
   - prompts
