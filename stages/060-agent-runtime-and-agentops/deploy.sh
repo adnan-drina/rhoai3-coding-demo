@@ -6,7 +6,8 @@
 #                           startup barrier, and the ai-agents workspace with ai-admin as its administrator
 #   060-agent-console       dashboard AgentOps visibility and read-only discovery roles
 #   060-mcp-platform        the native MCP lifecycle operator
-#   060-agent-tools         the two native OpenShift MCP servers (Gen AI Studio publishing is Stage 040's)
+#   060-agent-tools         the two native OpenShift MCP servers, registered in the MLflow MCP registry before they
+#                           deploy and activated once they run (Gen AI Studio publishing is Stage 040's)
 # Credentials stay in memory: they reach curl and oc through stdin or a --config pipe, never arguments or output.
 # The ai-agents workspace step runs the OpenShell CLI pinned in source-pins.json: RHOAI_STAGE060_OPENSHELL_CLI, or by
 # default ~/.local/share/rhoai3-demo/openshell-<cliRelease>/bin/openshell; its checksum must match cliBinarySha256.
@@ -517,6 +518,103 @@ deploy_mcp_platform() {
   done
 }
 
+# ── MCP registry (MLflow) ─────────────────────────────────────────────────────
+# RHOAI 3.5 has no Register action in the MCP catalog; the MCP Servers registry is MLflow's (workspace mcp-servers).
+# Each entry in 060-agent-tools/catalog-source.json `registry_servers` becomes one registry server with version
+# registry_version: registered as a draft before the MCP servers deploy, then given its access endpoint and activated
+# once they run. Existing content is never overwritten; a difference stops the deployment.
+CATALOG_PIN="$REPO_ROOT/$GITOPS/060-agent-tools/catalog-source.json"
+REGISTRY_API=/mlflow/api/3.0/mlflow/mcp-servers
+# registry_open: port-forward to the MLflow service (Stage 050) and trust its service CA. Returns 1 when MLflow is absent.
+registry_open() {
+  [[ -n "${MLFLOW_PORT:-}" ]] && return 0
+  [[ -n "$(get mlflows.mlflow.opendatahub.io mlflow)" ]] || return 1
+  oc --request-timeout=15s get configmap service-ca -n openshift-config-managed -o jsonpath='{.data.ca-bundle\.crt}' >"$W/service-ca.crt"
+  oc port-forward -n redhat-ods-applications svc/mlflow :8443 >"$W/mlflow-forward.log" 2>&1 &
+  echo $! >>"$W/pids"
+  for _ in $(seq 1 30); do
+    MLFLOW_PORT=$(sed -n 's/^Forwarding from 127\.0\.0\.1:\([0-9]*\).*/\1/p' "$W/mlflow-forward.log" | head -1)
+    [[ -n "$MLFLOW_PORT" ]] && return 0
+    sleep 1
+  done
+  fail "MLflow port-forward did not start"
+}
+# registry METHOD PATH [BODY]: one authenticated registry call; prints the HTTP status, body in $W/registry.json.
+registry() {
+  printf 'header = "Authorization: Bearer %s"\n' "$(oc whoami -t)" |
+    curl --config - -s --max-time 30 --resolve "mlflow.redhat-ods-applications.svc:$MLFLOW_PORT:127.0.0.1" \
+      --cacert "$W/service-ca.crt" -H 'X-MLFLOW-WORKSPACE: mcp-servers' -H 'Content-Type: application/json' \
+      -X "$1" ${3:+--data "$3"} -o "$W/registry.json" -w '%{http_code}' \
+      "https://mlflow.redhat-ods-applications.svc:$MLFLOW_PORT$REGISTRY_API$2" || echo 000
+}
+# Registry server name, URL-encoded for a path segment.
+registry_path() { jq -rn --arg n "$1" '$n | @uri'; }
+register_mcp_servers() {
+  local version source entry name description server_json path code
+  registry_open || { log_warn "MLflow (Stage 050) is absent; MCP registry entries deferred until this component is redeployed"; return 0; }
+  version=$(jq -r '.registry_version' "$CATALOG_PIN")
+  # Version provenance: the catalog identity and source revision (the native field holds at most 512 characters).
+  source=$(jq -cS '{catalog, source_revision}' "$CATALOG_PIN")
+  (( ${#source} <= 512 )) || fail "MCP registry provenance exceeds 512 characters"
+  while IFS= read -r entry; do
+    name=$(jq -r '.name' <<<"$entry"); description=$(jq -r '.description' <<<"$entry")
+    path=$(registry_path "$name")
+    code=$(registry GET "/$path")
+    if [[ "$code" == 404 ]]; then
+      code=$(registry POST "" "$(jq -nc --arg n "$name" --arg d "$description" '{name: $n, description: $d}')")
+      [[ "$code" == 200 || "$code" == 201 ]] || fail "MCP registry server $name creation failed (HTTP $code)"
+    elif [[ "$code" != 200 ]]; then
+      fail "MCP registry server $name unreadable (HTTP $code)"
+    fi
+    jq -e --arg n "$name" --arg d "$description" '(.mcp_server // .) | .name == $n and .description == $d' "$W/registry.json" >/dev/null ||
+      fail "MCP registry server $name exists with other content; not overwritten"
+    server_json=$(jq -c --argjson e "$entry" '{name: $e.name, version: .registry_version, title: $e.title, description: $e.description,
+      repository: {url: .source_repository, source: "github"},
+      packages: [{registryType: "oci", identifier: .image, transport: {type: "streamable-http"}}],
+      _meta: {"demo.rhoai.io/catalog-provenance": {catalog, source_revision, image, deployment: $e.server}}}' "$CATALOG_PIN")
+    code=$(registry GET "/$path/versions/$(registry_path "$version")")
+    if [[ "$code" == 404 ]]; then
+      code=$(registry POST "/$path/versions" "$(jq -nc --argjson j "$server_json" --arg s "$source" \
+        '{server_json: $j, source: $s, status: "draft", tools: []}')")
+      [[ "$code" == 200 || "$code" == 201 ]] || fail "MCP registry version $name $version creation failed (HTTP $code)"
+    elif [[ "$code" != 200 ]]; then
+      fail "MCP registry version $name $version unreadable (HTTP $code)"
+    fi
+    jq -e --argjson j "$server_json" --arg s "$source" '(.mcp_server_version // .) | .server_json == $j and .source == $s' \
+      "$W/registry.json" >/dev/null || fail "MCP registry version $name $version exists with other content; not overwritten"
+  done < <(jq -c '.registry_servers[]' "$CATALOG_PIN")
+  log_success "MCP registry: $(jq -r '[.registry_servers[].name] | join(", ")' "$CATALOG_PIN") at version $version"
+}
+# After the servers run: each registry server gets its one access endpoint and its version becomes active.
+activate_mcp_registry() {
+  local version entry name server url path code state
+  registry_open || return 0
+  version=$(jq -r '.registry_version' "$CATALOG_PIN")
+  while IFS= read -r entry; do
+    name=$(jq -r '.name' <<<"$entry"); server=$(jq -r '.server' <<<"$entry"); path=$(registry_path "$name")
+    case "$(jq -r '.endpoint' <<<"$entry")" in
+      mcpserver) url=$(get mcpservers.mcp.x-k8s.io "$server" -n mcp-servers | jq -r '.status.address.url // ""') ;;
+      route) url="https://$(get route "$server" -n mcp-servers | jq -r '.spec.host // ""')/mcp" ;;
+    esac
+    [[ "$url" =~ ^https?://[a-z0-9.-]+(:[0-9]+)?/mcp$ ]] || fail "No serving address for MCP server $server"
+    [[ $(registry GET "/$path/endpoints") == 200 ]] || fail "MCP registry endpoints of $name unreadable"
+    jq -e --arg u "$url" --arg v "$version" '[.mcp_access_endpoints // [] | .[] | select(.url != $u or .server_version != $v)] | length == 0' \
+      "$W/registry.json" >/dev/null || fail "MCP registry server $name has another access endpoint; not overwritten"
+    if ! jq -e --arg u "$url" 'any(.mcp_access_endpoints // [] | .[]; .url == $u)' "$W/registry.json" >/dev/null; then
+      code=$(registry POST "/$path/endpoints" "$(jq -nc --arg u "$url" --arg v "$version" \
+        '{server_version: $v, url: $u, transport_type: "streamable-http"}')")
+      [[ "$code" == 200 || "$code" == 201 ]] || fail "MCP registry endpoint for $name failed (HTTP $code)"
+    fi
+    [[ $(registry GET "/$path/versions/$(registry_path "$version")") == 200 ]] || fail "MCP registry version $name unreadable"
+    state=$(jq -r '(.mcp_server_version // .) | .status' "$W/registry.json")
+    if [[ "$state" != active ]]; then  # the native API rejects active -> active
+      code=$(registry PATCH "/$path/versions/$(registry_path "$version")" '{"status": "active"}')
+      [[ "$code" == 200 ]] || fail "MCP registry version $name activation failed (HTTP $code)"
+    fi
+  done < <(jq -c '.registry_servers[]' "$CATALOG_PIN")
+  log_success "MCP registry: both servers active with their access endpoints"
+}
+
 # ── 060-agent-tools ───────────────────────────────────────────────────────────
 deploy_agent_tools() {
   get datasciencecluster default-dsc | jq -e '.spec.components.mcplifecycleoperator.managementState == "Managed"' >/dev/null ||
@@ -530,7 +628,9 @@ deploy_agent_tools() {
     [[ -n "$(get mcpservers.mcp.x-k8s.io "$name" -n mcp-servers 2>/dev/null)" || -z "$(get service "$name" -n mcp-servers 2>/dev/null)" ]] ||
       fail "Existing Service $name cannot be adopted implicitly"
   done
+  register_mcp_servers
   reconcile 060-agent-tools 600
+  activate_mcp_registry
   "$SCRIPT_DIR/validate.sh" --component 060-agent-tools
 }
 

@@ -143,6 +143,36 @@ validate_agent_tools() {
     and .subjects == [{apiGroup: "rbac.authorization.k8s.io", kind: "User", name: "ai-admin"}]' <<<"${binding:-null}")"
   check "openshift-mcp-server: token-less, read-only, in-cluster only" "check_server openshift-mcp-server true false false openshift-mcp-server-ro" yes
   check "openshift-mcp-server-rw: token required, read-write, HTTPS Route" "check_server openshift-mcp-server-rw false true true openshift-mcp-server" yes
+  check "MCP registry (MLflow) lists both servers, active, each with its serving endpoint" registry_entries yes
+}
+# Each catalog-source.json registry server exists in the MLflow MCP registry (workspace mcp-servers) with its version
+# active and exactly one access endpoint: the server's serving address (in-cluster) or its HTTPS Route.
+registry_entries() {
+  local pin="$REPO_ROOT/gitops/stages/060-agent-runtime-and-agentops/060-agent-tools/catalog-source.json" work port entry name url
+  local version path
+  work=$(mktemp -d)
+  oc --request-timeout=15s get configmap service-ca -n openshift-config-managed -o jsonpath='{.data.ca-bundle\.crt}' >"$work/ca.crt"
+  oc port-forward -n redhat-ods-applications svc/mlflow :8443 >"$work/forward.log" 2>&1 & local pf=$!
+  for _ in $(seq 1 30); do port=$(sed -n 's/^Forwarding from 127\.0\.0\.1:\([0-9]*\).*/\1/p' "$work/forward.log" | head -1); [[ -n "$port" ]] && break; sleep 1; done
+  reg() {
+    printf 'header = "Authorization: Bearer %s"\n' "$(oc whoami -t)" |
+      curl --config - -sf --max-time 30 --resolve "mlflow.redhat-ods-applications.svc:$port:127.0.0.1" --cacert "$work/ca.crt" \
+        -H 'X-MLFLOW-WORKSPACE: mcp-servers' "https://mlflow.redhat-ods-applications.svc:$port/mlflow/api/3.0/mlflow/mcp-servers$1"
+  }
+  version=$(jq -r '.registry_version' "$pin")
+  while IFS= read -r entry; do
+    name=$(jq -r '.name' <<<"$entry"); path=$(jq -rn --arg n "$name" '$n | @uri')
+    case "$(jq -r '.endpoint' <<<"$entry")" in
+      mcpserver) url=$(read_json mcpservers.mcp.x-k8s.io "$(jq -r '.server' <<<"$entry")" -n mcp-servers | jq -r '.status.address.url // ""') ;;
+      route) url="https://$(read_json route "$(jq -r '.server' <<<"$entry")" -n mcp-servers | jq -r '.spec.host // ""')/mcp" ;;
+    esac
+    reg "/$path/versions/$(jq -rn --arg v "$version" '$v | @uri')" | jq -e '(.mcp_server_version // .) | .status == "active"' >/dev/null ||
+      { echo "$name $version not active"; kill $pf 2>/dev/null; rm -rf "$work"; return; }
+    reg "/$path/endpoints" | jq -e --arg u "$url" '[.mcp_access_endpoints // [] | .[].url] == [$u]' >/dev/null ||
+      { echo "$name endpoint is not $url"; kill $pf 2>/dev/null; rm -rf "$work"; return; }
+  done < <(jq -c '.registry_servers[]' "$pin")
+  kill $pf 2>/dev/null; rm -rf "$work"
+  echo yes
 }
 
 case "$COMPONENT" in

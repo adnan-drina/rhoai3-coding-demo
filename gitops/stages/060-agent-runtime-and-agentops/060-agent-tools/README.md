@@ -58,8 +58,9 @@ All objects are in `hosting/`.
 | Route | `openshift-mcp-server-rw` | `mcp-servers` | Edge TLS, `insecureEdgeTerminationPolicy: Redirect`, to Service port 8080. Wave 3. |
 
 `catalog-source.json` is not rendered. It records the catalog identity (source `rh_mcp_servers`, id 15, version
-`0.4`), the local registry name `io.github.openshift/openshift-mcp-server` with strict version `0.4.0` required by
-the MLflow registry API, the image and amd64 digest, and the source revision. `stages/060-agent-runtime-and-agentops/validate.sh --component 060-agent-tools` reads the
+`0.4`), the strict version `0.4.0` required by the MLflow registry API, the image and amd64 digest, the source
+revision, and `registry_servers`: one MLflow MCP registry entry per deployment, `io.github.openshift/openshift-mcp-server`
+(read-only, in-cluster endpoint) and `io.github.openshift/openshift-mcp-server-rw` (read-write, HTTPS Route endpoint). `stages/060-agent-runtime-and-agentops/validate.sh --component 060-agent-tools` reads the
 amd64 digest from it.
 
 Objects created by the lifecycle operator (owner reference to the MCPServer, not in Git): Deployments, Services and
@@ -115,8 +116,11 @@ ServiceAccount's permissions without a token. Keep its grants limited to non-sen
 - `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-agent-tools` refuses unpublished source, runs the read-only `scripts/stage-apps.sh preflight` (never adopts an
   existing Service without an MCPServer), then applies the Application at the exact SHA, syncs it and waits. Then run
   the validator.
-- Registry: the RHOAI 3.5.1 catalog has no Register action next to Deploy, so the server is registered through the
-  installed MLflow MCP registry API (the former helper `publish-mcp-registry.py` is in git history at `82092e01`), in workspace `mcp-servers`. Catalog discovery, registry entry
+- Registry: the RHOAI 3.5 catalog has no Register action next to Deploy, so `stages/060-agent-runtime-and-agentops/deploy.sh`
+  registers both servers through the installed MLflow MCP registry API, in workspace `mcp-servers`: each entry and its
+  version as a draft before the servers deploy, then its access endpoint and `active` status once they run. Existing
+  entries are never overwritten; with MLflow (Stage 050) absent the step is deferred. `validate.sh --component
+  060-agent-tools` checks both entries. Catalog discovery, registry entry
   and runtime lifecycle are separate contracts; there is no automatic catalog-to-registry-to-Studio sync.
 - Studio publication: Stage 040 `stages/040-governed-models-as-a-service/deploy.sh` writes the `OpenShift-MCP` (read-only, no token) and
   `OpenShift-MCP-ReadWrite` (caller token) keys into the documented `gen-ai-aa-mcp-servers` ConfigMap [10]. Stage 040's
