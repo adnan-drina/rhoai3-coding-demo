@@ -64,11 +64,21 @@ Run the commands from the repository root after the usual cluster login. Each st
 
 ## MLflow traces per request
 
-`generate-load.sh` also writes every request to MLflow as one trace, so each team's use can be inspected request by
-request next to the aggregate dashboards. Open MLflow from the OpenShift AI dashboard,
-pick the workspace **Models-as-a-Service** (`models-as-a-service`, the MaaS project; only `rhods-admins` have access) and an experiment `team-engineering`,
-`team-support` or `team-marketing`; the experiment **Overview** shows token usage, tokens per trace, cost breakdown by
-model or provider and cost over time for that team.
+`generate-load.sh` also writes every request to MLflow as one trace, and an hourly judge grades a sample of them, so
+each model's use can be inspected request by request next to the aggregate dashboards. Open MLflow from the OpenShift
+AI dashboard, pick the workspace **Models-as-a-Service** (`models-as-a-service`, the MaaS project; only `rhods-admins`
+have access) and a model's experiment. There is one experiment per MaaS model, named after the namespace of its model
+reference: `internal-qwen3-8-27b`, `internal-mistral-small4-119b`, `external-claude-sonnet-5-5`, `external-gpt-6-luna`,
+`external-nemotron-3-ultra-550b-a55b`. Its tags record the offering (shared, dedicated or external) and the provider;
+the offering is a tag, not part of the name, because it can change. Each experiment is a scorecard for that model:
+
+| Overview tab | Shows | Team view |
+|---|---|---|
+| **Usage** | Token usage, tokens per trace, cost over time | Filter **User** = `showback-<team>` |
+| **Quality** | Pass rates of the judges `relevance`, `completeness` and `team_guidelines` | Same filter |
+
+The cross-model money comparison stays in Perses (**Offer** tabs, **Tokenomics · break-even**); MLflow adds the
+request-level view and answer quality per model.
 
 | Span | Content |
 |---|---|
@@ -82,9 +92,14 @@ model or provider and cost over time for that team.
   up a price by model name.
 - **Path:** the script posts OTLP/HTTP JSON to the internal MLflow Service (`/v1/traces`, through a local port-forward)
   with the operator's token, the `X-MLFLOW-WORKSPACE` header and the experiment id, the same endpoint a platform trace
-  collector would use. It creates the team experiments on first use.
+  collector would use. It creates a model's experiment on first use.
 - **Fails open:** a failed export never stops the load; the summary prints `traced` and `trace_failed` per team.
-  `--no-trace` skips tracing.
+  `--no-trace` skips tracing. Failed requests are traced as errors.
+- **Quality:** the CronJob `maas-quality-scorer` (component folder `quality/`) runs at five past each hour. It takes a
+  20% sample (at most 60 per experiment) of the last 65 minutes' successful, unscored traces, asks the judge (Claude
+  Sonnet 5.5 through MaaS, on its own subscription `maas-quality-judge`) three yes/no questions and logs the verdicts
+  as MLflow feedback: `relevance`, `completeness` and `team_guidelines` (the guideline of the trace's team). Run it
+  now with `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`.
 - **Scope:** only this load generator's requests are traced. Platform-side tracing of every MaaS client is planned work.
 
 ## External metering

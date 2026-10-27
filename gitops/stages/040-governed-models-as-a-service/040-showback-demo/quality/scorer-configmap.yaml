@@ -38,9 +38,9 @@ data:
     os.environ["OPENAI_API_KEY"] = KEY  # the provider config requires one; the header below is what is sent
     JUDGE = dict(model="openai:/" + os.environ["JUDGE_MODEL"], base_url=f"https://{HOST}/v1/chat/completions",
                  extra_headers={"Authorization": f"Bearer {KEY}"}, feedback_value_type=Literal["yes", "no"],
-                 inference_params={"max_tokens": 400})  # Claude Sonnet 5.5 rejects temperature
+                 inference_params={"max_tokens": 1000})  # Claude Sonnet 5.5 rejects temperature; 400 truncated some verdicts
 
-    # What a good answer is for each team (subscription = experiment name).
+    # What a good answer is for each team (the trace's subscription tag).
     GUIDELINES = {
         "team-engineering": "The answer names the concrete defect or risk in the code or design it was given and proposes "
                             "a specific, correct fix or test. Generic advice that ignores the given code fails.",
@@ -70,9 +70,11 @@ data:
     client = mlflow.MlflowClient()
     cutoff = int((time.time() - WINDOW_MIN * 60) * 1000)
     scored = failed = 0
-    for exp in client.search_experiments(filter_string="name LIKE 'team-%'"):
-        rules = GUIDELINES.get(exp.name)
-        judges = [RELEVANCE, COMPLETENESS] + ([guideline_judge(rules)] if rules else [])
+    TEAM_JUDGES = {sub: guideline_judge(rules) for sub, rules in GUIDELINES.items()}
+    # One experiment per MaaS model: internal-<model> (served in internal-models) and external-<model>.
+    experiments = [e for prefix in ("internal-", "external-")
+                   for e in client.search_experiments(filter_string=f"name LIKE '{prefix}%'")]
+    for exp in experiments:
         traces = mlflow.search_traces(locations=[exp.experiment_id], return_type="list", max_results=500,
                                       filter_string=f"trace.timestamp_ms > {cutoff} AND trace.status = 'OK'")
         todo = [t for t in traces if not any(a.name == "relevance" for a in (t.info.assessments or []))]
@@ -82,7 +84,8 @@ data:
             prompt, response = root_io(trace)
             if not prompt or response is None:
                 continue
-            for judge in judges:
+            team_judge = TEAM_JUDGES.get((trace.info.tags or {}).get("subscription"))
+            for judge in [RELEVANCE, COMPLETENESS] + ([team_judge] if team_judge else []):
                 try:
                     feedback = judge(inputs={"request": prompt}, outputs={"response": response})
                     mlflow.log_assessment(trace_id=trace.info.trace_id, assessment=feedback)

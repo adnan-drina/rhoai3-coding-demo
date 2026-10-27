@@ -7,7 +7,8 @@
 # --pause SECONDS or MIN-MAX adds think time between a loop's requests (random within the range), like a person reading
 # each answer before the next question.
 # --team limits a run to one team of the offering, so teams can run with different pacing.
-# Every request is also written to MLflow as one trace (workspace models-as-a-service, experiment team-<team>): a root
+# Every request is also written to MLflow as one trace (workspace models-as-a-service, one experiment per MaaS model,
+# internal-<model> or external-<model>, tagged with its offering and provider): a root
 # span with the team, subscription and offering tags and a GenAI chat span with model, provider, tokens, messages and
 # the cost from the offer catalog (private) or the provider price catalog (external). MLflow builds its experiment
 # Overview (token usage, cost by model and provider, cost over time) from them. Tracing fails open; --no-trace skips it.
@@ -123,12 +124,26 @@ if [[ "$trace" == true ]]; then
     for _ in $(seq 1 20); do curl -sk -o /dev/null "https://127.0.0.1:$MLFLOW_PORT/" && break; sleep 1; done
     for run in "${runs[@]}"; do
         read -r team model <<<"$run"
-        exp=$(mlflow_api "experiments/get-by-name?experiment_name=team-$team" | jq -r '.experiment.experiment_id // empty')
-        [[ -n "$exp" ]] || exp=$(mlflow_api experiments/create "{\"name\":\"team-$team\"}" | jq -r '.experiment_id // empty')
-        [[ -n "$exp" ]] || fail "Could not open MLflow experiment team-$team in $WORKSPACE (or use --no-trace)"
-        echo "$exp" > "$work/$team.exp"
         price "$model" > "$work/$team.price"
         [[ -s "$work/$team.price" ]] || log_warn "No price for $model: its traces carry no cost"
+        # One experiment per MaaS model: internal- for models served in internal-models, external- for provider models.
+        # The offering (shared or dedicated from the offer catalog, or external) and provider are experiment tags,
+        # since a model's offering can change while its experiment keeps its history.
+        if [[ "$model" == publishers/* ]]; then
+            name="internal-${model##*/}"
+            offering=$(yaml_json < "$COMPONENT/offer-catalog.yaml" | jq -r --arg m "${model##*/}" '[.[0].spec.groups[].rules[]
+                | select(.record == "showback_offer_info" and .labels.model == $m) | .labels.offer] | first // "unlisted"')
+        else
+            name="external-$model" offering=external
+        fi
+        exp=$(mlflow_api "experiments/get-by-name?experiment_name=$name" | jq -r '.experiment.experiment_id // empty')
+        [[ -n "$exp" ]] || exp=$(mlflow_api experiments/create "$(jq -cn --arg n "$name" --arg o "$offering" \
+            --arg p "$(jq -r '.provider // "unknown"' "$work/$team.price")" --arg m "${model##*/}" \
+            '{name: $n, tags: [{key: "offering", value: $o}, {key: "provider", value: $p}, {key: "model", value: $m},
+              {key: "mlflow.note.content", value: "Requests to the MaaS model \($m) (\($o) offering, provider \($p))."}]}')" |
+            jq -r '.experiment_id // empty')
+        [[ -n "$exp" ]] || fail "Could not open MLflow experiment $name in $WORKSPACE (or use --no-trace)"
+        echo "$exp" > "$work/$team.exp"
     done
 fi
 # export_trace TEAM MODEL REQUEST RESPONSE CODE START_NS END_NS: one trace, two spans, OTLP/HTTP JSON; fails open.
@@ -215,4 +230,4 @@ for run in "${runs[@]}"; do
              for (k in e) printf " http_%s=%d", k, e[k]; if (tr + tf) printf " traced=%d trace_failed=%d", tr, tf; printf "\n"}' "$work/$team.log"
 done
 log_info "Dashboards: Observe & monitor -> Dashboard -> Offer tabs (metrics arrive within about a minute)"
-[[ "$trace" != true ]] || log_info "Traces: MLflow, workspace $WORKSPACE, experiments team-<team> -> Overview"
+[[ "$trace" != true ]] || log_info "Traces: MLflow, workspace $WORKSPACE, experiments internal-<model> / external-<model> -> Overview"
