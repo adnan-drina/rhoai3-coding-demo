@@ -118,7 +118,7 @@ if [[ "$trace" == true ]]; then
         fail "Project $WORKSPACE is missing; deploy the 040-showback-demo component (or use --no-trace)"
     MLFLOW_TOKEN=$(oc whoami -t)  # memory only: reaches curl through --config on stdin
     MLFLOW_PORT=$((20000 + RANDOM % 10000))
-    oc port-forward -n redhat-ods-applications svc/mlflow "$MLFLOW_PORT:8443" >/dev/null 2>&1 & pf=$!
+    oc port-forward -n redhat-ods-applications svc/mlflow "$MLFLOW_PORT:8443" >/dev/null 2>&1 & pf=$!; disown "$pf"
     trap 'kill $pf 2>/dev/null; rm -rf "$work"' EXIT
     for _ in $(seq 1 20); do curl -sk -o /dev/null "https://127.0.0.1:$MLFLOW_PORT/" && break; sleep 1; done
     for run in "${runs[@]}"; do
@@ -199,13 +199,14 @@ for run in "${runs[@]}"; do
     read -r team model <<<"$run"
     [[ -s "$STATE/$team.key" ]] || fail "No key for $team in $STATE; run team-keys.sh --teams $team"
 done
+workers=()
 log_info "Offer $offer: ${#runs[@]} team(s) x $concurrency loops for $minutes min against $URL"
 for run in "${runs[@]}"; do
     read -r team model <<<"$run"
     log_info "  $team -> $model"
-    for ((i = 0; i < concurrency; i++)); do worker "$team" "$model" "$work/$team.log" "$team-$i" & done
+    for ((i = 0; i < concurrency; i++)); do worker "$team" "$model" "$work/$team.log" "$team-$i" & workers+=($!); done
 done
-wait
+wait "${workers[@]}"  # not the MLflow port-forward
 for run in "${runs[@]}"; do
     read -r team model <<<"$run"
     [[ -f "$work/$team.log" ]] || continue

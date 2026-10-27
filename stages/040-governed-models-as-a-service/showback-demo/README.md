@@ -62,6 +62,31 @@ Run the commands from the repository root after the usual cluster login. Each st
 
 5. **Stop the models** when the demo ends: set both replicas back to 0 and run `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 0`.
 
+## MLflow traces per request
+
+`generate-load.sh` also writes every request to MLflow as one trace, so each team's use can be inspected request by
+request next to the aggregate dashboards. Open MLflow from the OpenShift AI dashboard,
+pick the workspace **MaaS Observability** (`maas-observability`, admins only) and an experiment `team-engineering`,
+`team-support` or `team-marketing`; the experiment **Overview** shows token usage, tokens per trace, cost breakdown by
+model or provider and cost over time for that team.
+
+| Span | Content |
+|---|---|
+| `team-<team> request` (root, `CHAIN`) | Trace tags `team`, `subscription`, `offering`, `source`; trace user `showback-<team>`; the prompt and the answer |
+| `chat <model>` (`CHAT_MODEL`) | OpenTelemetry GenAI fields: model, provider (`openshift-ai` for private models), input and output tokens, messages, HTTP status; cost |
+
+- **Cost:** shared private models at the on-demand tariff, a dedicated model at its worker price per token at
+  demonstrated capacity (both from `offer-catalog.yaml`), external models at the list price of
+  `metering/provider-pricing.json`. A per-request figure is an indication: the sponsor of a dedicated model pays the
+  worker busy or idle, and committed tariffs are monthly; the Offer dashboards show those charges. MLflow does not look
+  up a price by model name.
+- **Path:** the script posts OTLP/HTTP JSON to the internal MLflow Service (`/v1/traces`, through a local port-forward)
+  with the operator's token, the `X-MLFLOW-WORKSPACE` header and the experiment id, the same endpoint a platform trace
+  collector would use. It creates the team experiments on first use.
+- **Fails open:** a failed export never stops the load; the summary prints `traced` and `trace_failed` per team.
+  `--no-trace` skips tracing.
+- **Scope:** only this load generator's requests are traced. Platform-side tracing of every MaaS client is planned work.
+
 ## External metering
 
 The MaaS gateway's `external-metering-streaming` plugin (Developer Preview in RHOAI 3.5) posts one event per external-model response to a metering service in `redhat-ods-monitoring`: a patched build of the community Noyitz backend with a PostgreSQL ledger on a retained PVC. Each event keeps the user, subscription, model, token counts and a price estimate frozen from the versioned catalog `metering/provider-pricing.json`. The service exposes month-to-date gauges for the External dashboard.
@@ -78,7 +103,7 @@ The MaaS gateway's `external-metering-streaming` plugin (Developer Preview in RH
 | File | Purpose |
 |---|---|
 | `team-keys.sh` | Team users and their MaaS keys |
-| `generate-load.sh` | Demo load per offering |
+| `generate-load.sh` | Demo load per offering, one MLflow trace per request |
 | `validate.sh` | Offline checks: script syntax, access matrix, dashboards, metering bundle |
 | `tests/test-metering-profile.sh` | Mocked test of the metering activation in the Stage 040 deploy script |
 
