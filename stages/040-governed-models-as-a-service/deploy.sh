@@ -124,7 +124,16 @@ stage_preflight() {
         fail "Retired single Stage 040 Application still exists; finish the component move (docs/OPERATIONS.md)"
 
     # Existing Applications and rendered objects; namespaces must also be tracked (preflight accepts untracked ones).
-    "$STAGE_APPS" preflight 040 --repo-url "$GIT_REPO_URL" >&2
+    # The OLSConfig singleton is the reviewed adoption of the provisioner's object (checked below), so the generic
+    # guard skips that kind.
+    "$STAGE_APPS" preflight 040 --repo-url "$GIT_REPO_URL" --skip-kind OLSConfig >&2
+    # Reviewed adoption: OLSConfig cluster is either already 040-openshift-lightspeed's or the provisioner's original
+    # (untracked, unowned, not being deleted); anything else stops the deployment.
+    ols=$(read_optional olsconfigs.ols.openshift.io cluster)
+    [[ -z "$ols" ]] || jq -e --arg t "040-openshift-lightspeed:ols.openshift.io/OLSConfig:openshift-gitops/cluster" '
+        (.metadata.ownerReferences // [] | length) == 0 and .metadata.deletionTimestamp == null
+        and ((.metadata.annotations["argocd.argoproj.io/tracking-id"] // "") | . == $t or . == "")' <<<"$ols" >/dev/null ||
+        fail "existing OLSConfig cluster has another owner; adopt it only after review"
     for ns in models-as-a-service internal-models "$DB_NS" kuadrant-system external-models openshift-lws-operator; do
         require_ours Namespace namespace "$ns"
     done
