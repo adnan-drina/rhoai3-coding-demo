@@ -30,7 +30,7 @@ All objects are in namespace `models-as-a-service`.
 
 | Kind | Name | Owner / subjects | Models and hourly token limits | Priority | Wave |
 |---|---|---|---|---|---|
-| MaaSSubscription + MaaSAuthPolicy | `personal-kube-admin` | user `kube:admin` | `qwen3-8-27b` 1,000,000; `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` 100,000 each | 160 | 18 |
+| MaaSSubscription + MaaSAuthPolicy | `personal-kube-admin` | user `kube:admin` | `qwen3-8-27b` and `mistral-small4-119b` 1,000,000 each; `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` 100,000 each | 160 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `personal-ai-developer` | user `ai-developer` | same as above | 150 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `personal-ai-admin` | user `ai-admin` | same as above | 170 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `devspaces-coding-models` | ServiceAccount `wksp-ai-developer/devspace-maas-key-provisioner` | `qwen3-8-27b` 60,000,000 (local model only) | 100 | 18 |
