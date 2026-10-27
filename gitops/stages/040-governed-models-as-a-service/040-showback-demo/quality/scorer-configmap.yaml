@@ -48,7 +48,8 @@ data:
     # Qwen runs with thinking off, as the coding clients use it.
     JUDGES_BY_MODEL = {
         "qwen3-8-27b": (f"https://{SHARED_HOST}/v1/chat/completions",
-                        {"max_tokens": 1000, "temperature": 0, "chat_template_kwargs": {"enable_thinking": False}}),
+                        {"max_tokens": 2000, "temperature": 0, "chat_template_kwargs": {"enable_thinking": False}}),
+        # 2000: a rationale that counts words (marketing length limits) cut the JSON verdict off at 1000.
         "mistral-small4-119b": (f"https://{MISTRAL_HOST}/v1/chat/completions", {"max_tokens": 1000, "temperature": 0}),
     }
 
