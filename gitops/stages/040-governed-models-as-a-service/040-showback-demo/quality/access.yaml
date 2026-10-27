@@ -1,0 +1,54 @@
+# The judge's own MaaS access: Claude Sonnet 5.5 only, owned by the scoring ServiceAccount, so judging shows up as its
+# own subscription (cost centre ai-platform) and never consumes a team's allowance.
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: maas-quality-judge
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '30'
+spec:
+  owner:
+    users:
+      - system:serviceaccount:models-as-a-service:maas-quality-judge
+  priority: 60
+  modelRefs:
+    - name: claude-sonnet-5-5
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 300000
+          window: 1h
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: quality-judge
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: maas-quality-judge
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '30'
+spec:
+  subjects:
+    users:
+      - system:serviceaccount:models-as-a-service:maas-quality-judge
+  modelRefs:
+    - name: claude-sonnet-5-5
+      namespace: external-models

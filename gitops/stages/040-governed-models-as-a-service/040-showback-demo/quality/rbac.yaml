@@ -1,0 +1,94 @@
+# The scoring ServiceAccount: its key Secret and endpoint ConfigMap (create cannot be limited by name), and MLflow
+# experiments in this workspace (read traces, write feedback). In openshift-ingress it reads only the MaaS Gateway,
+# for the public hostname the judge calls through the internal Service.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: maas-quality-judge
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [maas-quality-judge-key]
+    verbs: [get, patch, update]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [maas-quality-judge-endpoint]
+    verbs: [get, patch, update]
+  - apiGroups: [""]
+    resources: [secrets, configmaps]
+    verbs: [create]
+  - apiGroups: [mlflow.kubeflow.org]
+    resources: [experiments]
+    verbs: [get, list, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: maas-quality-judge
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: maas-quality-judge
+subjects:
+  - kind: ServiceAccount
+    name: maas-quality-judge
+    namespace: models-as-a-service
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: maas-quality-judge-gateway-reader
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+rules:
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gateways]
+    resourceNames: [maas-default-gateway]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: maas-quality-judge-gateway-reader
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: maas-quality-judge-gateway-reader
+subjects:
+  - kind: ServiceAccount
+    name: maas-quality-judge
+    namespace: models-as-a-service

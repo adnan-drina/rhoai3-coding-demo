@@ -1,0 +1,96 @@
+# Hourly quality scoring of the team request traces (see scorer-configmap.yaml). Runs the RHOAI 3.5 datascience
+# pipeline runtime image (MLflow SDK 3.14, matching the server) with the documented kubernetes-namespaced
+# authentication: the SDK reads the mounted ServiceAccount token and uses this project as the MLflow workspace.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: maas-quality-scorer
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: maas-quality-scorer
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '40'
+spec:
+  schedule: '5 * * * *'
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 2400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: maas-quality-scorer
+        spec:
+          restartPolicy: Never
+          serviceAccountName: maas-quality-judge
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: score
+              image: registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9@sha256:6552d90818c098ce2b1cd057684c3dd832035cfb71f6ccf2ab207b701f536b18
+              command: [python3, /etc/maas-quality/scorer/score.py]
+              env:
+                - name: JUDGE_MODEL
+                  value: claude-sonnet-5-5
+                - name: SAMPLE_RATE
+                  value: '0.2'
+                - name: WINDOW_MINUTES
+                  value: '65'
+                - name: MAX_TRACES_PER_EXPERIMENT
+                  value: '60'
+                - name: MLFLOW_TRACKING_URI
+                  value: https://mlflow.redhat-ods-applications.svc:8443/mlflow
+                - name: MLFLOW_TRACKING_AUTH
+                  value: kubernetes-namespaced
+                - name: MLFLOW_WORKSPACE
+                  value: models-as-a-service
+                - name: MLFLOW_TRACKING_SERVER_CERT_PATH
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+                - name: MLFLOW_DISABLE_TELEMETRY
+                  value: 'true'
+                - name: HOME
+                  value: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests: {cpu: 100m, memory: 512Mi}
+                limits: {cpu: '1', memory: 1Gi}
+              volumeMounts:
+                - name: scorer
+                  mountPath: /etc/maas-quality/scorer
+                  readOnly: true
+                - name: key
+                  mountPath: /etc/maas-quality/key
+                  readOnly: true
+                - name: endpoint
+                  mountPath: /etc/maas-quality/endpoint
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: scorer
+              configMap:
+                name: maas-quality-scorer
+            - name: key
+              secret:
+                secretName: maas-quality-judge-key
+                items:
+                  - key: api-key
+                    path: api-key
+            - name: endpoint
+              configMap:
+                name: maas-quality-judge-endpoint
+            - name: tmp
+              emptyDir:
+                sizeLimit: 256Mi

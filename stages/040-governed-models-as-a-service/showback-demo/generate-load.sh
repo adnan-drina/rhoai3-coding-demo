@@ -135,12 +135,12 @@ fi
 export_trace() {
     local team=$1 model=$2 req=$3 out=$4 code=$5 t0=$6 t1=$7 tid sid cid otlp
     tid=$(openssl rand -hex 16) sid=$(openssl rand -hex 8) cid=$(openssl rand -hex 8)
-    otlp=$(jq -n --slurpfile req "$req" --slurpfile out "$out" --slurpfile price "$work/$team.price" \
+    otlp=$(jq -n --slurpfile req "$req" --rawfile outraw "$out" --slurpfile price "$work/$team.price" \
         --arg team "$team" --arg offer "$offer" --arg model "${model##*/}" --arg code "$code" \
         --arg tid "$tid" --arg sid "$sid" --arg cid "$cid" --arg t0 "$t0" --arg t1 "$t1" '
         def s($k; $v): {key: $k, value: {stringValue: ($v | tostring)}};
         def i($k; $v): {key: $k, value: {intValue: ($v | tostring)}};
-        ($out[0] // {}) as $o | ($price[0] // null) as $p | ($o.usage.prompt_tokens // 0) as $in
+        ($outraw | try fromjson catch {}) as $o | ($price[0] // null) as $p | ($o.usage.prompt_tokens // 0) as $in
         | ($o.usage.completion_tokens // 0) as $outt | ($o.choices[0].message // {}) as $msg
         | (if $code == "200" then {code: 1} else {code: 2, message: "HTTP \($code)"} end) as $status
         | {resourceSpans: [{resource: {attributes: [s("service.name"; "showback-load")]},

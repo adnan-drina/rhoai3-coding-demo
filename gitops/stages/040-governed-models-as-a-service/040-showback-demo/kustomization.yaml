@@ -15,3 +15,4 @@ resources:
   - dashboard-offer-shared.yaml
   - metering
   - dedicated
+  - quality

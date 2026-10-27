@@ -1,0 +1,94 @@
+# The hourly quality scorer (CronJob maas-quality-scorer). MLflow online judges need the MLflow AI Gateway and server
+# job execution, which OpenShift AI 3.5 ships disabled; this batch job does the same work with the MLflow SDK: for each
+# team experiment it samples recent, unscored request traces, asks the judge model through MaaS and logs the verdicts
+# as MLflow feedback on the traces (the experiment Overview's Quality tab).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maas-quality-scorer
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: maas-quality-scorer
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+data:
+  score.py: |
+    import os, random, socket, sys, time
+    from typing import Literal
+
+    import mlflow
+    from mlflow.genai.judges import make_judge
+
+    WINDOW_MIN = int(os.environ.get("WINDOW_MINUTES", "65"))
+    SAMPLE = float(os.environ.get("SAMPLE_RATE", "0.2"))
+    LIMIT = int(os.environ.get("MAX_TRACES_PER_EXPERIMENT", "60"))
+    HOST = open("/etc/maas-quality/endpoint/host").read().strip()
+
+    # The judge calls the public MaaS hostname (TLS and route matching unchanged) through the internal gateway Service,
+    # the in-process equivalent of the Dev Spaces hostAlias.
+    INTERNAL = socket.gethostbyname("maas-gateway-internal.openshift-ingress.svc.cluster.local")
+    _getaddrinfo = socket.getaddrinfo
+    socket.getaddrinfo = lambda host, *a, **k: _getaddrinfo(INTERNAL if host == HOST else host, *a, **k)
+
+    KEY = open("/etc/maas-quality/key/api-key").read().strip()
+    os.environ["OPENAI_API_KEY"] = KEY  # the provider config requires one; the header below is what is sent
+    JUDGE = dict(model="openai:/" + os.environ["JUDGE_MODEL"], base_url=f"https://{HOST}/v1/chat/completions",
+                 extra_headers={"Authorization": f"Bearer {KEY}"}, feedback_value_type=Literal["yes", "no"],
+                 inference_params={"temperature": 0, "max_tokens": 400})
+
+    # What a good answer is for each team (subscription = experiment name).
+    GUIDELINES = {
+        "team-engineering": "The answer names the concrete defect or risk in the code or design it was given and proposes "
+                            "a specific, correct fix or test. Generic advice that ignores the given code fails.",
+        "team-support": "The answer is a reply a support agent could send: empathetic, polite, addresses the customer's "
+                        "actual problem and gives concrete next steps. It does not invent policies or promise refunds.",
+        "team-marketing": "The answer delivers exactly the requested marketing artefact (format, count and length), is on "
+                          "brief for the product and audience named in the request, and makes no unverifiable claims.",
+    }
+    RELEVANCE = make_judge(name="relevance", description="The response addresses the request.", instructions=(
+        "Request: {{ inputs }}\nResponse: {{ outputs }}\n"
+        "Answer 'yes' if the response directly addresses what the request asks for, 'no' if it is off-topic, "
+        "evasive or answers a different question."), **JUDGE)
+    COMPLETENESS = make_judge(name="completeness", description="The response covers every part of the request.",
+        instructions=("Request: {{ inputs }}\nResponse: {{ outputs }}\n"
+        "Answer 'yes' if the response covers every part of the request and is not cut off mid-sentence, "
+        "'no' if a requested part is missing or the response is truncated."), **JUDGE)
+
+    def guideline_judge(rules):
+        return make_judge(name="team_guidelines", description="The response meets the team's quality guideline.",
+            instructions=("Request: {{ inputs }}\nResponse: {{ outputs }}\nGuideline: " + rules + "\n"
+            "Answer 'yes' if the response meets the guideline, 'no' if it does not."), **JUDGE)
+
+    def root_io(trace):
+        root = next(s for s in trace.data.spans if s.parent_id is None)
+        return (root.inputs or {}).get("prompt"), (root.outputs or {}).get("response")
+
+    client = mlflow.MlflowClient()
+    cutoff = int((time.time() - WINDOW_MIN * 60) * 1000)
+    scored = failed = 0
+    for exp in client.search_experiments(filter_string="name LIKE 'team-%'"):
+        rules = GUIDELINES.get(exp.name)
+        judges = [RELEVANCE, COMPLETENESS] + ([guideline_judge(rules)] if rules else [])
+        traces = mlflow.search_traces(locations=[exp.experiment_id], return_type="list", max_results=500,
+                                      filter_string=f"trace.timestamp_ms > {cutoff} AND trace.status = 'OK'")
+        todo = [t for t in traces if not any(a.name == "relevance" for a in (t.info.assessments or []))]
+        picked = [t for t in todo if random.random() < SAMPLE][:LIMIT]
+        print(f"{exp.name}: {len(traces)} recent, {len(todo)} unscored, {len(picked)} sampled", flush=True)
+        for trace in picked:
+            prompt, response = root_io(trace)
+            if not prompt or response is None:
+                continue
+            for judge in judges:
+                try:
+                    feedback = judge(inputs={"request": prompt}, outputs={"response": response})
+                    mlflow.log_assessment(trace_id=trace.info.trace_id, assessment=feedback)
+                    scored += 1
+                except Exception as e:  # one failed verdict never stops the run
+                    failed += 1
+                    print(f"  {trace.info.trace_id} {judge.name}: {type(e).__name__}: {str(e)[:200]}", flush=True)
+    print(f"verdicts logged={scored} failed={failed}", flush=True)
+    sys.exit(1 if failed and not scored else 0)

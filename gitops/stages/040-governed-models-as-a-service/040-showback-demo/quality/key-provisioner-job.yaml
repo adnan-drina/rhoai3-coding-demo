@@ -1,0 +1,84 @@
+# Sync hook: keep or mint the judge's MaaS key (subscription maas-quality-judge) in Secret maas-quality-judge-key, and
+# record the MaaS hostname in ConfigMap maas-quality-judge-endpoint. Same procedure as the Stage 050 evaluation key
+# provisioner: the ServiceAccount owns the subscription and mints its own key through the MaaS API; key material lives
+# only in shell variables, private temp files and the Secret, never in logs, arguments or annotations.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: provision-maas-quality-judge
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '35'
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: maas-quality-judge
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: provision
+          # Same reviewed OpenShift CLI image as the Stage 050 key provisioner.
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          command:
+            - /bin/bash
+            - -ceu
+            - |
+              NS=models-as-a-service SUBSCRIPTION=maas-quality-judge SECRET_NAME=maas-quality-judge-key
+              MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[?(@.name=="api")].hostname}')"
+              if [ -z "${MAAS_HOST}" ] || echo "${MAAS_HOST}" | grep -q placeholder; then echo "ERROR: MaaS Gateway api hostname is not ready" >&2; exit 1; fi
+              MAAS_BASE_URL="https://${MAAS_HOST}"
+              SA_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              umask 077; WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"' EXIT
+              json_field() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2],""))' "$1" "$2" 2>/dev/null || true; }
+              secret_value() { oc get secret "${SECRET_NAME}" -n "${NS}" -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true; }
+              current_key="$(secret_value api-key)"; current_id="$(secret_value key_id)"; current_state=""
+              if [ -n "${current_key}" ] && [ -n "${current_id}" ]; then
+                curl -s -m 20 -o "${WORK}/state.json" -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}" || true
+                current_state="$(json_field "${WORK}/state.json" status) $(json_field "${WORK}/state.json" subscription)"
+              fi
+              if [ "${current_state}" = "active ${SUBSCRIPTION}" ]; then
+                echo "Keeping the existing MaaS API key for ${SUBSCRIPTION}"
+                key="${current_key}"; id="${current_id}"; expires_at="$(secret_value expires_at)"
+              else
+                if [ -n "${current_id}" ]; then
+                  status=$(curl -s --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
+                  echo "Revoked previous key ${current_id} (HTTP ${status})"
+                fi
+                response="${WORK}/response.json"; key=""
+                # The subscription may still be reconciling in the same sync; retry briefly.
+                for attempt in $(seq 1 18); do
+                  status=$(curl -s -o "${response}" -w '%{http_code}' -X POST -H "Authorization: Bearer ${SA_TOKEN}" -H "Content-Type: application/json" \
+                    -d "{\"name\":\"maas-quality-judge\",\"subscription\":\"${SUBSCRIPTION}\"}" "${MAAS_BASE_URL}/maas-api/v1/api-keys")
+                  key="$(json_field "${response}" key)"
+                  if [ "${status}" -ge 200 ] && [ "${status}" -lt 300 ] && echo "${key}" | grep -q '^sk-oai-'; then break; fi
+                  echo "Key creation attempt ${attempt}: HTTP ${status}; retrying in 10s"; key=""; sleep 10
+                done
+                [ -n "${key}" ] || { echo "ERROR: MaaS API did not return a valid key for ${SUBSCRIPTION}" >&2; exit 1; }
+                id="$(json_field "${response}" id)"; expires_at="$(json_field "${response}" expiresAt)"
+                echo "Provisioned a MaaS API key for ${SUBSCRIPTION} (id ${id}, expires ${expires_at:-unset})"
+              fi
+              printf '%s' "${key}" > "${WORK}/api-key"; printf '%s' "${id}" > "${WORK}/key_id"; printf '%s' "${expires_at}" > "${WORK}/expires_at"
+              oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-file=api-key="${WORK}/api-key" --from-file=key_id="${WORK}/key_id" \
+                --from-file=expires_at="${WORK}/expires_at" --dry-run=client -o yaml \
+                | oc apply --server-side --force-conflicts --field-manager=maas-quality-judge -f -
+              rm -f "${WORK}/api-key"
+              oc create configmap maas-quality-judge-endpoint -n "${NS}" --from-literal=host="${MAAS_HOST}" --dry-run=client -o yaml \
+                | oc apply --server-side --force-conflicts --field-manager=maas-quality-judge -f -
+              echo "Secret ${NS}/${SECRET_NAME} holds the ${SUBSCRIPTION} key; endpoint host recorded"
