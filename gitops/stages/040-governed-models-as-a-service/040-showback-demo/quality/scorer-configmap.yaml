@@ -22,6 +22,7 @@ data:
     import mlflow
     from mlflow.entities import AssessmentSource, Feedback
     from mlflow.genai.judges import make_judge
+    from mlflow.genai.scorers import list_scorers, scorer
 
     WINDOW_MIN = int(os.environ.get("WINDOW_MINUTES", "1500"))
     SAMPLE = float(os.environ.get("SAMPLE_RATE", "0.25"))
@@ -100,6 +101,37 @@ data:
 
     JUDGE_SETS = {m: judges_for(m) for m in (JUDGE, SELF_JUDGE)}
 
+
+    @scorer(name="finished", description="The answer was not cut off by the max-tokens cap (the model's stop reason).")
+    def finished(trace):
+        """Code check, no judge: false when the trace's finish_reason is 'length'."""
+        return (trace.info.tags or {}).get("finish_reason") != "length"
+
+
+    def register_judges(exp_id, judge_set):
+        """Show what grades this experiment on its Judges page: register the judges and the code check when missing or
+        changed. Registration stores name, instructions, judge model and verdict type, never the endpoint or the key.
+        The definitions live in Git (this ConfigMap); the page mirrors them. Display only: MLflow cannot run them
+        itself on OpenShift AI 3.5 (no AI Gateway, no server job execution); this job runs them."""
+        relevance, completeness, team = judge_set
+        wanted = {"relevance": relevance, "completeness": completeness, "finished": finished}
+        wanted.update({"team_guidelines_" + sub.removeprefix("team-"): judge for sub, judge in team.items()})
+        try:
+            have = {s.name: s for s in list_scorers(experiment_id=exp_id)}
+        except Exception as e:
+            print(f"  judges not listed ({type(e).__name__}: {str(e)[:120]})", flush=True)
+            return
+        for name, judge in wanted.items():
+            current = have.get(name)
+            if current is not None and getattr(current, "instructions", None) == getattr(judge, "instructions", None) \
+                    and getattr(current, "model", None) == getattr(judge, "model", None):
+                continue
+            try:
+                judge.register(name=name, experiment_id=exp_id)
+                print(f"  registered judge {name}", flush=True)
+            except Exception as e:
+                print(f"  judge {name} not registered ({type(e).__name__}: {str(e)[:120]})", flush=True)
+
     def root_io(trace):
         root = next(s for s in trace.data.spans if s.parent_id is None)
         return (root.inputs or {}).get("prompt"), (root.outputs or {}).get("response")
@@ -148,6 +180,7 @@ data:
         # No model grades its own answers: the second judge takes the main judge model's experiment.
         own = exp.name == "internal-" + JUDGE
         RELEVANCE, COMPLETENESS, TEAM_JUDGES = JUDGE_SETS[SELF_JUDGE if own else JUDGE]
+        register_judges(exp.experiment_id, JUDGE_SETS[SELF_JUDGE if own else JUDGE])
         traces = mlflow.search_traces(locations=[exp.experiment_id], return_type="list", max_results=500,
                                       filter_string=f"trace.timestamp_ms > {cutoff} AND trace.status = 'OK'")
         # Only traces that record why the answer stopped (generator since 2026-10-27) and still miss a verdict;
