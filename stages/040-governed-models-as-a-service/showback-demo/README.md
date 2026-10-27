@@ -98,10 +98,13 @@ request-level view and answer quality per model.
 - **Fails open:** a failed export never stops the load; the summary prints `traced` and `trace_failed` per team.
   `--no-trace` skips tracing. Failed requests are traced as errors.
 - **Quality:** the CronJob `maas-quality-scorer` (component folder `quality/`) runs at five past each hour. It takes a
-  20% sample (at most 60 per experiment) of the last 65 minutes' successful, unscored traces, asks the judge (Claude
-  Sonnet 5.5 through MaaS, on its own subscription `maas-quality-judge`) three yes/no questions and logs the verdicts
-  as MLflow feedback: `relevance`, `completeness` and `team_guidelines` (the guideline of the trace's team). Run it
-  now with `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`.
+  10% sample (at most 20 per experiment) of the last 65 minutes' successful, unscored traces, asks the judge three
+  true/false questions and logs the verdicts as MLflow feedback: `relevance`, `completeness` and `team_guidelines` (the
+  guideline of the trace's team). The Quality tab shows each scorer's average, the pass rate. The judge is Nemotron 3
+  Ultra (free through the NVIDIA provider) for every model except Nemotron itself, whose answers Qwen grades, so no
+  model grades its own; both are reached through MaaS on the judge's own subscription `maas-quality-judge`. A run stops
+  after 20 minutes (MLflow retries a failed judge call up to ten times), and unscored traces wait for the next run.
+  Run it now with `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`.
 - **Scope:** only this load generator's requests are traced. Platform-side tracing of every MaaS client is planned work.
 
 ## External metering

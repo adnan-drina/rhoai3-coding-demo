@@ -16,6 +16,7 @@ metadata:
     argocd.argoproj.io/sync-wave: '40'
 spec:
   schedule: '5 * * * *'
+  suspend: false
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 2
@@ -40,13 +41,17 @@ spec:
               command: [python3, /etc/maas-quality/scorer/score.py]
               env:
                 - name: JUDGE_MODEL
-                  value: claude-sonnet-5-5
+                  value: nemotron-3-ultra-550b-a55b
+                - name: SELF_JUDGE_MODEL
+                  value: publishers/internal-models/models/qwen3-8-27b
                 - name: SAMPLE_RATE
-                  value: '0.2'
+                  value: '0.1'
                 - name: WINDOW_MINUTES
                   value: '65'
                 - name: MAX_TRACES_PER_EXPERIMENT
-                  value: '60'
+                  value: '20'
+                - name: RUN_BUDGET_SECONDS
+                  value: '1200'
                 - name: MLFLOW_TRACKING_URI
                   value: https://mlflow.redhat-ods-applications.svc:8443/mlflow
                 - name: MLFLOW_TRACKING_AUTH
