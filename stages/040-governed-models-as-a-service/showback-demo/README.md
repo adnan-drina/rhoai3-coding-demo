@@ -122,9 +122,9 @@ request-level view and answer quality per model.
   unscored traces, asks a judge three true/false questions and logs the verdicts as MLflow feedback: `relevance`,
   `completeness` (every part of the request answered) and `team_guidelines` (the guideline of the trace's team). A
   fourth verdict, `finished`, is code, not a judge: it is false when the trace's `finish_reason` is `length`, the
-  max-tokens cap cut the answer off. Each trace gets only the verdicts it does not have yet. The scorer also registers its judges in
-  each experiment (Judges page: name, instructions, judge model; never the endpoint or key), so the page shows what
-  grades that experiment. They are display only: MLflow cannot run them itself on OpenShift AI 3.5, the batch job does. The Quality tab shows each
+  max-tokens cap cut the answer off. Each trace gets only the verdicts it does not have yet. The scorer also registers its LLM judges
+  in each experiment (Judges page: name, instructions, judge model; never the endpoint or key), so the page shows what
+  grades that experiment; `finished` is not listed there, since MLflow registers custom code scorers only on Databricks. They are display only: MLflow cannot run them itself on OpenShift AI 3.5, the batch job does. The Quality tab shows each
   scorer's average, the pass rate. The judges are the private models, reached through MaaS on their own subscription
   `maas-quality-judge`: Qwen grades every model except itself and Mistral grades Qwen, so no model grades its own
   answers and judging costs nothing at a provider. Both must be serving when the job runs; if either is stopped (GPUs

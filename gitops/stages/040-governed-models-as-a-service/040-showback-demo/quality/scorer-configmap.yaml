@@ -22,7 +22,7 @@ data:
     import mlflow
     from mlflow.entities import AssessmentSource, Feedback
     from mlflow.genai.judges import make_judge
-    from mlflow.genai.scorers import list_scorers, scorer
+    from mlflow.genai.scorers import list_scorers
 
     WINDOW_MIN = int(os.environ.get("WINDOW_MINUTES", "1500"))
     SAMPLE = float(os.environ.get("SAMPLE_RATE", "0.25"))
@@ -102,19 +102,13 @@ data:
     JUDGE_SETS = {m: judges_for(m) for m in (JUDGE, SELF_JUDGE)}
 
 
-    @scorer(name="finished", description="The answer was not cut off by the max-tokens cap (the model's stop reason).")
-    def finished(trace):
-        """Code check, no judge: false when the trace's finish_reason is 'length'."""
-        return (trace.info.tags or {}).get("finish_reason") != "length"
-
-
     def register_judges(exp_id, judge_set):
-        """Show what grades this experiment on its Judges page: register the judges and the code check when missing or
-        changed. Registration stores name, instructions, judge model and verdict type, never the endpoint or the key.
+        """Show what grades this experiment on its Judges page: register the LLM judges when missing or changed (the
+        finished code check cannot be registered: MLflow allows custom code scorers only on Databricks). Registration stores name, instructions, judge model and verdict type, never the endpoint or the key.
         The definitions live in Git (this ConfigMap); the page mirrors them. Display only: MLflow cannot run them
         itself on OpenShift AI 3.5 (no AI Gateway, no server job execution); this job runs them."""
         relevance, completeness, team = judge_set
-        wanted = {"relevance": relevance, "completeness": completeness, "finished": finished}
+        wanted = {"relevance": relevance, "completeness": completeness}
         wanted.update({"team_guidelines_" + sub.removeprefix("team-"): judge for sub, judge in team.items()})
         try:
             have = {s.name: s for s in list_scorers(experiment_id=exp_id)}
