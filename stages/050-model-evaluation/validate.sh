@@ -55,6 +55,41 @@ parked_only() {
   echo yes
 }
 check "050-model-qualification is Suspended only by a stopped candidate InferenceService" parked_only yes
+# The risk assessment model is registered once (pinned version and artifact, the labels and properties of
+# model-registry-metadata.json) and its InferenceService is linked to that record.
+risk_model_record() {
+  local dir="$REPO_ROOT/gitops/stages/050-model-evaluation/050-model-qualification" name=gemma-2-9b-abliterated
+  local host meta uri title rev model mid vid isvc
+  host=$(oc --request-timeout=10s get modelregistries.modelregistry.opendatahub.io demo-registry -n rhoai-model-registries \
+    -o jsonpath='{.status.hosts[0]}' 2>/dev/null) || { echo "demo-registry unreadable"; return; }
+  registry() {
+    printf 'header = "Authorization: Bearer %s"\n' "$(oc whoami -t)" |
+      curl --config - -sf --max-time 20 "https://$host/api/model_registry/v1alpha3$1"
+  }
+  meta=$(jq -c -e --arg n "$name" '.[$n]' "$dir/model-registry-metadata.json") || { echo "metadata missing"; return; }
+  uri=$(oc kustomize "$dir" | yaml_json | jq -r --arg n "$name" '.[] | select(.kind == "InferenceService" and .metadata.name == $n)
+    | .spec.predictor.model.storageUri')
+  title=${uri##*/}; title=${title%%:*}; rev=${uri##*:}
+  model=$(registry '/registered_models?pageSize=500' | jq -c --arg t "$title" '[.items[] | select(.name == $t)]') ||
+    { echo "registry listing failed"; return; }
+  [[ $(jq length <<<"$model") == 1 ]] || { echo "$title not registered exactly once"; return; }
+  jq -e --argjson m "$meta" '.[0].customProperties // {} | . as $p
+    | all($m.labels[]; $p[.] == {metadataType: "MetadataStringValue", string_value: ""})
+    and all($m.properties | to_entries[]; $p[.key].string_value == .value)' <<<"$model" >/dev/null ||
+    { echo "$title labels or properties differ from model-registry-metadata.json"; return; }
+  mid=$(jq -r '.[0].id' <<<"$model")
+  vid=$(registry "/registered_models/$mid/versions?pageSize=500" | jq -r --arg v "source-$rev" \
+    '[.items[] | select(.name == $v)] | if length == 1 then .[0].id else "" end')
+  [[ -n "$vid" ]] || { echo "$title version source-$rev not registered exactly once"; return; }
+  registry "/model_versions/$vid/artifacts" | jq -e --arg u "$uri" '[.items[] | .uri] == [$u]' >/dev/null ||
+    { echo "$title artifact differs"; return; }
+  isvc=$(read_json inferenceservice "$name" -n "$TENANT")
+  jq -e --arg m "$mid" --arg v "$vid" '.metadata.labels // {} | .["modelregistry.opendatahub.io/name"] == "demo-registry"
+    and .["modelregistry.opendatahub.io/registered-model-id"] == $m and .["modelregistry.opendatahub.io/model-version-id"] == $v' \
+    <<<"$isvc" >/dev/null || { echo "InferenceService $name not linked to $title"; return; }
+  echo yes
+}
+check "Risk assessment model registered with its labels and linked to its InferenceService" risk_model_record yes
 # Stage 020 owns the ClusterQueues; this stage owns the consumer LocalQueues in the tenant.
 for queue in lq-gpu-reserved-demo lq-gpu-rtxpro6000; do
   record "LocalQueue $queue Active in $TENANT" "$(read_json localqueue "$queue" -n "$TENANT" |

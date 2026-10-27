@@ -1,0 +1,12 @@
+{
+  "gemma-2-9b-abliterated": {
+    "labels": ["text-generation", "evaluation-helper", "risk-assessment", "no-safety-alignment", "not-for-production"],
+    "properties": {
+      "model_type": "generative",
+      "provider": "Google (abliterated by IlyaGusev)",
+      "license": "gemma",
+      "role": "Garak intents risk assessment: attack prompt generation (SDG) and judge; never a qualification candidate",
+      "owner_stage": "050"
+    }
+  }
+}

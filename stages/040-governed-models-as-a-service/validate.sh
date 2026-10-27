@@ -11,6 +11,7 @@
 #   RHOAI_STAGE040_MODEL (one model), RHOAI_STAGE040_SINGLE_COMPLETION=true (one completion, needs a model),
 #   RHOAI_STAGE040_TEST_EXTERNAL=false (skip external models: result pending), RHOAI_STAGE040_SUBSCRIPTION,
 #   RHOAI_STAGE040_CA_BUNDLE (extra CA file), RHOAI_STAGE040_EVIDENCE_PATH (new file under /private/tmp).
+# Model registry records are checked unless RHOAI_STAGE040_SKIP_REGISTRY=true (deploy.sh, before it registers them).
 # Exit codes: 0 pass, 1 fail, 2 pending (functional only). API contract: shipped MaaS 563117f1/openapi3.yaml.
 # --component 040-showback-demo checks the installed optional component: three team subscriptions and policies,
 # the Mistral model (replicas are a demo-time choice), three offer dashboards, metering workloads, retained storage
@@ -510,6 +511,63 @@ showback_application=$(oc --request-timeout="$TIMEOUT" get applications.argoproj
     }
 if [[ -n "$showback_application" ]]; then
     check "Installed optional showback bundle matches its source" showback_source_state yes
+fi
+# Model registry records (deploy.sh writes them after readiness): every checkpoint Git declares (Qwen, its prepared
+# format alternates, the showback dedicated model) registered once with its pinned version and artifact and the labels
+# and properties of model-registry-metadata.json, and each deployed checkpoint linked to its record.
+registry_records() {
+    local host models local_models dedicated targets entry name dir uri title rev qlabel meta model mid versions vid live
+    local_models="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-local-models"
+    dedicated="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo/dedicated"
+    host=$(oc --request-timeout="$TIMEOUT" get modelregistries.modelregistry.opendatahub.io demo-registry \
+        -n rhoai-model-registries -o jsonpath='{.status.hosts[0]}') || { echo "demo-registry unreadable"; return; }
+    registry() {
+        printf 'header = "Authorization: Bearer %s"\n' "$(oc whoami -t)" |
+            curl --config - -sf --max-time 20 "https://$host/api/model_registry/v1alpha3$1"
+    }
+    declared() {  # name=uri for each LLMInferenceService a kustomization renders
+        oc kustomize "$1" | ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' |
+            jq -r '.[] | select(.kind == "LLMInferenceService") | "\(.metadata.name)=\(.spec.model.uri)"'
+    }
+    targets=$( { declared "$local_models" | sed "s#\$#|$local_models#"; declared "$dedicated" | sed "s#\$#|$dedicated#"
+        for component in "$local_models"/components/*/; do
+            work=$(mktemp -d); cp -R "$local_models" "$work/local-models"
+            printf '\ncomponents:\n  - components/%s\n' "$(basename "$component")" >>"$work/local-models/kustomization.yaml"
+            declared "$work/local-models" | sed "s#\$#|$local_models#"; rm -rf "$work"
+        done; } | sort -u)
+    models=$(registry '/registered_models?pageSize=500') || { echo "registry listing failed"; return; }
+    while IFS='|' read -r entry dir; do
+        name=${entry%%=*} uri=${entry#*=}
+        title=${uri##*/}; title=${title%%:*}; rev=${uri##*:}
+        case "$(tr '[:lower:]' '[:upper:]' <<<"$title")" in
+            *-NVFP4) qlabel=nvfp4 ;; *-FP8) qlabel=fp8 ;; *-INT4) qlabel=int4 ;; *) qlabel=unquantized ;;
+        esac
+        meta=$(jq -c -e --arg n "$name" '.[$n]' "$dir/model-registry-metadata.json") || { echo "$name metadata missing"; return; }
+        model=$(jq -c --arg t "$title" '[.items[] | select(.name == $t)]' <<<"$models")
+        [[ $(jq length <<<"$model") == 1 ]] || { echo "$title not registered exactly once"; return; }
+        jq -e --argjson m "$meta" --arg q "$qlabel" '.[0].customProperties // {} | . as $p
+            | all($m.labels[], $q; $p[.] == {metadataType: "MetadataStringValue", string_value: ""})
+            and all($m.properties | to_entries[]; $p[.key].string_value == .value)' <<<"$model" >/dev/null ||
+            { echo "$title labels or properties differ from model-registry-metadata.json"; return; }
+        mid=$(jq -r '.[0].id' <<<"$model")
+        versions=$(registry "/registered_models/$mid/versions?pageSize=500") || { echo "$title versions unreadable"; return; }
+        vid=$(jq -r --arg v "source-$rev" '[.items[] | select(.name == $v)] | if length == 1 then .[0].id else "" end' <<<"$versions")
+        [[ -n "$vid" ]] || { echo "$title version source-$rev not registered exactly once"; return; }
+        registry "/model_versions/$vid/artifacts" | jq -e --arg u "$uri" '[.items[] | .uri] == [$u]' >/dev/null ||
+            { echo "$title artifact differs"; return; }
+        live=$(oc --request-timeout="$TIMEOUT" get llminferenceservices.serving.kserve.io "$name" -n internal-models \
+            --ignore-not-found -o json)
+        if [[ -n "$live" ]] && jq -e --arg u "$uri" '.spec.model.uri == $u' <<<"$live" >/dev/null; then
+            jq -e --arg m "$mid" --arg v "$vid" '.metadata.labels as $l | $l["modelregistry.opendatahub.io/name"] == "demo-registry"
+                and $l["modelregistry.opendatahub.io/registered-model-id"] == $m
+                and $l["modelregistry.opendatahub.io/model-version-id"] == $v' <<<"$live" >/dev/null ||
+                { echo "deployment $name not linked to $title"; return; }
+        fi
+    done <<<"$targets"
+    echo yes
+}
+if [[ "${RHOAI_STAGE040_SKIP_REGISTRY:-}" != true ]]; then
+    check "Model registry lists every declared checkpoint with its labels, and each deployment links to its record" registry_records yes
 fi
 check "Studio catalog entries current, or deferred until Stage 060 deploys the MCP servers" studio_catalog yes
 check "MaaS gateway AdminNetworkPolicy boundary: needed destinations open, others blocked" gateway_boundary yes

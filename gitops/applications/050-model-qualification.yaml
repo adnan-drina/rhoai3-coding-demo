@@ -41,3 +41,13 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 3m
+  ignoreDifferences:
+  # Stage 050 deploy.sh links the risk assessment model to its model registry record.
+  - group: serving.kserve.io
+    kind: InferenceService
+    name: gemma-2-9b-abliterated
+    namespace: evaluated-models
+    jsonPointers:
+    - /metadata/labels/modelregistry.opendatahub.io~1name
+    - /metadata/labels/modelregistry.opendatahub.io~1registered-model-id
+    - /metadata/labels/modelregistry.opendatahub.io~1model-version-id

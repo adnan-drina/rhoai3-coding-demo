@@ -83,30 +83,6 @@ showback_metering_profile() {
     log_success "Reviewed external-metering profile loaded; existing MaaS identity and access controls preserved"
 }
 
-if [[ "$COMPONENT" == 040-showback-demo ]]; then
-    revision=$("$STAGE_APPS" select 040 --ref "$ref" --repo-url "$GIT_REPO_URL")
-    "$STAGE_APPS" preflight 040 --repo-url "$GIT_REPO_URL" --app "$COMPONENT"
-    # Shared namespaces and APIs remain owned by their existing platform components.
-    for ns in models-as-a-service redhat-ods-monitoring internal-models; do
-        oc --request-timeout=10s get namespace "$ns" -o json | jq -e '.status.phase == "Active"' >/dev/null || {
-            log_error "Showback requires the existing active namespace $ns"; exit 1;
-        }
-    done
-    oc --request-timeout=10s get crd maassubscriptions.maas.opendatahub.io maasauthpolicies.maas.opendatahub.io \
-        persesdashboards.perses.dev servicemonitors.monitoring.coreos.com -o json |
-        jq -e '.items | length == 4 and all(.[]; any(.status.conditions[]?; .type == "Established" and .status == "True"))' \
-        >/dev/null || { log_error "Showback requires established MaaS, Perses and ServiceMonitor APIs"; exit 1; }
-    showback_metering_profile preflight
-    # Team access, dashboards and the stopped Mistral model come from source; Qwen keeps its existing owner.
-    "$STAGE_APPS" apply 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL"
-    "$STAGE_APPS" sync 040 --app "$COMPONENT"
-    "$STAGE_APPS" wait 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
-    showback_metering_profile activate
-    RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION="$revision" "$SCRIPT_DIR/validate.sh" --component "$COMPONENT"
-    log_success "Showback component reconciled; generate demo load with showback-demo/generate-load.sh to populate the dashboards."
-    exit 0
-fi
-
 # ── Read-only preflight; prints "fresh" (no MaaS database yet) or "retained" ───────────────────────────────────
 stage_preflight() {
 
@@ -389,18 +365,23 @@ setup_database() {
 }
 
 # ── Model registry records: one registered model per checkpoint, one version per immutable revision ──────────
+# Each model's labels and properties come from model-registry-metadata.json beside its manifest. Default: Qwen, its
+# prepared format alternates and the showback dedicated model. --showback REVISION: only the dedicated model.
 register_model_cards() {
 
     NS=internal-models
     REGISTRY=demo-registry
     LOCAL_MODELS="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-local-models"
+    DEDICATED="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo/dedicated"
+    local scope=all status_apps=() revision
+    if [[ "${1:-}" == --showback ]]; then scope=showback status_apps=(--app 040-showback-demo); fi
     fail() { echo "ERROR: registry publication stopped: $*" >&2; exit 1; }
     yaml_stream_json() { ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)'; }
 
-    revision="${RHOAI_STAGE040_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
+    revision="${2:-${RHOAI_STAGE040_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}}"
     [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || fail "reviewed immutable source differs"
-    "$REPO_ROOT/scripts/stage-apps.sh" status 040 --revision "$revision" --repo-url "$GIT_REPO_URL" >/dev/null ||
-        fail "Stage 040 must reconcile before model registration"
+    "$REPO_ROOT/scripts/stage-apps.sh" status 040 ${status_apps[@]+"${status_apps[@]}"} --revision "$revision" \
+        --repo-url "$GIT_REPO_URL" >/dev/null || fail "Stage 040 must reconcile before model registration"
     host=$(oc --request-timeout=10s get modelregistries.modelregistry.opendatahub.io "$REGISTRY" -n rhoai-model-registries \
         -o jsonpath='{.status.hosts[0]}')
     BASE="https://$host/api/model_registry/v1alpha3"
@@ -408,10 +389,10 @@ register_model_cards() {
 
     # Authenticated, CA-verified registry call; redirects are not followed. Prints the JSON response.
     api() {
-        local path=$1 body=${2:-}
+        local path=$1 body=${2:-} method=${3:-}
         printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" |
-            curl --config - -sf --max-time 20 -H 'Content-Type: application/json' ${body:+--data "$body"} "$BASE$path" ||
-            fail "authenticated registry request failed"
+            curl --config - -sf --max-time 20 -H 'Content-Type: application/json' ${method:+-X "$method"} \
+                ${body:+--data "$body"} "$BASE$path" || fail "authenticated registry request failed"
     }
     # Every item of a paginated listing (at most 100 pages), as one JSON array.
     items() {
@@ -424,18 +405,19 @@ register_model_cards() {
         done
         fail "registry pagination exceeded its bound"
     }
-    # Ensure model, version and artifact for one pinned source URI; prints "<title> <model id> <version id>".
+    # Ensure model, version and artifact for one pinned source URI and the model's declared labels and properties
+    # (METADATA JSON); prints "<title> <model id> <version id>".
     register() {
-        local uri=$1 title revision quant model version artifacts
+        local uri=$1 meta=$2 title revision quant qlabel model version artifacts current desired
         title=${uri##*/}
         title=${title%%:*}
         revision=${uri##*:}
         [[ ${#revision} == 40 ]] || fail "model source must be immutable"
         case "$(tr '[:lower:]' '[:upper:]' <<<"$title")" in
-            *-NVFP4) quant="NVFP4 (FP4 weights, FP8 attention)" ;;
-            *-FP8) quant="FP8 block-128" ;;
-            *-INT4) quant="INT4 W4A16" ;;
-            *) quant="unquantized" ;;
+            *-NVFP4) quant="NVFP4 (FP4 weights, FP8 attention)" qlabel=nvfp4 ;;
+            *-FP8) quant="FP8 block-128" qlabel=fp8 ;;
+            *-INT4) quant="INT4 W4A16" qlabel=int4 ;;
+            *) quant="unquantized" qlabel=unquantized ;;
         esac
         model=$(items /registered_models | jq -c --arg t "$title" '[.[] | select(.name == $t)]')
         [[ $(jq length <<<"$model") -le 1 ]] || fail "ambiguous registered model name"
@@ -466,23 +448,43 @@ register_model_cards() {
             api "/model_versions/$version_id/artifacts" "$(jq -n --arg u "$uri" '{name: "model-source", uri: $u,
                 artifactType: "model-artifact", modelFormatName: "vLLM", modelFormatVersion: "1"}')" >/dev/null
         fi
+        # A label is a string custom property with an empty value (the form the dashboard shows and searches); the
+        # checkpoint's quantization is one. Declared keys are set; other properties (evaluation results) stay.
+        current=$(api "/registered_models/$model_id" | jq -S -c '.customProperties // {}')
+        desired=$(jq -S -c --argjson m "$meta" --arg q "$qlabel" '. + ([$m.labels[], $q] | map({key: ., value:
+            {metadataType: "MetadataStringValue", string_value: ""}}) | from_entries) + ($m.properties
+            | with_entries(.value = {metadataType: "MetadataStringValue", string_value: .value}))' <<<"$current")
+        [[ "$desired" == "$current" ]] || api "/registered_models/$model_id" \
+            "$(jq -c '{customProperties: .}' <<<"$desired")" PATCH >/dev/null
         echo "$title $model_id $version_id"
     }
 
-    # Deployed models: register the source Git declares and link the deployment to its record.
-    rendered=$(oc kustomize "$LOCAL_MODELS" | yaml_stream_json)
+    # Deployed models: register the source Git declares and link the deployment to its record. The showback dedicated
+    # model is registered whether or not its opt-in offer is deployed, and linked once its deployment exists.
+    local targets=("mistral-small4-119b|040-showback-demo|$DEDICATED|optional") target app dir presence meta rendered
+    [[ "$scope" == showback ]] || targets=("qwen3-8-27b|040-local-models|$LOCAL_MODELS|required" "${targets[@]}")
     active=""
-    for name in qwen3-8-27b; do
+    for target in "${targets[@]}"; do
+        IFS='|' read -r name app dir presence <<<"$target"
+        meta=$(jq -c -e --arg n "$name" '.[$n]' "$dir/model-registry-metadata.json") || fail "$name registry metadata missing"
+        rendered=$(oc kustomize "$dir" | yaml_stream_json)
         uri=$(jq -r --arg n "$name" '.[] | select(.kind == "LLMInferenceService" and .metadata.name == $n) | .spec.model.uri' <<<"$rendered")
-        llmi=$(oc --request-timeout=10s get llminferenceservices.serving.kserve.io "$name" -n "$NS" -o json)
-        jq -e --arg u "$uri" '.spec.model.uri == $u
-            and (.metadata.annotations["argocd.argoproj.io/tracking-id"] // "" | startswith("040-local-models:"))
+        llmi=$(oc --request-timeout=10s get llminferenceservices.serving.kserve.io "$name" -n "$NS" --ignore-not-found -o json)
+        if [[ -z "$llmi" ]]; then
+            [[ "$presence" == optional ]] || fail "$name deployment absent"
+            registered=$(register "$uri" "$meta")
+            read -r title _ _ <<<"$registered"
+            echo "PASS Registered pinned source; deployment not enabled, so no linkage: $name -> $title"
+            continue
+        fi
+        jq -e --arg u "$uri" --arg app "$app:" '.spec.model.uri == $u
+            and (.metadata.annotations["argocd.argoproj.io/tracking-id"] // "" | startswith($app))
             and (.metadata.generation | type) == "number" and .status.observedGeneration == .metadata.generation' \
             <<<"$llmi" >/dev/null || fail "$name source, ownership or readiness differs"
         parked=$(jq -r '.spec.replicas == 0' <<<"$llmi")
         [[ "$parked" == true ]] || jq -e 'any(.status.conditions[]?; .type == "Ready" and .status == "True")' <<<"$llmi" >/dev/null ||
             fail "active model $name must be Ready before registry publication"
-        registered=$(register "$uri")  # captured, so a failure stops the script (set -e)
+        registered=$(register "$uri" "$meta")  # captured, so a failure stops the script (set -e)
         read -r title model_id version_id <<<"$registered"
         active+=" $name=$uri"
         existing=$(jq -r '.metadata.labels["modelregistry.opendatahub.io/registered-model-id"] // ""' <<<"$llmi")
@@ -507,6 +509,7 @@ register_model_cards() {
 
     # Prepared alternates: each format component registers its artifact (no deployment linkage), so the registry
     # lists every build that can be switched on.
+    [[ "$scope" == all ]] || return 0
     for component in "$LOCAL_MODELS"/components/*/; do
         component=$(basename "$component")
         alt_work=$(mktemp -d)
@@ -517,13 +520,41 @@ register_model_cards() {
         rm -rf "$alt_work"
         for entry in $alternates; do
             [[ "$active" == *" $entry"* ]] && continue
-            registered=$(register "${entry#*=}")
+            meta=$(jq -c -e --arg n "${entry%%=*}" '.[$n]' "$LOCAL_MODELS/model-registry-metadata.json") ||
+                fail "${entry%%=*} registry metadata missing"
+            registered=$(register "${entry#*=}" "$meta")
             read -r title _ _ <<<"$registered"
             echo "PASS Registered prepared alternate (component $component, not deployed): $title"
         done
     done
 }
 
+
+if [[ "$COMPONENT" == 040-showback-demo ]]; then
+    revision=$("$STAGE_APPS" select 040 --ref "$ref" --repo-url "$GIT_REPO_URL")
+    "$STAGE_APPS" preflight 040 --repo-url "$GIT_REPO_URL" --app "$COMPONENT"
+    # Shared namespaces and APIs remain owned by their existing platform components.
+    for ns in models-as-a-service redhat-ods-monitoring internal-models; do
+        oc --request-timeout=10s get namespace "$ns" -o json | jq -e '.status.phase == "Active"' >/dev/null || {
+            log_error "Showback requires the existing active namespace $ns"; exit 1;
+        }
+    done
+    oc --request-timeout=10s get crd maassubscriptions.maas.opendatahub.io maasauthpolicies.maas.opendatahub.io \
+        persesdashboards.perses.dev servicemonitors.monitoring.coreos.com -o json |
+        jq -e '.items | length == 4 and all(.[]; any(.status.conditions[]?; .type == "Established" and .status == "True"))' \
+        >/dev/null || { log_error "Showback requires established MaaS, Perses and ServiceMonitor APIs"; exit 1; }
+    showback_metering_profile preflight
+    # Team access, dashboards and the stopped Mistral model come from source; Qwen keeps its existing owner.
+    "$STAGE_APPS" apply 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL"
+    "$STAGE_APPS" sync 040 --app "$COMPONENT"
+    "$STAGE_APPS" wait 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
+    showback_metering_profile activate
+    RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION="$revision" "$SCRIPT_DIR/validate.sh" --component "$COMPONENT"
+    # Register the dedicated model and link its deployment when the opt-in offer is enabled.
+    register_model_cards --showback "$revision"
+    log_success "Showback component reconciled; generate demo load with showback-demo/generate-load.sh to populate the dashboards."
+    exit 0
+fi
 
 revision=$("$STAGE_APPS" select 040 --ref "$ref" --repo-url "$GIT_REPO_URL" \
 )
@@ -572,7 +603,7 @@ fi
 "$SCRIPT_DIR/studio-mcp/publish.sh" --defer-if-absent
 
 deadline=$((SECONDS + 900))
-until "$SCRIPT_DIR/validate.sh" --readiness; do
+until RHOAI_STAGE040_SKIP_REGISTRY=true "$SCRIPT_DIR/validate.sh" --readiness; do
   (( SECONDS < deadline )) || { log_error "Stage 040 readiness timed out; inspect the operator and component conditions."; exit 1; }
   sleep 10
 done

@@ -169,6 +169,69 @@ studio_revision=$(oc --request-timeout=10s get applications.argoproj.io 040-gena
 "$STAGE_APPS" sync 040 --app 040-genai-studio --resync
 "$STAGE_APPS" wait 040 --app 040-genai-studio --revision "$studio_revision" --repo-url "$GIT_REPO_URL" --timeout 600
 
+# ── Model registry record of the risk assessment model ───────────────────────
+# Registered the way Stage 040 registers its models: one registered model per checkpoint, one version per immutable
+# revision with its source artifact, the labels and properties of model-registry-metadata.json (a label is a string
+# property with an empty value), and the InferenceService linked to the record. Never overwrites an artifact.
+register_risk_model() {
+  local dir="$REPO_ROOT/gitops/stages/050-model-evaluation/050-model-qualification" name=gemma-2-9b-abliterated
+  local ns=evaluated-models host base meta uri title rev model mid version vid artifacts current desired isvc
+  host=$(oc --request-timeout=10s get modelregistries.modelregistry.opendatahub.io demo-registry -n rhoai-model-registries \
+    -o jsonpath='{.status.hosts[0]}')
+  base="https://$host/api/model_registry/v1alpha3"
+  api() {  # PATH [BODY [METHOD]]: authenticated, CA-verified registry call; prints the JSON response
+    printf 'header = "Authorization: Bearer %s"\n' "$(oc whoami -t)" |
+      curl --config - -sf --max-time 20 -H 'Content-Type: application/json' ${3:+-X "$3"} ${2:+--data "$2"} "$base$1" ||
+      fail "authenticated registry request failed"
+  }
+  meta=$(jq -c -e --arg n "$name" '.[$n]' "$dir/model-registry-metadata.json") || fail "$name registry metadata missing"
+  uri=$(oc kustomize "$dir" | yaml_json | jq -r --arg n "$name" '.[] | select(.kind == "InferenceService" and .metadata.name == $n)
+    | .spec.predictor.model.storageUri')
+  title=${uri##*/}; title=${title%%:*}; rev=${uri##*:}
+  [[ ${#rev} == 40 ]] || fail "$name source must be immutable"
+  model=$(api "/registered_models?pageSize=500" | jq -c --arg t "$title" '[.items[] | select(.name == $t)]')
+  [[ $(jq length <<<"$model") -le 1 ]] || fail "ambiguous registered model name $title"
+  if [[ $(jq length <<<"$model") == 0 ]]; then
+    model=$(api /registered_models "$(jq -n --arg t "$title" --arg l "${uri#*://}" '{name: $t, owner: "rhoai3-coding-demo",
+      description: ("Risk assessment helper (Garak intents SDG and judge) without safety alignment, served only in the "
+      + "admin project evaluated-models. Pinned model artifact (\($l | split(":")[0])). Not a qualification candidate.")}')")
+  else
+    model=$(jq -c '.[0]' <<<"$model")
+  fi
+  mid=$(jq -r '.id' <<<"$model")
+  version=$(api "/registered_models/$mid/versions?pageSize=500" | jq -c --arg v "source-$rev" '[.items[] | select(.name == $v)]')
+  [[ $(jq length <<<"$version") -le 1 ]] || fail "ambiguous registered model version source-$rev"
+  if [[ $(jq length <<<"$version") == 0 ]]; then
+    version=$(api /model_versions "$(jq -n --arg v "source-$rev" --arg m "$mid" --arg r "$rev" \
+      '{name: $v, registeredModelId: $m, description: "BF16 weights. Immutable source \($r)"}')")
+  else
+    version=$(jq -c '.[0]' <<<"$version")
+  fi
+  vid=$(jq -r '.id' <<<"$version")
+  artifacts=$(api "/model_versions/$vid/artifacts" | jq -c '.items // []')
+  jq -e --arg u "$uri" 'length == 0 or (length == 1 and .[0].uri == $u)' <<<"$artifacts" >/dev/null ||
+    fail "existing $title artifact differs; no overwrite"
+  [[ $(jq length <<<"$artifacts") == 1 ]] || api "/model_versions/$vid/artifacts" "$(jq -n --arg u "$uri" '{name: "model-source",
+    uri: $u, artifactType: "model-artifact", modelFormatName: "vLLM", modelFormatVersion: "1"}')" >/dev/null
+  current=$(jq -S -c '.customProperties // {}' <<<"$model")
+  desired=$(jq -S -c --argjson m "$meta" '. + ($m.labels | map({key: ., value: {metadataType: "MetadataStringValue",
+    string_value: ""}}) | from_entries) + ($m.properties | with_entries(.value = {metadataType: "MetadataStringValue",
+    string_value: .value}))' <<<"$current")
+  [[ "$desired" == "$current" ]] || api "/registered_models/$mid" "$(jq -c '{customProperties: .}' <<<"$desired")" PATCH >/dev/null
+  # Link the InferenceService (Git owns it; the id labels are delegated) to the record.
+  isvc=$(read_json inferenceservice "$name" -n "$ns")
+  jq -e --arg u "$uri" '.spec.predictor.model.storageUri == $u
+    and (.metadata.annotations["argocd.argoproj.io/tracking-id"] // "" | startswith("050-model-qualification:"))' <<<"$isvc" >/dev/null ||
+    fail "$name source or ownership differs"
+  jq -c --arg m "$mid" --arg v "$vid" '[{op: "test", path: "/metadata/resourceVersion", value: .metadata.resourceVersion},
+    {op: "add", path: "/metadata/labels", value: ((.metadata.labels // {}) + {"modelregistry.opendatahub.io/name": "demo-registry",
+      "modelregistry.opendatahub.io/registered-model-id": $m, "modelregistry.opendatahub.io/model-version-id": $v})}]' <<<"$isvc" |
+    oc --request-timeout=10s patch inferenceservice "$name" -n "$ns" --type=json --patch-file=/dev/stdin >/dev/null ||
+    fail "$name registry linkage patch failed"
+  log_success "Registered $name as $title (model $mid, version $vid) and linked its InferenceService"
+}
+register_risk_model
+
 # Exit 2 (services ready, no evaluation evidence) is the expected result of a deployment.
 export RHOAI_STAGE050_EXPECTED_REVISION="$revision"
 deadline=$((SECONDS + 900))

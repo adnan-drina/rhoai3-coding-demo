@@ -1,0 +1,12 @@
+{
+  "mistral-small4-119b": {
+    "labels": ["text-generation", "tool-calling", "private-model", "maas-dedicated", "showback-demo"],
+    "properties": {
+      "model_type": "generative",
+      "provider": "Mistral AI",
+      "license": "apache-2.0",
+      "maas_model": "publishers/internal-models/models/mistral-small4-119b",
+      "owner_stage": "040"
+    }
+  }
+}

@@ -16,6 +16,9 @@ metadata:
   namespace: evaluated-models
   labels:
     kueue.x-k8s.io/queue-name: lq-gpu-reserved-demo
+    # Stage 050 deploy.sh registers this model and adds the registered-model-id and model-version-id labels; Argo CD
+    # ignores drift on all three.
+    modelregistry.opendatahub.io/name: demo-registry
   annotations:
     openshift.io/display-name: Gemma 2 9B abliterated (risk assessment judge and SDG)
     serving.kserve.io/stop: "true"

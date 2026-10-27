@@ -1,5 +1,5 @@
-# Detached, stopped qualification candidate. No Argo Application references this path.
-# Schema patterns come from the existing Qwen service; Mistral runtime/host fit is unqualified.
+# Marketing's dedicated model in the opt-in showback offer (040-showback-demo includes this folder when the offer is
+# enabled). Git keeps it stopped. Schema patterns come from the Qwen service; Mistral runtime/host fit is unqualified.
 apiVersion: serving.kserve.io/v1alpha2
 kind: LLMInferenceService
 metadata:
@@ -16,6 +16,8 @@ metadata:
     kueue.x-k8s.io/queue-name: lq-gpu-rtxpro6000
     opendatahub.io/dashboard: "true"
     opendatahub.io/genai-asset: "true"
+    # Stage 040 deploy.sh adds the registered-model-id and model-version-id labels; Argo CD ignores drift on all three.
+    modelregistry.opendatahub.io/name: demo-registry
   annotations:
     openshift.io/display-name: Mistral Small 4 119B NVFP4
     openshift.io/description: Marketing dedicated model for the showback demo; Git keeps it stopped, scale to one replica on a second RTX PRO 6000 worker

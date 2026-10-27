@@ -11,7 +11,7 @@ access. The Application reports **Suspended** by design while the candidate mode
 | Argo CD Application | `050-model-qualification` ([manifest](../../../applications/050-model-qualification.yaml)) |
 | Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 2, all Stage 050 components at one commit SHA) |
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced, and Healthy or Suspended only by a stopped InferenceService) and [`stages/050-model-evaluation/validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (tenant label, tenant discovery, job ServiceAccount, admin access, developer denial) |
-| Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. Annotation `demo.rhoai.io/accepted-health: Suspended`. |
+| Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true` (the registry labels of `gemma-2-9b-abliterated`), `SkipDryRunOnMissingResource=true`. Annotation `demo.rhoai.io/accepted-health: Suspended`. |
 | Depends on | `050-mlflow` (AI Pipelines and TrustyAI components enabled by its hook; MLflow for run tracking); `050-evalhub` (EvalHub instance that reconciles the tenant); Stage 040 (MaaS Gateway `maas-default-gateway`, subscription `model-qualification`); Stage 020 (ClusterQueues `cq-cpu-default`, `cq-gpu-reserved-demo`, `cq-gpu-rtxpro6000`; hardware profile `gpu-reserved-demo`); ODF (buckets, Route `s3`). |
 | Used by | `050-evalhub` (Role `evalhub-evaluator` bound to its MCP and automation principals), `050-evaluation-content` and `050-oci-export` (objects in `evaluated-models`); evaluation jobs submitted from the dashboard or the EvalHub REST API. |
 
@@ -65,6 +65,7 @@ ready.
 |---|---|---|---|
 | ServingRuntime | `vllm-cuda-runtime` | `evaluated-models` | Wave 20. Instance of the platform template `vllm-cuda-runtime-template`: the 3.5.2 vLLM image, the same digest as the platform's 3.5.2 LLMInferenceService templates that production MaaS uses (updated 2026-10-23 from the 3.5.1 image). Serves the candidate and the risk assessment model. |
 | InferenceService | `qwen3-8-27b-nvfp4` | `evaluated-models` | Wave 40. `RedHatAI/Qwen3.8-27B-NVFP4` at the production revision (registered as Qwen3.8-27B-NVFP4; the version id differs per environment) with production's serving arguments, RawDeployment, token authentication on, hardware profile `gpu-rtxpro6000`, queue `lq-gpu-rtxpro6000`, one RTX PRO 6000, `serving.kserve.io/stop: "true"` between runs. It replaced an INT4 candidate on L40S, which missed the first-token gate and was removed on 2026-10-26. |
+| InferenceService | `gemma-2-9b-abliterated` | `evaluated-models` | Wave 40, stopped (`serving.kserve.io/stop`). Risk assessment helper for the Garak intents scan (attack prompt generation and judge) on one L40S; `IlyaGusev/gemma-2-9b-it-abliterated` at a pinned revision, token authentication. `stages/050-model-evaluation/deploy.sh` registers it as `gemma-2-9b-it-abliterated` with the labels and properties of `model-registry-metadata.json` (`evaluation-helper`, `not-for-production`, ...) and links the InferenceService; Argo CD ignores drift on its three `modelregistry.opendatahub.io/*` labels. Never a qualification candidate. |
 | Role / RoleBinding | `qwen3-8-27b-nvfp4-view-role` / `evalhub-job-model-access-nvfp4` | `evaluated-models` | Wave 21. `get` on this InferenceService for the tenant job ServiceAccount `evalhub-evalhub-job` (implicit authentication). |
 | ServiceAccount, Secret (`kubernetes.io/service-account-token`), Role, RoleBinding | `candidate-model-client`, `candidate-model-client-token` | `evaluated-models` | Wave 12. A token that may only `get` InferenceServices in this project, used as the candidate API key. |
 | ConfigMap | `candidate-model-service-ca` | `evaluated-models` | Wave 12. Injected service CA. |
@@ -205,7 +206,8 @@ Git.
 InferenceServices cause it. `stages/050-model-evaluation/validate.sh` checks that `evaluated-models` is the only EvalHub tenant, that
 tenant discovery (`evalhub-discovery`) and the service CA were reconciled, that `evalhub-evalhub-job` exists and may write
 MLflow experiments, that `rhods-admins` may create and read evaluations, providers, collections and experiments, and that
-`rhoai-developers` may not create evaluations.
+`rhoai-developers` may not create evaluations, and that the risk assessment model is registered with its labels and linked
+to its InferenceService.
 
 By hand:
 

@@ -1,0 +1,12 @@
+{
+  "qwen3-8-27b": {
+    "labels": ["text-generation", "tool-calling", "coding", "private-model", "maas-shared"],
+    "properties": {
+      "model_type": "generative",
+      "provider": "Qwen",
+      "license": "apache-2.0",
+      "maas_model": "publishers/internal-models/models/qwen3-8-27b",
+      "owner_stage": "040"
+    }
+  }
+}

@@ -59,7 +59,7 @@ The default deployment selects eight Argo CD Applications, one per component, al
 ./stages/040-governed-models-as-a-service/validate.sh --readiness
 ```
 
-`deploy.sh` ends by registering the deployed model and its prepared format alternates in the model registry (idempotent, never overwriting a record).
+`deploy.sh` ends by registering the deployed model, its prepared format alternates and the showback dedicated Mistral model in the model registry (idempotent, never overwriting a record), with the labels and properties each component declares in `model-registry-metadata.json`, and links each existing deployment to its record. `deploy.sh --component 040-showback-demo` registers Mistral and links it once the dedicated offer is enabled.
 
 Readiness checks do not establish inference, streaming or quota behavior. Bounded functional checks and user playground interaction complete acceptance. In the dashboard, create a playground in your project and select an available governed model endpoint. Do not use the playground to create a replacement serving deployment.
 
