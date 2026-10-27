@@ -6,9 +6,9 @@ This demo answers "What did AI cost us?" on a governed MaaS platform. Three team
 |---|---|---|---|
 | Engineering | Shared private | Qwen 3.8 27B on a platform-owned RTX PRO 6000 worker | Committed tariff for 150M tokens a month, on demand above it; the platform carries idle capacity |
 | Support | Shared private and External | Qwen 3.8 27B; GPT-6 Luna, Claude Sonnet 5.5, Nemotron | Tariff for Qwen; provider list price per token for external models |
-| Marketing (opt-in) | Dedicated private | Mistral Small 4 119B on its own RTX PRO 6000 worker | Full running cost of the worker, busy or idle |
+| Marketing | Dedicated private | Mistral Small 4 119B on its own RTX PRO 6000 worker | Full running cost of the worker, busy or idle |
 
-The cluster resources are the optional [040-showback-demo component](../../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/README.md): Engineering and Support subscriptions and policies, the three dashboards and the external metering service. The dedicated offer (Marketing's subscription and the Mistral model, stopped in Git) is the opt-in `dedicated/` folder: add `- dedicated` to the component's `kustomization.yaml`, publish and redeploy. On RHOAI 3.5.2 it cannot run beside Qwen: while a second local model is installed, Qwen calls through the shared MaaS endpoint fail ([Troubleshooting](../../../docs/TROUBLESHOOTING.md#qwen-calls-through-maas-hang-then-return-503)).
+The cluster resources are the optional [040-showback-demo component](../../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/README.md): Engineering, Support and Marketing subscriptions and policies, Marketing's dedicated Mistral model (stopped in Git), the three dashboards and the external metering service. Mistral is served on its own Gateway listener (`mistral-small4-maas.<cluster-domain>`), not the shared MaaS endpoint, because on RHOAI 3.5.2 a second local model on the shared listener breaks Qwen calls ([Troubleshooting](../../../docs/TROUBLESHOOTING.md#qwen-calls-through-maas-hang-then-return-503)); `team-keys.sh` records both endpoints and `generate-load.sh --offer dedicated` uses Mistral's.
 
 ## Dashboards
 
@@ -36,7 +36,7 @@ Run the commands from the repository root after the usual cluster login. Each st
    ./stages/040-governed-models-as-a-service/deploy.sh --component 040-showback-demo --revision <full-sha>
    ```
 
-2. **Start the models you need.** Shared needs Qwen, External needs neither. Dedicated needs the opt-in `dedicated/` folder and Mistral on a second GPU worker (the last command), and stops Qwen through MaaS while installed.
+2. **Start the models you need.** Shared needs Qwen, External needs neither. Dedicated needs Mistral on a second GPU worker (the last command).
 
    ```bash
    stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 2

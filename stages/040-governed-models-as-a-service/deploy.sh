@@ -460,7 +460,7 @@ register_model_cards() {
     }
 
     # Deployed models: register the source Git declares and link the deployment to its record. The showback dedicated
-    # model is registered whether or not its opt-in offer is deployed, and linked once its deployment exists.
+    # model is registered whether or not the optional showback component is installed, and linked once it exists.
     local targets=("mistral-small4-119b|040-showback-demo|$DEDICATED|optional") target app dir presence meta rendered
     [[ "$scope" == showback ]] || targets=("qwen3-8-27b|040-local-models|$LOCAL_MODELS|required" "${targets[@]}")
     active=""
@@ -550,7 +550,7 @@ if [[ "$COMPONENT" == 040-showback-demo ]]; then
     "$STAGE_APPS" wait 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
     showback_metering_profile activate
     RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION="$revision" "$SCRIPT_DIR/validate.sh" --component "$COMPONENT"
-    # Register the dedicated model and link its deployment when the opt-in offer is enabled.
+    # Register the dedicated model and link its (stopped) deployment to the record.
     register_model_cards --showback "$revision"
     log_success "Showback component reconciled; generate demo load with showback-demo/generate-load.sh to populate the dashboards."
     exit 0
@@ -578,7 +578,7 @@ oc --request-timeout=10s get ingresscontroller default -n openshift-ingress-oper
   | if ($d | test("^[a-z0-9.-]+$")) | not then error("the default ingress domain is unavailable") else . end
   | {"040-gateway-governance": [{target: {group: "gateway.networking.k8s.io", version: "v1", kind: "Gateway",
       name: "maas-default-gateway", namespace: "openshift-ingress"},
-    patch: ("[" + ([["maas", "qwen3-8-maas"] | to_entries[]
+    patch: ("[" + ([["maas", "qwen3-8-maas", "mistral-small4-maas"] | to_entries[]
       | "{\"op\": \"replace\", \"path\": \"/spec/listeners/\(.key)/hostname\", \"value\": \"\(.value).\($d)\"}"] | join(", ")) + "]")}]}' \
   > "$work/patches.json"
 

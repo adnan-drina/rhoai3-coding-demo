@@ -49,6 +49,10 @@ fi
 STATE=${SHOWBACK_STATE_DIR:-$HOME/.config/rhoai3-showback}
 [[ -s "$STATE/gateway-url" ]] || fail "No gateway URL in $STATE; run team-keys.sh first"
 URL="$(cat "$STATE/gateway-url")/v1/chat/completions"
+if [[ "$offer" == dedicated ]]; then  # the dedicated model has its own Gateway listener
+    [[ -s "$STATE/dedicated-url" ]] || fail "No dedicated model URL in $STATE; run team-keys.sh again"
+    URL="$(cat "$STATE/dedicated-url")/v1/chat/completions"
+fi
 tls=(); [[ "$insecure" == false ]] || tls=(--insecure)
 
 prompts() {

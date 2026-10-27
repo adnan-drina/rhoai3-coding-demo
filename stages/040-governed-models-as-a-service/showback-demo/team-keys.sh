@@ -35,6 +35,9 @@ OAUTH="https://$(oc --request-timeout=15s get route oauth-openshift -n openshift
 API="https://$(oc --request-timeout=15s get gateway maas-default-gateway -n openshift-ingress -o json |
     jq -er '.spec.listeners[] | select(.name == "api") | .hostname')"
 printf '%s\n' "$API" > "$STATE/gateway-url"
+# The dedicated model is served on its own listener (Gateway listener mistral-small4).
+printf 'https://%s\n' "$(oc --request-timeout=15s get gateway maas-default-gateway -n openshift-ingress -o json |
+    jq -er '.spec.listeners[] | select(.name == "mistral-small4") | .hostname')" > "$STATE/dedicated-url"
 
 # Tokens reach curl through its configuration input, never process arguments.
 http() {

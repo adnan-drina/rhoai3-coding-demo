@@ -76,7 +76,7 @@ showback_source_state() {
         ${RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION:+--revision "$RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION"} \
         >/dev/null 2>&1 || { echo "showback Application not Synced and Healthy at its reviewed revision"; return; }
     jq -e '[.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $metering |
-        # The dedicated offer (team-marketing with its Mistral model) is opt-in.
+        # The dedicated offer (team-marketing with its Mistral model) is part of the bundle; a bundle without it is accepted.
         ([.[] | select(.kind == "LLMInferenceService") | .metadata.name]) as $local
         | (if $local == [] then ["team-engineering","team-support"] else ["team-engineering","team-marketing","team-support"] end) as $teams
         | ($local == [] or $local == ["mistral-small4-119b"])
@@ -270,14 +270,15 @@ gateway() {
     jqd -e --argjson e "$expected" --argjson ns "$NAMESPACES" '
         cond_fresh("Accepted") and cond_fresh("Programmed") and .metadata.generation as $g
         | (.spec.listeners | map({key: .name, value: .}) | from_entries) as $l
-        | ($l | keys) == ["api", "qwen3-8"]
-        and ([$l[].hostname] | unique | length == 2 and all(.[]; . != null and (contains("*") | not) and (contains("placeholder") | not)))
+        | ($l | keys) == ["api", "mistral-small4", "qwen3-8"]
+        and ([$l[].hostname] | unique | length == 3 and all(.[]; . != null and (contains("*") | not) and (contains("placeholder") | not)))
         and ((.status.listeners // []) | map({key: .name, value: .}) | from_entries) as $st
         | all($l | to_entries[]; .key as $name | .value as $li
             | ($e.spec.listeners[] | select(.name == $name) | .allowedRoutes) == $li.allowedRoutes
             and $li.port == 443 and $li.protocol == "HTTPS" and $li.tls.mode == "Terminate"
             and all("Accepted", "ResolvedRefs"; . as $t | any($st[$name].conditions[]?; .type == $t and .status == "True" and .observedGeneration == $g))
-            and (($st[$name].attachedRoutes // 0) | if $name == "api" then . >= 1 else . == 1 end)
+            # The dedicated model listener carries a route only while the optional showback component is installed.
+            and (($st[$name].attachedRoutes // 0) | if $name == "api" then . >= 1 elif $name == "qwen3-8" then . == 1 else . <= 1 end)
             and all($ns | to_entries[]; .key as $n | .value.metadata.labels as $labels
                 | ($li.allowedRoutes.namespaces.from == "Selector" and ($li.allowedRoutes.namespaces.selector // {} | selects($labels // {})))
                   == (if $name == "api" then ($n == "external-models" or $n == "redhat-ai-gateway-infra" or $n == "internal-models") else $n == "internal-models" end)))' \
@@ -350,9 +351,15 @@ local_model() {
         and (if ($s | index("api")) then any($r.spec.rules[].matches[]?; .path.value == "/v1/chat/completions"
             and any(.headers[]?; (.name | ascii_downcase) == "x-gateway-model-name" and (.type // "Exact") == "Exact"
                 and .value == $canonical)) else true end)' <<<"$route" >/dev/null || { echo "model route listeners or header"; return; }
-    # Every declared local model, including the showback dedicated model, owns exactly one gateway route.
-    jq -e --argjson n "$(desired_of LLMInferenceService | jq length)" '[.items[] | select(any(.spec.parentRefs[]?; .name == "maas-default-gateway"))]
-        | length == $n' <<<"$routes" >/dev/null || { echo "inference route count differs from the declared local models"; return; }
+    # Every declared local model owns exactly one gateway route, including the showback dedicated model when the
+    # optional component has created it.
+    local optional_live
+    optional_live=$(jq -r '.[] | select(.kind == "LLMInferenceService") | .metadata.name' <<<"$SHOWBACK_DESIRED" |
+        while read -r n; do oc --request-timeout="$TIMEOUT" get llminferenceservices.serving.kserve.io "$n" -n internal-models \
+            --ignore-not-found -o name; done | grep -c . || true)
+    jq -e --argjson n "$(( $(desired_of LLMInferenceService | jq length) + optional_live ))" '[.items[] | select(any(.spec.parentRefs[]?;
+        .name == "maas-default-gateway"))] | length == $n' <<<"$routes" >/dev/null ||
+        { echo "inference route count differs from the declared local models"; return; }
     if [[ "$parked" == true ]]; then echo yes-parked; else echo yes; fi
 }
 serving_templates() {
@@ -464,7 +471,7 @@ check "GPU LocalQueues Active in internal-models" local_queues yes
 check "AIGateway, OGX and KServe Managed and Ready; MaaS enabled; dashboard feature flags on" components_and_flags yes
 check "MaaS PostgreSQL available on Bound gp3-csi storage; runtime credential keys present" database yes
 check "Authorino TLS, CA bundle and owned workload projecting the service CA (live TLS requests pending)" authorino yes
-check "Gateway Accepted/Programmed; listeners api and qwen3-8 isolated, TLS-terminated and current" gateway yes
+check "Gateway Accepted/Programmed; listeners api, qwen3-8 and mistral-small4 isolated, TLS-terminated and current" gateway yes
 check "MaaS namespaces admitted to the Gateway; hosting-project administrator bindings" namespace_access yes
 check "MaaS API and external routes attached to the api listener only" api_routes yes
 check "Local model: reviewed spec, workloads, single owned route on its listeners (parked compute is not inference)" local_model yes

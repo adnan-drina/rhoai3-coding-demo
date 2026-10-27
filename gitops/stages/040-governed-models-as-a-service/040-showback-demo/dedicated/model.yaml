@@ -1,5 +1,5 @@
-# Marketing's dedicated model in the opt-in showback offer (040-showback-demo includes this folder when the offer is
-# enabled). Git keeps it stopped. Schema patterns come from the Qwen service; Mistral runtime/host fit is unqualified.
+# Marketing's dedicated model in the optional showback component. Git keeps it stopped; the operator scales it to one
+# replica on a second RTX PRO 6000 worker. Schema patterns come from the Qwen service.
 apiVersion: serving.kserve.io/v1alpha2
 kind: LLMInferenceService
 metadata:
@@ -35,7 +35,8 @@ spec:
       refs:
         - name: maas-default-gateway
           namespace: openshift-ingress
-          sectionName: api
+          # Its own listener, never the shared api listener (see the Gateway's mistral-small4 listener).
+          sectionName: mistral-small4
     route: {}
     scheduler:
       config:
