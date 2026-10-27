@@ -3175,13 +3175,17 @@ project's bootstrap Job.
 Make sure the platform includes the `run-provisioning-binding.yaml` subject for `migration-run-provisioner`, retire the
 run with `demo-reset/delete-project.sh <run> --yes`, and create a new run from the Developer Hub template.
 
-## Developer Hub sign-in returns 500 ECONNRESET after a cluster restart
+## Developer Hub sign-in returns 500 after a cluster restart
 
-**Symptom:** after the cluster resumes, every Developer Hub sign-in fails; `/api/auth/oidc/start` returns HTTP 500 with
-`Client network socket disconnected before secure TLS connection was established` (`ECONNRESET`, host `sso.apps.<cluster
-domain>`). `curl` and a plain `node` request from the same pod reach the Keycloak Route.
+**Symptom:** after the cluster resumes, every Developer Hub sign-in fails; `/api/auth/oidc/start` returns HTTP 500 and
+the backend log shows `expected 200 OK, got: 503 Service Unavailable` or `ECONNRESET` (host `sso.apps.<cluster
+domain>`), first as an `Unhandled rejection` during startup. Keycloak answers normally when you query it later.
 
-**Likely cause:** the long-running Backstage process keeps connection state from before the restart (ingress load
-balancer addresses can change when the lab resumes).
+**Cause:** the OIDC auth provider reads the platform realm's discovery document once when the backend starts and keeps
+a failed read. If Keycloak is still starting at that moment, sign-in stays broken until the backend restarts.
+
+**Prevention:** the Backstage CR (`070-rhdh/rhdh-instance/backstage.yaml`) adds the `wait-for-sso` init container, which
+holds the backend until discovery answers 200 three times in a row. Stage 070 `validate.sh` checks that sign-in
+redirects to the platform realm (HTTP 302).
 
 **Recover:** delete the `backstage-developer-hub` pod in `rhdh`; the operator recreates it with the unchanged spec.

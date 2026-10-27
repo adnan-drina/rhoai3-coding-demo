@@ -42,7 +42,7 @@ The `rhdh-operator` and `rhdh` namespaces come from `070-namespaces`.
 | Secret | `rhdh-secrets` | `rhdh` | Placeholder `data` only; the configure hook writes runtime values (wave 5, `ServerSideApply=true`) |
 | ConfigMap | `catalog-runtime-rhdh` | `rhdh` | Not in Git: created on first install and patched afterwards by the catalog Job; a refused generation keeps the previous catalog |
 | ServiceAccount, Secret, ClusterRole, ClusterRoleBinding | `rhdh-kubernetes-reader` (ServiceAccount, ClusterRole, ClusterRoleBinding), `rhdh-kubernetes-reader-token` | `rhdh` / cluster | Identity of the Kubernetes, Topology and Tekton plugins; read-only ClusterRole `rhdh-kubernetes-reader` (wave 5) |
-| Backstage | `developer-hub` | `rhdh` | Instance (wave 18). Mounts app config, dynamic plugins, RBAC CSV, runtime catalog and `kube-root-ca.crt`; env from `rhdh-secrets` and `rhdh-gitlab`; `maxSurge: 0` rollout; `NODE_EXTRA_CA_CERTS` set to the cluster CA |
+| Backstage | `developer-hub` | `rhdh` | Instance (wave 18). Mounts app config, dynamic plugins, RBAC CSV, runtime catalog and `kube-root-ca.crt`; env from `rhdh-secrets` and `rhdh-gitlab`; `maxSurge: 0` rollout; `wait-for-sso` init container; `NODE_EXTRA_CA_CERTS` set to the cluster CA |
 | ConsoleLink | `rhdh` | (cluster) | Application-menu entry; `href` patched by the configure hook (wave 15) |
 
 ### `jobs/` and `catalog/`, `templates/`: catalog generation and portal setup
@@ -73,8 +73,9 @@ Not in Git: the Deployment `backstage-developer-hub`, StatefulSet `backstage-psq
 - **Plugins.** The Kubernetes plugin uses a ServiceAccount token and the cluster CA from `kube-root-ca.crt`; Tekton PipelineRuns, TaskRuns and Routes are custom resources [5]. Tekton and Argo CD plugins are OCI packages pinned by digest, as the plugin guide recommends [5].
 - **Trust.** `NODE_EXTRA_CA_CERTS` adds the cluster CA to Node's trust store instead of disabling TLS checks [6].
 - **Rollout.** `maxSurge: 0` through `spec.deployment.patch` lets only one backend run database migrations on a fresh database [6].
+- **Start after Keycloak.** The same patch adds the `wait-for-sso` init container: the backend starts once the platform realm's discovery document answers 200 three times in a row, because the OIDC provider keeps a discovery failure from startup [6].
 - **Credentials.** The configure Job exchanges the `stage070-rhdh-provisioner` client credentials for a `platform`-realm token, keeps an existing client secret and session secret or generates new ones, and writes them with the Kubernetes reader token, the Argo CD reader token and the service URLs into `rhdh-secrets` by merge patch. The Application ignores `/data` of that Secret, so syncs keep the runtime values. GitLab tokens arrive in `rhdh-gitlab` from `070-gitlab`. No value is stored in Git or in apply annotations.
-- **Operations.** Day-2 notes: [Operations, Developer Hub](../../../../docs/OPERATIONS.md#stage-070--developer-hub-rhdh-component). Failure recovery: [catalog generator refusal](../../../../docs/TROUBLESHOOTING.md#rhdh-catalog-generator-refuses-factory_bundle_mismatch) and [OIDC 504](../../../../docs/TROUBLESHOOTING.md#red-hat-developer-hub-oidc-sign-in-fails-with-504-gateway-timeout).
+- **Operations.** Day-2 notes: [Operations, Developer Hub](../../../../docs/OPERATIONS.md#stage-070--developer-hub-rhdh-component). Failure recovery: [catalog generator refusal](../../../../docs/TROUBLESHOOTING.md#rhdh-catalog-generator-refuses-factory_bundle_mismatch), [OIDC 504](../../../../docs/TROUBLESHOOTING.md#red-hat-developer-hub-oidc-sign-in-fails-with-504-gateway-timeout) and [sign-in 500 after a restart](../../../../docs/TROUBLESHOOTING.md#developer-hub-sign-in-returns-500-after-a-cluster-restart).
 
 ## Validation
 

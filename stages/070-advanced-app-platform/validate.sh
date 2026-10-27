@@ -210,6 +210,8 @@ check 'Portal catalog has no unresolved placeholders' "oc get configmap catalog-
 check 'Portal templates use private GitLab mirror' "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | contains -E 'target: https://gitlab-gitlab-system\\..*/-/blob/[0-9a-f]{40}/.*template.yaml' && echo GITLAB" 'GITLAB'
 RHDH_HOST=$(oc get route -n rhdh -l app.kubernetes.io/name=backstage --no-headers 2>/dev/null | awk 'NR==1 {print $2}' || true)
 if [[ -n "$RHDH_HOST" ]]; then check_http_code 'Developer Hub reachable' "https://${RHDH_HOST}" '200,302'; fi
+# A failed realm discovery at startup is kept by the OIDC provider and turns every sign-in into HTTP 500.
+check 'Developer Hub sign-in redirects to the platform realm' "curl -sk -o /dev/null -w '%{http_code}' --max-time 20 'https://${RHDH_HOST}/api/auth/oidc/start?env=production'" '302'
 
 log_step 'Credential, identity and ingress correction checks (no inference)'
 security_boundaries
