@@ -4434,13 +4434,16 @@ def main(argv: list[str] | None = None) -> int:
         intact, and what is absent is a FIXTURE the Operator has not declared
         (ADR-014 asks for that to be recorded, not repaired and not invented).
         The step is not red for it -- a specimen with no security switch has
-        no enabled mode -- but it is never silent either."""
+        no enabled mode, and a source that ships no OpenAPI document gives no
+        request body to derive -- but it is never silent either."""
         doc = {
             "schema": DERIVATION_SCHEMA, "producer": PRODUCER, "at": _now(), "status": "idle", "reason": reason,
-            "security_mode": mode,
             "evidence_bundle_sha256": bundle_sha, "corpus_sha256": "", "corpus": _rel(out_p, root),
             "inputs": inputs, "scenarios": [], "gaps": gaps,
         }
+        if mode != DEFAULT_SECURITY_MODE or variant:
+            # as blocked(): the default mode's own receipt does not name it
+            doc["security_mode"] = mode
         if variant:
             doc["security_variant"] = variant
         write_canonical(receipt_p, doc)
@@ -4475,7 +4478,12 @@ def main(argv: list[str] | None = None) -> int:
         return _derive_enabled(root, args, mode, out_p, receipt_p, bundle_sha, freeze, copy, inputs, gaps, blocked, idle)
     found = find_openapi(copy)
     if found is None:
-        return blocked("no OpenAPI document (openapi: + paths:) under %s; request bodies come from its examples, never from a worker" % (copy / RESOURCES))
+        # the source describes no API, so there is no example to derive a body
+        # from: a recorded gap (every entry point stays unverified downstream),
+        # not a broken derivation and never an invented request
+        gaps.append("no OpenAPI document (openapi: + paths:) under %s; request bodies come from its examples, never from a worker"
+                    % (copy / RESOURCES))
+        return idle("the frozen source ships no OpenAPI document; no corpus is derived and every entry point stays unverified")
     oa_path, openapi = found
     inputs["openapi"] = _input(oa_path, copy)
     src_engine, dest_engine, engine, seed_p, seed, columns, foreign_keys = _sql_evidence(root, copy, inputs, gaps)

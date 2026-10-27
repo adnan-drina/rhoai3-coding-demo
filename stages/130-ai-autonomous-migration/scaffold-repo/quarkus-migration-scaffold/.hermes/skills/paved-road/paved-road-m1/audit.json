@@ -58,6 +58,7 @@
     {
       "backing": "skill",
       "id": "derive-source-scenarios",
+      "idle_receipt": "verification/scenarios/_derive.json",
       "keep": [
         "verification/scenarios/corpus.json",
         "verification/scenarios/_derive.json"

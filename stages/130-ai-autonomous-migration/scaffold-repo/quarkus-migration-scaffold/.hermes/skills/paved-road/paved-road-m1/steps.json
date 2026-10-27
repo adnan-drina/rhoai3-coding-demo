@@ -60,7 +60,8 @@
         "verification/scenarios/corpus.json",
         "verification/scenarios/_derive.json"
       ],
-      "note": "the corpus is derived from the frozen source's own evidence; nothing is authored by a worker or signed by a person. scripts/derive-source-scenarios.py reads the evidence bundle's entry points, the OpenAPI document's examples, the seed data and the @CrossOrigin policies in the structure model, writes verification/scenarios/corpus.json bound to the bundle digest in verification/scenarios/_derive.json, and records what it could not derive as gaps (never an invented value). A hand-authored corpus (approved_by) already at that path is refused, not overwritten."
+      "idle_receipt": "verification/scenarios/_derive.json",
+      "note": "the corpus is derived from the frozen source's own evidence; nothing is authored by a worker or signed by a person. scripts/derive-source-scenarios.py reads the evidence bundle's entry points, the OpenAPI document's examples, the seed data and the @CrossOrigin policies in the structure model, writes verification/scenarios/corpus.json bound to the bundle digest in verification/scenarios/_derive.json, and records what it could not derive as gaps (never an invented value). A hand-authored corpus (approved_by) already at that path is refused, not overwritten. A frozen source that ships no OpenAPI document gives no request body to derive: the receipt records status idle with that reason and the gap, no corpus is written, and the receipt alone is owed (idle_receipt) -- capture-source-scenarios is then idle and every entry point stays unverified."
     },
     {
       "id": "capture-source-scenarios",

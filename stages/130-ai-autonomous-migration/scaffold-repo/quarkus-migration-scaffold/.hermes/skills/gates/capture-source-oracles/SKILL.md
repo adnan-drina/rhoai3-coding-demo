@@ -52,7 +52,9 @@ prove what it did.
 ```bash
 # 0. derive the corpus at M1, from the frozen source's own evidence (the
 #    bundle's entry points, the OpenAPI examples, the seed rows, the
-#    @CrossOrigin policies). Gaps are recorded, never filled in.
+#    @CrossOrigin policies). Gaps are recorded, never filled in. A source
+#    with no OpenAPI document derives nothing: the receipt says status idle
+#    and why, and every entry point stays unverified downstream.
 python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /projects/modernized
 
 # 1. capture at M1 — one command, one runtime. It packages the frozen source,

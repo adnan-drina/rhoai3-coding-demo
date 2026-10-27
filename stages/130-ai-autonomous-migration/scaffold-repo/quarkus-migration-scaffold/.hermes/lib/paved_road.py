@@ -202,6 +202,9 @@ def validate_steps_doc(doc: Any, *, path: Path | None = None) -> list[str]:
         if keep is not None:
             if not isinstance(keep, list) or not all(isinstance(x, str) for x in keep):
                 errors.append("%s: keep must be a string array" % prefix)
+        if "idle_receipt" in step and (not isinstance(step.get("idle_receipt"), str)
+                                       or step["idle_receipt"] not in (keep if isinstance(keep, list) else [])):
+            errors.append("%s: idle_receipt must name one of the step's own KEEP entries" % prefix)
         if "native_attachments" in step:
             names = [Path(str(x)).name for x in (keep or []) if isinstance(x, str)]
             if step.get("native_attachments") is not True or backing == "skill" or not names:
@@ -339,6 +342,8 @@ def generate_audit(doc: dict[str, Any]) -> dict[str, Any]:
             item["require_args"] = list(step["require_args"])
         if step.get("native_attachments") is True:
             item["native_attachments"] = True
+        if step.get("idle_receipt"):
+            item["idle_receipt"] = str(step["idle_receipt"])
         steps_out.append(item)
     return {
         "artifact": doc["artifact"],
@@ -547,6 +552,24 @@ def keep_missing(root: Path, keep: list[str]) -> list[str]:
         if not path.is_file() or path.stat().st_size < 1:
             missing.append(rel)
     return missing
+
+
+def step_keep(root: Path, step: dict[str, Any]) -> list[str]:
+    """The KEEP set this step owes. A step whose producer can honestly have
+    nothing to produce names its receipt as ``idle_receipt``: when that
+    receipt records ``status: idle`` with a reason, the receipt alone is owed
+    (the reason is the recorded gap; the absent artifact is not silence)."""
+    keep = [str(x) for x in (step.get("keep") or [])]
+    rel = step.get("idle_receipt")
+    if not rel:
+        return keep
+    try:
+        receipt = json.loads((root / str(rel)).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return keep
+    if isinstance(receipt, dict) and receipt.get("status") == "idle" and str(receipt.get("reason") or "").strip():
+        return [str(rel)]
+    return keep
 
 
 def log_task_id(text: str) -> str:
@@ -772,7 +795,7 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path, ledger: list[dict
         sid = str(step["id"])
         backing = str(step["backing"])
         needle = step_needle(step)
-        keep = [str(x) for x in (step.get("keep") or [])]
+        keep = step_keep(root, step)
 
         if backing == "skill":
             if not followed_skill(text, needle) and not preloaded_skill(ledger, task_id, needle, root):

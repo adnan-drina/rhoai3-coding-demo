@@ -397,14 +397,20 @@ def _gap_cases() -> int:
             return _fail("a conflicting operationId must not bind: rc=%s %s" % (p.returncode, sorted(ids)))
         if not any(g.startswith("conflicting binding: path /owners ↔ operationId addVet ≠ member addOwner") for g in corpus["gaps"]):
             return _fail("the conflict is a typed gap: %s" % corpus["gaps"])
-    with tempfile.TemporaryDirectory(prefix="derive-refuse-") as td:
+    with tempfile.TemporaryDirectory(prefix="derive-idle-") as td:
+        # a source that ships no OpenAPI document gives no body to derive: a
+        # recorded gap (idle receipt with the reason), not a refusal, and never
+        # an invented corpus
         root = build_root(Path(td))
         (Path(td) / "frozen" / "src" / "main" / "resources" / "api-docs.yml").unlink()
         p = _derive(root)
-        if p.returncode != 1 or "REFUSE" not in p.stderr or "OpenAPI" not in p.stderr:
-            return _fail("no OpenAPI document is a refusal: rc=%s %s" % (p.returncode, p.stderr))
-        if load_json(root / DERIVE_RECEIPT)["status"] != "blocked" or (root / CORPUS_P).exists():
-            return _fail("a refusal leaves a blocked receipt and no corpus")
+        if p.returncode != 0 or "OpenAPI" not in p.stdout:
+            return _fail("no OpenAPI document is an idle derivation: rc=%s %s%s" % (p.returncode, p.stdout, p.stderr))
+        receipt = load_json(root / DERIVE_RECEIPT)
+        if receipt["status"] != "idle" or "OpenAPI" not in receipt["reason"] or (root / CORPUS_P).exists():
+            return _fail("an idle derivation leaves an idle receipt naming why and no corpus: %s" % receipt)
+        if not any("no OpenAPI document" in g for g in receipt["gaps"]) or "security_mode" in receipt:
+            return _fail("the idle receipt records the gap and stays a default-mode receipt: %s" % receipt)
     return 0
 
 
@@ -3107,7 +3113,7 @@ def main() -> int:
           "gave -- 3xx and 2xx both PASS, a 5xx nobody named is INCONCLUSIVE with the failure recorded -- while a handler consuming a "
           "@RequestBody, a wildcard route and a servlet the structure model does not record derive nothing and say why, and every one of those "
           "decisions is the same under another package, type, member, route and parameter naming; a verbatim excerpt of petclinic's real document binds by operationId when its "
-          "paths do not name the code's routes and a same-named method on another controller is a gap; no OpenAPI document refuses; the derivation is deterministic and never "
+          "paths do not name the code's routes and a same-named method on another controller is a gap; no OpenAPI document is an idle, recorded gap; the derivation is deterministic and never "
           "clobbers a hand-authored corpus; the loader accepts the derived corpus, refuses it after any edit or against another bundle, "
           "and refuses a placeholder approver and a body edited after derivation; a conflicting operationId on a path match is a typed gap; "
           "an operationId whose operation carries path variables the route cannot supply is a typed gap and no scenario, while a matching "

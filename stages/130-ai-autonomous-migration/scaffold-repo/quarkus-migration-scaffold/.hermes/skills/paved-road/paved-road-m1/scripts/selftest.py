@@ -127,6 +127,32 @@ def main() -> int:
         proc = _run(GREEN / "official.log", partial)
         if proc.returncode != 1 or "missing KEEP" not in proc.stdout + proc.stderr:
             return _fail("missing KEEP must REFUSE")
+        # a source with no OpenAPI document: no corpus is derived. The derive
+        # receipt that records status ok still owes its corpus; one recording
+        # status idle with a reason owes only itself; an idle receipt with no
+        # reason is not a recorded gap
+        idle = Path(tmp) / "idle-derive"
+        shutil.copytree(GREEN, idle)
+        (idle / "verification" / "scenarios" / "corpus.json").unlink()
+        proc = _run(GREEN / "official.log", idle)
+        if proc.returncode != 1 or "missing KEEP verification/scenarios/corpus.json" not in proc.stdout + proc.stderr:
+            return _fail("an ok derive receipt without its corpus must REFUSE: %s" % (proc.stdout + proc.stderr))
+        receipt_p = idle / "verification" / "scenarios" / "_derive.json"
+        receipt = json.loads(receipt_p.read_text(encoding="utf-8"))
+        receipt.update(status="idle", reason="the frozen source ships no OpenAPI document", corpus_sha256="", scenarios=[])
+        receipt_p.write_text(json.dumps(receipt), encoding="utf-8")
+        proc = _run(GREEN / "official.log", idle)
+        if proc.returncode != 0:
+            return _fail("an idle derive receipt with a reason must PASS without a corpus: %s" % (proc.stdout + proc.stderr))
+        receipt["reason"] = ""
+        receipt_p.write_text(json.dumps(receipt), encoding="utf-8")
+        proc = _run(GREEN / "official.log", idle)
+        if proc.returncode != 1 or "missing KEEP verification/scenarios/corpus.json" not in proc.stdout + proc.stderr:
+            return _fail("an idle derive receipt without a reason must REFUSE: %s" % (proc.stdout + proc.stderr))
+        bad = json.loads(json.dumps(doc))
+        next(st for st in bad["steps"] if st["id"] == "derive-source-scenarios")["idle_receipt"] = "verification/elsewhere.json"
+        if not any("idle_receipt" in e for e in validate_steps_doc(bad)):
+            return _fail("an idle_receipt outside the step's KEEP must be refused")
         # v23 M1: a green log and KEEP with no native attachment record refuses
         empty = Path(tmp) / "empty-store"
         (empty / "t_m1").mkdir(parents=True)
@@ -142,7 +168,7 @@ def main() -> int:
 
     if coverage(GOLDEN_ROOT) != 0:
         return _fail("coverage lint failed")
-    print("OK: paved-road-m1 selftest (sync; order contract; green PASS; silence/cache/KEEP/native-attachment REFUSE; coverage)")
+    print("OK: paved-road-m1 selftest (sync; order contract; green PASS; silence/cache/KEEP/native-attachment REFUSE; idle derive receipt; coverage)")
     return 0
 
 
