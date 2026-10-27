@@ -1,0 +1,108 @@
+{
+  "_comment": "Demo workload of the three showback teams, all working on the Coolstore retail application. Each task carries the facts a finished answer needs, so the quality judges grade the model, not a missing brief. Engineering agent tasks give the model read_file and run_tests tools; generate-load.sh plays the tools from the files and test_output below. A task with followups is a conversation: each follow-up is the next user turn, sent with the whole history, and all turns share one MLflow session.",
+  "engineering": {
+    "system": "You are a senior Java engineer on the Coolstore team (Quarkus 3, Java 21, PostgreSQL). Be concrete: name the defect, show the corrected code, and say how to test it. Keep answers under 400 words.",
+    "tasks": [
+      {
+        "prompt": "Review this Coolstore method and list concrete improvements with corrected code:\n\npublic List<Order> openOrders(List<Order> all) {\n    List<Order> result = new ArrayList<>();\n    for (Order o : all) {\n        if (o.getStatus() == \"OPEN\") {\n            result.add(o);\n        }\n    }\n    return result;\n}"
+      },
+      {
+        "prompt": "Review this Coolstore REST endpoint for security and error handling, and give the corrected version:\n\n@GET\n@Path(\"/customers/{id}\")\npublic Customer get(@PathParam(\"id\") String id) {\n    return em.createQuery(\"from Customer where id = \" + id, Customer.class).getSingleResult();\n}"
+      },
+      {
+        "prompt": "Coolstore splits an order total across line items for invoices; the parts must always sum to the original amount in cents. Write JUnit 5 tests for this method, including edge cases:\n\npublic static long[] split(long totalCents, int parts) {\n    long base = totalCents / parts;\n    long[] out = new long[parts];\n    Arrays.fill(out, base);\n    out[parts - 1] += totalCents - base * parts;\n    return out;\n}"
+      },
+      {
+        "prompt": "This Coolstore inventory update loses stock changes under concurrent requests. Explain why and give a fix using JPA optimistic locking:\n\n@Transactional\npublic void reserve(String sku, int qty) {\n    Inventory inv = em.find(Inventory.class, sku);\n    if (inv.getQuantity() < qty) throw new OutOfStockException(sku);\n    inv.setQuantity(inv.getQuantity() - qty);\n}"
+      },
+      {
+        "prompt": "Review this Coolstore cart service for resource and performance problems and give the corrected code:\n\npublic BigDecimal total(String cartId) throws SQLException {\n    Connection c = dataSource.getConnection();\n    PreparedStatement ps = c.prepareStatement(\"select price, qty from cart_item where cart_id = ?\");\n    ps.setString(1, cartId);\n    ResultSet rs = ps.executeQuery();\n    BigDecimal total = BigDecimal.ZERO;\n    while (rs.next()) total = total.add(rs.getBigDecimal(1).multiply(new BigDecimal(rs.getInt(2))));\n    return total;\n}"
+      },
+      {
+        "agent": true,
+        "prompt": "The Coolstore build fails: PriceCalculatorTest.discountIsCappedAtFiftyPercent is red. Use the tools to read src/main/java/com/redhat/coolstore/PriceCalculator.java and run the failing test, then explain the defect and give the fixed method.",
+        "files": {
+          "src/main/java/com/redhat/coolstore/PriceCalculator.java": "package com.redhat.coolstore;\n\nimport java.math.BigDecimal;\nimport java.math.RoundingMode;\n\npublic class PriceCalculator {\n    static final BigDecimal MAX_DISCOUNT = new BigDecimal(\"0.50\");\n\n    public BigDecimal discounted(BigDecimal price, BigDecimal discount) {\n        if (discount.compareTo(MAX_DISCOUNT) < 0) {\n            discount = MAX_DISCOUNT;\n        }\n        return price.multiply(BigDecimal.ONE.subtract(discount)).setScale(2, RoundingMode.HALF_UP);\n    }\n}\n"
+        },
+        "test_output": "[ERROR] PriceCalculatorTest.discountIsCappedAtFiftyPercent:18 expected: <90.00> but was: <50.00>\n[ERROR] Tests run: 4, Failures: 1, Errors: 0, Skipped: 0"
+      },
+      {
+        "agent": true,
+        "prompt": "A Coolstore customer reports that the order history page is slow. Use the tools to read src/main/java/com/redhat/coolstore/OrderHistoryService.java and run OrderHistoryServiceTest, then explain the performance problem and give the fixed code.",
+        "files": {
+          "src/main/java/com/redhat/coolstore/OrderHistoryService.java": "package com.redhat.coolstore;\n\nimport jakarta.enterprise.context.ApplicationScoped;\nimport jakarta.inject.Inject;\nimport jakarta.persistence.EntityManager;\nimport java.util.List;\n\n@ApplicationScoped\npublic class OrderHistoryService {\n    @Inject EntityManager em;\n\n    public List<OrderView> history(String customerId) {\n        List<Order> orders = em.createQuery(\"from Order o where o.customerId = :c\", Order.class)\n            .setParameter(\"c\", customerId).getResultList();\n        return orders.stream()\n            .map(o -> new OrderView(o.getId(), o.getItems().size(), o.getTotal()))\n            .toList();\n    }\n}\n"
+        },
+        "test_output": "[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0\n[WARN] Hibernate statistics: 1 query for orders + 250 queries for order items (customer with 250 orders)"
+      }
+    ]
+  },
+  "support": {
+    "system": "You are a Coolstore customer support agent. Write a reply the customer can receive as is: empathetic, concrete next steps, under 200 words, signed 'Coolstore Support'. Coolstore policy: returns and refunds within 30 days of delivery, refunds to the original payment method within 5 business days; a lost parcel is reported to the carrier and re-shipped once the carrier confirms (up to 3 business days); password reset links are valid for 1 hour and come from no-reply@coolstore.example; duplicate charges are refunded automatically within 3 business days after support confirms them; support hours are Monday to Friday, 8:00-18:00 CET. Do not promise anything beyond this policy.",
+    "tasks": [
+      {
+        "prompt": "Customer Ana Silva, order CS-10482: the tracking page says 'delivered' since yesterday, but nothing arrived and the neighbours have nothing. Reply to her.",
+        "followups": [
+          "The neighbours checked again and still have nothing. Can you just send the order again today?",
+          "OK. How will I know when the carrier has confirmed?"
+        ]
+      },
+      {
+        "prompt": "Customer Tom Becker: he requested a password reset three times today and no email arrived. His account email is tom.becker@example.org. Reply to him.",
+        "followups": [
+          "I checked spam too, nothing there. Could the link go to my old address?"
+        ]
+      },
+      {
+        "prompt": "Customer Lena Novak: she was charged twice (2 x 89.90 EUR) for order CS-10977 and says nobody answers the phone. Reply to her.",
+        "followups": [
+          "Thanks. Will I get an email when the refund is done?"
+        ]
+      },
+      {
+        "prompt": "Customer Marco Rossi: he wants to return hiking boots from order CS-10311, delivered 12 days ago, because they are too small. Reply with the return steps.",
+        "followups": [
+          "Do I have to pay for the return shipping?",
+          "And can I exchange them for size 44 instead of a refund?"
+        ]
+      },
+      {
+        "prompt": "Customer Ines Dubois: her order CS-11020 arrived with a broken water bottle and she wants a replacement before her trip on Saturday. Reply to her."
+      },
+      {
+        "prompt": "Customer Jan de Vries: he asks why his refund for order CS-10766, approved 2 business days ago, is not on his card yet. Reply to him."
+      }
+    ]
+  },
+  "marketing": {
+    "system": "You are Coolstore's marketing copywriter. Deliver the finished artefact exactly as briefed, ready to publish: no placeholders, no brackets, no notes to the editor. Use only the facts in the brief.",
+    "tasks": [
+      {
+        "prompt": "Write a LinkedIn post (120-150 words) announcing Coolstore's free webinar 'Hybrid cloud cost control for IT leaders' on Thursday 12 November 2026, 16:00 CET, 45 minutes, speakers: Coolstore CTO Maria Keller and a Red Hat solution architect. Registration: https://coolstore.example/webinar. End with three hashtags.",
+        "followups": [
+          "Good. Now make it 80-100 words and put the date in the first line."
+        ]
+      },
+      {
+        "prompt": "Write three email subject lines (each under 50 characters) and a 60-word email for the spring launch of the Coolstore EcoTherm smart thermostat: saves up to 18% on heating, app control, 129 EUR, available from 1 March 2026 at https://coolstore.example/ecotherm.",
+        "followups": [
+          "Make the email warmer and mention the free installation guide at https://coolstore.example/ecotherm-guide."
+        ]
+      },
+      {
+        "prompt": "Write a product description (80-100 words) and two taglines (under 8 words each) for the Coolstore TrailFlask: 750 ml stainless steel bottle, keeps drinks cold 24 hours or hot 12 hours, 340 g, lifetime warranty, 34.90 EUR, aimed at hikers.",
+        "followups": [
+          "Shorten the description to 50 words for the mobile shop."
+        ]
+      },
+      {
+        "prompt": "Write a 40-word push notification and a 10-word in-app banner for Coolstore's weekend sale: 20% off all outdoor gear, Saturday 7 and Sunday 8 November 2026, code TRAIL20, online only."
+      },
+      {
+        "prompt": "Write a 100-word blog introduction for Coolstore's guide 'Packing for a three-day hut trek', aimed at first-time trekkers, mentioning the free checklist at https://coolstore.example/hut-trek."
+      },
+      {
+        "prompt": "Write two versions (A and B, each under 25 words) of a Google ad for Coolstore's free next-day delivery on orders over 50 EUR, valid in Germany and Austria."
+      }
+    ]
+  }
+}

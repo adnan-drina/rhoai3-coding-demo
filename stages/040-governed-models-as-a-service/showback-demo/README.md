@@ -50,15 +50,32 @@ Run the commands from the repository root after the usual cluster login. Each st
    stages/040-governed-models-as-a-service/showback-demo/team-keys.sh --hours 8 --insecure
    ```
 
-4. **Generate load** for one offering at a time, or run several in parallel terminals:
+4. **Generate load.** One command runs the whole demo, every team at its own pace; or run one offering at a time:
 
    ```bash
+   stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer all --minutes 15 --insecure
    stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer shared --minutes 10 --insecure
    stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer dedicated --minutes 10 --insecure
-   stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer external --model claude-sonnet-5-5 --minutes 30 --concurrency 1 --pause 5-30 --insecure
+   stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer external --model claude-sonnet-5-5 --minutes 30 --concurrency 1 --insecure
    ```
 
-   `--concurrency` (default 2 loops per team), `--max-tokens` (default 1024, so answers normally finish; a lower cap truncates answers, which the quality judge then rightly fails as incomplete) and `--pause` (think time between a loop's requests, fixed seconds or a random range such as `5-30`) shape the load, and `--team` runs one team of an offering so teams can be paced differently (for example Support with `--pause 5-15` to stay inside its 300K tokens/hour Qwen allowance); `--model` picks the external model (default `gpt-6-luna`; `nemotron-3-ultra-550b-a55b` is free). Each run prints requests and tokens per team. External calls are billed by the provider.
+   The teams work on the Coolstore application with the tasks in [`prompts.json`](prompts.json). Each team has a system
+   prompt with the facts a finished answer needs (Support: Coolstore's return, refund and password policy; Marketing:
+   every brief names product, date, link and length), so the quality judges grade the model, not a missing brief.
+
+   | Team | Work | Shape |
+   |---|---|---|
+   | Engineering | Code reviews with real code, and agent tasks: the model gets `read_file` and `run_tests` tools, which the script plays from `prompts.json` | One trace per task; an agent task is `AGENT > CHAT_MODEL > TOOL > TOOL > CHAT_MODEL` (the Tool calls tab) |
+   | Support | Customer cases grounded in the stated policy; most continue as a conversation with one or two customer replies | One trace per turn, the turns of a conversation in one MLflow session (the Sessions tab) |
+   | Marketing | Campaign briefs; some with a revision round | Same as Support |
+
+   `--pause` sets the think time between requests for every team (fixed seconds or a range such as `5-30`); without
+   it each team keeps its own pace (Engineering 2-6 s, Support 5-15 s, Marketing 10-30 s, also between the turns of a
+   conversation). `--concurrency` (default 2 loops per team), `--max-tokens` (default 1024, so answers normally
+   finish; a lower cap truncates answers, which the `finished` check then marks) and `--team` (one team of the
+   offering) shape the load; Support's Qwen allowance is 300K tokens per hour. `--model` picks the external model for
+   Support (default `gpt-6-luna`; `nemotron-3-ultra-550b-a55b` is free). Each run prints turns, tokens and tool calls
+   per team. External calls are billed by the provider.
 
 5. **Stop the models** when the demo ends: set both replicas back to 0 and run `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 0`.
 
@@ -82,9 +99,11 @@ request-level view and answer quality per model.
 
 | Span | Content |
 |---|---|
-| `team-<team> request` (root, `CHAIN`) | Trace tags `team`, `subscription`, `offering`, `source`, `finish_reason` (`stop`, or `length` when the max-tokens cap cut the answer off); trace user `showback-<team>`; the prompt and the answer |
-| `chat <model>` (`CHAT_MODEL`) | OpenTelemetry GenAI fields: model, provider (`openshift-ai` for private models), input and output tokens, messages, `gen_ai.response.finish_reasons`, HTTP status; cost |
+| `team-<team> request` (root, `CHAIN`, or `AGENT` when tools were used) | Trace tags `team`, `subscription`, `offering`, `source`, `finish_reason` (`stop`, or `length` when the max-tokens cap cut the answer off); trace user `showback-<team>`; the prompt and the answer |
+| `chat <model>` (`CHAT_MODEL`, one per model call) and `tool <name>` (`TOOL`, one per tool call) | OpenTelemetry GenAI fields: model, provider (`openshift-ai` for private models), input and output tokens, messages, `gen_ai.response.finish_reasons`, HTTP status; cost |
 
+- **Sessions:** the turns of a conversation carry one `session.id` (OpenTelemetry semantic convention), which
+  MLflow stores as the trace session, so the experiment's **Sessions** tab shows each conversation turn by turn.
 - **Cost:** shared private models at the on-demand tariff, a dedicated model at its worker price per token at
   demonstrated capacity (both from `offer-catalog.yaml`), external models at the list price of
   `metering/provider-pricing.json`. A per-request figure is an indication: the sponsor of a dedicated model pays the
@@ -127,7 +146,8 @@ The MaaS gateway's `external-metering-streaming` plugin (Developer Preview in RH
 | File | Purpose |
 |---|---|
 | `team-keys.sh` | Team users and their MaaS keys |
-| `generate-load.sh` | Demo load per offering, one MLflow trace per request |
+| `generate-load.sh` | Demo load per offering or `all`, one MLflow trace per request turn |
+| `prompts.json` | The teams' Coolstore tasks: system prompts, code reviews, agent tasks with tool fixtures, conversations |
 | `validate.sh` | Offline checks: script syntax, access matrix, dashboards, metering bundle |
 | `tests/test-metering-profile.sh` | Mocked test of the metering activation in the Stage 040 deploy script |
 

@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
-# Generate demo load for one service offering with the team keys minted by team-keys.sh.
-#   shared     Engineering (code reviews) and Support (customer questions) on Qwen 3.8, the shared private model
-#   dedicated  Marketing (campaign copy) on Mistral Small 4, its dedicated private model
-#   external   Support (customer questions) on an external model (default gpt-6-luna)
-# Each team runs CONCURRENCY parallel request loops until MINUTES have passed, then prints a token summary.
-# --pause SECONDS or MIN-MAX adds think time between a loop's requests (random within the range), like a person reading
-# each answer before the next question.
-# --team limits a run to one team of the offering, so teams can run with different pacing.
-# Every request is also written to MLflow as one trace (workspace models-as-a-service, one experiment per MaaS model,
-# internal-<model> or external-<model>, tagged with its offering and provider): a root
-# span with the team, subscription and offering tags and a GenAI chat span with model, provider, tokens, messages and
-# the cost from the offer catalog (private) or the provider price catalog (external). MLflow builds its experiment
-# Overview (token usage, cost by model and provider, cost over time) from them. Tracing fails open; --no-trace skips it.
-# Usage: generate-load.sh --offer shared|dedicated|external [--team NAME] [--minutes 5] [--concurrency 2] [--max-tokens 1024] [--model NAME] [--pause SECONDS|MIN-MAX] [--no-trace] [--insecure]
+# Generate demo load with the team keys minted by team-keys.sh: the three showback teams working on the Coolstore
+# application, with the tasks in prompts.json.
+#   shared     Engineering (code reviews and agent tasks) and Support (customer conversations) on Qwen 3.8, the shared
+#              private model
+#   dedicated  Marketing (campaign copy with revision rounds) on Mistral Small 4, its dedicated private model
+#   external   Support (customer conversations) on an external model (default gpt-6-luna)
+#   all        every team and offering at once, each team at its own pace
+# Engineering agent tasks give the model read_file and run_tests tools and play the tools from prompts.json (model call,
+# tool calls, model call). Support and Marketing tasks with follow-ups are conversations: each turn is sent with the
+# whole history. Each team runs CONCURRENCY parallel loops until MINUTES have passed, then prints a token summary.
+# --pause SECONDS or MIN-MAX sets the think time between a loop's requests for every team (default per team:
+# Engineering 2-6, Support 5-15, Marketing 10-30). --team limits a run to one team.
+# Every request turn is also written to MLflow as one trace (workspace models-as-a-service, one experiment per MaaS
+# model, internal-<model> or external-<model>): a root span with the team, subscription, offering and finish_reason
+# tags (AGENT when tools were used), one GenAI chat span per model call with model, provider, tokens, messages and the
+# cost from the offer catalog (private) or the provider price catalog (external), and one TOOL span per tool call. The
+# turns of a conversation share a session.id (the experiment's Sessions tab). Tracing fails open; --no-trace skips it.
+# Usage: generate-load.sh --offer shared|dedicated|external|all [--team NAME] [--minutes 5] [--concurrency 2] [--max-tokens 1024] [--model NAME] [--pause SECONDS|MIN-MAX] [--no-trace] [--insecure]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-offer='' team_filter='' minutes=5 concurrency=2 max_tokens=1024 external_model=gpt-6-luna pause=0 insecure=false trace=true
+offer='' team_filter='' minutes=5 concurrency=2 max_tokens=1024 external_model=gpt-6-luna pause='' insecure=false trace=true
 fail() { log_error "$*"; exit 1; }
 while (($#)); do
     case "$1" in
@@ -36,15 +40,18 @@ while (($#)); do
 done
 [[ "$minutes" =~ ^[0-9]+$ && "$minutes" -ge 1 && "$minutes" -le 60 ]] || fail '--minutes must be 1-60'
 [[ "$concurrency" =~ ^[0-9]+$ && "$concurrency" -ge 1 && "$concurrency" -le 8 ]] || fail '--concurrency must be 1-8'
-[[ "$pause" =~ ^[0-9]+(-[0-9]+)?$ ]] || fail '--pause must be SECONDS or MIN-MAX'
-pause_min=${pause%-*} pause_max=${pause#*-}
-(( pause_min <= pause_max && pause_max <= 300 )) || fail '--pause range must be ascending and at most 300 seconds'
+[[ -z "$pause" || "$pause" =~ ^[0-9]+(-[0-9]+)?$ ]] || fail '--pause must be SECONDS or MIN-MAX'
 [[ "$max_tokens" =~ ^[0-9]+$ && "$max_tokens" -ge 16 && "$max_tokens" -le 2048 ]] || fail '--max-tokens must be 16-2048'
+PROMPTS="$SCRIPT_DIR/prompts.json"
+jq -e '.engineering.tasks and .support.tasks and .marketing.tasks' "$PROMPTS" >/dev/null || fail "Invalid $PROMPTS"
+QWEN=publishers/internal-models/models/qwen3-8-27b MISTRAL=publishers/internal-models/models/mistral-small4-119b
+# A run is "TEAM MODEL OFFERING": one team on one model.
 case "$offer" in
-    shared) runs=("engineering publishers/internal-models/models/qwen3-8-27b" "support publishers/internal-models/models/qwen3-8-27b") ;;
-    dedicated) runs=("marketing publishers/internal-models/models/mistral-small4-119b") ;;
-    external) runs=("support $external_model") ;;
-    *) fail '--offer must be shared, dedicated or external' ;;
+    shared) runs=("engineering $QWEN shared" "support $QWEN shared") ;;
+    dedicated) runs=("marketing $MISTRAL dedicated") ;;
+    external) runs=("support $external_model external") ;;
+    all) runs=("engineering $QWEN shared" "support $QWEN shared" "marketing $MISTRAL dedicated" "support $external_model external") ;;
+    *) fail '--offer must be shared, dedicated, external or all' ;;
 esac
 if [[ -n "$team_filter" ]]; then
     selected=()
@@ -52,31 +59,25 @@ if [[ -n "$team_filter" ]]; then
     (( ${#selected[@]} )) || fail "Team $team_filter does not use the $offer offering"
     runs=("${selected[@]}")
 fi
+team_pause() {  # think time between requests: --pause for everyone, else the team's own pace
+    [[ -z "$pause" ]] || { echo "$pause"; return; }
+    case "$1" in engineering) echo 2-6 ;; support) echo 5-15 ;; marketing) echo 10-30 ;; esac
+}
+for run in "${runs[@]}"; do
+    p=$(team_pause "${run%% *}"); (( ${p%-*} <= ${p#*-} && ${p#*-} <= 300 )) || fail '--pause range must be ascending and at most 300 seconds'
+done
 STATE=${SHOWBACK_STATE_DIR:-$HOME/.config/rhoai3-showback}
 [[ -s "$STATE/gateway-url" ]] || fail "No gateway URL in $STATE; run team-keys.sh first"
-URL="$(cat "$STATE/gateway-url")/v1/chat/completions"
-if [[ "$offer" == dedicated ]]; then  # the dedicated model has its own Gateway listener
-    [[ -s "$STATE/dedicated-url" ]] || fail "No dedicated model URL in $STATE; run team-keys.sh again"
-    URL="$(cat "$STATE/dedicated-url")/v1/chat/completions"
-fi
-tls=(); [[ "$insecure" == false ]] || tls=(--insecure)
-
-prompts() {
-    case "$1" in
-        engineering) printf '%s\n' \
-            'Review this Java method and list concrete improvements: public List<Order> open(List<Order> all) { List<Order> r = new ArrayList<>(); for (Order o : all) { if (o.getStatus() == "OPEN") r.add(o); } return r; }' \
-            'Review this REST endpoint for error handling and security: @GET @Path("/users/{id}") public User get(@PathParam("id") String id) { return em.createQuery("from User where id = " + id, User.class).getSingleResult(); }' \
-            'Suggest unit tests for a function that splits an invoice total across line items and must always sum to the original amount in cents.' ;;
-        support) printf '%s\n' \
-            'A customer says their order shows "delivered" but nothing arrived. Draft a short, empathetic reply with next steps.' \
-            'A customer asks how to reset their account password and says the email never arrives. Draft a helpful answer.' \
-            'Summarize this complaint and propose a resolution: "I was charged twice for my subscription this month and nobody answers the phone."' ;;
-        marketing) printf '%s\n' \
-            'Write three subject lines and a 60-word email for the spring launch of an energy-efficient smart thermostat.' \
-            'Draft a LinkedIn post announcing a free webinar on hybrid cloud cost control for IT leaders.' \
-            'Create a short product description and two taglines for a reusable stainless steel water bottle aimed at hikers.' ;;
-    esac
+for run in "${runs[@]}"; do
+    read -r team model _ <<<"$run"
+    [[ -s "$STATE/$team.key" ]] || fail "No key for $team in $STATE; run team-keys.sh --teams $team"
+    [[ "$model" != "$MISTRAL" || -s "$STATE/dedicated-url" ]] || fail "No dedicated model URL in $STATE; run team-keys.sh again"
+done
+endpoint() {  # the dedicated model has its own Gateway listener
+    if [[ "$1" == "$MISTRAL" ]]; then echo "$(cat "$STATE/dedicated-url")/v1/chat/completions"
+    else echo "$(cat "$STATE/gateway-url")/v1/chat/completions"; fi
 }
+tls=(); [[ "$insecure" == false ]] || tls=(--insecure)
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -122,116 +123,172 @@ if [[ "$trace" == true ]]; then
     oc port-forward -n redhat-ods-applications svc/mlflow "$MLFLOW_PORT:8443" >/dev/null 2>&1 & pf=$!; disown "$pf"
     trap 'kill $pf 2>/dev/null; rm -rf "$work"' EXIT
     for _ in $(seq 1 20); do curl -sk -o /dev/null "https://127.0.0.1:$MLFLOW_PORT/" && break; sleep 1; done
-    for run in "${runs[@]}"; do
-        read -r team model <<<"$run"
-        price "$model" > "$work/$team.price"
-        [[ -s "$work/$team.price" ]] || log_warn "No price for $model: its traces carry no cost"
+    for idx in "${!runs[@]}"; do
+        read -r team model offering <<<"${runs[$idx]}"
+        price "$model" > "$work/run$idx.price"
+        [[ -s "$work/run$idx.price" ]] || log_warn "No price for $model: its traces carry no cost"
         # One experiment per MaaS model: internal- for models served in internal-models, external- for provider models.
-        # The offering (shared or dedicated from the offer catalog, or external) and provider are experiment tags,
-        # since a model's offering can change while its experiment keeps its history.
-        if [[ "$model" == publishers/* ]]; then
-            name="internal-${model##*/}"
-            offering=$(yaml_json < "$COMPONENT/offer-catalog.yaml" | jq -r --arg m "${model##*/}" '[.[0].spec.groups[].rules[]
-                | select(.record == "showback_offer_info" and .labels.model == $m) | .labels.offer] | first // "unlisted"')
-        else
-            name="external-$model" offering=external
-        fi
+        # The offering and provider are experiment tags (the scorer keeps them current), so a model's offering can
+        # change while its experiment keeps its history.
+        if [[ "$model" == publishers/* ]]; then name="internal-${model##*/}"; else name="external-$model"; fi
         exp=$(mlflow_api "experiments/get-by-name?experiment_name=$name" | jq -r '.experiment.experiment_id // empty')
         [[ -n "$exp" ]] || exp=$(mlflow_api experiments/create "$(jq -cn --arg n "$name" --arg o "$offering" \
-            --arg p "$(jq -r '.provider // "unknown"' "$work/$team.price")" --arg m "${model##*/}" \
+            --arg p "$(jq -r '.provider // "unknown"' "$work/run$idx.price")" --arg m "${model##*/}" \
             '{name: $n, tags: [{key: "offering", value: $o}, {key: "provider", value: $p}, {key: "model", value: $m},
               {key: "mlflow.note.content", value: "Requests to the MaaS model \($m) (\($o) offering, provider \($p))."}]}')" |
             jq -r '.experiment_id // empty')
         [[ -n "$exp" ]] || fail "Could not open MLflow experiment $name in $WORKSPACE (or use --no-trace)"
-        echo "$exp" > "$work/$team.exp"
+        echo "$exp" > "$work/run$idx.exp"
     done
 fi
-# export_trace TEAM MODEL REQUEST RESPONSE CODE START_NS END_NS: one trace, two spans, OTLP/HTTP JSON; fails open.
+# export_trace RUN TEAM MODEL OFFERING STEPS SESSION T0 T1: one trace for one request turn, OTLP/HTTP JSON; fails open.
+# STEPS holds one JSON line per model call ({kind: chat, sid, t0, t1, code, req, out}) or tool call ({kind: tool, sid,
+# t0, t1, name, args, result}), in order.
 export_trace() {
-    local team=$1 model=$2 req=$3 out=$4 code=$5 t0=$6 t1=$7 tid sid cid otlp
-    tid=$(openssl rand -hex 16) sid=$(openssl rand -hex 8) cid=$(openssl rand -hex 8)
-    otlp=$(jq -n --slurpfile req "$req" --rawfile outraw "$out" --slurpfile price "$work/$team.price" \
-        --arg team "$team" --arg offer "$offer" --arg model "${model##*/}" --arg code "$code" \
-        --arg tid "$tid" --arg sid "$sid" --arg cid "$cid" --arg t0 "$t0" --arg t1 "$t1" '
+    local idx=$1 team=$2 model=$3 offering=$4 steps=$5 session=$6 t0=$7 t1=$8 otlp
+    otlp=$(jq -n --slurpfile st "$steps" --slurpfile price "$work/run$idx.price" --arg team "$team" --arg offer "$offering" \
+        --arg model "${model##*/}" --arg tid "$(openssl rand -hex 16)" --arg rid "$(openssl rand -hex 8)" \
+        --arg session "$session" --arg t0 "$t0" --arg t1 "$t1" '
         def s($k; $v): {key: $k, value: {stringValue: ($v | tostring)}};
         def i($k; $v): {key: $k, value: {intValue: ($v | tostring)}};
-        ($outraw | try fromjson catch {}) as $o | ($price[0] // null) as $p | ($o.usage.prompt_tokens // 0) as $in
-        | ($o.usage.completion_tokens // 0) as $outt | ($o.choices[0].message // {}) as $msg
-        | (if $code == "200" then {code: 1} else {code: 2, message: "HTTP \($code)"} end) as $status
+        def ok($c): if $c == "200" then {code: 1} else {code: 2, message: "HTTP \($c)"} end;
+        ($price[0] // null) as $p | [$st[] | select(.kind == "chat")] as $chats | $chats[-1] as $last
+        | ($last.out.choices[0] // {}) as $final | ([$st[] | select(.kind == "tool")] | length > 0) as $agent
+        | ([$chats[] | select(.code != "200") | .code] | first // "200") as $code
         | {resourceSpans: [{resource: {attributes: [s("service.name"; "showback-load")]},
-           scopeSpans: [{scope: {name: "rhoai3-showback"}, spans: [
-            {traceId: $tid, spanId: $sid, name: "team-\($team) request", kind: 1,
-             startTimeUnixNano: $t0, endTimeUnixNano: $t1, status: $status,
-             attributes: [s("mlflow.spanType"; "\"CHAIN\""), s("user.id"; "showback-\($team)"),
+           scopeSpans: [{scope: {name: "rhoai3-showback"}, spans: ([
+            {traceId: $tid, spanId: $rid, name: "team-\($team) request", kind: 1,
+             startTimeUnixNano: $t0, endTimeUnixNano: $t1, status: ok($code),
+             attributes: ([s("mlflow.spanType"; if $agent then "\"AGENT\"" else "\"CHAIN\"" end), s("user.id"; "showback-\($team)"),
                s("mlflow.traceTag.team"; $team), s("mlflow.traceTag.subscription"; "team-\($team)"),
                s("mlflow.traceTag.offering"; $offer), s("mlflow.traceTag.source"; "showback-load"),
-               s("mlflow.traceTag.finish_reason"; ($o.choices[0].finish_reason // "none")),
-               s("mlflow.spanInputs"; ({prompt: $req[0].messages[-1].content} | tojson)),
-               s("mlflow.spanOutputs"; ({response: ($msg.content // "")} | tojson))]},
-            {traceId: $tid, spanId: $cid, parentSpanId: $sid, name: "chat \($model)", kind: 3,
-             startTimeUnixNano: $t0, endTimeUnixNano: $t1, status: $status,
-             attributes: ([s("gen_ai.operation.name"; "chat"), s("gen_ai.request.model"; $model),
-               s("gen_ai.response.model"; ($o.model // $model)), s("gen_ai.provider.name"; ($p.provider // "unknown")),
-               s("gen_ai.input.messages"; ($req[0].messages | tojson)),
-               s("gen_ai.output.messages"; ([$msg] | tojson)), i("http.response.status_code"; ($code | tonumber))]
-              # Why the answer stopped: "length" means the max-tokens cap cut it off (a client setting, not model quality).
-              + (if $o.choices[0].finish_reason then [{key: "gen_ai.response.finish_reasons",
-                  value: {arrayValue: {values: [{stringValue: $o.choices[0].finish_reason}]}}}] else [] end)
-              + (if $code == "200" then [i("gen_ai.usage.input_tokens"; $in), i("gen_ai.usage.output_tokens"; $outt)] else [] end)
-              + (if $p and $code == "200" then [s("mlflow.llm.cost"; ({input_cost: ($in * $p.input),
-                  output_cost: ($outt * $p.output), total_cost: ($in * $p.input + $outt * $p.output)} | tojson))] else [] end))}
-           ]}]}]}') || return 1
+               s("mlflow.traceTag.finish_reason"; ($final.finish_reason // "none")),
+               s("mlflow.spanInputs"; ({prompt: ($chats[0].req.messages | map(select(.role == "user")) | last | .content)} | tojson)),
+               s("mlflow.spanOutputs"; ({response: ($final.message.content // "")} | tojson))]
+              + (if $session != "" then [s("session.id"; $session)] else [] end))}]
+           + [$st[] | if .kind == "tool" then
+                {traceId: $tid, spanId: .sid, parentSpanId: $rid, name: "tool \(.name)", kind: 1,
+                 startTimeUnixNano: .t0, endTimeUnixNano: .t1, status: {code: 1},
+                 attributes: [s("mlflow.spanType"; "\"TOOL\""), s("gen_ai.operation.name"; "execute_tool"),
+                   s("gen_ai.tool.name"; .name), s("mlflow.spanInputs"; (.args | tojson)),
+                   s("mlflow.spanOutputs"; ({result: .result} | tojson))]}
+              else (.out // {}) as $o | ($o.usage.prompt_tokens // 0) as $in | ($o.usage.completion_tokens // 0) as $out
+                | ($o.choices[0] // {}) as $c |
+                {traceId: $tid, spanId: .sid, parentSpanId: $rid, name: "chat \($model)", kind: 3,
+                 startTimeUnixNano: .t0, endTimeUnixNano: .t1, status: ok(.code),
+                 attributes: ([s("gen_ai.operation.name"; "chat"), s("gen_ai.request.model"; $model),
+                   s("gen_ai.response.model"; ($o.model // $model)), s("gen_ai.provider.name"; ($p.provider // "unknown")),
+                   s("gen_ai.input.messages"; (.req.messages | tojson)), s("gen_ai.output.messages"; ([$c.message // {}] | tojson)),
+                   i("http.response.status_code"; (.code | tonumber))]
+                  + (if .req.tools then [s("gen_ai.tool.definitions"; (.req.tools | tojson))] else [] end)
+                  # Why the answer stopped: "length" means the max-tokens cap cut it off (a client setting).
+                  + (if $c.finish_reason then [{key: "gen_ai.response.finish_reasons",
+                      value: {arrayValue: {values: [{stringValue: $c.finish_reason}]}}}] else [] end)
+                  + (if .code == "200" then [i("gen_ai.usage.input_tokens"; $in), i("gen_ai.usage.output_tokens"; $out)] else [] end)
+                  + (if $p and .code == "200" then [s("mlflow.llm.cost"; ({input_cost: ($in * $p.input),
+                      output_cost: ($out * $p.output), total_cost: ($in * $p.input + $out * $p.output)} | tojson))] else [] end))}
+              end])}]}]}') || return 1
     printf 'header = "Authorization: Bearer %s"\nheader = "X-MLFLOW-WORKSPACE: %s"\nheader = "x-mlflow-experiment-id: %s"\n' \
-        "$MLFLOW_TOKEN" "$WORKSPACE" "$(cat "$work/$team.exp")" |
+        "$MLFLOW_TOKEN" "$WORKSPACE" "$(cat "$work/run$idx.exp")" |
         curl --config - -sk --max-time 20 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
             --data-binary "$otlp" "https://127.0.0.1:$MLFLOW_PORT/v1/traces" | grep -qx 200
 }
+TOOLS='[{"type":"function","function":{"name":"read_file","description":"Read a file of the Coolstore repository","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Path from the repository root"}},"required":["path"]}}},
+ {"type":"function","function":{"name":"run_tests","description":"Run Coolstore tests and return the output","parameters":{"type":"object","properties":{"target":{"type":"string","description":"Test class or method"}},"required":["target"]}}}]'
+# chat ID TEAM MODEL MESSAGES_FILE [TOOLS]: one model call; appends a chat step to $work/ID.steps, prints the reply file.
+chat() {
+    local id=$1 team=$2 model=$3 msgs=$4 tools=${5:-} n t0 t1 code
+    n=$(wc -l < "$work/$id.steps" 2>/dev/null || echo 0); n=${n// /}
+    jq -n --arg m "$model" --slurpfile msgs "$msgs" --argjson n "$max_tokens" --argjson tools "${tools:-null}" \
+        '{model: $m, messages: $msgs[0]}
+         + (if ($m | startswith("gpt-")) then {max_completion_tokens: $n} else {max_tokens: $n} end)
+         + (if ($m | startswith("publishers/")) then {temperature: 0.7} else {} end)
+         + (if ($m | contains("qwen")) then {chat_template_kwargs: {enable_thinking: false}} else {} end)
+         + (if $tools then {tools: $tools, tool_choice: "auto"} else {} end)' > "$work/$id.req$n"
+    t0=$(now_ns)
+    code=$(printf 'header = "Authorization: Bearer %s"\n' "$(cat "$STATE/$team.key")" |
+        curl --config - --silent --connect-timeout 10 --max-time 180 "${tls[@]}" \
+            --header 'Content-Type: application/json' --data-binary "@$work/$id.req$n" \
+            --output "$work/$id.out$n" --write-out '%{http_code}' "$(endpoint "$model")") || code=000
+    t1=$(now_ns)
+    jq -cn --slurpfile req "$work/$id.req$n" --rawfile out "$work/$id.out$n" --arg code "$code" --arg sid "$(openssl rand -hex 8)" \
+        --arg t0 "$t0" --arg t1 "$t1" '{kind: "chat", sid: $sid, t0: $t0, t1: $t1, code: $code, req: $req[0],
+          out: ($out | try fromjson catch {})}' >> "$work/$id.steps"
+    echo "$work/$id.out$n"
+}
+# turn RUN TEAM MODEL OFFERING ID TASK MESSAGES_FILE SESSION: one request turn (with tool calls for an agent task),
+# traced as one trace; appends the assistant reply to MESSAGES_FILE and a summary line to the team log.
+turn() {
+    local idx=$1 team=$2 model=$3 offering=$4 id=$5 task=$6 msgs=$7 session=$8 out t0 t1 tools='' call name args result
+    : > "$work/$id.steps"
+    [[ "$(jq -r '.agent // false' <<<"$task")" == true ]] && tools=$TOOLS
+    t0=$(now_ns)
+    out=$(chat "$id" "$team" "$model" "$msgs" "$tools")
+    # An agent task: play each requested tool from the task's fixtures, then ask the model again with the results.
+    if [[ -n "$tools" ]] && jq -e '.choices[0].message.tool_calls | length > 0' "$out" >/dev/null 2>&1; then
+        jq -c '.choices[0].message | {role: "assistant", content: (.content // ""), tool_calls}' "$out" > "$work/$id.assistant"
+        jq --slurpfile a "$work/$id.assistant" '. + $a' "$msgs" > "$msgs.tmp" && mv "$msgs.tmp" "$msgs"
+        while IFS= read -r call; do
+            name=$(jq -r '.function.name' <<<"$call") args=$(jq -c '.function.arguments | try fromjson catch {}' <<<"$call")
+            result=$(jq -r --arg n "$name" --argjson a "$args" 'if $n == "read_file" then (.files[$a.path // ""] // "No such file: \($a.path // "")")
+                elif $n == "run_tests" then (.test_output // "No tests found") else "Unknown tool \($n)" end' <<<"$task")
+            jq -cn --arg sid "$(openssl rand -hex 8)" --arg t "$(now_ns)" --arg n "$name" --argjson a "$args" --arg r "$result" \
+                '{kind: "tool", sid: $sid, t0: $t, t1: $t, name: $n, args: $a, result: $r}' >> "$work/$id.steps"
+            jq --arg c "$(jq -r '.id' <<<"$call")" --arg r "$result" '. + [{role: "tool", tool_call_id: $c, content: $r}]' \
+                "$msgs" > "$msgs.tmp" && mv "$msgs.tmp" "$msgs"
+        done < <(jq -c '.choices[0].message.tool_calls[]' "$out")
+        out=$(chat "$id" "$team" "$model" "$msgs" "$tools")
+    fi
+    t1=$(now_ns)
+    jq --rawfile o "$out" '. + [{role: "assistant", content: (($o | try fromjson catch {}) | .choices[0].message.content // "")}]' \
+        "$msgs" > "$msgs.tmp" && mv "$msgs.tmp" "$msgs"
+    local traced=-
+    if [[ "$trace" == true ]]; then
+        export_trace "$idx" "$team" "$model" "$offering" "$work/$id.steps" "$session" "$t0" "$t1" && traced=1 || traced=0
+    fi
+    # Summary line: HTTP code of the turn, input and output tokens over its model calls, tool calls, traced.
+    jq -rs --arg tr "$traced" '[.[] | select(.kind == "chat")] as $c
+        | "\([$c[] | select(.code != "200") | .code] | first // "200") \([$c[].out.usage.prompt_tokens // 0] | add)" +
+          " \([$c[].out.usage.completion_tokens // 0] | add) \([.[] | select(.kind == "tool")] | length) \($tr)"' \
+        "$work/$id.steps" >> "$work/run$idx.log"
+}
 worker() {
-    local team=$1 model=$2 log=$3 id=$4 prompt body code line t0 t1 traced
-    local -a list=()
-    while IFS= read -r line; do list+=("$line"); done < <(prompts "$team")
+    local idx=$1 team=$2 model=$3 offering=$4 id=$5 pace task followup session ntasks
+    pace=$(team_pause "$team") ntasks=$(jq --arg t "$team" '.[$t].tasks | length' "$PROMPTS")
     while (( $(date +%s) < deadline )); do
-        prompt=${list[RANDOM % ${#list[@]}]}
-        jq -n --arg m "$model" --arg p "$prompt" --argjson n "$max_tokens" --argjson qwen "$([[ "$model" == *qwen* ]] && echo true || echo false)" \
-            '{model: $m, messages: [{role: "user", content: $p}]}
-             + (if ($m | startswith("gpt-")) then {max_completion_tokens: $n} else {max_tokens: $n} end)
-             + (if ($m | startswith("publishers/")) then {temperature: 0.7} else {} end)
-             + (if $qwen then {chat_template_kwargs: {enable_thinking: false}} else {} end)' > "$work/$id.json"
-        t0=$(now_ns)
-        code=$(printf 'header = "Authorization: Bearer %s"\n' "$(cat "$STATE/$team.key")" |
-            curl --config - --silent --connect-timeout 10 --max-time 120 "${tls[@]}" \
-                --header 'Content-Type: application/json' --data-binary "@$work/$id.json" \
-                --output "$work/$id.out" --write-out '%{http_code}' "$URL") || code=000
-        body=$(jq -c '{p: (.usage.prompt_tokens // 0), c: (.usage.completion_tokens // 0)}' "$work/$id.out" 2>/dev/null ||
-            echo '{"p":0,"c":0}')
-        t1=$(now_ns) traced=-
-        if [[ "$trace" == true ]]; then
-            export_trace "$team" "$model" "$work/$id.json" "$work/$id.out" "$code" "$t0" "$t1" && traced=1 || traced=0
-        fi
-        printf '%s %s %s %s\n' "$code" "$(jq -r '.p' <<<"$body")" "$(jq -r '.c' <<<"$body")" "$traced" >> "$log"
-        [[ "$code" == 200 ]] || sleep 2
-        (( pause_max == 0 )) || sleep $(( pause_min + RANDOM % (pause_max - pause_min + 1) ))
+        task=$(jq -c --arg t "$team" --argjson k $((RANDOM % ntasks)) '.[$t].tasks[$k]' "$PROMPTS")
+        # A conversation (task with follow-ups) shares one MLflow session; a single question has none.
+        session=''; jq -e '.followups | length > 0' <<<"$task" >/dev/null && session="$team-$(openssl rand -hex 6)"
+        jq -n --arg t "$team" --slurpfile p "$PROMPTS" --argjson task "$task" \
+            '[{role: "system", content: $p[0][$t].system}, {role: "user", content: $task.prompt}]' > "$work/$id.msgs"
+        turn "$idx" "$team" "$model" "$offering" "$id" "$task" "$work/$id.msgs" "$session"
+        while IFS= read -r followup; do
+            (( $(date +%s) < deadline )) || break
+            sleep $(( ${pace%-*} + RANDOM % (${pace#*-} - ${pace%-*} + 1) ))  # the user reads the answer, then replies
+            jq --arg f "$followup" '. + [{role: "user", content: $f}]' "$work/$id.msgs" > "$work/$id.msgs.tmp" &&
+                mv "$work/$id.msgs.tmp" "$work/$id.msgs"
+            turn "$idx" "$team" "$model" "$offering" "$id" "$task" "$work/$id.msgs" "$session"
+        done < <(jq -r '.followups[]?' <<<"$task")
+        sleep $(( ${pace%-*} + RANDOM % (${pace#*-} - ${pace%-*} + 1) ))
     done
 }
 
-for run in "${runs[@]}"; do
-    read -r team model <<<"$run"
-    [[ -s "$STATE/$team.key" ]] || fail "No key for $team in $STATE; run team-keys.sh --teams $team"
-done
 workers=()
-log_info "Offer $offer: ${#runs[@]} team(s) x $concurrency loops for $minutes min against $URL"
-for run in "${runs[@]}"; do
-    read -r team model <<<"$run"
-    log_info "  $team -> $model"
-    for ((i = 0; i < concurrency; i++)); do worker "$team" "$model" "$work/$team.log" "$team-$i" & workers+=($!); done
+log_info "Offer $offer: ${#runs[@]} run(s) x $concurrency loops for $minutes min (tasks: $PROMPTS)"
+for idx in "${!runs[@]}"; do
+    read -r team model offering <<<"${runs[$idx]}"
+    log_info "  $team -> $model ($offering, pause $(team_pause "$team") s)"
+    for ((i = 0; i < concurrency; i++)); do worker "$idx" "$team" "$model" "$offering" "run$idx-$i" & workers+=($!); done
 done
 wait "${workers[@]}"  # not the MLflow port-forward
-for run in "${runs[@]}"; do
-    read -r team model <<<"$run"
-    [[ -f "$work/$team.log" ]] || continue
-    awk -v t="$team" -v m="$model" '{n++; if ($1 == 200) {ok++; p += $2; c += $3} else e[$1]++; if ($4 == 1) tr++; if ($4 == 0) tf++}
-        END {printf "%-12s %-45s requests=%d ok=%d input=%d output=%d", t, m, n, ok, p, c;
-             for (k in e) printf " http_%s=%d", k, e[k]; if (tr + tf) printf " traced=%d trace_failed=%d", tr, tf; printf "\n"}' "$work/$team.log"
+for idx in "${!runs[@]}"; do
+    read -r team model offering <<<"${runs[$idx]}"
+    [[ -f "$work/run$idx.log" ]] || continue
+    awk -v t="$team" -v m="${model##*/}" '{n++; if ($1 == 200) {ok++; p += $2; c += $3} else e[$1]++; tools += $4
+            if ($5 == 1) tr++; if ($5 == 0) tf++}
+        END {printf "%-12s %-28s turns=%d ok=%d input=%d output=%d tool_calls=%d", t, m, n, ok, p, c, tools;
+             for (k in e) printf " http_%s=%d", k, e[k]; if (tr + tf) printf " traced=%d trace_failed=%d", tr, tf; printf "\n"}' \
+        "$work/run$idx.log"
 done
 log_info "Dashboards: Observe & monitor -> Dashboard -> Offer tabs (metrics arrive within about a minute)"
-[[ "$trace" != true ]] || log_info "Traces: MLflow, workspace $WORKSPACE, experiments internal-<model> / external-<model> -> Overview"
+[[ "$trace" != true ]] || log_info "Traces: MLflow, workspace $WORKSPACE, experiments internal-<model> / external-<model> (Overview, Traces, Sessions)"
