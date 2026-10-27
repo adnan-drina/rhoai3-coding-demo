@@ -324,8 +324,9 @@ run_launch_check() {
       and .status.sync.status == "Synced" and .status.health.status == "Healthy")' >/dev/null || run_fail "Stage 070 is not healthy at the selected revision"
   oc --request-timeout=30s get tektonconfig config -o json | jq -e 'any(.status.conditions[]?; .type == "Ready" and .status == "True")' >/dev/null ||
     run_fail "TektonConfig is not Ready"
-  oc --request-timeout=30s get deployment el-app-platform-listener -n app-platform-build -o json | jq -e '(.status.readyReplicas // 0) >= 1
-    and (.status.observedGeneration // 0) >= .metadata.generation' >/dev/null || run_fail "webhook dispatcher is not ready"
+  # GitLab push webhooks reach the run's own project EventListener (Stage 070 creates <run>-dev per enrolled project).
+  oc --request-timeout=30s get eventlistener gitlab -n "$WORKSPACE-dev" -o json | jq -e 'any(.status.conditions[]?; .type == "Ready"
+    and .status == "True")' >/dev/null || run_fail "the run's webhook EventListener ($WORKSPACE-dev/gitlab) is not ready"
   pod=$(oc --request-timeout=30s get pod "$POD" -n "$ns" -o json)
   jq -n -e --argjson p "$pod" --arg c "$container" "$POD_MOUNTS"' source_mount_ok($p; $c)' >/dev/null ||
     run_fail "source mount is writable or has a writable runtime alias"

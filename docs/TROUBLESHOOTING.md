@@ -2540,7 +2540,7 @@ run after retaining its evidence; never erase an official run to hide the failur
 Historical: Pipelines 1.24 ships `config-triggers-core-interceptors` again (owned by `TektonInstallerSet trigger-main-static-*`), and the Git workaround below was removed on 2026-10-15. Keep this entry for a future release that omits the map.
 
 Inspect the Triggers controller, webhook and core-interceptors deployments in
-`openshift-pipelines`, plus `el-app-platform-listener` in `app-platform-build`.
+`openshift-pipelines`, plus the project EventListener `gitlab` in `<project>-dev` (the central `el-app-platform-listener` in `app-platform-build` no longer exists).
 The 2026-09-22 update omitted `config-triggers-core-interceptors`, which every
 new binary requires. The resulting crashes leave ClusterInterceptor CA bundles
 empty and may leave the EventListener's old Ready condition stale.
