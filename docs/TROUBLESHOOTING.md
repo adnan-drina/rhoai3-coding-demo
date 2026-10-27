@@ -2682,6 +2682,25 @@ curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
 
 **Recover:** The GPU panel is fixed by Stage 020's `020-nvidia-gpu-operator/rhoai-monitoring/dcgm-accelerator-servicemonitor.yaml`: a user-owned ServiceMonitor with the documented scrape label that reads the DCGM exporter and applies the product's own mapping (`DCGM_FI_DEV_GPU_UTIL` to `accelerator_gpu_utilization`) on the RHOAI side, labelling each series with the model name so the panel's model filter works (the panel groups by the collector's pod attribute, which is the DCGM exporter pod on each GPU node). The inter-token latency, error rate and user-workload target problems remain Red Hat items recorded in BACKLOG; nothing else in this repository is misconfigured (the DSCInitialization monitoring section, the Monitoring service conditions, the datasources and the scrape labels match the 3.5 guide). The Cluster, Models and Usage tabs and the custom Cost per token and Tokenomics tabs are unaffected.
 
+## Console Perses Models Dashboard Shows No Data, Or Two Models Dashboards
+
+**Affected stage:** Stage 010 observability stack with Stage 040 models, RHOAI 3.5.2
+
+**Symptom:** **Observe → Dashboards (Perses)** in project `redhat-ods-monitoring` lists **Models** twice, and **Models** shows `No data` in every panel.
+
+**Likely cause:** Two Models dashboards are expected. The RHOAI operator (owner `Dashboard/default-dashboard`) generates `dashboard-1-model-admin`, which reads cluster-wide Thanos (`cluster-prometheus-datasource`, port 9091) and filters by a **Project** variable. It also generates `dashboard-1-model`, which reads the tenancy Thanos (`cluster-prometheus-tenancy-datasource`, port 9092) and shows only the namespaces the viewer can access. The RHOAI dashboard (**Observe & monitor → Dashboard**) picks one per user, cluster administrators get the admin one ([Dashboards overview](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#observability-dashboards-overview_observability-dashboards)), while the console's Perses list shows both under the same title. They are operator-generated: do not delete or edit them. `No data` means no `kserve_vllm:*` series in the selected range. The vLLM engines are parked (`LLMInferenceService` `spec.replicas: 0`, GPU MachineSets at 0) and the range starts after they stopped: the console opens at **Last 1 hour**, and the **Model deployments** table only lists deployments that report at the end of the range. A **Project** variable with no value (the `All` chip cleared, or loaded while no series existed) also makes every admin-dashboard query match nothing. Scraping itself works: the `kserve-llm-isvc-vllm-engine` PodMonitors in `internal-models` add the `kserve_` prefix the dashboards query.
+
+**Diagnose:**
+
+```bash
+oc get llminferenceservice -n internal-models -o custom-columns=NAME:.metadata.name,REPLICAS:.spec.replicas
+oc get machineset -n openshift-machine-api | grep gpu
+oc get persesdashboard dashboard-1-model dashboard-1-model-admin -n redhat-ods-monitoring \
+  -o custom-columns=NAME:.metadata.name,OWNER:.metadata.ownerReferences[0].kind
+```
+
+**Recover:** Resume the GPUs and models (skill `resume-gpu-demo`), or pick a time range that covers when they served (for example **Last 6 hours** or **Last 24 hours**), and set **Project** back to **All**. Use the admin **Models** dashboard as a cluster administrator; the other one is for project users.
+
 ## Start Evaluation Run Offers No Model To Choose
 
 **Affected stage:** Stage 050 (Develop & train → Evaluations), RHOAI 3.5.1
