@@ -133,8 +133,8 @@ oc get configmap gitlab-gitlab-chart-info -n gitlab-system -o jsonpath='{.data}'
 11. GitLab installation requirements, PostgreSQL and Redis/Valkey (upstream). https://docs.gitlab.com/install/requirements/
 12. Configure the GitLab chart with an external Redis (upstream). https://docs.gitlab.com/charts/advanced/external-redis/
 13. Backing up a GitLab installation (chart, upstream). https://docs.gitlab.com/charts/backup-restore/backup/
-14. Setting up the GitLab authorized application, Red Hat OpenShift Dev Spaces 3.30. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_setting_up_the_gitlab_authorized_application
-15. Applying the GitLab-authorized application Secret, Red Hat OpenShift Dev Spaces 3.30. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_applying_the_gitlab_authorized_application_secret
+14. Setting up the GitLab authorized application, Red Hat OpenShift Dev Spaces 3.31. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/integrate-proc_setting_up_the_gitlab_authorized_application
+15. Applying the GitLab-authorized application Secret, Red Hat OpenShift Dev Spaces 3.31. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/integrate-proc_applying_the_gitlab_authorized_application_secret
 16. User management, local users and admin account, Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/operator-manual/user-management/
 17. Access control and user management, chapter 4 "Managing local users in Argo CD", Red Hat OpenShift GitOps 1.20. https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.20/html-single/access_control_and_user_management
 17. Network security, "Network policy", OpenShift Container Platform 4.22. https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/network_security/network-policy

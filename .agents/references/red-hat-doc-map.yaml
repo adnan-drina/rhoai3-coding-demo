@@ -1509,7 +1509,7 @@ products:
     skill_prefix: ocp-devspaces-
     rule: .agents/rules/ocp.md
     docs_slug: red_hat_openshift_dev_spaces
-    docs_version: "3.30"
+    docs_version: "3.31"
     deployed: true
     pin:
       # The Subscription follows the unversioned `stable` channel (Dev Spaces GitOps guide); the operator policy
@@ -1540,9 +1540,9 @@ products:
               - discover-con_user_workspaces
               - discover-ref_roles_and_tasks
               - plan-supported_platforms_ref
-            reviewed: { version: "3.30", date: 2026-10-15, note: "3.30 documentation is topic pages; sections are page slugs" }
+            reviewed: { version: "3.31", date: 2026-10-27, note: "3.31 documentation is topic pages; sections are page slugs" }
       whats_new:
-        description: Release notes, new features, bug fixes, known issues for 3.30.x sub-releases.
+        description: Release notes, new features, bug fixes, known issues for 3.31.x sub-releases.
         routes:
           - book: whats_new-ref_release_notes
             status: active
@@ -1550,19 +1550,15 @@ products:
             sections:
               - whats_new-ref_release_notes
               - whats_new-ref_new_features
-              - whats_new-ref_patch_releases
-              - whats_new-dev_spaces_3_30_patch_release_september_18__2026__3_30_1_
-              - whats_new-dev_spaces_3_30_patch_release_september_30__2026
               - whats_new-ref_deprecated_functionalities
               - whats_new-ref_removed_functionalities
               - whats_new-ref_changed_features
-              - whats_new-ref_technology_preview
               - whats_new-ref_known_issues
               - whats_new-ref_bug_fixes
               - whats_new-ref_cve_fixes
               - whats_new-ref_differences_between_devspaces_and_che
               - whats_new-ref_frequently_asked_questions
-            reviewed: { version: "3.30", date: 2026-10-15, note: "3.30 is based on Che 7.120/7.121, DevWorkspace Operator 0.43 and OpenShift 4.16-4.22; the patch pages do not name the DevWorkspace Operator version" }
+            reviewed: { version: "3.31", date: 2026-10-27, note: "3.31 is based on Che 7.121/7.123, DevWorkspace Operator 1.0.0 and OpenShift 4.16-4.22; 3.31 has no patch-release or Technology Preview page" }
       install:
         description: Operator installation, dsc CLI, CheCluster CR, restricted network, Keycloak OIDC.
         routes:
@@ -1585,7 +1581,7 @@ products:
               - upgrade-ref_pre_upgrade_checklist
               - upgrade-proc_verify_upgrade_completed
               - upgrade-proc_repairing_devworkspace_operator
-            reviewed: { version: "3.30", date: 2026-10-15, note: "the guide says the Subscription must target openshift-operators; the repo uses openshift-devspaces (recorded Gap in the devspaces README)" }
+            reviewed: { version: "3.31", date: 2026-10-27, note: "the guide says the Subscription must target openshift-operators; the repo does so since 2026-10-15" }
       usage_and_administration:
         description: CheCluster CR customization, storage, workspace limits, RBAC, networking, user workflows, devfiles, Git integration.
         routes:
@@ -1616,7 +1612,7 @@ products:
               - extend-proc_configuring_open_vsx_registry_url
               - observe-proc_enabling_devspaces_metrics
               - observe-ref_collecting_logs_using_dsc
-            reviewed: { version: "3.30", date: 2026-10-15 }
+            reviewed: { version: "3.31", date: 2026-10-27 }
           - book: develop-con_devfile_introduction
             status: active
             skill: ocp-devspaces-user-guide
@@ -1639,10 +1635,10 @@ products:
               - extend-proc_configuring_ai_providers
               - develop-proc_preventing_workspace_idling_for_long_running_commands
               - develop-con_requesting_persistent_storage_for_workspaces
-              - troubleshoot-proc_viewing_workspace_logs_in_cli
+              - troubleshoot-proc_viewing_workspace_logs_in_cli_2
               - troubleshoot-proc_debugging_a_workspace
               - troubleshoot-ref_troubleshooting_workspace_startup_failures
-            reviewed: { version: "3.30", date: 2026-10-15, note: "the Technology Preview page lists only the managed Open VSX registry; AI-provider support status is not stated" }
+            reviewed: { version: "3.31", date: 2026-10-27, note: "3.31 has no Technology Preview page; AI-provider support status is not stated" }
 
   ocp_lightspeed:
     name: Red Hat OpenShift Lightspeed

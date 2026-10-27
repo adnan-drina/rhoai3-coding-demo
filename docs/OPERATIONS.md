@@ -774,7 +774,7 @@ oc get subscription devspaces -n openshift-operators -o jsonpath='{.status.insta
 ```
 
 **Operator install location (moved 2026-10-15).** The Dev Spaces Subscription lives in `openshift-operators` with
-Automatic approval on `stable`, as the Dev Spaces 3.30 GitOps guide shows; OLM installs the DevWorkspace operator
+Automatic approval on `stable`, as the Dev Spaces 3.31 GitOps guide shows; OLM installs the DevWorkspace operator
 there too. The CheCluster, workspaces and PVCs stay in their namespaces. An existing install from before the move
 (Subscription, OperatorGroup and the two CSVs in `openshift-devspaces`) needs a one-time switch while Stage 070
 deploys the moved Subscription: Argo CD prunes the old Subscription and OperatorGroup, then remove the old CSVs and the

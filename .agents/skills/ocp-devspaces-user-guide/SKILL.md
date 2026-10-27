@@ -4,10 +4,10 @@ metadata:
   author: rhoai3-coding-demo
   version: 2.0.0
   product: ocp_devspaces
-  docs-version: "3.30"
+  docs-version: "3.31"
   skill-group: "OpenShift Platform"
 description: >
-  Use when authoring or reviewing what runs inside Dev Spaces 3.30 workspaces
+  Use when authoring or reviewing what runs inside Dev Spaces 3.31 workspaces
   in this demo: the coolstore-inventory-service DevWorkspaces and the Developer Hub
   template devfiles, factory URLs with revision and existing parameters,
   DEFAULT_EXTENSIONS and baked VSIX files, mounted Secrets and ConfigMaps
@@ -22,7 +22,7 @@ description: >
 # Dev Spaces workspaces and devfiles
 
 Thin skill: repo decisions and pitfalls here, devfile and workspace behavior
-in the linked Dev Spaces 3.30 topics. Detailed record:
+in the linked Dev Spaces 3.31 topics. Detailed record:
 `gitops/stages/070-advanced-app-platform/070-devspaces/README.md`.
 
 ## When to use
@@ -76,9 +76,9 @@ in the linked Dev Spaces 3.30 topics. Detailed record:
   `docs/TROUBLESHOOTING.md#factory-creates-a-suffixed-duplicate-workspace`.
 - Ephemeral-storage evictions:
   `docs/TROUBLESHOOTING.md#pipeline-or-workspace-pods-evicted-for-ephemeral-storage`.
-- The UDI image is 3.29.1 under Dev Spaces 3.30.2 (recorded Gap).
+- The UDI image is 3.29.1 under Dev Spaces 3.31 (recorded Gap).
 
-## Official documentation (Dev Spaces 3.30)
+## Official documentation (Dev Spaces 3.31)
 
 | Topic | Section |
 |---|---|
@@ -94,24 +94,24 @@ in the linked Dev Spaces 3.30 topics. Detailed record:
 
 `manage-devspaces`, `ocp-devspaces-admin`, `mta-vscode`, `rhoai-maas-governance`.
 
-[devfile]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_devfile_introduction
-[components]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_customizing_workspace_components
-[devfileerr]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/troubleshoot-ref_troubleshooting_devfile_issues
-[fromurl]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/get_started-proc_starting_a_workspace_from_a_git_repository_url
-[rawdevfile]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_starting_a_workspace_from_a_raw_devfile_url
-[existing]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-ref_url_parameter_for_the_existing_workspace_name
-[badge]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_adding_factory_badge_for_contributors
-[credcon]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_using_credentials_and_configurations_in_workspaces
-[secrets]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_mounting_secrets
-[configmaps]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_mounting_configmaps
-[gitcfg]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_mounting_git_configuration
-[defext]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_configuring_default_extensions
-[autoext]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_automating_installation_of_vscode_extensions
-[addext]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_adding_or_removing_extensions_in_a_workspace
-[ai]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_using_ai_assistants_in_workspaces
-[aiprov]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_configuring_ai_providers
-[idle]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_preventing_workspace_idling_for_long_running_commands
-[pvc]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-con_requesting_persistent_storage_for_workspaces
-[logs]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/troubleshoot-proc_viewing_workspace_logs_in_cli
-[debug]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/troubleshoot-proc_debugging_a_workspace
-[startup]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/troubleshoot-ref_troubleshooting_workspace_startup_failures
+[devfile]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-con_devfile_introduction
+[components]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-con_customizing_workspace_components
+[devfileerr]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/troubleshoot-ref_troubleshooting_devfile_issues
+[fromurl]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/get_started-proc_starting_a_workspace_from_a_git_repository_url
+[rawdevfile]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-proc_starting_a_workspace_from_a_raw_devfile_url
+[existing]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-ref_url_parameter_for_the_existing_workspace_name
+[badge]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-proc_adding_factory_badge_for_contributors
+[credcon]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-con_using_credentials_and_configurations_in_workspaces
+[secrets]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-proc_mounting_secrets
+[configmaps]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-proc_mounting_configmaps
+[gitcfg]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-proc_mounting_git_configuration
+[defext]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/extend-proc_configuring_default_extensions
+[autoext]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-proc_automating_installation_of_vscode_extensions
+[addext]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/extend-proc_adding_or_removing_extensions_in_a_workspace
+[ai]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-con_using_ai_assistants_in_workspaces
+[aiprov]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/extend-proc_configuring_ai_providers
+[idle]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-proc_preventing_workspace_idling_for_long_running_commands
+[pvc]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-con_requesting_persistent_storage_for_workspaces
+[logs]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/troubleshoot-proc_viewing_workspace_logs_in_cli_2
+[debug]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/troubleshoot-proc_debugging_a_workspace
+[startup]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/troubleshoot-ref_troubleshooting_workspace_startup_failures

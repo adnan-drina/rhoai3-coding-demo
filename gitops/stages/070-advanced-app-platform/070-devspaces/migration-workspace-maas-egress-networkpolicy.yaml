@@ -49,7 +49,7 @@ spec:
         - protocol: TCP
           port: 6443
     # Dev Spaces control plane (required egress row R2), derived from the
-    # Red Hat OpenShift Dev Spaces 3.30 documentation on workspace ingress.
+    # Red Hat OpenShift Dev Spaces 3.31 documentation on workspace ingress.
     # The per-workspace che-gateway sidecar reaches
     # che-gateway.openshift-devspaces for workspace-plane traffic.
     #

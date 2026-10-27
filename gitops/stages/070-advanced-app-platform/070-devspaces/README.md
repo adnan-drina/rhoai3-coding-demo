@@ -1,6 +1,6 @@
 # OpenShift Dev Spaces (`070-devspaces`)
 
-This Application installs Red Hat OpenShift Dev Spaces 3.30 and the workspace side of the developer platform: the operator, the `CheCluster`, the persona workspace namespaces, the standing `coolstore-inventory-service` workspace, and governed MaaS model access for workspaces. Developers in Stages 110–130 open their IDE here. Developer Hub templates create new workspaces against this instance, and Stage 130 migration runs use its per-run identity and model-profile contract.
+This Application installs Red Hat OpenShift Dev Spaces 3.31 and the workspace side of the developer platform: the operator, the `CheCluster`, the persona workspace namespaces, the standing `coolstore-inventory-service` workspace, and governed MaaS model access for workspaces. Developers in Stages 110–130 open their IDE here. Developer Hub templates create new workspaces against this instance, and Stage 130 migration runs use its per-run identity and model-profile contract.
 
 | | |
 |---|---|
@@ -13,7 +13,7 @@ This Application installs Red Hat OpenShift Dev Spaces 3.30 and the workspace si
 
 ## Why
 
-Dev Spaces gives each developer a managed, browser-based workspace on OpenShift, so source code and AI assistance stay inside the cluster [1][2]. The 3.30 guide supports installing it through Argo CD: Subscription, `CheCluster` v2 and Kustomization in Git, reconciled by GitOps [1]. The repository follows that model.
+Dev Spaces gives each developer a managed, browser-based workspace on OpenShift, so source code and AI assistance stay inside the cluster [1][2]. The 3.31 guide supports installing it through Argo CD: Subscription, `CheCluster` v2 and Kustomization in Git, reconciled by GitOps [1]. The repository follows that model.
 
 The operator, the instance and the workspace contract form one Application because they change together: a CheCluster change, a namespace RBAC change or a new MaaS credential shape all affect the same workspaces. GitLab-specific values (OAuth application, Git endpoint, allowed source URLs) are produced later by `070-gitlab`, because GitLab must exist before they can be minted.
 
@@ -72,7 +72,7 @@ Not in Git: the GitLab OAuth Secret `gitlab-oauth-config`, the CheCluster `gitSe
 
 ## How
 
-**Installation.** The Subscription lives in `openshift-operators` (AllNamespaces) with `Automatic` approval on `stable`, as the 3.30 GitOps guide shows [1]. `check_operator_policy` in `scripts/lib.sh` (run by Stage 070 `deploy.sh`) refuses another channel or an offered version outside the qualified 3.30 line (minimum 3.30.2). The webhook-wait hook then holds the CheCluster until the operator, which runs in `openshift-operators`, answers admission calls; its Role there reads only the `devspaces-operator` Deployment and Service. Until 2026-10-15 the Subscription lived in `openshift-devspaces` with Manual approval and its own approver hook; `docs/OPERATIONS.md` records the move.
+**Installation.** The Subscription lives in `openshift-operators` (AllNamespaces) with `Automatic` approval on `stable`, as the 3.31 GitOps guide shows [1]. `check_operator_policy` in `scripts/lib.sh` (run by Stage 070 `deploy.sh`) refuses another channel or an offered version outside the qualified 3.31 line (minimum 3.31.0). The webhook-wait hook then holds the CheCluster until the operator, which runs in `openshift-operators`, answers admission calls; its Role there reads only the `devspaces-operator` Deployment and Service. Until 2026-10-15 the Subscription lived in `openshift-devspaces` with Manual approval and its own approver hook; `docs/OPERATIONS.md` records the move.
 
 **CheCluster choices** (field reference [3]):
 
@@ -98,7 +98,7 @@ Operations: [Stage 070 Dev Spaces](../../../../docs/OPERATIONS.md#stage-070--dev
 
 `validate.sh` (live, read-only):
 
-- `devspaces installed revision` = `devspacesoperator.v3.30.2` and `devspacesoperator.v3.30.2 succeeded`.
+- `devspaces installed revision` = `devspacesoperator.v3.31.*` and `devspacesoperator.v3.31.* succeeded`.
 - `Dev Spaces Active`, `Dev Spaces per-workspace storage`, `Dev Spaces GitLab OAuth configured`.
 - `wksp-ai-developer standing workspace uses GitLab` and the same for `wksp-ai-admin`.
 - `Scoped integration Secret openshift-devspaces/gitlab-oauth-config exists`.
@@ -130,21 +130,21 @@ oc get devworkspace -n wksp-ai-developer
 | Default extensions | `DEFAULT_EXTENSIONS` lists local VSIX paths, which a postStart command may download [8] | Kilo Code 7.4.8 VSIX downloaded to `/tmp` at postStart | Aligned (no checksum on the download) |
 | Mounted credentials | `mount-to-devworkspace` Secrets restart running workspaces when applied unless annotated `mount-on-start` [6] | `migration-model-profiles` uses `mount-on-start`; `workspace-maas-credentials` and `devspace-ai-tools-init` do not | Gap: a credential or init-script change can restart running workspaces |
 | GitLab OAuth | Secret `gitlab-oauth-config` with the `oauth-scm-configuration` labels and annotations, keys `id`/`secret` [7]; app callback `/api/oauth/callback`, Confidential, scopes `api write_repository openid` [9] | Written by `070-gitlab` exactly so; CheCluster `gitServices.gitlab[].endpoint` also set | Aligned; the endpoint field is deprecated in favor of the annotation [3] |
-| Tooling image | Use the release's UDI | `udi-rhel9:3.29.1` digest under Dev Spaces 3.30.2 | Gap: image one minor behind the operator |
+| Tooling image | Use the release's UDI | `udi-rhel9:3.29.1` digest under Dev Spaces 3.31 | Gap: image two minors behind the operator |
 | Least privilege | `get`/`list` on Secrets reveals them; workload creators inherit namespace SA rights [10] | Provisioner SA outside the workspace namespace; key reader by name; key and Sonar writers namespace-wide | Partly aligned (namespace-wide Secret writers remain) |
 | API egress | AdminNetworkPolicy `nodes` peer for host-network destinations [11] | `workspace-allow-kapi-egress` to control-plane nodes, TCP 6443 | Aligned |
 
 ## References
 
-1. Deploy using GitOps and Argo CD, Red Hat OpenShift Dev Spaces 3.30. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/install-proc_deploying_devspaces_using_gitops
-2. Red Hat OpenShift Dev Spaces 3.30 documentation. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30
-3. CheCluster custom resource fields, Red Hat OpenShift Dev Spaces 3.30. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-ref_checluster_custom_resource_fields
-4. Provision projects in advance, Red Hat OpenShift Dev Spaces 3.30. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_provisioning_projects_in_advance
-5. Apply editor configurations, Red Hat OpenShift Dev Spaces 3.30. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_applying_editor_configurations
-6. Mount Secrets, Red Hat OpenShift Dev Spaces 3.30. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/develop-proc_mounting_secrets
-7. Connect OpenShift Dev Spaces to your GitLab OAuth application, Red Hat OpenShift Dev Spaces 3.30. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_applying_the_gitlab_authorized_application_secret
-8. Configure default extensions, Red Hat OpenShift Dev Spaces 3.30. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_configuring_default_extensions
-9. Set up the GitLab authorized application, Red Hat OpenShift Dev Spaces 3.30. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_setting_up_the_gitlab_authorized_application
+1. Deploy using GitOps and Argo CD, Red Hat OpenShift Dev Spaces 3.31. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/install-proc_deploying_devspaces_using_gitops
+2. Red Hat OpenShift Dev Spaces 3.31 documentation. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31
+3. CheCluster custom resource fields, Red Hat OpenShift Dev Spaces 3.31. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-ref_checluster_custom_resource_fields
+4. Provision projects in advance, Red Hat OpenShift Dev Spaces 3.31. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-proc_provisioning_projects_in_advance
+5. Apply editor configurations, Red Hat OpenShift Dev Spaces 3.31. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/extend-proc_applying_editor_configurations
+6. Mount Secrets, Red Hat OpenShift Dev Spaces 3.31. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/develop-proc_mounting_secrets
+7. Connect OpenShift Dev Spaces to your GitLab OAuth application, Red Hat OpenShift Dev Spaces 3.31. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/integrate-proc_applying_the_gitlab_authorized_application_secret
+8. Configure default extensions, Red Hat OpenShift Dev Spaces 3.31. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/extend-proc_configuring_default_extensions
+9. Set up the GitLab authorized application, Red Hat OpenShift Dev Spaces 3.31. https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/integrate-proc_setting_up_the_gitlab_authorized_application
 10. Role Based Access Control Good Practices, Kubernetes (upstream). https://kubernetes.io/docs/concepts/security/rbac-good-practices/
 11. Admin network policy, 2.4 "Egress nodes and networks peer for AdminNetworkPolicy", OpenShift Container Platform 4.22. https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/network_security/admin-network-policy
 12. Sync Options (`Replace`, `Force`, `RespectIgnoreDifferences`), Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/

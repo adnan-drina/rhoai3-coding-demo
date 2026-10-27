@@ -249,7 +249,7 @@ OPERATOR_POLICY='{
   "gpu-operator-certified": ["v26.7", "26.7.1"], "kueue-operator": ["stable-v1.4", "1.4.2"],
   "leader-worker-set": ["stable-v1.0", "1.0.1"], "rhcl-operator": ["stable", "1.4.3"], "authorino-operator": ["stable", "1.4.3"],
   "dns-operator": ["stable", "1.4.2"], "limitador-operator": ["stable", "1.4.2"], "servicemeshoperator3": ["stable-3.4", "3.4.3"],
-  "agent-sandbox-operator": ["preview-0.9", "0.9.0"], "devspaces": ["stable", "3.30.2"]}'
+  "agent-sandbox-operator": ["preview-0.9", "0.9.0"], "devspaces": ["stable", "3.31.0"]}'
 POLICY_JQ='def ver: [capture("^(?<a>[0-9]+)\\.(?<b>[0-9]+)\\.(?<c>[0-9]+)(-(?<d>[0-9]+)|-rhodf)?$")]
         | if length == 0 then error("Unsupported operator version shape") else .[0] | [.a, .b, .c, (.d // "0")] | map(tonumber) end;
     def compatible($p; $pkg; $v): if $p[$pkg] == null then error("Operator baseline is deferred/unqualified: \($pkg)")

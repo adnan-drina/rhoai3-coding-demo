@@ -8,7 +8,7 @@
 
 Private models help protect source code, but developers also need a reliable route from an approved project to a tested application. This stage connects self-service, private source control, managed workspaces, modernization and delivery. Platform teams own the shared services and credentials; developers work in their own repositories and project namespaces.
 
-[Red Hat Developer Hub](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10) provides the software catalog and templates. [OpenShift Dev Spaces](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30) provides the workspace. OpenShift Pipelines and Argo CD carry an approved change through quality checks into a deployment reconciled from Git.
+[Red Hat Developer Hub](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10) provides the software catalog and templates. [OpenShift Dev Spaces](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31) provides the workspace. OpenShift Pipelines and Argo CD carry an approved change through quality checks into a deployment reconciled from Git.
 
 ## Architecture
 
@@ -39,7 +39,7 @@ TAS: persistent signing services; signed delivery remains to be qualified
 
 - **Shared platform sign-in.** OpenShift AI, Dev Spaces and Argo CD retain their native OpenShift login. Developer Hub, GitLab, MTA and TAS retain their application identities in the `platform` realm, which delegates directly to the existing base `sso` realm. SonarQube uses its supported SAML integration directly with that base realm. The retained application realm preserves existing subjects, memberships and roles; it does not introduce another SSO deployment or password store.
 - **Private GitLab workflows.** Templates create private repositories and request platform enrollment of their immutable first commit. Project-bound webhooks trigger only that project's main-branch builds.
-- **Managed development.** Dev Spaces 3.30.2 uses one persistent volume per workspace, authenticated GitLab access, explicit source allowlists and retained migration worker identities. The MTA image contains verified 8.3 tools and editor extensions.
+- **Managed development.** Dev Spaces 3.31 uses one persistent volume per workspace, authenticated GitLab access, explicit source allowlists and retained migration worker identities. The MTA image contains verified 8.3 tools and editor extensions.
 - **Developer Hub 1.10.6.** Catalog, templates and TechDocs come from one pinned GitLab platform revision. Kubernetes, Topology, Tekton and Argo integrations make the project's delivery visible in the portal.
 - **GitOps delivery.** Pipelines 1.24 checks out an exact commit, builds/tests, enforces the SonarQube gate and pushes to the internal registry. Promotion writes the image digest into a platform-owned delivery repository and waits for Argo and the deployment to agree.
 - **Modernization with AI.** MTA 8.3.1 configures native Hub Agents through a Gateway and owner-bound MaaS subscription. The Developer Lightspeed proxy is separate; optional Solution Server is disabled pending its vendor dependency correction, with its database retained. OpenShift VPA sizes only the agentic controller memory without editing its operator-owned Deployment. Startup and inference are separate checks; [current qualification](../../BACKLOG.md#stage-070-live-qualification) records the controller startup recovery, deferred Solution Server defect and completed developer workflow. Models remain stopped until the operator authorizes validation.
@@ -104,7 +104,7 @@ Source: [Stage 070 component folders](../../gitops/stages/070-advanced-app-platf
 
 ## References
 
-- [Dev Spaces 3.30 administration](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30)
+- [Dev Spaces 3.31 administration](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31)
 - [RHDH 1.10 Tekton configuration](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/configuring_dynamic_plugins/enable-the-tekton-plugin_configuring-dynamic-plugins)
 - [Pipelines 1.24 security](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/securing_openshift_pipelines/index)
 - [MTA 8.3 documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3)

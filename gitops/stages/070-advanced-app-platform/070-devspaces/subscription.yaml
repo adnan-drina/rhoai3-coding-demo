@@ -1,4 +1,4 @@
-# OpenShift Dev Spaces 3.30 "Deploy using GitOps and Argo CD": the Subscription lives in openshift-operators
+# OpenShift Dev Spaces 3.31 "Deploy using GitOps and Argo CD": the Subscription lives in openshift-operators
 # (AllNamespaces) with Automatic approval on `stable`; the CheCluster stays in openshift-devspaces.
 # check_operator_policy in scripts/lib.sh holds the qualified channel and minimum version.
 apiVersion: operators.coreos.com/v1alpha1

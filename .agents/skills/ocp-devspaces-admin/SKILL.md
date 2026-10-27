@@ -4,10 +4,10 @@ metadata:
   author: rhoai3-coding-demo
   version: 2.0.0
   product: ocp_devspaces
-  docs-version: "3.30"
+  docs-version: "3.31"
   skill-group: "OpenShift Platform"
 description: >
-  Use when changing or reviewing the Dev Spaces 3.30 administration choices in
+  Use when changing or reviewing the Dev Spaces 3.31 administration choices in
   this demo: CheCluster devspaces fields (per-workspace 20Gi gp3-csi storage,
   persistUserHome, idling disabled, 1200 s start timeout, running-workspace
   and container caps, allowedSources, Open VSX URL, metrics), pre-provisioned
@@ -22,7 +22,7 @@ description: >
 # Dev Spaces administration
 
 Thin skill: repo decisions and pitfalls here, field reference in the linked
-Dev Spaces 3.30 topics. Detailed record:
+Dev Spaces 3.31 topics. Detailed record:
 `gitops/stages/070-advanced-app-platform/070-devspaces/README.md` (How, Alignment).
 
 ## When to use
@@ -81,7 +81,7 @@ Dev Spaces 3.30 topics. Detailed record:
 - Namespace-wide Secret writers remain in `wksp-ai-developer` (README
   Alignment table, "Least privilege").
 
-## Official documentation (Dev Spaces 3.30)
+## Official documentation (Dev Spaces 3.31)
 
 | Topic | Section |
 |---|---|
@@ -100,26 +100,26 @@ Dev Spaces 3.30 topics. Detailed record:
 `ocp-devspaces-install`, `ocp-devspaces-user-guide`, `manage-devspaces`,
 `ocp-security-rbac-scc`, `rhdh-git-integration`.
 
-[cfg]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-con_understanding_the_checluster_custom_resource
-[fields]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-ref_checluster_custom_resource_fields
-[dwocr]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-ref_devworkspace_operator_custom_resources
-[projects]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-con_configuring_projects
-[preprov]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_provisioning_projects_in_advance
-[limituser]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_limiting_workspaces_per_user
-[multi]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_enabling_multiple_workspaces_simultaneously
-[allowed]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_configuring_allowed_urls_for_cde
-[containers]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_enabling_container_run_capabilities
-[storagereq]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-con_storage_requirements
-[storage]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_configuring_storage_strategy
-[sizes]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_configuring_storage_sizes
-[home]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-con_persistent_user_home
-[netpol]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_configuring_network_policies
-[tls]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/configure-proc_importing_untrusted_tls_certificates
-[roles]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/secure-proc_configuring_cluster_roles_for_users
-[authz]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/secure-proc_configuring_advanced_authorization
-[gitlabapp]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_setting_up_the_gitlab_authorized_application
-[gitlabsecret]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/integrate-proc_applying_the_gitlab_authorized_application_secret
-[editorcfg]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_applying_editor_configurations
-[openvsx]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/extend-proc_configuring_open_vsx_registry_url
-[metrics]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/observe-proc_enabling_devspaces_metrics
-[logs]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.30/observe-ref_collecting_logs_using_dsc
+[cfg]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-con_understanding_the_checluster_custom_resource
+[fields]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-ref_checluster_custom_resource_fields
+[dwocr]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-ref_devworkspace_operator_custom_resources
+[projects]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-con_configuring_projects
+[preprov]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-proc_provisioning_projects_in_advance
+[limituser]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-proc_limiting_workspaces_per_user
+[multi]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-proc_enabling_multiple_workspaces_simultaneously
+[allowed]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-proc_configuring_allowed_urls_for_cde
+[containers]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-proc_enabling_container_run_capabilities
+[storagereq]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-con_storage_requirements
+[storage]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-proc_configuring_storage_strategy
+[sizes]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-proc_configuring_storage_sizes
+[home]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-con_persistent_user_home
+[netpol]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-proc_configuring_network_policies
+[tls]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/configure-proc_importing_untrusted_tls_certificates
+[roles]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/secure-proc_configuring_cluster_roles_for_users
+[authz]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/secure-proc_configuring_advanced_authorization
+[gitlabapp]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/integrate-proc_setting_up_the_gitlab_authorized_application
+[gitlabsecret]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/integrate-proc_applying_the_gitlab_authorized_application_secret
+[editorcfg]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/extend-proc_applying_editor_configurations
+[openvsx]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/extend-proc_configuring_open_vsx_registry_url
+[metrics]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/observe-proc_enabling_devspaces_metrics
+[logs]: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.31/observe-ref_collecting_logs_using_dsc
