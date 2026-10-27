@@ -131,7 +131,7 @@ oc get deploy,route -n evalhub
 | MLflow tracking | Running MLflow and tracking URI [1] | URI from a runtime ConfigMap, TLS verified with the service CA | Aligned |
 | Dashboard pages | `disableLMEval` defaults to `true` [3] | Set to `false` by `050-model-qualification` (`evaluation-enablement/`) | Aligned |
 | Global prompt workspace | Namespace label `opendatahub.io/global-mlflow-workspace` [2]; `globalProjectPrompts` Technology Preview [3] | Namespace and dashboard field both in `010-mlflow` | Aligned (Technology Preview) |
-| Argo CD | Server-Side Diff by annotation [6]; `Prune=false,Delete=false` for retained data [4] | PVC, namespaces and CR retained; StatefulSet, Service and NetworkPolicy not | Gap (inconsistent with `050-mlflow`; see findings) |
+| Argo CD | Server-Side Diff by annotation [6]; `Prune=false,Delete=false` for retained data [4] | PVC, namespaces and CR retained; StatefulSet, Service and NetworkPolicy not | Gap (inconsistent with `010-mlflow`; see findings) |
 
 ## References
 
