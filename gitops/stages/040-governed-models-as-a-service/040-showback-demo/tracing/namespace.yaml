@@ -1,0 +1,19 @@
+# MLflow workspace for per-request MaaS traces (one experiment per team subscription). Traces hold prompts and
+# responses, so only rhods-admins have access. The traces live in the MLflow database, not in this project; the
+# project is retained so a revert does not orphan the workspace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: maas-observability
+  labels:
+    app.kubernetes.io/name: maas-observability
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: tracing
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+    opendatahub.io/dashboard: 'true'
+  annotations:
+    openshift.io/display-name: MaaS Observability
+    openshift.io/description: Per-request traces of governed model use, one MLflow experiment per team. Platform admins only.
+    argocd.argoproj.io/sync-wave: '-1'
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
