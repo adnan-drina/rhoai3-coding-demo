@@ -14,3 +14,4 @@ resources:
   - playground-sandbox-access.yaml
   - model-qualification-access.yaml
   - quota-probe-access.yaml
+  - openshift-lightspeed-access.yaml

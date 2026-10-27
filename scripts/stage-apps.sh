@@ -34,6 +34,7 @@ CLUSTER_SCOPED='["/Namespace","rbac.authorization.k8s.io/ClusterRole","rbac.auth
  "datasciencecluster.opendatahub.io/DataScienceCluster","dscinitialization.opendatahub.io/DSCInitialization",
  "services.platform.opendatahub.io/Auth","mlflow.opendatahub.io/MLflow","policy.networking.k8s.io/AdminNetworkPolicy",
  "policy.networking.k8s.io/BaselineAdminNetworkPolicy","imageregistry.operator.openshift.io/Config","oauth.openshift.io/OAuthClient",
+ "ols.openshift.io/OLSConfig",
  "console.openshift.io/ConsoleLink","admissionregistration.k8s.io/ValidatingAdmissionPolicy",
  "admissionregistration.k8s.io/ValidatingAdmissionPolicyBinding"]'
 CACHE=$(mktemp -d)

@@ -1651,13 +1651,14 @@ products:
     pin:
       none: >-
         Preinstalled by the environment provisioner (channel stable, Automatic), not
-        managed in Git; live operator 1.1.5 observed 2026-10-15 (1.1.4 on 2026-10-05).
+        managed in Git; live operator 2.0.0 observed 2026-10-27 (1.1.5 on 2026-10-15).
         The "1.0" documentation set covers the 1.1.x releases.
     note: >
       Red Hat publishes a single documentation set labelled "1.0" (checked
       2026-10-15: the product page lists only 1.0 books). Its release notes
       cover 1.0, 1.1 and 1.1.1 to 1.1.4, so it is the set for the installed
-      1.1.x operator. The only Git touch point is the lightspeed-console-plugin
+      1.1.x operator; no 2.0 set exists yet (2026-10-27). Git owns the OLSConfig (Stage 040
+      040-openshift-lightspeed) and the lightspeed-console-plugin
       entry in Stage 010 console-observability.
     categories:
       about:

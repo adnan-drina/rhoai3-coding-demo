@@ -29,9 +29,9 @@ sections. Take field names from the OLSConfig API reference, never from memory.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| The OLSConfig and the provider credentials Secret are provisioner-owned and not in Git; the repo changes neither | not in Git; `docs/OPERATIONS.md` (Fresh environment baseline) | [Configuring and deploying][configure] |
+| The OLSConfig is in Git since 2026-10-27 (`040-openshift-lightspeed`); the provisioner still owns the operator and the Azure credentials Secret `azure-api-keys` | `gitops/stages/040-governed-models-as-a-service/040-openshift-lightspeed/olsconfig.yaml` | [Configuring and deploying][configure] |
 | Provider credentials are corrected only by their owner through the native Secret path; never rotated blindly or committed | `docs/TROUBLESHOOTING.md` (Lightspeed API unready) | [Create the credentials secret (CLI)][secret-cli] |
-| No MaaS or private-model provider is configured; doing so is an open design question (MaaS API keys, TLS trust of the MaaS gateway, token quotas on both sides) | — | [OLSConfig `.spec.llm.providers[]`][api-providers] |
+| Default provider `qwen-maas`: type `rhoai_vllm`, `https://maas.<cluster-domain>/v1` (patched by Stage 040 `deploy.sh`), model `publishers/internal-models/models/qwen3-8-27b`, Secret `qwen-maas-api-keys` key `apitoken` minted by a Sync-hook Job on MaaS subscription `openshift-lightspeed`; the gateway certificate is publicly trusted, so no CA ConfigMap. Azure stays as a second provider, its endpoint read from the live OLSConfig, never committed | `040-openshift-lightspeed/`, `040-model-access/openshift-lightspeed-access.yaml` | [OLSConfig `.spec.llm.providers[]`][api-providers] |
 
 ## Procedure
 

@@ -12,4 +12,5 @@ resources:
   - 040-external-models
   - 040-model-access
   - 040-genai-studio
+  - 040-openshift-lightspeed
   - 040-showback-demo

@@ -52,7 +52,9 @@ Red Hat OpenShift AI 3.5, OpenShift Container Platform 4.22, Red Hat Connectivit
 
 `deploy.sh [--revision REF]` deploys the reviewed published commit (default `GIT_REPO_BRANCH`, then `HEAD`) through the shared flow in `scripts/stage-apps.sh`. It starts a hook-strategy sync of each component whose current source has not been synced yet, creates the provider and database credentials in the cluster, and waits until every component is Synced and Healthy at that commit. No Argo CD CLI is needed.
 
-The default deployment selects eight Argo CD Applications, one per component, all at the same reviewed revision: `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access` and `040-genai-studio`. Switching a model or changing who may use it syncs only that component. A ninth Application, `040-showback-demo`, is optional and manually synced through explicit component selection. Its corrected release `adecf57cab87982f5b5a48c966860376474f8f62` serves the reviewed Qwen R2 report through one Ready publisher with verified native financial scraping. Native inputs remain inert and the Mistral draft is excluded.
+The default deployment selects nine Argo CD Applications, one per component, all at the same reviewed revision: `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access`, `040-genai-studio` and `040-openshift-lightspeed`. Switching a model or changing who may use it syncs only that component. A tenth Application, `040-showback-demo`, is optional and manually synced through explicit component selection.
+
+`040-openshift-lightspeed` points the console's OpenShift Lightspeed assistant at Qwen through MaaS (its own `openshift-lightspeed` subscription), keeping the provisioner's Azure OpenAI provider as a second choice ([component README](../../gitops/stages/040-governed-models-as-a-service/040-openshift-lightspeed/README.md)).
 
 ```bash
 ./stages/040-governed-models-as-a-service/deploy.sh

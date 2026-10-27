@@ -1,0 +1,85 @@
+# ServiceAccount that owns the openshift-lightspeed MaaS subscription (040-model-access) and writes the provider
+# Secret OpenShift Lightspeed reads (key apitoken, the field the Lightspeed documentation requires).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lightspeed-maas-key-provisioner
+  namespace: openshift-lightspeed
+  labels:
+    app.kubernetes.io/name: lightspeed-maas-key-provisioner
+    app.kubernetes.io/component: lightspeed-provider
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lightspeed-maas-key-provisioner
+  namespace: openshift-lightspeed
+  labels:
+    app.kubernetes.io/name: lightspeed-maas-key-provisioner
+    app.kubernetes.io/component: lightspeed-provider
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [qwen-maas-api-keys]
+    verbs: [get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lightspeed-maas-key-provisioner
+  namespace: openshift-lightspeed
+  labels:
+    app.kubernetes.io/name: lightspeed-maas-key-provisioner
+    app.kubernetes.io/component: lightspeed-provider
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lightspeed-maas-key-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: lightspeed-maas-key-provisioner
+    namespace: openshift-lightspeed
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lightspeed-maas-key-provisioner-gateway-reader
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: lightspeed-maas-key-provisioner
+    app.kubernetes.io/component: lightspeed-provider
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gateways]
+    resourceNames: [maas-default-gateway]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lightspeed-maas-key-provisioner-gateway-reader
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: lightspeed-maas-key-provisioner
+    app.kubernetes.io/component: lightspeed-provider
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lightspeed-maas-key-provisioner-gateway-reader
+subjects:
+  - kind: ServiceAccount
+    name: lightspeed-maas-key-provisioner
+    namespace: openshift-lightspeed

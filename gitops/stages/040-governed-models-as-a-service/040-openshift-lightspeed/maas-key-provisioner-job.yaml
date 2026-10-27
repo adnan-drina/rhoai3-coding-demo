@@ -1,0 +1,81 @@
+---
+# Sync hook: keep a MaaS API key for the openshift-lightspeed subscription in Secret qwen-maas-api-keys
+# (openshift-lightspeed), key `apitoken`, the provider credential the OLSConfig references. Mints the key as the
+# owning ServiceAccount, re-uses it while the MaaS API reports it active for this subscription, and re-mints an
+# expired or revoked key (server maximum, 90 days) on the next sync. The operator reads the Secret at start; with
+# credentialHotReload off, a re-minted key reaches Lightspeed when its app server restarts.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: provision-lightspeed-maas-key
+  namespace: openshift-lightspeed
+  labels:
+    app.kubernetes.io/name: lightspeed-maas-key-provisioner
+    app.kubernetes.io/component: lightspeed-provider
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: lightspeed-maas-key-provisioner
+      containers:
+        - name: provision
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          resources:
+            requests: {cpu: 50m, memory: 256Mi}
+            limits: {cpu: 500m, memory: 1Gi}
+          command:
+            - /bin/bash
+            - -ceu
+            - |
+              NS=openshift-lightspeed
+              SUBSCRIPTION=openshift-lightspeed
+              SECRET_NAME=qwen-maas-api-keys
+              MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[?(@.name=="api")].hostname}')"
+              if [ -z "${MAAS_HOST}" ] || echo "${MAAS_HOST}" | grep -q placeholder; then echo "ERROR: MaaS Gateway api hostname is not ready" >&2; exit 1; fi
+              MAAS_BASE_URL="https://${MAAS_HOST}"
+              SA_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              # Key material only ever lives in shell variables, private temp files and the Secret; never in logs or argv.
+              umask 077; WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"' EXIT
+              secret_value() { oc get secret "${SECRET_NAME}" -n "${NS}" -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true; }
+              key_state() {
+                curl -s -m 20 -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/$1" \
+                  | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""), d.get("subscription",""))' 2>/dev/null || true
+              }
+              current_key="$(secret_value apitoken)"; current_id="$(secret_value key_id)"; current_state=""
+              [ -n "${current_key}" ] && [ -n "${current_id}" ] && current_state="$(key_state "${current_id}")"
+              if [ "${current_state}" = "active ${SUBSCRIPTION}" ]; then
+                echo "Keeping the existing MaaS API key for ${SUBSCRIPTION}"
+                exit 0
+              fi
+              if [ -n "${current_id}" ]; then
+                status=$(curl -s --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer ${SA_TOKEN}" "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
+                echo "Revoked previous key ${current_id} (HTTP ${status})"
+              fi
+              response="${WORK}/response.json"; key=""
+              # The subscription may still be reconciling in the same deployment; retry briefly.
+              for attempt in $(seq 1 18); do
+                status=$(curl -s -o "${response}" -w '%{http_code}' -X POST -H "Authorization: Bearer ${SA_TOKEN}" -H "Content-Type: application/json" \
+                  -d "{\"name\":\"openshift-lightspeed-qwen\",\"subscription\":\"${SUBSCRIPTION}\"}" "${MAAS_BASE_URL}/maas-api/v1/api-keys")
+                key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("key",""))' "${response}" 2>/dev/null || true)"
+                if [ "${status}" -ge 200 ] && [ "${status}" -lt 300 ] && echo "${key}" | grep -q '^sk-oai-'; then break; fi
+                echo "Key creation attempt ${attempt}: HTTP ${status}; retrying in 10s"; key=""; sleep 10
+              done
+              [ -n "${key}" ] || { echo "ERROR: MaaS API did not return a valid key for ${SUBSCRIPTION}" >&2; exit 1; }
+              id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "${response}")"
+              expires_at="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("expiresAt",""))' "${response}")"
+              printf 'apitoken=%s\nkey_id=%s\nexpires_at=%s\nsubscription=%s\n' "${key}" "${id}" "${expires_at}" "${SUBSCRIPTION}" > "${WORK}/secret.env"
+              oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-env-file="${WORK}/secret.env" --dry-run=client -o yaml \
+                | oc apply --server-side --force-conflicts --field-manager=lightspeed-maas-key-provisioner -f -
+              oc annotate secret "${SECRET_NAME}" -n "${NS}" kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true
+              echo "Provisioned a MaaS API key for ${SUBSCRIPTION} (id ${id}, expires ${expires_at:-unset})"

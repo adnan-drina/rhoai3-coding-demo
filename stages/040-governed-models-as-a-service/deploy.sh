@@ -622,7 +622,20 @@ oc --request-timeout=10s get ingresscontroller default -n openshift-ingress-oper
       name: "maas-default-gateway", namespace: "openshift-ingress"},
     patch: ("[" + ([["maas", "qwen3-8-maas", "mistral-small4-maas"] | to_entries[]
       | "{\"op\": \"replace\", \"path\": \"/spec/listeners/\(.key)/hostname\", \"value\": \"\(.value).\($d)\"}"] | join(", ")) + "]")}]}' \
-  > "$work/patches.json"
+  > "$work/gateway-patches.json"
+# OpenShift Lightspeed (operator preinstalled by the provisioner): the Qwen provider URL is this cluster's MaaS api
+# listener; the provisioner's Azure OpenAI provider keeps its endpoint, read from the live OLSConfig (never committed),
+# or the entry is dropped when the environment has none.
+oc --request-timeout=10s get crd olsconfigs.ols.openshift.io >/dev/null ||
+  { log_error "OpenShift Lightspeed operator (OLSConfig API) is not installed; 040-openshift-lightspeed needs it"; exit 1; }
+azure_url=$(oc --request-timeout=10s get olsconfig cluster --ignore-not-found -o json |
+  jq -r '[.spec.llm.providers[]? | select(.name == "Azure" and .type == "azure_openai") | .url][0] // ""')
+[[ -z "$azure_url" || "$azure_url" =~ ^https://[a-z0-9.-]+/?$ ]] || { log_error "Unexpected Azure OpenAI endpoint in the live OLSConfig"; exit 1; }
+oc --request-timeout=10s get ingresscontroller default -n openshift-ingress-operator -o json | jq -c --arg azure "$azure_url" \
+  --slurpfile g "$work/gateway-patches.json" '(.status.domain) as $d | $g[0] + {"040-openshift-lightspeed": [{target: {group: "ols.openshift.io",
+    version: "v1alpha1", kind: "OLSConfig", name: "cluster"}, patch: ([{op: "replace", path: "/spec/llm/providers/0/url",
+    value: "https://maas.\($d)/v1"}] + (if $azure == "" then [{op: "remove", path: "/spec/llm/providers/1"}]
+    else [{op: "replace", path: "/spec/llm/providers/1/url", value: $azure}] end) | tojson)}]}' > "$work/patches.json"
 
 # First change: the component Applications at the reviewed commit. Their hooks wait for the credentials below
 # (040-maas-database's wait-db-credentials Job), so set those up before waiting.

@@ -593,6 +593,25 @@ listener_rule_names() {
     [[ "$shared" == "[]" ]] && echo yes || echo "shared rule names: $(jq -r 'map(.listener + " (" + (.shared | join(",")) + ")") | join("; ")' <<<"$shared")"
 }
 check "No two routes on one gateway listener share a rule name (endpoint-picker collision)" listener_rule_names yes
+# OpenShift Lightspeed answers on the private production model: Qwen through MaaS is the default provider at this
+# cluster's api listener, its key Secret carries apitoken (presence only, never the value), and the API is Ready.
+lightspeed_provider() {
+    local ols api_host
+    ols=$(read_json olsconfig cluster) || { echo "OLSConfig cluster unreadable"; return; }
+    api_host=$(jq -r '.spec.listeners[] | select(.name == "api") | .hostname' <<<"$GATEWAY")
+    jq -e --arg u "https://$api_host/v1" '.spec.ols.defaultProvider == "qwen-maas"
+        and .spec.ols.defaultModel == "publishers/internal-models/models/qwen3-8-27b"
+        and any(.spec.llm.providers[]; .name == "qwen-maas" and .type == "rhoai_vllm" and .url == $u
+            and .credentialsSecretRef.name == "qwen-maas-api-keys")
+        and all(.spec.llm.providers[]; (.url | contains("placeholder")) | not)' <<<"$ols" >/dev/null ||
+        { echo "Qwen MaaS provider, default or URL differs"; return; }
+    [[ $(oc --request-timeout="$TIMEOUT" get secret qwen-maas-api-keys -n openshift-lightspeed -o json 2>/dev/null |
+        jq -r '.data.apitoken // "" | length > 0') == true ]] || { echo "provider Secret lacks apitoken"; return; }
+    jqd -e 'any(.status.conditions[]?; .type == "ApiReady" and .status == "True")' <<<"$ols" >/dev/null ||
+        { echo "Lightspeed API not Ready"; return; }
+    echo yes
+}
+check "OpenShift Lightspeed uses Qwen through MaaS by default (key Secret present, API Ready)" lightspeed_provider yes
 check "Studio catalog entries current, or deferred until Stage 060 deploys the MCP servers" studio_catalog yes
 check "MaaS gateway AdminNetworkPolicy boundary: needed destinations open, others blocked" gateway_boundary yes
 if [[ "$MODE" == --readiness ]]; then

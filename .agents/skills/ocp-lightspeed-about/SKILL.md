@@ -33,10 +33,10 @@ Lightspeed documentation. The version lives in
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Lightspeed is a provisioner add-on, not a demo stage; no Subscription, OLSConfig or Secret for it exists in Git | `docs/OPERATIONS.md` (Fresh environment baseline) | [OpenShift Lightspeed overview][overview] |
+| The provisioner installs the operator (no Subscription in Git); Stage 040 `040-openshift-lightspeed` owns the OLSConfig | `gitops/stages/040-governed-models-as-a-service/040-openshift-lightspeed/` | [OpenShift Lightspeed overview][overview] |
 | The only Git touch point is the plugin name `lightspeed-console-plugin` in the Console `spec.plugins` list | `gitops/stages/010-openshift-ai-platform-foundation/010-console-observability/console-plugins.yaml` | [Supported interfaces][interfaces] |
-| Lightspeed does not use the demo's private models or MaaS; its provider (Azure OpenAI on the observed cluster) is set by the provisioner | not in Git; `docs/TROUBLESHOOTING.md` | [LLM requirements][llm] |
-| Not done: an OpenShift AI provider for Lightspeed. The docs list Red Hat OpenShift AI as a provider; routing it through MaaS would be a new, unvalidated decision | — | [Red Hat OpenShift AI][llm-rhoai] |
+| Lightspeed answers on the private production model, Qwen through MaaS, by default; the provisioner's Azure OpenAI stays as a second provider | `040-openshift-lightspeed/olsconfig.yaml` | [LLM requirements][llm] |
+| The OpenShift AI provider type (`rhoai_vllm`) is used against the MaaS gateway's OpenAI-compatible `/v1` API with a MaaS key | `040-openshift-lightspeed/` | [Red Hat OpenShift AI][llm-rhoai] |
 
 ## Pitfalls
 

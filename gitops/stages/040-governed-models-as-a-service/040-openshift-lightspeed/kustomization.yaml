@@ -1,0 +1,15 @@
+# OpenShift Lightspeed on the private production model: the operator is preinstalled by the environment provisioner
+# (not in Git); this component owns the OLSConfig and the MaaS key it uses.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: rhoai3-coding-demo
+      demo.rhoai.io/stage: "040"
+
+resources:
+  - maas-key-provisioner-rbac.yaml
+  - maas-key-provisioner-job.yaml
+  - olsconfig.yaml

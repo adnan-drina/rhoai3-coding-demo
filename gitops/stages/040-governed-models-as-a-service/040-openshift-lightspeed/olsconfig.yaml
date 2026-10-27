@@ -1,0 +1,70 @@
+# OpenShift Lightspeed answers on the private production model: Qwen through Models-as-a-Service with the
+# openshift-lightspeed subscription (provider type rhoai_vllm, URL ending in /v1, Secret key apitoken, as the
+# Lightspeed "Configure" guide documents). The environment provisioner's Azure OpenAI provider stays as a second,
+# selectable provider with its own Secret. Every other setting is the provisioner's, unchanged.
+# Cluster-specific values arrive as a deploy-time patch from stages/040-governed-models-as-a-service/deploy.sh:
+# providers/0 url = https://<MaaS api listener host>/v1; providers/1 url = the provisioner's Azure endpoint (read from
+# the live OLSConfig), or providers/1 removed when the environment has no Azure provider.
+apiVersion: ols.openshift.io/v1alpha1
+kind: OLSConfig
+metadata:
+  name: cluster
+  labels:
+    app.kubernetes.io/name: openshift-lightspeed
+    app.kubernetes.io/component: lightspeed-provider
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  llm:
+    providers:
+      - name: qwen-maas
+        type: rhoai_vllm
+        url: https://maas.placeholder.example.com/v1
+        credentialsSecretRef:
+          name: qwen-maas-api-keys
+        models:
+          - name: publishers/internal-models/models/qwen3-8-27b
+            contextWindowSize: 131072
+            parameters:
+              maxTokensForResponse: 4096
+      - name: Azure
+        type: azure_openai
+        url: https://azure-openai.placeholder.example.com/
+        deploymentName: gpt-4
+        credentialsSecretRef:
+          name: azure-api-keys
+        models:
+          - name: gpt-4
+            parameters:
+              toolBudgetRatio: 0.5
+  ols:
+    defaultProvider: qwen-maas
+    defaultModel: publishers/internal-models/models/qwen3-8-27b
+    conversationCache:
+      type: postgres
+      postgres:
+        maxConnections: 2000
+        sharedBuffers: 256MB
+    credentialHotReload: false
+    deployment:
+      agenticConsole: {replicas: 1}
+      alertsAdapter: {replicas: 1}
+      api: {replicas: 1}
+      console: {replicas: 1}
+      dataCollector: {}
+      database: {replicas: 1}
+      mcpServer: {replicas: 1}
+      otelCollector: {replicas: 1}
+      rhokp: {replicas: 1}
+    introspectionEnabled: true
+    logLevel: DEBUG
+    maxIterations: 5
+    queryFilters:
+      - name: ip-address
+        pattern: '((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}'
+        replaceWith: <IP-ADDRESS>
+    userDataCollection: {}
+  audit: {}
+  olsDataCollector:
+    logLevel: INFO
