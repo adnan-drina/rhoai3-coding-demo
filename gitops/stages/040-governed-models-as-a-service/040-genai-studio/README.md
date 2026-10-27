@@ -47,7 +47,8 @@ Application holds them because they all change with the playground experience an
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| PersistentVolumeClaim | `genai-playground-state` | `demo-sandbox` | 1 Gi RWO volume for the playground's SQLite state. It is mounted into a newly created playground through the `OGXServer` workload override. Wave 8, `Prune=false,Delete=false` |
+| PersistentVolumeClaim | `genai-playground-state` | `demo-sandbox` | 1 Gi RWO volume for the playground's SQLite state (`kvstore.db`, `sql_store.db`, `inference_store.db`, `files/`). Wave 8, `Prune=false,Delete=false` |
+| ServiceAccount, Role, RoleBinding, CronJob | `playground-state-attacher` | `demo-sandbox` | Every 2 minutes, mounts `genai-playground-state` at `/opt/app-root/src/.llama/distributions/rh` in the dashboard-created playground through the `OGXServer` fields `spec.workload.overrides.volumes`/`volumeMounts`, keeping the other overrides. Role: `get`/`list`/`patch` OGXServers, `get` that PVC. Waves 18/20 |
 
 ### MCP server discovery (`mcp/`)
 
@@ -109,9 +110,16 @@ Argo CD from removing them [6][7]. `stages/040-governed-models-as-a-service/depl
 at the expected revision, and needs `stages/040-governed-models-as-a-service/studio-mcp/publish.sh --replace` to change a published value.
 
 **Retained state PVC.** `Prune=false,Delete=false` keeps playground history when the Application or object is removed
-[6]. Attach it only to a freshly created playground (the former helper `studio-api.sh` is in git history at
-`82092e01`); moving existing state needs the backup and
-restore procedure in `docs/OPERATIONS.md`.
+[6]. A user creates the playground from the dashboard at any time after this stage, and the dashboard may rewrite
+its `OGXServer`, so the `playground-state-attacher` CronJob reconciles the mount instead of a one-time deploy step. It
+attaches the PVC only to a playground created within the last 10 minutes, or when the PVC is already Bound (it then
+holds an earlier playground's state, which the new one resumes). It leaves an older playground alone while the PVC is
+empty, because the mount would hide that playground's current state; its log says so, and
+`validate.sh` warns: delete and re-create the playground to persist it. With more than one `OGXServer` in
+`demo-sandbox` it attaches nothing (one RWO volume holds one playground). Moving existing state needs the backup and
+restore procedure in `docs/OPERATIONS.md`. The playground Deployment rolls out with `RollingUpdate`; like the
+service-owned `genai-pgvector` volume, a rollout whose new pod lands on another node waits for the old pod to release
+the RWO volume.
 
 **Secrets.** No secret values in Git. The only Secret is the endpoint key, minted at runtime.
 

@@ -614,6 +614,26 @@ lightspeed_provider() {
 }
 check "OpenShift Lightspeed uses Qwen through MaaS by default (key Secret present, API Ready)" lightspeed_provider yes
 check "Studio catalog entries current, or deferred until Stage 060 deploys the MCP servers" studio_catalog yes
+# The playground keeps its SQLite state on the retained PVC (040-genai-studio playground-state-attacher). No playground
+# yet is fine; one the attacher left alone (created before it, with an empty PVC) is a warning naming the remedy.
+playground_state() {
+    local servers name deploy
+    servers=$(read_json ogxservers.ogx.io -n demo-sandbox) || { echo "OGXServers unreadable"; return; }
+    [[ $(jq '.items | length' <<<"$servers") -gt 0 ]] || { echo yes; return; }
+    name=$(jq -r '.items[0].metadata.name' <<<"$servers")
+    jq -e '.items | length == 1' <<<"$servers" >/dev/null || { echo "more than one playground OGXServer; the state PVC holds one"; return; }
+    jq -e '.items[0].spec.workload.overrides as $o | any($o.volumes[]?; .name == "retained-sqlite"
+        and .persistentVolumeClaim.claimName == "genai-playground-state")
+        and any($o.volumeMounts[]?; .name == "retained-sqlite" and .mountPath == "/opt/app-root/src/.llama/distributions/rh")' \
+        <<<"$servers" >/dev/null || { echo "$name has no retained state mount (see playground-state-attacher logs; re-create the playground)"; return; }
+    deploy=$(read_json deployment "$name" -n demo-sandbox) || { echo "Deployment $name unreadable"; return; }
+    jq -e 'any(.spec.template.spec.volumes[]?; .persistentVolumeClaim.claimName == "genai-playground-state")
+        and (.status.readyReplicas // 0) >= 1' <<<"$deploy" >/dev/null || { echo "Deployment $name does not run with the state PVC"; return; }
+    [[ $(oc --request-timeout="$TIMEOUT" get pvc genai-playground-state -n demo-sandbox -o jsonpath='{.status.phase}') == Bound ]] ||
+        { echo "state PVC not Bound"; return; }
+    echo yes
+}
+check_warn "Gen AI playground keeps its state on the retained PVC (or no playground yet)" playground_state yes
 check "MaaS gateway AdminNetworkPolicy boundary: needed destinations open, others blocked" gateway_boundary yes
 if [[ "$MODE" == --readiness ]]; then
     echo "Scope: native readiness only; authenticated inference, streaming, traffic and user Studio acceptance: --functional."

@@ -1,0 +1,135 @@
+---
+# Attaches the retained state PVC genai-playground-state to the dashboard-created playground OGXServer in
+# demo-sandbox, through the CRD's spec.workload.overrides.volumes/volumeMounts, at the directory the playground keeps
+# its SQLite stores in (kvstore.db, sql_store.db, inference_store.db, files/). A user creates the playground from the
+# dashboard at any time after this stage, and the dashboard may rewrite the OGXServer, so a CronJob reconciles it.
+# It attaches only to a NEW playground (created within the last 10 minutes) or when the PVC is already Bound (it
+# then holds a playground's earlier state): mounting an empty volume over an older playground would hide the state
+# that playground already has. Every other case is logged and left alone.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: playground-state-attacher
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: playground-state-attacher
+    app.kubernetes.io/component: studio-state
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: playground-state-attacher
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: playground-state-attacher
+    app.kubernetes.io/component: studio-state
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: [ogx.io]
+    resources: [ogxservers]
+    verbs: [get, list, patch]
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    resourceNames: [genai-playground-state]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: playground-state-attacher
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: playground-state-attacher
+    app.kubernetes.io/component: studio-state
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: playground-state-attacher
+subjects:
+  - kind: ServiceAccount
+    name: playground-state-attacher
+    namespace: demo-sandbox
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: playground-state-attacher
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: playground-state-attacher
+    app.kubernetes.io/component: studio-state
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: playground-state-attacher
+        spec:
+          restartPolicy: Never
+          serviceAccountName: playground-state-attacher
+          containers:
+            - name: attach
+              image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+                runAsNonRoot: true
+                seccompProfile: {type: RuntimeDefault}
+              resources:
+                requests: {cpu: 20m, memory: 256Mi}
+                limits: {cpu: 500m, memory: 1Gi}  # the oc client in ose-cli was OOMKilled at 256Mi
+              command:
+                - /bin/bash
+                - -ceu
+                - |
+                  NS=demo-sandbox PVC=genai-playground-state VOLUME=retained-sqlite MAX_AGE=600
+                  MOUNT=/opt/app-root/src/.llama/distributions/rh
+                  names=$(oc get ogxservers.ogx.io -n "$NS" -o jsonpath='{.items[*].metadata.name}')
+                  set -- $names
+                  if [ "$#" -eq 0 ]; then echo "no playground in $NS"; exit 0; fi
+                  # One ReadWriteOnce volume holds one playground's state.
+                  if [ "$#" -gt 1 ]; then echo "SKIP: $# OGXServers in $NS ($names); the state PVC is not attached"; exit 0; fi
+                  name=$1
+                  doc=$(oc get ogxserver "$name" -n "$NS" -o json)
+                  phase=$(oc get pvc "$PVC" -n "$NS" -o jsonpath='{.status.phase}')
+                  plan=$(printf '%s' "$doc" | PVC=$PVC VOLUME=$VOLUME MOUNT=$MOUNT MAX_AGE=$MAX_AGE PHASE=$phase python3 -c '
+                  import datetime, json, os, sys
+                  d = json.load(sys.stdin)
+                  o = ((d.get("spec") or {}).get("workload") or {}).get("overrides") or {}
+                  vols, mounts = list(o.get("volumes") or []), list(o.get("volumeMounts") or [])
+                  if any((v.get("persistentVolumeClaim") or {}).get("claimName") == os.environ["PVC"] for v in vols):
+                      print("attached"); sys.exit()
+                  born = datetime.datetime.strptime(d["metadata"]["creationTimestamp"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+                  age = int((datetime.datetime.now(datetime.timezone.utc) - born).total_seconds())
+                  if age > int(os.environ["MAX_AGE"]) and os.environ["PHASE"] != "Bound":
+                      print("refuse %d" % age); sys.exit()
+                  vols.append({"name": os.environ["VOLUME"], "persistentVolumeClaim": {"claimName": os.environ["PVC"]}})
+                  mounts.append({"name": os.environ["VOLUME"], "mountPath": os.environ["MOUNT"]})
+                  # resourceVersion makes the merge patch fail rather than overwrite a concurrent dashboard edit
+                  print("patch " + json.dumps({"metadata": {"resourceVersion": d["metadata"]["resourceVersion"]},
+                      "spec": {"workload": {"overrides": {"volumes": vols, "volumeMounts": mounts}}}}))
+                  ')
+                  case "$plan" in
+                    attached) echo "OK: $NS/$name already mounts $PVC" ;;
+                    refuse*) echo "SKIP: $NS/$name is ${plan#refuse }s old and $PVC is empty; attaching would hide its current state. Re-create the playground to persist it." ;;
+                    patch*) printf '%s' "${plan#patch }" | oc patch ogxserver "$name" -n "$NS" --type=merge --patch-file=/dev/stdin >/dev/null
+                            echo "OK: attached $PVC to $NS/$name at $MOUNT (PVC was ${phase:-unknown})" ;;
+                  esac

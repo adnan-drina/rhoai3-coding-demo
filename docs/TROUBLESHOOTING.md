@@ -807,6 +807,24 @@ oc get maastenantconfig default-tenant \
 ./stages/040-governed-models-as-a-service/validate.sh --readiness
 ```
 
+## Gen AI Playground Loses Its History After A Restart
+
+**Affected stage:** Stage 040
+
+**Likely cause:** The playground keeps its saved responses, conversations and settings in SQLite under `/opt/app-root/src/.llama/distributions/rh`. Without the retained PVC `genai-playground-state` mounted there, that directory is the pod's own filesystem and is lost on every restart. The `playground-state-attacher` CronJob mounts the PVC only into a playground created within the last 10 minutes, or when the PVC already holds state. It leaves an older playground alone while the PVC is empty, because the mount would hide its current state. A `Pending` PVC (`WaitForFirstConsumer`) means no playground has mounted it yet.
+
+**Diagnose:**
+
+```bash
+oc get ogxservers.ogx.io -n demo-sandbox \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.creationTimestamp}{" "}{.spec.workload.overrides.volumes[*].persistentVolumeClaim.claimName}{"\n"}{end}'
+oc get pvc genai-playground-state -n demo-sandbox
+oc logs -n demo-sandbox "$(oc get jobs -n demo-sandbox -l app.kubernetes.io/name=playground-state-attacher \
+  --sort-by=.metadata.creationTimestamp -o name | tail -1)"
+```
+
+**Recover:** if the log says the playground is too old to attach, delete the playground from the dashboard and create it again; the CronJob mounts the PVC within two minutes. To keep the current history, follow the Studio state backup and restore procedure in `docs/OPERATIONS.md` instead. `./stages/040-governed-models-as-a-service/validate.sh` warns while a playground runs without the mount.
+
 ## AI Asset Endpoints MaaS API Key Dialog Shows An Empty Key
 
 **Affected stage:** Stage 040

@@ -16,4 +16,5 @@ resources:
   - agent-prompt-provisioner-job.yaml
   - agent-profile-openshift-ops-assistant.yaml
   - genai-playground-state-pvc.yaml
+  - playground-state-attacher.yaml
   - mcp
