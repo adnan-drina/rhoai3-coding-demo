@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Offline checks for the showback demo: script syntax, the rendered component (team access matrix, opt-in dedicated
-# model, live dashboards, metering) and the metering-profile activation helper. Contacts no cluster.
+# Offline checks for the showback demo: script syntax, the rendered component (team access matrix, dedicated Mistral
+# served by 040-local-models, live dashboards, metering) and the metering-profile activation helper. Contacts no cluster.
 # Usage: stages/040-governed-models-as-a-service/showback-demo/validate.sh
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,9 +17,7 @@ done
 record 'Shell scripts parse' "$syntax"
 
 kustomize build "$COMPONENT" | yaml_json > "$work/bundle.json"
-# The opt-in dedicated offer (Marketing's Mistral) is rendered separately; the access matrix covers both.
-kustomize build "$COMPONENT/dedicated" | yaml_json > "$work/dedicated.json"
-jq -s 'add' "$work/bundle.json" "$work/dedicated.json" > "$work/all.json"
+kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-local-models" | yaml_json > "$work/local-models.json"
 # Engineering and Support share Qwen; Marketing owns Mistral; Support alone reaches the external models.
 if jq -e '
     def refs($kind; $name): [.[] | select(.kind == $kind and .metadata.name == $name) | .spec.modelRefs[] |
@@ -30,22 +28,20 @@ if jq -e '
         "external-models/nemotron-3-ultra-550b-a55b", "internal-models/qwen3-8-27b"]
     and (. as $b | all("team-engineering", "team-marketing", "team-support"; . as $t |
         ($b | refs("MaaSSubscription"; $t)) == ($b | refs("MaaSAuthPolicy"; $t))))
-    and all(.[] | select(.kind == "MaaSSubscription"); .spec.owner.users == ["showback-" + (.metadata.name | ltrimstr("team-"))])
-' "$work/all.json" >/dev/null; then
+    and all(.[] | select(.kind == "MaaSSubscription" and (.metadata.name | startswith("team-")));
+        .spec.owner.users == ["showback-" + (.metadata.name | ltrimstr("team-"))])
+' "$work/bundle.json" >/dev/null; then
     record 'Team access matrix: shared Qwen, dedicated Mistral, external for Support' pass
 else record 'Team access matrix: shared Qwen, dedicated Mistral, external for Support' 'Subscriptions or policies differ'; fi
 
-if jq -e '[.[] | select(.kind == "LLMInferenceService")] as $m | ($m | length) == 1
-    and $m[0].metadata.name == "mistral-small4-119b" and $m[0].spec.replicas == 0
-    and any(.[]; .kind == "MaaSModelRef" and .metadata.name == "mistral-small4-119b")' "$work/dedicated.json" >/dev/null; then
-    record 'Opt-in dedicated Mistral model is declared and stopped in Git' pass
-else record 'Opt-in dedicated Mistral model is declared and stopped in Git' 'Model or reference differs'; fi
-
-# A second local model on the shared api listener breaks Qwen routing on RHOAI 3.5.2, so the default installs none.
-if jq -e 'all(.[]; .kind != "LLMInferenceService" and .kind != "MaaSModelRef")
-    and all(.[]; .metadata.name != "team-marketing")' "$work/bundle.json" >/dev/null; then
-    record 'Default bundle installs no second local model' pass
-else record 'Default bundle installs no second local model' 'The default bundle declares a local model or the dedicated offer'; fi
+# The bundle holds team access only; 040-local-models serves and publishes Mistral, on its own Gateway listener only,
+# because a second local model on the shared api listener breaks Qwen routing on RHOAI 3.5.2 (RHOAIENG-93709).
+if jq -e 'all(.[]; .kind != "LLMInferenceService" and .kind != "MaaSModelRef")' "$work/bundle.json" >/dev/null &&
+    jq -e '[.[] | select(.kind == "LLMInferenceService" and .metadata.name == "mistral-small4-119b")] as $m | ($m | length) == 1
+    and ($m[0].spec.router.gateway.refs | map(.sectionName)) == ["mistral-small4"]
+    and any(.[]; .kind == "MaaSModelRef" and .metadata.name == "mistral-small4-119b")' "$work/local-models.json" >/dev/null; then
+    record 'Dedicated Mistral is served by 040-local-models on its own listener, not by the bundle' pass
+else record 'Dedicated Mistral is served by 040-local-models on its own listener, not by the bundle' 'Model, reference or listener differs'; fi
 
 # Every dashboard panel is laid out, reads the RHOAI datasource and no financial number comes from a static report.
 if jq -e '[.[] | select(.kind == "PersesDashboard")] as $d
@@ -60,15 +56,15 @@ if jq -e '[.[] | select(.kind == "PersesDashboard")] as $d
 else record 'Three live offer dashboards: every panel laid out and queried from the RHOAI datasource' 'Dashboard differs'; fi
 
 # The offer catalog drives every private-offer panel: each offered model needs a worker price, shared models a tariff,
-# dedicated models a sponsor, and every dedicated model must exist in this bundle.
-if jq -e '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog") | .spec.groups[].rules[]] as $r
+# dedicated models a sponsor, and every dedicated model must be served by 040-local-models.
+if jq -e --slurpfile local "$work/local-models.json" '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog") | .spec.groups[].rules[]] as $r
     | ($r | map(select(.record == "showback_offer_info") | .labels)) as $info | ($info | length) > 0
     and all($info[]; . as $i | any($r[]; .record == "showback_offer_worker_usd_per_hour" and .labels.model == $i.model)
         and (.sponsor | type == "string" and length > 0)
         and (if .offer == "shared" then any($r[]; .record == "showback_offer_tariff_usd_per_million" and .labels.model == $i.model)
              else .offer == "dedicated" end))
-    and ([$info[] | select(.offer == "dedicated") | .model] - [.[] | select(.kind == "LLMInferenceService") | .metadata.name]
-        | length) == 0' "$work/all.json" >/dev/null; then
+    and ([$info[] | select(.offer == "dedicated") | .model] - [$local[0][] | select(.kind == "LLMInferenceService") | .metadata.name]
+        | length) == 0' "$work/bundle.json" >/dev/null; then
     record 'Offer catalog: every offered model has an offering, sponsor and price' pass
 else record 'Offer catalog: every offered model has an offering, sponsor and price' 'Catalog incomplete'; fi
 

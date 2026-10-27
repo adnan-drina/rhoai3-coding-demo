@@ -704,7 +704,7 @@ oc get httproute -A -o json | jq -r '[.items[] | . as $r | .spec.parentRefs[]?
 for the Qwen request IDs; in the gateway's `config_dump`, the `v1-model-routing` entries for
 `publishers/internal-models/models/qwen3-8-27b` on the `api` listener name the other model's `epp-service` cluster.
 
-**Prevention:** Keep one local model on the shared `api` listener. The showback dedicated Mistral model attaches only to
+**Prevention:** Keep one local model on the shared `api` listener. Mistral (`040-local-models`) attaches only to
 its own Gateway listener, `mistral-small4` (`mistral-small4-maas.<apps-domain>`); Stage 040 `validate.sh` checks the three
 listeners and every model route.
 

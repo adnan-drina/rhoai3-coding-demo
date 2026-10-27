@@ -1,4 +1,5 @@
-# Private models served on OpenShift AI and published to MaaS.
+# Private models served on OpenShift AI and published to MaaS: Qwen 3.8 (shared coding model) and
+# Mistral Small 4 (second GPU worker; the showback demo's dedicated Marketing offer).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -16,6 +17,8 @@ resources:
   - local-queue.yaml
   - qwen38-27b-llminferenceservice.yaml
   - qwen38-27b-maas-modelref.yaml
+  - mistral-small4-119b-llminferenceservice.yaml
+  - mistral-small4-119b-maas-modelref.yaml
   - monitoring
 
 # Qwen 3.8 checkpoint format. Default: RedHatAI/Qwen3.8-27B-NVFP4. Both NVFP4 and FP8 are

@@ -50,3 +50,13 @@ spec:
     - "/metadata/labels/modelregistry.opendatahub.io~1registered-model-id"
     - "/metadata/labels/modelregistry.opendatahub.io~1model-version-id"
     - "/metadata/labels/modelregistry.opendatahub.io~1inference-service-id"
+  - group: serving.kserve.io
+    kind: LLMInferenceService
+    name: mistral-small4-119b
+    namespace: internal-models
+    jsonPointers:
+    - "/spec/replicas"
+    - "/metadata/labels/modelregistry.opendatahub.io~1name"
+    - "/metadata/labels/modelregistry.opendatahub.io~1registered-model-id"
+    - "/metadata/labels/modelregistry.opendatahub.io~1model-version-id"
+    - "/metadata/labels/modelregistry.opendatahub.io~1inference-service-id"

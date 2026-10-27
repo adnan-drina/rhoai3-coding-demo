@@ -79,13 +79,12 @@ showback_source_state() {
         ${RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION:+--revision "$RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION"} \
         >/dev/null 2>&1 || { echo "showback Application not Synced and Healthy at its reviewed revision"; return; }
     jq -e '. as $all | [.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $metering |
-        # The dedicated offer (team-marketing with its Mistral model) is part of the bundle; a bundle without it is accepted.
-        ([.[] | select(.kind == "LLMInferenceService") | .metadata.name]) as $local
+        # Team access only: both local models, the dedicated Mistral included, belong to 040-local-models.
         # Quality scoring of the team traces adds the judge subscription, its key hook and the hourly scorer.
-        | ((if $local == [] then ["team-engineering","team-support"] else ["team-engineering","team-marketing","team-support"] end)
+        ((["team-engineering","team-marketing","team-support"]
            + (if any($all[]; .kind == "CronJob" and .metadata.name == "maas-quality-scorer") then ["maas-quality-judge"] else [] end)
            | sort) as $teams
-        | ($local == [] or $local == ["mistral-small4-119b"])
+        | all(.[]; .kind != "LLMInferenceService" and .kind != "MaaSModelRef")
         and ([.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort) == $teams
         and ([.[] | select(.kind == "MaaSAuthPolicy") | .metadata.name] | sort) == $teams
         and ([.[] | select(.kind == "PersesDashboard")] | length) == 3
@@ -120,7 +119,6 @@ showback_source_state() {
             and (.metadata.ownerReferences // [] | length) == 0
             and .metadata.annotations["argocd.argoproj.io/tracking-id"] == $t
             and covers($d | if .kind == "ConfigMap" and .data == {} then del(.data)
-                elif .kind == "LLMInferenceService" then del(.spec.replicas)
                 # The image trigger resolves the metering tag to the digest of the latest in-cluster build.
                 elif .kind == "Deployment" and .metadata.name == "showback-external-metering"
                     then del(.spec.template.spec.containers[].image)
@@ -284,8 +282,8 @@ gateway() {
             | ($e.spec.listeners[] | select(.name == $name) | .allowedRoutes) == $li.allowedRoutes
             and $li.port == 443 and $li.protocol == "HTTPS" and $li.tls.mode == "Terminate"
             and all("Accepted", "ResolvedRefs"; . as $t | any($st[$name].conditions[]?; .type == $t and .status == "True" and .observedGeneration == $g))
-            # The dedicated model listener carries a route only while the optional showback component is installed.
-            and (($st[$name].attachedRoutes // 0) | if $name == "api" then . >= 1 elif $name == "qwen3-8" then . == 1 else . <= 1 end)
+            # Each model listener carries exactly the route of its model.
+            and (($st[$name].attachedRoutes // 0) | if $name == "api" then . >= 1 else . == 1 end)
             and all($ns | to_entries[]; .key as $n | .value.metadata.labels as $labels
                 | ($li.allowedRoutes.namespaces.from == "Selector" and ($li.allowedRoutes.namespaces.selector // {} | selects($labels // {})))
                   == (if $name == "api" then ($n == "external-models" or $n == "redhat-ai-gateway-infra" or $n == "internal-models") else $n == "internal-models" end)))' \
@@ -313,15 +311,10 @@ api_routes() {
     jq -e 'any(.items[]; any(.spec.parentRefs[]?; .name == "maas-default-gateway"))' "$WORK/api-routes.json" >/dev/null &&
         echo yes || echo "MaaS API route absent"
 }
-# The single local model: spec as reviewed (replicas delegated when ignored), Ready unless parked, owned workloads
-# current (parked ones at zero), one owned route on exactly its listeners with the canonical model header.
+# One local model (desired object $1): spec as reviewed (replicas delegated when ignored), Ready unless parked, owned
+# workloads current (parked ones at zero), one owned route on exactly its listeners with the canonical model header.
 local_model() {
-    local models d name app delegated obj replicas parked workloads ready routes route sections
-    # Models owned by the optional showback component (its dedicated model) are checked by showback_source_state.
-    models=$(desired_of LLMInferenceService | jq -c --argjson sb "$SHOWBACK_DESIRED" \
-        '([$sb[] | select(.kind == "LLMInferenceService") | .metadata.name]) as $own | map(select(.metadata.name as $n | $own | index($n) | not))')
-    [[ $(jq length <<<"$models") == 1 ]] || { echo "local model scope differs"; return; }
-    d=$(jq -c '.[0]' <<<"$models")
+    local d=$1 name app delegated obj replicas parked workloads ready routes route sections
     name=$(jq -r '.metadata.name' <<<"$d")
     app=$(read_json application 040-local-models -n openshift-gitops)
     delegated=$(jq -r --arg n "$name" '(.spec.syncPolicy.syncOptions // [] | index("RespectIgnoreDifferences=true") != null)
@@ -358,16 +351,21 @@ local_model() {
         and (if ($s | index("api")) then any($r.spec.rules[].matches[]?; .path.value == "/v1/chat/completions"
             and any(.headers[]?; (.name | ascii_downcase) == "x-gateway-model-name" and (.type // "Exact") == "Exact"
                 and .value == $canonical)) else true end)' <<<"$route" >/dev/null || { echo "model route listeners or header"; return; }
-    # Every declared local model owns exactly one gateway route, including the showback dedicated model when the
-    # optional component has created it.
-    local optional_live
-    optional_live=$(jq -r '.[] | select(.kind == "LLMInferenceService") | .metadata.name' <<<"$SHOWBACK_DESIRED" |
-        while read -r n; do oc --request-timeout="$TIMEOUT" get llminferenceservices.serving.kserve.io "$n" -n internal-models \
-            --ignore-not-found -o name; done | grep -c . || true)
-    jq -e --argjson n "$(( $(desired_of LLMInferenceService | jq length) + optional_live ))" '[.items[] | select(any(.spec.parentRefs[]?;
-        .name == "maas-default-gateway"))] | length == $n' <<<"$routes" >/dev/null ||
-        { echo "inference route count differs from the declared local models"; return; }
     if [[ "$parked" == true ]]; then echo yes-parked; else echo yes; fi
+}
+# Every local model Git declares (Qwen and Mistral) passes local_model, and each owns the only gateway route for it.
+local_models() {
+    local d result parked=""
+    [[ $(desired_of LLMInferenceService | jq length) -ge 1 ]] || { echo "no local model declared"; return; }
+    while IFS= read -r d; do
+        result=$(local_model "$d")
+        [[ "$result" == yes* ]] || { echo "$(jq -r '.metadata.name' <<<"$d"): $result"; return; }
+        [[ "$result" == yes-parked ]] && parked+=" $(jq -r '.metadata.name' <<<"$d")"
+    done < <(desired_of LLMInferenceService | jq -c '.[]')
+    read_json httproutes.gateway.networking.k8s.io -n internal-models | jq -e --argjson n "$(desired_of LLMInferenceService | jq length)" \
+        '[.items[] | select(any(.spec.parentRefs[]?; .name == "maas-default-gateway"))] | length == $n' >/dev/null ||
+        { echo "inference route count differs from the declared local models"; return; }
+    echo "yes${parked:+ (parked:$parked)}"
 }
 serving_templates() {
     local d name ns tracking
@@ -481,7 +479,7 @@ check "Authorino TLS, CA bundle and owned workload projecting the service CA (li
 check "Gateway Accepted/Programmed; listeners api, qwen3-8 and mistral-small4 isolated, TLS-terminated and current" gateway yes
 check "MaaS namespaces admitted to the Gateway; hosting-project administrator bindings" namespace_access yes
 check "MaaS API and external routes attached to the api listener only" api_routes yes
-check "Local model: reviewed spec, workloads, single owned route on its listeners (parked compute is not inference)" local_model yes
+check "Local models: reviewed spec, workloads, single owned route on their listeners (parked compute is not inference)" local_models yes
 check "Stage-owned serving templates and the pinned NVIDIA accelerator template" serving_templates yes
 check "External providers, models and MaaS model references Ready with credentials and API endpoint" external_models yes
 # The maas-gateway-boundary AdminNetworkPolicy, probed from every running gateway pod with a TCP connect (no HTTP, no
@@ -527,12 +525,11 @@ if [[ -n "$showback_application" ]]; then
     check "Installed optional showback bundle matches its source" showback_source_state yes
 fi
 # Model registry records (deploy.sh writes them after readiness): every checkpoint Git declares (Qwen, its prepared
-# format alternates, the showback dedicated model) registered once with its pinned version and artifact and the labels
+# format alternates, Mistral) registered once with its pinned version and artifact and the labels
 # and properties of model-registry-metadata.json, and each deployed checkpoint linked to its record.
 registry_records() {
-    local host models local_models dedicated targets entry name dir uri title rev meta model mid versions vid live
+    local host models local_models targets entry name dir uri title rev meta model mid versions vid live
     local_models="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-local-models"
-    dedicated="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo/dedicated"
     host=$(oc --request-timeout="$TIMEOUT" get modelregistries.modelregistry.opendatahub.io demo-registry \
         -n rhoai-model-registries -o jsonpath='{.status.hosts[0]}') || { echo "demo-registry unreadable"; return; }
     registry() {
@@ -543,7 +540,7 @@ registry_records() {
         oc kustomize "$1" | ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)' |
             jq -r '.[] | select(.kind == "LLMInferenceService") | "\(.metadata.name)=\(.spec.model.uri)"'
     }
-    targets=$( { declared "$local_models" | sed "s#\$#|$local_models#"; declared "$dedicated" | sed "s#\$#|$dedicated#"
+    targets=$( { declared "$local_models" | sed "s#\$#|$local_models#"
         for component in "$local_models"/components/*/; do
             work=$(mktemp -d); cp -R "$local_models" "$work/local-models"
             printf '\ncomponents:\n  - components/%s\n' "$(basename "$component")" >>"$work/local-models/kustomization.yaml"

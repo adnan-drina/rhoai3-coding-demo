@@ -1,10 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Opt-in dedicated offer: Marketing's own Mistral Small 4 and its subscription. Not part of the default bundle: on
-# RHOAI 3.5.2 a second local model in internal-models on the shared api listener gives the Qwen route the other model's
-# endpoint picker, so every Qwen call through MaaS fails (see the showback README).
+# Dedicated offer: Marketing's subscription and auth policy for Mistral Small 4. The model itself is served and
+# published to MaaS by 040-local-models.
 resources:
-  - model.yaml
-  - modelref.yaml
   - team-marketing-subscription.yaml
   - team-marketing-auth-policy.yaml

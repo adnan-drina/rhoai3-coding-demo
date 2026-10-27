@@ -18,5 +18,15 @@
       "maas_model": "publishers/internal-models/models/qwen3-8-27b",
       "owner_stage": "040"
     }
+  },
+  "Mistral-Small-4-119B-2603-NVFP4": {
+    "labels": ["dedicated", "production", "text-generation", "tool-calling"],
+    "properties": {
+      "model_type": "generative",
+      "provider": "Mistral AI",
+      "license": "apache-2.0",
+      "maas_model": "publishers/internal-models/models/mistral-small4-119b",
+      "owner_stage": "040"
+    }
   }
 }

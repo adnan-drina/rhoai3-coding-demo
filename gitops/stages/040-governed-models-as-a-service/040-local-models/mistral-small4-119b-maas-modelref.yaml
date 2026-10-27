@@ -5,14 +5,15 @@ metadata:
   namespace: internal-models
   labels:
     app.kubernetes.io/name: mistral-small4-119b
-    app.kubernetes.io/part-of: maas
-    app.kubernetes.io/component: maas-model-ref
-    app.kubernetes.io/managed-by: argocd
-    demo.rhoai.io/stage: "040"
     demo.rhoai.io/quantization: nvfp4
+    app.kubernetes.io/component: maas-model-ref
     demo.rhoai.io/provider: local
   annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    # Models tab title; native catalog IDs use the resolved publisher/model alias.
     openshift.io/display-name: Mistral Small 4 119B NVFP4
+    openshift.io/description: "Model id: mistral-small4-119b, quantization: NVFP4, context 262,144-token"
 spec:
   modelRef:
     kind: LLMInferenceService

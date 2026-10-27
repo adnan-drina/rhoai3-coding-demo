@@ -1,9 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Showback demo: Engineering, Support and Marketing team access, live offer dashboards and external metering. The
-# dedicated Mistral model (Marketing) is created stopped on its own Gateway listener; the operator scales it to one
-# replica on a second RTX PRO 6000 worker. This Application is optional: a default Stage 040 deployment registers
-# Mistral without deploying it.
+# Showback demo: Engineering, Support and Marketing team access, live offer dashboards and external metering.
+# Marketing's dedicated model, Mistral Small 4, is served by 040-local-models. This Application is optional.
 resources:
   - team-engineering-subscription.yaml
   - team-engineering-auth-policy.yaml

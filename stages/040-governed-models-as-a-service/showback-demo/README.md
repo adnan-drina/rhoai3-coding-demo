@@ -8,7 +8,7 @@ This demo answers "What did AI cost us?" on a governed MaaS platform. Three team
 | Support | Shared private and External | Qwen 3.8 27B; GPT-6 Luna, Claude Sonnet 5.5, Nemotron | Tariff for Qwen; provider list price per token for external models |
 | Marketing | Dedicated private | Mistral Small 4 119B on its own RTX PRO 6000 worker | Full running cost of the worker, busy or idle |
 
-The cluster resources are the optional [040-showback-demo component](../../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/README.md): Engineering, Support and Marketing subscriptions and policies, Marketing's dedicated Mistral model (stopped in Git), the three dashboards and the external metering service. Mistral is served on its own Gateway listener (`mistral-small4-maas.<cluster-domain>`), not the shared MaaS endpoint, because on RHOAI 3.5.2 a second local model on the shared listener breaks Qwen calls ([Troubleshooting](../../../docs/TROUBLESHOOTING.md#qwen-calls-through-maas-hang-then-return-503)); `team-keys.sh` records both endpoints and `generate-load.sh --offer dedicated` uses Mistral's.
+The cluster resources are the optional [040-showback-demo component](../../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/README.md): Engineering, Support and Marketing subscriptions and policies, the three dashboards and the external metering service. Marketing's dedicated model, Mistral Small 4 (`mistral-small4-119b`), is served and published to MaaS by [040-local-models](../../../gitops/stages/040-governed-models-as-a-service/040-local-models/README.md), next to Qwen. Mistral is served on its own Gateway listener (`mistral-small4-maas.<cluster-domain>`), not the shared MaaS endpoint, because on RHOAI 3.5.2 a second local model on the shared listener breaks Qwen calls ([Troubleshooting](../../../docs/TROUBLESHOOTING.md#qwen-calls-through-maas-hang-then-return-503)); `team-keys.sh` records both endpoints and `generate-load.sh --offer dedicated` uses Mistral's.
 
 ## Dashboards
 
@@ -36,7 +36,7 @@ Run the commands from the repository root after the usual cluster login. Each st
    ./stages/040-governed-models-as-a-service/deploy.sh --component 040-showback-demo --revision <full-sha>
    ```
 
-2. **Start the models you need.** Shared needs Qwen, External needs neither. Dedicated needs Mistral on a second GPU worker (the last command).
+2. **Start the models you need.** Shared needs Qwen, External needs neither. Dedicated needs Mistral on a second GPU worker (the last command; Git declares one replica, so this only resumes a parked model).
 
    ```bash
    stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 2

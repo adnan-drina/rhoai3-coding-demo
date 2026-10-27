@@ -1,6 +1,6 @@
 # Stage 040: Governed Models-as-a-Service
 
-The optional `040-showback-demo` component adds a three-team showback demo on top of this stage: team subscriptions, a dedicated Mistral model, live offer dashboards and metering of external-model usage. See [Usage And Showback](#usage-and-showback).
+The optional `040-showback-demo` component adds a three-team showback demo on top of this stage: team subscriptions for the shared Qwen and the dedicated Mistral models, live offer dashboards and metering of external-model usage. See [Usage And Showback](#usage-and-showback).
 
 ## Why This Matters
 
@@ -61,7 +61,7 @@ The default deployment selects nine Argo CD Applications, one per component, all
 ./stages/040-governed-models-as-a-service/validate.sh --readiness
 ```
 
-`deploy.sh` ends by registering the deployed model, its prepared format alternates and the showback dedicated Mistral model in the model registry (idempotent, never overwriting a record), with the labels and properties each component declares in `model-registry-metadata.json`, and links each existing deployment to its record. Once the optional showback component is installed, a default deployment also reconciles it at the same revision. A default deployment serves only Qwen; Mistral is registered and ready to deploy: `deploy.sh --component 040-showback-demo` creates it stopped on its own Gateway listener and links it to its record, and one replica on a second RTX PRO 6000 worker starts it ([showback demo](showback-demo/README.md)).
+`deploy.sh` ends by registering both deployed models (Qwen and Mistral) and Qwen's prepared format alternates in the model registry (idempotent, never overwriting a record), with the labels and properties declared in `040-local-models/model-registry-metadata.json`, and links each deployment to its record. Once the optional showback component is installed, a default deployment also reconciles it at the same revision. Both models are deployed and published to MaaS by `040-local-models`, one RTX PRO 6000 worker each (`stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 2`); on a cluster with one GPU worker, park Mistral with `oc scale llminferenceservice mistral-small4-119b -n internal-models --replicas 0`. Mistral is reached on its own Gateway listener `mistral-small4`, not the shared `api` listener ([Troubleshooting](../../docs/TROUBLESHOOTING.md#qwen-calls-through-maas-hang-then-return-503)).
 
 Readiness checks do not establish inference, streaming or quota behavior. `validate.sh --quota` proves token quota enforcement without a persona login: as the ServiceAccount `maas-quota-probe` it mints an ephemeral key on the 100-tokens-per-minute subscription `quota-probe`, sends small Qwen requests until the gateway answers 429 and revokes the key. Bounded functional checks and user playground interaction complete acceptance. In the dashboard, create a playground in your project and select an available governed model endpoint. Do not use the playground to create a replacement serving deployment.
 

@@ -1,19 +1,20 @@
 # Local Models (`040-local-models`)
 
-This Application serves the private coding model `qwen3-8-27b` (Qwen 3.8 27B) on the cluster with Distributed Inference
-with llm-d (`LLMInferenceService`) and publishes it to Models-as-a-Service (MaaS) with a `MaaSModelRef`. It also owns the
-`internal-models` project, its Kueue LocalQueues and two reusable deployment templates for the dashboard. Developers,
-Dev Spaces workspaces, agents, the Gen AI playground and Stage 050 evaluations consume the model only through the MaaS
-gateway, never through the pod.
+This Application serves the two private models on the cluster with Distributed Inference with llm-d
+(`LLMInferenceService`) and publishes each to Models-as-a-Service (MaaS) with a `MaaSModelRef`: the shared coding model
+`qwen3-8-27b` (Qwen 3.8 27B) and `mistral-small4-119b` (Mistral Small 4 119B, the showback demo's dedicated Marketing
+model), one RTX PRO 6000 GPU worker each. It also owns the `internal-models` project, its Kueue LocalQueues and two
+reusable deployment templates for the dashboard. Developers, Dev Spaces workspaces, agents, the Gen AI playground and
+Stage 050 evaluations consume the models only through the MaaS gateway, never through the pod.
 
 | | |
 |---|---|
 | Argo CD Application | `040-local-models` ([manifest](../../../applications/040-local-models.yaml)) |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh` (deploy-order 5, together with `040-external-models`) |
 | Validated by | `stages/040-governed-models-as-a-service/validate.sh --readiness` (runs `stages/040-governed-models-as-a-service/validate.sh`: model spec equals Git except delegated `replicas`, Ready condition unless parked, owned workloads, route listener set and canonical model header, `MaaSModelRef` Ready/GovernanceAttached/RuntimeReady, template spec and labels); `scripts/stage-apps.sh status` (Synced and Healthy at the deployed revision) |
-| Sync | Automated, `prune` and `selfHeal`. Sync options `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences` (and a `ServerSideDiff=true` sync option that has no effect). Compare option `ServerSideDiff=true` (annotation). `ignoreDifferences` on the `LLMInferenceService`: `/spec/replicas` and the three `modelregistry.opendatahub.io/*` id labels |
-| Depends on | Stage 010 (OpenShift AI with KServe and the `rhods-admins` group), Stage 020 (`gpu-rtxpro6000` hardware profile, `cq-gpu-rtxpro6000` and `cq-gpu-reserved-demo` ClusterQueues, GPU MachineSet), `040-maas-platform` (MaaS enabled), `040-gateway-governance` (Gateway `maas-default-gateway` with listeners `api` and `qwen3-8`) |
-| Used by | `040-model-access` (every subscription lists `qwen3-8-27b`), `040-genai-studio` (OpenShift Ops Assistant agent), Stage 050 evaluations, Stage 060 agent runtime subscriptions, Stage 070 Dev Spaces and MTA, `stages/040-governed-models-as-a-service/deploy.sh` (Model Registry entries) |
+| Sync | Automated, `prune` and `selfHeal`. Sync options `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences` (and a `ServerSideDiff=true` sync option that has no effect). Compare option `ServerSideDiff=true` (annotation). `ignoreDifferences` on each `LLMInferenceService`: `/spec/replicas` and the `modelregistry.opendatahub.io/*` labels |
+| Depends on | Stage 010 (OpenShift AI with KServe and the `rhods-admins` group), Stage 020 (`gpu-rtxpro6000` hardware profile, `cq-gpu-rtxpro6000` and `cq-gpu-reserved-demo` ClusterQueues, GPU MachineSet), `040-maas-platform` (MaaS enabled), `040-gateway-governance` (Gateway `maas-default-gateway` with listeners `api`, `qwen3-8` and `mistral-small4`) |
+| Used by | `040-model-access` (every subscription lists `qwen3-8-27b`), `040-showback-demo` (`team-marketing` and the quality judge use `mistral-small4-119b`), `040-genai-studio` (OpenShift Ops Assistant agent), Stage 050 evaluations, Stage 060 agent runtime subscriptions, Stage 070 Dev Spaces and MTA, `stages/040-governed-models-as-a-service/deploy.sh` (Model Registry entries) |
 
 ## Why
 
@@ -38,9 +39,9 @@ own models.
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| Namespace | `internal-models` | cluster | Project for private models. Labels: `opendatahub.io/dashboard`, `kueue.openshift.io/managed`, `maas-gateway-access=true` (admitted by the Gateway `api` and `qwen3-8` listeners), Pod Security `restricted` audit/warn. Wave 1, `Prune=false,Delete=false` |
+| Namespace | `internal-models` | cluster | Project for private models. Labels: `opendatahub.io/dashboard`, `kueue.openshift.io/managed`, `maas-gateway-access=true` (admitted by the Gateway `api`, `qwen3-8` and `mistral-small4` listeners), Pod Security `restricted` audit/warn. Wave 1, `Prune=false,Delete=false` |
 | RoleBinding | `rhods-admins-internal-models-admin` | `internal-models` | ClusterRole `admin` for group `rhods-admins` (hosting administrators). Wave 3 |
-| LocalQueue | `lq-gpu-rtxpro6000` | `internal-models` | Queue for the RTX PRO 6000 flavor (ClusterQueue `cq-gpu-rtxpro6000`). Used by the model. Wave 8 |
+| LocalQueue | `lq-gpu-rtxpro6000` | `internal-models` | Queue for the RTX PRO 6000 flavor (ClusterQueue `cq-gpu-rtxpro6000`). Used by both models. Wave 8 |
 | LocalQueue | `lq-gpu-reserved-demo` | `internal-models` | Queue for the L40S flavor (ClusterQueue `cq-gpu-reserved-demo`), used by the `gpu-reserved-demo` hardware profile. No model in Git uses it. Wave 8 |
 
 ### Dashboard deployment templates (`redhat-ods-applications`)
@@ -56,6 +57,8 @@ own models.
 |---|---|---|---|
 | LLMInferenceService (`serving.kserve.io/v1alpha2`) | `qwen3-8-27b` | `internal-models` | vLLM serving of `RedHatAI/Qwen3.8-27B-NVFP4` at a pinned Hugging Face revision on one RTX PRO 6000 (hardware profile `gpu-rtxpro6000`, queue `lq-gpu-rtxpro6000`). Routes on Gateway `maas-default-gateway` listeners `qwen3-8` and `api`. Wave 16 |
 | MaaSModelRef | `qwen3-8-27b` | `internal-models` | Publishes the model to MaaS. Clients use the canonical id `publishers/internal-models/models/qwen3-8-27b` on the common `/v1` base. Wave 17 |
+| LLMInferenceService (`serving.kserve.io/v1alpha2`) | `mistral-small4-119b` | `internal-models` | vLLM serving of `RedHatAI/Mistral-Small-4-119B-2603-NVFP4` at a pinned Hugging Face revision on the second RTX PRO 6000 (same profile and queue). Routes on Gateway `maas-default-gateway` listener `mistral-small4` only. Wave 16 |
+| MaaSModelRef | `mistral-small4-119b` | `internal-models` | Publishes the model to MaaS. Clients use the canonical id `publishers/internal-models/models/mistral-small4-119b` on `https://mistral-small4-maas.<apps-domain>/v1`. Wave 17 |
 
 ### Optional Kustomize component `components/qwen38-fp8`
 
@@ -75,15 +78,15 @@ arguments stay the same, so clients and subscriptions do not change.
 
 | Object | Owner |
 |---|---|
-| Deployments `qwen3-8-27b-kserve` (vLLM, owner of the GPU) and `qwen3-8-27b-kserve-router-scheduler` (endpoint picker), Services, `InferencePool`, HTTPRoute `qwen3-8-27b-kserve-route` | OpenShift AI KServe controller, from the `LLMInferenceService` |
+| Per model: Deployments `<model>-kserve` (vLLM, owner of the GPU) and `<model>-kserve-router-scheduler` (endpoint picker), Services, `InferencePool`, HTTPRoute `<model>-kserve-route` | OpenShift AI KServe controller, from the `LLMInferenceService` |
 | Auth and rate-limit policies on the model route | MaaS and Connectivity Link controllers, from `MaaSModelRef`, subscriptions and auth policies |
-| Labels `modelregistry.opendatahub.io/registered-model-id` and `model-version-id` on the `LLMInferenceService` | `stages/040-governed-models-as-a-service/deploy.sh` (links the deployment to its Model Registry entry) |
+| Labels `modelregistry.opendatahub.io/registered-model-id`, `model-version-id` and `inference-service-id` on each `LLMInferenceService` | `stages/040-governed-models-as-a-service/deploy.sh` (links the deployment to its Model Registry entry) |
 | `spec.replicas` at runtime | Operators (`oc scale`/patch, `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus N`); Argo CD ignores it |
 
 ## How
 
 **Ordering.** The Application has Argo CD wave 4 and deploy-order 5. Inside it: namespace (1), RoleBinding (3),
-LocalQueues (8), templates (15), `LLMInferenceService` (16), `MaaSModelRef` (17). Every custom resource carries
+LocalQueues (8), templates (15), the `LLMInferenceService`s (16), the `MaaSModelRef`s (17). Every custom resource carries
 `SkipDryRunOnMissingResource=true` so a first sync does not fail before the CRDs exist [5].
 
 **Model artifact.** `spec.model.uri` is `hf://RedHatAI/Qwen3.8-27B-NVFP4:<40-character revision>`. The revision pin makes
@@ -113,16 +116,31 @@ the Kueue resource flavor places the pod on the RTX PRO 6000 node. The `kueue.x-
 `kueue.openshift.io/managed=true` on the namespace follow the documented Kueue enforcement [3]. The template adds GPU
 tolerations (`nvidia.com/gpu`, `nvidia-gpu-only`).
 
+**Mistral Small 4.** `mistral-small4-119b` follows the same pattern: platform runtime, full `args` list with the TLS
+arguments, hardware profile `gpu-rtxpro6000`, the same inline router, `security.opendatahub.io/enable-auth`, and Git
+`replicas: 1` delegated to operators. Its differences and why:
+
+| Setting | Reason |
+|---|---|
+| Gateway listener `mistral-small4` only, not `api` | Known issue RHOAIENG-93709: a second local model on the shared `api` listener hands the Qwen route this model's endpoint picker and every Qwen call through MaaS fails ([Troubleshooting](../../../../docs/TROUBLESHOOTING.md#qwen-calls-through-maas-hang-then-return-503)). Add the `api` ref once the gateway's Istio carries istio/istio#61601 |
+| `--reasoning-parser=mistral`, `--enable-auto-tool-choice`, `--tool-call-parser=mistral` | The model card's vLLM command. The chat template defaults to `reasoning_effort` `none` (non-thinking, as Qwen); clients ask for `high` per request |
+| `--max-model-len=262144`, `--max-num-seqs=16`, `--max-num-batched-tokens=16384` | Same window and batch as Qwen; the KV pool held 868,592 tokens on this GPU (2026-10-27), about three full-window requests. The checkpoint uses MLA, so the KV cache dtype stays the default |
+| `startupProbe` 180 x 10 s; 4-7 CPU, 48-56 GiB | Loading about 66 GB of weights from the node disk takes about 10 minutes; host memory for a 70.8 GB checkpoint (30 GiB in use once loaded) |
+
+Not a Red Hat validated model; qualification is open in `BACKLOG.md`. On a cluster with one GPU worker, park it with
+`oc scale llminferenceservice mistral-small4-119b -n internal-models --replicas 0`.
+
 **Router.** The endpoint picker uses an inline `EndpointPickerConfig` with `queue-scorer` (weight 2) and
 `max-score-picker`, with `failureMode: FailOpen`. The documented default profile also scores prefix-cache hits and KV
 cache utilization [1, chapter 10]; those scorers only help with more than one replica, and this model runs one.
 
-**Gateway and authentication.** `router.gateway.refs` attaches the route to listener `qwen3-8` (the dedicated
-compatibility hostname) and `api` (the shared `/v1` hostname with body-based model routing).
+**Gateway and authentication.** `router.gateway.refs` attaches the Qwen route to listener `qwen3-8` (the dedicated
+compatibility hostname) and `api` (the shared `/v1` hostname with body-based model routing), and the Mistral route to
+`mistral-small4` only.
 `security.opendatahub.io/enable-auth: "true"` keeps platform authentication on explicitly [1, chapter 5].
 
 **Delegated fields.** `ignoreDifferences` with `RespectIgnoreDifferences=true` [6][5] hands two things to runtime owners:
-- `/spec/replicas`: the model is parked at 0 to save GPU cost and resumed by an operator. Git says 1. Because the
+- `/spec/replicas`: a model is parked at 0 to save GPU cost and resumed by an operator. Git says 1. Because the
   rollout uses `maxSurge`, a serving change with both GPUs busy needs the old workload pod deleted first (comment in the
   manifest).
 - The `modelregistry.opendatahub.io/*` labels: `stages/040-governed-models-as-a-service/deploy.sh` stamps the model and version ids
@@ -136,7 +154,8 @@ checkpoint without deployment linkage, so the registry lists both builds.
 
 **Registry labels.** `model-registry-metadata.json` declares the labels and properties of each Qwen record, keyed by
 registered model name (`Qwen3.8-27B-NVFP4`: `shared`, `production`, `coding`, `tool-calling`; `Qwen3.8-27B-FP8`:
-`onboarding-candidate`, `coding`, `tool-calling`). It is read by `deploy.sh` and `validate.sh`, not applied by Argo CD;
+`onboarding-candidate`, `coding`, `tool-calling`; `Mistral-Small-4-119B-2603-NVFP4`: `dedicated`, `production`,
+`text-generation`, `tool-calling`). It is read by `deploy.sh` and `validate.sh`, not applied by Argo CD;
 edit it in Git and rerun `deploy.sh`, which makes the labels exactly the declared set.
 
 **Secrets.** None. The Hugging Face checkpoints are public and are fetched by the KServe storage initializer.
@@ -146,19 +165,19 @@ edit it in Git and rerun `deploy.sh`, which makes the labels exactly the declare
 
 ## Validation
 
-`validate.sh --readiness` checks that the live `LLMInferenceService` contains the rendered spec (except delegated
+`validate.sh --readiness` checks, for each model, that the live `LLMInferenceService` contains the rendered spec (except delegated
 `replicas`), that it is Ready unless parked (replicas 0 with the delegation in place), that its workloads are owned and
-complete, that its single route attaches to exactly the `qwen3-8` and `api` listeners with the canonical
-`x-gateway-model-name` match on `/v1/chat/completions`, that the `MaaSModelRef` is Ready with its governance and runtime
+complete, that its single route attaches to exactly its listeners (`qwen3-8` and `api`, or `mistral-small4`) with the
+canonical `x-gateway-model-name` match on `/v1/chat/completions` on `api`, that the `MaaSModelRef` is Ready with its governance and runtime
 conditions current, and that both templates match Git and are owned by this Application. Inference, streaming and quota
 are checked only by `validate.sh --functional` with a persona kubeconfig.
 
 By hand (read-only):
 
 ```bash
-oc get llminferenceservice qwen3-8-27b -n internal-models \
-  -o jsonpath='{.spec.replicas}{" "}{range .status.conditions[*]}{.type}={.status} {end}{"\n"}'
-oc get maasmodelref qwen3-8-27b -n internal-models
+oc get llminferenceservice -n internal-models \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{" "}{range .status.conditions[*]}{.type}={.status} {end}{"\n"}{end}'
+oc get maasmodelref -n internal-models
 ```
 
 ## Alignment with official guidance
@@ -174,9 +193,10 @@ oc get maasmodelref qwen3-8-27b -n internal-models
 | MaaS publication | Publish with a `MaaSModelRef` in the model's namespace [2] | `MaaSModelRef` `qwen3-8-27b` in `internal-models` | Aligned |
 | Kueue | Managed namespace label, `kueue.x-k8s.io/queue-name` label, dashboard model servers use a hardware profile with a local queue [3] | All three present | Aligned |
 | Topology templates | Administrators create `LLMInferenceServiceConfig` templates with `opendatahub.io/config-type`; router templates declare `opendatahub.io/supported-topologies` [1, chapter 2] | Two templates with these labels/annotation | Aligned |
-| Model validation | Red Hat validated models are listed per release | `RedHatAI/Qwen3.8-27B-NVFP4` is not in that list; recorded in `BACKLOG.md` | Gap (compatibility only, not validated) |
+| Model validation | Red Hat validated models are listed per release | `RedHatAI/Qwen3.8-27B-NVFP4` and `RedHatAI/Mistral-Small-4-119B-2603-NVFP4` are not in that list; recorded in `BACKLOG.md` | Gap (compatibility only, not validated) |
 | Model artifact | Immutable model source | Pinned Hugging Face revision; no OCI modelcar available | Aligned |
 | GitOps delegation | `ignoreDifferences` JSON pointers with `RespectIgnoreDifferences` [6][5] | `replicas` and registry id labels only | Aligned |
+| Shared `/v1` routing | Every MaaS model on the shared hostname with body-based routing [2] | Mistral on its own listener (RHOAIENG-93709) | Deviation (product defect; revert when the gateway's Istio is fixed) |
 | Optional variant | Kustomize Components are switched on with `components:` [8] | `components/qwen38-fp8`, off by default | Aligned |
 
 ## References

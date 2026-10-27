@@ -1,0 +1,172 @@
+apiVersion: serving.kserve.io/v1alpha2
+kind: LLMInferenceService
+metadata:
+  name: mistral-small4-119b
+  namespace: internal-models
+  labels:
+    app.kubernetes.io/name: mistral-small4-119b
+    demo.rhoai.io/quantization: nvfp4
+    app.kubernetes.io/component: local-llm
+    inference.optimization/acceleratorName: RTX-PRO-6000
+    kueue.x-k8s.io/queue-name: lq-gpu-rtxpro6000
+    llm-d.ai/deployment-mode: single-gpu-per-replica
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/genai-asset: "true"
+    # Deployments tab on the model card. Ids are assigned by demo-registry.
+    # stages/040-governed-models-as-a-service/deploy.sh registers the artifact and stamps the ids, and
+    # Argo CD ignores drift on the three modelregistry labels.
+    modelregistry.opendatahub.io/name: demo-registry
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    openshift.io/display-name: Mistral Small 4 119B NVFP4
+    openshift.io/description: "Model id: mistral-small4-119b, quantization: NVFP4, context 262,144-token"
+    opendatahub.io/model-type: generative
+    security.opendatahub.io/enable-auth: "true"
+    # Stage 020 RTX PRO 6000 (g7e.2xlarge) profile; its Kueue flavor places the pod on the second GPU worker.
+    opendatahub.io/hardware-profile-name: gpu-rtxpro6000
+    opendatahub.io/hardware-profile-namespace: redhat-ods-applications
+spec:
+  model:
+    name: mistral-small4-119b
+    # Pinned revision (hf://owner/model[:revision]). Not a Red Hat validated model on RHOAI 3.5; a successful
+    # local load is compatibility with the installed runtime, not validation.
+    uri: hf://RedHatAI/Mistral-Small-4-119B-2603-NVFP4:a7b11eb3bdf01f38077f6704e96cc1d9b83a4cfc
+  # Second private model (the showback demo's dedicated Marketing offer). Argo ignores replicas; scale with oc
+  # (0 on a cluster with one GPU worker).
+  replicas: 1
+  router:
+    gateway:
+      refs:
+        # Its own listener only, never the shared api listener: a second local model on api gives the Qwen route
+        # this model's endpoint picker (RHOAIENG-93709; TROUBLESHOOTING "Qwen Calls Through MaaS Hang, Then
+        # Return 503"). Add the api ref once the gateway's Istio carries istio/istio#61601.
+        - name: maas-default-gateway
+          namespace: openshift-ingress
+          sectionName: mistral-small4
+    route: {}
+    scheduler:
+      # Lean single-replica profile, as for Qwen: prefix-cache scoring only helps with more than one replica.
+      config:
+        inline:
+          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+            - type: single-profile-handler
+            - type: queue-scorer
+            - type: max-score-picker
+          schedulingProfiles:
+            - name: default
+              plugins:
+                - pluginRef: queue-scorer
+                  weight: 2
+                - pluginRef: max-score-picker
+      pool:
+        spec:
+          endpointPickerRef:
+            failureMode: FailOpen
+            group: ""
+            kind: Service
+            name: mistral-small4-119b-epp-service
+            port:
+              number: 9002
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: mistral-small4-119b
+              app.kubernetes.io/part-of: llminferenceservice
+              kserve.io/component: workload
+          targetPorts:
+            - number: 8000
+  template:
+    containers:
+      - name: main
+        # No image override: the RHOAI operator supplies the supported vLLM
+        # runtime. Do not substitute a nightly image.
+        command:
+          - python
+          - -m
+          - vllm.entrypoints.openai.api_server
+        # RedHatAI/Mistral-Small-4-119B-2603-NVFP4 on one RTX PRO 6000 Blackwell (96 GB), text-only.
+        # Mistral-format checkpoint (params.json, tekken.json); vLLM detects the format itself.
+        # Tool calling and reasoning parsers follow the model card's vLLM command. The chat template
+        # defaults to reasoning_effort "none" (non-thinking, as Qwen); clients ask for "high" per request.
+        # Context 262144 as Qwen: at 16384 this GPU held an 868,592-token KV pool (2026-10-27), about
+        # three full-window requests. max-num-seqs 16 and batched tokens 16384 match Qwen.
+        # These are settings on this cluster, not a Red Hat certification.
+        env:
+          - name: PYTORCH_ALLOC_CONF
+            value: expandable_segments:True
+        args:
+          - "--served-model-name={{.Name}}"
+          - --model=/mnt/models
+          - --enable-ssl-refresh
+          - --ssl-certfile=/var/run/kserve/tls/tls.crt
+          - --ssl-keyfile=/var/run/kserve/tls/tls.key
+          - --enable-force-include-usage
+          - --disable-uvicorn-access-log
+          - --enable-prefix-caching
+          - --max-model-len=262144
+          - --gpu-memory-utilization=0.90
+          - --language-model-only
+          - --max-num-batched-tokens=16384
+          - --max-num-seqs=16
+          - --reasoning-parser=mistral
+          - --enable-auto-tool-choice
+          - --tool-call-parser=mistral
+        ports:
+          - containerPort: 8000
+            name: http
+            protocol: TCP
+        # Reading ~66 GB of weights from the node's gp3 disk takes about 10 minutes; the platform default startup
+        # allowance (60 x 10 s) killed the first start seconds before the server opened. Allow 30 minutes.
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 180
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 600
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 60
+        # A 70.8 GB checkpoint: host memory above Qwen's 16-24 GiB (30 GiB in use once loaded, 2026-10-27).
+        resources:
+          requests:
+            cpu: "4"
+            memory: 48Gi
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "7"
+            memory: 56Gi
+            nvidia.com/gpu: "1"
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: shm
+    tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
+      - effect: NoSchedule
+        key: nvidia-gpu-only
+        operator: Exists
+    volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 2Gi
+        name: shm

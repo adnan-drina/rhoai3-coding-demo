@@ -4,12 +4,12 @@
 # adoption preflight, provider credentials available, and a retained MaaS database consistent with its credentials.
 # Then: the component Applications; provider and database credentials created in the cluster (never in Git); the
 # Studio catalog entries for the Stage 060 MCP servers (studio-mcp/publish.sh; deferred until Stage 060 deploys them); the model registry
-# records of the deployed model and its prepared alternates. Secret values travel only through pipes and jq's
+# records of the deployed models and their prepared alternates. Secret values travel only through pipes and jq's
 # environment: never Git, arguments or output.
 # RHOAI_STAGE040_ROTATE_PROVIDER_SECRET=true replaces the OpenAI provider key in place from OPENAI_API_KEY.
 # --component 040-showback-demo reconciles only the optional showback bundle, with shared prerequisites read-only.
 # A default deployment also reconciles that bundle at the same revision once it is installed.
-# Team access, offer dashboards, the stopped Mistral model and external metering come from source; no keys are minted.
+# Team access, offer dashboards and external metering come from source; no keys are minted.
 # Usage: stages/040-governed-models-as-a-service/deploy.sh [--revision REF] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -375,22 +375,20 @@ setup_database() {
 }
 
 # ── Model registry records: one registered model per checkpoint, one version per immutable revision ──────────
-# Each model's labels and properties come from model-registry-metadata.json beside its manifest. Default: Qwen, its
-# prepared format alternates and the showback dedicated model. --showback REVISION: only the dedicated model.
+# Each model's labels and properties come from model-registry-metadata.json beside its manifest: Qwen, its prepared
+# format alternates and Mistral.
 register_model_cards() {
 
     NS=internal-models
     REGISTRY=demo-registry
     LOCAL_MODELS="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-local-models"
-    DEDICATED="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo/dedicated"
-    local scope=all status_apps=() revision
-    if [[ "${1:-}" == --showback ]]; then scope=showback status_apps=(--app 040-showback-demo); fi
+    local revision
     fail() { echo "ERROR: registry publication stopped: $*" >&2; exit 1; }
     yaml_stream_json() { ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)'; }
 
-    revision="${2:-${RHOAI_STAGE040_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}}"
+    revision="${RHOAI_STAGE040_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
     [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || fail "reviewed immutable source differs"
-    "$REPO_ROOT/scripts/stage-apps.sh" status 040 ${status_apps[@]+"${status_apps[@]}"} --revision "$revision" \
+    "$REPO_ROOT/scripts/stage-apps.sh" status 040 --revision "$revision" \
         --repo-url "$GIT_REPO_URL" >/dev/null || fail "Stage 040 must reconcile before model registration"
     host=$(oc --request-timeout=10s get modelregistries.modelregistry.opendatahub.io "$REGISTRY" -n rhoai-model-registries \
         -o jsonpath='{.status.hosts[0]}')
@@ -501,23 +499,16 @@ register_model_cards() {
         fi
     }
 
-    # Deployed models: register the source Git declares and link the deployment to its record. The showback dedicated
-    # model is registered whether or not the optional showback component is installed, and linked once it exists.
-    local targets=("mistral-small4-119b|040-showback-demo|$DEDICATED|optional") target app dir presence rendered
-    [[ "$scope" == showback ]] || targets=("qwen3-8-27b|040-local-models|$LOCAL_MODELS|required" "${targets[@]}")
+    # Deployed models: register the source Git declares and link the deployment to its record.
+    local targets=("qwen3-8-27b|040-local-models|$LOCAL_MODELS" "mistral-small4-119b|040-local-models|$LOCAL_MODELS")
+    local target app dir rendered
     active=""
     for target in "${targets[@]}"; do
-        IFS='|' read -r name app dir presence <<<"$target"
+        IFS='|' read -r name app dir <<<"$target"
         rendered=$(oc kustomize "$dir" | yaml_stream_json)
         uri=$(jq -r --arg n "$name" '.[] | select(.kind == "LLMInferenceService" and .metadata.name == $n) | .spec.model.uri' <<<"$rendered")
         llmi=$(oc --request-timeout=10s get llminferenceservices.serving.kserve.io "$name" -n "$NS" --ignore-not-found -o json)
-        if [[ -z "$llmi" ]]; then
-            [[ "$presence" == optional ]] || fail "$name deployment absent"
-            registered=$(register "$uri" "$dir/model-registry-metadata.json")
-            read -r title _ _ <<<"$registered"
-            echo "PASS Registered pinned source; deployment not enabled, so no linkage: $name -> $title"
-            continue
-        fi
+        [[ -n "$llmi" ]] || fail "$name deployment absent"
         jq -e --arg u "$uri" --arg app "$app:" '.spec.model.uri == $u
             and (.metadata.annotations["argocd.argoproj.io/tracking-id"] // "" | startswith($app))
             and (.metadata.generation | type) == "number" and .status.observedGeneration == .metadata.generation' \
@@ -555,7 +546,6 @@ register_model_cards() {
 
     # Prepared alternates: each format component registers its artifact (no deployment linkage), so the registry
     # lists every build that can be switched on.
-    [[ "$scope" == all ]] || return 0
     for component in "$LOCAL_MODELS"/components/*/; do
         component=$(basename "$component")
         alt_work=$(mktemp -d)
@@ -590,7 +580,7 @@ deploy_showback() {
         jq -e '.items | length == 4 and all(.[]; any(.status.conditions[]?; .type == "Established" and .status == "True"))' \
         >/dev/null || { log_error "Showback requires established MaaS, Perses and ServiceMonitor APIs"; exit 1; }
     showback_metering_profile preflight
-    # Team access, dashboards and the stopped Mistral model come from source; Qwen keeps its existing owner.
+    # Team access and dashboards come from source; both local models keep their owner, 040-local-models.
     "$STAGE_APPS" apply 040 --app 040-showback-demo --revision "$revision" --repo-url "$GIT_REPO_URL"
     "$STAGE_APPS" sync 040 --app 040-showback-demo
     "$STAGE_APPS" wait 040 --app 040-showback-demo --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
@@ -601,8 +591,6 @@ deploy_showback() {
 if [[ "$COMPONENT" == 040-showback-demo ]]; then
     revision=$("$STAGE_APPS" select 040 --ref "$ref" --repo-url "$GIT_REPO_URL")
     deploy_showback "$revision"
-    # Register the dedicated model and link its deployment to the record.
-    register_model_cards --showback "$revision"
     log_success "Showback component reconciled; generate demo load with showback-demo/generate-load.sh to populate the dashboards."
     exit 0
 fi
