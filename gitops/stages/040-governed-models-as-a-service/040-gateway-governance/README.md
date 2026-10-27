@@ -92,9 +92,9 @@ Gateway, TLS and governance instances form one Application because MaaS authenti
 - `authorino-service-ca` holds a certificate, and `authorino-server-cert` has `tls.crt` and `tls.key`.
 - The Authorino Deployment, owned by the operator, mounts the CA.
 - The Gateway is `Accepted` and `Programmed`.
-- The listener set is exactly `api` and `qwen3-8`, with real hostnames.
+- The listener set is exactly `api`, `qwen3-8` and `mistral-small4`, with real hostnames.
 - Each listener is HTTPS 443 with Terminate TLS and the reviewed `allowedRoutes`, and has current `Accepted` and `ResolvedRefs` conditions.
-- `api` has at least one attached route and `qwen3-8` exactly one.
+- `api` has at least one attached route, `qwen3-8` exactly one and `mistral-small4` at most one (only while the optional showback component is installed).
 - Namespace isolation matches, and the MaaS API route is attached.
 
 It does not send requests. `preflight.sh` refuses an existing Gateway or `authorino-service-ca` that another owner tracks.
