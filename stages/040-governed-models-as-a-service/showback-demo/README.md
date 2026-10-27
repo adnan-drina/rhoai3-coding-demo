@@ -118,8 +118,8 @@ request-level view and answer quality per model.
 - **Fails open:** a failed export never stops the load; the summary prints `traced` and `trace_failed` per team.
   `--no-trace` skips tracing. Failed requests are traced as errors.
 - **Quality:** the CronJob `maas-quality-scorer` (component folder `quality/`) is a nightly batch job, at 01:00 UTC,
-  outside working hours. It takes a 25% sample (at most 150 per experiment) of the previous 25 hours' successful,
-  unscored traces, asks a judge three true/false questions and logs the verdicts as MLflow feedback: `relevance`,
+  outside working hours. It grades every successful, unscored trace of the previous 25 hours (paged; at most 2000
+  per experiment and run), asks a judge three true/false questions and logs the verdicts as MLflow feedback: `relevance`,
   `completeness` (every part of the request answered) and `team_guidelines` (the guideline of the trace's team). A
   fourth verdict, `finished`, is code, not a judge: it is false when the trace's `finish_reason` is `length`, the
   max-tokens cap cut the answer off. Each trace gets only the verdicts it does not have yet. The scorer also registers its LLM judges

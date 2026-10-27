@@ -25,8 +25,8 @@ data:
     from mlflow.genai.scorers import list_scorers
 
     WINDOW_MIN = int(os.environ.get("WINDOW_MINUTES", "1500"))
-    SAMPLE = float(os.environ.get("SAMPLE_RATE", "0.25"))
-    LIMIT = int(os.environ.get("MAX_TRACES_PER_EXPERIMENT", "150"))
+    SAMPLE = float(os.environ.get("SAMPLE_RATE", "1.0"))
+    LIMIT = int(os.environ.get("MAX_TRACES_PER_EXPERIMENT", "2000"))
     # MLflow judges retry a failed call up to ten times with backoff; the budget bounds a run when a judge is slow or
     # rate-limited. Unscored traces are picked up by the next run.
     DEADLINE = time.time() + int(os.environ.get("RUN_BUDGET_SECONDS", "9000"))
@@ -175,8 +175,15 @@ data:
         own = exp.name == "internal-" + JUDGE
         RELEVANCE, COMPLETENESS, TEAM_JUDGES = JUDGE_SETS[SELF_JUDGE if own else JUDGE]
         register_judges(exp.experiment_id, JUDGE_SETS[SELF_JUDGE if own else JUDGE])
-        traces = mlflow.search_traces(locations=[exp.experiment_id], return_type="list", max_results=500,
-                                      filter_string=f"trace.timestamp_ms > {cutoff} AND trace.status = 'OK'")
+        # Every trace of the window, page by page (a busy experiment holds more than one page).
+        traces, token = [], None
+        while True:
+            page = client.search_traces(locations=[exp.experiment_id], max_results=500, page_token=token,
+                                        filter_string=f"trace.timestamp_ms > {cutoff} AND trace.status = 'OK'")
+            traces += list(page)
+            token = page.token
+            if not token:
+                break
         # Only traces that record why the answer stopped (generator since 2026-10-27) and still miss a verdict;
         # each trace gets only the verdicts it does not have yet, so a half-scored trace is completed, never doubled.
         def missing(t):
@@ -184,6 +191,16 @@ data:
             want = {"finished", "relevance", "completeness"} | ({"team_guidelines"} if tags.get("subscription") in GUIDELINES else set())
             return want - have if tags.get("finish_reason") else set()
         todo = [t for t in traces if missing(t)]
+        # The finished check is a tag lookup: every unscored trace gets it, whatever the sample or the time budget.
+        for trace in todo:
+            if "finished" in missing(trace):
+                reason = trace.info.tags["finish_reason"]
+                mlflow.log_assessment(trace_id=trace.info.trace_id, assessment=Feedback(
+                    name="finished", value=reason != "length",
+                    rationale=f"The model's stop reason is '{reason}'" + (": the max-tokens cap cut the answer off."
+                                                                         if reason == "length" else "."),
+                    source=AssessmentSource(source_type="CODE", source_id="finish_reason")))
+                scored += 1
         picked = [t for t in todo if random.random() < SAMPLE][:LIMIT]
         print(f"{exp.name}: {len(traces)} recent, {len(todo)} unscored, {len(picked)} sampled", flush=True)
         for trace in picked:
@@ -194,15 +211,6 @@ data:
             if not prompt or response is None:
                 continue
             need = missing(trace)
-            if "finished" in need:
-                # A fact, not a judgement: the model stopped on its own, or the max-tokens cap cut the answer off.
-                reason = trace.info.tags["finish_reason"]
-                mlflow.log_assessment(trace_id=trace.info.trace_id, assessment=Feedback(
-                    name="finished", value=reason != "length",
-                    rationale=f"The model's stop reason is '{reason}'" + (": the max-tokens cap cut the answer off."
-                                                                         if reason == "length" else "."),
-                    source=AssessmentSource(source_type="CODE", source_id="finish_reason")))
-                scored += 1
             team_judge = TEAM_JUDGES.get((trace.info.tags or {}).get("subscription"))
             for judge in [RELEVANCE, COMPLETENESS] + ([team_judge] if team_judge else []):
                 if judge.name not in need:

@@ -47,11 +47,11 @@ spec:
                 - name: SELF_JUDGE_MODEL
                   value: mistral-small4-119b
                 - name: SAMPLE_RATE
-                  value: '0.25'
+                  value: '1.0'
                 - name: WINDOW_MINUTES
                   value: '1500'
                 - name: MAX_TRACES_PER_EXPERIMENT
-                  value: '150'
+                  value: '2000'
                 - name: RUN_BUDGET_SECONDS
                   value: '9000'
                 - name: MLFLOW_TRACKING_URI
