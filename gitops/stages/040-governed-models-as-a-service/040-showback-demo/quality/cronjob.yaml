@@ -1,8 +1,7 @@
-# Nightly quality scoring of the request traces (see scorer-configmap.yaml): a batch job outside working hours, at
-# 01:00 UTC, over the previous day's traces. The private judge models must be serving then; otherwise the run is
-# skipped. Run it on demand with oc create job --from=cronjob/maas-quality-scorer. Runs the RHOAI 3.5 datascience
-# pipeline runtime image (MLflow SDK 3.14, matching the server) with the documented kubernetes-namespaced
-# authentication: the SDK reads the mounted ServiceAccount token and uses this project as the MLflow workspace.
+# Daily quality scoring of the request traces (see scorer-configmap.yaml): a batch job at the end of the working day,
+# 17:00 UTC, over the previous 25 hours' traces, while the private judge models usually still run after demo work, so
+# the GPU workers can be scaled down for the night. If a judge model is not serving, the run is skipped. Run it on
+# demand with oc create job --from=cronjob/maas-quality-scorer.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -17,7 +16,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '40'
 spec:
-  schedule: '0 1 * * *'
+  schedule: '0 17 * * *'
   suspend: false
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2

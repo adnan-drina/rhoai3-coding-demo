@@ -1,4 +1,4 @@
-# The nightly quality scorer (CronJob maas-quality-scorer). MLflow online judges need the MLflow AI Gateway and server
+# The daily quality scorer (CronJob maas-quality-scorer). MLflow online judges need the MLflow AI Gateway and server
 # job execution, which OpenShift AI 3.5 ships disabled; this batch job does the same work with the MLflow SDK: for each
 # model experiment it samples the previous day's unscored request traces, asks a private judge model through MaaS and
 # logs the verdicts as MLflow feedback on the traces (the experiment Overview's Quality tab).

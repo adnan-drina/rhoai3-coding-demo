@@ -82,7 +82,7 @@ Run the commands from the repository root after the usual cluster login. Each st
 
 ## MLflow traces per request
 
-`generate-load.sh` also writes every request to MLflow as one trace, and a nightly judge grades a sample of them, so
+`generate-load.sh` also writes every request to MLflow as one trace, and a daily judge run grades them, so
 each model's use can be inspected request by request next to the aggregate dashboards. Open MLflow from the OpenShift
 AI dashboard, pick the workspace **Models-as-a-Service** (`models-as-a-service`, the MaaS project; only `rhods-admins`
 have access) and a model's experiment. There is one experiment per MaaS model, named after the namespace of its model
@@ -129,8 +129,8 @@ differ from the Offer charges by design. Talk track: the Offer · Shared tab sho
   one on first use.
 - **Fails open:** a failed export never stops the load; the summary prints `traced` and `trace_failed` per team.
   `--no-trace` skips tracing. Failed requests are traced as errors.
-- **Quality:** the CronJob `maas-quality-scorer` (component folder `quality/`) is a nightly batch job, at 01:00 UTC,
-  outside working hours. It grades every successful, unscored trace of the previous 25 hours (paged; at most 2000
+- **Quality:** the CronJob `maas-quality-scorer` (component folder `quality/`) is a daily batch job at 17:00 UTC, the end
+  of the working day, while the judge models usually still run, so the GPU workers can be scaled down for the night. It grades every successful, unscored trace of the previous 25 hours (paged; at most 2000
   per experiment and run), asks a judge three true/false questions and logs the verdicts as MLflow feedback: `relevance`,
   `completeness` (every part of the request answered) and `team_guidelines` (the guideline of the trace's team). A
   fourth verdict, `finished`, is code, not a judge: it is false when the trace's `finish_reason` is `length`, the
