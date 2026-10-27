@@ -184,11 +184,11 @@ register_risk_model() {
       curl --config - -sf --max-time 20 -H 'Content-Type: application/json' ${3:+-X "$3"} ${2:+--data "$2"} "$base$1" ||
       fail "authenticated registry request failed"
   }
-  meta=$(jq -c -e --arg n "$name" '.[$n]' "$dir/model-registry-metadata.json") || fail "$name registry metadata missing"
   uri=$(oc kustomize "$dir" | yaml_json | jq -r --arg n "$name" '.[] | select(.kind == "InferenceService" and .metadata.name == $n)
     | .spec.predictor.model.storageUri')
   title=${uri##*/}; title=${title%%:*}; rev=${uri##*:}
   [[ ${#rev} == 40 ]] || fail "$name source must be immutable"
+  meta=$(jq -c -e --arg t "$title" '.[$t]' "$dir/model-registry-metadata.json") || fail "$title registry metadata missing"
   model=$(api "/registered_models?pageSize=500" | jq -c --arg t "$title" '[.items[] | select(.name == $t)]')
   [[ $(jq length <<<"$model") -le 1 ]] || fail "ambiguous registered model name $title"
   if [[ $(jq length <<<"$model") == 0 ]]; then
@@ -214,8 +214,10 @@ register_risk_model() {
   [[ $(jq length <<<"$artifacts") == 1 ]] || api "/model_versions/$vid/artifacts" "$(jq -n --arg u "$uri" '{name: "model-source",
     uri: $u, artifactType: "model-artifact", modelFormatName: "vLLM", modelFormatVersion: "1"}')" >/dev/null
   current=$(jq -S -c '.customProperties // {}' <<<"$model")
-  desired=$(jq -S -c --argjson m "$meta" '. + ($m.labels | map({key: ., value: {metadataType: "MetadataStringValue",
-    string_value: ""}}) | from_entries) + ($m.properties | with_entries(.value = {metadataType: "MetadataStringValue",
+  # Labels become exactly the declared set; declared properties are set, other properties stay.
+  desired=$(jq -S -c --argjson m "$meta" 'with_entries(select(.value != {metadataType: "MetadataStringValue",
+    string_value: ""})) + ($m.labels | map({key: ., value: {metadataType: "MetadataStringValue", string_value: ""}})
+    | from_entries) + ($m.properties | with_entries(.value = {metadataType: "MetadataStringValue",
     string_value: .value}))' <<<"$current")
   [[ "$desired" == "$current" ]] || api "/registered_models/$mid" "$(jq -c '{customProperties: .}' <<<"$desired")" PATCH >/dev/null
   # Link the InferenceService (Git owns it; the id labels are delegated) to the record.

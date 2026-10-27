@@ -523,7 +523,7 @@ fi
 # format alternates, the showback dedicated model) registered once with its pinned version and artifact and the labels
 # and properties of model-registry-metadata.json, and each deployed checkpoint linked to its record.
 registry_records() {
-    local host models local_models dedicated targets entry name dir uri title rev qlabel meta model mid versions vid live
+    local host models local_models dedicated targets entry name dir uri title rev meta model mid versions vid live
     local_models="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-local-models"
     dedicated="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo/dedicated"
     host=$(oc --request-timeout="$TIMEOUT" get modelregistries.modelregistry.opendatahub.io demo-registry \
@@ -546,14 +546,12 @@ registry_records() {
     while IFS='|' read -r entry dir; do
         name=${entry%%=*} uri=${entry#*=}
         title=${uri##*/}; title=${title%%:*}; rev=${uri##*:}
-        case "$(tr '[:lower:]' '[:upper:]' <<<"$title")" in
-            *-NVFP4) qlabel=nvfp4 ;; *-FP8) qlabel=fp8 ;; *-INT4) qlabel=int4 ;; *) qlabel=unquantized ;;
-        esac
-        meta=$(jq -c -e --arg n "$name" '.[$n]' "$dir/model-registry-metadata.json") || { echo "$name metadata missing"; return; }
+        meta=$(jq -c -e --arg t "$title" '.[$t]' "$dir/model-registry-metadata.json") || { echo "$title metadata missing"; return; }
         model=$(jq -c --arg t "$title" '[.items[] | select(.name == $t)]' <<<"$models")
         [[ $(jq length <<<"$model") == 1 ]] || { echo "$title not registered exactly once"; return; }
-        jq -e --argjson m "$meta" --arg q "$qlabel" '.[0].customProperties // {} | . as $p
-            | all($m.labels[], $q; $p[.] == {metadataType: "MetadataStringValue", string_value: ""})
+        jq -e --argjson m "$meta" '.[0].customProperties // {} | . as $p
+            | ([to_entries[] | select(.value == {metadataType: "MetadataStringValue", string_value: ""}) | .key] | sort)
+                == ($m.labels | sort)
             and all($m.properties | to_entries[]; $p[.key].string_value == .value)' <<<"$model" >/dev/null ||
             { echo "$title labels or properties differ from model-registry-metadata.json"; return; }
         mid=$(jq -r '.[0].id' <<<"$model")

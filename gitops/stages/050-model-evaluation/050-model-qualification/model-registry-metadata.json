@@ -1,6 +1,6 @@
 {
-  "gemma-2-9b-abliterated": {
-    "labels": ["text-generation", "evaluation-helper", "risk-assessment", "no-safety-alignment", "not-for-production"],
+  "gemma-2-9b-it-abliterated": {
+    "labels": ["evaluation-helper", "no-safety-alignment", "risk-assessment", "text-generation"],
     "properties": {
       "model_type": "generative",
       "provider": "Google (abliterated by IlyaGusev)",

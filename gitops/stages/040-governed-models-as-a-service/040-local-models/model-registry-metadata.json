@@ -1,6 +1,16 @@
 {
-  "qwen3-8-27b": {
-    "labels": ["text-generation", "tool-calling", "coding", "private-model", "maas-shared"],
+  "Qwen3.8-27B-NVFP4": {
+    "labels": ["shared", "production", "coding", "tool-calling"],
+    "properties": {
+      "model_type": "generative",
+      "provider": "Qwen",
+      "license": "apache-2.0",
+      "maas_model": "publishers/internal-models/models/qwen3-8-27b",
+      "owner_stage": "040"
+    }
+  },
+  "Qwen3.8-27B-FP8": {
+    "labels": ["onboarding-candidate", "coding", "tool-calling"],
     "properties": {
       "model_type": "generative",
       "provider": "Qwen",

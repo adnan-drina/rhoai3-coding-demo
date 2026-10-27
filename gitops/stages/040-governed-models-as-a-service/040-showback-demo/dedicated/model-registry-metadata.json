@@ -1,6 +1,6 @@
 {
-  "mistral-small4-119b": {
-    "labels": ["text-generation", "tool-calling", "private-model", "maas-dedicated", "showback-demo"],
+  "Mistral-Small-4-119B-2603-NVFP4": {
+    "labels": ["dedicated", "production", "text-generation", "tool-calling"],
     "properties": {
       "model_type": "generative",
       "provider": "Mistral AI",

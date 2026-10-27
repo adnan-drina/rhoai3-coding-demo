@@ -724,7 +724,7 @@ The scoped metrics repair at `797a270b` is Synced/Healthy: genuine `ai-admin` CA
 
 ### Stage 030
 
-Stage 030 owns the native KServe control plane, `demo-registry` with its operator-managed PostgreSQL database, Model Catalog and Developer Preview Agent Catalog. Stage 040 owns model selection, registry records, runtime/model deployment and MaaS; Stage 050 owns the registry record of its risk assessment helper (`gemma-2-9b-abliterated`); Stage 030 creates no model or runtime clone. Registry labels and properties are declared in each model component's `model-registry-metadata.json`; to change them, edit that file and rerun the owning stage's `deploy.sh` (it adds declared keys and keeps the others, so remove a retired label in the dashboard).
+Stage 030 owns the native KServe control plane, `demo-registry` with its operator-managed PostgreSQL database, Model Catalog and Developer Preview Agent Catalog. Stage 040 owns model selection, registry records, runtime/model deployment and MaaS; Stage 050 owns the registry record of its risk assessment helper (`gemma-2-9b-abliterated`); Stage 030 creates no model or runtime clone. Registry labels and properties are declared in each model component's `model-registry-metadata.json`; to change them, edit that file and rerun the owning stage's `deploy.sh` (labels become exactly the declared set; declared properties are set and evaluation properties stay).
 
 Fresh deployments use the delegated foundation fields (declared on `010-rhoai-platform`) and the normal Stage 030 deploy entrypoint. The registry handoff from the former single Stage 010 Application is complete, and its one-time protect/omit helpers and bridge overlays are retired. Deployment refuses a registry namespace that Stage 030 does not own.
 

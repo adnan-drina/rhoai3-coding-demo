@@ -406,20 +406,21 @@ register_model_cards() {
         done
         fail "registry pagination exceeded its bound"
     }
-    # Ensure model, version and artifact for one pinned source URI and the model's declared labels and properties
-    # (METADATA JSON); prints "<title> <model id> <version id>".
+    # Ensure model, version and artifact for one pinned source URI and the labels and properties METADATA_FILE
+    # declares for that checkpoint (keyed by registered model name); prints "<title> <model id> <version id>".
     register() {
-        local uri=$1 meta=$2 title revision quant qlabel model version artifacts current desired
+        local uri=$1 meta_file=$2 meta title revision quant model version artifacts current desired
         title=${uri##*/}
         title=${title%%:*}
         revision=${uri##*:}
         [[ ${#revision} == 40 ]] || fail "model source must be immutable"
         case "$(tr '[:lower:]' '[:upper:]' <<<"$title")" in
-            *-NVFP4) quant="NVFP4 (FP4 weights, FP8 attention)" qlabel=nvfp4 ;;
-            *-FP8) quant="FP8 block-128" qlabel=fp8 ;;
-            *-INT4) quant="INT4 W4A16" qlabel=int4 ;;
-            *) quant="unquantized" qlabel=unquantized ;;
+            *-NVFP4) quant="NVFP4 (FP4 weights, FP8 attention)" ;;
+            *-FP8) quant="FP8 block-128" ;;
+            *-INT4) quant="INT4 W4A16" ;;
+            *) quant="unquantized" ;;
         esac
+        meta=$(jq -c -e --arg t "$title" '.[$t]' "$meta_file") || fail "$title registry metadata missing in $meta_file"
         model=$(items /registered_models | jq -c --arg t "$title" '[.[] | select(.name == $t)]')
         [[ $(jq length <<<"$model") -le 1 ]] || fail "ambiguous registered model name"
         if [[ $(jq length <<<"$model") == 0 ]]; then
@@ -449,12 +450,14 @@ register_model_cards() {
             api "/model_versions/$version_id/artifacts" "$(jq -n --arg u "$uri" '{name: "model-source", uri: $u,
                 artifactType: "model-artifact", modelFormatName: "vLLM", modelFormatVersion: "1"}')" >/dev/null
         fi
-        # A label is a string custom property with an empty value (the form the dashboard shows and searches); the
-        # checkpoint's quantization is one. Declared keys are set; other properties (evaluation results) stay.
+        # A label is a string custom property with an empty value (the form the dashboard shows and searches). The
+        # labels become exactly the declared set; declared properties are set and other properties (evaluation
+        # results) stay.
         current=$(api "/registered_models/$model_id" | jq -S -c '.customProperties // {}')
-        desired=$(jq -S -c --argjson m "$meta" --arg q "$qlabel" '. + ([$m.labels[], $q] | map({key: ., value:
-            {metadataType: "MetadataStringValue", string_value: ""}}) | from_entries) + ($m.properties
-            | with_entries(.value = {metadataType: "MetadataStringValue", string_value: .value}))' <<<"$current")
+        desired=$(jq -S -c --argjson m "$meta" 'with_entries(select(.value != {metadataType: "MetadataStringValue",
+            string_value: ""})) + ($m.labels | map({key: ., value: {metadataType: "MetadataStringValue", string_value: ""}})
+            | from_entries) + ($m.properties | with_entries(.value = {metadataType: "MetadataStringValue",
+            string_value: .value}))' <<<"$current")
         [[ "$desired" == "$current" ]] || api "/registered_models/$model_id" \
             "$(jq -c '{customProperties: .}' <<<"$desired")" PATCH >/dev/null
         echo "$title $model_id $version_id"
@@ -491,18 +494,17 @@ register_model_cards() {
 
     # Deployed models: register the source Git declares and link the deployment to its record. The showback dedicated
     # model is registered whether or not the optional showback component is installed, and linked once it exists.
-    local targets=("mistral-small4-119b|040-showback-demo|$DEDICATED|optional") target app dir presence meta rendered
+    local targets=("mistral-small4-119b|040-showback-demo|$DEDICATED|optional") target app dir presence rendered
     [[ "$scope" == showback ]] || targets=("qwen3-8-27b|040-local-models|$LOCAL_MODELS|required" "${targets[@]}")
     active=""
     for target in "${targets[@]}"; do
         IFS='|' read -r name app dir presence <<<"$target"
-        meta=$(jq -c -e --arg n "$name" '.[$n]' "$dir/model-registry-metadata.json") || fail "$name registry metadata missing"
         rendered=$(oc kustomize "$dir" | yaml_stream_json)
         uri=$(jq -r --arg n "$name" '.[] | select(.kind == "LLMInferenceService" and .metadata.name == $n) | .spec.model.uri' <<<"$rendered")
         llmi=$(oc --request-timeout=10s get llminferenceservices.serving.kserve.io "$name" -n "$NS" --ignore-not-found -o json)
         if [[ -z "$llmi" ]]; then
             [[ "$presence" == optional ]] || fail "$name deployment absent"
-            registered=$(register "$uri" "$meta")
+            registered=$(register "$uri" "$dir/model-registry-metadata.json")
             read -r title _ _ <<<"$registered"
             echo "PASS Registered pinned source; deployment not enabled, so no linkage: $name -> $title"
             continue
@@ -514,7 +516,7 @@ register_model_cards() {
         parked=$(jq -r '.spec.replicas == 0' <<<"$llmi")
         [[ "$parked" == true ]] || jq -e 'any(.status.conditions[]?; .type == "Ready" and .status == "True")' <<<"$llmi" >/dev/null ||
             fail "active model $name must be Ready before registry publication"
-        registered=$(register "$uri" "$meta")  # captured, so a failure stops the script (set -e)
+        registered=$(register "$uri" "$dir/model-registry-metadata.json")  # captured, so a failure stops the script (set -e)
         read -r title model_id version_id <<<"$registered"
         active+=" $name=$uri"
         existing=$(jq -r '.metadata.labels["modelregistry.opendatahub.io/registered-model-id"] // ""' <<<"$llmi")
@@ -555,9 +557,7 @@ register_model_cards() {
         rm -rf "$alt_work"
         for entry in $alternates; do
             [[ "$active" == *" $entry"* ]] && continue
-            meta=$(jq -c -e --arg n "${entry%%=*}" '.[$n]' "$LOCAL_MODELS/model-registry-metadata.json") ||
-                fail "${entry%%=*} registry metadata missing"
-            registered=$(register "${entry#*=}" "$meta")
+            registered=$(register "${entry#*=}" "$LOCAL_MODELS/model-registry-metadata.json")
             read -r title _ _ <<<"$registered"
             echo "PASS Registered prepared alternate (component $component, not deployed): $title"
         done

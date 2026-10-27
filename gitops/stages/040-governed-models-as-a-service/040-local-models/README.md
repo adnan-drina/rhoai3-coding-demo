@@ -134,9 +134,10 @@ run `stages/040-governed-models-as-a-service/deploy.sh` [7]. The component sets 
 recipe for this GPU (sm120) and aborts startup. `stages/040-governed-models-as-a-service/deploy.sh` also registers every prepared component's
 checkpoint without deployment linkage, so the registry lists both builds.
 
-**Registry labels.** `model-registry-metadata.json` declares the labels and properties of the Qwen records (the
-deploy script adds the checkpoint's quantization label, `nvfp4` or `fp8`). It is read by `deploy.sh` and `validate.sh`,
-not applied by Argo CD; edit it in Git and rerun `deploy.sh` to change what the registry shows.
+**Registry labels.** `model-registry-metadata.json` declares the labels and properties of each Qwen record, keyed by
+registered model name (`Qwen3.8-27B-NVFP4`: `shared`, `production`, `coding`, `tool-calling`; `Qwen3.8-27B-FP8`:
+`onboarding-candidate`, `coding`, `tool-calling`). It is read by `deploy.sh` and `validate.sh`, not applied by Argo CD;
+edit it in Git and rerun `deploy.sh`, which makes the labels exactly the declared set.
 
 **Secrets.** None. The Hugging Face checkpoints are public and are fetched by the KServe storage initializer.
 

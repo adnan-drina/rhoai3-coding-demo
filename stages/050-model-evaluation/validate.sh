@@ -66,15 +66,15 @@ risk_model_record() {
     printf 'header = "Authorization: Bearer %s"\n' "$(oc whoami -t)" |
       curl --config - -sf --max-time 20 "https://$host/api/model_registry/v1alpha3$1"
   }
-  meta=$(jq -c -e --arg n "$name" '.[$n]' "$dir/model-registry-metadata.json") || { echo "metadata missing"; return; }
   uri=$(oc kustomize "$dir" | yaml_json | jq -r --arg n "$name" '.[] | select(.kind == "InferenceService" and .metadata.name == $n)
     | .spec.predictor.model.storageUri')
   title=${uri##*/}; title=${title%%:*}; rev=${uri##*:}
+  meta=$(jq -c -e --arg t "$title" '.[$t]' "$dir/model-registry-metadata.json") || { echo "$title metadata missing"; return; }
   model=$(registry '/registered_models?pageSize=500' | jq -c --arg t "$title" '[.items[] | select(.name == $t)]') ||
     { echo "registry listing failed"; return; }
   [[ $(jq length <<<"$model") == 1 ]] || { echo "$title not registered exactly once"; return; }
   jq -e --argjson m "$meta" '.[0].customProperties // {} | . as $p
-    | all($m.labels[]; $p[.] == {metadataType: "MetadataStringValue", string_value: ""})
+    | ([to_entries[] | select(.value == {metadataType: "MetadataStringValue", string_value: ""}) | .key] | sort) == ($m.labels | sort)
     and all($m.properties | to_entries[]; $p[.key].string_value == .value)' <<<"$model" >/dev/null ||
     { echo "$title labels or properties differ from model-registry-metadata.json"; return; }
   mid=$(jq -r '.[0].id' <<<"$model")
