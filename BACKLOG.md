@@ -8,7 +8,7 @@ The [showback demo](stages/040-governed-models-as-a-service/showback-demo/README
 
 - [ ] Deploy the reworked component, mint Marketing's key and run all three load profiles; check every dashboard panel in the browser.
 - [ ] Qualify Mistral Small 4 119B NVFP4 on one RTX PRO 6000 (first token, memory headroom, cold load).
-- [ ] **Raise with Red Hat (RHOAI 3.5.2):** a second local model on the shared `api` listener gives the Qwen route the other model's endpoint picker, so Qwen through MaaS fails ([Troubleshooting](docs/TROUBLESHOOTING.md#qwen-calls-through-maas-hang-then-return-503)). Worked around 2026-10-27: Mistral has its own Gateway listener (`mistral-small4`); return it to `api` once a fixed release is qualified.
+- [ ] **Known issue RHOAIENG-93709 (EPP configuration collision):** a second local model on the shared `api` listener gives the Qwen route the other model's endpoint picker, so Qwen through MaaS fails ([Troubleshooting](docs/TROUBLESHOOTING.md#qwen-calls-through-maas-hang-then-return-503)). Worked around 2026-10-27: Mistral has its own Gateway listener (`mistral-small4`). Return it to `api` once the OpenShift ingress operator ships an Istio with istio/istio#61601 (watch openshift/cluster-ingress-operator#1640) and the gateway's istiod is verified.
 - [ ] Accept external metering live: load on an external model must match the ledger and the External dashboard.
 
 ## Stage 070 shared base SSO

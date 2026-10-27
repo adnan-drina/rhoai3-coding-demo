@@ -658,10 +658,14 @@ Not every 503 is this reset: NVIDIA's shared endpoint returns its own `503 {"err
 the gateway logs `503 DC` with no upstream host; external models still answer. vLLM answers directly in its pod. An
 evaluation run "completes" with all scores 0. Seen on RHOAI 3.5.2 (2026-10-24) once the showback Mistral model was installed.
 
-**Likely cause:** A second `LLMInferenceService` in `internal-models` on the gateway's shared `api` listener. Istio
-merges both models' routes into one generated configuration for that listener, and the Qwen route receives the other
-model's endpoint picker (EPP). The Mistral EPP finds no Qwen endpoint (`failed to find endpoint candidates`) whether
-Mistral is stopped or running. Qwen's own `qwen3-8` listener keeps the right picker.
+**Cause:** A known endpoint-picker (EPP) configuration collision (RHOAIENG-93709). The shipped route preset
+`v3-5-2-kserve-config-llm-router-route` gives every model's HTTPRoute the same rule names (`v1-model-routing`, ...). That
+is valid Gateway API, but the gateway's Istio (1.28.5_ossm, run by the OpenShift ingress operator) keys EPP settings by
+rule name, so when two models' routes share a listener and hostname, one route's picker overwrites the other's. The
+request matches stay correct; the Qwen route is simply served by the Mistral EPP, which finds no Qwen endpoint
+(`failed to find endpoint candidates`) whether Mistral is stopped or running. Qwen's own `qwen3-8` listener keeps the
+right picker. Fixed upstream in istio/istio#61601 (backported to 1.29-1.31); the OpenShift 4.22 ingress operator still
+ships Istio 1.28 (bump to 1.28.10 pending in openshift/cluster-ingress-operator#1640).
 
 **Diagnose:** `oc logs -n internal-models deploy/mistral-small4-119b-kserve-router-scheduler` shows `EPP received request`
 for the Qwen request IDs; in the gateway's `config_dump`, the `v1-model-routing` entries for
@@ -672,7 +676,8 @@ its own Gateway listener, `mistral-small4` (`mistral-small4-maas.<apps-domain>`)
 listeners and every model route.
 
 **Recover:** If a second local model was attached to `api`, move its `router.gateway.refs` to its own listener in Git,
-publish and redeploy. Raise with Red Hat.
+publish and redeploy. Return the model to `api` only after an OpenShift update with the Istio fix is installed and the
+gateway's istiod version is verified.
 
 ## A MaaSAuthPolicy Stays Not Ready After A Conflict
 
