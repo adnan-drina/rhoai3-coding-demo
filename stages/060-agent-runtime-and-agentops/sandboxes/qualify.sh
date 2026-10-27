@@ -206,8 +206,11 @@ owned_setup() {
 }
 # runtime_inputs: the agent holds only the native credential placeholder; its installed start script and config are the
 # reviewed inputs; exactly the owned provider is attached.
+# rendered_hash FILE: SHA-256 of an agent input as create.sh writes it (host substituted, trailing newline kept; a
+# command substitution would drop that newline and never match the installed file).
+rendered_hash() { sed "s/__MAAS_COMMON_HOST__/$HOST/g" "$1" | shasum -a 256 | cut -d' ' -f1; }
 runtime_inputs() {
-  local probe attached expected effective credential
+  local probe attached effective credential
   if [[ "$NAME" == opencode ]]; then
     probe=$(sandbox_python "import os,hashlib,json;v=os.environ.get('MAAS_API_KEY','');print(json.dumps({'present':bool(v),'placeholder':bool(__import__('re').fullmatch(r'openshell:resolve:env:(?:v[0-9]+_)?MAAS_API_KEY',v)),'hash':hashlib.sha256(v.encode()).hexdigest(),'config':hashlib.sha256(open('/sandbox/workspace/opencode.json','rb').read()).hexdigest(),'startup':hashlib.sha256(open('/sandbox/state/start.sh','rb').read()).hexdigest()}))")
     attached=$(ncli owner "$WORKSPACE" 30 sandbox provider list "$NAME" -o json)
@@ -221,8 +224,7 @@ runtime_inputs() {
       --arg real "$(state '.key_hash')" '$e.providers[0] as $x | $x.id == "qwen38" and ($x.models // {} | keys) == [$m]
       and ($x.options.apiKey // "" | test("^openshell:resolve:env:(v[0-9]+_)?MAAS_API_KEY$")) and $h == $p.hash
       and $p.present and $p.placeholder and $p.hash != $real')"
-    expected=$(sed "s/__MAAS_COMMON_HOST__/$HOST/g" "$INPUTS/config.json")
-    printf '%s' "$probe" | jq -e --arg c "$(sha256_text "$expected")" --arg s "$(shasum -a 256 "$INPUTS/start.sh" | cut -d' ' -f1)" \
+    printf '%s' "$probe" | jq -e --arg c "$(rendered_hash "$INPUTS/config.json")" --arg s "$(shasum -a 256 "$INPUTS/start.sh" | cut -d' ' -f1)" \
       '.config == $c and .startup == $s' >/dev/null || fail "Installed startup/config differs from reviewed input"
   else
     setup_check  # the exact owned provider ID and hash remain mandatory
@@ -234,8 +236,7 @@ runtime_inputs() {
       and .providers[0].name == $p and .providers[0].type == $p and .providers[0].credential_keys == ["MAAS_API_KEY"]
       and (.providers[0].config_keys | type) == "array" and all(.providers[0].config_keys[]; type == "string")
       and (.providers[0].config_keys | sort) == ["maas_key_id", "owner"]' >/dev/null || fail "Exact owned provider attachment differs"
-    expected=$(sed "s/__MAAS_COMMON_HOST__/$HOST/g" "$INPUTS/config.yaml")
-    gate runtimeInputs "$(truth jq -n -e --argjson p "$probe" --arg c "$(sha256_text "$expected")" --arg s "$(shasum -a 256 "$INPUTS/start.sh" | cut -d' ' -f1)" \
+    gate runtimeInputs "$(truth jq -n -e --argjson p "$probe" --arg c "$(rendered_hash "$INPUTS/config.yaml")" --arg s "$(shasum -a 256 "$INPUTS/start.sh" | cut -d' ' -f1)" \
       --arg l "$(sha256_text "$SECRET")" --arg real "$(state '.key_hash')" '$p | type == "object" and .placeholder == true and .present == true
       and .credentialHash != $real and (.credentialHash | type) == "string" and (.credentialHash | test("^[0-9a-f]{64}$"))
       and .configHash == $c and .startupHash == $s and .listenerHash == $l and .listenerPrivate == true and .privateInterpreter == true')"
