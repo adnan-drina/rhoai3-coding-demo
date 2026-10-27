@@ -81,7 +81,7 @@ showback_source_state() {
     jq -e '. as $all | [.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $metering |
         # Team access only: both local models, the dedicated Mistral included, belong to 040-local-models.
         # Quality scoring of the team traces adds the judge subscription, its key hook and the hourly scorer.
-        ((["team-engineering","team-marketing","team-support"]
+        (["team-engineering","team-marketing","team-support"]
            + (if any($all[]; .kind == "CronJob" and .metadata.name == "maas-quality-scorer") then ["maas-quality-judge"] else [] end)
            | sort) as $teams
         | all(.[]; .kind != "LLMInferenceService" and .kind != "MaaSModelRef")
