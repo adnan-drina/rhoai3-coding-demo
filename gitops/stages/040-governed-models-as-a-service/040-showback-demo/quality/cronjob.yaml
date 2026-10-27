@@ -1,4 +1,6 @@
-# Hourly quality scoring of the team request traces (see scorer-configmap.yaml). Runs the RHOAI 3.5 datascience
+# Nightly quality scoring of the request traces (see scorer-configmap.yaml): a batch job outside working hours, at
+# 01:00 UTC, over the previous day's traces. The private judge models must be serving then; otherwise the run is
+# skipped. Run it on demand with oc create job --from=cronjob/maas-quality-scorer. Runs the RHOAI 3.5 datascience
 # pipeline runtime image (MLflow SDK 3.14, matching the server) with the documented kubernetes-namespaced
 # authentication: the SDK reads the mounted ServiceAccount token and uses this project as the MLflow workspace.
 apiVersion: batch/v1
@@ -15,7 +17,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '40'
 spec:
-  schedule: '5 * * * *'
+  schedule: '0 1 * * *'
   suspend: false
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
@@ -23,7 +25,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
-      activeDeadlineSeconds: 2400
+      activeDeadlineSeconds: 10800
       template:
         metadata:
           labels:
@@ -41,17 +43,17 @@ spec:
               command: [python3, /etc/maas-quality/scorer/score.py]
               env:
                 - name: JUDGE_MODEL
-                  value: nemotron-3-ultra-550b-a55b
+                  value: qwen3-8-27b
                 - name: SELF_JUDGE_MODEL
-                  value: publishers/internal-models/models/qwen3-8-27b
+                  value: mistral-small4-119b
                 - name: SAMPLE_RATE
-                  value: '0.1'
+                  value: '0.25'
                 - name: WINDOW_MINUTES
-                  value: '65'
+                  value: '1500'
                 - name: MAX_TRACES_PER_EXPERIMENT
-                  value: '20'
+                  value: '150'
                 - name: RUN_BUDGET_SECONDS
-                  value: '1200'
+                  value: '9000'
                 - name: MLFLOW_TRACKING_URI
                   value: https://mlflow.redhat-ods-applications.svc:8443/mlflow
                 - name: MLFLOW_TRACKING_AUTH

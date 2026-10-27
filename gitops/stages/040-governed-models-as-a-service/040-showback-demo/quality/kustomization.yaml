@@ -1,7 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Quality scoring of the team request traces: an LLM judge (Claude Sonnet 5.5 through MaaS, its own subscription)
-# grades a sample of each hour's traces and writes MLflow feedback, which fills the experiments' Overview Quality tab.
+# Quality scoring of the request traces: a nightly batch job asks the private models as judges (Qwen grades every model
+# but itself, Mistral grades Qwen; through MaaS on their own subscription) and writes MLflow feedback, which fills the
+# experiments' Overview Quality tab.
 resources:
   - serviceaccount.yaml
   - access.yaml

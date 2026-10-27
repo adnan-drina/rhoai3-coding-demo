@@ -1,5 +1,5 @@
 # Sync hook: keep or mint the judge's MaaS key (subscription maas-quality-judge) in Secret maas-quality-judge-key, and
-# record the MaaS hostname in ConfigMap maas-quality-judge-endpoint. Same procedure as the Stage 050 evaluation key
+# record the MaaS hostnames (shared listener and Mistral's own listener) in ConfigMap maas-quality-judge-endpoint. Same procedure as the Stage 050 evaluation key
 # provisioner: the ServiceAccount owns the subscription and mints its own key through the MaaS API; key material lives
 # only in shell variables, private temp files and the Secret, never in logs, arguments or annotations.
 apiVersion: batch/v1
@@ -79,6 +79,9 @@ spec:
                 --from-file=expires_at="${WORK}/expires_at" --dry-run=client -o yaml \
                 | oc apply --server-side --force-conflicts --field-manager=maas-quality-judge -f -
               rm -f "${WORK}/api-key"
-              oc create configmap maas-quality-judge-endpoint -n "${NS}" --from-literal=host="${MAAS_HOST}" --dry-run=client -o yaml \
+              MISTRAL_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[?(@.name=="mistral-small4")].hostname}')"
+              [ -n "${MISTRAL_HOST}" ] || { echo "ERROR: MaaS Gateway mistral-small4 hostname is not ready" >&2; exit 1; }
+              oc create configmap maas-quality-judge-endpoint -n "${NS}" --from-literal=host="${MAAS_HOST}" \
+                --from-literal=mistral_host="${MISTRAL_HOST}" --dry-run=client -o yaml \
                 | oc apply --server-side --force-conflicts --field-manager=maas-quality-judge -f -
               echo "Secret ${NS}/${SECRET_NAME} holds the ${SUBSCRIPTION} key; endpoint host recorded"

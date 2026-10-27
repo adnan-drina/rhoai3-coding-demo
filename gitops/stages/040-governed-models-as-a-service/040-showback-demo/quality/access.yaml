@@ -1,6 +1,7 @@
 # The judge's own MaaS access, owned by the scoring ServiceAccount, so judging shows up as its own subscription (cost
-# centre ai-platform) and never consumes a team's allowance. Nemotron 3 Ultra (free through the NVIDIA provider) judges
-# every model except itself; Qwen judges Nemotron's answers, so no model grades its own.
+# centre ai-platform) and never consumes a team's allowance. The judges are the private models: Qwen 3.8 grades every
+# model except itself, Mistral Small 4 grades Qwen, so no model grades its own answers and judging costs no tokens at
+# a provider.
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata:
@@ -20,15 +21,15 @@ spec:
       - system:serviceaccount:models-as-a-service:maas-quality-judge
   priority: 60
   modelRefs:
-    - name: nemotron-3-ultra-550b-a55b
-      namespace: external-models
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
     - name: qwen3-8-27b
       namespace: internal-models
       tokenRateLimits:
-        - limit: 200000
+        - limit: 2000000
+          window: 1h
+    - name: mistral-small4-119b
+      namespace: internal-models
+      tokenRateLimits:
+        - limit: 1000000
           window: 1h
   tokenMetadata:
     organizationId: rhoai3-coding-demo
@@ -56,7 +57,7 @@ spec:
     users:
       - system:serviceaccount:models-as-a-service:maas-quality-judge
   modelRefs:
-    - name: nemotron-3-ultra-550b-a55b
-      namespace: external-models
     - name: qwen3-8-27b
+      namespace: internal-models
+    - name: mistral-small4-119b
       namespace: internal-models

@@ -64,7 +64,7 @@ Run the commands from the repository root after the usual cluster login. Each st
 
 ## MLflow traces per request
 
-`generate-load.sh` also writes every request to MLflow as one trace, and an hourly judge grades a sample of them, so
+`generate-load.sh` also writes every request to MLflow as one trace, and a nightly judge grades a sample of them, so
 each model's use can be inspected request by request next to the aggregate dashboards. Open MLflow from the OpenShift
 AI dashboard, pick the workspace **Models-as-a-Service** (`models-as-a-service`, the MaaS project; only `rhods-admins`
 have access) and a model's experiment. There is one experiment per MaaS model, named after the namespace of its model
@@ -92,19 +92,21 @@ request-level view and answer quality per model.
   up a price by model name.
 - **Path:** the script posts OTLP/HTTP JSON to the internal MLflow Service (`/v1/traces`, through a local port-forward)
   with the operator's token, the `X-MLFLOW-WORKSPACE` header and the experiment id, the same endpoint a platform trace
-  collector would use. The hourly scorer creates an experiment for every MaaS model reference and refreshes its
+  collector would use. The scorer creates an experiment for every MaaS model reference and refreshes its
   offering and provider tags, so each model has its scorecard before its first request; the script creates a missing
   one on first use.
 - **Fails open:** a failed export never stops the load; the summary prints `traced` and `trace_failed` per team.
   `--no-trace` skips tracing. Failed requests are traced as errors.
-- **Quality:** the CronJob `maas-quality-scorer` (component folder `quality/`) runs at five past each hour. It takes a
-  10% sample (at most 20 per experiment) of the last 65 minutes' successful, unscored traces, asks the judge three
-  true/false questions and logs the verdicts as MLflow feedback: `relevance`, `completeness` and `team_guidelines` (the
-  guideline of the trace's team). The Quality tab shows each scorer's average, the pass rate. The judge is Nemotron 3
-  Ultra (free through the NVIDIA provider) for every model except Nemotron itself, whose answers Qwen grades, so no
-  model grades its own; both are reached through MaaS on the judge's own subscription `maas-quality-judge`. A run stops
-  after 20 minutes (MLflow retries a failed judge call up to ten times), and unscored traces wait for the next run.
-  Run it now with `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`.
+- **Quality:** the CronJob `maas-quality-scorer` (component folder `quality/`) is a nightly batch job, at 01:00 UTC,
+  outside working hours. It takes a 25% sample (at most 150 per experiment) of the previous 25 hours' successful,
+  unscored traces, asks a judge three true/false questions and logs the verdicts as MLflow feedback: `relevance`,
+  `completeness` and `team_guidelines` (the guideline of the trace's team). The Quality tab shows each scorer's average,
+  the pass rate. The judges are the private models, reached through MaaS on their own subscription
+  `maas-quality-judge`: Qwen grades every model except itself and Mistral grades Qwen, so no model grades its own
+  answers and judging costs nothing at a provider. Both must be serving when the job runs; if either is stopped (GPUs
+  scaled down), the run is skipped with a message. A run stops after 2.5 hours, and unscored traces wait for the next
+  one. To score right after a demo load, start it by hand:
+  `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`.
 - **Scope:** only this load generator's requests are traced. Platform-side tracing of every MaaS client is planned work.
 
 ## External metering

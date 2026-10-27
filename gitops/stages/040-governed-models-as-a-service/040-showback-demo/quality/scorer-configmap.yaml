@@ -1,7 +1,7 @@
-# The hourly quality scorer (CronJob maas-quality-scorer). MLflow online judges need the MLflow AI Gateway and server
+# The nightly quality scorer (CronJob maas-quality-scorer). MLflow online judges need the MLflow AI Gateway and server
 # job execution, which OpenShift AI 3.5 ships disabled; this batch job does the same work with the MLflow SDK: for each
-# team experiment it samples recent, unscored request traces, asks the judge model through MaaS and logs the verdicts
-# as MLflow feedback on the traces (the experiment Overview's Quality tab).
+# model experiment it samples the previous day's unscored request traces, asks a private judge model through MaaS and
+# logs the verdicts as MLflow feedback on the traces (the experiment Overview's Quality tab).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -17,38 +17,56 @@ metadata:
     argocd.argoproj.io/sync-wave: '10'
 data:
   score.py: |
-    import os, random, socket, sys, time
-    from typing import Literal
+    import json, os, random, socket, ssl, sys, time, urllib.request
 
     import mlflow
     from mlflow.genai.judges import make_judge
 
-    WINDOW_MIN = int(os.environ.get("WINDOW_MINUTES", "65"))
-    SAMPLE = float(os.environ.get("SAMPLE_RATE", "0.2"))
-    LIMIT = int(os.environ.get("MAX_TRACES_PER_EXPERIMENT", "20"))
-    # MLflow judges retry a failed call up to ten times with backoff; the budget bounds a run when the judge provider
-    # is slow or rate-limited. Unscored traces are picked up by the next run.
-    DEADLINE = time.time() + int(os.environ.get("RUN_BUDGET_SECONDS", "1200"))
-    HOST = open("/etc/maas-quality/endpoint/host").read().strip()
+    WINDOW_MIN = int(os.environ.get("WINDOW_MINUTES", "1500"))
+    SAMPLE = float(os.environ.get("SAMPLE_RATE", "0.25"))
+    LIMIT = int(os.environ.get("MAX_TRACES_PER_EXPERIMENT", "150"))
+    # MLflow judges retry a failed call up to ten times with backoff; the budget bounds a run when a judge is slow or
+    # rate-limited. Unscored traces are picked up by the next run.
+    DEADLINE = time.time() + int(os.environ.get("RUN_BUDGET_SECONDS", "9000"))
+    ENDPOINT = "/etc/maas-quality/endpoint/"
+    SHARED_HOST = open(ENDPOINT + "host").read().strip()
+    MISTRAL_HOST = open(ENDPOINT + "mistral_host").read().strip()
 
-    # The judge calls the public MaaS hostname (TLS and route matching unchanged) through the internal gateway Service,
-    # the in-process equivalent of the Dev Spaces hostAlias.
+    # The judges are reached on their public MaaS hostnames (TLS and route matching unchanged) through the internal
+    # gateway Service, the in-process equivalent of the Dev Spaces hostAlias.
     INTERNAL = socket.gethostbyname("maas-gateway-internal.openshift-ingress.svc.cluster.local")
     _getaddrinfo = socket.getaddrinfo
-    socket.getaddrinfo = lambda host, *a, **k: _getaddrinfo(INTERNAL if host == HOST else host, *a, **k)
+    socket.getaddrinfo = lambda host, *a, **k: _getaddrinfo(
+        INTERNAL if host in (SHARED_HOST, MISTRAL_HOST) else host, *a, **k)
 
     KEY = open("/etc/maas-quality/key/api-key").read().strip()
     os.environ["OPENAI_API_KEY"] = KEY  # the provider config requires one; the header below is what is sent
-    # Boolean verdicts, so the Quality tab shows each scorer's average (the pass rate).
-    COMMON = dict(base_url=f"https://{HOST}/v1/chat/completions", extra_headers={"Authorization": f"Bearer {KEY}"},
-                  feedback_value_type=bool)
+    JUDGE, SELF_JUDGE = os.environ["JUDGE_MODEL"], os.environ["SELF_JUDGE_MODEL"]
+    # The private judges: MaaS model name, endpoint (Mistral has its own Gateway listener) and inference parameters.
+    # Qwen runs with thinking off, as the coding clients use it.
     JUDGES_BY_MODEL = {
-        # Nemotron 3 Ultra reasons before answering: room for the reasoning and the verdict.
-        os.environ["JUDGE_MODEL"]: {"max_tokens": 2000, "temperature": 0},
-        # Qwen judges Nemotron's own answers; thinking off, as the coding clients use it.
-        os.environ["SELF_JUDGE_MODEL"]: {"max_tokens": 1000, "temperature": 0,
-                                         "chat_template_kwargs": {"enable_thinking": False}},
+        "qwen3-8-27b": (f"https://{SHARED_HOST}/v1/chat/completions",
+                        {"max_tokens": 1000, "temperature": 0, "chat_template_kwargs": {"enable_thinking": False}}),
+        "mistral-small4-119b": (f"https://{MISTRAL_HOST}/v1/chat/completions", {"max_tokens": 1000, "temperature": 0}),
     }
+
+    def serving(model):
+        """One short request: a judge whose model is stopped (GPUs scaled down) skips the run instead of retrying."""
+        url, _ = JUDGES_BY_MODEL[model]
+        body = json.dumps({"model": f"publishers/internal-models/models/{model}", "max_tokens": 1,
+                           "messages": [{"role": "user", "content": "ping"}]}).encode()
+        req = urllib.request.Request(url, data=body, headers={"Authorization": f"Bearer {KEY}",
+                                                              "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=60, context=ssl.create_default_context()) as r:
+                return r.status == 200
+        except Exception as e:
+            print(f"judge {model} not serving: {type(e).__name__}: {str(e)[:120]}", flush=True)
+            return False
+
+    if not (serving(JUDGE) and serving(SELF_JUDGE)):
+        print("skipped: start the private judge models (Qwen and Mistral) and run the scorer again", flush=True)
+        sys.exit(0)
 
     # What a good answer is for each team (the trace's subscription tag).
     GUIDELINES = {
@@ -60,7 +78,10 @@ data:
                           "brief for the product and audience named in the request, and makes no unverifiable claims.",
     }
     def judges_for(judge_model):
-        kw = dict(COMMON, model="openai:/" + judge_model, inference_params=JUDGES_BY_MODEL[judge_model])
+        url, params = JUDGES_BY_MODEL[judge_model]
+        # Boolean verdicts, so the Quality tab shows each scorer's average (the pass rate).
+        kw = dict(model=f"openai:/publishers/internal-models/models/{judge_model}", base_url=url,
+                  extra_headers={"Authorization": f"Bearer {KEY}"}, feedback_value_type=bool, inference_params=params)
         relevance = make_judge(name="relevance", description="The response addresses the request.", instructions=(
             "Request: {{ inputs }}\nResponse: {{ outputs }}\n"
             "Return true if the response directly addresses what the request asks for, false if it is off-topic, "
@@ -75,7 +96,7 @@ data:
             for sub, rules in GUIDELINES.items()}
         return relevance, completeness, team
 
-    JUDGE_SETS = {m: judges_for(m) for m in JUDGES_BY_MODEL}
+    JUDGE_SETS = {m: judges_for(m) for m in (JUDGE, SELF_JUDGE)}
 
     def root_io(trace):
         root = next(s for s in trace.data.spans if s.parent_id is None)
@@ -122,9 +143,9 @@ data:
     experiments = [e for prefix in ("internal-", "external-")
                    for e in client.search_experiments(filter_string=f"name LIKE '{prefix}%'")]
     for exp in experiments:
-        # No model grades its own answers: the self-judge takes the main judge model's experiment.
-        own = exp.name == "external-" + os.environ["JUDGE_MODEL"]
-        RELEVANCE, COMPLETENESS, TEAM_JUDGES = JUDGE_SETS[os.environ["SELF_JUDGE_MODEL" if own else "JUDGE_MODEL"]]
+        # No model grades its own answers: the second judge takes the main judge model's experiment.
+        own = exp.name == "internal-" + JUDGE
+        RELEVANCE, COMPLETENESS, TEAM_JUDGES = JUDGE_SETS[SELF_JUDGE if own else JUDGE]
         traces = mlflow.search_traces(locations=[exp.experiment_id], return_type="list", max_results=500,
                                       filter_string=f"trace.timestamp_ms > {cutoff} AND trace.status = 'OK'")
         todo = [t for t in traces if not any(a.name == "relevance" for a in (t.info.assessments or []))]
