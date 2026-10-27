@@ -605,7 +605,8 @@ validation_summary || exit 1
 # ── Quota enforcement probe (explicit, bounded; never run by deployment polling) ─────────────────────────────────
 # Runs in a subshell: its own EXIT trap revokes the ephemeral key.
 quota() {
-    local base sa_token key_id api_key codes code round i body work
+    # Not local: the EXIT trap that revokes the key runs after this function returns (the subshell isolates them).
+    local codes code round i body
     base="https://$(read_json gateway maas-default-gateway -n openshift-ingress | jq -r '.spec.listeners[] | select(.name == "api") | .hostname')"
     sa_token=$(oc --request-timeout=10s create token maas-quota-probe -n models-as-a-service --duration=10m) ||
         { echo "[FAIL] Quota probe ServiceAccount token unavailable"; exit 1; }  # memory only
