@@ -38,7 +38,7 @@ data:
     os.environ["OPENAI_API_KEY"] = KEY  # the provider config requires one; the header below is what is sent
     JUDGE = dict(model="openai:/" + os.environ["JUDGE_MODEL"], base_url=f"https://{HOST}/v1/chat/completions",
                  extra_headers={"Authorization": f"Bearer {KEY}"}, feedback_value_type=Literal["yes", "no"],
-                 inference_params={"temperature": 0, "max_tokens": 400})
+                 inference_params={"max_tokens": 400})  # Claude Sonnet 5.5 rejects temperature
 
     # What a good answer is for each team (subscription = experiment name).
     GUIDELINES = {
