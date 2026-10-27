@@ -8,12 +8,11 @@ metadata:
   skill-group: "RHOAI Platform"
 description: >
   Use when changing, reviewing or debugging the shared OpenShift AI MLflow
-  tracking server of Stage 050: the cluster-scoped MLflow CR `mlflow`, its
+  tracking server of Stage 010: the cluster-scoped MLflow CR `mlflow`, its
   PostgreSQL StatefulSet `mlflow-postgresql`, the ODF artifact bucket
-  `rhoai-mlflow-artifacts`, the `mlflowoperator`/`trustyai`/`aipipelines`
-  enable hook, the `ai-curated-prompts` global prompt workspace, MLflow SDK
+  `rhoai-mlflow-artifacts`, the `mlflowoperator` enable hook, the `ai-curated-prompts` global prompt workspace, MLflow SDK
   authentication, or EvalHub and pipeline runs that fail to log to MLflow
-  (gitops/stages/050-model-evaluation/050-mlflow/). Do NOT use for EvalHub jobs,
+  (gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/). Do NOT use for EvalHub jobs,
   providers and collections (use rhoai-evaluation), AI pipeline servers (use
   rhoai-ai-pipelines), or registry records (use rhoai-model-registry-workflows).
 ---
@@ -22,7 +21,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/050-model-evaluation/050-mlflow/README.md`.
+`gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/README.md`.
 
 ## When to use
 
@@ -35,22 +34,22 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `mlflowoperator`, `trustyai` and `aipipelines` set `Managed` by a Sync hook into fields Stage 010 delegates (one shared DSC) | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/` | [Enable the MLflow Operator component][enable] |
-| One cluster-scoped `MLflow` named `mlflow`; Secret and ConfigMap references resolve in `redhat-ods-applications` | `gitops/stages/050-model-evaluation/050-mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
-| PostgreSQL 16 metadata store via `backendStoreUriFrom` (Secret `mlflow-db-credentials`, created by `stages/050-model-evaluation/deploy.sh`); no SQLite | `gitops/stages/050-model-evaluation/050-mlflow/postgresql-statefulset.yaml` | [Install and configure MLflow][install], [Storage and database compatibility][storage] |
-| Artifacts in ODF bucket `rhoai-mlflow-artifacts` with `serveArtifacts: true`, so clients never hold S3 keys | `gitops/stages/050-model-evaluation/050-mlflow/objectbucketclaim.yaml` | [MLflow configuration parameters][params] |
-| `ai-curated-prompts` is a global prompt workspace (label `opendatahub.io/global-mlflow-workspace: mlflow`) listed in dashboard `globalMLflowNamespaces` | `gitops/stages/050-model-evaluation/050-mlflow/prompts/namespace.yaml` | [Cluster roles for global prompt registry namespaces][globalroles] |
-| One replica and one worker, automatic schema migration: demo sizing | `gitops/stages/050-model-evaluation/050-mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
-| All data objects (PVC, StatefulSet, bucket, CR) carry `Prune=false,Delete=false`, so MLflow is its own Argo CD Application `050-mlflow` | `gitops/applications/050-mlflow.yaml` | not product guidance |
+| `mlflowoperator` set `Managed` by the `enable-mlflow` Sync hook into a field `010-rhoai-platform` delegates (one shared DSC); `trustyai` and `aipipelines` are Stage 050's (`050-model-qualification/evaluation-enablement/`) | `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/enablement/` | [Enable the MLflow Operator component][enable] |
+| One cluster-scoped `MLflow` named `mlflow`; Secret and ConfigMap references resolve in `redhat-ods-applications` | `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
+| PostgreSQL 16 metadata store via `backendStoreUriFrom` (Secret `mlflow-db-credentials`, created by `stages/010-openshift-ai-platform-foundation/deploy.sh`); no SQLite | `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/postgresql-statefulset.yaml` | [Install and configure MLflow][install], [Storage and database compatibility][storage] |
+| Artifacts in ODF bucket `rhoai-mlflow-artifacts` with `serveArtifacts: true`, so clients never hold S3 keys | `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/objectbucketclaim.yaml` | [MLflow configuration parameters][params] |
+| `ai-curated-prompts` is a global prompt workspace (label `opendatahub.io/global-mlflow-workspace: mlflow`) listed in dashboard `globalMLflowNamespaces` | `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/prompts/namespace.yaml` | [Cluster roles for global prompt registry namespaces][globalroles] |
+| One replica and one worker, automatic schema migration: demo sizing | `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/mlflow.yaml` | [MLflow configuration parameters][params] |
+| All data objects (PVC, StatefulSet, bucket, CR) carry `Prune=false,Delete=false`, so MLflow is its own Argo CD Application `010-mlflow` | `gitops/applications/010-mlflow.yaml` | not product guidance |
 
 ## Procedure
 
-1. Change manifests under `gitops/stages/050-model-evaluation/050-mlflow/`, commit,
-   publish, then deploy all Stage 050 Applications at one SHA:
+1. Change manifests under `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/`, commit,
+   publish, then deploy the component at that SHA:
 
    ```bash
-   ./stages/050-model-evaluation/deploy.sh
-   ./stages/050-model-evaluation/validate.sh
+   ./stages/010-openshift-ai-platform-foundation/deploy.sh --revision <sha> --component 010-mlflow
+   ./stages/010-openshift-ai-platform-foundation/validate.sh --component 010-mlflow
    ```
 
 2. Inspect read-only, after the OpenShift safety guard in `AGENTS.md`:
@@ -67,7 +66,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
 ## Pitfalls
 
-- `stages/050-model-evaluation/deploy.sh` refuses to regenerate `mlflow-db-credentials` while
+- `stages/010-openshift-ai-platform-foundation/deploy.sh` refuses to regenerate `mlflow-db-credentials` while
   the database PVC or StatefulSet exists; a lost Secret means restoring it,
   not re-running the helper.
 - `caBundleConfigMap` (trust for the ODF S3 service) is in the repo CR but was

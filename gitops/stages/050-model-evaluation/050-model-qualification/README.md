@@ -12,7 +12,7 @@ access. The Application reports **Suspended** by design while the candidate mode
 | Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 2, all Stage 050 components at one commit SHA) |
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced, and Healthy or Suspended only by a stopped InferenceService) and [`stages/050-model-evaluation/validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (tenant label, tenant discovery, job ServiceAccount, admin access, developer denial) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true` (the registry labels of `gemma-2-9b-abliterated`), `SkipDryRunOnMissingResource=true`. Annotation `demo.rhoai.io/accepted-health: Suspended`. |
-| Depends on | `050-mlflow` (AI Pipelines and TrustyAI components enabled by its hook; MLflow for run tracking); `050-evalhub` (EvalHub instance that reconciles the tenant); Stage 040 (MaaS Gateway `maas-default-gateway`, subscription `model-qualification`); Stage 020 (ClusterQueues `cq-cpu-default`, `cq-gpu-reserved-demo`, `cq-gpu-rtxpro6000`; hardware profile `gpu-reserved-demo`); ODF (buckets, Route `s3`). |
+| Depends on | `010-mlflow` (MLflow for run tracking); `010-rhoai-platform` (delegated DSC and dashboard fields its `evaluation-enablement/` hook sets); `050-evalhub` (EvalHub instance that reconciles the tenant); Stage 040 (MaaS Gateway `maas-default-gateway`, subscription `model-qualification`); Stage 020 (ClusterQueues `cq-cpu-default`, `cq-gpu-reserved-demo`, `cq-gpu-rtxpro6000`; hardware profile `gpu-reserved-demo`); ODF (buckets, Route `s3`). |
 | Used by | `050-evalhub` (Role `evalhub-evaluator` bound to its MCP and automation principals), `050-evaluation-content` and `050-oci-export` (objects in `evaluated-models`); evaluation jobs submitted from the dashboard or the EvalHub REST API. |
 
 ## Why
@@ -49,6 +49,18 @@ ready.
 | Role | `evalhub-evaluator` | `evaluated-models` | Wave 12. The documented EvalHub tenant rules: `evaluations`, `collections`, `providers` (get, list, create, update, delete) and MLflow `experiments` (create, get) [1]. |
 | RoleBinding | `qualification-evalhub-access` | `evaluated-models` | Wave 12. `evalhub-evaluator` for `rhods-admins`. |
 | LocalQueue | `lq-cpu-default`, `lq-gpu-reserved-demo`, `lq-gpu-rtxpro6000` | `evaluated-models` | Wave 6. Point to the Stage 020 ClusterQueues; evaluation jobs use the CPU queue, model servers a GPU queue [3]. |
+
+### Evaluation enablement (`evaluation-enablement/`)
+
+Moved here from `050-mlflow` on 2026-10-27, when MLflow moved to Stage 010. This component is the first Stage 050
+Application in deploy order, so its hook runs before the components that need TrustyAI and AI Pipelines.
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| ServiceAccount | `enable-model-evaluation` | `redhat-ods-applications` | Hook identity. Wave 1. |
+| ClusterRole / ClusterRoleBinding | `enable-model-evaluation` | cluster | `get`/`patch` on `default-dsc` and on Namespace `demo-sandbox`; `get` on three CRDs and on `trustyais/default-trustyai`. Wave 1. |
+| Role / RoleBinding | `enable-model-evaluation-dashboard` | `redhat-ods-applications` | `get`/`patch` on `odh-dashboard-config` only. Wave 1. |
+| Job | `enable-model-evaluation` | `redhat-ods-applications` | `Sync` hook, wave 2, `BeforeHookCreation,HookSucceeded`, 900 s deadline. With a resourceVersion test it sets `trustyai` and `aipipelines` `Managed` in `default-dsc` (and tests that KServe is `Managed`, so evaluation is never enabled without Stage 030) and `disableLMEval: false` in the dashboard (show the Eval Hub pages; default `true`). It removes a former EvalHub tenant label from `demo-sandbox`, waits for the EvalHub, DSPA and PipelineVersion CRDs, and waits for the TrustyAI component to be `Ready`. |
 
 ### MaaS key for evaluations (`maas-key-provisioner.yaml`)
 

@@ -10,7 +10,7 @@ description: >
   Use when someone proposes TrustyAI bias or data-drift monitoring
   (TrustyAIService, SPD/DIR, MeanShift, FourierMMD, KSTest) for this demo,
   when reviewing what the `trustyai` DataScienceCluster component enabled by
-  the Stage 050 hook (gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/)
+  the Stage 050 hook (gitops/stages/050-model-evaluation/050-model-qualification/evaluation-enablement/)
   does here, or when a TrustyAIService appears next to the vLLM models in
   `internal-models` or `evaluated-models`. Do NOT use for EvalHub evaluations,
   which the same component runs (use rhoai-evaluation), model serving metrics
@@ -22,7 +22,7 @@ description: >
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
 OpenShift AI 3.5 sections. Detailed record:
-`gitops/stages/050-model-evaluation/050-mlflow/README.md` (component enablement).
+`gitops/stages/050-model-evaluation/050-model-qualification/README.md` (component enablement).
 
 ## When to use
 
@@ -33,7 +33,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `trustyai` is set `Managed` by the `enable-model-evaluation` Sync hook (delegated DSC field) because EvalHub runs on the TrustyAI operator; the hook waits for `trustyais/default-trustyai` `Ready` | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/enable-job.yaml` | [Enable the TrustyAI component][enable] |
+| `trustyai` is set `Managed` by the `enable-model-evaluation` Sync hook (delegated DSC field) because EvalHub runs on the TrustyAI operator; the hook waits for `trustyais/default-trustyai` `Ready` | `gitops/stages/050-model-evaluation/050-model-qualification/evaluation-enablement/enable-job.yaml` | [Enable the TrustyAI component][enable] |
 | No `TrustyAIService`, no bias or drift metric in Git: the served models are vLLM (`LLMInferenceService` in `internal-models`, candidate `InferenceService` in `evaluated-models`), and TrustyAI monitoring supports only OpenVINO Model Server models | `gitops/stages/040-governed-models-as-a-service/040-local-models/`, `gitops/stages/050-model-evaluation/050-model-qualification/` | [Install the TrustyAI service][install] |
 | Model quality evidence comes from EvalHub benchmarks recorded in MLflow and the registry, not TrustyAI metrics | `gitops/stages/050-model-evaluation/050-evalhub/` | see `rhoai-evaluation` |
 

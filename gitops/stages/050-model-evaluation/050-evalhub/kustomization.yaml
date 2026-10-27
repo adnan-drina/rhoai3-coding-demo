@@ -1,4 +1,4 @@
-# EvalHub with its PostgreSQL (data) and tenant access; the curated prompts project is in ../050-mlflow/prompts.
+# EvalHub with its PostgreSQL (data) and tenant access; the curated prompts project is in Stage 010 (010-mlflow/prompts).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

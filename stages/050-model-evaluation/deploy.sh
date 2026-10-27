@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Stage 050: MLflow, EvalHub, evaluation content and the model qualification pipeline, at one reviewed published
-# revision. Before the first write: Stage 010-040 prerequisites and the adoption preflight. After the Applications:
-# the database credentials and the MLflow tracking address the services need (Argo CD owns every workload and CR).
+# Stage 050: EvalHub, evaluation content and the model qualification pipeline, at one reviewed published revision.
+# They track to the shared MLflow that Stage 010 deploys (010-mlflow). Before the first write: Stage 010-040
+# prerequisites and the adoption preflight. After the Applications: the EvalHub database credentials and the MLflow
+# tracking address it needs (Argo CD owns every workload and CR).
 # Running an evaluation is a separate step (dashboard Develop & train → Evaluations).
 # Usage: stages/050-model-evaluation/deploy.sh [--revision REF]   (REF defaults to GIT_REPO_BRANCH, then HEAD)
 set -euo pipefail
@@ -27,14 +28,13 @@ revision=$("$STAGE_APPS" select 050 --ref "$ref" --repo-url "$GIT_REPO_URL")
 "$STAGE_APPS" status 010 --repo-url "$GIT_REPO_URL" >/dev/null || fail "Stage 010 must be reconciled first"
 dashboard_fields=$("$STAGE_APPS" delegated 010 OdhDashboardConfig odh-dashboard-config "$APPS" --group opendatahub.io)
 dsc_fields=$("$STAGE_APPS" delegated 010 DataScienceCluster default-dsc --group datasciencecluster.opendatahub.io)
-for field in /spec/dashboardConfig/disableLMEval /spec/dashboardConfig/globalProjectPrompts /spec/globalMLflowNamespaces; do
-  grep -qx "$field" <<<"$dashboard_fields" || fail "Stage 010 has not delegated $field (evaluation/global prompt configuration)"
-done
-for field in /spec/components/trustyai /spec/components/mlflowoperator; do
+grep -qx /spec/dashboardConfig/disableLMEval <<<"$dashboard_fields" || fail "Stage 010 has not delegated /spec/dashboardConfig/disableLMEval"
+for field in /spec/components/trustyai /spec/components/aipipelines; do
   grep -qx "$field" <<<"$dsc_fields" || fail "Stage 010 has not delegated $field"
 done
-read_json odhdashboardconfig odh-dashboard-config -n "$APPS" | jq -e '.spec.globalMLflowNamespaces // [] | . == [] or . == ["ai-curated-prompts"]' >/dev/null ||
-  fail "Foreign global prompt configuration requires a reviewed merge before deployment"
+# The shared MLflow is Stage 010's 010-mlflow; evaluation tracks to it.
+read_json applications.argoproj.io 010-mlflow -n openshift-gitops | jq -e '.status.sync.status == "Synced" and .status.health.status == "Healthy"' >/dev/null ||
+  fail "Stage 010 MLflow (010-mlflow) must be Synced and Healthy first: stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-mlflow"
 # Serving and MaaS stay reconciled from source; stopped model compute is allowed.
 for app in 030-private-model-serving $("$STAGE_APPS" names 040); do
   [[ $(oc --request-timeout=10s get applications.argoproj.io "$app" -n openshift-gitops -o jsonpath='{.status.sync.status}' 2>/dev/null) == Synced ]] ||
@@ -45,13 +45,7 @@ read_json datasciencecluster default-dsc | jq -e '.spec.components.kserve.manage
 oc --request-timeout=10s get crd inferenceservices.serving.kserve.io >/dev/null || fail "KServe InferenceServices API is absent"
 read_json configmap inferenceservice-config -n "$APPS" | jq -e '(.data.deploy // "{}" | fromjson | .defaultDeploymentMode) == "RawDeployment"' >/dev/null ||
   fail "Native KServe defaultDeploymentMode must be RawDeployment"
-read_json argocd openshift-gitops -n openshift-gitops | jq -e '.spec.extraConfig["resource.customizations.health.mlflow.opendatahub.io_MLflow"] // ""
-  | . as $h | all("Available", "MLflowOperatorReady", "Migration", "observedGeneration"; . as $w | $h | contains($w))' >/dev/null || fail "Install the reviewed native MLflow health gate (Stage 010) before Stage 050"
-# Retained storage must be the bound, exact objects; the runtime MLflow connection must be this setup's own.
-pvc=$(read_json pvc mlflow-postgresql -n "$APPS")
-[[ -z "$pvc" ]] || jq -e '.status.phase == "Bound"' <<<"$pvc" >/dev/null || fail "Retained MLflow PVC is not Bound"
-obc=$(read_json objectbucketclaim rhoai-mlflow-artifacts -n "$APPS")
-[[ -z "$obc" ]] || jq -e '.status.phase == "Bound" and .spec.bucketName == "rhoai-mlflow-artifacts"' <<<"$obc" >/dev/null || fail "Retained artifact bucket differs"
+# The runtime MLflow connection must be this setup's own.
 connection=$(read_json configmap evalhub-mlflow-connection -n evalhub)
 [[ -z "$connection" ]] || jq -e --arg m "$MANAGED_BY" '.metadata | (.ownerReferences // [] | length) == 0 and .deletionTimestamp == null
   and (.annotations["argocd.argoproj.io/tracking-id"] // "") == "" and .labels["app.kubernetes.io/managed-by"] == $m' <<<"$connection" >/dev/null ||
@@ -59,7 +53,7 @@ connection=$(read_json configmap evalhub-mlflow-connection -n evalhub)
 # A database with neither storage nor workload is new: its credentials may be generated once, after the Applications
 # create the storage. Existing storage without its credential Secret is retained data whose credentials must be restored.
 fresh=""
-for pair in mlflow:"$APPS" evalhub:evalhub; do
+for pair in evalhub:evalhub; do
   feature=${pair%%:*} ns=${pair#*:}
   storage=$(oc --request-timeout=10s get pvc,statefulset "$feature-postgresql" -n "$ns" --ignore-not-found -o name)
   secret=$(oc --request-timeout=10s get secret "$feature-db-credentials" -n "$ns" --ignore-not-found -o name)  # metadata only
@@ -78,16 +72,14 @@ wait_until() {
   until "$@"; do (( SECONDS < deadline )) || fail "Timed out waiting for $label; inspect operator and Argo CD status"; sleep 5; done
 }
 namespace_active() { [[ $(oc --request-timeout=10s get namespace "$1" -o jsonpath='{.status.phase}' 2>/dev/null) == Active ]]; }
-wait_until 300 "namespace $APPS" namespace_active "$APPS"
 wait_until 300 "namespace evalhub" namespace_active evalhub
 
 # Database credentials: reuse a valid unowned Secret, or generate one for a fresh database. The password lives in
 # memory and reaches jq through its environment and oc through stdin; it is never printed or passed as an argument.
 # Private same-namespace database transport is plaintext (demo boundary); URI mode overrides the chart's PGSSLMODE.
-URI_JQ='def uri($f; $ns; $u; $p; $d): (if $f == "mlflow" then "postgresql" else "postgres" end)
-  + "://\($u | @uri):\($p | @uri)@\($f)-postgresql.\($ns).svc.cluster.local:5432/\($d | @uri)?sslmode=disable";
-  def urikey($f): if $f == "mlflow" then "backend-store-uri" else "db-url" end;'
-for pair in mlflow:"$APPS" evalhub:evalhub; do
+URI_JQ='def uri($f; $ns; $u; $p; $d): "postgres://\($u | @uri):\($p | @uri)@\($f)-postgresql.\($ns).svc.cluster.local:5432/\($d | @uri)?sslmode=disable";
+  def urikey($f): "db-url";'
+for pair in evalhub:evalhub; do
   feature=${pair%%:*} ns=${pair#*:} name="$feature-db-credentials"
   if [[ -n "$(oc --request-timeout=10s get secret "$name" -n "$ns" --ignore-not-found -o name)" ]]; then
     oc --request-timeout=10s get secret "$name" -n "$ns" -o json | jq -e --arg f "$feature" --arg ns "$ns" "$URI_JQ"'
@@ -111,33 +103,6 @@ for pair in mlflow:"$APPS" evalhub:evalhub; do
   log_info "$feature database credentials created"
 done
 
-# The bucket claim publishes the internal HTTPS endpoint the service CA trusts, and its credential keys.
-bucket_ready() {
-  local name=rhoai-mlflow-artifacts keys
-  read_json objectbucketclaim "$name" -n "$APPS" | jq -e --arg n "$name" '.status.phase == "Bound" and .spec.bucketName == $n' >/dev/null || return 1
-  read_json configmap "$name" -n "$APPS" | jq -e --arg n "$name" '.data | .BUCKET_NAME == $n and .BUCKET_PORT == "443"
-    and (.BUCKET_HOST // "" | test("\\.openshift-storage\\.svc(\\.cluster\\.local)?$"))' >/dev/null || return 1
-  [[ -n "$(oc --request-timeout=10s get configmap mlflow-service-ca -n "$APPS" -o jsonpath='{.data.service-ca\.crt}' 2>/dev/null)" ]] || return 1
-  keys=$(oc --request-timeout=10s get secret "$name" -n "$APPS" -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}' 2>/dev/null) || return 1
-  grep -qx AWS_ACCESS_KEY_ID <<<"$keys" && grep -qx AWS_SECRET_ACCESS_KEY <<<"$keys"
-}
-wait_until 900 "the bound MLflow artifact bucket and trusted S3 endpoint" bucket_ready
-# MLflow Available, its OperatorReady and Migration conditions at the CR generation (Available omits it), and its
-# one operator-owned Deployment current.
-mlflow_available() {
-  local mlflow
-  mlflow=$(read_json mlflows.mlflow.opendatahub.io mlflow)
-  [[ -n "$mlflow" ]] || return 1
-  jq -e '.metadata.generation as $g | any(.status.conditions[]?; .type == "Available" and .status == "True")
-    and ([.status.conditions[]? | select((.type == "MLflowOperatorReady" or .type == "Migration") and .status == "True"
-      and .observedGeneration == $g) | .type] | unique | length) == 2
-    and (.status.address.url // "" | test("^https://[^/@:]+(:[0-9]+)?(/|$)"))' <<<"$mlflow" >/dev/null || return 1
-  read_json deployments -n "$APPS" | jq -e --arg uid "$(jq -r '.metadata.uid' <<<"$mlflow")" '[.items[]
-    | select(any(.metadata.ownerReferences[]?; .kind == "MLflow" and .uid == $uid and .controller == true))]
-    | length == 1 and (.[0] | (.spec.replicas // 1) as $n | .status as $s | $n > 0 and $s.observedGeneration == .metadata.generation
-      and ($s.readyReplicas // 0) >= $n and ($s.updatedReplicas // 0) == $n and ($s.replicas // 0) == $n and ($s.availableReplicas // 0) == $n)' >/dev/null
-}
-wait_until 900 "MLflow Available at its current generation" mlflow_available
 # Publish MLflow's native address for EvalHub (runtime ConfigMap owned by this setup, not by Argo CD).
 tracking_uri=$(oc --request-timeout=10s get mlflows.mlflow.opendatahub.io mlflow -o jsonpath='{.status.address.url}')
 jq -n --arg uri "$tracking_uri" --arg m "$MANAGED_BY" '{apiVersion: "v1", kind: "ConfigMap",
@@ -162,12 +127,6 @@ if ! evalhub_workspaces; then
   wait_until 900 "EvalHub ready" evalhub_ready
   wait_until 300 "EvalHub MLflow workspace probe" evalhub_workspaces
 fi
-
-# Stage 040's Studio hook registers the Ops Assistant prompt in MLflow, which this stage installs; on a fresh install
-# that hook deferred. Re-run 040-genai-studio's hooks at Stage 040's deployed revision now that MLflow is ready.
-studio_revision=$(oc --request-timeout=10s get applications.argoproj.io 040-genai-studio -n openshift-gitops -o jsonpath='{.spec.source.targetRevision}')
-"$STAGE_APPS" sync 040 --app 040-genai-studio --resync
-"$STAGE_APPS" wait 040 --app 040-genai-studio --revision "$studio_revision" --repo-url "$GIT_REPO_URL" --timeout 600
 
 # ── Model registry record of the risk assessment model ───────────────────────
 # Registered the way Stage 040 registers its models: one registered model per checkpoint, one version per immutable

@@ -33,7 +33,7 @@ in the linked OpenShift AI 3.5 sections.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Block storage comes from the cluster's AWS EBS CSI class `gp3-csi`; repo-managed PVCs name it explicitly | `gitops/stages/010-openshift-ai-platform-foundation/010-odf/README.md` ("Depends on"), for example `gitops/stages/050-model-evaluation/050-mlflow/postgresql-pvc.yaml` | [Storage classes in OpenShift AI][sc-rhoai] |
+| Block storage comes from the cluster's AWS EBS CSI class `gp3-csi`; repo-managed PVCs name it explicitly | `gitops/stages/010-openshift-ai-platform-foundation/010-odf/README.md` ("Depends on"), for example `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/postgresql-pvc.yaml` | [Storage classes in OpenShift AI][sc-rhoai] |
 | ODF is standalone Multicloud Object Gateway only: `openshift-storage.noobaa.io` serves ObjectBucketClaims, not workbench PVCs; no Ceph block or file classes, so no RWX class | `gitops/stages/010-openshift-ai-platform-foundation/010-odf/` | [Access modes][access], [Object storage endpoints][object] |
 | No OpenShift AI storage class settings (enabled list, display names, access modes, default) in Git; the OpenShift AI default is not changed | none under `gitops/` | [Configure storage class settings][settings], [Configure the default storage class][default] |
 | Data sharing between workbenches goes through S3 connections, not RWX volumes | `gitops/stages/010-openshift-ai-platform-foundation/010-sandbox-storage/README.md` | [Persistent storage for workbenches][persistent] |

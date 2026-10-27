@@ -495,16 +495,18 @@ Each script applies its stage's Applications from `gitops/applications/` (`<NNN>
 
 | Stage | Argo CD app | Purpose |
 |------|-------------|---------|
-| 010 | `010-rhoai-operator`, `010-odf`, `010-observability-operators`, `010-rhoai-platform`, `010-access`; separately `010-console-observability`, `010-sandbox-storage` | RHOAI operator, ODF, observability operators and trace roles, DSCI/DSC/Auth/dashboard configuration, demo sandbox access; console plugin list and monitoring UI, sandbox S3 connections |
+| 010 | `010-rhoai-operator`, `010-odf`, `010-observability-operators`, `010-rhoai-platform`, `010-access`; separately `010-console-observability`, `010-sandbox-storage`, `010-mlflow` | RHOAI operator, ODF, observability operators and trace roles, DSCI/DSC/Auth/dashboard configuration, demo sandbox access; console plugin list and monitoring UI, sandbox S3 connections, shared MLflow tracking (data) and curated prompts |
 | 020 | `020-node-feature-discovery`, `020-nvidia-gpu-operator`, `020-kueue`, `020-gpu-machinesets`, `020-gpu-quotas` | NFD, GPU Operator with metrics access and console dashboard, Red Hat build of Kueue, GPU MachineSets, queue quota and hardware profiles |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access`, `040-genai-studio` | MaaS operators, PostgreSQL (data), Gateway with Kuadrant/Authorino, MaaS enablement and monitoring, private models, external models, subscriptions and auth policies, Gen AI studio playground and MCP list |
-| 050 | `050-mlflow`, `050-model-qualification`, `050-evalhub`, `050-evaluation-content`, `050-oci-export` | MLflow tracking (data) and curated prompts, Evaluated Models project and qualification pipeline, EvalHub (data), evaluation collections and SWE-bench, OCI export |
+| 050 | `050-model-qualification`, `050-evalhub`, `050-evaluation-content`, `050-oci-export` | Evaluated Models project and qualification pipeline, EvalHub (data), evaluation collections and SWE-bench, OCI export |
 | 060 | `060-openshell-identity`, `060-openshell-runtime`, `060-mcp-platform`, `060-agent-tools`, `060-agent-console` | OpenShell identity realm, OpenShell runtime and agent workspaces, native MCP lifecycle enablement, agent MCP tool servers, AgentOps console discovery (each deployed by its own script) |
 | 070 | `070-namespaces`, `070-identity`, `070-devspaces`, `070-pipelines`, `070-sonarqube`, `070-mta`, `070-gitlab`, `070-rhdh` | All Stage 070 namespaces, platform Keycloak clients, Dev Spaces, Pipelines + Trusted Artifact Signer + project enrollment, SonarQube, MTA, GitLab and its integration hub, Developer Hub (deployed one at a time in this order) |
 | 110 | *(workflow-only)* | AI-assisted development on stage 070 workspaces |
 | 120 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
 | 130 | *(workflow-only)* | AI-autonomous migration on the stage 070 MTA stack |
+
+MLflow moved from Stage 050 to Stage 010 on 2026-10-27 (`050-mlflow` became the script-deployed `010-mlflow`), because Stages 040, 050 and 060 all use it, and MaaS request tracing (Stage 040) will too. The objects, names and data did not change: the move followed `.agents/skills/gitops-move-applications` (tracking ids rewritten, nothing recreated). The evaluation part of the old enablement hook (TrustyAI, AI Pipelines, `disableLMEval`) moved to `050-model-qualification` (`evaluation-enablement/`). Deploy or repair MLflow with `stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-mlflow`; Stage 050 `deploy.sh` now requires it Synced and Healthy.
 
 ## Validation Strategy
 

@@ -46,7 +46,7 @@ API inventory (kinds this repo writes; one example path each):
 | `serving.kserve.io/v1beta1`, `serving.kserve.io/v1alpha1` | InferenceService, ServingRuntime | `gitops/stages/050-model-evaluation/050-model-qualification/candidate-qwen3-8-27b-nvfp4.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/serving-runtime.yaml` |
 | `maas.opendatahub.io/v1alpha1` | MaaSModelRef, MaaSSubscription, MaaSAuthPolicy | `gitops/stages/040-governed-models-as-a-service/040-model-access/`, `.../local-models/qwen38-27b-maas-modelref.yaml` |
 | `inference.opendatahub.io/v1alpha1` | ExternalProvider, ExternalModel | `gitops/stages/040-governed-models-as-a-service/040-external-models/` |
-| `mlflow.opendatahub.io/v1` | MLflow | `gitops/stages/050-model-evaluation/050-mlflow/mlflow.yaml` |
+| `mlflow.opendatahub.io/v1` | MLflow | `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/mlflow.yaml` |
 | `modelregistry.opendatahub.io/v1beta1` | ModelRegistry | `gitops/stages/030-private-model-serving/030-private-model-serving/model-discovery/registry/modelregistry-demo.yaml` |
 | `trustyai.opendatahub.io/v1` | EvalHub | `gitops/stages/050-model-evaluation/050-evalhub/evalhub.yaml` |
 | `mcp.x-k8s.io/v1alpha1` | MCPServer | `gitops/stages/060-agent-runtime-and-agentops/060-agent-tools/hosting/mcpserver.yaml` |
@@ -54,7 +54,7 @@ API inventory (kinds this repo writes; one example path each):
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Configure components through the DSC only; per-component CRs (`*.components.platform.opendatahub.io`) are read for readiness, never written | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml`, `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/enable-job.yaml` | [Install components by CLI][comp-cli] |
+| Configure components through the DSC only; per-component CRs (`*.components.platform.opendatahub.io`) are read for readiness, never written | `gitops/stages/040-governed-models-as-a-service/040-maas-platform/jobs/enable-maas-job.yaml`, `gitops/stages/050-model-evaluation/050-model-qualification/evaluation-enablement/enable-job.yaml` | [Install components by CLI][comp-cli] |
 | Use the API version of the 3.5 documented example (DSC and DSCI `v2`) | `010-rhoai-platform/datasciencecluster.yaml`, `010-rhoai-platform/README.md` | [Install components by CLI][comp-cli] |
 | Tier per API is not recorded here: the article table is login-gated and was not readable on review (2026-10-15); write "tier unverified" rather than infer it | this skill | [API Tiers][tiers] |
 

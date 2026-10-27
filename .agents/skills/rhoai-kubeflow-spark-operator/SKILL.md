@@ -38,7 +38,7 @@ Thin skill: Spark on OpenShift AI 3.5. **Not deployed in this demo.**
 1. Delegate `/spec/components/sparkoperator` in the Stage 010 Application
    (`ignoreDifferences` plus `RespectIgnoreDifferences`; Stage 010
    `validate.sh` then stops requiring `Removed`), and set it `Managed` from a Sync hook in the owning stage (pattern:
-   `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/enable-job.yaml`).
+   `gitops/stages/050-model-evaluation/050-model-qualification/evaluation-enablement/enable-job.yaml`).
    See `rhoai-distributed-workloads` for the delegation rules.
 2. Put SparkApplications, the namespace RBAC and any Spark Connect server in
    that stage's GitOps folder; verify fields with `oc explain` against the

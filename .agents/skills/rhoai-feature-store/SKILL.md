@@ -37,7 +37,7 @@ the demo has no tabular feature workloads.
 
 1. Delegate `/spec/components/feastoperator` in the Stage 010 Application
    and set it `Managed` from a Sync hook in the owning stage (pattern:
-   `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/enable-job.yaml`;
+   `gitops/stages/050-model-evaluation/050-model-qualification/evaluation-enablement/enable-job.yaml`;
    rules in `rhoai-distributed-workloads` and the Stage 010 README).
 2. Declare the `FeatureStore` instance, its storage and RBAC in that
    stage's GitOps folder; check fields with `oc explain` against the

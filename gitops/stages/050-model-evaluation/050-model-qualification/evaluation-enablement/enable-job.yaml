@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/component: platform-configuration
     app.kubernetes.io/managed-by: argocd
   annotations:
-    demo.rhoai.io/writes-delegated: "DataScienceCluster:/spec/components/aipipelines,DataScienceCluster:/spec/components/mlflowoperator,DataScienceCluster:/spec/components/trustyai,OdhDashboardConfig:/spec/dashboardConfig/disableLMEval,OdhDashboardConfig:/spec/dashboardConfig/globalProjectPrompts,OdhDashboardConfig:/spec/globalMLflowNamespaces"
+    demo.rhoai.io/writes-delegated: "DataScienceCluster:/spec/components/aipipelines,DataScienceCluster:/spec/components/trustyai,OdhDashboardConfig:/spec/dashboardConfig/disableLMEval"
     argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
@@ -33,28 +33,23 @@ spec:
           command: [/bin/bash, -ceu]
           args:
             - |
-              globals=$(oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s -o jsonpath='{.spec.globalMLflowNamespaces[*]}')
-              [[ -z "$globals" || "$globals" == ai-curated-prompts ]] || { echo 'Foreign global prompt configuration requires reviewed merge'; exit 1; }
               [[ $(oc get datasciencecluster default-dsc --request-timeout=10s -o jsonpath='{.spec.components.kserve.managementState}') == Managed ]] || { echo 'Stage 030 KServe must be enabled first' >&2; exit 1; }
               dsc_rv=$(oc get datasciencecluster default-dsc --request-timeout=10s -o jsonpath='{.metadata.resourceVersion}')
-              oc patch datasciencecluster default-dsc --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$dsc_rv\"},{\"op\":\"test\",\"path\":\"/spec/components/kserve/managementState\",\"value\":\"Managed\"},{\"op\":\"replace\",\"path\":\"/spec/components/trustyai/managementState\",\"value\":\"Managed\"},{\"op\":\"replace\",\"path\":\"/spec/components/mlflowoperator/managementState\",\"value\":\"Managed\"},{\"op\":\"replace\",\"path\":\"/spec/components/aipipelines/managementState\",\"value\":\"Managed\"}]"
+              oc patch datasciencecluster default-dsc --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$dsc_rv\"},{\"op\":\"test\",\"path\":\"/spec/components/kserve/managementState\",\"value\":\"Managed\"},{\"op\":\"replace\",\"path\":\"/spec/components/trustyai/managementState\",\"value\":\"Managed\"},{\"op\":\"replace\",\"path\":\"/spec/components/aipipelines/managementState\",\"value\":\"Managed\"}]"
               # Evaluations run only in the Evaluated Models tenant (labelled in its Namespace manifest); retire the
               # former AI Coding Sandbox tenant label if it is still present.
               if [[ "$(oc get namespace demo-sandbox --request-timeout=10s -o jsonpath='{.metadata.labels}')" == *'"evalhub.trustyai.opendatahub.io/tenant"'* ]]; then
                 tenant_rv=$(oc get namespace demo-sandbox --request-timeout=10s -o jsonpath='{.metadata.resourceVersion}')
                 oc patch namespace demo-sandbox --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$tenant_rv\"},{\"op\":\"remove\",\"path\":\"/metadata/labels/evalhub.trustyai.opendatahub.io~1tenant\"}]"
               fi
-              # The shared MLflow instance serves both the project and curated workspace.
-              dashboard=$(oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s -o go-template='{{.metadata.resourceVersion}}|{{range .spec.globalMLflowNamespaces}}{{.}} {{end}}')
-              dashboard_rv=${dashboard%%|*};globals=${dashboard#*|}
-              [[ "$dashboard_rv" =~ ^[0-9]+$ && ( -z "$globals" || "$globals" == 'ai-curated-prompts ' ) ]] || { echo 'Concurrent or foreign global prompt configuration requires reviewed merge'; exit 1; }
-              oc patch odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$dashboard_rv\"},{\"op\":\"add\",\"path\":\"/spec/dashboardConfig/disableLMEval\",\"value\":false},{\"op\":\"add\",\"path\":\"/spec/dashboardConfig/globalProjectPrompts\",\"value\":true},{\"op\":\"add\",\"path\":\"/spec/globalMLflowNamespaces\",\"value\":[\"ai-curated-prompts\"]}]"
+              # Evaluations appear in the dashboard (Develop & train → Evaluations). MLflow and its global prompt
+              # workspace are enabled by Stage 010 (010-mlflow).
+              dashboard_rv=$(oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s -o jsonpath='{.metadata.resourceVersion}')
+              oc patch odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s --type=json -p "[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"$dashboard_rv\"},{\"op\":\"add\",\"path\":\"/spec/dashboardConfig/disableLMEval\",\"value\":false}]"
               [[ $(oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s -o jsonpath='{.spec.dashboardConfig.disableLMEval}') == false ]]
-              [[ $(oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s -o jsonpath='{.spec.dashboardConfig.globalProjectPrompts}') == true ]]
-              [[ $(oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications --request-timeout=10s -o jsonpath='{.spec.globalMLflowNamespaces[*]}') == ai-curated-prompts ]]
               deadline=$((SECONDS + 840))
               # AI Pipelines runs the model qualification pipeline in the evaluated-models project.
-              for api in evalhubs.trustyai.opendatahub.io mlflows.mlflow.opendatahub.io datasciencepipelinesapplications.datasciencepipelinesapplications.opendatahub.io pipelineversions.pipelines.kubeflow.org; do
+              for api in evalhubs.trustyai.opendatahub.io datasciencepipelinesapplications.datasciencepipelinesapplications.opendatahub.io pipelineversions.pipelines.kubeflow.org; do
                 until [[ $(oc get crd "$api" --request-timeout=10s -o jsonpath='{.status.conditions[?(@.type=="Established")].status}' 2>/dev/null || true) == True ]]; do
                   (( SECONDS < deadline )) || { echo 'Evaluation API initialization timed out' >&2; exit 1; }
                   sleep 5

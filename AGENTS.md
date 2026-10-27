@@ -56,7 +56,7 @@ Current source stages:
 2. 020 GPU Infrastructure for Private AI
 3. 030 Private Model Serving
 4. 040 Governed Models-as-a-Service
-5. 050 Model Evaluation (MLflow, EvalHub and TrustyAI; deployment qualification pending)
+5. 050 Model Evaluation (EvalHub and TrustyAI on the shared Stage 010 MLflow; deployment qualification pending)
 6. 060 Agent Runtime and AgentOps (sandboxed native agent runtimes and governed model access)
 7. 070 Advanced Application Platform (Dev Spaces, RHDH, Pipelines, SonarQube, MTA, Coolstore)
 8. 110 AI-Assisted Development (Kilo Code, one-shot coding — workflow stage)
@@ -226,7 +226,7 @@ When deploying, validating, or changing a stage, consult the matching doc-ground
 
 | Stage | Primary skills |
 |-------|----------------|
-| 010 foundation | `rhoai-self-managed-installation`, `rhoai-dsci-dsc-configuration`, `rhoai-update-channels`, `rhoai-users-groups-access`, `rhoai-observability`, `ocp-gitops-operator`, `ocp-authentication-identity-providers`, `odf-multicloud-gateway`, `odf-object-bucket-claims` |
+| 010 foundation | `rhoai-mlflow`, `rhoai-self-managed-installation`, `rhoai-dsci-dsc-configuration`, `rhoai-update-channels`, `rhoai-users-groups-access`, `rhoai-observability`, `ocp-gitops-operator`, `ocp-authentication-identity-providers`, `odf-multicloud-gateway`, `odf-object-bucket-claims` |
 | 020 GPU infra | `rhoai-nvidia-gpu-accelerators`, `rhoai-hardware-profiles`, `rhoai-kueue-workload-management`, `rhoai-distributed-workloads`, `ocp-machine-management`, `ocp-node-feature-discovery` |
 | 030 serving | `rhoai-model-serving-platform`, `rhoai-model-deployment`, `rhoai-model-registry`, `rhoai-model-registry-workflows`, `ocp-grafana-operator` |
 | 040 MaaS | `rhoai-maas-governance`, `rhoai-distributed-inference-llmd`, `rhoai-gen-ai-playground`, `rhoai-model-catalog-sources`, `ocp-ingress-gateway-routes` |

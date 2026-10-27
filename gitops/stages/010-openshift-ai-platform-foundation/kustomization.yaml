@@ -11,3 +11,4 @@ resources:
   - 010-access
   - 010-console-observability
   - 010-sandbox-storage
+  - 010-mlflow

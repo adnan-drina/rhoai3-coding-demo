@@ -36,7 +36,7 @@ qualified in Stage 050.
 |---|---|---|
 | No customization stage; `trainer` and `trainingoperator` are `Removed` in `default-dsc` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Model customization workflow][workflow] |
 | A customized model would be qualified like any candidate: served in `evaluated-models` and run through the qualification pipeline before promotion | `gitops/stages/050-model-evaluation/050-model-qualification/README.md` | see `rhoai-evaluation`, `rhoai-ai-pipelines` |
-| Experiment tracking would use the Stage 050 MLflow server | `gitops/stages/050-model-evaluation/050-mlflow/` | [Track experiments with MLflow and Training Hub][mlflow] |
+| Experiment tracking would use the Stage 010 MLflow server | `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/` | [Track experiments with MLflow and Training Hub][mlflow] |
 
 ## If enabled
 

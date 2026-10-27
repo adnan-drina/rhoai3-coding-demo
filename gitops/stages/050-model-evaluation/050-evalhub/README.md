@@ -3,7 +3,7 @@
 This Application runs EvalHub, the OpenShift AI evaluation service managed by the TrustyAI operator, in its own `evalhub`
 namespace with a project-owned PostgreSQL database. It registers the built-in and custom providers and collections,
 enables the EvalHub MCP server for coding agents, and grants the programmatic and catalog principals. The
-`ai-curated-prompts` global prompt workspace belongs to `050-mlflow`. Platform administrators, the qualification pipeline, the Stage 050 helpers
+`ai-curated-prompts` global prompt workspace belongs to `010-mlflow`. Platform administrators, the qualification pipeline, the Stage 050 helpers
 and MCP clients submit evaluations through it; the dashboard's **Evaluations** pages and the model catalog's **Safety and
 security insights** tab read from it.
 
@@ -13,7 +13,7 @@ security insights** tab read from it.
 | Deployed by | [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) (deploy-order 3), followed by [`stages/050-model-evaluation/deploy.sh`](../../../../stages/050-model-evaluation/deploy.sh) for the database Secret and MLflow address |
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh), [`stages/050-model-evaluation/validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (database, EvalHub `Ready`, multi-tenant PostgreSQL, MLflow wiring, service RBAC) and [`stages/050-model-evaluation/validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (authenticated API discovery) |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. |
-| Depends on | `050-mlflow` (TrustyAI component, MLflow, dashboard `disableLMEval: false` and `globalMLflowNamespaces`); `050-model-qualification` (namespace `evaluated-models`, Role `evalhub-evaluator`); `050-evaluation-content` (ConfigMaps for the custom providers and collections the CR lists); `030-private-model-serving` (namespace `rhoai-model-registries`). |
+| Depends on | `010-mlflow` (MLflow, dashboard `globalMLflowNamespaces`); `050-model-qualification` `evaluation-enablement/` (TrustyAI component, dashboard `disableLMEval: false`); `050-model-qualification` (namespace `evaluated-models`, Role `evalhub-evaluator`); `050-evaluation-content` (ConfigMaps for the custom providers and collections the CR lists); `030-private-model-serving` (namespace `rhoai-model-registries`). |
 | Used by | `050-model-qualification` (pipeline steps call EvalHub), `050-evaluation-content` (SWE-bench grading runs through EvalHub), `050-oci-export`, the RHOAI dashboard, MCP clients. |
 
 ## Why
@@ -25,7 +25,7 @@ MCP server lets AI coding agents discover providers and submit evaluations [1]. 
 operator, so this component runs one pinned Red Hat PostgreSQL 16 StatefulSet.
 
 The `ai-curated-prompts` global MLflow prompt workspace, which the dashboard lists through `globalMLflowNamespaces`, is
-declared by `050-mlflow` (`prompts/`); MLflow watches the `opendatahub.io/global-mlflow-workspace` label [2][3].
+declared by `010-mlflow` (`prompts/`); MLflow watches the `opendatahub.io/global-mlflow-workspace` label [2][3].
 
 ## What
 
@@ -57,7 +57,7 @@ declared by `050-mlflow` (`prompts/`); MLflow watches the `opendatahub.io/global
 
 ### `prompts/` (moved)
 
-Moved on 2026-10-14 to `050-mlflow` (`prompts/`): `ai-curated-prompts` is an MLflow global workspace, enabled by the MLflow hook.
+Moved on 2026-10-14 to the MLflow component (`prompts/`), now `010-mlflow`: `ai-curated-prompts` is an MLflow global workspace, enabled by the MLflow hook.
 
 ### Objects not in Git
 
@@ -122,15 +122,15 @@ oc get deploy,route -n evalhub
 
 | Topic | Official guidance (link) | This repository | Status |
 |---|---|---|---|
-| Install method | `EvalHub` CR reconciled by the TrustyAI operator [1] | Same; TrustyAI enabled by `050-mlflow` | Aligned |
+| Install method | `EvalHub` CR reconciled by the TrustyAI operator [1] | Same; TrustyAI enabled by `050-model-qualification` (`evaluation-enablement/`) | Aligned |
 | Namespace | Dedicated namespace, not `redhat-ods-applications` [1] | `evalhub` | Aligned |
 | Database | PostgreSQL Secret with `db-url` [1] | Same; single instance, plaintext in-namespace | Deviation (justified: demo; no HA, backup or TLS) |
 | Multi-tenancy and roles | Tenant label; Role on virtual resources per tenant [1] | One tenant; documented Role bound to admins, automation and MCP identities | Aligned |
 | Custom providers and collections | ConfigMaps with type/name labels, ids listed in the CR [1] | Listed in the CR; ConfigMaps in `050-evaluation-content` | Aligned |
 | MCP server | `spec.mcp` `enabled`, `transport: http`, `port`; manual Route; client token from `oc create token` [1] | No `port` (absent from the 3.5.1 CRD); operator Route; `authSecret` added | Deviation (justified: 3.5.1 CRD differs from the procedure) |
 | MLflow tracking | Running MLflow and tracking URI [1] | URI from a runtime ConfigMap, TLS verified with the service CA | Aligned |
-| Dashboard pages | `disableLMEval` defaults to `true` [3] | Set to `false` by `050-mlflow` | Aligned |
-| Global prompt workspace | Namespace label `opendatahub.io/global-mlflow-workspace` [2]; `globalProjectPrompts` Technology Preview [3] | Namespace and dashboard field both in `050-mlflow` | Aligned (Technology Preview) |
+| Dashboard pages | `disableLMEval` defaults to `true` [3] | Set to `false` by `050-model-qualification` (`evaluation-enablement/`) | Aligned |
+| Global prompt workspace | Namespace label `opendatahub.io/global-mlflow-workspace` [2]; `globalProjectPrompts` Technology Preview [3] | Namespace and dashboard field both in `010-mlflow` | Aligned (Technology Preview) |
 | Argo CD | Server-Side Diff by annotation [6]; `Prune=false,Delete=false` for retained data [4] | PVC, namespaces and CR retained; StatefulSet, Service and NetworkPolicy not | Gap (inconsistent with `050-mlflow`; see findings) |
 
 ## References

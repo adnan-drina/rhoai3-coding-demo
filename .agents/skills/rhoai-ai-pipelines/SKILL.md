@@ -38,7 +38,7 @@ OpenShift AI 3.5 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `aipipelines` is `Removed` in Stage 010 and set `Managed` by the Stage 050 MLflow enable hook (delegated field) | `gitops/stages/050-model-evaluation/050-mlflow/dsc-enablement/enable-job.yaml` | [Manage AI pipelines][manage] |
+| `aipipelines` is `Removed` in Stage 010 and set `Managed` by the Stage 050 evaluation enablement hook (delegated field) | `gitops/stages/050-model-evaluation/050-model-qualification/evaluation-enablement/enable-job.yaml` | [Manage AI pipelines][manage] |
 | One pipeline server, DSPA `dspa` in `evaluated-models`, created by a Sync hook (wave 14) with the dashboard form's values: `dspVersion: v2`, S3 from the Pipelines connection, default database, `pipelineStore: kubernetes`, `cacheEnabled: true`, no sample pipeline. The DSPA is not in Git | `gitops/stages/050-model-evaluation/050-model-qualification/pipeline-server.yaml` | [Configure a pipeline server][server] |
 | Default on-cluster database accepted for the demo (documented for development and test only) | same | [Configure a pipeline server][server] |
 | The Pipelines connection carries the external ODF S3 Route so signed artifact links open in a browser | `gitops/stages/050-model-evaluation/050-model-qualification/storage/` | [Data storage with pipelines][storage] |

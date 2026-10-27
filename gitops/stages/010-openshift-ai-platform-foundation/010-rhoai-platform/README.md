@@ -13,7 +13,7 @@ described under [How](#how).
 | Validated by | [`validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (DSCI, DSC and Auth Ready; monitoring fields; `observabilityDashboard`; foundation component ownership; dashboard route); [`stages/010-openshift-ai-platform-foundation/validate.sh`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (metrics query and one synthetic trace round trip) |
 | Sync | Automated, prune and self-heal; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff via annotation; `ignoreDifferences` on the DSC and the OdhDashboardConfig |
 | Depends on | `010-rhoai-operator` (CRDs and controller); `010-observability-operators` (COO, OpenTelemetry and Tempo CRDs for `spec.monitoring`) |
-| Used by | All later stages: 020 (Kueue), 030 (KServe, model registry, catalogs), 040 (AI Gateway/MaaS, OGX, Gen AI Studio), 050 (TrustyAI, MLflow, AI pipelines, evaluation), 060 (MCP lifecycle, AgentOps); `010-access` (Auth groups) |
+| Used by | All later stages: 020 (Kueue), 030 (KServe, model registry, catalogs), 040 (AI Gateway/MaaS, OGX, Gen AI Studio), 010-mlflow (MLflow), 050 (TrustyAI, AI pipelines, evaluation), 060 (MCP lifecycle, AgentOps); `010-access` (Auth groups) |
 
 ## Why
 
@@ -94,14 +94,15 @@ delegated (`sparkoperator`, `trainer`) Removed. Delegated fields and their runti
 | `/spec/components/kserve` | Stage 030 `030-private-model-serving/dsc-enablement/enable-job.yaml` | `Managed` |
 | `/spec/components/modelregistry` | Stage 030 `030-private-model-serving/model-discovery/enable-job.yaml` | `Managed` |
 | `/spec/components/aigateway`, `/spec/components/ogx` | Stage 040 `040-maas-platform/jobs/enable-maas-job.yaml` | `Managed` |
-| `/spec/components/trustyai`, `/spec/components/mlflowoperator`, `/spec/components/aipipelines` | Stage 050 `050-mlflow/dsc-enablement/enable-job.yaml` | `Managed` |
+| `/spec/components/mlflowoperator` | Stage 010 `010-mlflow/enablement/enable-job.yaml` | `Managed` |
+| `/spec/components/trustyai`, `/spec/components/aipipelines` | Stage 050 `050-model-qualification/evaluation-enablement/enable-job.yaml` | `Managed` |
 | `/spec/components/mcplifecycleoperator` | Stage 060 `060-mcp-platform/enable-job.yaml` | `Managed` |
 
 The same model applies to `odh-dashboard-config`. Stage 030 owns `agentsCatalog`, `disableModelCatalog`,
 `disableModelRegistry`, `toolCalling`, `mcpCatalog` and `mcpRegistry`. Stage 040 owns `genAiStudio`, `genAiTracing`,
 `modelAsService`, `vLLMDeploymentOnMaaS`, `externalModels`, `llmdTemplates`, `guardrails`, `agentConfigManagement`,
-`promptManagement`, `aiAssetCustomEndpoints` and `/spec/genAiStudioConfig`. Stage 050 owns `disableLMEval`,
-`globalProjectPrompts` and `/spec/globalMLflowNamespaces`. Stage 060 owns `agentOps`. Some delegated fields have a Git
+`promptManagement`, `aiAssetCustomEndpoints` and `/spec/genAiStudioConfig`. `010-mlflow` owns `globalProjectPrompts` and
+`/spec/globalMLflowNamespaces`. Stage 050 owns `disableLMEval`. Stage 060 owns `agentOps`. Some delegated fields have a Git
 value in this folder (for example `genAiStudio: false`). That value applies only on the first creation. After that,
 the owning stage's value wins.
 
