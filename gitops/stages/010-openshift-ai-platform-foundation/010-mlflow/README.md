@@ -2,7 +2,8 @@
 
 This Application runs the shared OpenShift AI MLflow tracking server with a project-owned PostgreSQL database and an
 OpenShift Data Foundation bucket for artifacts. Its hook Job turns on the MLflow operator and the dashboard's global
-prompt settings. It is a platform service: GenAI Studio tracing and the Ops Assistant prompt (Stage 040), EvalHub and
+prompt settings. It is a platform service: GenAI Studio tracing, the Ops Assistant prompt and the showback request
+traces with their quality verdicts (Stage 040), EvalHub and
 the qualification pipeline (Stage 050), agent traces (Stage 060) and the curated prompt workspace all write to it; each
 project is its own MLflow workspace [1]. Until 2026-10-27 it was the Stage 050 Application `050-mlflow`;
 `docs/OPERATIONS.md` records the move.
@@ -14,7 +15,7 @@ project is its own MLflow workspace [1]. Until 2026-10-27 it was the Stage 050 A
 | Validated by | [`validate.sh --component 010-mlflow`](../../../../stages/010-openshift-ai-platform-foundation/validate.sh) (Application Synced/Healthy, dashboard settings, PostgreSQL, bucket, CA bundle, MLflow `Available`, workload Secret and TLS wiring); part of the full Stage 010 validation |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`. `ignoreDifferences` on `ConfigMap/mlflow-service-ca` `/data/service-ca.crt` (injected by the service CA operator). |
 | Depends on | `010-rhoai-platform` (delegated DSC and dashboard fields); `010-odf` (Multicloud Object Gateway `openshift-storage.noobaa.io`); the MLflow health gate in `gitops/bootstrap`; `gp3-csi`. |
-| Used by | `040-genai-studio` (playground tracing, Ops Assistant prompt), `050-evalhub` (tracking URI), `050-model-qualification` (pipeline-run tracking), Stage 060 agent traces (`ai-agents` workspace). |
+| Used by | `040-genai-studio` (playground tracing, Ops Assistant prompt), `040-showback-demo` (MaaS request traces and their quality verdicts, workspace `models-as-a-service`), `050-evalhub` (tracking URI), `050-model-qualification` (pipeline-run tracking), Stage 060 agent traces (`ai-agents` workspace). |
 
 ## Why
 

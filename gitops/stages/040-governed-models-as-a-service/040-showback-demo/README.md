@@ -1,6 +1,6 @@
 # Showback demo (`040-showback-demo`)
 
-This optional Application holds the cluster side of the three-team showback demo: team access, Marketing's dedicated Mistral model, three live offer dashboards and external-model metering. The demo flow, load scripts and dashboard guide are in [showback-demo](../../../../stages/040-governed-models-as-a-service/showback-demo/README.md).
+This optional Application holds the cluster side of the three-team showback demo: team access, Marketing's dedicated Mistral model, three live offer dashboards, external-model metering and the daily quality scoring of the demo's MLflow request traces. The demo flow, load scripts and dashboard guide are in [showback-demo](../../../../stages/040-governed-models-as-a-service/showback-demo/README.md).
 
 ## Why
 

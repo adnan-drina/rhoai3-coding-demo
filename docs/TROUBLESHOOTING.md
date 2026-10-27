@@ -1,5 +1,27 @@
 # Troubleshooting Guide
 
+## MLflow Quality tab shows null for many showback traces
+
+**Symptom:** in a model experiment (`internal-<model>`, workspace `models-as-a-service`) many traces show `null` under `relevance`, `completeness` or `finished`.
+
+**Causes, in order:** the daily scorer has not run since the traces were written (it runs at 17:00 UTC); the run was skipped because a judge model (Qwen or Mistral) was not serving (`oc logs job/<scorer job> -n models-as-a-service` says "skipped"); the trace failed (status ERROR, no answer to grade) or predates 2026-10-27 15:30 UTC (no `finish_reason` tag; never graded); or a judge answer could not be parsed (logged as `Failed to parse response from judge model`; retried by the next run).
+
+**Recover:** start the models, then `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`. Each trace gets only its missing verdicts.
+
+## Enabling tracing on a running single-GPU llm-d model leaves a pod SchedulingGated
+
+**Symptom:** after adding `spec.tracing` to a running `LLMInferenceService` with one replica, a new model pod stays `SchedulingGated` (Kueue) while the old pod keeps running.
+
+**Cause:** any change to the serving template rolls the Deployment with `maxSurge` 25% (one pod) and `maxUnavailable` 25% (zero pods): the new pod needs a second GPU while the old one holds the only one.
+
+**Recover:** set `replicas: 0`, apply the change, then set `replicas: 1`; or revert the change, after which the gated pod is removed and the old pod keeps serving. The same holds for any serving change on a one-GPU model (Stage 040 README, Serving tuning).
+
+## MLflow judge through MaaS fails with "`temperature` is deprecated for this model"
+
+**Symptom:** every verdict of a quality judge on Claude Sonnet 5.5 fails with `Failed to invoke judge model: temperature is deprecated for this model`.
+
+**Cause:** the model rejects the `temperature` parameter. Send no temperature to it (the private judges keep `temperature: 0`).
+
 ## Stage 040 continuous external showback has missing usage or cost
 
 Start with the [showback demo guide](../stages/040-governed-models-as-a-service/showback-demo/README.md#external-metering) and guarded component validation. Check backend/database readiness and the `showback-external-metering` scrape before treating absent dashboard values as no usage. The scoped IPP egress NetworkPolicy is required because the existing processing policy does not permit backend port 8080. An unchanged source profile does not restart IPP; an unknown live profile is deliberately rejected rather than overwritten.
