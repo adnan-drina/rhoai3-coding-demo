@@ -71,8 +71,9 @@ Run the commands from the repository root after the usual cluster login. Each st
 
    `--pause` sets the think time between requests for every team (fixed seconds or a range such as `5-30`); without
    it each team keeps its own pace (Engineering 2-6 s, Support 5-15 s, Marketing 10-30 s, also between the turns of a
-   conversation). `--concurrency` (default 2 loops per team), `--max-tokens` (default 1024, so answers normally
-   finish; a lower cap truncates answers, which the `finished` check then marks) and `--team` (one team of the
+   conversation). `--concurrency` (default 2 loops per team), `--max-tokens` (one answer cap for every team; by default
+   Engineering 2048, since code answers are longer, and Support and Marketing 1024, so answers normally finish; an answer
+   the cap cuts off is marked by the `finished` check) and `--team` (one team of the
    offering) shape the load; Support's Qwen allowance is 300K tokens per hour. `--model` picks the external model for
    Support (default `gpt-6-luna`; `nemotron-3-ultra-550b-a55b` is free). Each run prints turns, tokens and tool calls
    per team. External calls are billed by the provider.

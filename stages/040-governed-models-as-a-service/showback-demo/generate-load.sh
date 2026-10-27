@@ -16,12 +16,12 @@
 # tags (AGENT when tools were used), one GenAI chat span per model call with model, provider, tokens, messages and the
 # cost from the offer catalog (private) or the provider price catalog (external), and one TOOL span per tool call. The
 # turns of a conversation share a session.id (the experiment's Sessions tab). Tracing fails open; --no-trace skips it.
-# Usage: generate-load.sh --offer shared|dedicated|external|all [--team NAME] [--minutes 5] [--concurrency 2] [--max-tokens 1024] [--model NAME] [--pause SECONDS|MIN-MAX] [--no-trace] [--insecure]
+# Usage: generate-load.sh --offer shared|dedicated|external|all [--team NAME] [--minutes 5] [--concurrency 2] [--max-tokens N] [--model NAME] [--pause SECONDS|MIN-MAX] [--no-trace] [--insecure]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-offer='' team_filter='' minutes=5 concurrency=2 max_tokens=1024 external_model=gpt-6-luna pause='' insecure=false trace=true
+offer='' team_filter='' minutes=5 concurrency=2 max_tokens='' external_model=gpt-6-luna pause='' insecure=false trace=true
 fail() { log_error "$*"; exit 1; }
 while (($#)); do
     case "$1" in
@@ -41,7 +41,7 @@ done
 [[ "$minutes" =~ ^[0-9]+$ && "$minutes" -ge 1 && "$minutes" -le 60 ]] || fail '--minutes must be 1-60'
 [[ "$concurrency" =~ ^[0-9]+$ && "$concurrency" -ge 1 && "$concurrency" -le 8 ]] || fail '--concurrency must be 1-8'
 [[ -z "$pause" || "$pause" =~ ^[0-9]+(-[0-9]+)?$ ]] || fail '--pause must be SECONDS or MIN-MAX'
-[[ "$max_tokens" =~ ^[0-9]+$ && "$max_tokens" -ge 16 && "$max_tokens" -le 2048 ]] || fail '--max-tokens must be 16-2048'
+[[ -z "$max_tokens" || ( "$max_tokens" =~ ^[0-9]+$ && "$max_tokens" -ge 16 && "$max_tokens" -le 4096 ) ]] || fail '--max-tokens must be 16-4096'
 PROMPTS="$SCRIPT_DIR/prompts.json"
 jq -e '.engineering.tasks and .support.tasks and .marketing.tasks' "$PROMPTS" >/dev/null || fail "Invalid $PROMPTS"
 QWEN=publishers/internal-models/models/qwen3-8-27b MISTRAL=publishers/internal-models/models/mistral-small4-119b
@@ -59,6 +59,10 @@ if [[ -n "$team_filter" ]]; then
     (( ${#selected[@]} )) || fail "Team $team_filter does not use the $offer offering"
     runs=("${selected[@]}")
 fi
+team_tokens() {  # answer cap: --max-tokens for everyone, else the team's own (code answers are longer)
+    [[ -z "$max_tokens" ]] || { echo "$max_tokens"; return; }
+    case "$1" in engineering) echo 2048 ;; *) echo 1024 ;; esac
+}
 team_pause() {  # think time between requests: --pause for everyone, else the team's own pace
     [[ -z "$pause" ]] || { echo "$pause"; return; }
     case "$1" in engineering) echo 2-6 ;; support) echo 5-15 ;; marketing) echo 10-30 ;; esac
@@ -199,7 +203,7 @@ TOOLS='[{"type":"function","function":{"name":"read_file","description":"Read a 
 chat() {
     local id=$1 team=$2 model=$3 msgs=$4 tools=${5:-} n t0 t1 code
     n=$(wc -l < "$work/$id.steps" 2>/dev/null || echo 0); n=${n// /}
-    jq -n --arg m "$model" --slurpfile msgs "$msgs" --argjson n "$max_tokens" --argjson tools "${tools:-null}" \
+    jq -n --arg m "$model" --slurpfile msgs "$msgs" --argjson n "$(team_tokens "$team")" --argjson tools "${tools:-null}" \
         '{model: $m, messages: $msgs[0]}
          + (if ($m | startswith("gpt-")) then {max_completion_tokens: $n} else {max_tokens: $n} end)
          + (if ($m | startswith("publishers/")) then {temperature: 0.7} else {} end)
@@ -277,7 +281,7 @@ workers=()
 log_info "Offer $offer: ${#runs[@]} run(s) x $concurrency loops for $minutes min (tasks: $PROMPTS)"
 for idx in "${!runs[@]}"; do
     read -r team model offering <<<"${runs[$idx]}"
-    log_info "  $team -> $model ($offering, pause $(team_pause "$team") s)"
+    log_info "  $team -> $model ($offering, pause $(team_pause "$team") s, max $(team_tokens "$team") tokens)"
     for ((i = 0; i < concurrency; i++)); do worker "$idx" "$team" "$model" "$offering" "run$idx-$i" & workers+=($!); done
 done
 wait "${workers[@]}"  # not the MLflow port-forward
