@@ -7,7 +7,7 @@
 # --pause SECONDS or MIN-MAX adds think time between a loop's requests (random within the range), like a person reading
 # each answer before the next question.
 # --team limits a run to one team of the offering, so teams can run with different pacing.
-# Every request is also written to MLflow as one trace (workspace maas-observability, experiment team-<team>): a root
+# Every request is also written to MLflow as one trace (workspace models-as-a-service, experiment team-<team>): a root
 # span with the team, subscription and offering tags and a GenAI chat span with model, provider, tokens, messages and
 # the cost from the offer catalog (private) or the provider price catalog (external). MLflow builds its experiment
 # Overview (token usage, cost by model and provider, cost over time) from them. Tracing fails open; --no-trace skips it.
@@ -86,7 +86,7 @@ deadline=$(( $(date +%s) + minutes * 60 ))
 # demonstrated capacity (the sponsor pays the worker, busy or idle; the Offer dashboard shows the real charge);
 # external models at the provider list price of the versioned catalog. Never a price table looked up by model name.
 COMPONENT="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo"
-WORKSPACE=maas-observability
+WORKSPACE=models-as-a-service  # the MaaS project is the MLflow workspace of request traces
 now_ns() { perl -MTime::HiRes=time -e 'printf "%.0f\n", time * 1e9'; }
 # price MODEL -> JSON {model, provider, input, output} (USD per token), or nothing when the model has no price.
 price() {
@@ -115,7 +115,7 @@ mlflow_api() {
 }
 if [[ "$trace" == true ]]; then
     oc --request-timeout=10s get namespace "$WORKSPACE" >/dev/null 2>&1 ||
-        fail "Project $WORKSPACE is missing; deploy the 040-showback-demo component (or use --no-trace)"
+        fail "Project $WORKSPACE is missing; deploy Stage 040 (or use --no-trace)"
     MLFLOW_TOKEN=$(oc whoami -t)  # memory only: reaches curl through --config on stdin
     MLFLOW_PORT=$((20000 + RANDOM % 10000))
     oc port-forward -n redhat-ods-applications svc/mlflow "$MLFLOW_PORT:8443" >/dev/null 2>&1 & pf=$!; disown "$pf"

@@ -66,7 +66,7 @@ Run the commands from the repository root after the usual cluster login. Each st
 
 `generate-load.sh` also writes every request to MLflow as one trace, so each team's use can be inspected request by
 request next to the aggregate dashboards. Open MLflow from the OpenShift AI dashboard,
-pick the workspace **MaaS Observability** (`maas-observability`, admins only) and an experiment `team-engineering`,
+pick the workspace **Models-as-a-Service** (`models-as-a-service`, the MaaS project; only `rhods-admins` have access) and an experiment `team-engineering`,
 `team-support` or `team-marketing`; the experiment **Overview** shows token usage, tokens per trace, cost breakdown by
 model or provider and cost over time for that team.
 
