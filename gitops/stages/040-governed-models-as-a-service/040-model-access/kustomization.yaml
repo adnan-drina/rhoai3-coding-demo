@@ -13,3 +13,4 @@ resources:
   - personal-users-access.yaml
   - playground-sandbox-access.yaml
   - model-qualification-access.yaml
+  - quota-probe-access.yaml

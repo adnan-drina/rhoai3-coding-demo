@@ -667,6 +667,17 @@ request matches stay correct; the Qwen route is simply served by the Mistral EPP
 right picker. Fixed upstream in istio/istio#61601 (backported to 1.29-1.31); the OpenShift 4.22 ingress operator still
 ships Istio 1.28 (bump to 1.28.10 pending in openshift/cluster-ingress-operator#1640).
 
+**Check for exposure:** routes that share a listener and repeat a rule name are affected. This lists them (empty output
+means no collision; the same rule names on different listeners are fine):
+
+```bash
+oc get httproute -A -o json | jq -r '[.items[] | . as $r | .spec.parentRefs[]?
+  | select(.name == "maas-default-gateway") | {listener: (.sectionName // "*"), route: $r.metadata.name,
+    rules: [$r.spec.rules[]?.name // empty]}] | group_by(.listener)[] | select(length > 1)
+  | {listener: .[0].listener, routes: map(.route), shared: ([.[].rules[]] | group_by(.) | map(select(length > 1)[0]))}
+  | select(.shared | length > 0)'
+```
+
 **Diagnose:** `oc logs -n internal-models deploy/mistral-small4-119b-kserve-router-scheduler` shows `EPP received request`
 for the Qwen request IDs; in the gateway's `config_dump`, the `v1-model-routing` entries for
 `publishers/internal-models/models/qwen3-8-27b` on the `api` listener name the other model's `epp-service` cluster.

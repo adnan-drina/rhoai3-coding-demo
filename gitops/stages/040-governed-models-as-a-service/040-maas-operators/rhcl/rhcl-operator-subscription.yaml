@@ -19,8 +19,10 @@ spec:
   sourceNamespace: openshift-marketplace
   config:
     env:
+    # Kuadrant WASM auth call to Authorino. The 200 ms default with failureMode deny turns slow authentication under
+    # concurrent load into HTTP 500/503 (RHOAIENG-71638); the RHOAI MaaS guide sets 10s.
     - name: AUTH_SERVICE_TIMEOUT
-      value: 2s
+      value: 10s
     resources:
       requests:
         cpu: 500m

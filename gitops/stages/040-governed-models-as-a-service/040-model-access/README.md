@@ -35,6 +35,7 @@ All objects are in namespace `models-as-a-service`.
 | MaaSSubscription + MaaSAuthPolicy | `personal-ai-admin` | user `ai-admin` | same as above | 170 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `devspaces-coding-models` | ServiceAccount `wksp-ai-developer/devspace-maas-key-provisioner` | `qwen3-8-27b` 60,000,000 (local model only) | 100 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `playground-sandbox` | ServiceAccount `demo-sandbox/playground-maas-key-provisioner` | `gpt-6-luna` 1,000,000 | 50 | 18 |
+| ServiceAccount, MaaSSubscription + MaaSAuthPolicy | `maas-quota-probe`, `quota-probe` | ServiceAccount `models-as-a-service/maas-quota-probe` | `qwen3-8-27b` 100 per minute | 40 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `model-qualification` | ServiceAccount `evaluated-models/evalhub-maas-key-provisioner` | `qwen3-8-27b` 5,000,000; each external model 1,000,000 | 70 | 30 |
 
 Every subscription sets `tokenMetadata` (`organizationId: rhoai3-coding-demo`, `costCenter: ai-platform`, labels
@@ -70,6 +71,7 @@ metered as personal use. Service subscriptions have unique owners, so their prio
   external tokens are paid per use.
 - `model-qualification` meters evaluation without becoming its bottleneck: the local limit is above what one GPU
   produces. External models are included because they are evaluated and serve as judge models.
+- `quota-probe` exists only for `stages/040-governed-models-as-a-service/validate.sh --quota`: its budget is reached within a few small requests and resets every minute, so the probe proves the gateway answers 429. No person or workload uses the identity.
 - `playground-sandbox` exists only for the GPT-6 Luna playground custom endpoint (see `040-genai-studio`), a workaround
   for RHOAIENG-90257 in the 3.5.1 playground.
 

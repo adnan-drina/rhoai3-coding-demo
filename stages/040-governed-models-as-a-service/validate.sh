@@ -16,7 +16,10 @@
 # --component 040-showback-demo checks the installed optional component: three team subscriptions and policies,
 # the Mistral model (replicas are a demo-time choice), three offer dashboards, metering workloads, retained storage
 # and the loaded IPP profile. Inference and event delivery are exercised by showback-demo/generate-load.sh.
-# Usage: stages/040-governed-models-as-a-service/validate.sh [--readiness|--functional] [--component 040-showback-demo]
+# --quota additionally proves token quota enforcement: as the Git-declared ServiceAccount maas-quota-probe (subscription
+#   quota-probe, 100 Qwen tokens per minute) it mints an ephemeral key, sends small Qwen requests until the gateway
+#   answers 429 (at most 20), and revokes the key. No persona login is needed.
+# Usage: stages/040-governed-models-as-a-service/validate.sh [--readiness|--functional|--quota] [--component 040-showback-demo]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -24,7 +27,7 @@ source "$REPO_ROOT/scripts/lib.sh"
 MODE=--readiness COMPONENT=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --readiness|--functional) MODE=$1; shift ;;
+        --readiness|--functional|--quota) MODE=$1; shift ;;
         --component) COMPONENT=${2:?}; shift 2 ;;
         *) sed -n 's/^# Usage: //p' "$0" >&2; exit 1 ;;
     esac
@@ -579,6 +582,17 @@ registry_records() {
 if [[ "${RHOAI_STAGE040_SKIP_REGISTRY:-}" != true ]]; then
     check "Model registry lists every declared checkpoint with its labels, and each deployment links to its record" registry_records yes
 fi
+# Endpoint-picker collision (RHOAIENG-93709): routes sharing a listener must not repeat a rule name, because the
+# gateway's Istio keys endpoint-picker settings by rule name. Names repeated across different listeners are fine.
+listener_rule_names() {
+    local shared
+    shared=$(read_json httproutes.gateway.networking.k8s.io -A | jq -c '[.items[] | . as $r | .spec.parentRefs[]?
+        | select(.name == "maas-default-gateway") | {listener: (.sectionName // "*"), route: "\($r.metadata.namespace)/\($r.metadata.name)",
+          rules: [$r.spec.rules[]?.name // empty]}] | group_by(.listener) | map(select(length > 1)
+        | {listener: .[0].listener, shared: ([.[].rules[]] | group_by(.) | map(select(length > 1)[0]))} | select(.shared | length > 0))')
+    [[ "$shared" == "[]" ]] && echo yes || echo "shared rule names: $(jq -r 'map(.listener + " (" + (.shared | join(",")) + ")") | join("; ")' <<<"$shared")"
+}
+check "No two routes on one gateway listener share a rule name (endpoint-picker collision)" listener_rule_names yes
 check "Studio catalog entries current, or deferred until Stage 060 deploys the MCP servers" studio_catalog yes
 check "MaaS gateway AdminNetworkPolicy boundary: needed destinations open, others blocked" gateway_boundary yes
 if [[ "$MODE" == --readiness ]]; then
@@ -587,6 +601,50 @@ if [[ "$MODE" == --readiness ]]; then
     exit
 fi
 validation_summary || exit 1
+
+# ── Quota enforcement probe (explicit, bounded; never run by deployment polling) ─────────────────────────────────
+# Runs in a subshell: its own EXIT trap revokes the ephemeral key.
+quota() {
+    local base sa_token key_id api_key codes code round i body work
+    base="https://$(read_json gateway maas-default-gateway -n openshift-ingress | jq -r '.spec.listeners[] | select(.name == "api") | .hostname')"
+    sa_token=$(oc --request-timeout=10s create token maas-quota-probe -n models-as-a-service --duration=10m) ||
+        { echo "[FAIL] Quota probe ServiceAccount token unavailable"; exit 1; }  # memory only
+    work=$(mktemp -d)
+    call() {  # METHOD PATH TOKEN [BODY]: prints the HTTP status, body in $work/out; tokens reach curl on stdin only
+        printf 'header = "Authorization: Bearer %s"\n' "$3" |
+            curl --config - -sk --max-time 60 -X "$1" -H 'Content-Type: application/json' ${4:+--data "$4"} \
+                -o "$work/out" -w '%{http_code}' "$base$2" || echo 000
+    }
+    [[ $(call POST /v1/api-keys "$sa_token" "$(jq -nc --arg n "quota-probe-$(openssl rand -hex 4)" \
+        '{name: $n, subscription: "quota-probe", expiresIn: "1h", ephemeral: true}')") == 201 ]] ||
+        { echo "[FAIL] Quota probe key creation failed"; rm -rf "$work"; exit 1; }
+    key_id=$(jq -r '.id' "$work/out"); api_key=$(jq -r '.key' "$work/out"); : >"$work/out"
+    trap '[[ $(call DELETE "/v1/api-keys/$key_id" "$sa_token") == 200 ]] && echo "Quota probe key revoked" ||
+        echo "[WARN] Quota probe key not revoked; it expires within an hour"; rm -rf "$work"' EXIT
+    body=$(jq -nc '{model: "publishers/internal-models/models/qwen3-8-27b", max_tokens: 16,
+        messages: [{role: "user", content: "Count from one to ten."}], chat_template_kwargs: {enable_thinking: false}}')
+    # A fresh one-minute window first admits requests, then refuses with 429; a window still spent by an earlier run
+    # refuses at once, so wait it out and try again.
+    for round in 1 2; do
+        codes=""
+        for i in $(seq 1 20); do
+            code=$(call POST /v1/chat/completions "$api_key" "$body")
+            codes+="$code "
+            [[ "$code" == 429 || "$code" != 200 ]] && break
+        done
+        [[ "$codes" == "429 " && $round == 1 ]] && { sleep 65; continue; }
+        break
+    done
+    if [[ "$codes" =~ ^(200\ )+429\ $ ]]; then
+        echo "[PASS] Token quota enforced: quota-probe answered ${codes% } (100 tokens per minute)"
+    else
+        echo "[FAIL] Token quota not enforced as declared: quota-probe answered ${codes% }"; exit 1
+    fi
+}
+if [[ "$MODE" == --quota ]]; then
+    ( quota )
+    exit $?
+fi
 
 # ── Functional check (explicit, bounded; never run by deployment polling) ──────────────────────────────────────
 # Runs in a subshell: its own work directory, EXIT trap (revokes the synthetic key) and exit code.
@@ -693,7 +751,7 @@ functional() {
         echo "Sanitized functional evidence saved to $EVIDENCE; no tokens, URLs or response text included"
         if [[ "$FAILED" == true ]]; then echo "[FAIL] One or more bounded checks failed"; exit 1; fi
         if [[ "$PENDING_EXTERNAL" == true ]]; then echo "[PENDING] External inference was skipped; full API acceptance pending"; exit 2; fi
-        echo "[PASS] Bounded API functional checks and synthetic key revocation. Quota enforcement, Studio visual acceptance and per-request EPP selection remain unqualified."
+        echo "[PASS] Bounded API functional checks and synthetic key revocation. Quota enforcement (--quota), Studio visual acceptance and per-request EPP selection are separate."
         exit 0
     }
     trap finish EXIT
