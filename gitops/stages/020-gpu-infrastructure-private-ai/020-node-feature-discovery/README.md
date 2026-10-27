@@ -49,7 +49,7 @@ they write.
 - **Installation.** `stable` channel with Automatic approval, no `startingCSV`. The repository policy is to follow
   the channel and check the release family at deploy time: `check_operator_policy` in `scripts/lib.sh` requires
   the offered version to stay on 4.22 and at least `4.22.0`. Installed on this cluster:
-  `nfd.4.22.0-202610140833`.
+  `nfd.4.22.0-202610231407` (updated by the channel on 2026-10-27; first install `nfd.4.22.0-202610140833`).
 - **Ordering.** The Subscription and the instance are both sync-wave 1. The instance CRD does not exist on the
   first sync, so `SkipDryRunOnMissingResource` and the Application retry/backoff carry the sync until OLM
   installs the CRD.
