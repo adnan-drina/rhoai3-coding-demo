@@ -459,6 +459,25 @@ register_model_cards() {
         echo "$title $model_id $version_id"
     }
 
+    # Ensure the registry InferenceService record of one deployment, in the form the registry controller writes for
+    # InferenceServices: serving environment = namespace, name = "<name>/<uid>". Prints the record id.
+    deployment_record() {
+        local name=$1 uid=$2 model_id=$3 version_id=$4 state=$5 env record body
+        env=$(items /serving_environments | jq -r --arg n "$NS" '[.[] | select(.name == $n)] | if length == 1 then .[0].id else "" end')
+        [[ -n "$env" ]] || env=$(api /serving_environments "$(jq -n --arg n "$NS" '{name: $n}')" | jq -r '.id')
+        record=$(items "/serving_environments/$env/inference_services" | jq -c --arg n "$name/$uid" '[.[] | select(.name == $n)]')
+        [[ $(jq length <<<"$record") -le 1 ]] || fail "ambiguous registry deployment record $name"
+        body=$(jq -n --arg n "$name/$uid" --arg e "$env" --arg m "$model_id" --arg v "$version_id" --arg s "$state" \
+            '{name: $n, servingEnvironmentId: $e, registeredModelId: $m, modelVersionId: $v, runtime: "llm-d", desiredState: $s}')
+        if [[ $(jq length <<<"$record") == 0 ]]; then
+            api /inference_services "$body" | jq -r '.id'
+        else
+            record=$(jq -r '.[0].id' <<<"$record")
+            api "/inference_services/$record" "$(jq -c 'del(.name, .servingEnvironmentId)' <<<"$body")" PATCH >/dev/null
+            echo "$record"
+        fi
+    }
+
     # Deployed models: register the source Git declares and link the deployment to its record. The showback dedicated
     # model is registered whether or not the optional showback component is installed, and linked once it exists.
     local targets=("mistral-small4-119b|040-showback-demo|$DEDICATED|optional") target app dir presence meta rendered
@@ -494,10 +513,15 @@ register_model_cards() {
             [[ "$linked" != "$title" ]] || fail "existing model registry identity differs; no reassignment"
             echo "NOTE Format switch: deployment relinked from $linked to $title"
         fi
-        jq -c --arg r "$REGISTRY" --arg m "$model_id" --arg v "$version_id" '[
+        # The registry's own controller records only serving.kserve.io InferenceServices (it labels them
+        # inference-service-id); write the same record for this LLMInferenceService so the registry lists the deployment.
+        serving_record=$(deployment_record "$name" "$(jq -r '.metadata.uid' <<<"$llmi")" "$model_id" "$version_id" \
+            "$([[ "$parked" == true ]] && echo UNDEPLOYED || echo DEPLOYED)")
+        jq -c --arg r "$REGISTRY" --arg m "$model_id" --arg v "$version_id" --arg i "$serving_record" '[
             {op: "test", path: "/metadata/resourceVersion", value: .metadata.resourceVersion},
             {op: "add", path: "/metadata/labels", value: ((.metadata.labels // {}) + {"modelregistry.opendatahub.io/name": $r,
-                "modelregistry.opendatahub.io/registered-model-id": $m, "modelregistry.opendatahub.io/model-version-id": $v})}]' \
+                "modelregistry.opendatahub.io/registered-model-id": $m, "modelregistry.opendatahub.io/model-version-id": $v,
+                "modelregistry.opendatahub.io/inference-service-id": $i})}]' \
             <<<"$llmi" | oc --request-timeout=10s patch llminferenceservices.serving.kserve.io "$name" -n "$NS" \
             --type=json --patch-file=/dev/stdin >/dev/null || fail "deployment linkage patch failed"
         if [[ "$parked" == true ]]; then

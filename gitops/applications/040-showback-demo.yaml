@@ -35,6 +35,7 @@ spec:
         - /metadata/labels/modelregistry.opendatahub.io~1name
         - /metadata/labels/modelregistry.opendatahub.io~1registered-model-id
         - /metadata/labels/modelregistry.opendatahub.io~1model-version-id
+        - /metadata/labels/modelregistry.opendatahub.io~1inference-service-id
     # The OpenShift image trigger resolves the metering image to the digest of each in-cluster build.
     - group: apps
       kind: Deployment

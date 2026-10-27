@@ -569,6 +569,11 @@ registry_records() {
                 and $l["modelregistry.opendatahub.io/registered-model-id"] == $m
                 and $l["modelregistry.opendatahub.io/model-version-id"] == $v' <<<"$live" >/dev/null ||
                 { echo "deployment $name not linked to $title"; return; }
+            # The registry's deployment record (what the dashboard lists under Deployments).
+            registry "/inference_services/$(jq -r '.metadata.labels["modelregistry.opendatahub.io/inference-service-id"] // "none"' <<<"$live")" |
+                jq -e --arg m "$mid" --arg v "$vid" --arg n "$name/$(jq -r '.metadata.uid' <<<"$live")" \
+                '.registeredModelId == $m and .modelVersionId == $v and .name == $n' >/dev/null ||
+                { echo "registry has no deployment record for $name"; return; }
         fi
     done <<<"$targets"
     echo yes

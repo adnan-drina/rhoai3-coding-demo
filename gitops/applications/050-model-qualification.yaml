@@ -51,3 +51,5 @@ spec:
     - /metadata/labels/modelregistry.opendatahub.io~1name
     - /metadata/labels/modelregistry.opendatahub.io~1registered-model-id
     - /metadata/labels/modelregistry.opendatahub.io~1model-version-id
+    # Written by the platform's model registry controller.
+    - /metadata/labels/modelregistry.opendatahub.io~1inference-service-id

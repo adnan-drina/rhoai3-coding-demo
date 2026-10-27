@@ -125,8 +125,9 @@ compatibility hostname) and `api` (the shared `/v1` hostname with body-based mod
 - `/spec/replicas`: the model is parked at 0 to save GPU cost and resumed by an operator. Git says 1. Because the
   rollout uses `maxSurge`, a serving change with both GPUs busy needs the old workload pod deleted first (comment in the
   manifest).
-- The three `modelregistry.opendatahub.io/*` id labels: `stages/040-governed-models-as-a-service/deploy.sh` stamps them after it registers the
-  checkpoint. Git only sets `modelregistry.opendatahub.io/name: demo-registry`.
+- The `modelregistry.opendatahub.io/*` labels: `stages/040-governed-models-as-a-service/deploy.sh` stamps the model and version ids
+  after it registers the checkpoint, and `inference-service-id` after it writes the registry's deployment record (the
+  registry controller records only `serving.kserve.io` InferenceServices). Git only sets `modelregistry.opendatahub.io/name: demo-registry`.
 
 **Switching to FP8.** Add `components: [components/qwen38-fp8]` to `kustomization.yaml`, publish, re-pin Stage 040 and
 run `stages/040-governed-models-as-a-service/deploy.sh` [7]. The component sets `VLLM_USE_DEEP_GEMM=0` because vLLM's DeepGEMM warm-up has no FP8
