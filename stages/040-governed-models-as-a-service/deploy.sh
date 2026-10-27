@@ -8,6 +8,7 @@
 # environment: never Git, arguments or output.
 # RHOAI_STAGE040_ROTATE_PROVIDER_SECRET=true replaces the OpenAI provider key in place from OPENAI_API_KEY.
 # --component 040-showback-demo reconciles only the optional showback bundle, with shared prerequisites read-only.
+# A default deployment also reconciles that bundle at the same revision once it is installed.
 # Team access, offer dashboards, the stopped Mistral model and external metering come from source; no keys are minted.
 # Usage: stages/040-governed-models-as-a-service/deploy.sh [--revision REF] [--component 040-showback-demo]
 set -euo pipefail
@@ -460,20 +461,30 @@ register_model_cards() {
     }
 
     # Ensure the registry InferenceService record of one deployment, in the form the registry controller writes for
-    # InferenceServices: serving environment = namespace, name = "<name>/<uid>". Prints the record id.
+    # InferenceServices: serving environment = namespace, name = "<name>/<uid>". A record's name and registered model
+    # are immutable, so after a format switch the old checkpoint's record is set UNDEPLOYED and the new one is named
+    # "<name>/<uid>/<model id>". Prints the record id.
     deployment_record() {
-        local name=$1 uid=$2 model_id=$3 version_id=$4 state=$5 env record body
+        local name=$1 uid=$2 model_id=$3 version_id=$4 state=$5 env records record stale record_name
         env=$(items /serving_environments | jq -r --arg n "$NS" '[.[] | select(.name == $n)] | if length == 1 then .[0].id else "" end')
         [[ -n "$env" ]] || env=$(api /serving_environments "$(jq -n --arg n "$NS" '{name: $n}')" | jq -r '.id')
-        record=$(items "/serving_environments/$env/inference_services" | jq -c --arg n "$name/$uid" '[.[] | select(.name == $n)]')
+        records=$(items "/serving_environments/$env/inference_services" | jq -c --arg n "$name/$uid" \
+            '[.[] | select(.name == $n or (.name | startswith($n + "/")))]')
+        for stale in $(jq -r --arg m "$model_id" '.[] | select(.registeredModelId != $m and .desiredState != "UNDEPLOYED") | .id' <<<"$records"); do
+            api "/inference_services/$stale" '{"desiredState": "UNDEPLOYED"}' PATCH >/dev/null
+        done
+        record=$(jq -c --arg m "$model_id" '[.[] | select(.registeredModelId == $m)]' <<<"$records")
         [[ $(jq length <<<"$record") -le 1 ]] || fail "ambiguous registry deployment record $name"
-        body=$(jq -n --arg n "$name/$uid" --arg e "$env" --arg m "$model_id" --arg v "$version_id" --arg s "$state" \
-            '{name: $n, servingEnvironmentId: $e, registeredModelId: $m, modelVersionId: $v, runtime: "llm-d", desiredState: $s}')
         if [[ $(jq length <<<"$record") == 0 ]]; then
-            api /inference_services "$body" | jq -r '.id'
+            record_name="$name/$uid"
+            [[ $(jq length <<<"$records") == 0 ]] || record_name="$name/$uid/$model_id"
+            api /inference_services "$(jq -n --arg n "$record_name" --arg e "$env" --arg m "$model_id" --arg v "$version_id" \
+                --arg s "$state" '{name: $n, servingEnvironmentId: $e, registeredModelId: $m, modelVersionId: $v,
+                runtime: "llm-d", desiredState: $s}')" | jq -r '.id'
         else
             record=$(jq -r '.[0].id' <<<"$record")
-            api "/inference_services/$record" "$(jq -c 'del(.name, .servingEnvironmentId)' <<<"$body")" PATCH >/dev/null
+            api "/inference_services/$record" "$(jq -n --arg v "$version_id" --arg s "$state" \
+                '{modelVersionId: $v, runtime: "llm-d", desiredState: $s}')" PATCH >/dev/null
             echo "$record"
         fi
     }
@@ -554,9 +565,11 @@ register_model_cards() {
 }
 
 
-if [[ "$COMPONENT" == 040-showback-demo ]]; then
-    revision=$("$STAGE_APPS" select 040 --ref "$ref" --repo-url "$GIT_REPO_URL")
-    "$STAGE_APPS" preflight 040 --repo-url "$GIT_REPO_URL" --app "$COMPONENT"
+# Reconcile the optional showback component at REVISION (also from a default deployment once it is installed, so the
+# Stage 040 readiness check compares it with the same source).
+deploy_showback() {
+    local revision=$1
+    "$STAGE_APPS" preflight 040 --repo-url "$GIT_REPO_URL" --app 040-showback-demo
     # Shared namespaces and APIs remain owned by their existing platform components.
     for ns in models-as-a-service redhat-ods-monitoring internal-models; do
         oc --request-timeout=10s get namespace "$ns" -o json | jq -e '.status.phase == "Active"' >/dev/null || {
@@ -569,12 +582,17 @@ if [[ "$COMPONENT" == 040-showback-demo ]]; then
         >/dev/null || { log_error "Showback requires established MaaS, Perses and ServiceMonitor APIs"; exit 1; }
     showback_metering_profile preflight
     # Team access, dashboards and the stopped Mistral model come from source; Qwen keeps its existing owner.
-    "$STAGE_APPS" apply 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL"
-    "$STAGE_APPS" sync 040 --app "$COMPONENT"
-    "$STAGE_APPS" wait 040 --app "$COMPONENT" --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
+    "$STAGE_APPS" apply 040 --app 040-showback-demo --revision "$revision" --repo-url "$GIT_REPO_URL"
+    "$STAGE_APPS" sync 040 --app 040-showback-demo
+    "$STAGE_APPS" wait 040 --app 040-showback-demo --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
     showback_metering_profile activate
-    RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION="$revision" "$SCRIPT_DIR/validate.sh" --component "$COMPONENT"
-    # Register the dedicated model and link its (stopped) deployment to the record.
+    RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION="$revision" "$SCRIPT_DIR/validate.sh" --component 040-showback-demo
+}
+
+if [[ "$COMPONENT" == 040-showback-demo ]]; then
+    revision=$("$STAGE_APPS" select 040 --ref "$ref" --repo-url "$GIT_REPO_URL")
+    deploy_showback "$revision"
+    # Register the dedicated model and link its deployment to the record.
     register_model_cards --showback "$revision"
     log_success "Showback component reconciled; generate demo load with showback-demo/generate-load.sh to populate the dashboards."
     exit 0
@@ -616,6 +634,10 @@ done
 check_operator_policy "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service" --wait 900
 if [[ "$state" == fresh ]]; then setup_database --fresh-database; else setup_database; fi
 "$STAGE_APPS" wait 040 --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 2400
+# An installed optional showback component follows the same revision (it never auto-syncs on its own).
+if [[ -n "$(oc --request-timeout=10s get applications.argoproj.io 040-showback-demo -n openshift-gitops --ignore-not-found -o name)" ]]; then
+  deploy_showback "$revision"
+fi
 
 # The enable-maas hook turns on Gen AI tracing; re-run the maas-platform hooks once if it is still off.
 if [[ "$(oc --request-timeout=10s get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o jsonpath='{.spec.dashboardConfig.genAiTracing}')" != true ]]; then

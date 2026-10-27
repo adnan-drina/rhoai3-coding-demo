@@ -572,7 +572,7 @@ registry_records() {
             # The registry's deployment record (what the dashboard lists under Deployments).
             registry "/inference_services/$(jq -r '.metadata.labels["modelregistry.opendatahub.io/inference-service-id"] // "none"' <<<"$live")" |
                 jq -e --arg m "$mid" --arg v "$vid" --arg n "$name/$(jq -r '.metadata.uid' <<<"$live")" \
-                '.registeredModelId == $m and .modelVersionId == $v and .name == $n' >/dev/null ||
+                '.registeredModelId == $m and .modelVersionId == $v and (.name == $n or (.name | startswith($n + "/")))' >/dev/null ||
                 { echo "registry has no deployment record for $name"; return; }
         fi
     done <<<"$targets"
