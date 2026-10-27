@@ -92,7 +92,9 @@ request-level view and answer quality per model.
   up a price by model name.
 - **Path:** the script posts OTLP/HTTP JSON to the internal MLflow Service (`/v1/traces`, through a local port-forward)
   with the operator's token, the `X-MLFLOW-WORKSPACE` header and the experiment id, the same endpoint a platform trace
-  collector would use. It creates a model's experiment on first use.
+  collector would use. The hourly scorer creates an experiment for every MaaS model reference and refreshes its
+  offering and provider tags, so each model has its scorecard before its first request; the script creates a missing
+  one on first use.
 - **Fails open:** a failed export never stops the load; the summary prints `traced` and `trace_failed` per team.
   `--no-trace` skips tracing. Failed requests are traced as errors.
 - **Quality:** the CronJob `maas-quality-scorer` (component folder `quality/`) runs at five past each hour. It takes a

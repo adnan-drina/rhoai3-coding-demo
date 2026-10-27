@@ -28,7 +28,7 @@ rules:
     verbs: [create]
   - apiGroups: [mlflow.kubeflow.org]
     resources: [experiments]
-    verbs: [get, list, update]
+    verbs: [get, list, create, update]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -88,6 +88,133 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: maas-quality-judge-gateway-reader
+subjects:
+  - kind: ServiceAccount
+    name: maas-quality-judge
+    namespace: models-as-a-service
+---
+# The scorer keeps one MLflow experiment per MaaS model: it lists the model references of private models.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: maas-quality-judge-model-reader
+  namespace: internal-models
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+rules:
+  - apiGroups: [maas.opendatahub.io]
+    resources: [maasmodelrefs]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: maas-quality-judge-model-reader
+  namespace: internal-models
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: maas-quality-judge-model-reader
+subjects:
+  - kind: ServiceAccount
+    name: maas-quality-judge
+    namespace: models-as-a-service
+---
+# External model references and their ExternalModels (the provider an experiment is tagged with).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: maas-quality-judge-model-reader
+  namespace: external-models
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+rules:
+  - apiGroups: [maas.opendatahub.io]
+    resources: [maasmodelrefs]
+    verbs: [list]
+  - apiGroups: [inference.opendatahub.io]
+    resources: [externalmodels]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: maas-quality-judge-model-reader
+  namespace: external-models
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: maas-quality-judge-model-reader
+subjects:
+  - kind: ServiceAccount
+    name: maas-quality-judge
+    namespace: models-as-a-service
+---
+# The offer catalog: whether a private model is offered shared or dedicated (the experiment offering tag).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: maas-quality-judge-offer-reader
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+rules:
+  - apiGroups: [monitoring.rhobs]
+    resources: [prometheusrules]
+    resourceNames: [showback-offer-catalog]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: maas-quality-judge-offer-reader
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: maas-quality-judge-offer-reader
 subjects:
   - kind: ServiceAccount
     name: maas-quality-judge

@@ -68,6 +68,40 @@ data:
         return (root.inputs or {}).get("prompt"), (root.outputs or {}).get("response")
 
     client = mlflow.MlflowClient()
+
+    # One experiment per MaaS model, created before its first request: internal-<model> for model references in
+    # internal-models, external-<model> for those in external-models. Offering and provider are refreshed each run, so
+    # an offering change shows without renaming the experiment.
+    from kubernetes import client as k8s, config as k8s_config
+    k8s_config.load_incluster_config()
+    co = k8s.CustomObjectsApi()
+    try:
+        catalog = co.get_namespaced_custom_object("monitoring.rhobs", "v1", "redhat-ods-monitoring", "prometheusrules",
+                                                  "showback-offer-catalog")
+        offers = {r["labels"]["model"]: r["labels"]["offer"] for g in catalog["spec"]["groups"] for r in g["rules"]
+                  if r.get("record") == "showback_offer_info"}
+    except Exception as e:
+        print(f"offer catalog unreadable ({type(e).__name__}); private offerings tagged unlisted", flush=True)
+        offers = {}
+    for ns, prefix in (("internal-models", "internal"), ("external-models", "external")):
+        for ref in co.list_namespaced_custom_object("maas.opendatahub.io", "v1alpha1", ns, "maasmodelrefs")["items"]:
+            model = ref["metadata"]["name"]
+            if prefix == "internal":
+                offering, provider = offers.get(model, "unlisted"), "openshift-ai"
+            else:
+                ext = co.get_namespaced_custom_object("inference.opendatahub.io", "v1alpha1", ns, "externalmodels",
+                                                      ref["spec"]["modelRef"]["name"])
+                offering, provider = "external", ext["spec"]["externalProviderRefs"][0]["ref"]["name"]
+            name = f"{prefix}-{model}"
+            exp = client.get_experiment_by_name(name)
+            if exp is not None and exp.lifecycle_stage != "active":
+                print(f"{name}: deleted experiment holds the name; skipped", flush=True)
+                continue
+            exp_id = exp.experiment_id if exp else client.create_experiment(name)
+            for key, value in {"offering": offering, "provider": provider, "model": model, "mlflow.note.content":
+                               f"Requests to the MaaS model {model} ({offering} offering, provider {provider})."}.items():
+                client.set_experiment_tag(exp_id, key, value)
+
     cutoff = int((time.time() - WINDOW_MIN * 60) * 1000)
     scored = failed = 0
     TEAM_JUDGES = {sub: guideline_judge(rules) for sub, rules in GUIDELINES.items()}
