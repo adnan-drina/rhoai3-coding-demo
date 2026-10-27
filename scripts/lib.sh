@@ -336,9 +336,14 @@ check_operator_policy() {
 # An installed serving stage is updated only when its components are reconciled and the native serving platform is
 # ready. Parked GPU capacity is not a prerequisite; broken scheduled GPU workloads are.
 check_serving_prerequisites() {
-    local stage="$1" policy subscription installed ds
-    "$REPO_ROOT/scripts/stage-apps.sh" status "$stage" --repo-url "$GIT_REPO_URL" >/dev/null ||
-        { log_error "Existing Stage $stage source must be reconciled before update"; return 1; }
+    local stage="$1" policy subscription installed ds report
+    # A component Git declares but the cluster does not have yet is new: this deployment creates it. Any other problem
+    # (out of sync, unhealthy, another revision) must be reconciled first.
+    if ! report=$("$REPO_ROOT/scripts/stage-apps.sh" status "$stage" --repo-url "$GIT_REPO_URL" 2>&1); then
+        grep '^  - ' <<<"$report" | grep -qv ': missing$' &&
+            { log_error "Existing Stage $stage source must be reconciled before update"; return 1; }
+        log_info "New Stage $stage component(s) to create: $(sed -n 's/^  - \(.*\): missing$/\1/p' <<<"$report" | paste -sd, -)"
+    fi
     oc --request-timeout=10s get datasciencecluster default-dsc -o json | jq -e '.spec.components.kserve.managementState == "Managed"
         and any(.status.conditions[]?; .type == "KserveReady" and .status == "True")' >/dev/null ||
         { log_error "Native KServe is not ready"; return 1; }
