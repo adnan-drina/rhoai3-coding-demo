@@ -146,6 +146,9 @@ data:
     except Exception as e:
         print(f"offer catalog unreadable ({type(e).__name__}); private offerings tagged unlisted", flush=True)
         offers = {}
+    # What an MLflow cost figure means per offering: the shared tariff, the dedicated worker cost per token at
+    # demonstrated capacity (the sponsor pays the worker, busy or idle), or the provider list price.
+    BASIS = {"shared": "tariff", "dedicated": "capacity-equivalent", "external": "list-price"}
     for ns, prefix in (("internal-models", "internal"), ("external-models", "external")):
         for ref in co.list_namespaced_custom_object("maas.opendatahub.io", "v1alpha1", ns, "maasmodelrefs")["items"]:
             model = ref["metadata"]["name"]
@@ -161,8 +164,10 @@ data:
                 print(f"{name}: deleted experiment holds the name; skipped", flush=True)
                 continue
             exp_id = exp.experiment_id if exp else client.create_experiment(name)
-            for key, value in {"offering": offering, "provider": provider, "model": model, "mlflow.note.content":
-                               f"Requests to the MaaS model {model} ({offering} offering, provider {provider})."}.items():
+            for key, value in {"offering": offering, "provider": provider, "model": model, "cost_basis":
+                               BASIS.get(offering, "list-price"), "mlflow.note.content": f"Requests to the MaaS model {model} ({offering} offering, provider {provider}). Costs here are indicative unit "
+                               f"costs per request ({BASIS.get(offering, 'list-price')} basis); charges per subscription are on "
+                               f"the OpenShift AI Observability Offer dashboards."}.items():
                 client.set_experiment_tag(exp_id, key, value)
 
     cutoff = int((time.time() - WINDOW_MIN * 60) * 1000)

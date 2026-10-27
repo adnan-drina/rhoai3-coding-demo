@@ -95,8 +95,20 @@ the offering is a tag, not part of the name, because it can change. Each experim
 | **Usage** | Token usage, tokens per trace, cost over time | Filter **User** = `showback-<team>` |
 | **Quality** | Pass rates of the judges `relevance`, `completeness` and `team_guidelines` | Same filter |
 
-The cross-model money comparison stays in Perses (**Offer** tabs, **Tokenomics · break-even**); MLflow adds the
-request-level view and answer quality per model.
+**Money and evidence have one owner each.**
+
+| Question | Where | Why there |
+|---|---|---|
+| Who consumed how much, what is charged per subscription, commitments, break-even | Perses: product **Usage** dashboard, **Offer** tabs, **Tokenomics · break-even** | MaaS usage telemetry, measured by the platform for every client per user, subscription and model, priced with the offer catalog: the documented OpenShift AI 3.5 showback path |
+| What was asked and answered, how good it was, what one request or agent task costs | MLflow: the model experiment (Traces, Sessions, Tool calls, Quality; User filter for a team) | Request-level evidence and quality; cost as an indicative **unit cost** |
+
+MLflow's cost charts group only by model and provider: its cost feature estimates what an LLM call costs, it is not a
+ledger, so per-subscription charges are deliberately not rebuilt there. Each trace's `cost_basis` tag says what its
+figure means: `tariff` (shared: the on-demand tariff), `capacity-equivalent` (dedicated: the worker price per token
+at demonstrated capacity; the sponsor's real charge is the worker, busy or idle, on the Offer · Dedicated tab) or
+`list-price` (external: the provider's list price, the same catalog the metering ledger uses). MLflow totals therefore
+differ from the Offer charges by design. Talk track: the Offer · Shared tab shows Support's charge; MLflow, User =
+`showback-support`, shows what Support asked, how good the answers were and what a typical request costs.
 
 | Span | Content |
 |---|---|

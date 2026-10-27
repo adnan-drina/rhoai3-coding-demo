@@ -139,7 +139,10 @@ if [[ "$trace" == true ]]; then
         [[ -n "$exp" ]] || exp=$(mlflow_api experiments/create "$(jq -cn --arg n "$name" --arg o "$offering" \
             --arg p "$(jq -r '.provider // "unknown"' "$work/run$idx.price")" --arg m "${model##*/}" \
             '{name: $n, tags: [{key: "offering", value: $o}, {key: "provider", value: $p}, {key: "model", value: $m},
-              {key: "mlflow.note.content", value: "Requests to the MaaS model \($m) (\($o) offering, provider \($p))."}]}')" |
+              {key: "cost_basis", value: ({shared: "tariff", dedicated: "capacity-equivalent"}[$o] // "list-price")},
+              {key: "mlflow.note.content", value: ("Requests to the MaaS model \($m) (\($o) offering, provider \($p)). Costs here are"
+                + " indicative unit costs per request (" + ({shared: "tariff", dedicated: "capacity-equivalent"}[$o] // "list-price")
+                + " basis); charges per subscription are on the OpenShift AI Observability Offer dashboards.")}]}')" |
             jq -r '.experiment_id // empty')
         [[ -n "$exp" ]] || fail "Could not open MLflow experiment $name in $WORKSPACE (or use --no-trace)"
         echo "$exp" > "$work/run$idx.exp"
@@ -167,6 +170,8 @@ export_trace() {
                s("mlflow.traceTag.team"; $team), s("mlflow.traceTag.subscription"; "team-\($team)"),
                s("mlflow.traceTag.offering"; $offer), s("mlflow.traceTag.source"; "showback-load"),
                s("mlflow.traceTag.finish_reason"; ($final.finish_reason // "none")),
+               # What the cost figure means: an indicative unit cost, not a charge (the Offer dashboards show charges).
+               s("mlflow.traceTag.cost_basis"; ({shared: "tariff", dedicated: "capacity-equivalent"}[$offer] // "list-price")),
                s("mlflow.spanInputs"; ({prompt: ($chats[0].req.messages | map(select(.role == "user")) | last | .content)} | tojson)),
                s("mlflow.spanOutputs"; ({response: ($final.message.content // "")} | tojson))]
               + (if $session != "" then [s("session.id"; $session)] else [] end))}]
