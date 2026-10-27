@@ -169,8 +169,10 @@ wait_identity() {
   done
 }
 # sandbox_python PROGRAM [INTERPRETER]: a reviewed probe program inside the owned sandbox; prints its last JSON line.
+# Hermes probes default to the agent's private interpreter; the shared /usr/bin/python3.11 is passed explicitly only by
+# the check that proves it is denied (as in the original qualify-hermes.py).
 sandbox_python() {
-  local interpreter=${2:-/usr/bin/python3} out
+  local interpreter=${2:-$([[ "$NAME" == hermes ]] && echo "$HERMES_PYTHON" || echo /usr/bin/python3)} out
   [[ "$NAME" == opencode || "$interpreter" == "$HERMES_PYTHON" || "$interpreter" == /usr/bin/python3.11 ]] || fail "Unreviewed probe interpreter"
   native
   if ! out=$(ncli_status owner "$WORKSPACE" 40 sandbox exec --name "$NAME" --timeout 20 --no-tty --no-login-shell -- "$interpreter" -c "$1") ||
