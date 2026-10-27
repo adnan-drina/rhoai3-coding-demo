@@ -12,12 +12,12 @@
 # span with the team, subscription and offering tags and a GenAI chat span with model, provider, tokens, messages and
 # the cost from the offer catalog (private) or the provider price catalog (external). MLflow builds its experiment
 # Overview (token usage, cost by model and provider, cost over time) from them. Tracing fails open; --no-trace skips it.
-# Usage: generate-load.sh --offer shared|dedicated|external [--team NAME] [--minutes 5] [--concurrency 2] [--max-tokens 256] [--model NAME] [--pause SECONDS|MIN-MAX] [--no-trace] [--insecure]
+# Usage: generate-load.sh --offer shared|dedicated|external [--team NAME] [--minutes 5] [--concurrency 2] [--max-tokens 1024] [--model NAME] [--pause SECONDS|MIN-MAX] [--no-trace] [--insecure]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-offer='' team_filter='' minutes=5 concurrency=2 max_tokens=256 external_model=gpt-6-luna pause=0 insecure=false trace=true
+offer='' team_filter='' minutes=5 concurrency=2 max_tokens=1024 external_model=gpt-6-luna pause=0 insecure=false trace=true
 fail() { log_error "$*"; exit 1; }
 while (($#)); do
     case "$1" in
@@ -165,6 +165,7 @@ export_trace() {
              attributes: [s("mlflow.spanType"; "\"CHAIN\""), s("user.id"; "showback-\($team)"),
                s("mlflow.traceTag.team"; $team), s("mlflow.traceTag.subscription"; "team-\($team)"),
                s("mlflow.traceTag.offering"; $offer), s("mlflow.traceTag.source"; "showback-load"),
+               s("mlflow.traceTag.finish_reason"; ($o.choices[0].finish_reason // "none")),
                s("mlflow.spanInputs"; ({prompt: $req[0].messages[-1].content} | tojson)),
                s("mlflow.spanOutputs"; ({response: ($msg.content // "")} | tojson))]},
             {traceId: $tid, spanId: $cid, parentSpanId: $sid, name: "chat \($model)", kind: 3,
@@ -173,6 +174,9 @@ export_trace() {
                s("gen_ai.response.model"; ($o.model // $model)), s("gen_ai.provider.name"; ($p.provider // "unknown")),
                s("gen_ai.input.messages"; ($req[0].messages | tojson)),
                s("gen_ai.output.messages"; ([$msg] | tojson)), i("http.response.status_code"; ($code | tonumber))]
+              # Why the answer stopped: "length" means the max-tokens cap cut it off (a client setting, not model quality).
+              + (if $o.choices[0].finish_reason then [{key: "gen_ai.response.finish_reasons",
+                  value: {arrayValue: {values: [{stringValue: $o.choices[0].finish_reason}]}}}] else [] end)
               + (if $code == "200" then [i("gen_ai.usage.input_tokens"; $in), i("gen_ai.usage.output_tokens"; $outt)] else [] end)
               + (if $p and $code == "200" then [s("mlflow.llm.cost"; ({input_cost: ($in * $p.input),
                   output_cost: ($outt * $p.output), total_cost: ($in * $p.input + $outt * $p.output)} | tojson))] else [] end))}

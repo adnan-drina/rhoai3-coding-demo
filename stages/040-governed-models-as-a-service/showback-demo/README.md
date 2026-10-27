@@ -58,7 +58,7 @@ Run the commands from the repository root after the usual cluster login. Each st
    stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer external --model claude-sonnet-5-5 --minutes 30 --concurrency 1 --pause 5-30 --insecure
    ```
 
-   `--concurrency` (default 2 loops per team), `--max-tokens` (default 256) and `--pause` (think time between a loop's requests, fixed seconds or a random range such as `5-30`) shape the load, and `--team` runs one team of an offering so teams can be paced differently (for example Support with `--pause 5-15` to stay inside its 300K tokens/hour Qwen allowance); `--model` picks the external model (default `gpt-6-luna`; `nemotron-3-ultra-550b-a55b` is free). Each run prints requests and tokens per team. External calls are billed by the provider.
+   `--concurrency` (default 2 loops per team), `--max-tokens` (default 1024, so answers normally finish; a lower cap truncates answers, which the quality judge then rightly fails as incomplete) and `--pause` (think time between a loop's requests, fixed seconds or a random range such as `5-30`) shape the load, and `--team` runs one team of an offering so teams can be paced differently (for example Support with `--pause 5-15` to stay inside its 300K tokens/hour Qwen allowance); `--model` picks the external model (default `gpt-6-luna`; `nemotron-3-ultra-550b-a55b` is free). Each run prints requests and tokens per team. External calls are billed by the provider.
 
 5. **Stop the models** when the demo ends: set both replicas back to 0 and run `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 0`.
 
@@ -82,8 +82,8 @@ request-level view and answer quality per model.
 
 | Span | Content |
 |---|---|
-| `team-<team> request` (root, `CHAIN`) | Trace tags `team`, `subscription`, `offering`, `source`; trace user `showback-<team>`; the prompt and the answer |
-| `chat <model>` (`CHAT_MODEL`) | OpenTelemetry GenAI fields: model, provider (`openshift-ai` for private models), input and output tokens, messages, HTTP status; cost |
+| `team-<team> request` (root, `CHAIN`) | Trace tags `team`, `subscription`, `offering`, `source`, `finish_reason` (`stop`, or `length` when the max-tokens cap cut the answer off); trace user `showback-<team>`; the prompt and the answer |
+| `chat <model>` (`CHAT_MODEL`) | OpenTelemetry GenAI fields: model, provider (`openshift-ai` for private models), input and output tokens, messages, `gen_ai.response.finish_reasons`, HTTP status; cost |
 
 - **Cost:** shared private models at the on-demand tariff, a dedicated model at its worker price per token at
   demonstrated capacity (both from `offer-catalog.yaml`), external models at the list price of
