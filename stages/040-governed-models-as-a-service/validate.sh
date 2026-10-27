@@ -78,17 +78,21 @@ showback_source_state() {
     "$STAGE_APPS" status 040 --app 040-showback-demo \
         ${RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION:+--revision "$RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION"} \
         >/dev/null 2>&1 || { echo "showback Application not Synced and Healthy at its reviewed revision"; return; }
-    jq -e '[.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $metering |
+    jq -e '. as $all | [.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $metering |
         # The dedicated offer (team-marketing with its Mistral model) is part of the bundle; a bundle without it is accepted.
         ([.[] | select(.kind == "LLMInferenceService") | .metadata.name]) as $local
-        | (if $local == [] then ["team-engineering","team-support"] else ["team-engineering","team-marketing","team-support"] end) as $teams
+        # Quality scoring of the team traces adds the judge subscription, its key hook and the hourly scorer.
+        | ((if $local == [] then ["team-engineering","team-support"] else ["team-engineering","team-marketing","team-support"] end)
+           + (if any($all[]; .kind == "CronJob" and .metadata.name == "maas-quality-scorer") then ["maas-quality-judge"] else [] end)
+           | sort) as $teams
         | ($local == [] or $local == ["mistral-small4-119b"])
         and ([.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort) == $teams
         and ([.[] | select(.kind == "MaaSAuthPolicy") | .metadata.name] | sort) == $teams
         and ([.[] | select(.kind == "PersesDashboard")] | length) == 3
-        and all(.[]; (.kind != "Job" or (.metadata.name == "start-showback-metering-build"
+        and all(.[]; (.kind != "Job" or ((.metadata.name | IN("start-showback-metering-build", "provision-maas-quality-judge"))
                 and .metadata.annotations["argocd.argoproj.io/hook"] == "Sync"))
-            and .kind != "CronJob" and .kind != "HorizontalPodAutoscaler"
+            and (.kind != "CronJob" or (.metadata.name == "maas-quality-scorer" and .metadata.namespace == "models-as-a-service"))
+            and .kind != "HorizontalPodAutoscaler"
             and .kind != "Config" and .kind != "LokiStack")
         and ([.[] | select(.kind == "Deployment") | .metadata.name] | sort)
             == ["showback-external-metering","showback-external-metering-db"]
