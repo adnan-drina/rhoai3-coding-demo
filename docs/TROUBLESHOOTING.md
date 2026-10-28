@@ -1237,6 +1237,23 @@ This avoids charging transient pre-bootstrap refreshes as installation failures.
 
 **Recover:** Run the catalog generator (see above), confirm both annotations hold a host and an IPv4 address, then create the run again. A workspace is never created without the route. At every start and continuation, the workspace's own `planner.maas_route` gate refuses `STARTUP_MAAS_ROUTE` if the pod still resolves the gateway publicly.
 
+## Migration Workspace Fails With `serviceaccount "<name>-worker" not found`
+
+**Affected stage:** Stage 070 (app-migration template) / Stage 130
+
+**Symptom:** The first start of a new migration workspace ends `Failed` with `Error creating DevWorkspace deployment: Detected unrecoverable deployment condition: FailedCreate pods ... error looking up service account wksp-ai-developer/<name>-worker`.
+
+**Likely cause:** The workspace was started before the platform provisioned the run. The devfile runs the pod as `<name>-worker`, which the `project-provisioner` CronJob in `app-platform-build` creates only after the `project-<name>` Argo CD Application is Synced and Healthy. That CronJob runs every two minutes and logs `Enrollment pending: ... NATIVE_OPERATION_PENDING` until then, so provisioning takes two to four minutes after the template finishes. The DevWorkspace Operator treats a pod-create failure as unrecoverable and does not retry on its own.
+
+**Diagnose:**
+
+```bash
+oc logs -n app-platform-build "$(oc get jobs -n app-platform-build -o name --sort-by=.metadata.creationTimestamp | grep project-provisioner | tail -1)"
+oc get sa <name>-worker -n wksp-ai-developer
+```
+
+**Recover:** Wait for `Enrollment complete: <name>` and the ServiceAccount, then press **Restart** on the workspace page. Nothing needs to be recreated.
+
 ## Red Hat Developer Hub Is Healthy But Stage 070 Is OutOfSync
 
 **Affected stage:** Stage 070
