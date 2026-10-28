@@ -123,3 +123,117 @@ spec:
         - record: showback_subscription_team
           expr: vector(1)
           labels: {subscription: personal-kube-admin, team: platform}
+    # Hourly token limit of each subscription and model, copied from the MaaSSubscriptions (tokenRateLimits, 1h window)
+    # because MaaS does not publish its limits as metrics. Stage 040 validate.sh fails when a live limit differs.
+    # quota-probe (100 tokens a minute) has no hourly limit and is not listed.
+    - name: showback-subscription-limits
+      interval: 1m
+      rules:
+        - record: showback_subscription_token_limit
+          expr: vector(60000000)
+          labels: {subscription: devspaces-coding-models, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: hermes-private-qwen38, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(2000000)
+          labels: {subscription: maas-quality-judge, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: maas-quality-judge, model: mistral-small4-119b}
+        - record: showback_subscription_token_limit
+          expr: vector(5000000)
+          labels: {subscription: model-qualification, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: model-qualification, model: gpt-6-luna}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: model-qualification, model: claude-sonnet-5-5}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: model-qualification, model: nemotron-3-ultra-550b-a55b}
+        - record: showback_subscription_token_limit
+          expr: vector(5000000)
+          labels: {subscription: mta-migration-ai, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: opencode-developer-qwen38, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: opencode-private-qwen38, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(2000000)
+          labels: {subscription: openshift-lightspeed, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: personal-ai-admin, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: personal-ai-admin, model: mistral-small4-119b}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: personal-ai-admin, model: gpt-6-luna}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: personal-ai-admin, model: claude-sonnet-5-5}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: personal-ai-admin, model: nemotron-3-ultra-550b-a55b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: personal-ai-developer, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: personal-ai-developer, model: mistral-small4-119b}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: personal-ai-developer, model: gpt-6-luna}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: personal-ai-developer, model: claude-sonnet-5-5}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: personal-ai-developer, model: nemotron-3-ultra-550b-a55b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: personal-kube-admin, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: personal-kube-admin, model: mistral-small4-119b}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: personal-kube-admin, model: gpt-6-luna}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: personal-kube-admin, model: claude-sonnet-5-5}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: personal-kube-admin, model: nemotron-3-ultra-550b-a55b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: playground-sandbox, model: gpt-6-luna}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: playground-sandbox, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(100000)
+          labels: {subscription: playground-sandbox, model: nemotron-3-ultra-550b-a55b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: team-engineering, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(700000)
+          labels: {subscription: team-marketing, model: mistral-small4-119b}
+        - record: showback_subscription_token_limit
+          expr: vector(300000)
+          labels: {subscription: team-support, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(200000)
+          labels: {subscription: team-support, model: gpt-6-luna}
+        - record: showback_subscription_token_limit
+          expr: vector(200000)
+          labels: {subscription: team-support, model: claude-sonnet-5-5}
+        - record: showback_subscription_token_limit
+          expr: vector(200000)
+          labels: {subscription: team-support, model: nemotron-3-ultra-550b-a55b}

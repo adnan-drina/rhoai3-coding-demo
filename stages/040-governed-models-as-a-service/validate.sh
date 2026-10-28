@@ -158,8 +158,21 @@ showback_source_state() {
     fi
     echo yes
 }
+# The showback catalog copies each subscription's hourly token limit (MaaS does not publish limits as metrics).
+showback_limits_state() {
+    local catalog live
+    catalog=$(jq -c '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog")
+        | .spec.groups[].rules[] | select(.record == "showback_subscription_token_limit")
+        | {s: .labels.subscription, m: .labels.model, l: (.expr | capture("vector\\((?<n>[0-9]+)\\)").n | tonumber)}]
+        | sort' <<<"$SHOWBACK_DESIRED")
+    live=$(oc --request-timeout="$TIMEOUT" get maassubscriptions.maas.opendatahub.io -A -o json 2>/dev/null | jq -c '[.items[]
+        | .metadata.name as $s | .spec.modelRefs[]? | .name as $m | .tokenRateLimits[]? | select(.window == "1h")
+        | {s: $s, m: $m, l: .limit}] | sort') || { echo "MaaS subscriptions unavailable"; return; }
+    [[ "$catalog" == "$live" ]] && echo yes || echo "offer catalog hourly limits differ from the live MaaSSubscriptions"
+}
 if [[ "$COMPONENT" == 040-showback-demo ]]; then
     check "Optional showback Application owns the reviewed team, dashboard, model and metering bundle" showback_source_state yes
+    check "Showback catalog hourly limits match the MaaS subscriptions" showback_limits_state yes
     echo "Scope: source reconciliation, workload/storage readiness and configured metering profile; demo load exercises inference and metering."
     validation_summary
     exit $?
@@ -523,6 +536,7 @@ showback_application=$(oc --request-timeout="$TIMEOUT" get applications.argoproj
     }
 if [[ -n "$showback_application" ]]; then
     check "Installed optional showback bundle matches its source" showback_source_state yes
+    check "Showback catalog hourly limits match the MaaS subscriptions" showback_limits_state yes
 fi
 # Model registry records (deploy.sh writes them after readiness): every checkpoint Git declares (Qwen, its prepared
 # format alternates, Mistral) registered once with its pinned version and artifact and the labels
