@@ -27,7 +27,7 @@ Open **Observe & monitor → Dashboard** in the OpenShift AI console. The five *
 
 | Tab | Question | Shows |
 |---|---|---|
-| **Showback 1 · By team** | What does each team cost? | AI cost per month and its split by offering; the platform's monthly balance on shared capacity; a monthly bill per team (shared, dedicated, external, total); token rate by team; every subscription with its team |
+| **Showback 1 · By team** | What does each team cost? | Charts first: AI cost per month with a pie of its split by offering; the platform's monthly balance (red when it carries a shortfall) and a gauge of how much of the shared capacity cost the charges recover; a bar of each team's monthly bill next to a pie of its token share; tokens by team as stacked bars. The Breakdown row has the same figures as tables: a monthly bill per team (shared, dedicated, external, total) and every subscription with its team |
 | **Showback 2 · Shared private** | Who uses the shared model, and does it pay for itself? | Charges by consumer (team, subscription, tokens, commitment, projected use, commitment used, monthly charge); token rate by team; platform economics: running cost, committed revenue floor, cost coverage, balance with commitments and if all paid on demand |
 | **Showback 3 · Dedicated private** | What does Marketing get for its GPU? | Sponsor charge, busy share, paid idle, sponsor cost per million tokens, other consumers' share and monthly charge; GPU utilisation and token rate by consumer; charges per model; every consumer of the dedicated model with its role |
 | **Showback 4 · External model** | What do the providers charge? | Spend, requests and tokens in range, projected monthly spend; month-to-date spend by team; statement by team, subscription and model; the provider price list (collapsed) |
@@ -37,7 +37,7 @@ The quality judge also uses the dedicated Mistral (it grades Qwen). It pays noth
 
 ### Talk track
 
-1. **By team:** "This is what AI cost each team this month, across every way they use it." Point at the Total column, then at the Platform row and the platform balance: shared capacity the teams do not pay for yet.
+1. **By team:** "This is what AI cost each team this month, across every way they use it." Put the bill bar next to the token-share pie: Engineering uses most of the tokens, Marketing pays most of the bill (its dedicated GPU). Then point at the red platform balance and the recovery gauge: shared capacity the teams do not pay for yet.
 2. **Shared private:** Engineering's commitment is its revenue floor; Dev Spaces, OpenCode and MTA count against Engineering too. Open *Platform economics*: cost coverage shows how much of the GPU the commitments pay for.
 3. **Dedicated private:** Marketing pays the whole worker. Busy share and paid idle say how much of it is used; *other consumers' share* shows who else uses capacity Marketing pays for.
 4. **External:** every response is metered at list price, per team. Run Support's external load on Claude or GPT before the demo; Nemotron is free and shows $0.
