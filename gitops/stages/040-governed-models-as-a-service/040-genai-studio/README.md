@@ -54,8 +54,8 @@ Application holds them because they all change with the playground experience an
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| ConfigMap | `playground-guardrails` | `demo-sandbox` | NeMo config: the dashboard's self-check input and output rails and policy prompts, main model engine `openai` with key from `OPENAI_API_KEY`. Wave 18 |
-| NemoGuardrails | `nemoguardrails` | `demo-sandbox` | The playground's guardrail service. Config `playground-guardrails`; env `OPENAI_BASE_URL` from ConfigMap `playground-guardrails-endpoint`, `OPENAI_API_KEY` from Secret `endpoint-api-key-gpt-6-luna-maas`. Wave 21 |
+| ConfigMap | `playground-guardrails-template` | `demo-sandbox` | NeMo config template: the dashboard's self-check input and output rails and policy prompts, main model engine `openai`, `base_url: ${MAAS_BASE_URL}/v1`, key from `OPENAI_API_KEY`. Wave 18 |
+| NemoGuardrails | `nemoguardrails` | `demo-sandbox` | The playground's guardrail service. Config `playground-guardrails` from ConfigMap `playground-guardrails-rendered`; env `OPENAI_API_KEY` from Secret `endpoint-api-key-gpt-6-luna-maas`. Wave 21 |
 
 ### MCP server discovery (`mcp/`)
 
@@ -70,7 +70,7 @@ Application holds them because they all change with the playground experience an
 | Keys `OpenShift-MCP` and `OpenShift-MCP-ReadWrite` in `gen-ai-aa-mcp-servers` | `stages/040-governed-models-as-a-service/deploy.sh` (from the Stage 060 MCP servers), preserved by `ignoreDifferences` |
 | Secret `endpoint-api-key-gpt-6-luna-maas` (keys `api_key`, `key_id`, `expires_at`, `subscription`) | Job `provision-playground-endpoint` |
 | ConfigMap `gen-ai-aa-custom-model-endpoints` | Job `provision-playground-endpoint` creates it when absent; users may extend it from the dashboard |
-| ConfigMap `playground-guardrails-endpoint` (key `base_url`, the MaaS gateway `/v1`) | Job `provision-playground-endpoint` |
+| ConfigMap `playground-guardrails-rendered` (the template with the MaaS gateway URL; NeMo reads `base_url` only from its config) | Job `provision-playground-endpoint` |
 | ConfigMap `guardrail-placeholder` | Dashboard, written when it created its own guardrail service; unused once `nemoguardrails` is ours |
 | MLflow prompt `openshift-ops-assistant` and its versions | Job `agent-prompt-provisioner` |
 | Playground `OGXServer` `lsd-genai-playground`, its pgvector database and service account | Dashboard and OpenShift AI (created when a user creates the playground) |

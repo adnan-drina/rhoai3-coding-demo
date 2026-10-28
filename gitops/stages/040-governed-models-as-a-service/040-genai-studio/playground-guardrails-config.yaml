@@ -1,15 +1,16 @@
 ---
-# Self-check rails for the Gen AI playground guardrails in demo-sandbox (NemoGuardrails "nemoguardrails").
-# The rails and policy prompts are the ones the dashboard generates; the judge is real instead of the dashboard's
-# placeholder (http://placeholder.invalid/v1). The playground sends the Guardrail model the user picks as the model
-# name; the endpoint (OPENAI_BASE_URL) and key (OPENAI_API_KEY) come from the NemoGuardrails env.
+# Template of the self-check rails for the Gen AI playground guardrails in demo-sandbox (NemoGuardrails
+# "nemoguardrails"). The rails and policy prompts are the ones the dashboard generates; the judge is the MaaS gateway
+# instead of the dashboard's placeholder (http://placeholder.invalid/v1). Job provision-playground-endpoint renders it
+# into ConfigMap playground-guardrails-rendered, replacing ${MAAS_BASE_URL} with the cluster's gateway URL (NeMo reads base_url
+# only from the config). The playground sends the Guardrail model the user picks as the model name; the key comes from
+# OPENAI_API_KEY in the NemoGuardrails env.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: playground-guardrails
+  name: playground-guardrails-template
   namespace: demo-sandbox
   labels:
-    opendatahub.io/dashboard: "true"
     app.kubernetes.io/name: playground-guardrails
     app.kubernetes.io/component: playground-guardrails
     app.kubernetes.io/managed-by: argocd
@@ -22,6 +23,8 @@ data:
         engine: openai
         model: publishers/internal-models/models/qwen3-8-27b
         api_key_env_var: OPENAI_API_KEY
+        parameters:
+          base_url: ${MAAS_BASE_URL}/v1
     rails:
       input:
         flows:

@@ -95,10 +95,15 @@ spec:
               oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-env-file="${WORK}/secret.env" --dry-run=client -o yaml \
                 | oc apply --server-side --force-conflicts --field-manager=playground-endpoint-provisioner -f -
               oc annotate secret "${SECRET_NAME}" -n "${NS}" kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
-              # The playground guardrail judge (NemoGuardrails "nemoguardrails") reaches MaaS at the same cluster-specific URL.
-              oc create configmap playground-guardrails-endpoint -n "${NS}" --from-literal=base_url="${MAAS_BASE_URL}/v1" --dry-run=client -o yaml \
-                | oc label --local -f - app.kubernetes.io/part-of=rhoai3-coding-demo -o yaml \
-                | oc apply --server-side --force-conflicts --field-manager=playground-endpoint-provisioner -f -
+              # The playground guardrail judge (NemoGuardrails "nemoguardrails") reaches MaaS at the same cluster-specific URL:
+              # render its config from the Git-managed template (NeMo takes base_url only from the config).
+              oc get configmap playground-guardrails-template -n "${NS}" -o json | MAAS_BASE_URL="${MAAS_BASE_URL}" python3 -c '
+              import json, os, sys
+              data = {k: v.replace("${MAAS_BASE_URL}", os.environ["MAAS_BASE_URL"]) for k, v in json.load(sys.stdin)["data"].items()}
+              print(json.dumps({"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": "playground-guardrails-rendered", "namespace": "demo-sandbox",
+                  "labels": {"app.kubernetes.io/part-of": "rhoai3-coding-demo", "app.kubernetes.io/component": "playground-guardrails"}}, "data": data}))
+              ' | oc apply --server-side --force-conflicts --field-manager=playground-endpoint-provisioner -f -
+              echo "Rendered playground-guardrails-rendered for ${MAAS_BASE_URL}/v1"
 
               if oc get configmap "${CM_NAME}" -n "${NS}" >/dev/null 2>&1; then
                 if oc get configmap "${CM_NAME}" -n "${NS}" -o jsonpath='{.data.config\.yaml}' | grep -q "provider_id: ${PROVIDER_ID}"; then
