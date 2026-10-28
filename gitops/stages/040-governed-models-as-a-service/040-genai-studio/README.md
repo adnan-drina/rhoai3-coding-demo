@@ -138,7 +138,8 @@ Nemotron as Guardrail model). Git therefore owns `nemoguardrails`: the same rail
 gateway with the `playground-sandbox` key, which covers `qwen3-8-27b` and `nemotron-3-ultra-550b-a55b`. Pick Qwen 3.8 as
 Guardrail model. Mistral Small 4 has its own gateway listener, GPT-6 Luna rejects the rails' `max_tokens: 200`, and
 Claude rejects temperatures below 1, so none of them can judge. A renewed key reaches the guardrail pod only when it
-restarts.
+restarts. Where a playground already created the dashboard's `nemoguardrails`, `deploy.sh` adopts it after checking that
+it is untracked, unowned and carries the dashboard label.
 
 **Secrets.** No secret values in Git. The only Secret is the endpoint key, minted at runtime.
 
