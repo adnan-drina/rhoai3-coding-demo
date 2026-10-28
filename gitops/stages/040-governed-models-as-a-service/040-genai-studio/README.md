@@ -3,7 +3,7 @@
 This Application prepares the Gen AI playground (Gen AI studio) for the demo project **AI Coding Sandbox**
 (`demo-sandbox`) and publishes platform MCP servers to every playground. It provisions a playground custom endpoint for
 GPT-6 Luna, a saved agent "OpenShift Ops Assistant" with its reviewed system prompt in the MLflow prompt registry, a
-retained state PVC, the NeMo Guardrails service with a real judge model, and the cluster-wide MCP server discovery
+retained state PVC, the NeMo Guardrails service with a real judge model (direct API checks only; see Guardrails), and the cluster-wide MCP server discovery
 ConfigMap. Users create the playground itself from the dashboard.
 
 | | |
@@ -130,16 +130,19 @@ restore procedure in `docs/OPERATIONS.md`. The playground Deployment rolls out w
 service-owned `genai-pgvector` volume, a rollout whose new pod lands on another node waits for the old pod to release
 the RWO volume.
 
-**Guardrails.** The playground sends each check to `nemoguardrails` with only the model name of the **Guardrail
-model** the user picked; NeMo Guardrails replaces the main model's name in its server config and keeps its endpoint. The
-dashboard creates that service, when none with this name exists, with the endpoint `http://placeholder.invalid/v1`:
-every judge call then fails and the playground lets the message through (observed 2026-10-28 with GPT-6 Luna and
-Nemotron as Guardrail model). Git therefore owns `nemoguardrails`: the same rails and prompts, judged through the MaaS
-gateway with the `playground-sandbox` key, which covers `qwen3-8-27b` and `nemotron-3-ultra-550b-a55b`. Pick Qwen 3.8 as
-Guardrail model. Mistral Small 4 has its own gateway listener, GPT-6 Luna rejects the rails' `max_tokens: 200`, and
-Claude rejects temperatures below 1, so none of them can judge. A renewed key reaches the guardrail pod only when it
-restarts. Where a playground already created the dashboard's `nemoguardrails`, `deploy.sh` adopts it after checking that
-it is untracked, unowned and carries the dashboard label.
+**Guardrails.** The playground toggles do not block anything on RHOAI 3.5.2. The playground backend sends each check
+to `nemoguardrails` with an inline judge config (`guardrails.config`), the shipped NeMo Guardrails server (0.24) refuses
+inline configs with `status: error`, and the backend counts an error as not flagged, so every message passes (observed
+2026-10-28: no judge call reached the MaaS gateway during a playground rerun). The same service blocks correctly when
+called directly with its server config, for example `POST /v1/guardrail/checks` with `"model":
+"publishers/internal-models/models/qwen3-8-27b"`. The dashboard creates `nemoguardrails`, when none with this name
+exists, with the endpoint `http://placeholder.invalid/v1`, so even the server config cannot judge. Git therefore owns
+`nemoguardrails`: the same rails and prompts, judged through the MaaS gateway with the `playground-sandbox` key, which
+covers `qwen3-8-27b` and `nemotron-3-ultra-550b-a55b`. Use Qwen 3.8 as judge. Mistral Small 4 has its own gateway
+listener, GPT-6 Luna rejects the rails' `max_tokens: 200`, and Claude rejects temperatures below 1, so none of them can
+judge. A renewed key reaches the guardrail pod only when it restarts. Where a playground already created the
+dashboard's `nemoguardrails`, `deploy.sh` adopts it after checking that it is untracked, unowned and carries the
+dashboard label.
 
 **Secrets.** No secret values in Git. The only Secret is the endpoint key, minted at runtime.
 
@@ -173,7 +176,7 @@ oc get configmap gen-ai-aa-custom-model-endpoints,agent-profile-e0e610ff-3438-5d
 | Job image | Pinned images | Prompt Job pinned by digest; endpoint Job uses `registry.redhat.io/openshift4/ose-cli` without tag or digest | Gap (endpoint Job image floats) |
 | TLS | Verify server certificates | Endpoint Job calls the MaaS API with `curl -k` | Gap (TLS verification disabled when sending the ServiceAccount token) |
 | Pod security | Restricted profile | Prompt Job sets non-root, seccomp, drop ALL; endpoint Job sets no security context or resources | Gap (endpoint Job relies on SCC defaults) |
-| Guardrails | `NemoGuardrails` created automatically with the playground; Guardrail model is any running playground model [1, chapter 9] | Git-managed `nemoguardrails` with a MaaS judge; judge models limited to the `playground-sandbox` subscription | Deviation (justified: the dashboard-created service has a placeholder judge and fails open) |
+| Guardrails | `NemoGuardrails` created automatically with the playground; Guardrail model is any running playground model [1, chapter 9] | Git-managed `nemoguardrails` with a MaaS judge; judge models limited to the `playground-sandbox` subscription | Deviation (justified: the dashboard-created service has a placeholder judge) and Gap (product: the 3.5.2 server refuses the playground's inline config, so the toggles fail open) |
 | Hook lifecycle | `BeforeHookCreation`, `HookSucceeded` delete policies [5] | Both Jobs | Aligned |
 
 ## References
