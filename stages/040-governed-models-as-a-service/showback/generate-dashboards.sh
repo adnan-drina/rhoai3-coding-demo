@@ -197,7 +197,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 | {"dashboard-5-cost-per-token.yaml": dashboard("dashboard-5-cost-per-token-admin"; "Cost per token";
        "Showback: tokens served by the private models and governed MaaS users, priced with editable per-million-token prices.";
        $cost_vars; $cost_panels; $cost_layouts),
-   "dashboard-6-tokenomics-break-even.yaml": dashboard("dashboard-6-tokenomics-break-even-admin"; "Tokenomics · break-even";
+   "dashboard-6-tokenomics-break-even.yaml": dashboard("dashboard-6-tokenomics-break-even-admin"; "Showback 5 · Break-even";
        "Should an external-model workload move to a private model? Projected monthly volume and cost against the break-even volume of a private worker.";
        $tok_vars; $tok_panels; $tok_layouts),
    shared: DS}

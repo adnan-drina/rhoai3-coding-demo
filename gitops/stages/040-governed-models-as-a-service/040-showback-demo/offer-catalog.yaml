@@ -6,6 +6,9 @@
 # requests; Mistral Small 4: 253 at 3). Projections size the private worker count from it.
 # Shared commitments: a subscription commits to monthly tokens at the committed tariff, paid whether used or not;
 # usage above it is billed at the on-demand tariff. Its MaaS token-rate limit must allow the commitment in working hours.
+# Teams: every MaaS subscription belongs to the team of its owner; Platform carries the platform's own services. The
+# MaaS usage counters carry the subscription but not its cost centre, so the dashboards join on this mapping. A
+# subscription missing here shows as "unassigned" on the showback tabs.
 apiVersion: monitoring.rhobs/v1
 kind: PrometheusRule
 metadata:
@@ -54,3 +57,69 @@ spec:
         - record: showback_offer_capacity_tokens_per_second
           expr: vector(250)
           labels: {offer: dedicated, model: mistral-small4-119b}
+    - name: showback-teams
+      interval: 1m
+      rules:
+        - record: showback_team_info
+          expr: vector(1)
+          labels: {team: engineering}
+        - record: showback_team_info
+          expr: vector(1)
+          labels: {team: support}
+        - record: showback_team_info
+          expr: vector(1)
+          labels: {team: marketing}
+        - record: showback_team_info
+          expr: vector(1)
+          labels: {team: platform}
+        - record: showback_team_info
+          expr: vector(1)
+          labels: {team: unassigned}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: team-engineering, team: engineering}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: devspaces-coding-models, team: engineering}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: personal-ai-developer, team: engineering}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: opencode-developer-qwen38, team: engineering}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: mta-migration-ai, team: engineering}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: team-support, team: support}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: personal-ai-admin, team: support}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: hermes-private-qwen38, team: support}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: opencode-private-qwen38, team: support}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: team-marketing, team: marketing}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: maas-quality-judge, team: platform}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: openshift-lightspeed, team: platform}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: model-qualification, team: platform}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: quota-probe, team: platform}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: playground-sandbox, team: platform}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: personal-kube-admin, team: platform}

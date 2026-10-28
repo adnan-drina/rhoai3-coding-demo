@@ -8,6 +8,7 @@ resources:
   - team-support-subscription.yaml
   - team-support-auth-policy.yaml
   - offer-catalog.yaml
+  - dashboard-offer-by-team.yaml
   - dashboard-offer-external.yaml
   - dashboard-offer-dedicated.yaml
   - dashboard-offer-shared.yaml

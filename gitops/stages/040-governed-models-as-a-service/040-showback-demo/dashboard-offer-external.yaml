@@ -1,5 +1,5 @@
-# External offering: month-to-date captured usage at list prices.
-# Model-agnostic: models, sponsors and prices come from offer-catalog.yaml; queries are live.
+# External offering: metered list-price spend per team, subscription and model.
+# Model-agnostic: subscriptions map to teams in offer-catalog.yaml; queries are live.
 ---
 apiVersion: perses.dev/v1alpha2
 kind: PersesDashboard
@@ -15,8 +15,8 @@ metadata:
 spec:
   config:
     display:
-      name: Offer · External model
-      description: 'External models reached through MaaS: every response is metered and priced at the provider''s published list price. Month-to-date estimates by subscription and model.'
+      name: Showback 4 · External model
+      description: 'External models reached through MaaS: every response is metered and priced at the provider''s published list price.'
     duration: 1h
     variables:
     - kind: ListVariable
@@ -32,12 +32,30 @@ spec:
         plugin:
           kind: PrometheusLabelValuesVariable
           spec:
-            datasource:
+            datasource: &id001
               kind: PrometheusDatasource
               name: data-science-prometheus-datasource
             labelName: model
             matchers:
-            - showback_external_metering_rate_usd_per_million
+            - showback_external_metering_events
+    - kind: ListVariable
+      spec:
+        name: team
+        allowAllValue: true
+        allowMultiple: true
+        customAllValue: ".*"
+        defaultValue: "$__all"
+        display:
+          name: Team
+          hidden: false
+          description: Team that owns the subscription (offer catalog).
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            datasource: *id001
+            labelName: team
+            matchers:
+            - showback_team_info
     - kind: ListVariable
       spec:
         name: subscription
@@ -51,9 +69,7 @@ spec:
         plugin:
           kind: PrometheusLabelValuesVariable
           spec:
-            datasource:
-              kind: PrometheusDatasource
-              name: data-science-prometheus-datasource
+            datasource: *id001
             labelName: subscription
             matchers:
             - showback_external_metering_events
@@ -81,21 +97,20 @@ spec:
         spec:
           display:
             name: How the external offering is priced
-            description: ''
           plugin:
             kind: Markdown
             spec:
               text: |-
                 An **external model** is a provider service reached through the MaaS gateway, with no local GPU or idle cost. The gateway's metering plugin records every response with its input and output tokens and prices it once at the provider's **published list price** in force; later price changes never reprice earlier usage. Consumers pay the provider charge.
 
-                Figures are month-to-date estimates (UTC) until reconciled with the provider invoice. Requests without usage or without a catalog price stay visible as unpriced. The **projected** column scales the spend in the selected time range to a month (usage hours × users per team).
+                The ledger keeps month-to-date totals (UTC); **in range** figures are the change of those totals over the time range, and *month to date* ignores the time picker. Figures are estimates until reconciled with the provider invoice. **In range** figures follow the time picker. **Per month** figures are projections: usage in the time range × usage hours per month × users per team, and private workers × GPU hours per month.
           queries: []
       spend:
         kind: Panel
         spec:
           display:
-            name: Provider spend this month (USD)
-            description: List-price estimate of captured usage.
+            name: Spend (in range, USD)
+            description: List-price estimate of the responses in the time range.
           plugin:
             kind: StatChart
             spec:
@@ -110,16 +125,14 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"})
+                  datasource: *id001
+                  query: sum(((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))) or vector(0)
       requests:
         kind: Panel
         spec:
           display:
-            name: Requests this month
-            description: Responses captured by the metering ledger.
+            name: Requests (in range)
+            description: Responses captured by the metering ledger in the time range.
           plugin:
             kind: StatChart
             spec:
@@ -134,16 +147,36 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum(showback_external_metering_events{subscription=~"$subscription", model=~"$model"})
-      monthly:
+                  datasource: *id001
+                  query: sum(((sum by (subscription, model) (clamp_min((showback_external_metering_events{subscription=~"$subscription", model=~"$model"} - showback_external_metering_events{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_events{subscription=~"$subscription", model=~"$model"}, 0))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription, model) (clamp_min((showback_external_metering_events{subscription=~"$subscription", model=~"$model"} - showback_external_metering_events{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_events{subscription=~"$subscription", model=~"$model"}, 0))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))) or vector(0)
+      tokens:
         kind: Panel
         spec:
           display:
-            name: Monthly spend (projected)
-            description: Spend in the time range scaled to a month (usage hours × users per team).
+            name: Tokens (in range)
+            description: Input and output tokens of those responses.
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum(((sum by (subscription, model) (clamp_min((showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"} - showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"}, 0)) + sum by (subscription, model) (clamp_min((showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"} - showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"}, 0))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription, model) (clamp_min((showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"} - showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"}, 0)) + sum by (subscription, model) (clamp_min((showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"} - showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"}, 0))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))) or vector(0)
+      projected:
+        kind: Panel
+        spec:
+          display:
+            name: Spend / month (USD)
+            description: Spend in the time range scaled to a month.
           plugin:
             kind: StatChart
             spec:
@@ -158,16 +191,14 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
-      spendOverTime:
+                  datasource: *id001
+                  query: sum((((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users)) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace(((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users)) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))) or vector(0)
+      trend:
         kind: Panel
         spec:
           display:
-            name: Month-to-date spend by subscription (USD)
-            description: ''
+            name: Month-to-date spend by team (USD)
+            description: The ledger's running monthly total; it restarts on the 1st (UTC).
           plugin:
             kind: TimeSeriesChart
             spec:
@@ -190,17 +221,15 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum by (subscription) (showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"})
-                  seriesNameFormat: "{{subscription}}"
+                  datasource: *id001
+                  query: sum by (team) (((sum by (subscription, model) (showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"})) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription, model) (showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"})) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d))))
+                  seriesNameFormat: "{{team}}"
       statement:
         kind: Panel
         spec:
           display:
-            name: Statement by subscription and model · this month
-            description: Captured requests, tokens and list-price estimate, and the projected monthly estimate.
+            name: Statement by team, subscription and model
+            description: In-range requests, tokens and spend, the projected month and the month to date.
           plugin:
             kind: Table
             spec:
@@ -209,6 +238,10 @@ spec:
               columnSettings:
               - name: timestamp
                 hide: true
+              - name: team
+                header: Team
+                align: left
+                enableSorting: true
               - name: subscription
                 header: Subscription
                 align: left
@@ -218,7 +251,7 @@ spec:
                 align: left
                 enableSorting: true
               - name: 'value #1'
-                header: Requests
+                header: Requests (in range)
                 align: right
                 enableSorting: true
                 format:
@@ -226,7 +259,7 @@ spec:
                   decimalPlaces: 0
                   shortValues: false
               - name: 'value #2'
-                header: Tokens
+                header: Tokens (in range)
                 align: right
                 enableSorting: true
                 format:
@@ -234,7 +267,7 @@ spec:
                   decimalPlaces: 0
                   shortValues: false
               - name: 'value #3'
-                header: Estimate ($)
+                header: Spend (in range)
                 align: right
                 enableSorting: true
                 format:
@@ -243,12 +276,20 @@ spec:
                   shortValues: false
                 sort: desc
               - name: 'value #4'
-                header: Monthly estimate (proj.)
+                header: Spend / month
                 align: right
                 enableSorting: true
                 format:
                   unit: decimal
                   decimalPlaces: 2
+                  shortValues: false
+              - name: 'value #5'
+                header: Month to date
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 4
                   shortValues: false
               transforms:
               - kind: MergeSeries
@@ -259,38 +300,37 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum by (subscription, model) (showback_external_metering_events{subscription=~"$subscription", model=~"$model"})
+                  datasource: *id001
+                  query: ((sum by (subscription, model) (clamp_min((showback_external_metering_events{subscription=~"$subscription", model=~"$model"} - showback_external_metering_events{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_events{subscription=~"$subscription", model=~"$model"}, 0))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription, model) (clamp_min((showback_external_metering_events{subscription=~"$subscription", model=~"$model"} - showback_external_metering_events{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_events{subscription=~"$subscription", model=~"$model"}, 0))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))
           - kind: TimeSeriesQuery
             spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum by (subscription, model) (showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"}) + sum by (subscription, model) (showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"})
+                  datasource: *id001
+                  query: ((sum by (subscription, model) (clamp_min((showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"} - showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"}, 0)) + sum by (subscription, model) (clamp_min((showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"} - showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"}, 0))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription, model) (clamp_min((showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"} - showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"}, 0)) + sum by (subscription, model) (clamp_min((showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"} - showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"}, 0))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))
           - kind: TimeSeriesQuery
             spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum by (subscription, model) (showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"})
+                  datasource: *id001
+                  query: ((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))
           - kind: TimeSeriesQuery
             spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  datasource:
-                    kind: PrometheusDatasource
-                    name: data-science-prometheus-datasource
-                  query: sum by (subscription, model) ((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
-      rates:
+                  datasource: *id001
+                  query: (((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users)) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace(((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users)) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: ((sum by (subscription, model) (showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"})) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription, model) (showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"})) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))
+      prices:
         kind: Panel
         spec:
           display:
@@ -349,7 +389,7 @@ spec:
         - x: 0
           y: 0
           width: 24
-          height: 6
+          height: 7
           content:
             "$ref": "#/spec/panels/about"
     - kind: Grid
@@ -361,22 +401,28 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 8
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/spend"
-        - x: 8
+        - x: 6
           y: 0
-          width: 8
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/requests"
-        - x: 16
+        - x: 12
           y: 0
-          width: 8
+          width: 6
           height: 4
           content:
-            "$ref": "#/spec/panels/monthly"
+            "$ref": "#/spec/panels/tokens"
+        - x: 18
+          y: 0
+          width: 6
+          height: 4
+          content:
+            "$ref": "#/spec/panels/projected"
     - kind: Grid
       spec:
         display:
@@ -389,7 +435,7 @@ spec:
           width: 24
           height: 7
           content:
-            "$ref": "#/spec/panels/spendOverTime"
+            "$ref": "#/spec/panels/trend"
     - kind: Grid
       spec:
         display:
@@ -400,7 +446,7 @@ spec:
         - x: 0
           y: 0
           width: 24
-          height: 6
+          height: 7
           content:
             "$ref": "#/spec/panels/statement"
     - kind: Grid
@@ -415,4 +461,4 @@ spec:
           width: 24
           height: 7
           content:
-            "$ref": "#/spec/panels/rates"
+            "$ref": "#/spec/panels/prices"

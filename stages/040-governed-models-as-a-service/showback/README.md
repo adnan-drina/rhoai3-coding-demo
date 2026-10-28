@@ -1,7 +1,7 @@
 # Showback
 
-Stage 040 shows what the private models cost in two custom Observability tabs (**Cost per token**, **Tokenomics ·
-break-even (live)**) and can export measured MaaS usage for a time window. Neither is an invoice: prices are dashboard
+Stage 040 shows what the private models cost in two custom Observability tabs (**Cost per token**, **Showback 5 ·
+Break-even**) and can export measured MaaS usage for a time window. Neither is an invoice: prices are dashboard
 variables, and the raw export stays unpriced (`../showback-ratecard.json` is the reviewed unpriced rate card it
 requires).
 
@@ -60,7 +60,7 @@ They rely on three things other stages provide:
 
    To keep them under GitOps, point an Argo CD Application at a copy of the `observability/` folder (its
    `kustomization.yaml` lists both files); the `app.kubernetes.io/part-of: rhoai3-coding-demo` label can go.
-4. Open the OpenShift AI Observability page: the **Cost per token** and **Tokenomics · break-even (live)** tabs appear
+4. Open the OpenShift AI Observability page: the **Cost per token** and **Showback 5 · Break-even** tabs appear
    next to the product tabs. The model list fills from the metrics.
 
 Keep the `dashboard-` prefix and an unused number, and check `oc get persesdashboard` after an upgrade in case a later

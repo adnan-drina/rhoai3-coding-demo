@@ -45,15 +45,28 @@ else record 'Dedicated Mistral is served by 040-local-models on its own listener
 
 # Every dashboard panel is laid out, reads the RHOAI datasource and no financial number comes from a static report.
 if jq -e '[.[] | select(.kind == "PersesDashboard")] as $d
-    | ($d | map(.metadata.name) | sort) == ["dashboard-offer-dedicated-private-admin",
-        "dashboard-offer-external-model-admin", "dashboard-offer-shared-private-admin"]
+    | ($d | map(.metadata.name) | sort) == ["dashboard-offer-0-showback-by-team-admin",
+        "dashboard-offer-dedicated-private-admin", "dashboard-offer-external-model-admin",
+        "dashboard-offer-shared-private-admin"]
     and all($d[]; .spec.config as $c
         | ([$c.layouts[].spec.items[].content["$ref"] | ltrimstr("#/spec/panels/")] | sort) == ($c.panels | keys | sort)
         and all($c.panels[].spec.queries[]; .spec.plugin.spec.datasource.name == "data-science-prometheus-datasource"
             and (.spec.plugin.spec.query | test("showback_selected_report|service_[a-z_]+_cents") | not)))' \
     "$work/bundle.json" >/dev/null; then
-    record 'Three live offer dashboards: every panel laid out and queried from the RHOAI datasource' pass
-else record 'Three live offer dashboards: every panel laid out and queried from the RHOAI datasource' 'Dashboard differs'; fi
+    record 'Four live showback dashboards: every panel laid out and queried from the RHOAI datasource' pass
+else record 'Four live showback dashboards: every panel laid out and queried from the RHOAI datasource' 'Dashboard differs'; fi
+
+# Every MaaS subscription in Git belongs to exactly one known team, so the by-team tab shows no "unassigned" row.
+for file in $(grep -rl --include='*.yaml' '^kind: MaaSSubscription' "$REPO_ROOT/gitops"); do yaml_json < "$file"; done \
+    | jq -s '[.[] | if type == "array" then .[] else . end | select(.kind == "MaaSSubscription") | .metadata.name] | unique' \
+    > "$work/subscriptions.json"
+missing=$(jq -r --slurpfile subs "$work/subscriptions.json" '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog")
+    | .spec.groups[].rules[]] as $r | ([$r[] | select(.record == "showback_team_info") | .labels.team]) as $teams
+    | [$r[] | select(.record == "showback_subscription_team") | .labels] as $map
+    | ([$subs[0][] | . as $s | select([$map[] | select(.subscription == $s)] | length != 1)]
+       + [$map[] | select(.team as $t | $teams | index($t) | not) | .subscription]) | unique | join(", ")' "$work/bundle.json")
+if [[ -z "$missing" ]]; then record 'Every MaaS subscription in Git maps to one showback team' pass
+else record 'Every MaaS subscription in Git maps to one showback team' "Unmapped or ambiguous: $missing"; fi
 
 # The offer catalog drives every private-offer panel: each offered model needs a worker price, shared models a tariff,
 # dedicated models a sponsor, and every dedicated model must be served by 040-local-models.

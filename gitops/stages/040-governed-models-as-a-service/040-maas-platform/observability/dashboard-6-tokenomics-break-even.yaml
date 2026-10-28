@@ -13,7 +13,7 @@ metadata:
 spec:
   config:
     display:
-      name: "Tokenomics \xB7 break-even"
+      name: "Showback 5 \xB7 Break-even"
       description: Should an external-model workload move to a private model? Projected monthly volume and cost against the break-even volume of a private worker.
     duration: 168h
     variables:
