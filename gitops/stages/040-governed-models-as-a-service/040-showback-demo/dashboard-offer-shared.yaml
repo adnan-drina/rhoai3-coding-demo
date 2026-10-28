@@ -124,28 +124,15 @@ spec:
             name: Charge by team / month (USD)
             description: Projected monthly charges on the selected shared models, per team.
           plugin:
-            kind: PieChart
+            kind: BarChart
             spec:
               calculation: last
               format:
                 unit: decimal
                 decimalPlaces: 0
                 shortValues: false
-              mode: value
-              radius: 70
-              showLabels: true
               sort: desc
-              colorPalette:
-              - "#0066CC"
-              - "#EC7A08"
-              - "#3E8635"
-              - "#5752D1"
-              - "#009596"
-              - "#F0AB00"
-              - "#8F4700"
-              legend:
-                position: right
-                mode: list
+              mode: value
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -374,13 +361,13 @@ spec:
             name: Cost coverage
             description: Committed revenue floor as a share of the running cost.
           plugin:
-            kind: GaugeChart
+            kind: StatChart
             spec:
               calculation: last
               format:
                 unit: percent
                 decimalPlaces: 0
-              max: 100
+              colorMode: background_solid
               thresholds:
                 defaultColor: "#C9190B"
                 steps:
@@ -488,7 +475,7 @@ spec:
         - x: 0
           y: 8
           width: 24
-          height: 7
+          height: 10
           content:
             "$ref": "#/spec/panels/throughput"
     - kind: Grid
@@ -506,12 +493,12 @@ spec:
             "$ref": "#/spec/panels/economics"
         - x: 12
           y: 0
-          width: 6
-          height: 8
+          width: 12
+          height: 4
           content:
             "$ref": "#/spec/panels/coverage"
-        - x: 18
-          y: 0
+        - x: 12
+          y: 4
           width: 6
           height: 4
           content:

@@ -200,28 +200,15 @@ spec:
             name: Spend by team (in range, USD)
             description: List-price spend of each team in the time range.
           plugin:
-            kind: PieChart
+            kind: BarChart
             spec:
               calculation: last
               format:
                 unit: decimal
                 decimalPlaces: 2
                 shortValues: false
-              mode: value
-              radius: 70
-              showLabels: true
               sort: desc
-              colorPalette:
-              - "#0066CC"
-              - "#EC7A08"
-              - "#3E8635"
-              - "#5752D1"
-              - "#009596"
-              - "#F0AB00"
-              - "#8F4700"
-              legend:
-                position: right
-                mode: list
+              mode: value
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -558,13 +545,13 @@ spec:
         - x: 0
           y: 0
           width: 12
-          height: 7
+          height: 10
           content:
             "$ref": "#/spec/panels/trend"
         - x: 12
           y: 0
           width: 12
-          height: 7
+          height: 10
           content:
             "$ref": "#/spec/panels/requestBars"
     - kind: Grid

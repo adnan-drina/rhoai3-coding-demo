@@ -126,17 +126,16 @@ spec:
             name: Workload vs break-even
             description: Projected monthly tokens as a share of the break-even volume; above 100% the private candidate is cheaper.
           plugin:
-            kind: GaugeChart
+            kind: StatChart
             spec:
               calculation: last
               format:
                 unit: percent
                 decimalPlaces: 0
-              max: 200
+              colorMode: background_solid
               thresholds:
+                defaultColor: '#c9190b'
                 steps:
-                - value: 0
-                  color: '#c9190b'
                 - value: 100
                   color: '#3e8635'
           queries:
@@ -463,25 +462,25 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 8
-          height: 8
+          width: 6
+          height: 4
           content:
             $ref: '#/spec/panels/ratio'
-        - x: 8
+        - x: 6
           y: 0
-          width: 8
+          width: 6
           height: 4
           content:
             $ref: '#/spec/panels/volume'
-        - x: 16
+        - x: 12
           y: 0
-          width: 8
+          width: 6
           height: 4
           content:
             $ref: '#/spec/panels/breakeven'
-        - x: 8
-          y: 4
-          width: 16
+        - x: 18
+          y: 0
+          width: 6
           height: 4
           content:
             $ref: '#/spec/panels/savings'
