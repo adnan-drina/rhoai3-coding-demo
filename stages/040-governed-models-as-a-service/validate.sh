@@ -648,6 +648,21 @@ playground_state() {
     echo yes
 }
 check_warn "Gen AI playground keeps its state on the retained PVC (or no playground yet)" playground_state yes
+# The playground guardrail toggles work on 3.5.2 only through the adapter (040-genai-studio
+# playground-guardrails-adapter.yaml): Service nemoguardrails must select the ready adapter, which reaches the managed
+# pod through nemoguardrails-server. A re-created NemoGuardrails CR restores the operator's selector until the next sync.
+guardrail_adapter() {
+    local svc
+    svc=$(read_json service nemoguardrails -n demo-sandbox) || { echo "Service nemoguardrails unreadable"; return; }
+    jq -e '.spec.selector.app == "nemoguardrails-playground-adapter"' <<<"$svc" >/dev/null ||
+        { echo "Service nemoguardrails selects $(jq -r '.spec.selector.app' <<<"$svc"), not the adapter (sync 040-genai-studio)"; return; }
+    [[ $(oc --request-timeout="$TIMEOUT" get deployment nemoguardrails-playground-adapter -n demo-sandbox \
+        -o jsonpath='{.status.readyReplicas}') -ge 1 ]] 2>/dev/null || { echo "adapter not ready"; return; }
+    [[ -n $(oc --request-timeout="$TIMEOUT" get endpointslices -n demo-sandbox -l kubernetes.io/service-name=nemoguardrails-server \
+        -o jsonpath='{.items[*].endpoints[?(@.conditions.ready==true)].addresses[0]}') ]] || { echo "managed guardrail pod not ready"; return; }
+    echo yes
+}
+check "Playground guardrail checks route through the adapter to the managed NeMo Guardrails pod" guardrail_adapter yes
 check "MaaS gateway AdminNetworkPolicy boundary: needed destinations open, others blocked" gateway_boundary yes
 if [[ "$MODE" == --readiness ]]; then
     echo "Scope: native readiness only; authenticated inference, streaming, traffic and user Studio acceptance: --functional."

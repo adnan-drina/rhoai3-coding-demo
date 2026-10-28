@@ -1,0 +1,202 @@
+---
+# Demo shim for the Gen AI playground guardrail toggles on RHOAI 3.5.2. The playground backend sends every check
+# with an inline guardrails.config, which the hardened 3.5 NeMo Guardrails server refuses by design (RHOAIENG-83465)
+# and the backend then counts as "not flagged". The backend finds the server through Service "nemoguardrails"
+# (named after the NemoGuardrails CR), so this file takes over that Service: its selector points at the adapter
+# below, which swaps the inline config for the server-side config_id and the judge model, and forwards the call,
+# with the user's bearer token, to the unmodified operator-managed pod through Service nemoguardrails-server.
+# kube-rbac-proxy in that pod still authorizes every call. The operator creates its Service only when absent
+# and never updates it, so the selector set here stays. The playground's own judge prompts are ignored: the
+# server-side prompts in playground-guardrails-template apply. Remove this file when the playground and server agree.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nemoguardrails
+  namespace: demo-sandbox
+  labels:
+    app: nemoguardrails
+    component: nemoguardrails
+    app.kubernetes.io/component: playground-guardrails
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    # Same serving certificate Secret the operator's Service requests; the managed pod's kube-rbac-proxy mounts it too.
+    service.beta.openshift.io/serving-cert-secret-name: nemoguardrails-tls
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  selector:
+    app: nemoguardrails-playground-adapter
+    component: nemoguardrails
+  ports:
+    - name: nemoguardrails
+      port: 443
+      protocol: TCP
+      targetPort: 8443
+---
+# The operator-managed guardrails pod (kube-rbac-proxy on 8443), reached by the adapter only.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nemoguardrails-server
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: nemoguardrails-server
+    app.kubernetes.io/component: playground-guardrails
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  selector:
+    app: nemoguardrails
+    component: nemoguardrails
+  ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 8443
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nemoguardrails-playground-adapter
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: nemoguardrails-playground-adapter
+    app.kubernetes.io/component: playground-guardrails
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+data:
+  adapter.py: |
+    # Rewrites POST /v1/guardrail/checks bodies that carry an inline guardrails.config to the server-side
+    # config_id and judge model; every other request is passed through unchanged. Message content is never logged.
+    import http.server, json, os, socketserver, ssl, sys, urllib.error, urllib.request
+
+    UPSTREAM = os.environ["UPSTREAM_URL"]
+    CONFIG_ID = os.environ["CONFIG_ID"]
+    JUDGE_MODEL = os.environ["JUDGE_MODEL"]
+    HOP = {"host", "connection", "content-length", "transfer-encoding", "keep-alive", "accept-encoding"}
+    # The managed pod's certificate names Service nemoguardrails: verify the chain against the service CA, not the name.
+    UPSTREAM_TLS = ssl.create_default_context(cafile="/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt")
+    UPSTREAM_TLS.check_hostname = False
+
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def proxy(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(length) if length else None
+            note = ""
+            if self.command == "POST" and self.path.split("?")[0] == "/v1/guardrail/checks" and body:
+                try:
+                    req = json.loads(body)
+                except ValueError:
+                    req = None
+                if isinstance(req, dict) and isinstance(req.get("guardrails"), dict) and req["guardrails"].get("config"):
+                    req["guardrails"] = {"config_id": CONFIG_ID}
+                    req["model"] = JUDGE_MODEL
+                    body = json.dumps(req).encode()
+                    roles = ",".join(str(m.get("role")) for m in req.get("messages", []) if isinstance(m, dict))
+                    note = f" inline config -> config_id {CONFIG_ID} (roles {roles})"
+            headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP}
+            upstream = urllib.request.Request(UPSTREAM + self.path, data=body, headers=headers, method=self.command)
+            try:
+                resp = urllib.request.urlopen(upstream, context=UPSTREAM_TLS, timeout=120)
+            except urllib.error.HTTPError as err:
+                resp = err
+            except Exception as err:  # upstream unreachable: answer 502 so the caller sees an error
+                self.log_message("%s %s -> upstream error %s", self.command, self.path, type(err).__name__)
+                self.send_error(502)
+                return
+            data = resp.read()
+            status = ""
+            if note:
+                try:
+                    status = " status " + str(json.loads(data).get("status"))
+                except ValueError:
+                    pass
+            code = resp.getcode()
+            self.log_message("%s %s -> %s%s%s", self.command, self.path, code, note, status)
+            self.send_response(code)
+            for k, v in resp.headers.items():
+                if k.lower() not in HOP:
+                    self.send_header(k, v)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        do_GET = do_POST = do_PUT = do_DELETE = proxy
+
+        def log_message(self, fmt, *args):
+            sys.stdout.write("%s %s\n" % (self.address_string(), fmt % args))
+            sys.stdout.flush()
+
+
+    class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):  # ose-cli ships Python 3.6
+        daemon_threads = True
+
+
+    server = Server(("0.0.0.0", 8443), Handler)
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.options |= ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+    tls.load_cert_chain("/etc/tls/tls.crt", "/etc/tls/tls.key")
+    server.socket = tls.wrap_socket(server.socket, server_side=True)
+    print(f"adapter listening on 8443, upstream {UPSTREAM}, config_id {CONFIG_ID}", flush=True)
+    server.serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nemoguardrails-playground-adapter
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: nemoguardrails-playground-adapter
+    app.kubernetes.io/component: playground-guardrails
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nemoguardrails-playground-adapter
+  template:
+    metadata:
+      labels:
+        app: nemoguardrails-playground-adapter
+        component: nemoguardrails
+    spec:
+      containers:
+        - name: adapter
+          # The same ose-cli image the stage's provisioner Jobs use; the adapter needs only its python3 stdlib.
+          image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+          command: [python3, /opt/adapter/adapter.py]
+          env:
+            - name: UPSTREAM_URL
+              value: https://nemoguardrails-server.demo-sandbox.svc:443
+            - name: CONFIG_ID
+              value: playground-guardrails
+            - name: JUDGE_MODEL
+              value: publishers/internal-models/models/qwen3-8-27b
+          ports:
+            - name: https
+              containerPort: 8443
+          readinessProbe:
+            tcpSocket: {port: 8443}
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          volumeMounts:
+            - {name: adapter, mountPath: /opt/adapter, readOnly: true}
+            - {name: tls, mountPath: /etc/tls, readOnly: true}
+      volumes:
+        - name: adapter
+          configMap: {name: nemoguardrails-playground-adapter}
+        - name: tls
+          secret: {secretName: nemoguardrails-tls}

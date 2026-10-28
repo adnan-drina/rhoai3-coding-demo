@@ -18,5 +18,6 @@ resources:
   - genai-playground-state-pvc.yaml
   - playground-state-attacher.yaml
   - playground-guardrails-config.yaml
+  - playground-guardrails-adapter.yaml
   - nemoguardrails.yaml
   - mcp
