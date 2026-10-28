@@ -18,6 +18,7 @@ spec:
   owner:
     users:
       - kube:admin
+      - admin  # htpasswd cluster admin
   modelRefs:
     - name: qwen3-8-27b
       namespace: internal-models
@@ -70,6 +71,7 @@ spec:
   subjects:
     users:
       - kube:admin
+      - admin
   modelRefs:
     - name: qwen3-8-27b
       namespace: internal-models
