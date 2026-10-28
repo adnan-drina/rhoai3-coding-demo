@@ -340,14 +340,17 @@ spec:
                 header: Team
                 align: left
                 enableSorting: true
+                width: 100
               - name: subscription
                 header: Subscription
                 align: left
                 enableSorting: true
+                width: 180
               - name: model
                 header: Model
                 align: left
                 enableSorting: true
+                width: 190
               - name: 'value #1'
                 header: Requests (in range)
                 align: right
@@ -356,7 +359,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
-                width: 120
+                width: 115
               - name: 'value #2'
                 header: Tokens (in range)
                 align: right
@@ -365,7 +368,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
-                width: 120
+                width: 115
               - name: 'value #3'
                 header: Spend (in range)
                 align: right
@@ -375,7 +378,7 @@ spec:
                   decimalPlaces: 4
                   shortValues: false
                 sort: desc
-                width: 120
+                width: 115
               - name: 'value #4'
                 header: Spend / month
                 align: right
@@ -384,7 +387,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 2
                   shortValues: false
-                width: 120
+                width: 115
               - name: 'value #5'
                 header: Month to date
                 align: right
@@ -393,7 +396,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 4
                   shortValues: false
-                width: 120
+                width: 115
               transforms:
               - kind: MergeSeries
                 spec: {}

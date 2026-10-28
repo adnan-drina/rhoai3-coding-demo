@@ -128,7 +128,7 @@ spec:
               radius: 70
               showLabels: true
               sort: desc
-              colorPalette: &id002
+              colorPalette:
               - "#0066CC"
               - "#EC7A08"
               - "#3E8635"
@@ -163,21 +163,15 @@ spec:
             name: Who used the capacity (tokens in range)
             description: Tokens on the dedicated models per subscription; only the sponsor pays.
           plugin:
-            kind: PieChart
+            kind: BarChart
             spec:
               calculation: last
               format:
                 unit: decimal
                 decimalPlaces: 0
                 shortValues: false
-              mode: value
-              radius: 70
-              showLabels: true
               sort: desc
-              colorPalette: *id002
-              legend:
-                position: right
-                mode: list
+              mode: value
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -191,8 +185,8 @@ spec:
         kind: Panel
         spec:
           display:
-            name: Sponsor charge (in range, USD)
-            description: Serving hours × worker price, selected dedicated models.
+            name: Sponsor charge (USD)
+            description: 'In the time range: serving hours × worker price, selected dedicated models.'
           plugin:
             kind: StatChart
             spec:
@@ -213,8 +207,8 @@ spec:
         kind: Panel
         spec:
           display:
-            name: Paid idle (in range, USD)
-            description: Charges for serving minutes with no request running.
+            name: Paid idle (USD)
+            description: 'In the time range: charges for serving minutes with no request running.'
           plugin:
             kind: StatChart
             spec:
@@ -235,8 +229,8 @@ spec:
         kind: Panel
         spec:
           display:
-            name: Sponsor $/1M tokens (in range)
-            description: Charges divided by the sponsor's own tokens.
+            name: Sponsor $/1M tokens
+            description: 'In the time range: charges divided by the sponsor''s own tokens.'
           plugin:
             kind: StatChart
             spec:
@@ -611,6 +605,6 @@ spec:
         - x: 0
           y: 6
           width: 24
-          height: 7
+          height: 8
           content:
             "$ref": "#/spec/panels/consumers"

@@ -230,14 +230,17 @@ spec:
                 header: Team
                 align: left
                 enableSorting: true
+                width: 110
               - name: subscription
                 header: Subscription
                 align: left
                 enableSorting: true
+                width: 200
               - name: model
                 header: Model
                 align: left
                 enableSorting: true
+                width: 120
               - name: 'value #1'
                 header: Tokens (in range)
                 align: right
@@ -246,7 +249,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
-                width: 120
+                width: 125
               - name: 'value #2'
                 header: Commitment / month
                 align: right
@@ -255,7 +258,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
-                width: 120
+                width: 125
               - name: 'value #3'
                 header: Projected tokens / month
                 align: right
@@ -264,7 +267,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
-                width: 120
+                width: 125
               - name: 'value #4'
                 header: Commitment used %
                 align: right
@@ -273,7 +276,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
-                width: 120
+                width: 125
               - name: 'value #5'
                 header: Charge / month
                 align: right
@@ -283,7 +286,7 @@ spec:
                   decimalPlaces: 0
                   shortValues: false
                 sort: desc
-                width: 120
+                width: 125
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -397,7 +400,7 @@ spec:
         kind: Panel
         spec:
           display:
-            name: Balance with commitments
+            name: Balance, committed
             description: USD per month. Projected charges of every subscription minus running cost; red is the platform shortfall.
           plugin:
             kind: StatChart
@@ -425,7 +428,7 @@ spec:
         kind: Panel
         spec:
           display:
-            name: Balance if all on demand
+            name: Balance, all on demand
             description: USD per month. Projected revenue if every subscription paid the on-demand tariff, minus running cost.
           plugin:
             kind: StatChart
@@ -529,6 +532,6 @@ spec:
         - x: 0
           y: 0
           width: 24
-          height: 10
+          height: 11
           content:
             "$ref": "#/spec/panels/consumers"
