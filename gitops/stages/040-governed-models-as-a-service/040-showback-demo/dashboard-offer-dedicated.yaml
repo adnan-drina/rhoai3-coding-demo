@@ -88,13 +88,13 @@ spec:
             name: Busy share
             description: Serving minutes with at least one request running, selected dedicated models.
           plugin:
-            kind: StatChart
+            kind: GaugeChart
             spec:
               calculation: last
               format:
                 unit: percent
                 decimalPlaces: 0
-              colorMode: background_solid
+              max: 100
               thresholds:
                 defaultColor: "#C9190B"
                 steps:
@@ -117,15 +117,28 @@ spec:
             name: Paid capacity (in range, USD)
             description: Sponsor charge split into serving minutes with a request running (busy) and without (idle).
           plugin:
-            kind: BarChart
+            kind: PieChart
             spec:
               calculation: last
               format:
                 unit: decimal
                 decimalPlaces: 2
                 shortValues: false
-              sort: desc
               mode: value
+              radius: 70
+              showLabels: true
+              sort: desc
+              colorPalette:
+              - "#0066CC"
+              - "#EC7A08"
+              - "#3E8635"
+              - "#5752D1"
+              - "#009596"
+              - "#F0AB00"
+              - "#8F4700"
+              legend:
+                position: right
+                mode: list
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -517,43 +530,43 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 12
+          width: 6
+          height: 8
+          content:
+            "$ref": "#/spec/panels/busy"
+        - x: 6
+          y: 0
+          width: 9
           height: 8
           content:
             "$ref": "#/spec/panels/paidCapacity"
-        - x: 12
+        - x: 15
           y: 0
-          width: 12
+          width: 9
           height: 8
           content:
             "$ref": "#/spec/panels/tokenUse"
         - x: 0
           y: 8
-          width: 5
-          height: 4
-          content:
-            "$ref": "#/spec/panels/busy"
-        - x: 5
-          y: 8
-          width: 5
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/charge"
-        - x: 10
+        - x: 6
           y: 8
-          width: 5
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/idle"
-        - x: 15
+        - x: 12
           y: 8
-          width: 5
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/effective"
-        - x: 20
+        - x: 18
           y: 8
-          width: 4
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/monthly"
@@ -567,13 +580,13 @@ spec:
         - x: 0
           y: 0
           width: 12
-          height: 10
+          height: 7
           content:
             "$ref": "#/spec/panels/utilisation"
         - x: 12
           y: 0
           width: 12
-          height: 10
+          height: 7
           content:
             "$ref": "#/spec/panels/consumerRate"
     - kind: Grid

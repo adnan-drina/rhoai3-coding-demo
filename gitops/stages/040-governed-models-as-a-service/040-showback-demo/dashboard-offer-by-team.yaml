@@ -153,13 +153,13 @@ spec:
             name: Shared cost recovered
             description: Projected shared charges of all teams as a share of the shared workers' running cost; below 100% the platform carries the gap. Not filtered by team.
           plugin:
-            kind: StatChart
+            kind: GaugeChart
             spec:
               calculation: last
               format:
                 unit: percent
                 decimalPlaces: 0
-              colorMode: background_solid
+              max: 100
               thresholds:
                 defaultColor: "#C9190B"
                 steps:
@@ -182,15 +182,28 @@ spec:
             name: AI cost by offering / month (USD)
             description: Projected monthly charges of the selected teams, per offering.
           plugin:
-            kind: BarChart
+            kind: PieChart
             spec:
               calculation: last
               format:
                 unit: decimal
                 decimalPlaces: 0
                 shortValues: false
-              sort: desc
               mode: value
+              radius: 70
+              showLabels: true
+              sort: desc
+              colorPalette: &id002
+              - "#0066CC"
+              - "#EC7A08"
+              - "#3E8635"
+              - "#5752D1"
+              - "#009596"
+              - "#F0AB00"
+              - "#8F4700"
+              legend:
+                position: right
+                mode: list
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -248,15 +261,21 @@ spec:
             name: Token share by team (in range)
             description: Governed tokens of each team in the time range, all models and offerings.
           plugin:
-            kind: BarChart
+            kind: PieChart
             spec:
               calculation: last
               format:
                 unit: decimal
                 decimalPlaces: 0
                 shortValues: false
-              sort: desc
               mode: value
+              radius: 70
+              showLabels: true
+              sort: desc
+              colorPalette: *id002
+              legend:
+                position: right
+                mode: list
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -526,26 +545,26 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 8
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/total"
-        - x: 8
-          y: 0
-          width: 8
+        - x: 0
+          y: 4
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/balance"
-        - x: 16
+        - x: 6
           y: 0
-          width: 8
-          height: 4
+          width: 6
+          height: 8
           content:
             "$ref": "#/spec/panels/recovered"
-        - x: 0
-          y: 4
-          width: 24
-          height: 7
+        - x: 12
+          y: 0
+          width: 12
+          height: 8
           content:
             "$ref": "#/spec/panels/offerings"
     - kind: Grid
@@ -570,7 +589,7 @@ spec:
         - x: 0
           y: 8
           width: 24
-          height: 10
+          height: 7
           content:
             "$ref": "#/spec/panels/rate"
     - kind: Grid

@@ -47,11 +47,11 @@ def table(name; desc; columns; queries):
         plugin: {kind: "Table", spec: {columnSettings: ([{hide: true, name: "timestamp"}] + columns), density: "compact",
             pagination: true, transforms: [{kind: "MergeSeries", spec: {}}]}},
         queries: [queries[] | q(.; DS; null)]}};
-# A percentage stat whose tile turns red below 100% and green at or above it (gauge value text does not scale with the panel).
-def pct_tile(name; desc; expr):
-    stat(name; desc; expr; "percent"; 0)
-    | .spec.plugin.spec += {format: {unit: "percent", decimalPlaces: 0}, colorMode: "background_solid",
-        thresholds: {defaultColor: "#c9190b", steps: [{value: 100, color: "#3e8635"}]}};
+def gauge(name; desc; expr):
+    {kind: "Panel", spec: {display: {name: name, description: desc},
+        plugin: {kind: "GaugeChart", spec: {calculation: "last", format: {unit: "percent", decimalPlaces: 0}, max: 200,
+            thresholds: {steps: [{value: 0, color: "#c9190b"}, {value: 100, color: "#3e8635"}]}}},
+        queries: [q(expr; DS; null)]}};
 # A stat whose tile turns red below zero and green at or above it.
 def signed(name; desc; expr; decimals):
     stat(name; desc; expr; "decimal"; decimals)
@@ -185,7 +185,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
        + "3. **Private cost** is GPU workers x worker price x GPU hours per month. Workers needed = projected tokens / capacity of one worker (from the offer catalog).\n"
        + "4. **Break-even** is the monthly volume at which one private worker costs the same as the external model. Above 100% moving to private saves money; check quality and latency before switching.\n\n"
        + "Choose a time range that represents a typical working period, then raise users per team to see when the decision flips."),
-   ratio: pct_tile("Workload vs break-even"; "Projected monthly tokens as a share of the break-even volume; above 100% the private candidate is cheaper.";
+   ratio: gauge("Workload vs break-even"; "Projected monthly tokens as a share of the break-even volume; above 100% the private candidate is cheaper.";
        "100 * (\($vol)) / (\($breakeven))"),
    volume: stat("Projected tokens / month"; "Usage of the selected external workload in the time range, scaled to a month."; $vol; "decimal"; 0),
    breakeven: stat("Break-even tokens / month"; "Monthly volume at which one private worker costs the same as the external model."; $breakeven; "decimal"; 0),
@@ -199,7 +199,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
        [[$spend_range, "Private spend"], [$ref_spend_range, "Same tokens at $reference"]]; 2),
    fleetSavings: signed("Savings vs external (USD)"; "External price minus private spend for the time range; red means the workers were under-used."; "(\($ref_spend_range)) - (\($spend_range))"; 2)} as $tok_panels
 | [(grid("How the decision is calculated"; [["about", 0, 0, 24, 7]]) | .spec.display.collapse.open = false),
-   grid("Recommendation"; [["ratio", 0, 0, 6, 4], ["volume", 6, 0, 6, 4], ["breakeven", 12, 0, 6, 4], ["savings", 18, 0, 6, 4]]),
+   grid("Recommendation"; [["ratio", 0, 0, 8, 8], ["volume", 8, 0, 8, 4], ["breakeven", 16, 0, 8, 4], ["savings", 8, 4, 16, 4]]),
    grid("Monthly comparison"; [["comparison", 0, 0, 24, 7]]),
    (grid("Assumptions"; [["blended", 0, 0, 8, 5], ["capacity", 8, 0, 8, 5], ["workers", 16, 0, 8, 5]]) | .spec.display.collapse.open = false),
    grid("Private fleet in the time range"; [["fleet", 0, 0, 16, 7], ["fleetSavings", 16, 0, 8, 7]])] as $tok_layouts
