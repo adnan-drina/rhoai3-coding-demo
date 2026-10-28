@@ -122,8 +122,8 @@ spec:
         kind: Panel
         spec:
           display:
-            name: Platform balance / month (USD)
-            description: All shared charges minus the running cost of the shared workers; red is what the platform carries. Not filtered by team.
+            name: Platform balance / month
+            description: USD. All shared charges minus the running cost of the shared workers; red is what the platform carries. Not filtered by team.
           plugin:
             kind: StatChart
             spec:
@@ -191,11 +191,22 @@ spec:
                 shortValues: false
               mode: value
               radius: 70
-              showLabels: true
+              showLabels: false
               sort: desc
+              colorPalette: &id002
+              - "#0066CC"
+              - "#EC7A08"
+              - "#3E8635"
+              - "#5752D1"
+              - "#009596"
+              - "#F0AB00"
+              - "#8F4700"
               legend:
                 position: right
-                mode: list
+                mode: table
+                values:
+                - abs
+                - relative
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -262,11 +273,15 @@ spec:
                 shortValues: false
               mode: value
               radius: 70
-              showLabels: true
+              showLabels: false
               sort: desc
+              colorPalette: *id002
               legend:
                 position: right
-                mode: list
+                mode: table
+                values:
+                - abs
+                - relative
           queries:
           - kind: TimeSeriesQuery
             spec:
