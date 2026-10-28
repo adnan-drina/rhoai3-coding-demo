@@ -132,7 +132,8 @@ the RWO volume.
 
 **Guardrails.** The playground toggles do not block anything on RHOAI 3.5.2. The playground backend sends each check
 to `nemoguardrails` with an inline judge config (`guardrails.config`), the shipped NeMo Guardrails server (0.24) refuses
-inline configs with `status: error`, and the backend counts an error as not flagged, so every message passes (observed
+inline configs with `status: error` (deliberate 3.5 security hardening, RHOAIENG-83465; the `rhoai-3.6` server
+accepts them again on this endpoint), and the backend counts an error as not flagged, so every message passes (observed
 2026-10-28: no judge call reached the MaaS gateway during a playground rerun). The same service blocks correctly when
 called directly with its server config, for example `POST /v1/guardrail/checks` with `"model":
 "publishers/internal-models/models/qwen3-8-27b"`. The dashboard creates `nemoguardrails`, when none with this name
@@ -176,7 +177,7 @@ oc get configmap gen-ai-aa-custom-model-endpoints,agent-profile-e0e610ff-3438-5d
 | Job image | Pinned images | Prompt Job pinned by digest; endpoint Job uses `registry.redhat.io/openshift4/ose-cli` without tag or digest | Gap (endpoint Job image floats) |
 | TLS | Verify server certificates | Endpoint Job calls the MaaS API with `curl -k` | Gap (TLS verification disabled when sending the ServiceAccount token) |
 | Pod security | Restricted profile | Prompt Job sets non-root, seccomp, drop ALL; endpoint Job sets no security context or resources | Gap (endpoint Job relies on SCC defaults) |
-| Guardrails | `NemoGuardrails` created automatically with the playground; Guardrail model is any running playground model [1, chapter 9] | Git-managed `nemoguardrails` with a MaaS judge; judge models limited to the `playground-sandbox` subscription | Deviation (justified: the dashboard-created service has a placeholder judge) and Gap (product: the 3.5.2 server refuses the playground's inline config, so the toggles fail open) |
+| Guardrails | `NemoGuardrails` created automatically with the playground; Guardrail model is any running playground model [1, chapter 9] | Git-managed `nemoguardrails` with a MaaS judge; judge models limited to the `playground-sandbox` subscription | Deviation (justified: the dashboard-created service has a placeholder judge) and Gap (product: the hardened 3.5.2 server refuses the playground's inline config and the playground maps the error to not flagged, so the toggles fail open; raised with Red Hat support 2026-10-28) |
 | Hook lifecycle | `BeforeHookCreation`, `HookSucceeded` delete policies [5] | Both Jobs | Aligned |
 
 ## References
