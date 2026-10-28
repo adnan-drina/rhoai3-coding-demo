@@ -44,6 +44,7 @@ OpenShift AI 3.5 sections. Detailed record:
 | Saved agent "OpenShift Ops Assistant" (Developer Preview) as an `AgentProfile` ConfigMap on `qwen3-8-27b`, with an `allowedTools` list on `OpenShift-MCP` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/agent-profile-openshift-ops-assistant.yaml` | [Saved agents][agents] |
 | Agent system prompt registered in the project's MLflow prompt registry by a hook Job | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/openshift-ops-assistant-prompt.yaml`, `agent-prompt-provisioner-job.yaml` | [Reusable system instructions][prompts] |
 | Retained 1 Gi state PVC `genai-playground-state`, mounted by the `playground-state-attacher` CronJob into a newly created playground (or re-attached when it already holds state) | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/genai-playground-state-pvc.yaml` | [Resources created][resources] |
+| Guardrails: Git-managed `NemoGuardrails` `nemoguardrails` with a real MaaS judge (pick **Qwen 3.8** as Guardrail model); see `rhoai-guardrails-safety` | `gitops/stages/040-governed-models-as-a-service/040-genai-studio/nemoguardrails.yaml` | [Guardrails][guardrails] |
 | Tracing (Technology Preview) only per session, by explicit user choice | `stages/040-governed-models-as-a-service/README.md` ("Optional Studio Tracing") | [How tracing works][tracing] |
 
 ## Procedure

@@ -3,8 +3,8 @@
 This Application prepares the Gen AI playground (Gen AI studio) for the demo project **AI Coding Sandbox**
 (`demo-sandbox`) and publishes platform MCP servers to every playground. It provisions a playground custom endpoint for
 GPT-6 Luna, a saved agent "OpenShift Ops Assistant" with its reviewed system prompt in the MLflow prompt registry, a
-retained state PVC, and the cluster-wide MCP server discovery ConfigMap. Users create the playground itself from the
-dashboard.
+retained state PVC, the NeMo Guardrails service with a real judge model, and the cluster-wide MCP server discovery
+ConfigMap. Users create the playground itself from the dashboard.
 
 | | |
 |---|---|
@@ -50,6 +50,13 @@ Application holds them because they all change with the playground experience an
 | PersistentVolumeClaim | `genai-playground-state` | `demo-sandbox` | 1 Gi RWO volume for the playground's SQLite state (`kvstore.db`, `sql_store.db`, `inference_store.db`, `files/`). Wave 8, `Prune=false,Delete=false` |
 | ServiceAccount, Role, RoleBinding, CronJob | `playground-state-attacher` | `demo-sandbox` | Every 2 minutes, mounts `genai-playground-state` at `/opt/app-root/src/.llama/distributions/rh` in the dashboard-created playground through the `OGXServer` fields `spec.workload.overrides.volumes`/`volumeMounts`, keeping the other overrides. Role: `get`/`list`/`patch` OGXServers, `get` that PVC. Waves 18/20 |
 
+### Playground guardrails
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| ConfigMap | `playground-guardrails` | `demo-sandbox` | NeMo config: the dashboard's self-check input and output rails and policy prompts, main model engine `openai` with key from `OPENAI_API_KEY`. Wave 18 |
+| NemoGuardrails | `nemoguardrails` | `demo-sandbox` | The playground's guardrail service. Config `playground-guardrails`; env `OPENAI_BASE_URL` from ConfigMap `playground-guardrails-endpoint`, `OPENAI_API_KEY` from Secret `endpoint-api-key-gpt-6-luna-maas`. Wave 21 |
+
 ### MCP server discovery (`mcp/`)
 
 | Kind | Name | Namespace | Purpose |
@@ -63,6 +70,8 @@ Application holds them because they all change with the playground experience an
 | Keys `OpenShift-MCP` and `OpenShift-MCP-ReadWrite` in `gen-ai-aa-mcp-servers` | `stages/040-governed-models-as-a-service/deploy.sh` (from the Stage 060 MCP servers), preserved by `ignoreDifferences` |
 | Secret `endpoint-api-key-gpt-6-luna-maas` (keys `api_key`, `key_id`, `expires_at`, `subscription`) | Job `provision-playground-endpoint` |
 | ConfigMap `gen-ai-aa-custom-model-endpoints` | Job `provision-playground-endpoint` creates it when absent; users may extend it from the dashboard |
+| ConfigMap `playground-guardrails-endpoint` (key `base_url`, the MaaS gateway `/v1`) | Job `provision-playground-endpoint` |
+| ConfigMap `guardrail-placeholder` | Dashboard, written when it created its own guardrail service; unused once `nemoguardrails` is ours |
 | MLflow prompt `openshift-ops-assistant` and its versions | Job `agent-prompt-provisioner` |
 | Playground `OGXServer` `lsd-genai-playground`, its pgvector database and service account | Dashboard and OpenShift AI (created when a user creates the playground) |
 
@@ -121,6 +130,16 @@ restore procedure in `docs/OPERATIONS.md`. The playground Deployment rolls out w
 service-owned `genai-pgvector` volume, a rollout whose new pod lands on another node waits for the old pod to release
 the RWO volume.
 
+**Guardrails.** The playground sends each check to `nemoguardrails` with only the model name of the **Guardrail
+model** the user picked; NeMo Guardrails replaces the main model's name in its server config and keeps its endpoint. The
+dashboard creates that service, when none with this name exists, with the endpoint `http://placeholder.invalid/v1`:
+every judge call then fails and the playground lets the message through (observed 2026-10-28 with GPT-6 Luna and
+Nemotron as Guardrail model). Git therefore owns `nemoguardrails`: the same rails and prompts, judged through the MaaS
+gateway with the `playground-sandbox` key, which covers `qwen3-8-27b` and `nemotron-3-ultra-550b-a55b`. Pick Qwen 3.8 as
+Guardrail model. Mistral Small 4 has its own gateway listener, GPT-6 Luna rejects the rails' `max_tokens: 200`, and
+Claude rejects temperatures below 1, so none of them can judge. A renewed key reaches the guardrail pod only when it
+restarts.
+
 **Secrets.** No secret values in Git. The only Secret is the endpoint key, minted at runtime.
 
 **Cluster-specific values.** The MaaS hostname is read from the Gateway at Job run time; the MCP endpoints are read from
@@ -153,6 +172,7 @@ oc get configmap gen-ai-aa-custom-model-endpoints,agent-profile-e0e610ff-3438-5d
 | Job image | Pinned images | Prompt Job pinned by digest; endpoint Job uses `registry.redhat.io/openshift4/ose-cli` without tag or digest | Gap (endpoint Job image floats) |
 | TLS | Verify server certificates | Endpoint Job calls the MaaS API with `curl -k` | Gap (TLS verification disabled when sending the ServiceAccount token) |
 | Pod security | Restricted profile | Prompt Job sets non-root, seccomp, drop ALL; endpoint Job sets no security context or resources | Gap (endpoint Job relies on SCC defaults) |
+| Guardrails | `NemoGuardrails` created automatically with the playground; Guardrail model is any running playground model [1, chapter 9] | Git-managed `nemoguardrails` with a MaaS judge; judge models limited to the `playground-sandbox` subscription | Deviation (justified: the dashboard-created service has a placeholder judge and fails open) |
 | Hook lifecycle | `BeforeHookCreation`, `HookSucceeded` delete policies [5] | Both Jobs | Aligned |
 
 ## References

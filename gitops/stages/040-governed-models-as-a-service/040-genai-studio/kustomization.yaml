@@ -17,4 +17,6 @@ resources:
   - agent-profile-openshift-ops-assistant.yaml
   - genai-playground-state-pvc.yaml
   - playground-state-attacher.yaml
+  - playground-guardrails-config.yaml
+  - nemoguardrails.yaml
   - mcp

@@ -1,6 +1,7 @@
-# Governance for the Gen AI playground's pre-provisioned custom endpoint (demo-sandbox).
+# Governance for the Gen AI playground's pre-provisioned custom endpoint and guardrail judge (demo-sandbox).
 # The endpoint provisioner Job mints a MaaS API key as this ServiceAccount; the key is
 # project-shared by the playground, with its own quota and metering, so no personal key is used.
+# The NeMo Guardrails service in demo-sandbox uses the same key for its self-check judge calls.
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata:
@@ -24,6 +25,17 @@ spec:
       namespace: external-models
       tokenRateLimits:
         - limit: 1000000
+          window: 1h
+    # Guardrail judges for the playground's NeMo Guardrails self-check rails.
+    - name: qwen3-8-27b
+      namespace: internal-models
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+    - name: nemotron-3-ultra-550b-a55b
+      namespace: external-models
+      tokenRateLimits:
+        - limit: 100000
           window: 1h
   priority: 50
   tokenMetadata:
@@ -52,6 +64,10 @@ spec:
       - system:serviceaccount:demo-sandbox:playground-maas-key-provisioner
   modelRefs:
     - name: gpt-6-luna
+      namespace: external-models
+    - name: qwen3-8-27b
+      namespace: internal-models
+    - name: nemotron-3-ultra-550b-a55b
       namespace: external-models
   meteringMetadata:
     organizationId: rhoai3-coding-demo

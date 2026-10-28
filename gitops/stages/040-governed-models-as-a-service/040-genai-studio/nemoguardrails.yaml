@@ -1,0 +1,37 @@
+---
+# NeMo Guardrails service for the Gen AI playground in demo-sandbox. The dashboard creates a resource with this name
+# when none exists, with a placeholder judge; managing it here gives the self-check rails a real judge through MaaS.
+# OPENAI_BASE_URL (the MaaS gateway /v1) is written by Job provision-playground-endpoint; OPENAI_API_KEY is the
+# playground-sandbox subscription key the same Job keeps in Secret endpoint-api-key-gpt-6-luna-maas.
+apiVersion: trustyai.opendatahub.io/v1alpha1
+kind: NemoGuardrails
+metadata:
+  name: nemoguardrails
+  namespace: demo-sandbox
+  labels:
+    opendatahub.io/dashboard: "true"
+    app.kubernetes.io/name: nemoguardrails
+    app.kubernetes.io/component: playground-guardrails
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    security.opendatahub.io/enable-auth: "true"
+    argocd.argoproj.io/sync-wave: "21"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  replicas: 1
+  nemoConfigs:
+    - name: playground-guardrails
+      configMaps:
+        - playground-guardrails
+      default: true
+  env:
+    - name: OPENAI_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: endpoint-api-key-gpt-6-luna-maas
+          key: api_key
+    - name: OPENAI_BASE_URL
+      valueFrom:
+        configMapKeyRef:
+          name: playground-guardrails-endpoint
+          key: base_url

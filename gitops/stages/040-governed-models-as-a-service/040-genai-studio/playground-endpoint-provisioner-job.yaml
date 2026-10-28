@@ -95,6 +95,10 @@ spec:
               oc create secret generic "${SECRET_NAME}" -n "${NS}" --from-env-file="${WORK}/secret.env" --dry-run=client -o yaml \
                 | oc apply --server-side --force-conflicts --field-manager=playground-endpoint-provisioner -f -
               oc annotate secret "${SECRET_NAME}" -n "${NS}" kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
+              # The playground guardrail judge (NemoGuardrails "nemoguardrails") reaches MaaS at the same cluster-specific URL.
+              oc create configmap playground-guardrails-endpoint -n "${NS}" --from-literal=base_url="${MAAS_BASE_URL}/v1" --dry-run=client -o yaml \
+                | oc label --local -f - app.kubernetes.io/part-of=rhoai3-coding-demo -o yaml \
+                | oc apply --server-side --force-conflicts --field-manager=playground-endpoint-provisioner -f -
 
               if oc get configmap "${CM_NAME}" -n "${NS}" >/dev/null 2>&1; then
                 if oc get configmap "${CM_NAME}" -n "${NS}" -o jsonpath='{.data.config\.yaml}' | grep -q "provider_id: ${PROVIDER_ID}"; then
