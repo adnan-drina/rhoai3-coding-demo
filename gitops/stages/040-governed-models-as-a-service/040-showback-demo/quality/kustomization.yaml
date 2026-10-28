@@ -2,7 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 # Quality scoring of the request traces: a daily batch job (end of working day) asks the private models as judges (Qwen grades every model
 # but itself, Mistral grades Qwen; through MaaS on their own subscription) and writes MLflow feedback, which fills the
-# experiments' Overview Quality tab.
+# experiments' Overview Quality tab. The exporter publishes the verdict counts to Prometheus for the showback dashboards.
 resources:
   - serviceaccount.yaml
   - access.yaml
@@ -10,3 +10,4 @@ resources:
   - key-provisioner-job.yaml
   - scorer-configmap.yaml
   - cronjob.yaml
+  - exporter.yaml

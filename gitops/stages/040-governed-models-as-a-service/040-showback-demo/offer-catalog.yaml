@@ -136,10 +136,10 @@ spec:
           expr: vector(100000)
           labels: {subscription: hermes-private-qwen38, model: qwen3-8-27b}
         - record: showback_subscription_token_limit
-          expr: vector(2000000)
+          expr: vector(4000000)
           labels: {subscription: maas-quality-judge, model: qwen3-8-27b}
         - record: showback_subscription_token_limit
-          expr: vector(1000000)
+          expr: vector(3000000)
           labels: {subscription: maas-quality-judge, model: mistral-small4-119b}
         - record: showback_subscription_token_limit
           expr: vector(5000000)

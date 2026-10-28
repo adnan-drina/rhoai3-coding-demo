@@ -163,6 +163,8 @@ differ from the Showback charges by design. Talk track: the Showback 1 · By tea
   scaled down), the run is skipped with a message. A run stops after 2.5 hours, and unscored traces wait for the next
   one. To score right after a demo load, start it by hand:
   `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`.
+  The exporter `showback-quality-exporter` (`redhat-ods-monitoring`) reads the verdicts of the last 7 days from MLflow
+  every 30 minutes and publishes them to Prometheus, so tab 1's Quality row shows the pass rate per model and judge.
 - **Scope:** only this load generator's requests are traced. Platform-side tracing of every MaaS client is planned work.
 
 ## External metering

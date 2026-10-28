@@ -21,15 +21,16 @@ spec:
       - system:serviceaccount:models-as-a-service:maas-quality-judge
   priority: 60
   modelRefs:
+    # Sized so a daily run grades a busy day's traces without 429s (1M on Mistral stopped the 2026-10-28 run).
     - name: qwen3-8-27b
       namespace: internal-models
       tokenRateLimits:
-        - limit: 2000000
+        - limit: 4000000
           window: 1h
     - name: mistral-small4-119b
       namespace: internal-models
       tokenRateLimits:
-        - limit: 1000000
+        - limit: 3000000
           window: 1h
   tokenMetadata:
     organizationId: rhoai3-coding-demo

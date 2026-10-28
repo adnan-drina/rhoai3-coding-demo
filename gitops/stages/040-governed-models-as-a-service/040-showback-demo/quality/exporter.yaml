@@ -1,0 +1,275 @@
+# Quality exporter: publishes the judges' verdicts from MLflow as Prometheus gauges for the showback dashboards, which
+# read Prometheus only. Every 30 minutes it counts the verdicts of the last WINDOW_DAYS days per model experiment,
+# judge, subscription and result; the dashboards turn the counts into pass rates and join the team from the offer
+# catalog. It runs beside the metering backend in redhat-ods-monitoring, the namespace the monitoring stack scrapes,
+# and reads the MLflow workspace models-as-a-service through the in-cluster Service.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: showback-quality-exporter
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: showback-quality-exporter
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+---
+# Read-only MLflow access: the workspace authorizes trace reads by get and list on its experiments.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: showback-quality-exporter
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: showback-quality-exporter
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+rules:
+  - apiGroups: [mlflow.kubeflow.org]
+    resources: [experiments]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: showback-quality-exporter
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: showback-quality-exporter
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: showback-quality-exporter
+subjects:
+  - kind: ServiceAccount
+    name: showback-quality-exporter
+    namespace: redhat-ods-monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: showback-quality-exporter
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: showback-quality-exporter
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+data:
+  exporter.py: |
+    import collections, os, threading, time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    import mlflow
+
+    WINDOW_DAYS = int(os.environ.get("WINDOW_DAYS", "7"))
+    REFRESH = int(os.environ.get("REFRESH_SECONDS", "1800"))
+    PASS = {"yes", "true", "pass"}
+    state = {"body": "", "ok": False}
+
+    def esc(v):
+        return str(v).replace("\\", "\\\\").replace('"', '\\"')
+
+    def collect():
+        client = mlflow.MlflowClient()
+        cutoff = int((time.time() - WINDOW_DAYS * 86400) * 1000)
+        counts = collections.Counter()
+        for prefix, offer in (("internal-", "private"), ("external-", "external")):
+            for exp in client.search_experiments(filter_string=f"name LIKE '{prefix}%'"):
+                model, token = exp.name[len(prefix):], None
+                while True:
+                    page = client.search_traces(locations=[exp.experiment_id], max_results=500, page_token=token,
+                                                filter_string=f"trace.timestamp_ms > {cutoff}")
+                    for t in page:
+                        sub = (t.info.tags or {}).get("subscription", "")
+                        for a in t.info.assessments or []:
+                            value = getattr(a, "value", None)
+                            if value is None:
+                                continue
+                            result = "pass" if value is True or str(value).lower() in PASS else "fail"
+                            counts[(model, offer, a.name, sub, result)] += 1
+                    token = page.token
+                    if not token:
+                        break
+        lines = ["# HELP showback_quality_verdicts Judge verdicts of the request traces in the window (MLflow feedback).",
+                 "# TYPE showback_quality_verdicts gauge"]
+        lines += [f'showback_quality_verdicts{{model="{esc(m)}",offer="{o}",judge="{esc(j)}",subscription="{esc(s)}",'
+                  f'result="{r}"}} {n}' for (m, o, j, s, r), n in sorted(counts.items())]
+        lines += ["# HELP showback_quality_window_days Days of traces the verdict counts cover.",
+                  "# TYPE showback_quality_window_days gauge", f"showback_quality_window_days {WINDOW_DAYS}",
+                  "# HELP showback_quality_last_refresh_timestamp_seconds When the counts were last read from MLflow.",
+                  "# TYPE showback_quality_last_refresh_timestamp_seconds gauge",
+                  f"showback_quality_last_refresh_timestamp_seconds {int(time.time())}"]
+        return "\n".join(lines) + "\n"
+
+    def refresh():
+        while True:
+            try:
+                state["body"], state["ok"] = collect(), True
+                print(f"refreshed: {state['body'].count('showback_quality_verdicts{')} series", flush=True)
+            except Exception as e:  # keep serving the last counts; the next refresh retries
+                print(f"refresh failed: {type(e).__name__}: {e}", flush=True)
+            time.sleep(REFRESH)
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != "/metrics" or not state["ok"]:
+                self.send_response(404 if self.path != "/metrics" else 503)
+                self.end_headers()
+                return
+            body = state["body"].encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; version=0.0.4")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    threading.Thread(target=refresh, daemon=True).start()
+    ThreadingHTTPServer(("", 8080), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: showback-quality-exporter
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: showback-quality-exporter
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '40'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: showback-quality-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: showback-quality-exporter
+    spec:
+      serviceAccountName: showback-quality-exporter
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: exporter
+          # The scorer's image: it carries the MLflow SDK with the Kubernetes workspace auth plugin.
+          image: registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9@sha256:6552d90818c098ce2b1cd057684c3dd832035cfb71f6ccf2ab207b701f536b18
+          command: [python3, /etc/showback-quality/exporter.py]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: WINDOW_DAYS
+              value: '7'
+            - name: REFRESH_SECONDS
+              value: '1800'
+            - name: MLFLOW_TRACKING_URI
+              value: https://mlflow.redhat-ods-applications.svc:8443/mlflow
+            - name: MLFLOW_TRACKING_AUTH
+              value: kubernetes-namespaced
+            - name: MLFLOW_WORKSPACE
+              value: models-as-a-service
+            - name: MLFLOW_TRACKING_SERVER_CERT_PATH
+              value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+            - name: MLFLOW_DISABLE_TELEMETRY
+              value: 'true'
+            - name: HOME
+              value: /tmp
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: http
+            periodSeconds: 30
+            failureThreshold: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 50m, memory: 384Mi}
+            limits: {cpu: 500m, memory: 1Gi}
+          volumeMounts:
+            - name: exporter
+              mountPath: /etc/showback-quality
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: exporter
+          configMap:
+            name: showback-quality-exporter
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: showback-quality-exporter
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: showback-quality-exporter
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '40'
+spec:
+  selector:
+    app.kubernetes.io/name: showback-quality-exporter
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: monitoring.rhobs/v1
+kind: ServiceMonitor
+metadata:
+  name: showback-quality-exporter
+  namespace: redhat-ods-monitoring
+  labels:
+    app.kubernetes.io/name: showback-quality-exporter
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+    monitoring.opendatahub.io/scrape: 'true'
+  annotations:
+    argocd.argoproj.io/sync-wave: '40'
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: showback-quality-exporter
+  namespaceSelector:
+    matchNames:
+      - redhat-ods-monitoring
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 60s
+      scrapeTimeout: 10s

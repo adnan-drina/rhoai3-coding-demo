@@ -94,7 +94,9 @@ showback_source_state() {
             and .kind != "HorizontalPodAutoscaler"
             and .kind != "Config" and .kind != "LokiStack")
         and ([.[] | select(.kind == "Deployment") | .metadata.name] | sort)
-            == ["showback-external-metering","showback-external-metering-db"]
+            == (["showback-external-metering","showback-external-metering-db"]
+                + (if any($all[]; .kind == "CronJob" and .metadata.name == "maas-quality-scorer")
+                   then ["showback-quality-exporter"] else [] end) | sort)
         and all($metering[]; ((.metadata.name | startswith("showback-external-metering"))
                 and (.kind | IN("ConfigMap","Secret","Deployment","Service","PersistentVolumeClaim",
                     "ServiceMonitor","NetworkPolicy","ImageStream","BuildConfig")))
