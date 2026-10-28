@@ -83,17 +83,17 @@ spec:
             kind: Markdown
             spec:
               text: |-
-                Every MaaS subscription belongs to a **team**: Engineering, Support, Marketing, or **Platform** for the platform's own services (quality judge, OpenShift Lightspeed, evaluation, probes, playground, cluster admin). The mapping is the offer catalog, not the dashboard; a subscription without a team shows as *unassigned*.
+                Each MaaS subscription belongs to a team (Engineering, Support, Marketing, or Platform for the platform's own services) through the offer catalog; an unmapped subscription shows as *unassigned*.
 
-                A team pays per offering:
+                What a team pays:
 
-                - **Shared private:** tokens at the tariff; a committed team pays its commitment and on-demand above it.
-                - **Dedicated private:** the sponsoring team pays the GPU worker, busy or idle.
+                - **Shared private:** tokens at the tariff; a committed team pays at least its commitment.
+                - **Dedicated private:** the GPU worker it sponsors, busy or idle.
                 - **External:** each response at the provider's list price.
 
-                The platform pays the shared workers; the gap between that cost and the shared charges is the platform's balance. **In range** figures follow the time picker. **Per month** figures are projections: usage in the time range × usage hours per month, and private workers × GPU hours per month.
+                **Platform balance** is the shared charges minus what the shared workers cost the platform; **Cost recovered** is the same as a percentage.
 
-                Tabs 2-4 explain each offering; tab 5 asks when an external workload should move to a private model.
+                **/ month** figures project the time range to a month (× usage hours, or × GPU hours for workers); the bars and *in range* figures follow the time picker. Tabs 2-4 cover each offering, tab 5 when to move from external to private.
           queries: []
       teamCost:
         kind: Panel
@@ -468,7 +468,7 @@ spec:
     - kind: Grid
       spec:
         display:
-          title: What each team costs
+          title: Overview
           collapse:
             open: true
         items:
@@ -484,27 +484,20 @@ spec:
           height: 10
           content:
             "$ref": "#/spec/panels/costRate"
-    - kind: Grid
-      spec:
-        display:
-          title: Does it pay off, and who uses it
-          collapse:
-            open: true
-        items:
         - x: 0
-          y: 0
+          y: 10
           width: 6
           height: 6
           content:
             "$ref": "#/spec/panels/balance"
         - x: 0
-          y: 6
+          y: 16
           width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/recovered"
         - x: 6
-          y: 0
+          y: 10
           width: 18
           height: 10
           content:
