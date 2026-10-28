@@ -4,10 +4,10 @@
 apiVersion: perses.dev/v1alpha2
 kind: PersesDashboard
 metadata:
-  name: dashboard-offer-shared-private-admin
+  name: dashboard-offer-2-shared-private-admin
   namespace: redhat-ods-monitoring
   labels:
-    app.kubernetes.io/name: dashboard-offer-shared-private-admin
+    app.kubernetes.io/name: dashboard-offer-2-shared-private-admin
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/component: observability
     app.kubernetes.io/managed-by: argocd
@@ -117,6 +117,101 @@ spec:
 
                 Every subscription is charged, platform services included. The platform pays the running cost (GPU hours × worker price); commitments give it a **revenue floor**, and *cost coverage* is that floor as a share of the running cost. The platform economics are totals and ignore the Team and Subscription filters. **In range** figures follow the time picker. **Per month** figures are projections: usage in the time range × usage hours per month × users per team, and private workers × GPU hours per month.
           queries: []
+      chargeByTeam:
+        kind: Panel
+        spec:
+          display:
+            name: Charge by team / month (USD)
+            description: Projected monthly charges on the selected shared models, per team.
+          plugin:
+            kind: PieChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+              mode: value
+              radius: 70
+              showLabels: true
+              sort: desc
+              colorPalette:
+              - "#0066CC"
+              - "#EC7A08"
+              - "#3E8635"
+              - "#5752D1"
+              - "#009596"
+              - "#F0AB00"
+              - "#8F4700"
+              legend:
+                position: right
+                mode: list
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum by (team) ((((((max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * on(model) group_left max by (model) ((showback_offer_committed_tariff_usd_per_million @ end() or last_over_time(showback_offer_committed_tariff_usd_per_million[30d] offset -30d))) / 1e6 + on(subscription, model) ((clamp_min(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - on(subscription, model) (max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))), 0)) * on(model) group_left max by (model) ((showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d))) / 1e6 or (max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * 0)) or (((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) ((showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d))) / 1e6))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace(((((max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * on(model) group_left max by (model) ((showback_offer_committed_tariff_usd_per_million @ end() or last_over_time(showback_offer_committed_tariff_usd_per_million[30d] offset -30d))) / 1e6 + on(subscription, model) ((clamp_min(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - on(subscription, model) (max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))), 0)) * on(model) group_left max by (model) ((showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d))) / 1e6 or (max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * 0)) or (((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) ((showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d))) / 1e6))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d))))
+                  seriesNameFormat: "{{team}}"
+      commitUsed:
+        kind: Panel
+        spec:
+          display:
+            name: Commitment used % (projected)
+            description: Projected monthly tokens of each committed subscription as a share of its commitment.
+          plugin:
+            kind: BarChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+              sort: desc
+              mode: value
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum by (subscription) (((100 * ((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / on(subscription, model) (max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((100 * ((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / on(subscription, model) (max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d))))
+                  seriesNameFormat: "{{subscription}}"
+      throughput:
+        kind: Panel
+        spec:
+          display:
+            name: Tokens by team
+            description: Governed tokens per time bucket on the selected shared models, stacked by team.
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              legend:
+                mode: list
+                position: bottom
+                values: []
+              visual:
+                display: bar
+                stack: all
+                palette:
+                  mode: categorical
+              yAxis:
+                format:
+                  unit: decimal
+                min: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum by (team) (((sum by (subscription) (increase(authorized_hits_total{subscription=~"$subscription"}[$__interval]) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription) (increase(authorized_hits_total{subscription=~"$subscription"}[$__interval]) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d))))
+                  seriesNameFormat: "{{team}}"
+                  minStep: 15m
       consumers:
         kind: Panel
         spec:
@@ -151,6 +246,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
+                width: 120
               - name: 'value #2'
                 header: Commitment / month
                 align: right
@@ -159,6 +255,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
+                width: 120
               - name: 'value #3'
                 header: Projected tokens / month
                 align: right
@@ -167,6 +264,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
+                width: 120
               - name: 'value #4'
                 header: Commitment used %
                 align: right
@@ -175,6 +273,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
+                width: 120
               - name: 'value #5'
                 header: Charge / month
                 align: right
@@ -184,6 +283,7 @@ spec:
                   decimalPlaces: 0
                   shortValues: false
                 sort: desc
+                width: 120
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -223,51 +323,22 @@ spec:
                 spec:
                   datasource: *id001
                   query: (((((max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * on(model) group_left max by (model) ((showback_offer_committed_tariff_usd_per_million @ end() or last_over_time(showback_offer_committed_tariff_usd_per_million[30d] offset -30d))) / 1e6 + on(subscription, model) ((clamp_min(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - on(subscription, model) (max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))), 0)) * on(model) group_left max by (model) ((showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d))) / 1e6 or (max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * 0)) or (((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) ((showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d))) / 1e6))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace(((((max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * on(model) group_left max by (model) ((showback_offer_committed_tariff_usd_per_million @ end() or last_over_time(showback_offer_committed_tariff_usd_per_million[30d] offset -30d))) / 1e6 + on(subscription, model) ((clamp_min(((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - on(subscription, model) (max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))), 0)) * on(model) group_left max by (model) ((showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d))) / 1e6 or (max by (subscription, model) ((showback_offer_commitment_tokens{subscription=~"$subscription"} @ end() or last_over_time(showback_offer_commitment_tokens{subscription=~"$subscription"}[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * 0)) or (((sum by (subscription, model) (increase(authorized_hits_total{subscription=~"$subscription"}[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) ((showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d))) / 1e6))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))
-      throughput:
+      economics:
         kind: Panel
         spec:
           display:
-            name: Token rate by team
-            description: Governed tokens per second on the selected shared models.
+            name: Monthly economics (USD)
+            description: Running cost of the shared workers against the projected charges of every subscription and the committed revenue floor.
           plugin:
-            kind: TimeSeriesChart
-            spec:
-              legend:
-                mode: list
-                position: bottom
-                values: []
-              visual:
-                areaOpacity: 0.1
-                connectNulls: false
-                display: line
-                lineWidth: 1.5
-              yAxis:
-                format:
-                  unit: decimal
-                min: 0
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: sum by (team) (((sum by (subscription) (rate(authorized_hits_total{subscription=~"$subscription"}[$__rate_interval]) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription) (rate(authorized_hits_total{subscription=~"$subscription"}[$__rate_interval]) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d))))
-                  seriesNameFormat: "{{team}}"
-      cost:
-        kind: Panel
-        spec:
-          display:
-            name: Running cost / month (USD)
-            description: GPU hours per month × worker price, selected shared models.
-          plugin:
-            kind: StatChart
+            kind: BarChart
             spec:
               calculation: last
               format:
                 unit: decimal
                 decimalPlaces: 0
                 shortValues: false
+              sort: desc
+              mode: value
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -276,21 +347,15 @@ spec:
                 spec:
                   datasource: *id001
                   query: sum(max by (model) ((showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d))) * $worker_hours and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d)))
-      floor:
-        kind: Panel
-        spec:
-          display:
-            name: Committed revenue floor / month (USD)
-            description: Monthly commitments × committed tariff, paid whether used or not.
-          plugin:
-            kind: StatChart
+                  seriesNameFormat: Running cost
+          - kind: TimeSeriesQuery
             spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-                shortValues: false
-          queries:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: (sum((((max by (subscription, model) ((showback_offer_commitment_tokens @ end() or last_over_time(showback_offer_commitment_tokens[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * on(model) group_left max by (model) ((showback_offer_committed_tariff_usd_per_million @ end() or last_over_time(showback_offer_committed_tariff_usd_per_million[30d] offset -30d))) / 1e6 + on(subscription, model) ((clamp_min(((sum by (subscription, model) (increase(authorized_hits_total[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) - on(subscription, model) (max by (subscription, model) ((showback_offer_commitment_tokens @ end() or last_over_time(showback_offer_commitment_tokens[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))), 0)) * on(model) group_left max by (model) ((showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d))) / 1e6 or (max by (subscription, model) ((showback_offer_commitment_tokens @ end() or last_over_time(showback_offer_commitment_tokens[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * 0)) or (((sum by (subscription, model) (increase(authorized_hits_total[$__range])) > 0 and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) * on(model) group_left max by (model) ((showback_offer_tariff_usd_per_million @ end() or last_over_time(showback_offer_tariff_usd_per_million[30d] offset -30d))) / 1e6))) or vector(0))
+                  seriesNameFormat: Projected charges
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -298,20 +363,28 @@ spec:
                 spec:
                   datasource: *id001
                   query: sum((max by (subscription, model) ((showback_offer_commitment_tokens @ end() or last_over_time(showback_offer_commitment_tokens[30d] offset -30d))) and on(model) (showback_offer_info{offer="shared", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="shared", model=~"$model"}[30d] offset -30d))) * on(model) group_left max by (model) ((showback_offer_committed_tariff_usd_per_million @ end() or last_over_time(showback_offer_committed_tariff_usd_per_million[30d] offset -30d))) / 1e6) or vector(0)
+                  seriesNameFormat: Committed floor
       coverage:
         kind: Panel
         spec:
           display:
-            name: Cost coverage %
+            name: Cost coverage
             description: Committed revenue floor as a share of the running cost.
           plugin:
-            kind: StatChart
+            kind: GaugeChart
             spec:
               calculation: last
               format:
-                unit: decimal
+                unit: percent
                 decimalPlaces: 0
-                shortValues: false
+              max: 100
+              thresholds:
+                defaultColor: "#C9190B"
+                steps:
+                - value: 50
+                  color: "#EC7A08"
+                - value: 100
+                  color: "#3E8635"
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -324,8 +397,8 @@ spec:
         kind: Panel
         spec:
           display:
-            name: Balance with commitments / month (USD)
-            description: Projected charges of every subscription minus running cost; negative is the platform shortfall.
+            name: Balance with commitments
+            description: USD per month. Projected charges of every subscription minus running cost; red is the platform shortfall.
           plugin:
             kind: StatChart
             spec:
@@ -334,6 +407,12 @@ spec:
                 unit: decimal
                 decimalPlaces: 0
                 shortValues: false
+              colorMode: background_solid
+              thresholds:
+                defaultColor: "#C9190B"
+                steps:
+                - value: 0
+                  color: "#3E8635"
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -346,8 +425,8 @@ spec:
         kind: Panel
         spec:
           display:
-            name: Balance if all on demand / month (USD)
-            description: Projected revenue if every subscription paid the on-demand tariff, minus running cost.
+            name: Balance if all on demand
+            description: USD per month. Projected revenue if every subscription paid the on-demand tariff, minus running cost.
           plugin:
             kind: StatChart
             spec:
@@ -356,6 +435,12 @@ spec:
                 unit: decimal
                 decimalPlaces: 0
                 shortValues: false
+              colorMode: background_solid
+              thresholds:
+                defaultColor: "#C9190B"
+                steps:
+                - value: 0
+                  color: "#3E8635"
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -387,10 +472,16 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 24
+          width: 12
           height: 8
           content:
-            "$ref": "#/spec/panels/consumers"
+            "$ref": "#/spec/panels/chargeByTeam"
+        - x: 12
+          y: 0
+          width: 12
+          height: 8
+          content:
+            "$ref": "#/spec/panels/commitUsed"
         - x: 0
           y: 8
           width: 24
@@ -406,31 +497,38 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 5
-          height: 4
+          width: 12
+          height: 8
           content:
-            "$ref": "#/spec/panels/cost"
-        - x: 5
+            "$ref": "#/spec/panels/economics"
+        - x: 12
           y: 0
-          width: 5
-          height: 4
-          content:
-            "$ref": "#/spec/panels/floor"
-        - x: 10
-          y: 0
-          width: 4
-          height: 4
+          width: 6
+          height: 8
           content:
             "$ref": "#/spec/panels/coverage"
-        - x: 14
+        - x: 18
           y: 0
-          width: 5
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/balanceCommitted"
-        - x: 19
-          y: 0
-          width: 5
+        - x: 18
+          y: 4
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/balancePayg"
+    - kind: Grid
+      spec:
+        display:
+          title: Breakdown
+          collapse:
+            open: true
+        items:
+        - x: 0
+          y: 0
+          width: 24
+          height: 10
+          content:
+            "$ref": "#/spec/panels/consumers"

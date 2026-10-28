@@ -3,10 +3,10 @@
 apiVersion: perses.dev/v1alpha2
 kind: PersesDashboard
 metadata:
-  name: dashboard-6-tokenomics-break-even-admin
+  name: dashboard-offer-5-break-even-admin
   namespace: redhat-ods-monitoring
   labels:
-    app.kubernetes.io/name: dashboard-6-tokenomics-break-even-admin
+    app.kubernetes.io/name: dashboard-offer-5-break-even-admin
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/component: observability
     app.kubernetes.io/managed-by: argocd
@@ -219,7 +219,7 @@ spec:
         spec:
           display:
             name: Monthly savings if moved (USD)
-            description: External cost minus private cost; negative means stay external.
+            description: External cost minus private cost; red means stay external.
           plugin:
             kind: StatChart
             spec:
@@ -227,6 +227,12 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 0
+              colorMode: background_solid
+              thresholds:
+                defaultColor: '#c9190b'
+                steps:
+                - value: 0
+                  color: '#3e8635'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -270,19 +276,22 @@ spec:
                     subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @
                     end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $usage_hours)), 1)
-      spend:
+      comparison:
         kind: Panel
         spec:
           display:
-            name: External cost / month (USD)
-            description: Projected tokens at the provider list price.
+            name: External vs private cost / month (USD)
+            description: Projected tokens at the provider list price against workers needed x worker price x GPU hours per month.
           plugin:
-            kind: StatChart
+            kind: BarChart
             spec:
               calculation: last
               format:
                 unit: decimal
                 decimalPlaces: 0
+                shortValues: false
+              mode: value
+              sort: desc
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -295,20 +304,7 @@ spec:
                     category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
                     category="output"})) / 1e6 / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
-      privateCost:
-        kind: Panel
-        spec:
-          display:
-            name: Private cost / month (USD)
-            description: Workers needed x worker price x GPU hours per month.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-          queries:
+                  seriesNameFormat: 'External: $reference'
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -321,6 +317,7 @@ spec:
                     subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @
                     end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $usage_hours)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
                     @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d] offset -30d)) * $worker_hours
+                  seriesNameFormat: 'Private: $private'
       blended:
         kind: Panel
         spec:
@@ -373,19 +370,22 @@ spec:
                   datasource: *id001
                   query: max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 *
                     $usage_hours
-      infraSpend:
+      fleet:
         kind: Panel
         spec:
           display:
-            name: Private spend (USD)
-            description: Serving hours of each private model in the time range x its worker price.
+            name: Private spend vs the same tokens at the external price (USD)
+            description: Serving hours of each private model in the time range x its worker price, against the tokens they served priced at the selected external model.
           plugin:
-            kind: StatChart
+            kind: BarChart
             spec:
               calculation: last
               format:
                 unit: decimal
                 decimalPlaces: 2
+                shortValues: false
+              mode: value
+              sort: desc
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -396,20 +396,7 @@ spec:
                   query: sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by
                     (model) (showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d)) and on(model) (showback_offer_info @ end() or last_over_time(showback_offer_info[30d]
                     offset -30d)))
-      refSpend:
-        kind: Panel
-        spec:
-          display:
-            name: Same tokens at the external price (USD)
-            description: Tokens the private models served in the time range, priced at the selected external model.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-          queries:
+                  seriesNameFormat: Private spend
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -420,12 +407,13 @@ spec:
                     last_over_time(showback_offer_info[30d] offset -30d)))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum(label_replace(sum
                     by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end() or last_over_time(showback_offer_info[30d]
                     offset -30d)))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})
+                  seriesNameFormat: Same tokens at $reference
       fleetSavings:
         kind: Panel
         spec:
           display:
             name: Savings vs external (USD)
-            description: External price minus private spend for the time range; negative means the workers were under-used.
+            description: External price minus private spend for the time range; red means the workers were under-used.
           plugin:
             kind: StatChart
             spec:
@@ -433,6 +421,12 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 2
+              colorMode: background_solid
+              thresholds:
+                defaultColor: '#c9190b'
+                steps:
+                - value: 0
+                  color: '#3e8635'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -500,16 +494,10 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 12
-          height: 5
+          width: 24
+          height: 7
           content:
-            $ref: '#/spec/panels/spend'
-        - x: 12
-          y: 0
-          width: 12
-          height: 5
-          content:
-            $ref: '#/spec/panels/privateCost'
+            $ref: '#/spec/panels/comparison'
     - kind: Grid
       spec:
         display:
@@ -544,19 +532,13 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 8
-          height: 5
+          width: 16
+          height: 7
           content:
-            $ref: '#/spec/panels/infraSpend'
-        - x: 8
-          y: 0
-          width: 8
-          height: 5
-          content:
-            $ref: '#/spec/panels/refSpend'
+            $ref: '#/spec/panels/fleet'
         - x: 16
           y: 0
           width: 8
-          height: 5
+          height: 7
           content:
             $ref: '#/spec/panels/fleetSavings'

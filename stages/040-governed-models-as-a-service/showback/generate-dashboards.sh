@@ -52,6 +52,16 @@ def gauge(name; desc; expr):
         plugin: {kind: "GaugeChart", spec: {calculation: "last", format: {unit: "percent", decimalPlaces: 0}, max: 200,
             thresholds: {steps: [{value: 0, color: "#c9190b"}, {value: 100, color: "#3e8635"}]}}},
         queries: [q(expr; DS; null)]}};
+# A stat whose tile turns red below zero and green at or above it.
+def signed(name; desc; expr; decimals):
+    stat(name; desc; expr; "decimal"; decimals)
+    | .spec.plugin.spec += {colorMode: "background_solid", thresholds: {defaultColor: "#c9190b", steps: [{value: 0, color: "#3e8635"}]}};
+# queries: [[expr, series name], ...]; one bar per series, largest first.
+def bar(name; desc; queries; decimals):
+    {kind: "Panel", spec: {display: {name: name, description: desc},
+        plugin: {kind: "BarChart", spec: {calculation: "last", format: {unit: "decimal", decimalPlaces: decimals, shortValues: false},
+            mode: "value", sort: "desc"}},
+        queries: [queries[] | q(.[0]; DS; .[1])]}};
 def listvar(name; label_name; matcher; display):
     {kind: "ListVariable", spec: {name: name, allowAllValue: true, allowMultiple: true, customAllValue: ".*",
         defaultValue: "$__all", display: {name: display, hidden: false},
@@ -179,25 +189,25 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
        "100 * (\($vol)) / (\($breakeven))"),
    volume: stat("Projected tokens / month"; "Usage of the selected external workload in the time range, scaled to a month."; $vol; "decimal"; 0),
    breakeven: stat("Break-even tokens / month"; "Monthly volume at which one private worker costs the same as the external model."; $breakeven; "decimal"; 0),
-   savings: stat("Monthly savings if moved (USD)"; "External cost minus private cost; negative means stay external."; "(\($spend)) - (\($private_cost))"; "decimal"; 0),
+   savings: signed("Monthly savings if moved (USD)"; "External cost minus private cost; red means stay external."; "(\($spend)) - (\($private_cost))"; 0),
    workers: stat("Private workers needed"; "Projected tokens divided by the demonstrated capacity of one worker, rounded up."; $workers; "decimal"; 0),
-   spend: stat("External cost / month (USD)"; "Projected tokens at the provider list price."; $spend; "decimal"; 0),
-   privateCost: stat("Private cost / month (USD)"; "Workers needed x worker price x GPU hours per month."; $private_cost; "decimal"; 0),
+   comparison: bar("External vs private cost / month (USD)"; "Projected tokens at the provider list price against workers needed x worker price x GPU hours per month.";
+       [[$spend, "External: $reference"], [$private_cost, "Private: $private"]]; 0),
    blended: stat("External $/1M tokens"; "Provider list price at the observed input/output mix of the workload."; $blended; "decimal"; 2),
    capacity: stat("Capacity of one worker (tokens / month)"; "Demonstrated tokens per second x usage hours per month."; $capacity; "decimal"; 0),
-   infraSpend: stat("Private spend (USD)"; "Serving hours of each private model in the time range x its worker price."; $spend_range; "decimal"; 2),
-   refSpend: stat("Same tokens at the external price (USD)"; "Tokens the private models served in the time range, priced at the selected external model."; $ref_spend_range; "decimal"; 2),
-   fleetSavings: stat("Savings vs external (USD)"; "External price minus private spend for the time range; negative means the workers were under-used."; "(\($ref_spend_range)) - (\($spend_range))"; "decimal"; 2)} as $tok_panels
+   fleet: bar("Private spend vs the same tokens at the external price (USD)"; "Serving hours of each private model in the time range x its worker price, against the tokens they served priced at the selected external model.";
+       [[$spend_range, "Private spend"], [$ref_spend_range, "Same tokens at $reference"]]; 2),
+   fleetSavings: signed("Savings vs external (USD)"; "External price minus private spend for the time range; red means the workers were under-used."; "(\($ref_spend_range)) - (\($spend_range))"; 2)} as $tok_panels
 | [(grid("How the decision is calculated"; [["about", 0, 0, 24, 7]]) | .spec.display.collapse.open = false),
    grid("Recommendation"; [["ratio", 0, 0, 8, 8], ["volume", 8, 0, 8, 4], ["breakeven", 16, 0, 8, 4], ["savings", 8, 4, 16, 4]]),
-   grid("Monthly comparison"; [["spend", 0, 0, 12, 5], ["privateCost", 12, 0, 12, 5]]),
+   grid("Monthly comparison"; [["comparison", 0, 0, 24, 7]]),
    (grid("Assumptions"; [["blended", 0, 0, 8, 5], ["capacity", 8, 0, 8, 5], ["workers", 16, 0, 8, 5]]) | .spec.display.collapse.open = false),
-   grid("Private fleet in the time range"; [["infraSpend", 0, 0, 8, 5], ["refSpend", 8, 0, 8, 5], ["fleetSavings", 16, 0, 8, 5]])] as $tok_layouts
+   grid("Private fleet in the time range"; [["fleet", 0, 0, 16, 7], ["fleetSavings", 16, 0, 8, 7]])] as $tok_layouts
 
 | {"dashboard-5-cost-per-token.yaml": dashboard("dashboard-5-cost-per-token-admin"; "Cost per token";
        "Showback: tokens served by the private models and governed MaaS users, priced with editable per-million-token prices.";
        $cost_vars; $cost_panels; $cost_layouts),
-   "dashboard-6-tokenomics-break-even.yaml": dashboard("dashboard-6-tokenomics-break-even-admin"; "Showback 5 · Break-even";
+   "dashboard-6-tokenomics-break-even.yaml": dashboard("dashboard-offer-5-break-even-admin"; "Showback 5 · Break-even";
        "Should an external-model workload move to a private model? Projected monthly volume and cost against the break-even volume of a private worker.";
        $tok_vars; $tok_panels; $tok_layouts),
    shared: DS}

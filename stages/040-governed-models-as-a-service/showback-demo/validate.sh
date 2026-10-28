@@ -45,9 +45,9 @@ else record 'Dedicated Mistral is served by 040-local-models on its own listener
 
 # Every dashboard panel is laid out, reads the RHOAI datasource and no financial number comes from a static report.
 if jq -e '[.[] | select(.kind == "PersesDashboard")] as $d
-    | ($d | map(.metadata.name) | sort) == ["dashboard-offer-0-showback-by-team-admin",
-        "dashboard-offer-dedicated-private-admin", "dashboard-offer-external-model-admin",
-        "dashboard-offer-shared-private-admin"]
+    | ($d | map(.metadata.name) | sort) == ["dashboard-offer-1-by-team-admin",
+        "dashboard-offer-2-shared-private-admin", "dashboard-offer-3-dedicated-private-admin",
+        "dashboard-offer-4-external-model-admin"]
     and all($d[]; .spec.config as $c
         | ([$c.layouts[].spec.items[].content["$ref"] | ltrimstr("#/spec/panels/")] | sort) == ($c.panels | keys | sort)
         and all($c.panels[].spec.queries[]; .spec.plugin.spec.datasource.name == "data-science-prometheus-datasource"

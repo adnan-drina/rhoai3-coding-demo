@@ -4,10 +4,10 @@
 apiVersion: perses.dev/v1alpha2
 kind: PersesDashboard
 metadata:
-  name: dashboard-offer-dedicated-private-admin
+  name: dashboard-offer-3-dedicated-private-admin
   namespace: redhat-ods-monitoring
   labels:
-    app.kubernetes.io/name: dashboard-offer-dedicated-private-admin
+    app.kubernetes.io/name: dashboard-offer-3-dedicated-private-admin
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/component: observability
     app.kubernetes.io/managed-by: argocd
@@ -77,10 +77,116 @@ spec:
               text: |-
                 A **dedicated private model** runs on GPU capacity reserved for one sponsoring team. The sponsor pays the **full running cost** of that capacity for every hour the model is up, whether it is busy or idle. Usage does not change the charge; it changes the effective cost per token. A low busy share is paid idle capacity: a reason to schedule the model, right-size it or move it to the shared offering.
 
-                Other teams may be granted the model too (the quality judge uses it to grade the shared model). They pay nothing for it: the sponsor's effective cost counts only the sponsor's tokens, and *other consumers' share* shows how much of the paid capacity went elsewhere.
+                Other teams may be granted the model too (the quality judge uses it to grade the shared model). They pay nothing for it: the sponsor's effective cost counts only the sponsor's tokens, and *Who used the capacity* shows how much of the paid capacity went elsewhere.
 
                 Running cost = serving hours × GPU worker price from the offer catalog. **In range** figures follow the time picker. **Per month** figures are projections: usage in the time range × usage hours per month × users per team, and private workers × GPU hours per month.
           queries: []
+      busy:
+        kind: Panel
+        spec:
+          display:
+            name: Busy share
+            description: Serving minutes with at least one request running, selected dedicated models.
+          plugin:
+            kind: GaugeChart
+            spec:
+              calculation: last
+              format:
+                unit: percent
+                decimalPlaces: 0
+              max: 100
+              thresholds:
+                defaultColor: "#C9190B"
+                steps:
+                - value: 30
+                  color: "#EC7A08"
+                - value: 60
+                  color: "#3E8635"
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: 100 * sum(sum by (model) (label_replace(count_over_time((sum by (model_name) (kserve_vllm:num_requests_running) > 0)[$__range:1m]), "model", "$1", "model_name", "(.+)")) and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d))) / sum(sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)))
+      paidCapacity:
+        kind: Panel
+        spec:
+          display:
+            name: Paid capacity (in range, USD)
+            description: Sponsor charge split into serving minutes with a request running (busy) and without (idle).
+          plugin:
+            kind: PieChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 2
+                shortValues: false
+              mode: value
+              radius: 70
+              showLabels: true
+              sort: desc
+              colorPalette: &id002
+              - "#0066CC"
+              - "#EC7A08"
+              - "#3E8635"
+              - "#5752D1"
+              - "#009596"
+              - "#F0AB00"
+              - "#8F4700"
+              legend:
+                position: right
+                mode: list
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum(((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)) * on(model) group_left max by (model) ((showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d)))) * on(model) group_left() ((sum by (model) (label_replace(count_over_time((sum by (model_name) (kserve_vllm:num_requests_running) > 0)[$__range:1m]), "model", "$1", "model_name", "(.+)")) or sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) * 0) / on(model) sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)"))))
+                  seriesNameFormat: Busy
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum(((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)) * on(model) group_left max by (model) ((showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d)))) * on(model) group_left() (1 - ((sum by (model) (label_replace(count_over_time((sum by (model_name) (kserve_vllm:num_requests_running) > 0)[$__range:1m]), "model", "$1", "model_name", "(.+)")) or sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) * 0) / on(model) sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")))))
+                  seriesNameFormat: Idle
+      tokenUse:
+        kind: Panel
+        spec:
+          display:
+            name: Who used the capacity (tokens in range)
+            description: Tokens on the dedicated models per subscription; only the sponsor pays.
+          plugin:
+            kind: PieChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+              mode: value
+              radius: 70
+              showLabels: true
+              sort: desc
+              colorPalette: *id002
+              legend:
+                position: right
+                mode: list
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum by (subscription, role) ((label_replace(((sum by (subscription, model) (increase(authorized_hits_total[$__range])) > 0 and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d))) and on(model, subscription) label_replace((showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)), "subscription", "$1", "sponsor", "(.+)")), "role", "sponsor", "", "") or label_replace(((sum by (subscription, model) (increase(authorized_hits_total[$__range])) > 0 and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d))) unless on(model, subscription) label_replace((showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)), "subscription", "$1", "sponsor", "(.+)")), "role", "other consumer", "", "")))
+                  seriesNameFormat: "{{subscription}} ({{role}})"
       charge:
         kind: Panel
         spec:
@@ -103,28 +209,6 @@ spec:
                 spec:
                   datasource: *id001
                   query: sum(((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)) * on(model) group_left max by (model) ((showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d)))))
-      busy:
-        kind: Panel
-        spec:
-          display:
-            name: Busy share %
-            description: Serving minutes with at least one request running.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-                shortValues: false
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: 100 * sum(sum by (model) (label_replace(count_over_time((sum by (model_name) (kserve_vllm:num_requests_running) > 0)[$__range:1m]), "model", "$1", "model_name", "(.+)")) and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d))) / sum(sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)))
       idle:
         kind: Panel
         spec:
@@ -169,28 +253,6 @@ spec:
                 spec:
                   datasource: *id001
                   query: sum(((sum by (model) (label_replace(count_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)")) / 60) * on(model) group_left(sponsor) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)) * on(model) group_left max by (model) ((showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d))))) / sum(((sum by (subscription, model) (increase(authorized_hits_total[$__range])) > 0 and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d))) and on(model, subscription) label_replace((showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)), "subscription", "$1", "sponsor", "(.+)"))) * 1e6
-      others:
-        kind: Panel
-        spec:
-          display:
-            name: Other consumers' share %
-            description: Tokens on the dedicated models used by subscriptions other than the sponsor.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-                shortValues: false
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: 100 * (sum(((sum by (subscription, model) (increase(authorized_hits_total[$__range])) > 0 and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d))) unless on(model, subscription) label_replace((showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)), "subscription", "$1", "sponsor", "(.+)"))) or vector(0)) / sum((sum by (subscription, model) (increase(authorized_hits_total[$__range])) > 0 and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d))))
       monthly:
         kind: Panel
         spec:
@@ -227,10 +289,13 @@ spec:
                 position: bottom
                 values: []
               visual:
-                areaOpacity: 0.1
+                areaOpacity: 0.5
                 connectNulls: false
                 display: line
                 lineWidth: 1.5
+                stack: all
+                palette:
+                  mode: categorical
               yAxis:
                 format:
                   unit: percent
@@ -242,14 +307,14 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: label_replace(avg by (exported_pod) (accelerator_gpu_utilization), "model", "$1", "exported_pod", "(.+)-kserve-[a-z0-9]+-[a-z0-9]+") and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d))
+                  query: avg by (model) (label_replace(accelerator_gpu_utilization, "model", "$1", "exported_pod", "(.+)-kserve-[a-z0-9]+-[a-z0-9]+")) and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d))
                   seriesNameFormat: "{{model}}"
       consumerRate:
         kind: Panel
         spec:
           display:
-            name: Token rate by consumer
-            description: Governed tokens per second on the dedicated models, per subscription.
+            name: Tokens by consumer
+            description: Governed tokens per time bucket on the dedicated models, stacked by subscription.
           plugin:
             kind: TimeSeriesChart
             spec:
@@ -258,10 +323,10 @@ spec:
                 position: bottom
                 values: []
               visual:
-                areaOpacity: 0.1
-                connectNulls: false
-                display: line
-                lineWidth: 1.5
+                display: bar
+                stack: all
+                palette:
+                  mode: categorical
               yAxis:
                 format:
                   unit: decimal
@@ -273,8 +338,9 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: sum by (subscription) (rate(authorized_hits_total[$__rate_interval]) and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)))
+                  query: sum by (subscription) (increase(authorized_hits_total[$__interval]) and on(model) (showback_offer_info{offer="dedicated", model=~"$model"} @ end() or last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[30d] offset -30d)))
                   seriesNameFormat: "{{subscription}}"
+                  minStep: 15m
       byModel:
         kind: Panel
         spec:
@@ -306,6 +372,7 @@ spec:
                   decimalPlaces: 2
                   shortValues: false
                 sort: desc
+                width: 140
               - name: 'value #2'
                 header: Busy %
                 align: right
@@ -314,6 +381,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
+                width: 140
               - name: 'value #3'
                 header: Sponsor $/1M (in range)
                 align: right
@@ -322,6 +390,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 2
                   shortValues: false
+                width: 140
               - name: 'value #4'
                 header: Charge / month
                 align: right
@@ -330,6 +399,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
+                width: 140
               - name: 'value #5'
                 header: Sponsor $/1M / month
                 align: right
@@ -338,6 +408,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 2
                   shortValues: false
+                width: 140
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -465,37 +536,43 @@ spec:
         items:
         - x: 0
           y: 0
-          width: 4
+          width: 6
+          height: 8
+          content:
+            "$ref": "#/spec/panels/busy"
+        - x: 6
+          y: 0
+          width: 9
+          height: 8
+          content:
+            "$ref": "#/spec/panels/paidCapacity"
+        - x: 15
+          y: 0
+          width: 9
+          height: 8
+          content:
+            "$ref": "#/spec/panels/tokenUse"
+        - x: 0
+          y: 8
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/charge"
-        - x: 4
-          y: 0
-          width: 4
-          height: 4
-          content:
-            "$ref": "#/spec/panels/busy"
-        - x: 8
-          y: 0
-          width: 4
+        - x: 6
+          y: 8
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/idle"
         - x: 12
-          y: 0
-          width: 4
+          y: 8
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/effective"
-        - x: 16
-          y: 0
-          width: 4
-          height: 4
-          content:
-            "$ref": "#/spec/panels/others"
-        - x: 20
-          y: 0
-          width: 4
+        - x: 18
+          y: 8
+          width: 6
           height: 4
           content:
             "$ref": "#/spec/panels/monthly"
@@ -528,12 +605,12 @@ spec:
         - x: 0
           y: 0
           width: 24
-          height: 5
+          height: 6
           content:
             "$ref": "#/spec/panels/byModel"
         - x: 0
-          y: 5
+          y: 6
           width: 24
-          height: 6
+          height: 7
           content:
             "$ref": "#/spec/panels/consumers"

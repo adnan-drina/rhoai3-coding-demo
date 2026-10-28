@@ -24,7 +24,7 @@ of its Observability page, ordered by the number; the product ships tabs 0–4, 
 | Dashboard | Metrics | Default variables |
 |---|---|---|
 | `dashboard-5-cost-per-token-admin` | vLLM `kserve_vllm:prompt_tokens_total` and `generation_tokens_total` per model; MaaS `authorized_hits_total` and `authorized_calls_total` per user and subscription | Prompt, completion and blended 4.00 per million tokens, the shared tariff from the showback offer catalog |
-| `dashboard-6-tokenomics-break-even-admin` | External-model workload (metering ledger) projected to a month against private GPU workers; private fleet throughput and spend | External model in use (default `claude-sonnet-5-5`), subscriptions, private candidate (offer catalog), usage hours, users per team, GPU hours per month |
+| `dashboard-offer-5-break-even-admin` | External-model workload (metering ledger) projected to a month against private GPU workers; private fleet throughput and spend | External model in use (default `claude-sonnet-5-5`), subscriptions, private candidate (offer catalog), usage hours, users per team, GPU hours per month |
 
 They rely on three things other stages provide:
 

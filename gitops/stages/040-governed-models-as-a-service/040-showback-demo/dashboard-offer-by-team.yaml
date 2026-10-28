@@ -4,10 +4,10 @@
 apiVersion: perses.dev/v1alpha2
 kind: PersesDashboard
 metadata:
-  name: dashboard-offer-0-showback-by-team-admin
+  name: dashboard-offer-1-by-team-admin
   namespace: redhat-ods-monitoring
   labels:
-    app.kubernetes.io/name: dashboard-offer-0-showback-by-team-admin
+    app.kubernetes.io/name: dashboard-offer-1-by-team-admin
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/component: observability
     app.kubernetes.io/managed-by: argocd
