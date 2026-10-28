@@ -70,11 +70,12 @@ In order (each step dies non-zero on failure):
 3. `analyze --input <copy> --output … --target … --rules
    .hermes/planning/mta-rules --json-output --overwrite`, cwd
    `/projects/.tools/mta-run`. `--json-output` is a boolean on MTA CLI
-   8.2.1 (it takes no path); the findings are `<output>/output.json`.
+   8.2.1 and 8.3 (it takes no path); the findings are `<output>/output.json`.
    **Never `--source`** (see below). The custom ruleset carries
    `rhoai3-canary-00001` labelled for every `migration.yaml` target.
    `judge-analyzer-exit.py` judges the exit status: a clean exit, or the
-   one known 8.2.1 defect (`MTA-8.2.1-DEPENDENCIES-JSON-MARSHAL`: the
+   one known defect of CLI 8.2.1, 8.3.0 and 8.3.1
+   (`MTA-8.2.1-DEPENDENCIES-JSON-MARSHAL`: the
    analysis completed, then converting `dependencies.yaml` to JSON failed
    with "json: unsupported type: map[interface {}]interface {}") when it is
    the only error and a fresh `output.json` agrees with `output.yaml` and
@@ -134,7 +135,7 @@ tree it scanned, `planner.canonical.product_tree_sha256`, the same function
 the loop records as an accepted step's `candidate_sha256` — and `git_head`.
 The analyzer's exit is judged as at M1 (`judge-analyzer-exit.py`);
 `execution_evidence` records `analyzer_exit_status` and, when the known
-8.2.1 defect was accepted, `compatibility_exception`. Any other failure
+dependency-JSON defect was accepted, `compatibility_exception`. Any other failure
 writes no findings, so incidents stay UNKNOWN.
 `assert-obligations-closed.py` and `assert-mta-rescan.py` consume it; the
 sealed planning artifacts are never touched (the work list is rebuilt from
@@ -185,6 +186,6 @@ legacy scan of the frozen source, a copy of M1, never a rescan.
 - `scripts/emit-findings-handoff.py`, `scripts/check-findings-handoff.py` — M1→M2 handoff
 - `scripts/emit-required-extensions.py` — T-3 extension set from findings + legacy pom
 - `scripts/mta-rescan-destination.sh` — destination rescan for obligation closure
-- `scripts/judge-analyzer-exit.py` — the analyzer-exit judgement (clean exit, or the one known 8.2.1 defect)
+- `scripts/judge-analyzer-exit.py` — the analyzer-exit judgement (clean exit, or the one known dependency-JSON defect of 8.2.1/8.3.0/8.3.1)
 - `scripts/assert-ensure-cli-path.sh` — capability-probe selftest
 - `scripts/emit-required-extensions.test.py`, `scripts/scan-with-mta.test.py`, `scripts/mta-rescan-destination.test.py`, `scripts/mta-analyze-legacy.test.py` — selftests

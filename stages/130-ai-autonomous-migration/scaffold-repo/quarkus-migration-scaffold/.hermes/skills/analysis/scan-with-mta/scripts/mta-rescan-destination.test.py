@@ -219,6 +219,12 @@ def main() -> int:
             return _fail("the exception must be recorded with the analyzer's nonzero exit preserved: %s" % ev)
         if not any(v.get("incidents") for v in doc["violations"].values()) or ev.get("tree_sha256") != product_tree_sha256(root):
             return _fail("accepted findings must carry the incidents and bind to the candidate: %s" % ev)
+        # 5a'. the pinned 8.3.0 CLI carries the same measured defect and is accepted the same way
+        p = rescan("run-g2", FAKE_MODE="defect", FAKE_VERSION="version: 8.3.0")
+        exc = (findings().get("execution_evidence") or {}).get("compatibility_exception") or {}
+        if p.returncode != 0 or exc.get("cli_version") != "8.3.0" or exc.get("analyzer_exit_status") != 1:
+            return _fail("the measured 8.3.0 marshal defect is accepted with its version recorded: %s"
+                         % (exc or (p.stdout + p.stderr)[-600:]))
         # 5b. every other nonzero exit means incidents UNKNOWN: the rescan fails and writes no findings
         refusals = {
             "run-h": ({"FAKE_MODE": "defect+other"}, "another error besides the known marshal failure"),
@@ -226,7 +232,8 @@ def main() -> int:
             "run-j": ({"FAKE_MODE": "missing"}, "wrote no output.json"),
             "run-k": ({"FAKE_MODE": "truncated"}, "does not parse"),
             "run-l": ({"FAKE_MODE": "inconsistent"}, "output.json and output.yaml disagree"),
-            "run-m": ({"FAKE_MODE": "defect", "FAKE_VERSION": "version: 8.2.2"}, "bound to 8.2.1 only"),
+            "run-m": ({"FAKE_MODE": "defect", "FAKE_VERSION": "version: 8.2.2"}, "bound to the measured versions"),
+            "run-m2": ({"FAKE_MODE": "defect", "FAKE_VERSION": "version: 8.3.2"}, "bound to the measured versions"),
             "run-n": ({"FAKE_MODE": "incomplete"}, "does not report 'Analysis complete!'"),
         }
         for run, (env, why) in refusals.items():
@@ -256,7 +263,7 @@ def main() -> int:
     print("OK: mta-rescan-destination (the analyzer reads a disposable copy of the candidate, uncommitted repair included; "
           "its IDE metadata never reaches the candidate, whose digest stays HEAD's; incidents are destination-relative with "
           "scratch-independent identities; a candidate changed during the scan is refused as stale; scratch always removed; "
-          "--json-output is a boolean; the known 8.2.1 dependency-JSON marshal defect is accepted with its exit recorded, and "
+          "--json-output is a boolean; the known dependency-JSON marshal defect of 8.2.1/8.3.0/8.3.1 is accepted with its exit recorded, and "
           "another error, a stale/missing/truncated output.json, YAML/JSON disagreement or another version is refused)")
     return 0
 

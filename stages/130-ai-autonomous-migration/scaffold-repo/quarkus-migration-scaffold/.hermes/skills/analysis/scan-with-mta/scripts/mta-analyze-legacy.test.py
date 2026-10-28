@@ -9,7 +9,8 @@ source:
 1. a clean exit: findings and an ok receipt with exit_status 0, basis
    clean-exit, and the analyze argv recorded (written after the analyzer's
    --overwrite emptied the output directory);
-2. the known 8.2.1 defect: accepted; the receipt and the findings keep exit
+2. the known dependency-JSON defect (measured on 8.2.1, 8.3.0 and 8.3.1; the
+   test uses the pinned 8.3.0): accepted; the receipt and the findings keep exit
    status 1 and the exception's id and reason;
 3. the defect plus another error, or a truncated output.json: M1 fails, the
    receipt is status failed with the refusal, and no findings remain, not
@@ -85,8 +86,8 @@ def main() -> int:
         argv = rec.get("argv") or []
         if "--json-output" not in argv or argv[argv.index("--json-output") + 1] != "--overwrite":
             return _fail("the receipt records the argv, --json-output without a value: %s" % argv)
-        # 2. the known defect: accepted, exit status and exception recorded
-        p = analyze(FAKE_MODE="defect", FAKE_VERSION="version: 8.2.1")
+        # 2. the known defect, on the pinned 8.3.0 CLI: accepted, exit status and exception recorded
+        p = analyze(FAKE_MODE="defect", FAKE_VERSION="version: 8.3.0")
         rec = json.loads(receipt.read_text()) if receipt.is_file() else {}
         exc = (rec.get("analyzer_exit") or {}).get("compatibility_exception") or {}
         ev = (json.loads(findings.read_text()).get("execution_evidence") or {}) if findings.is_file() else {}
@@ -105,7 +106,7 @@ def main() -> int:
             if findings.exists():
                 return _fail("%s must leave no findings (an earlier run's included)" % mode)
     print("OK: mta-analyze-legacy (M1 passes --json-output as a boolean and judges the analyzer's exit: clean exit "
-          "recorded; the known 8.2.1 dependency-JSON defect accepted with exit 1 and its reason in receipt and findings; "
+          "recorded; the known dependency-JSON defect of the pinned 8.3.0 accepted with exit 1 and its reason in receipt and findings; "
           "another error or a truncated output.json fails M1 with a failed receipt and no findings)")
     return 0
 

@@ -95,10 +95,10 @@ got = product_tree_sha256(snap)
 if got != want:
     raise SystemExit("FAIL: MTA_RESCAN_SNAPSHOT the analysis copy is not the candidate (%s != %s)" % (got[:12], want[:12]))
 PY
-# --json-output is a boolean on the pinned MTA CLI 8.2.1 ("create analysis and dependency output
+# --json-output is a boolean on MTA CLI 8.2.1 and the pinned 8.3 ("create analysis and dependency output
 # as json"); the findings are <output>/output.json. The analyzer's console is kept beside the
 # report because the exit judgement reads it. The exit status is judged, never ignored
-# (judge-analyzer-exit.py): a clean exit, or the one documented 8.2.1 dependency-JSON marshal
+# (judge-analyzer-exit.py): a clean exit, or the one documented dependency-JSON marshal
 # defect after a completed, consistent analysis, recorded with its nonzero exit status. Anything
 # else means incidents are UNKNOWN: the rescan fails and writes no findings.
 OUTPUT_EXISTED=()

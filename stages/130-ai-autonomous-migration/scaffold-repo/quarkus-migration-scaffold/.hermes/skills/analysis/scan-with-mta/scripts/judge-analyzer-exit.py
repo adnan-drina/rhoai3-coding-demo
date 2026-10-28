@@ -13,15 +13,19 @@ A clean exit (rc 0) is usable when `<report-dir>/output.json` was written by
 this invocation (newer than the `--started` marker) and parses.
 
 A nonzero exit is usable ONLY as the narrow compatibility exception
-MTA-8.2.1-DEPENDENCIES-JSON-MARSHAL. The pinned MTA CLI 8.2.1, asked for JSON
+MTA-8.2.1-DEPENDENCIES-JSON-MARSHAL (named after the version it was first
+identified on). MTA CLI 8.2.1, 8.3.0 and 8.3.1, asked for JSON
 output (`--json-output`, a boolean), writes output.json from output.yaml and
 then fails to convert dependencies.yaml to JSON when indirect dependencies
 carry nested `baseDep.extras` ("json: unsupported type: map[interface {}]
 interface {}"), so every analysis of a Maven project exits 1 after the
 analysis completed. All of these must hold, or the exit is a failure:
 
-  - the measured CLI version is exactly 8.2.1 (the version the defect was
-    identified on; any other or unmeasured version is refused);
+  - the measured CLI version is one the defect was measured on: 8.2.1
+    (2026-09-28), 8.3.0 (the pinned workspace CLI, spring-petclinic-rest
+    M1 on 2026-10-28) or 8.3.1 (the mta-cli-rhel9 image of operator 8.3.2,
+    same input, same day); any other or unmeasured version is refused, so a
+    release that fixes the defect is never excused by it;
   - analysis.log records the analyzer's completion (`msg="finished running
     analysis"`, the marker the pinned binary writes) and no provider failed
     to start (`msg="unable to init provider"`);
@@ -54,7 +58,7 @@ import sys
 from pathlib import Path
 
 EXCEPTION_ID = "MTA-8.2.1-DEPENDENCIES-JSON-MARSHAL"
-EXCEPTION_VERSION = "8.2.1"
+EXCEPTION_VERSIONS = ("8.2.1", "8.3.0", "8.3.1")
 MARSHAL_FAILURE = "json: unsupported type: map[interface {}]interface {}"
 COMPLETION_MARKER = 'msg="finished running analysis"'
 CONSOLE_COMPLETION = "Analysis complete!"
@@ -160,9 +164,9 @@ def judge(args: argparse.Namespace) -> tuple[bool, dict]:
 
     # --- nonzero exit: the compatibility exception, or a failure ---
     version = _version(args.cli_version)
-    if version != EXCEPTION_VERSION:
-        return refuse("the analyzer exited %d on CLI version %r; the %s exception is bound to %s only"
-                      % (args.rc, version or "unmeasured", EXCEPTION_ID, EXCEPTION_VERSION))
+    if version not in EXCEPTION_VERSIONS:
+        return refuse("the analyzer exited %d on CLI version %r; the %s exception is bound to the measured versions %s only"
+                      % (args.rc, version or "unmeasured", EXCEPTION_ID, ", ".join(EXCEPTION_VERSIONS)))
     log = report / "analysis.log"
     log_text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
     if COMPLETION_MARKER not in log_text:

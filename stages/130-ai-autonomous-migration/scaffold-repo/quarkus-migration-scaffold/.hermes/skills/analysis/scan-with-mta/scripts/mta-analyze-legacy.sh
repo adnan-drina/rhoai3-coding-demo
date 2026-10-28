@@ -2,7 +2,7 @@
 # AD-003 amendment A — harness M1/M5 analysis invocation.
 #
 #   mta-cli analyze --input <frozen analysis copy> --output … --target … \
-#     --rules <custom ruleset with canary> --json-output   (a boolean on 8.2.1)
+#     --rules <custom ruleset with canary> --json-output   (a boolean on 8.2.1 and 8.3)
 #
 # NEVER pass --source (dated Track B evidence 2026-07-27: excludes
 # source-labelless rules and narrows the set). Targets come from
@@ -321,7 +321,7 @@ echo "Targets:${TARGET_LIST}" >&2
 [ -n "${RULES_DIR}" ] && echo "Custom rules: ${RULES_DIR} (canary ${CANARY_ID:-<none>})" >&2
 echo "NOTE: --source is intentionally omitted (AD-003 amendment A)." >&2
 
-# --json-output is a boolean on the pinned MTA CLI 8.2.1 ("create analysis and
+# --json-output is a boolean on MTA CLI 8.2.1 and the pinned 8.3 ("create analysis and
 # dependency output as json"): the findings are ${OUT_DIR}/output.json. The
 # console is kept beside the report because the exit judgement reads it.
 # the analyzer's Maven runs in the input copy; pin its project base there (see capture-build-evidence.sh:
@@ -341,7 +341,7 @@ OUTPUT_EXISTED=()
 touch "${STARTED}"
 
 # The exit status is judged, never ignored (judge-analyzer-exit.py): a clean
-# exit, or the one documented 8.2.1 dependency-JSON marshal defect after a
+# exit, or the one documented dependency-JSON marshal defect after a
 # completed, consistent analysis, recorded with its nonzero exit status in the
 # receipt. Anything else is a failed analysis: no findings, a failed receipt.
 set +e
