@@ -87,7 +87,7 @@ showback_source_state() {
         | all(.[]; .kind != "LLMInferenceService" and .kind != "MaaSModelRef")
         and ([.[] | select(.kind == "MaaSSubscription") | .metadata.name] | sort) == $teams
         and ([.[] | select(.kind == "MaaSAuthPolicy") | .metadata.name] | sort) == $teams
-        and ([.[] | select(.kind == "PersesDashboard")] | length) == 3
+        and ([.[] | select(.kind == "PersesDashboard")] | length) == 4
         and all(.[]; (.kind != "Job" or ((.metadata.name | IN("start-showback-metering-build", "provision-maas-quality-judge"))
                 and .metadata.annotations["argocd.argoproj.io/hook"] == "Sync"))
             and (.kind != "CronJob" or (.metadata.name == "maas-quality-scorer" and .metadata.namespace == "models-as-a-service"))
