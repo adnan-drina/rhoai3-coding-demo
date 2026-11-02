@@ -206,13 +206,14 @@ data:
 
     # First, because it is small: the MaaS experiments can use up the run budget. A playground failure never stops them.
     PLAYGROUND = os.environ["PLAYGROUND_WORKSPACE"]
+    MAAS_WORKSPACE = os.environ["MLFLOW_WORKSPACE"]  # read first: set_workspace overwrites this variable
     mlflow.set_workspace(PLAYGROUND)
     try:
         score_playground()
     except Exception as e:
         print(f"{PLAYGROUND}: not scored ({type(e).__name__}: {str(e)[:200]})", flush=True)
     finally:
-        mlflow.set_workspace(os.environ["MLFLOW_WORKSPACE"])
+        mlflow.set_workspace(MAAS_WORKSPACE)
 
     # One experiment per MaaS model, created before its first request: internal-<model> for model references in
     # internal-models, external-<model> for those in external-models. Offering and provider are refreshed each run, so
