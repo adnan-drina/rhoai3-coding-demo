@@ -71,7 +71,8 @@ spec:
         end
       end
       return hs
-    # Native MLflow health requires availability and current operator/migration reconciliation.
+    # Native MLflow health requires availability, current operator reconciliation and a successful migration. The
+    # migration condition stays on the generation it last ran for: a spec change such as workers needs no migration.
     resource.customizations.health.mlflow.opendatahub.io_MLflow: |
       hs = {status = "Progressing", message = "Waiting for Available and current MLflowOperatorReady conditions"}
       local available = false
@@ -82,7 +83,7 @@ spec:
           if condition.type == "Available" then
             available = condition.status == "True"
           elseif condition.type == "Migration" then
-            migrated = condition.status == "True" and (condition.observedGeneration or 0) >= obj.metadata.generation
+            migrated = condition.status == "True"
           elseif condition.type == "MLflowOperatorReady" then
             current = condition.status == "True" and (condition.observedGeneration or 0) >= obj.metadata.generation
           end
