@@ -851,6 +851,50 @@ oc logs -n demo-sandbox <failing-pod> --previous | grep -A3 'already exists with
 
 A request sent directly to the pod returns `401` from the model: the dashboard supplies the MaaS key per request. Check chat from the playground.
 
+## Gen AI Playground Lists A Model Twice
+
+**Affected stage:** Stage 040
+
+**Symptom:** after the playground is reconfigured, the model dropdown shows one model under two provider numbers, such as `maas-vllm-inference-2/claude-sonnet-5-5` and `maas-vllm-inference-3/claude-sonnet-5-5`.
+
+**Likely cause:** reconfiguring can renumber the `maas-vllm-inference-<n>` providers. The earlier registrations stay in the retained `kvstore.db` under the old numbers, so OGX lists both.
+
+**Diagnose:** compare the entries in the generated configuration with the listed models. Any listed model the configuration does not declare is stale.
+
+```bash
+oc get configmap llama-stack-config -n demo-sandbox -o yaml | grep -E 'provider_id: (maas|endpoint)|model_id:'
+oc exec -n demo-sandbox deploy/lsd-genai-playground -- curl -s http://localhost:8321/v1/models | jq -r '.data[].id'
+```
+
+**Recover:** follow the steps in [Gen AI Playground Pod Crash-Loops After It Is Reconfigured](#gen-ai-playground-pod-crash-loops-after-it-is-reconfigured) for each stale key. Then restart the serving pod with `oc rollout restart deployment/lsd-genai-playground -n demo-sandbox`.
+
+## Gen AI Playground Tracing Writes Nothing
+
+**Affected stage:** Stage 040
+
+**Symptom:** the playground was configured with **Enable tracing** on, but new chats add no `gen-ai-bff` trace to experiment `Default`, and the playground log repeats `Failed to export span batch` with `Invalid URL '/v1/traces'`.
+
+**Likely cause:** the `gen-ai-ui` backend sets up its trace collector manager once, when it starts, and does not retry. If its MLflow lookup times out, for example just after the lab resumes, it logs a warning and leaves tracing management off until the next restart. Playgrounds configured in that window get an empty OTLP endpoint and no `gen-ai-trace-collector`. Later `OTel config manager initialized` lines come from other requests and do not show that the manager recovered.
+
+**Diagnose:**
+
+```bash
+oc get deployment lsd-genai-playground -n demo-sandbox -o json | \
+  jq '.spec.template.spec.containers[0].env[] | select(.name=="OTEL_EXPORTER_OTLP_ENDPOINT")'
+oc get opentelemetrycollectors -n redhat-ods-monitoring
+oc logs deployment/gen-ai-ui -c gen-ai-ui -n redhat-ods-applications | grep 'trace route management disabled'
+```
+
+**Recover:**
+
+1. Restart the backend with `oc rollout restart deployment/gen-ai-ui -n redhat-ods-applications` and check that its startup log has no `trace route management disabled` line.
+2. In the playground configuration, turn **Enable tracing** on and select **Configure**. This recreates the playground, keeps the retained history and creates the collector. Keep the same model selection to avoid the two problems above.
+3. Send one chat and check that a `gen-ai-bff` trace appears in `Default`.
+
+The configuration form always opens with **Enable tracing** off, even while tracing is on, so it does not show the current state. Saving the form with the switch off turns tracing off. Check the deployment's OTLP endpoint for the real state.
+
+Each recreate writes a burst of startup traces to `Default`: about 345 in the first two minutes on 2026-11-02, before chats began. The playground quality scorer grades only `gen-ai-bff` traces, so the burst does not affect quality results.
+
 ## AI Asset Endpoints MaaS API Key Dialog Shows An Empty Key
 
 **Affected stage:** Stage 040

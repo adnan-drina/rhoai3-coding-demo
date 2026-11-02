@@ -69,7 +69,7 @@ To qualify just one approved external model with one completion, set `RHOAI_STAG
 
 ## Optional Studio Tracing
 
-GenAI Studio exposes the Technology Preview tracing capability. Enable tracing explicitly in an individual playground session only when its prompts, code and tool outputs may be retained under your project policy. This is not automatic tracing of every MaaS request or agent. The embedded MLflow trace viewer does not by itself prove where this installed session persists traces; end-to-end storage and session rendering remain to be verified by the user. The separate Observe trace dashboard currently has a product-generated panel-reference error.
+GenAI Studio exposes the Technology Preview tracing capability. Enable tracing explicitly in an individual playground session only when its prompts, code and tool outputs may be retained under your project policy. This is not automatic tracing of every MaaS request or agent. Chats from a traced playground are stored in experiment `Default` of the project's MLflow workspace and open from the playground's trace view (verified on RHOAI 3.5.2). The configuration form always opens with the switch off, so turn it on again before each save. The separate Observe trace dashboard currently has a product-generated panel-reference error.
 
 ## Usage And Showback
 
