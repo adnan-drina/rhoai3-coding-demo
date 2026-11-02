@@ -1,7 +1,8 @@
 # The daily quality scorer (CronJob maas-quality-scorer). MLflow online judges need the MLflow AI Gateway and server
 # job execution, which OpenShift AI 3.5 ships disabled; this batch job does the same work with the MLflow SDK: for each
 # model experiment it samples the previous day's unscored request traces, asks a private judge model through MaaS and
-# logs the verdicts as MLflow feedback on the traces (the experiment Overview's Quality tab).
+# logs the verdicts as MLflow feedback on the traces (the experiment Overview's Quality tab). It grades the Gen AI
+# playground's conversations the same way (experiment Default of the AI Coding Sandbox project).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -103,14 +104,15 @@ data:
     JUDGE_SETS = {m: judges_for(m) for m in (JUDGE, SELF_JUDGE)}
 
 
-    def register_judges(exp_id, judge_set):
+    def register_judges(exp_id, judge_set, teams=True):
         """Show what grades this experiment on its Judges page: register the LLM judges when missing or changed (the
         finished code check cannot be registered: MLflow allows custom code scorers only on Databricks). Registration stores name, instructions, judge model and verdict type, never the endpoint or the key.
         The definitions live in Git (this ConfigMap); the page mirrors them. Display only: MLflow cannot run them
         itself on OpenShift AI 3.5 (no AI Gateway, no server job execution); this job runs them."""
         relevance, completeness, team = judge_set
         wanted = {"relevance": relevance, "completeness": completeness}
-        wanted.update({"team_guidelines_" + sub.removeprefix("team-"): judge for sub, judge in team.items()})
+        if teams:
+            wanted.update({"team_guidelines_" + sub.removeprefix("team-"): judge for sub, judge in team.items()})
         try:
             have = {s.name: s for s in list_scorers(experiment_id=exp_id)}
         except Exception as e:
@@ -132,6 +134,85 @@ data:
         return (root.inputs or {}).get("prompt"), (root.outputs or {}).get("response")
 
     client = mlflow.MlflowClient()
+    scored = failed = 0
+
+    def playground_io(trace):
+        """The last user message, the answer text and whether the answer completed, from the playground's root span."""
+        root = next(s for s in trace.data.spans if s.parent_id is None)
+        inputs = root.inputs if isinstance(root.inputs, list) else []
+        outputs = root.outputs if isinstance(root.outputs, list) else []
+        asked = [m.get("content") for m in inputs if isinstance(m, dict) and m.get("role") == "user"]
+        messages = [m for m in outputs if isinstance(m, dict) and m.get("type") == "message"]
+        answer = "".join(p.get("text", "") for m in messages for p in (m.get("content") or [])
+                         if isinstance(p, dict) and p.get("type") == "output_text")
+        return (asked[-1] if asked else None), answer or None, all(m.get("status") == "completed" for m in messages)
+
+    def answering_model(trace):
+        """The MaaS model of the trace's last model call, so the judge is never the model it grades."""
+        chats = sorted((s for s in trace.data.spans if s.name.startswith("chat ")), key=lambda s: s.start_time_ns)
+        return chats[-1].name.rsplit("/", 1)[-1] if chats else None
+
+    def score_playground():
+        """The Gen AI playground writes to the product's experiment Default in its project, with one model per chat
+        and platform calls (provider polling, SQLite) as traces of their own, so only its conversations are graded:
+        the traces with the root span gen-ai-bff. There are few, so all are in scope, not only the recent ones. The
+        playground has no teams, so no team_guidelines; finished comes from the answer's status, not a stop reason."""
+        global scored, failed
+        exp = client.get_experiment_by_name("Default")
+        if exp is None or exp.lifecycle_stage != "active":
+            print(f"{PLAYGROUND}: no active experiment Default; skipped", flush=True)
+            return
+        for key, value in {"source": "gen-ai-playground", "mlflow.note.content": "Gen AI playground conversations and the "
+                           "platform calls they cause. Only conversations (traces with the root span gen-ai-bff) are "
+                           "graded; a judge never grades its own answers."}.items():
+            client.set_experiment_tag(exp.experiment_id, key, value)
+        register_judges(exp.experiment_id, JUDGE_SETS[JUDGE], teams=False)
+        traces, token = [], None
+        while True:
+            page = client.search_traces(locations=[exp.experiment_id], max_results=100, page_token=token,
+                                        filter_string="span.name = 'gen-ai-bff' AND trace.status = 'OK'")
+            traces += list(page)
+            token = page.token
+            if not token:
+                break
+        wanted = {"finished", "relevance", "completeness"}
+        todo = [t for t in traces if wanted - {a.name for a in (t.info.assessments or [])}][:LIMIT]
+        print(f"{PLAYGROUND}: {len(traces)} conversations, {len(todo)} unscored", flush=True)
+        for trace in todo:
+            if time.time() > DEADLINE:
+                print("run budget reached; the remaining traces wait for the next run", flush=True)
+                return
+            prompt, response, completed = playground_io(trace)
+            if not prompt or response is None:
+                continue
+            need = wanted - {a.name for a in (trace.info.assessments or [])}
+            if "finished" in need:
+                mlflow.log_assessment(trace_id=trace.info.trace_id, assessment=Feedback(
+                    name="finished", value=completed,
+                    rationale="The answer's status is " + ("completed." if completed else "not completed: it was cut off."),
+                    source=AssessmentSource(source_type="CODE", source_id="response_status")))
+                scored += 1
+            relevance, completeness, _ = JUDGE_SETS[SELF_JUDGE if answering_model(trace) == JUDGE else JUDGE]
+            for judge in (relevance, completeness):
+                if judge.name not in need:
+                    continue
+                try:
+                    feedback = judge(inputs={"request": prompt}, outputs={"response": response})
+                    mlflow.log_assessment(trace_id=trace.info.trace_id, assessment=feedback)
+                    scored += 1
+                except Exception as e:  # one failed verdict never stops the run
+                    failed += 1
+                    print(f"  {trace.info.trace_id} {judge.name}: {type(e).__name__}: {str(e)[:200]}", flush=True)
+
+    # First, because it is small: the MaaS experiments can use up the run budget. A playground failure never stops them.
+    PLAYGROUND = os.environ["PLAYGROUND_WORKSPACE"]
+    mlflow.set_workspace(PLAYGROUND)
+    try:
+        score_playground()
+    except Exception as e:
+        print(f"{PLAYGROUND}: not scored ({type(e).__name__}: {str(e)[:200]})", flush=True)
+    finally:
+        mlflow.set_workspace(os.environ["MLFLOW_WORKSPACE"])
 
     # One experiment per MaaS model, created before its first request: internal-<model> for model references in
     # internal-models, external-<model> for those in external-models. Offering and provider are refreshed each run, so
@@ -172,7 +253,6 @@ data:
                 client.set_experiment_tag(exp_id, key, value)
 
     cutoff = int((time.time() - WINDOW_MIN * 60) * 1000)
-    scored = failed = 0
     # One experiment per MaaS model: internal-<model> (served in internal-models) and external-<model>.
     experiments = [e for prefix in ("internal-", "external-")
                    for e in client.search_experiments(filter_string=f"name LIKE '{prefix}%'")]

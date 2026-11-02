@@ -59,6 +59,8 @@ spec:
                   value: kubernetes-namespaced
                 - name: MLFLOW_WORKSPACE
                   value: models-as-a-service
+                - name: PLAYGROUND_WORKSPACE
+                  value: demo-sandbox
                 - name: MLFLOW_TRACKING_SERVER_CERT_PATH
                   value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
                 - name: MLFLOW_DISABLE_TELEMETRY

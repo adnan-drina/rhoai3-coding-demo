@@ -166,6 +166,13 @@ differ from the Showback charges by design. Talk track: the Showback 1 · By tea
   The exporter `showback-quality-exporter` (`redhat-ods-monitoring`) reads the verdicts of the last 7 days from MLflow
   every 30 minutes and publishes them to Prometheus, so tab 1's Quality row shows the pass rate per model and judge.
 - **Scope:** only this load generator's requests are traced. Platform-side tracing of every MaaS client is planned work.
+- **Other projects:**
+
+  | Project | Experiments | Quality |
+  |---|---|---|
+  | AI Coding Sandbox (`demo-sandbox`) | `Default`, written by the Gen AI playground; the name comes from the product, and one chat can use any model | The same scorer and judges grade every conversation (traces with the root span `gen-ai-bff`): `relevance`, `completeness`, and `finished` from the answer's status. No `team_guidelines`, because the playground has no teams. A judge never grades its own model. The other traces in this experiment are platform calls and are not graded |
+  | Evaluated Models (`evaluated-models`) | `models-onboarding`, runs from the qualification pipeline and EvalHub; no traces | The benchmarks and the qualification verdict; judges grade traces, so they do not apply |
+  | AI Agents (`ai-agents`) | None yet | Nothing to grade until agent traces are written |
 
 ## External metering
 

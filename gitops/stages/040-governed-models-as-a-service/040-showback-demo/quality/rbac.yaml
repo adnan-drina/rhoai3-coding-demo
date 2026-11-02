@@ -178,6 +178,48 @@ subjects:
     name: maas-quality-judge
     namespace: models-as-a-service
 ---
+# The playground's conversations: read the traces and write feedback in the AI Coding Sandbox workspace. The experiment
+# Default already exists, so no create.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: maas-quality-judge-playground
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+rules:
+  - apiGroups: [mlflow.kubeflow.org]
+    resources: [experiments]
+    verbs: [get, list, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: maas-quality-judge-playground
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: maas-quality-judge
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: quality-scoring
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+  annotations:
+    argocd.argoproj.io/sync-wave: '10'
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: maas-quality-judge-playground
+subjects:
+  - kind: ServiceAccount
+    name: maas-quality-judge
+    namespace: models-as-a-service
+---
 # The offer catalog: whether a private model is offered shared or dedicated (the experiment offering tag).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
