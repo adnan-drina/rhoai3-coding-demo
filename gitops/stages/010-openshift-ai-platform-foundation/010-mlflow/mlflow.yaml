@@ -16,7 +16,9 @@ spec:
   migration:
     mode: Automatic
   serviceAccountName: mlflow-sa
-  workers: 1
+  # Two workers so one slow request (a trace scan, a batch of feedback writes) cannot hold up the 1-second health
+  # probes and get the single pod restarted.
+  workers: 2
   replicas: 1
   backendStoreUriFrom:
     name: mlflow-db-credentials
