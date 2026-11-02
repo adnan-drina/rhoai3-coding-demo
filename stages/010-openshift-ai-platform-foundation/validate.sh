@@ -408,8 +408,9 @@ validate_mlflow() {
   MLFLOW=$(read_json mlflows.mlflow.opendatahub.io mlflow)
   record "MLflow Available at its current generation" "$(yes_no '.metadata.generation as $g | $g != null
     and any(.status.conditions[]?; .type == "Available" and .status == "True")
-    and ([.status.conditions[]? | select((.type == "MLflowOperatorReady" or .type == "Migration") and .status == "True"
-         and .observedGeneration == $g) | .type] | unique | length) == 2' <<<"$MLFLOW")"
+    and any(.status.conditions[]?; .type == "MLflowOperatorReady" and .status == "True" and .observedGeneration == $g)
+    # Migration stays on the generation it last ran for: a spec change such as workers needs no migration.
+    and any(.status.conditions[]?; .type == "Migration" and .status == "True")' <<<"$MLFLOW")"
   record "MLflow uses the PostgreSQL Secret and proxied claim artifacts" "$(yes_no --arg b "$BUCKET" '.spec
     | .backendStoreUriFrom == {name: "mlflow-db-credentials", key: "backend-store-uri"} and .serveArtifacts == true
     and .artifactsDestination == "s3://\($b)/artifacts" and (.defaultArtifactRoot // "mlflow-artifacts:/") == "mlflow-artifacts:/"' <<<"$MLFLOW")"
