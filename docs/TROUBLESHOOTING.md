@@ -826,6 +826,31 @@ oc logs -n demo-sandbox "$(oc get jobs -n demo-sandbox -l app.kubernetes.io/name
 
 **Recover:** if the log says the playground is too old to attach, delete the playground from the dashboard and create it again; the CronJob mounts the PVC within two minutes. To keep the current history, follow the Studio state backup and restore procedure in `docs/OPERATIONS.md` instead. `./stages/040-governed-models-as-a-service/validate.sh` warns while a playground runs without the mount.
 
+## Gen AI Playground Pod Crash-Loops After It Is Reconfigured
+
+**Affected stage:** Stage 040
+
+**Symptom:** after the playground is reconfigured in the dashboard, a new `lsd-genai-playground` pod restarts in `CrashLoopBackOff` while the previous pod keeps serving, without the retained state. Chats on the previous pod are lost when the new one takes over.
+
+**Likely cause:** reconfiguring deletes and recreates the playground, and `playground-state-attacher` then mounts the retained PVC. `kvstore.db` on that PVC still holds the earlier model registrations. If a model keeps its provider and ID but its settings differ, such as its display name, OGX refuses to start. The installed API has no unregister, and the pod can't start to serve one.
+
+**Diagnose:**
+
+```bash
+oc get pods -n demo-sandbox | grep lsd-genai-playground
+oc logs -n demo-sandbox <failing-pod> --previous | grep -A3 'already exists with conflicting field values'
+```
+
+**Recover:** remove only the record the error names; OGX registers it again from its configuration at startup. Chat history is in `sql_store.db` and is not touched.
+
+1. Start a short-lived helper pod with the failing pod's image on the same node (the PVC is ReadWriteOnce), with ServiceAccount `lsd-genai-playground-sa`, `fsGroup` and `runAsUser` `1001`, and the PVC mounted.
+2. In the helper, back up with the SQLite backup API to `kvstore.db.bak-<UTC time>` on the PVC and check its `integrity_check`. Never copy a live database.
+3. In a `BEGIN IMMEDIATE` transaction, check that the record in table `kvstore` holds the value from the error, delete that one key (`registry:distributions:registry:v10::model:<provider>/<model>`) and commit.
+4. Delete the helper pod, then delete the failing pod. Repeat if the new pod names another record.
+5. Check that the rollout finishes, the pod has no restarts and `GET /v1/responses` on port 8321 returns the expected history.
+
+A request sent directly to the pod returns `401` from the model: the dashboard supplies the MaaS key per request. Check chat from the playground.
+
 ## AI Asset Endpoints MaaS API Key Dialog Shows An Empty Key
 
 **Affected stage:** Stage 040
