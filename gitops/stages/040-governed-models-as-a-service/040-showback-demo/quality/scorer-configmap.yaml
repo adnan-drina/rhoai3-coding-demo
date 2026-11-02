@@ -192,6 +192,7 @@ data:
             token = page.token
             if not token:
                 break
+        traces = list({t.info.trace_id: t for t in traces}.values())  # see the same line in the MaaS loop
         def missing(t):
             want = {"finished", "relevance", "completeness"} | ({"groundedness"} if retrieved_passages(t) else set())
             return want - {a.name for a in (t.info.assessments or [])}
@@ -293,6 +294,8 @@ data:
             token = page.token
             if not token:
                 break
+        # Traces written while paging can shift a trace onto the next page; a repeat would be graded twice.
+        traces = list({t.info.trace_id: t for t in traces}.values())
         # Only traces that record why the answer stopped (generator since 2026-10-27) and still miss a verdict;
         # each trace gets only the verdicts it does not have yet, so a half-scored trace is completed, never doubled.
         def missing(t):
