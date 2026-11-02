@@ -65,9 +65,9 @@ spec:
         - name: SUBSCRIPTION
           value: mta-operator
         - name: EXPECTED_CSV
-          value: mta-operator.v8.3.2
+          value: mta-operator.v8.3.3
         - name: ALLOWED_CSVS
-          value: mta-operator.v8.3.2
+          value: mta-operator.v8.3.3
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

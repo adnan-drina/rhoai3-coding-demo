@@ -8,7 +8,7 @@ metadata:
   skill-group: "Application Modernization"
 description: >
   Use when checking MTA 8.3 release posture for this demo: which z-stream is
-  pinned (operator 8.3.1, workspace CLI 8.3.0, VSIX 8.3.1), Developer Preview
+  pinned (operator 8.3.3, workspace CLI 8.3.0, VSIX 8.3.1), Developer Preview
   vs Technology Preview status of native Agents, Lightspeed and Solution
   Server, known issues that affect the repo, and reviewing an MTA update. Do
   NOT use for installing (use mta-install), AI configuration (use
@@ -30,7 +30,7 @@ MTA 8.3 release notes.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Operator pinned to `mta-operator.v8.3.1` (Subscription `startingCSV`, approver allowlist, validator) | `gitops/stages/070-advanced-app-platform/070-mta/mta-operator/` | [MTA 8.3][rn83] |
+| Operator pinned to `mta-operator.v8.3.3` (Subscription `startingCSV`, approver allowlist, validator) | `gitops/stages/070-advanced-app-platform/070-mta/mta-operator/` | [MTA 8.3][rn83] |
 | Workspace CLI 8.3.0 and VSIX 8.3.1 qualified separately from the operator | `stages/070-advanced-app-platform/workspace-image/artifacts.lock.json` | [MTA 8.3.0][rn830] |
 | Native Agents treated as Developer Preview; unqualified while models are stopped | `gitops/stages/070-advanced-app-platform/070-mta/README.md` | [MTA agents][agents] |
 | Lightspeed proxy and Solution Server treated as Technology Preview; Solution Server disabled | `070-mta/mta-instance/tackle.yaml` | see `mta-lightspeed` |
@@ -47,7 +47,7 @@ MTA 8.3 release notes.
 ## Pitfalls
 
 - The 8.3 release notes describe 8.3.0 only (checked 2026-10-15); the repo
-  runs 8.3.1, so its fixes are not in this book. Check the Red Hat errata for
+  runs 8.3.3, so its fixes are not in this book. Check the Red Hat errata for
   the CSV before relying on a fix.
 - The book also carries 8.0–8.2 chapters; attribute a feature to its actual
   release.

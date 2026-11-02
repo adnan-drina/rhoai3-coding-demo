@@ -35,8 +35,8 @@ MTA 8.3 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Operator in `openshift-mta`, own-namespace OperatorGroup, channel `stable-v8.3`, `installPlanApproval: Manual`, `startingCSV: mta-operator.v8.3.1` | `gitops/stages/070-advanced-app-platform/070-mta/mta-operator/` | [Install the MTA Operator][op] |
-| A Sync-hook Job approves the InstallPlan only when every CSV is on its allowlist (`mta-operator.v8.3.1`); `validate.sh` expects exactly that CSV | `070-mta/mta-operator/approve-installplan.yaml`, `stages/070-advanced-app-platform/validate.sh` | — (repo policy; the guide gives no channel guidance) |
+| Operator in `openshift-mta`, own-namespace OperatorGroup, channel `stable-v8.3`, `installPlanApproval: Manual`, `startingCSV: mta-operator.v8.3.3` | `gitops/stages/070-advanced-app-platform/070-mta/mta-operator/` | [Install the MTA Operator][op] |
+| A Sync-hook Job approves the InstallPlan only when every CSV is on its allowlist (`mta-operator.v8.3.3`); `validate.sh` expects exactly that CSV | `070-mta/mta-operator/approve-installplan.yaml`, `stages/070-advanced-app-platform/validate.sh` | — (repo policy; the guide gives no channel guidance) |
 | `Tackle mta`: `feature_auth_required: true`, `idp_primary: true`, `rwx_supported: "false"`, `kai_database_volume_size: 5Gi`; AI flags owned by `mta-lightspeed` and `mta-ui` | `070-mta/mta-instance/tackle.yaml` | [Custom resource settings][crs], [Authentication fields][authfields] |
 | All volumes RWO on the default class; `deploy.sh` refuses unless `gp3-csi` is the default StorageClass | `stages/070-advanced-app-platform/deploy.sh` | [Persistent volume requirements][pv] |
 | Platform SSO: hook ensures `role.*` realm roles, client `mta-hub`, `+role.<name>` optional scopes, Secret `mta-idp-client-secret` (key `clientSecret`), `IdentityProvider` `platform-sso` (primary), restarts the Hub on change | `070-mta/jobs/configure-mta-platform-sso.yaml` | [IdP client secret][idpsecret], [IdentityProvider CR][idpcr], [URI templating][uri], [Roles and personas][roles] |
