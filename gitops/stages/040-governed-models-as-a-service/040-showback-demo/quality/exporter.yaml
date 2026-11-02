@@ -1,8 +1,9 @@
 # Quality exporter: publishes the judges' verdicts from MLflow as Prometheus gauges for the showback dashboards, which
-# read Prometheus only. Every 30 minutes it counts the verdicts of the last WINDOW_DAYS days per model experiment,
+# read Prometheus only. Every 6 hours (scores change once a day) it counts the verdicts of the last WINDOW_DAYS days per model experiment,
 # judge, subscription and result; the dashboards turn the counts into pass rates and join the team from the offer
 # catalog. It runs beside the metering backend in redhat-ods-monitoring, the namespace the monitoring stack scrapes,
-# and reads the MLflow workspace models-as-a-service through the in-cluster Service.
+# and reads the MLflow workspace models-as-a-service through the in-cluster Service. It reads small pages with a pause
+# between them: a full scan in large pages kept MLflow too busy to answer its 1-second health checks.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -79,7 +80,9 @@ data:
     import mlflow
 
     WINDOW_DAYS = int(os.environ.get("WINDOW_DAYS", "7"))
-    REFRESH = int(os.environ.get("REFRESH_SECONDS", "1800"))
+    REFRESH = int(os.environ.get("REFRESH_SECONDS", "21600"))
+    PAGE_SIZE = int(os.environ.get("PAGE_SIZE", "100"))
+    PAGE_PAUSE = float(os.environ.get("PAGE_PAUSE_SECONDS", "2"))
     PASS = {"yes", "true", "pass"}
     state = {"body": "", "ok": False}
 
@@ -94,7 +97,7 @@ data:
             for exp in client.search_experiments(filter_string=f"name LIKE '{prefix}%'"):
                 model, token = exp.name[len(prefix):], None
                 while True:
-                    page = client.search_traces(locations=[exp.experiment_id], max_results=500, page_token=token,
+                    page = client.search_traces(locations=[exp.experiment_id], max_results=PAGE_SIZE, page_token=token,
                                                 filter_string=f"trace.timestamp_ms > {cutoff}")
                     for t in page:
                         sub = (t.info.tags or {}).get("subscription", "")
@@ -107,6 +110,7 @@ data:
                     token = page.token
                     if not token:
                         break
+                    time.sleep(PAGE_PAUSE)  # leave MLflow room for other requests and its probes
         lines = ["# HELP showback_quality_verdicts Judge verdicts of the request traces in the window (MLflow feedback).",
                  "# TYPE showback_quality_verdicts gauge"]
         lines += [f'showback_quality_verdicts{{model="{esc(m)}",offer="{o}",judge="{esc(j)}",subscription="{esc(s)}",'
@@ -186,7 +190,11 @@ spec:
             - name: WINDOW_DAYS
               value: '7'
             - name: REFRESH_SECONDS
-              value: '1800'
+              value: '21600'
+            - name: PAGE_SIZE
+              value: '100'
+            - name: PAGE_PAUSE_SECONDS
+              value: '2'
             - name: MLFLOW_TRACKING_URI
               value: https://mlflow.redhat-ods-applications.svc:8443/mlflow
             - name: MLFLOW_TRACKING_AUTH
@@ -204,7 +212,7 @@ spec:
               path: /metrics
               port: http
             periodSeconds: 30
-            failureThreshold: 20
+            failureThreshold: 60
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
