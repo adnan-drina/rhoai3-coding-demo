@@ -170,7 +170,7 @@ differ from the Showback charges by design. Talk track: the Showback 1 · By tea
 
   | Project | Experiments | Quality |
   |---|---|---|
-  | AI Coding Sandbox (`demo-sandbox`) | `Default`, written by the Gen AI playground; the name comes from the product, and one chat can use any model | The same scorer and judges grade every conversation (traces with the root span `gen-ai-bff`): `relevance`, `completeness`, and `finished` from the answer's status. No `team_guidelines`, because the playground has no teams. A judge never grades its own model. The other traces in this experiment are platform calls and are not graded |
+  | AI Coding Sandbox (`demo-sandbox`) | `Default`, written by the Gen AI playground; the name comes from the product, and one chat can use any model | The same scorer and judges grade every conversation (traces with the root span `gen-ai-bff`): `relevance`, `completeness`, and `finished` from the answer's status. Conversations that used document search also get `groundedness`, which checks the answer against the retrieved passages. No `team_guidelines`, because the playground has no teams. A judge never grades its own model. The other traces in this experiment are platform calls and are not graded |
   | Evaluated Models (`evaluated-models`) | `models-onboarding`, runs from the qualification pipeline and EvalHub; no traces | The benchmarks and the qualification verdict; judges grade traces, so they do not apply |
   | AI Agents (`ai-agents`) | None yet | Nothing to grade until agent traces are written |
 

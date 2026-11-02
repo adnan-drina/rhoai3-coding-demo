@@ -99,7 +99,13 @@ data:
             instructions=("Request: {{ inputs }}\nResponse: {{ outputs }}\nGuideline: " + rules + "\n"
             "Return true if the response meets the guideline, false if it does not."), **kw)
             for sub, rules in GUIDELINES.items()}
-        return relevance, completeness, team
+        # Playground conversations that used document search: the passages travel in the inputs, next to the request.
+        groundedness = make_judge(name="groundedness", description="The response is supported by the retrieved passages.",
+            instructions=("Request and retrieved passages: {{ inputs }}\nResponse: {{ outputs }}\n"
+            "Return true if every factual claim in the response is supported by the retrieved passages, false if the "
+            "response contradicts them or states a fact they do not contain. Greetings and offers of further help are "
+            "not factual claims."), **kw)
+        return relevance, completeness, team, groundedness
 
     JUDGE_SETS = {m: judges_for(m) for m in (JUDGE, SELF_JUDGE)}
 
@@ -109,10 +115,12 @@ data:
         finished code check cannot be registered: MLflow allows custom code scorers only on Databricks). Registration stores name, instructions, judge model and verdict type, never the endpoint or the key.
         The definitions live in Git (this ConfigMap); the page mirrors them. Display only: MLflow cannot run them
         itself on OpenShift AI 3.5 (no AI Gateway, no server job execution); this job runs them."""
-        relevance, completeness, team = judge_set
+        relevance, completeness, team, groundedness = judge_set
         wanted = {"relevance": relevance, "completeness": completeness}
         if teams:
             wanted.update({"team_guidelines_" + sub.removeprefix("team-"): judge for sub, judge in team.items()})
+        else:
+            wanted["groundedness"] = groundedness
         try:
             have = {s.name: s for s in list_scorers(experiment_id=exp_id)}
         except Exception as e:
@@ -147,6 +155,14 @@ data:
                          if isinstance(p, dict) and p.get("type") == "output_text")
         return (asked[-1] if asked else None), answer or None, all(m.get("status") == "completed" for m in messages)
 
+    def retrieved_passages(trace):
+        """What document search returned for this turn: the file_search_call results in the playground's root span."""
+        root = next(s for s in trace.data.spans if s.parent_id is None)
+        outputs = root.outputs if isinstance(root.outputs, list) else []
+        return [{"file": r.get("filename"), "text": r.get("text")} for call in outputs
+                if isinstance(call, dict) and call.get("type") == "file_search_call"
+                for r in (call.get("results") or []) if isinstance(r, dict) and r.get("text")]
+
     def answering_model(trace):
         """The MaaS model of the trace's last model call, so the judge is never the model it grades."""
         chats = sorted((s for s in trace.data.spans if s.name.startswith("chat ")), key=lambda s: s.start_time_ns)
@@ -156,7 +172,8 @@ data:
         """The Gen AI playground writes to the product's experiment Default in its project, with one model per chat
         and platform calls (provider polling, SQLite) as traces of their own, so only its conversations are graded:
         the traces with the root span gen-ai-bff. There are few, so all are in scope, not only the recent ones. The
-        playground has no teams, so no team_guidelines; finished comes from the answer's status, not a stop reason."""
+        playground has no teams, so no team_guidelines; finished comes from the answer's status, not a stop reason.
+        Conversations that retrieved passages also get groundedness; the others have nothing to check it against."""
         global scored, failed
         exp = client.get_experiment_by_name("Default")
         if exp is None or exp.lifecycle_stage != "active":
@@ -175,8 +192,10 @@ data:
             token = page.token
             if not token:
                 break
-        wanted = {"finished", "relevance", "completeness"}
-        todo = [t for t in traces if wanted - {a.name for a in (t.info.assessments or [])}][:LIMIT]
+        def missing(t):
+            want = {"finished", "relevance", "completeness"} | ({"groundedness"} if retrieved_passages(t) else set())
+            return want - {a.name for a in (t.info.assessments or [])}
+        todo = [t for t in traces if missing(t)][:LIMIT]
         print(f"{PLAYGROUND}: {len(traces)} conversations, {len(todo)} unscored", flush=True)
         for trace in todo:
             if time.time() > DEADLINE:
@@ -185,19 +204,22 @@ data:
             prompt, response, completed = playground_io(trace)
             if not prompt or response is None:
                 continue
-            need = wanted - {a.name for a in (trace.info.assessments or [])}
+            need = missing(trace)
             if "finished" in need:
                 mlflow.log_assessment(trace_id=trace.info.trace_id, assessment=Feedback(
                     name="finished", value=completed,
                     rationale="The answer's status is " + ("completed." if completed else "not completed: it was cut off."),
                     source=AssessmentSource(source_type="CODE", source_id="response_status")))
                 scored += 1
-            relevance, completeness, _ = JUDGE_SETS[SELF_JUDGE if answering_model(trace) == JUDGE else JUDGE]
-            for judge in (relevance, completeness):
+            relevance, completeness, _, groundedness = JUDGE_SETS[SELF_JUDGE if answering_model(trace) == JUDGE else JUDGE]
+            for judge in (relevance, completeness, groundedness):
                 if judge.name not in need:
                     continue
+                inputs = {"request": prompt}
+                if judge.name == "groundedness":
+                    inputs["retrieved_passages"] = retrieved_passages(trace)
                 try:
-                    feedback = judge(inputs={"request": prompt}, outputs={"response": response})
+                    feedback = judge(inputs=inputs, outputs={"response": response})
                     mlflow.log_assessment(trace_id=trace.info.trace_id, assessment=feedback)
                     scored += 1
                 except Exception as e:  # one failed verdict never stops the run
@@ -260,7 +282,7 @@ data:
     for exp in experiments:
         # No model grades its own answers: the second judge takes the main judge model's experiment.
         own = exp.name == "internal-" + JUDGE
-        RELEVANCE, COMPLETENESS, TEAM_JUDGES = JUDGE_SETS[SELF_JUDGE if own else JUDGE]
+        RELEVANCE, COMPLETENESS, TEAM_JUDGES, _ = JUDGE_SETS[SELF_JUDGE if own else JUDGE]
         register_judges(exp.experiment_id, JUDGE_SETS[SELF_JUDGE if own else JUDGE])
         # Every trace of the window, page by page (a busy experiment holds more than one page).
         traces, token = [], None
