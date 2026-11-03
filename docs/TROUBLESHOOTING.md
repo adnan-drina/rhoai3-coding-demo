@@ -2149,6 +2149,23 @@ oc -n openshift-ingress rollout restart deployment maas-default-gateway-data-sci
 
 Verify: `maas-api/health` returns 200 and `maas-api/v1/models` returns 401 without a key. The dependent workloads recover without a restart. An Argo CD sync that failed on `provision-maas-quality-judge` during the outage succeeds on its own retry, and the existing key stays valid.
 
+## DataScienceCluster Stays Degraded On OGX After A Cluster Resume
+
+**Affected stage:** Stage 010 and everything that requires a Ready `DataScienceCluster` (validators in Stages 010, 020, 030 and 040 fail)
+
+**Symptoms (observed live 2026-11-03):** `default-dsc` reports `Some modules are degraded: ogx`, and `default-ogx` has `Degraded=True` with `UnhealthyOGXServers`, naming `demo-sandbox/lsd-genai-playground`. The OGXServer itself is `Ready` and its health check passes. The condition's `lastTransitionTime` is older than the playground pod.
+
+**Likely cause:** the OGX component evaluated the playground during a resume, while its pod was down, and did not evaluate it again once the pod was healthy.
+
+**Recover:** any change to the component triggers a new evaluation; a temporary annotation is enough:
+
+```bash
+oc annotate ogx default-ogx rhoai3-demo/reconcile-nudge="$(date -u +%s)" --overwrite
+oc annotate ogx default-ogx rhoai3-demo/reconcile-nudge-
+```
+
+Verify: `oc get datasciencecluster default-dsc` reports Ready. If `Degraded` stays `True`, the playground really is unhealthy; look at its pod.
+
 ## MaaS Gateway Times Out On Every Path (RHCL 1.4.x Drift)
 
 > **Historical (RHCL 1.3 era, 2026-07).** The demo now runs RHCL 1.4.3 on purpose, with Automatic approval on the `stable` channel. Do not use the 1.3.z rollback below on the current platform. For a gateway that holds responses open on 1.4.3, see [MaaS Gateway Holds A Response Open Until The Client Times Out](#maas-gateway-holds-a-response-open-until-the-client-times-out).
