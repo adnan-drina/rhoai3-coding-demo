@@ -81,6 +81,7 @@ data:
 
     WINDOW_DAYS = int(os.environ.get("WINDOW_DAYS", "7"))
     REFRESH = int(os.environ.get("REFRESH_SECONDS", "21600"))
+    RETRY = int(os.environ.get("RETRY_SECONDS", "60"))
     PAGE_SIZE = int(os.environ.get("PAGE_SIZE", "100"))
     PAGE_PAUSE = float(os.environ.get("PAGE_PAUSE_SECONDS", "2"))
     PASS = {"yes", "true", "pass"}
@@ -124,12 +125,14 @@ data:
 
     def refresh():
         while True:
+            delay = REFRESH
             try:
                 state["body"], state["ok"] = collect(), True
                 print(f"refreshed: {state['body'].count('showback_quality_verdicts{')} series", flush=True)
-            except Exception as e:  # keep serving the last counts; the next refresh retries
+            except Exception as e:  # keep serving the last counts; retry soon, MLflow may still be starting after a lab start
                 print(f"refresh failed: {type(e).__name__}: {e}", flush=True)
-            time.sleep(REFRESH)
+                delay = RETRY
+            time.sleep(delay)
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
