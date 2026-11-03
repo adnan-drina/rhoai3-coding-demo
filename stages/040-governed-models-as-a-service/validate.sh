@@ -483,6 +483,15 @@ studio_catalog() {
     echo yes
 }
 
+# A gateway pod that starts before the Kuadrant operator serves plugin.wasm stays fail-closed: every request gets 503
+# while all Gateway and Argo CD conditions stay green, so only a request shows it. Unauthenticated, a working one says 401.
+gateway_policy_plugin() {
+    local host code
+    host=$(jq -r '.spec.listeners[] | select(.name == "api") | .hostname' <<<"$GATEWAY")
+    code=$(curl -sk --max-time 20 -o /dev/null -w '%{http_code}' "https://$host/v1/models" || true)
+    [[ "$code" == 401 ]] && echo yes || echo "HTTP $code; restart the gateway pods if their log shows wasm_fail_stream"
+}
+
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 check "Stage 040 components Synced and Healthy at one immutable revision; retired single Application absent" components_reconciled yes
@@ -492,6 +501,7 @@ check "AIGateway, OGX and KServe Managed and Ready; MaaS enabled; dashboard feat
 check "MaaS PostgreSQL available on Bound gp3-csi storage; runtime credential keys present" database yes
 check "Authorino TLS, CA bundle and owned workload projecting the service CA (live TLS requests pending)" authorino yes
 check "Gateway Accepted/Programmed; listeners api, qwen3-8 and mistral-small4 isolated, TLS-terminated and current" gateway yes
+check "MaaS gateway policy plugin loaded: an unauthenticated request gets 401, not 503" gateway_policy_plugin yes
 check "MaaS namespaces admitted to the Gateway; hosting-project administrator bindings" namespace_access yes
 check "MaaS API and external routes attached to the api listener only" api_routes yes
 check "Local models: reviewed spec, workloads, single owned route on their listeners (parked compute is not inference)" local_models yes
