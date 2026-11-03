@@ -2125,6 +2125,30 @@ documented hostAlias; the historical recovery used manual route repair at an idl
 A recovered request establishes availability, not a permanent gateway fix;
 retain any recurrence as a platform issue.
 
+## MaaS Gateway Returns 503 On Every Path After A Cluster Resume
+
+**Affected stage:** Stage 040 (breaks every AI consumer: Playground chats, key provisioning, MTA `llm-proxy`, OpenShift Lightspeed)
+
+**Symptoms (observed live 2026-11-03):** `curl https://maas.<apps-domain>/maas-api/health` returns 503 although the `maas-api` pod is ready and answers its own health checks. Gateway access-log lines show `503 - wasm_fail_stream`. Gateway pods and the Gateway status look healthy. `llm-proxy` crash-loops on 503 and the Lightspeed app server stays unready with `LLM is not ready`.
+
+**Likely cause:** the gateway pods start with the cluster and fetch the Kuadrant filter from `kuadrant-operator-wasm.openshift-operators.svc:8082`. When that fetch runs out of retries, the fail-closed filter rejects every request and does not fetch again. The operator probably was not serving yet: it had started 33 seconds before the failed fetch.
+
+**Diagnose:**
+
+```bash
+oc logs deploy/maas-default-gateway-data-science-gateway-class -n openshift-ingress | grep -E 'Retry limit exceeded|wasm_fail_stream'
+```
+
+`Plugin kuadrant-wasm-shim failed to load` alone is not the signal: a healthy start logs it briefly while the fetch is in progress. `Retry limit exceeded` followed by `wasm_fail_stream` on requests is.
+
+**Recover:** once the operator is running, restart the gateway:
+
+```bash
+oc -n openshift-ingress rollout restart deployment maas-default-gateway-data-science-gateway-class
+```
+
+Verify: `maas-api/health` returns 200 and `maas-api/v1/models` returns 401 without a key. The dependent workloads recover without a restart. An Argo CD sync that failed on `provision-maas-quality-judge` during the outage succeeds on its own retry, and the existing key stays valid.
+
 ## MaaS Gateway Times Out On Every Path (RHCL 1.4.x Drift)
 
 > **Historical (RHCL 1.3 era, 2026-07).** The demo now runs RHCL 1.4.3 on purpose, with Automatic approval on the `stable` channel. Do not use the 1.3.z rollback below on the current platform. For a gateway that holds responses open on 1.4.3, see [MaaS Gateway Holds A Response Open Until The Client Times Out](#maas-gateway-holds-a-response-open-until-the-client-times-out).
