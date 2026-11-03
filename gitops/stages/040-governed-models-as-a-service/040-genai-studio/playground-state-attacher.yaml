@@ -6,6 +6,53 @@
 # It attaches only to a NEW playground (created within the last 10 minutes) or when the PVC is already Bound (it
 # then holds a playground's earlier state): mounting an empty volume over an older playground would hide the state
 # that playground already has. Every other case is logged and left alone.
+# It also wraps the playground's start command to run prune.py below first, so model records retained from an earlier
+# save cannot show as duplicates or stop the pod with "already exists with conflicting field values". A playground
+# saved with tracing off has no command override to wrap, so it is mounted without the prune; the log says so.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playground-state-prune
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: playground-state-attacher
+    app.kubernetes.io/component: studio-state
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+data:
+  prune.py: |
+    # Removes the retained records of dashboard-configured models; OGX registers the current ones from its config at
+    # startup. Embedding and reranker models (provider sentence-transformers) and chat history are not touched.
+    import os, sqlite3, sys, yaml
+
+    STATE = "/opt/app-root/src/.llama/distributions/rh"
+    DASHBOARD_PROVIDERS = ("maas-vllm-inference-", "endpoint-")
+    MARK = "::model:"
+
+    db = os.path.join(STATE, "kvstore.db")
+    if not os.path.exists(db):
+        sys.exit("prune: no retained kvstore.db yet")
+    with open("/etc/ogx/config.yaml") as f:
+        models = (yaml.safe_load(f).get("registered_resources") or {}).get("models") or []
+    if not any(str(m.get("provider_id", "")).startswith(DASHBOARD_PROVIDERS) for m in models):
+        sys.exit("prune: the config declares no dashboard model; nothing removed")
+
+    con = sqlite3.connect(db, timeout=30)
+    keys = [k for (k,) in con.execute("select key from kvstore where key like ?", ("registry:%" + MARK + "%",))
+            if k.split(MARK, 1)[1].startswith(DASHBOARD_PROVIDERS)]
+    if not keys:
+        sys.exit("prune: no retained dashboard model records")
+    backup = sqlite3.connect(db + ".bak-prune")
+    con.backup(backup)
+    backup.close()
+    con.isolation_level = None
+    con.execute("BEGIN IMMEDIATE")
+    for key in keys:
+        con.execute("delete from kvstore where key = ?", (key,))
+    con.execute("COMMIT")
+    print("prune: removed %d retained model records; backup at %s.bak-prune" % (len(keys), db))
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -115,20 +162,34 @@ spec:
                   d = json.load(sys.stdin)
                   o = ((d.get("spec") or {}).get("workload") or {}).get("overrides") or {}
                   vols, mounts = list(o.get("volumes") or []), list(o.get("volumeMounts") or [])
-                  if any((v.get("persistentVolumeClaim") or {}).get("claimName") == os.environ["PVC"] for v in vols):
-                      print("attached"); sys.exit()
-                  born = datetime.datetime.strptime(d["metadata"]["creationTimestamp"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
-                  age = int((datetime.datetime.now(datetime.timezone.utc) - born).total_seconds())
-                  if age > int(os.environ["MAX_AGE"]) and os.environ["PHASE"] != "Bound":
-                      print("refuse %d" % age); sys.exit()
-                  vols.append({"name": os.environ["VOLUME"], "persistentVolumeClaim": {"claimName": os.environ["PVC"]}})
-                  mounts.append({"name": os.environ["VOLUME"], "mountPath": os.environ["MOUNT"]})
+                  command = list(o.get("command") or [])
+                  prune_dir = "/etc/playground-state-prune"
+                  # The dashboard sets ["/bin/sh", "-c", "<start>"] when tracing is on; any other shape is left as it is.
+                  wrappable = len(command) == 3 and command[1] == "-c"
+                  pruned = wrappable and prune_dir in command[2]
+                  mounted = any((v.get("persistentVolumeClaim") or {}).get("claimName") == os.environ["PVC"] for v in vols)
+                  if mounted and (pruned or not wrappable):
+                      print("attached" if pruned else "attached-noprune"); sys.exit()
+                  if not mounted:
+                      born = datetime.datetime.strptime(d["metadata"]["creationTimestamp"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+                      age = int((datetime.datetime.now(datetime.timezone.utc) - born).total_seconds())
+                      if age > int(os.environ["MAX_AGE"]) and os.environ["PHASE"] != "Bound":
+                          print("refuse %d" % age); sys.exit()
+                      vols.append({"name": os.environ["VOLUME"], "persistentVolumeClaim": {"claimName": os.environ["PVC"]}})
+                      mounts.append({"name": os.environ["VOLUME"], "mountPath": os.environ["MOUNT"]})
+                  overrides = {"volumes": vols, "volumeMounts": mounts}
+                  if wrappable and not pruned:
+                      vols.append({"name": "state-prune", "configMap": {"name": "playground-state-prune"}})
+                      mounts.append({"name": "state-prune", "mountPath": prune_dir, "readOnly": True})
+                      # A failed prune must not stop the playground from starting.
+                      overrides["command"] = [command[0], "-c", "python3 %s/prune.py || true; %s" % (prune_dir, command[2])]
                   # resourceVersion makes the merge patch fail rather than overwrite a concurrent dashboard edit
                   print("patch " + json.dumps({"metadata": {"resourceVersion": d["metadata"]["resourceVersion"]},
-                      "spec": {"workload": {"overrides": {"volumes": vols, "volumeMounts": mounts}}}}))
+                      "spec": {"workload": {"overrides": overrides}}}))
                   ')
                   case "$plan" in
-                    attached) echo "OK: $NS/$name already mounts $PVC" ;;
+                    attached) echo "OK: $NS/$name already mounts $PVC and prunes retained model records" ;;
+                    attached-noprune) echo "OK: $NS/$name already mounts $PVC; no start command to wrap, so retained model records are not pruned" ;;
                     refuse*) echo "SKIP: $NS/$name is ${plan#refuse }s old and $PVC is empty; attaching would hide its current state. Re-create the playground to persist it." ;;
                     patch*) printf '%s' "${plan#patch }" | oc patch ogxserver "$name" -n "$NS" --type=merge --patch-file=/dev/stdin >/dev/null
                             echo "OK: attached $PVC to $NS/$name at $MOUNT (PVC was ${phase:-unknown})" ;;

@@ -48,7 +48,8 @@ Application holds them because they all change with the playground experience an
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | PersistentVolumeClaim | `genai-playground-state` | `demo-sandbox` | 1 Gi RWO volume for the playground's SQLite state (`kvstore.db`, `sql_store.db`, `inference_store.db`, `files/`). Wave 8, `Prune=false,Delete=false` |
-| ServiceAccount, Role, RoleBinding, CronJob | `playground-state-attacher` | `demo-sandbox` | Every 2 minutes, mounts `genai-playground-state` at `/opt/app-root/src/.llama/distributions/rh` in the dashboard-created playground through the `OGXServer` fields `spec.workload.overrides.volumes`/`volumeMounts`, keeping the other overrides. Role: `get`/`list`/`patch` OGXServers, `get` that PVC. Waves 18/20 |
+| ConfigMap | `playground-state-prune` | `demo-sandbox` | `prune.py`, run before the playground starts: removes retained records of dashboard-configured models from `kvstore.db`, keeping one backup at `kvstore.db.bak-prune`. Wave 18 |
+| ServiceAccount, Role, RoleBinding, CronJob | `playground-state-attacher` | `demo-sandbox` | Every 2 minutes, mounts `genai-playground-state` at `/opt/app-root/src/.llama/distributions/rh` in the dashboard-created playground through the `OGXServer` fields `spec.workload.overrides.volumes`/`volumeMounts`, and runs `prune.py` first through `overrides.command`, keeping the other overrides. Role: `get`/`list`/`patch` OGXServers, `get` that PVC. Waves 18/20 |
 
 ### Playground guardrails
 
@@ -129,7 +130,15 @@ holds an earlier playground's state, which the new one resumes). It leaves an ol
 empty, because the mount would hide that playground's current state; its log says so, and
 `validate.sh` warns: delete and re-create the playground to persist it. With more than one `OGXServer` in
 `demo-sandbox` it attaches nothing (one RWO volume holds one playground). Moving existing state needs the backup and
-restore procedure in `docs/OPERATIONS.md`. The playground Deployment rolls out with `RollingUpdate`; like the
+restore procedure in `docs/OPERATIONS.md`.
+
+**Retained model records.** A save can renumber the `maas-vllm-inference-<n>` providers, and OGX has no unregister API,
+so records from an earlier save would show as duplicates or stop the pod when their settings differ. `prune.py` removes
+those records before OGX starts, and OGX registers the current models from its configuration. It runs only when the
+save set a start command, which the dashboard does with tracing on; with tracing off, the attacher mounts the PVC
+without it and its log says so. Chat history and embedding models are not touched.
+
+The playground Deployment rolls out with `RollingUpdate`; like the
 service-owned `genai-pgvector` volume, a rollout whose new pod lands on another node waits for the old pod to release
 the RWO volume.
 

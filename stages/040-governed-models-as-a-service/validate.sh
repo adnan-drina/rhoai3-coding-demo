@@ -652,6 +652,8 @@ playground_state() {
         and .persistentVolumeClaim.claimName == "genai-playground-state")
         and any($o.volumeMounts[]?; .name == "retained-sqlite" and .mountPath == "/opt/app-root/src/.llama/distributions/rh")' \
         <<<"$servers" >/dev/null || { echo "$name has no retained state mount (see playground-state-attacher logs; re-create the playground)"; return; }
+    jq -e '.items[0].spec.workload.overrides.command as $c | ($c | length) != 3 or ($c[2] | contains("playground-state-prune"))' \
+        <<<"$servers" >/dev/null || { echo "$name does not prune retained model records yet (see playground-state-attacher logs)"; return; }
     deploy=$(read_json deployment "$name" -n demo-sandbox) || { echo "Deployment $name unreadable"; return; }
     jq -e 'any(.spec.template.spec.volumes[]?; .persistentVolumeClaim.claimName == "genai-playground-state")
         and (.status.readyReplicas // 0) >= 1' <<<"$deploy" >/dev/null || { echo "Deployment $name does not run with the state PVC"; return; }

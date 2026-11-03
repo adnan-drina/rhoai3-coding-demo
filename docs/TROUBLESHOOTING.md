@@ -832,7 +832,7 @@ oc logs -n demo-sandbox "$(oc get jobs -n demo-sandbox -l app.kubernetes.io/name
 
 **Symptom:** after the playground is reconfigured in the dashboard, a new `lsd-genai-playground` pod restarts in `CrashLoopBackOff` while the previous pod keeps serving, without the retained state. Chats on the previous pod are lost when the new one takes over.
 
-**Likely cause:** reconfiguring deletes and recreates the playground, and `playground-state-attacher` then mounts the retained PVC. `kvstore.db` on that PVC still holds the earlier model registrations. If a model keeps its provider and ID but its settings differ, such as its display name, OGX refuses to start. The installed API has no unregister, and the pod can't start to serve one.
+**Likely cause:** reconfiguring deletes and recreates the playground, and `playground-state-attacher` then mounts the retained PVC. `kvstore.db` on that PVC still holds the earlier model registrations. If a model keeps its provider and ID but its settings differ, such as its display name, OGX refuses to start. The installed API has no unregister, and the pod can't start to serve one. With tracing on, `prune.py` removes these records before OGX starts, so expect this only for a playground saved with tracing off or when `prune:` lines in the pod log report a problem.
 
 **Diagnose:**
 
@@ -857,7 +857,7 @@ A request sent directly to the pod returns `401` from the model: the dashboard s
 
 **Symptom:** after the playground is reconfigured, the model dropdown shows one model under two provider numbers, such as `maas-vllm-inference-2/claude-sonnet-5-5` and `maas-vllm-inference-3/claude-sonnet-5-5`.
 
-**Likely cause:** reconfiguring can renumber the `maas-vllm-inference-<n>` providers. The earlier registrations stay in the retained `kvstore.db` under the old numbers, so OGX lists both.
+**Likely cause:** reconfiguring can renumber the `maas-vllm-inference-<n>` providers. The earlier registrations stay in the retained `kvstore.db` under the old numbers, so OGX lists both. `playground-state-attacher` clears them about two minutes after a save with tracing on, when it mounts the PVC and restarts the pod. Duplicates that last longer mean the prune did not run: check `oc logs -n demo-sandbox deploy/lsd-genai-playground | grep prune:` and the attacher log.
 
 **Diagnose:** compare the entries in the generated configuration with the listed models. Any listed model the configuration does not declare is stale.
 
