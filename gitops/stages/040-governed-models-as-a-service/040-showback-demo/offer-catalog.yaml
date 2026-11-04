@@ -2,8 +2,11 @@
 # dedicated model, the GPU worker price behind each model and the published shared tariff. The dashboards read only
 # these series; onboarding another model or changing a price is an edit here, not a dashboard change.
 # Worker price: AWS g7e.2xlarge (one RTX PRO 6000) on-demand list price in us-east-2, saved 2026-10-15.
-# Capacity: tokens per second one worker sustained in the 2026-10-20 demo run (Qwen 3.8 NVFP4: 304 at 6 concurrent
-# requests; Mistral Small 4: 253 at 3). Projections size the private worker count from it.
+# Capacity: total tokens per second (prompt and completion) one worker sustains. Qwen 3.8 NVFP4: about 1,860 at 16
+# concurrent requests and 0.4 s mean first token in the 2026-11-04 GuideLLM run through MaaS, 380 prompt and 380 output
+# tokens each (24 requests queue past --max-num-seqs=16); a prompt-heavy mix gives more total and less output. Mistral
+# Small 4: 253 at 3 concurrent requests in the 2026-10-20 demo run, not a measured limit. Projections size the private
+# worker count from it.
 # Shared commitments: a subscription commits to monthly tokens at the committed tariff, paid whether used or not;
 # usage above it is billed at the on-demand tariff. Its MaaS token-rate limit must allow the commitment in working hours.
 # Teams: every MaaS subscription belongs to the team of its owner; Platform carries the platform's own services. The
@@ -48,7 +51,7 @@ spec:
           expr: vector(4)
           labels: {offer: shared, model: qwen3-8-27b}
         - record: showback_offer_capacity_tokens_per_second
-          expr: vector(300)
+          expr: vector(1800)
           labels: {offer: shared, model: qwen3-8-27b}
         - record: showback_offer_committed_tariff_usd_per_million
           expr: vector(3)
