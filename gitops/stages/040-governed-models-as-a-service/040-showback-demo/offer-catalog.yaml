@@ -11,6 +11,8 @@
 # subscription missing here shows as "unassigned" on the showback tabs.
 # Currency: prices stay in USD, as AWS and the providers charge them; the dashboards show euros through this one rate
 # (ECB euro reference rate of 2026-11-03). The panel descriptions quote the rate and its date: change them together.
+# Fair-share tiers: the multiplier a subscription's usage pays on Showback 6; a subscription not listed is Standard (1.0).
+# The tier table on that tab quotes these: change them together.
 apiVersion: monitoring.rhobs/v1
 kind: PrometheusRule
 metadata:
@@ -29,6 +31,12 @@ spec:
       rules:
         - record: showback_usd_per_eur
           expr: vector(1.1179)
+        - record: showback_subscription_tier
+          expr: vector(1.5)
+          labels: {subscription: team-marketing, tier: 1 Dedicated}
+        - record: showback_subscription_tier
+          expr: vector(0.5)
+          labels: {subscription: maas-quality-judge, tier: 3 Off-peak}
         # Shared private: consumers pay the tariff; the platform pays the worker.
         - record: showback_offer_info
           expr: vector(1)

@@ -47,14 +47,14 @@ else record 'Dedicated Mistral is served by 040-local-models on its own listener
 if jq -e '[.[] | select(.kind == "PersesDashboard")] as $d
     | ($d | map(.metadata.name) | sort) == ["dashboard-offer-1-by-team-admin",
         "dashboard-offer-2-shared-private-admin", "dashboard-offer-3-dedicated-private-admin",
-        "dashboard-offer-4-external-model-admin"]
+        "dashboard-offer-4-external-model-admin", "dashboard-offer-6-fair-share-admin"]
     and all($d[]; .spec.config as $c
         | ([$c.layouts[].spec.items[].content["$ref"] | ltrimstr("#/spec/panels/")] | sort) == ($c.panels | keys | sort)
         and all($c.panels[].spec.queries[]; .spec.plugin.spec.datasource.name == "data-science-prometheus-datasource"
             and (.spec.plugin.spec.query | test("showback_selected_report|service_[a-z_]+_cents") | not)))' \
     "$work/bundle.json" >/dev/null; then
-    record 'Four live showback dashboards: every panel laid out and queried from the RHOAI datasource' pass
-else record 'Four live showback dashboards: every panel laid out and queried from the RHOAI datasource' 'Dashboard differs'; fi
+    record 'Five live showback dashboards: every panel laid out and queried from the RHOAI datasource' pass
+else record 'Five live showback dashboards: every panel laid out and queried from the RHOAI datasource' 'Dashboard differs'; fi
 
 # Every MaaS subscription in Git belongs to exactly one known team, so the by-team tab shows no "unassigned" row.
 for file in $(grep -rl --include='*.yaml' '^kind: MaaSSubscription' "$REPO_ROOT/gitops"); do yaml_json < "$file"; done \
@@ -87,6 +87,15 @@ if jq -e '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showbac
         | .expr | ltrimstr("vector(") | rtrimstr(")") | tonumber] | length == 1 and .[0] > 0' "$work/bundle.json" >/dev/null; then
     record 'Offer catalog: one USD per EUR rate' pass
 else record 'Offer catalog: one USD per EUR rate' 'Rate missing, duplicated or not a positive number'; fi
+
+# A fair-share tier names a subscription that has a team, with a positive multiplier.
+if jq -e '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog") | .spec.groups[].rules[]] as $r
+    | [$r[] | select(.record == "showback_subscription_tier")] as $t | ($t | length) > 0
+    and all($t[]; (.expr | ltrimstr("vector(") | rtrimstr(")") | tonumber) > 0 and (.labels.tier | type == "string")
+        and (.labels.subscription as $s | any($r[]; .record == "showback_subscription_team" and .labels.subscription == $s)))' \
+    "$work/bundle.json" >/dev/null; then
+    record 'Offer catalog: every fair-share tier names a known subscription' pass
+else record 'Offer catalog: every fair-share tier names a known subscription' 'Tier incomplete'; fi
 
 # A shared commitment names a team subscription on that shared model whose hourly token limit can carry it in
 # 168 working hours; otherwise the team could not use what it pays for.
