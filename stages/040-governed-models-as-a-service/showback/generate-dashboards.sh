@@ -159,7 +159,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 | "max(showback_offer_capacity_tokens_per_second{model=\"$private\"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model=\"$private\"}[30d] offset -30d)) * 3600 * $usage_hours" as $capacity
 | "clamp_min(ceil((\($vol)) / (\($capacity))), 1)" as $workers
 | "(\($workers)) * \($wprice) * $worker_hours" as $private_cost
-| "\($wprice) * $worker_hours / (\($blended)) * 1e6" as $breakeven
+| "(\($private_cost)) / (\($blended)) * 1e6" as $breakeven
 # Private fleet in the time range, priced at the reference model
 | "scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))" as $rate
 | " Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03)." as $eur_note
@@ -185,13 +185,13 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
        + "1. **Projected monthly tokens** scale the usage in the time range to a month: usage hours per month x users per team.\n"
        + "2. **External cost** prices those tokens at the provider list price, using the workload own input/output mix.\n"
        + "3. **Private cost** is GPU workers x worker price x GPU hours per month. Workers needed = projected tokens / capacity of one worker (from the offer catalog).\n"
-       + "4. **Break-even** is the monthly volume at which one private worker costs the same as the external model. Above 100% moving to private saves money; check quality and latency before switching.\n\n"
+       + "4. **Break-even** is the monthly volume at which the private workers needed cost the same as the external model. Above 100% moving to private saves money; check quality and latency before switching. If break-even is more than those workers can carry (workers needed x capacity), private cannot win at these settings: keep the workers busier or run them fewer hours.\n\n"
        + "Choose a time range that represents a typical working period, then raise users per team to see when the decision flips.\n\n"
        + "Amounts are in euros: prices are kept in USD, as AWS and the providers charge them, and converted at the rate in the offer catalog (1 EUR = 1.1179 USD, ECB reference rate of 2026-11-03)."),
    ratio: gauge("Workload vs break-even"; "Projected monthly tokens as a share of the break-even volume; above 100% the private candidate is cheaper.";
        "100 * (\($vol)) / (\($breakeven))"),
    volume: stat("Projected tokens / month"; "Usage of the selected external workload in the time range, scaled to a month."; $vol; "decimal"; 0),
-   breakeven: stat("Break-even tokens / month"; "Monthly volume at which one private worker costs the same as the external model."; $breakeven; "decimal"; 0),
+   breakeven: stat("Break-even tokens / month"; "Monthly volume at which the private workers needed cost the same as the external model. Above what they can carry (workers needed x capacity), private cannot win at these settings."; $breakeven; "decimal"; 0),
    savings: signed("Monthly savings if moved (EUR)"; "External cost minus private cost; red means stay external.\($eur_note)"; "((\($spend)) - (\($private_cost))) / \($rate)"; 0),
    workers: stat("Private workers needed"; "Projected tokens divided by the demonstrated capacity of one worker, rounded up."; $workers; "decimal"; 0),
    comparison: bar("External vs private cost / month (EUR)"; "Projected tokens at the provider list price against workers needed x worker price x GPU hours per month.\($eur_note)";
