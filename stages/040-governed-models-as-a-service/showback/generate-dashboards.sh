@@ -151,7 +151,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 # read at the end of the range, or at their current value when an entry did not exist yet. No apostrophes below:
 # this program sits in a single-quoted shell string.
 | "scalar(count_over_time((sum(increase(authorized_hits_total{model=\"$reference\", subscription=~\"$subscription\"}[1h])) > 0)[$__range:1h]) or vector(1))" as $win
-| "* clamp_min($usage_hours * $users / \($win), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))" as $monthly
+| "* scalar(clamp_min(vector($usage_hours * $users / \($win)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))" as $monthly
 | "{model=\"$reference\", subscription=~\"$subscription\"}" as $sel
 | "sum((showback_external_metering_input_tokens\($sel) - showback_external_metering_input_tokens\($sel) offset $__range) or showback_external_metering_input_tokens\($sel))" as $in_r
 | "sum((showback_external_metering_output_tokens\($sel) - showback_external_metering_output_tokens\($sel) offset $__range) or showback_external_metering_output_tokens\($sel))" as $out_r
