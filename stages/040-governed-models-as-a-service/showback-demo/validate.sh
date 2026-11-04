@@ -97,13 +97,16 @@ if jq -e '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showbac
     record 'Offer catalog: every fair-share tier names a known subscription' pass
 else record 'Offer catalog: every fair-share tier names a known subscription' 'Tier incomplete'; fi
 
-# A shared commitment names a team subscription on that shared model whose hourly token limit can carry it in
-# 168 working hours; otherwise the team could not use what it pays for.
+# A shared commitment names a team subscription on that shared model whose hourly per-user token limit, times the
+# team's planned users, can carry it in 168 working hours; otherwise the team could not use what it pays for.
 if jq -e '. as $b | [.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog")
-        | .spec.groups[].rules[] | select(.record == "showback_offer_commitment_tokens")] as $c | ($c | length) > 0
+        | .spec.groups[].rules[] | select(.record == "showback_offer_commitment_tokens")] as $c
+    | [.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog")
+        | .spec.groups[].rules[] | select(.record == "showback_subscription_users")] as $u | ($c | length) > 0
     and all($c[]; (.expr | ltrimstr("vector(") | rtrimstr(")") | tonumber) as $tokens | .labels as $l
+        | ([$u[] | select(.labels.subscription == $l.subscription) | .expr | ltrimstr("vector(") | rtrimstr(")") | tonumber][0] // 1) as $users
         | any($b[]; .kind == "MaaSSubscription" and .metadata.name == $l.subscription
-            and any(.spec.modelRefs[]; .name == $l.model and any(.tokenRateLimits[]; .window == "1h" and .limit * 168 >= $tokens))))' \
+            and any(.spec.modelRefs[]; .name == $l.model and any(.tokenRateLimits[]; .window == "1h" and .limit * $users * 168 >= $tokens))))' \
     "$work/bundle.json" >/dev/null; then
     record 'Shared commitments fit their subscriptions and hourly token limits' pass
 else record 'Shared commitments fit their subscriptions and hourly token limits' 'Commitment exceeds or misses its subscription'; fi

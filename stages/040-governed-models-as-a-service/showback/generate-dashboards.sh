@@ -151,7 +151,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 # read at the end of the range, or at their current value when an entry did not exist yet. No apostrophes below:
 # this program sits in a single-quoted shell string.
 | "scalar(count_over_time((sum(increase(authorized_hits_total{model=\"$reference\", subscription=~\"$subscription\"}[1h])) > 0)[$__range:1h]) or vector(1))" as $win
-| "/ \($win) * $usage_hours * $users" as $monthly
+| "* clamp_min($usage_hours * $users / \($win), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))" as $monthly
 | "{model=\"$reference\", subscription=~\"$subscription\"}" as $sel
 | "sum((showback_external_metering_input_tokens\($sel) - showback_external_metering_input_tokens\($sel) offset $__range) or showback_external_metering_input_tokens\($sel))" as $in_r
 | "sum((showback_external_metering_output_tokens\($sel) - showback_external_metering_output_tokens\($sel) offset $__range) or showback_external_metering_output_tokens\($sel))" as $out_r
@@ -161,7 +161,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 | "((\($in_r)) * \($p_in) + (\($out_r)) * \($p_out)) / 1e6 \($monthly)" as $spend
 | "((\($spend)) / ((\($vol)) > 0) * 1e6 or (\($p_in) + \($p_out)) / 2)" as $blended
 | "max(showback_offer_worker_usd_per_hour{model=\"$private\"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model=\"$private\"}[30d] offset -30d))" as $wprice
-| "max(showback_offer_capacity_tokens_per_second{model=\"$private\"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model=\"$private\"}[30d] offset -30d)) * 3600 * $usage_hours" as $capacity
+| "max(showback_offer_capacity_tokens_per_second{model=\"$private\"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model=\"$private\"}[30d] offset -30d)) * 3600 * $worker_hours" as $capacity
 | "clamp_min(ceil((\($vol)) / ((\($capacity)) * $planning_load / 100)), 1)" as $workers
 | "(\($workers)) * \($wprice) * $worker_hours" as $private_cost
 | "(\($private_cost)) / (\($blended)) * 1e6" as $breakeven
@@ -187,8 +187,8 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 | [single("reference"; "External model in use"; "model"; "showback_external_metering_rate_usd_per_million{category=\"output\"}"; "claude-sonnet-5-5"),
    listvar("subscription"; "subscription"; "showback_external_metering_events"; "Subscriptions"),
    single("private"; "Private candidate"; "model"; "showback_offer_info"; "qwen3-8-27b"),
-   textvar("usage_hours"; "168"; "Usage hours / month"; "Hours a month the teams work at the pace seen in the time range (8 h x 21 working days = 168)."),
-   textvar("users"; "1"; "Users per team"; "Scales the observed usage; each demo team is one synthetic user."),
+   textvar("usage_hours"; "168"; "Usage hours / month"; "Hours a month the teams work at the pace seen in the time range (8 h x 21 working days = 168). A workload that also runs overnight projects at the pace of the whole range instead."),
+   textvar("users"; "1"; "Users per team"; "Scales the observed usage: 1 is the usage as measured; raise it to ask what if the team grew."),
    textvar("worker_hours"; "730"; "GPU hours / month"; "Hours a month a private GPU worker would run (730 = always on, 168 = working hours only)."),
    textvar("planning_load"; "70"; "Planning load %"; "Average share of its capacity a worker is planned to carry over the usage hours, leaving room for peaks. Demand rarely runs flat at the limit, so a fleet sized to 100% would be late with its next worker.")] as $tok_vars
 | {about: md("How the decision is calculated";
@@ -217,7 +217,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
        [{align: "left", enableSorting: true, header: "Model", name: "model"},
         {align: "right", enableSorting: true, format: {decimalPlaces: 0, unit: "decimal"}, header: "Verdicts", name: "value"}];
        ["sum by (model) (\($rel)) or label_replace(vector(0), \"model\", \"$reference\", \"\", \"\") or label_replace(vector(0), \"model\", \"$private\", \"\", \"\")"]),
-   capacity: stat("Capacity of one worker (tokens / month)"; "Demonstrated tokens per second x usage hours per month."; $capacity; "decimal"; 0),
+   capacity: stat("Capacity of one worker (tokens / month)"; "Demonstrated tokens per second x GPU hours per month: overnight batch counts, not only working hours."; $capacity; "decimal"; 0),
    fleet: bar("Private spend vs the same tokens at the external price (EUR)"; "Serving hours of each private model in the time range x its worker price, against the tokens teams used priced at the selected external model; benchmarks of test subscriptions are left out.\($eur_note)";
        [["(\($spend_range)) / \($rate)", "Private spend"], ["(\($ref_spend_range)) / \($rate)", "Same tokens at $reference"]]; 2),
    fleetSavings: signed("Savings vs external (EUR)"; "External price minus private spend for the time range; red means the workers were under-used.\($eur_note)"; "((\($ref_spend_range)) - (\($spend_range))) / \($rate)"; 2)} as $tok_panels

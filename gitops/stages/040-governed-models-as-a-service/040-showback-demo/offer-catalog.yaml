@@ -11,7 +11,8 @@
 # Tariffs: USD per million tokens, whichever way the tokens split. A worker at full capacity costs about 0.52, so 1.00
 # committed breaks even at about half load (2.5B tokens a month) and 1.50 on demand at about a third.
 # Shared commitments: a subscription commits to monthly tokens at the committed tariff, paid whether used or not;
-# usage above it is billed at the on-demand tariff. Its MaaS token-rate limit must allow the commitment in working hours.
+# usage above it is billed at the on-demand tariff. MaaS limits count per user, so the limit times the team's users must
+# allow the commitment in working hours. showback_subscription_users is that planned headcount.
 # Teams: every MaaS subscription belongs to the team of its owner; Platform carries the platform's own services. The
 # MaaS usage counters carry the subscription but not its cost centre, so the dashboards join on this mapping. A
 # subscription missing here shows as "unassigned" on the showback tabs.
@@ -65,11 +66,17 @@ spec:
           expr: vector(1)
           labels: {offer: shared, model: qwen3-8-27b}
         - record: showback_offer_commitment_tokens
-          expr: vector(150000000)
+          expr: vector(2000000000)
           labels: {offer: shared, model: qwen3-8-27b, subscription: team-engineering}
         - record: showback_offer_commitment_tokens
-          expr: vector(30000000)
+          expr: vector(250000000)
           labels: {offer: shared, model: qwen3-8-27b, subscription: team-support}
+        - record: showback_subscription_users
+          expr: vector(25)
+          labels: {subscription: team-engineering}
+        - record: showback_subscription_users
+          expr: vector(15)
+          labels: {subscription: team-support}
         # Dedicated private: the sponsoring subscription pays the worker, busy or idle.
         - record: showback_offer_info
           expr: vector(1)

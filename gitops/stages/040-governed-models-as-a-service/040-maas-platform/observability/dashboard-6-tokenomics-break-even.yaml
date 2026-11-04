@@ -75,7 +75,7 @@ spec:
         constant: false
         display:
           name: Usage hours / month
-          description: Hours a month the teams work at the pace seen in the time range (8 h x 21 working days = 168).
+          description: Hours a month the teams work at the pace seen in the time range (8 h x 21 working days = 168). A workload that also runs overnight projects at the pace of the whole range instead.
           hidden: false
     - kind: TextVariable
       spec:
@@ -84,7 +84,7 @@ spec:
         constant: false
         display:
           name: Users per team
-          description: Scales the observed usage; each demo team is one synthetic user.
+          description: 'Scales the observed usage: 1 is the usage as measured; raise it to ask what if the team grew.'
           hidden: false
     - kind: TextVariable
       spec:
@@ -164,24 +164,25 @@ spec:
                   query: 100 * (((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
                     offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1))
-                    * $usage_hours * $users) / (((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1))
-                    * $usage_hours * $users) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
-                    offset -30d)) * 3600 * $usage_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
+                    subscription=~"$subscription"}))) * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
+                    > 0)[$__range:1h]) or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) / (((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference",
+                    subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
+                    subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) * clamp_min($usage_hours * $users /
+                    scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60))) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) *
+                    3600 * $worker_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
                     offset -30d)) * $worker_hours) / (((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
                     category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 1e6 / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)) * $usage_hours
-                    * $users) / ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
-                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1))
-                    * $usage_hours * $users) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 2)) * 1e6)
+                    category="output"})) / 1e6 * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h])
+                    or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) / ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}))
+                    + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference",
+                    subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 2)) * 1e6)
       volume:
         kind: Panel
         spec:
@@ -205,8 +206,8 @@ spec:
                   query: ((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
                     offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1))
-                    * $usage_hours * $users
+                    subscription=~"$subscription"}))) * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
+                    > 0)[$__range:1h]) or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))
       breakeven:
         kind: Panel
         spec:
@@ -231,19 +232,20 @@ spec:
                   query: ((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1))
-                    * $usage_hours * $users) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
-                    offset -30d)) * 3600 * $usage_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
-                    offset -30d)) * $worker_hours) / (((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 1e6 / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)) * $usage_hours
-                    * $users) / ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
-                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"}))) * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
+                    > 0)[$__range:1h]) or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or
+                    last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $worker_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
+                    @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d] offset -30d)) * $worker_hours) / (((((sum((showback_external_metering_input_tokens{model="$reference",
+                    subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
+                    subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1))
-                    * $usage_hours * $users) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 1e6 * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference",
+                    subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) / ((((sum((showback_external_metering_input_tokens{model="$reference",
+                    subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
+                    subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
+                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) * clamp_min($usage_hours * $users /
+                    scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
                     category="output"})) / 2)) * 1e6
       savings:
         kind: Panel
@@ -275,14 +277,15 @@ spec:
                     offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
                     category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 1e6 / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)) * $usage_hours
-                    * $users) - ((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1))
-                    * $usage_hours * $users) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
-                    offset -30d)) * 3600 * $usage_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
-                    offset -30d)) * $worker_hours)) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
+                    category="output"})) / 1e6 * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h])
+                    or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) - ((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}))
+                    + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference",
+                    subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) / ((max(showback_offer_capacity_tokens_per_second{model="$private"}
+                    @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $worker_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
+                    @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d] offset -30d)) * $worker_hours)) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d]
+                    offset -30d)))
       workers:
         kind: Panel
         spec:
@@ -306,9 +309,9 @@ spec:
                   query: clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
                     offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1))
-                    * $usage_hours * $users) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
-                    offset -30d)) * 3600 * $usage_hours) * $planning_load / 100)), 1)
+                    subscription=~"$subscription"}))) * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
+                    > 0)[$__range:1h]) or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or
+                    last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $worker_hours) * $planning_load / 100)), 1)
       comparison:
         kind: Panel
         spec:
@@ -336,8 +339,8 @@ spec:
                     offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
                     category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 1e6 / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)) * $usage_hours
-                    * $users) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
+                    category="output"})) / 1e6 * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h])
+                    or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
                   seriesNameFormat: 'External: $reference'
           - kind: TimeSeriesQuery
             spec:
@@ -348,10 +351,11 @@ spec:
                   query: ((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1))
-                    * $usage_hours * $users) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
-                    offset -30d)) * 3600 * $usage_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
-                    offset -30d)) * $worker_hours) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
+                    subscription=~"$subscription"}))) * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
+                    > 0)[$__range:1h]) or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or
+                    last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $worker_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
+                    @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d] offset -30d)) * $worker_hours) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d]
+                    offset -30d)))
                   seriesNameFormat: 'Private: $private'
       blended:
         kind: Panel
@@ -377,13 +381,14 @@ spec:
                     offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
                     category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 1e6 / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)) * $usage_hours
-                    * $users) / ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
-                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1))
-                    * $usage_hours * $users) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 2)) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
+                    category="output"})) / 1e6 * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h])
+                    or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) / ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                    - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}))
+                    + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}
+                    offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) * clamp_min($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference",
+                    subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 2)) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d]
+                    offset -30d)))
       activeHours:
         kind: Panel
         spec:
@@ -510,7 +515,7 @@ spec:
         spec:
           display:
             name: Capacity of one worker (tokens / month)
-            description: Demonstrated tokens per second x usage hours per month.
+            description: 'Demonstrated tokens per second x GPU hours per month: overnight batch counts, not only working hours.'
           plugin:
             kind: StatChart
             spec:
@@ -526,7 +531,7 @@ spec:
                 spec:
                   datasource: *id001
                   query: max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 *
-                    $usage_hours
+                    $worker_hours
       fleet:
         kind: Panel
         spec:

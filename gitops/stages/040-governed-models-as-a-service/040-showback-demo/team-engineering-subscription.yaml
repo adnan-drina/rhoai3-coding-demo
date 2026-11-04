@@ -19,7 +19,7 @@ spec:
   - name: qwen3-8-27b
     namespace: internal-models
     tokenRateLimits:
-    # Sized for its shared-offering commitment: 150M tokens a month in 168 working hours is about 893K an hour.
+    # Per user. 25 planned users at this limit carry the 2B commitment in the offer catalog.
     - limit: 1000000
       window: 1h
   priority: 100
