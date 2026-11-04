@@ -17,7 +17,7 @@ spec:
     display:
       name: Showback 4 · External model
       description: 'External models reached through MaaS: every response is metered and priced at the provider''s published list price.'
-    duration: 1h
+    duration: 24h
     variables:
     - kind: ListVariable
       spec:
@@ -103,7 +103,7 @@ spec:
               text: |-
                 An **external model** is a provider service reached through the MaaS gateway, with no local GPU or idle cost. The gateway's metering plugin records every response with its input and output tokens and prices it once at the provider's **published list price** in force; later price changes never reprice earlier usage. Consumers pay the provider charge.
 
-                The ledger keeps month-to-date totals (UTC); **in range** figures are the change of those totals over the time range, and *month to date* ignores the time picker. Figures are estimates until reconciled with the provider invoice. **In range** figures follow the time picker. **Per month** figures are projections: usage in the time range × usage hours per month × users per team, and private workers × GPU hours per month.
+                The ledger keeps month-to-date totals (UTC); **in range** figures are the change of those totals over the time range, and *month to date* ignores the time picker. Figures are estimates until reconciled with the provider invoice. **In range** figures follow the time picker. **Per month** figures are projections: usage per active hour (hours in the range with usage) × usage hours per month × users per team, and private workers × GPU hours per month. Benchmarks of test subscriptions (offer catalog) count as usage but carry no private-model charge and no share of the peak.
 
                 Amounts are in euros: prices are kept in USD, as AWS and the providers charge them, and converted at the rate in the offer catalog (1 EUR = 1.1179 USD, ECB reference rate of 2026-11-03).
           queries: []
@@ -194,7 +194,7 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (sum((((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users)) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace(((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users)) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))) or vector(0)) / scalar(max((showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d))))
+                  query: (sum(((((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / on(subscription, model) group_left() count_over_time((sum by (subscription, model) (increase(authorized_hits_total[1h])) > 0)[$__range:1h]) * $usage_hours * $users) or (sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / on(subscription, model) group_left() count_over_time((sum by (subscription, model) (increase(authorized_hits_total[1h])) > 0)[$__range:1h]) * $usage_hours * $users) or (sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))) or vector(0)) / scalar(max((showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d))))
       spendByTeam:
         kind: Panel
         spec:
@@ -361,8 +361,17 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
-                width: 115
+                width: 100
               - name: 'value #2'
+                header: Active hours
+                align: right
+                enableSorting: true
+                format:
+                  unit: decimal
+                  decimalPlaces: 0
+                  shortValues: false
+                width: 100
+              - name: 'value #3'
                 header: Tokens (in range)
                 align: right
                 enableSorting: true
@@ -370,8 +379,8 @@ spec:
                   unit: decimal
                   decimalPlaces: 0
                   shortValues: false
-                width: 115
-              - name: 'value #3'
+                width: 100
+              - name: 'value #4'
                 header: Spend (in range)
                 align: right
                 enableSorting: true
@@ -380,8 +389,8 @@ spec:
                   decimalPlaces: 4
                   shortValues: false
                 sort: desc
-                width: 115
-              - name: 'value #4'
+                width: 100
+              - name: 'value #5'
                 header: Spend / month
                 align: right
                 enableSorting: true
@@ -389,8 +398,8 @@ spec:
                   unit: decimal
                   decimalPlaces: 2
                   shortValues: false
-                width: 115
-              - name: 'value #5'
+                width: 100
+              - name: 'value #6'
                 header: Month to date
                 align: right
                 enableSorting: true
@@ -398,7 +407,7 @@ spec:
                   unit: decimal
                   decimalPlaces: 4
                   shortValues: false
-                width: 115
+                width: 100
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -410,6 +419,13 @@ spec:
                 spec:
                   datasource: *id001
                   query: ((sum by (subscription, model) (clamp_min((showback_external_metering_events{subscription=~"$subscription", model=~"$model"} - showback_external_metering_events{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_events{subscription=~"$subscription", model=~"$model"}, 0))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription, model) (clamp_min((showback_external_metering_events{subscription=~"$subscription", model=~"$model"} - showback_external_metering_events{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_events{subscription=~"$subscription", model=~"$model"}, 0))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: ((sum by (subscription, model) (clamp_min((showback_external_metering_events{subscription=~"$subscription", model=~"$model"} - showback_external_metering_events{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_events{subscription=~"$subscription", model=~"$model"}, 0)) * 0 + on(subscription, model) group_left() count_over_time((sum by (subscription, model) (increase(authorized_hits_total[1h])) > 0)[$__range:1h])) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((sum by (subscription, model) (clamp_min((showback_external_metering_events{subscription=~"$subscription", model=~"$model"} - showback_external_metering_events{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_events{subscription=~"$subscription", model=~"$model"}, 0)) * 0 + on(subscription, model) group_left() count_over_time((sum by (subscription, model) (increase(authorized_hits_total[1h])) > 0)[$__range:1h])) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -430,7 +446,7 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: ((((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users)) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace(((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users)) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))) / scalar(max((showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d))))
+                  query: (((((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / on(subscription, model) group_left() count_over_time((sum by (subscription, model) (increase(authorized_hits_total[1h])) > 0)[$__range:1h]) * $usage_hours * $users) or (sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users))) * on(subscription) group_left(team) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))) or label_replace((((sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / on(subscription, model) group_left() count_over_time((sum by (subscription, model) (increase(authorized_hits_total[1h])) > 0)[$__range:1h]) * $usage_hours * $users) or (sum by (subscription, model) (clamp_min((showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} - showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"} offset $__range) or showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}, 0)) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users))) unless on(subscription) max by (subscription, team) ((showback_subscription_team @ end() or last_over_time(showback_subscription_team[30d] offset -30d))), "team", "unassigned", "", "")) and on(team) max by (team) ((showback_team_info{team=~"$team"} @ end() or last_over_time(showback_team_info{team=~"$team"}[30d] offset -30d)))) / scalar(max((showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d))))
           - kind: TimeSeriesQuery
             spec:
               plugin:

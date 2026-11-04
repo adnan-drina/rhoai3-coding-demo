@@ -52,6 +52,11 @@ def gauge(name; desc; expr):
         plugin: {kind: "GaugeChart", spec: {calculation: "last", format: {unit: "percent", decimalPlaces: 0}, max: 200,
             thresholds: {steps: [{value: 0, color: "#c9190b"}, {value: 100, color: "#3e8635"}]}}},
         queries: [q(expr; DS; null)]}};
+def qgauge(name; desc; expr):
+    {kind: "Panel", spec: {display: {name: name, description: desc},
+        plugin: {kind: "GaugeChart", spec: {calculation: "last", format: {unit: "percent", decimalPlaces: 0}, max: 100,
+            thresholds: {defaultColor: "#c9190b", steps: [{value: 70, color: "#ec7a08"}, {value: 90, color: "#3e8635"}]}}},
+        queries: [q(expr; DS; "{{model}}")]}};
 # A stat whose tile turns red below zero and green at or above it.
 def signed(name; desc; expr; decimals):
     stat(name; desc; expr; "decimal"; decimals)
@@ -78,7 +83,7 @@ def dashboard(name; display; desc; variables; panels; layouts):
      metadata: {name: name, namespace: "redhat-ods-monitoring",
         labels: {"app.kubernetes.io/name": name, "app.kubernetes.io/part-of": "rhoai3-coding-demo",
             "app.kubernetes.io/component": "observability", "app.kubernetes.io/managed-by": "argocd"}},
-     spec: {config: {display: {name: display, description: desc}, duration: "168h", variables: variables, panels: panels,
+     spec: {config: {display: {name: display, description: desc}, duration: (if name == "dashboard-offer-5-break-even-admin" then "24h" else "168h" end), variables: variables, panels: panels,
         layouts: layouts}}};
 def single(name; title; label_name; matcher; default):
     {kind: "ListVariable", spec: {name: name, allowAllValue: false, allowMultiple: false, defaultValue: default,
@@ -145,7 +150,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 # optional 040-showback-demo component), external list prices from the metering price catalog. Catalog values are
 # read at the end of the range, or at their current value when an entry did not exist yet. No apostrophes below:
 # this program sits in a single-quoted shell string.
-| "scalar(count_over_time(vector(1)[$__range:1m]) / 60)" as $win
+| "scalar(count_over_time((sum(increase(authorized_hits_total{model=\"$reference\", subscription=~\"$subscription\"}[1h])) > 0)[$__range:1h]) or vector(1))" as $win
 | "/ \($win) * $usage_hours * $users" as $monthly
 | "{model=\"$reference\", subscription=~\"$subscription\"}" as $sel
 | "sum((showback_external_metering_input_tokens\($sel) - showback_external_metering_input_tokens\($sel) offset $__range) or showback_external_metering_input_tokens\($sel))" as $in_r
@@ -170,10 +175,15 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 | "label_replace(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total[$__rate_interval]) + rate(kserve_vllm:generation_tokens_total[$__rate_interval])), \"model\", \"$1\", \"model_name\", \"(.+)\") and on(model) \($info)" as $tps_model
 | "label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), \"model\", \"$1\", \"model_name\", \"(.+)\") / 60" as $worker_hours_range
 | "sum((\($worker_hours_range)) * on(model) group_left \($worker) and on(model) \($info))" as $spend_range
-| "sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), \"model\", \"$1\", \"model_name\", \"(.+)\") and on(model) \($info))" as $ptok
-| "sum(label_replace(sum by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])), \"model\", \"$1\", \"model_name\", \"(.+)\") and on(model) \($info))" as $gtok
-| "(\($ptok)) / 1e6 * \($p_in) + (\($gtok)) / 1e6 * \($p_out)" as $ref_spend_range
+| "sum(increase(kserve_vllm:prompt_tokens_total[$__range]))" as $ptok
+| "sum(increase(kserve_vllm:generation_tokens_total[$__range]))" as $gtok
+| "scalar((\($ptok)) / ((\($ptok)) + (\($gtok))))" as $pfrac
+| "max by (subscription) (showback_subscription_test_traffic @ end() or last_over_time(showback_subscription_test_traffic[30d] offset -30d))" as $test
+| "sum((sum by (subscription, model) (increase(authorized_hits_total[$__range])) and on(model) \($info)) unless on(subscription) \($test))" as $team_tok
+| "(\($team_tok)) / 1e6 * (\($p_in) * \($pfrac) + \($p_out) * (1 - \($pfrac)))" as $ref_spend_range
 | "(\($burn)) / ((\($p_in) + \($p_out)) / 2) * 1e6 / 3600" as $breakeven_tps
+| "showback_quality_verdicts{judge=\"relevance\", model=~\"$reference|$private\"}" as $rel
+| "showback_quality_verdicts{judge=\"completeness\", model=~\"$reference|$private\"}" as $com
 | [single("reference"; "External model in use"; "model"; "showback_external_metering_rate_usd_per_million{category=\"output\"}"; "claude-sonnet-5-5"),
    listvar("subscription"; "subscription"; "showback_external_metering_events"; "Subscriptions"),
    single("private"; "Private candidate"; "model"; "showback_offer_info"; "qwen3-8-27b"),
@@ -183,11 +193,11 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
    textvar("planning_load"; "70"; "Planning load %"; "Average share of its capacity a worker is planned to carry over the usage hours, leaving room for peaks. Demand rarely runs flat at the limit, so a fleet sized to 100% would be late with its next worker.")] as $tok_vars
 | {about: md("How the decision is calculated";
        "**Question:** should the selected external-model workload move to the private candidate?\n\n"
-       + "1. **Projected monthly tokens** scale the usage in the time range to a month: usage hours per month x users per team.\n"
+       + "1. **Projected monthly tokens** scale the usage per active hour (hours in the time range with usage) to a month: usage hours per month x users per team.\n"
        + "2. **External cost** prices those tokens at the provider list price, using the workload own input/output mix.\n"
        + "3. **Private cost** is GPU workers x worker price x GPU hours per month. Workers needed = projected tokens / (capacity of one worker from the offer catalog x planning load).\n"
        + "4. **Break-even** is the monthly volume at which the private workers needed cost the same as the external model. Above 100% moving to private saves money; check quality and latency before switching. If break-even is more than those workers can carry (workers needed x capacity x planning load), private cannot win at these settings: keep the workers busier or run them fewer hours.\n\n"
-       + "Choose a time range that represents a typical working period, then raise users per team to see when the decision flips.\n\n"
+       + "Choose a time range that contains typical work, then raise users per team to see when the decision flips.\n\n"
        + "Amounts are in euros: prices are kept in USD, as AWS and the providers charge them, and converted at the rate in the offer catalog (1 EUR = 1.1179 USD, ECB reference rate of 2026-11-03)."),
    ratio: gauge("Workload vs break-even"; "Projected monthly tokens as a share of the break-even volume; above 100% the private candidate is cheaper.";
        "100 * (\($vol)) / (\($breakeven))"),
@@ -198,14 +208,24 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
    comparison: bar("External vs private cost / month (EUR)"; "Projected tokens at the provider list price against workers needed x worker price x GPU hours per month.\($eur_note)";
        [["(\($spend)) / \($rate)", "External: $reference"], ["(\($private_cost)) / \($rate)", "Private: $private"]]; 0),
    blended: stat("External €/1M tokens"; "Provider list price at the observed input/output mix of the workload.\($eur_note)"; "(\($blended)) / \($rate)"; "decimal"; 2),
+   activeHours: stat("Active hours"; "Hours in the time range with usage of the selected external workload: the basis of the projection."; $win; "decimal"; 0),
+   qRelevance: qgauge("Relevance (% pass)"; "Answers the question asked (LLM judge), last 7 days. Different judges are not equally strict: compare with care. A model with no verdicts yet shows no gauge; the table beside it says so.";
+       "100 * sum by (model) (\($rel | sub("}$"; ", result=\"pass\"}"))) / sum by (model) (\($rel))"),
+   qCompleteness: qgauge("Completeness (% pass)"; "Answers every part of the request (LLM judge), last 7 days. Different judges are not equally strict: compare with care. A model with no verdicts yet shows no gauge; the table beside it says so.";
+       "100 * sum by (model) (\($com | sub("}$"; ", result=\"pass\"}"))) / sum by (model) (\($com))"),
+   qCounts: table("Verdicts behind the pass rates"; "Verdicts per model in the last 7 days. 0 means no verdicts yet: the daily scorer grades new traffic at 17:00 UTC.";
+       [{align: "left", enableSorting: true, header: "Model", name: "model"},
+        {align: "right", enableSorting: true, format: {decimalPlaces: 0, unit: "decimal"}, header: "Verdicts", name: "value"}];
+       ["sum by (model) (\($rel)) or label_replace(vector(0), \"model\", \"$reference\", \"\", \"\") or label_replace(vector(0), \"model\", \"$private\", \"\", \"\")"]),
    capacity: stat("Capacity of one worker (tokens / month)"; "Demonstrated tokens per second x usage hours per month."; $capacity; "decimal"; 0),
-   fleet: bar("Private spend vs the same tokens at the external price (EUR)"; "Serving hours of each private model in the time range x its worker price, against the tokens they served priced at the selected external model.\($eur_note)";
+   fleet: bar("Private spend vs the same tokens at the external price (EUR)"; "Serving hours of each private model in the time range x its worker price, against the tokens teams used priced at the selected external model; benchmarks of test subscriptions are left out.\($eur_note)";
        [["(\($spend_range)) / \($rate)", "Private spend"], ["(\($ref_spend_range)) / \($rate)", "Same tokens at $reference"]]; 2),
    fleetSavings: signed("Savings vs external (EUR)"; "External price minus private spend for the time range; red means the workers were under-used.\($eur_note)"; "((\($ref_spend_range)) - (\($spend_range))) / \($rate)"; 2)} as $tok_panels
 | [(grid("How the decision is calculated"; [["about", 0, 0, 24, 7]]) | .spec.display.collapse.open = false),
    grid("Recommendation"; [["ratio", 0, 0, 8, 8], ["volume", 8, 0, 8, 4], ["breakeven", 16, 0, 8, 4], ["savings", 8, 4, 16, 4]]),
    grid("Monthly comparison"; [["comparison", 0, 0, 24, 7]]),
-   (grid("Assumptions"; [["blended", 0, 0, 8, 5], ["capacity", 8, 0, 8, 5], ["workers", 16, 0, 8, 5]]) | .spec.display.collapse.open = false),
+   grid("Quality of both models"; [["qRelevance", 0, 0, 12, 8], ["qCompleteness", 12, 0, 12, 8], ["qCounts", 0, 8, 24, 6]]),
+   (grid("Assumptions"; [["activeHours", 0, 0, 6, 5], ["blended", 6, 0, 6, 5], ["capacity", 12, 0, 6, 5], ["workers", 18, 0, 6, 5]]) | .spec.display.collapse.open = false),
    grid("Private fleet in the time range"; [["fleet", 0, 0, 16, 7], ["fleetSavings", 16, 0, 8, 7]])] as $tok_layouts
 
 | {"dashboard-5-cost-per-token.yaml": dashboard("dashboard-5-cost-per-token-admin"; "Cost per token";
