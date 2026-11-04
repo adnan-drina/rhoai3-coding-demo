@@ -27,7 +27,7 @@ Open **Observe & monitor → Dashboard** in the OpenShift AI console. The five *
 
 | Tab | Question | Shows |
 |---|---|---|
-| **Showback 1 · By team** | What does each team cost? | An Overview of two rows, each a one-quarter summary next to a three-quarter chart: a pie of the monthly cost by team next to the cost per team as stacked bars over time; then the platform's monthly balance (red when it carries a shortfall) above a gauge of the share of the shared capacity cost the charges recover (red below 100%), next to each subscription's busiest hour as a share of its MaaS hourly token limit (100% means MaaS rejected requests). The Breakdown row has the same figures as tables: a monthly bill per team (shared, dedicated, external, total) and every subscription with its team |
+| **Showback 1 · By team** | What does each team cost? | An Overview that opens with a pie of the monthly cost by team next to the cost per team as stacked bars over time; then the platform's monthly balance (red when it carries a shortfall) beside each team's projected total bill across all offerings; then gauges of four subscriptions' busiest hour as a share of their MaaS hourly token limit (100% means MaaS rejected requests); then the relevance and completeness pass rates per model. The Breakdown has a monthly bill per team (shared, dedicated, external, total), every subscription with its team, and the verdict counts behind the pass rates |
 | **Showback 2 · Shared private** | Who uses the shared model, and does it pay for itself? | A pie of the monthly charge per team, bars of how much of each commitment is used, tokens by team as stacked bars; platform economics as bars (running cost, projected charges, committed floor), a cost coverage gauge and the balance with commitments and if all paid on demand (red when negative); the charges by consumer table |
 | **Showback 3 · Dedicated private** | What does Marketing get for its GPU? | A busy share gauge, a pie of the paid capacity split into busy and idle, a pie of who used the capacity (sponsor and other consumers); sponsor charge, paid idle, sponsor cost per million tokens and monthly charge; GPU utilisation and tokens by consumer; charges per model; every consumer of the dedicated model with its role |
 | **Showback 4 · External model** | What do the providers charge? | Spend, requests and tokens in range, projected monthly spend; a pie of spend by team and bars of spend by model; month-to-date spend stacked by team and requests by team; statement by team, subscription and model; the provider price list (collapsed) |
@@ -37,7 +37,7 @@ The quality judge also uses the dedicated Mistral (it grades Qwen). It pays noth
 
 ### Talk track
 
-1. **By team:** "This is what AI cost each team this month, across every way they use it." The pie gives the split, the cost bars show when it was spent. Then the second row: the platform balance and the recovery gauge (red when the teams do not pay for the shared capacity yet), next to which subscriptions ran into their MaaS limit.
+1. **By team:** "This is what AI cost each team this month, across every way they use it." The pie gives the split, the cost bars show when it was spent. Then the second row: the platform balance (red when the teams do not pay for the shared capacity yet) and each team's total bill. Below them, how close the subscriptions came to their MaaS limit, and how the models score on quality.
 2. **Shared private:** Engineering's commitment is its revenue floor; Dev Spaces, OpenCode and MTA count against Engineering too. Open *Platform economics*: cost coverage shows how much of the GPU the commitments pay for.
 3. **Dedicated private:** Marketing pays the whole worker. Busy share and paid idle say how much of it is used; the *Who used the capacity* pie shows who else uses capacity Marketing pays for.
 4. **External:** every response is metered at list price, per team. Run Support's external load on Claude or GPT before the demo; Nemotron is free and shows €0.
@@ -164,7 +164,7 @@ differ from the Showback charges by design. Talk track: the Showback 1 · By tea
   one. To score right after a demo load, start it by hand:
   `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`.
   The exporter `showback-quality-exporter` (`redhat-ods-monitoring`) reads the verdicts of the last 7 days from MLflow
-  every 6 hours and publishes them to Prometheus, so tab 1's Quality row shows the pass rate per model and judge.
+  every 6 hours and publishes them to Prometheus, so tab 1 shows the pass rate per model and the verdict counts behind it.
 - **Scope:** only this load generator's requests are traced. Platform-side tracing of every MaaS client is planned work.
 - **Other projects:**
 
