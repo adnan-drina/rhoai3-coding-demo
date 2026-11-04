@@ -117,7 +117,10 @@ spec:
                 4. **Break-even** is the monthly volume at which one private worker costs the same as the external model. Above 100% moving to private saves money; check quality and latency before switching.
 
 
-                Choose a time range that represents a typical working period, then raise users per team to see when the decision flips.'
+                Choose a time range that represents a typical working period, then raise users per team to see when the decision flips.
+
+
+                Amounts are in euros: prices are kept in USD, as AWS and the providers charge them, and converted at the rate in the offer catalog (1 EUR = 1.1179 USD, ECB reference rate of 2026-11-03).'
           queries: []
       ratio:
         kind: Panel
@@ -218,8 +221,8 @@ spec:
         kind: Panel
         spec:
           display:
-            name: Monthly savings if moved (USD)
-            description: External cost minus private cost; red means stay external.
+            name: Monthly savings if moved (EUR)
+            description: External cost minus private cost; red means stay external. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
           plugin:
             kind: StatChart
             spec:
@@ -240,7 +243,7 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                  query: ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
                     offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
                     category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
@@ -250,7 +253,7 @@ spec:
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m])
                     / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
                     offset -30d)) * 3600 * $usage_hours)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
-                    offset -30d)) * $worker_hours)
+                    offset -30d)) * $worker_hours)) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
       workers:
         kind: Panel
         spec:
@@ -280,8 +283,8 @@ spec:
         kind: Panel
         spec:
           display:
-            name: External vs private cost / month (USD)
-            description: Projected tokens at the provider list price against workers needed x worker price x GPU hours per month.
+            name: External vs private cost / month (EUR)
+            description: Projected tokens at the provider list price against workers needed x worker price x GPU hours per month. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
           plugin:
             kind: BarChart
             spec:
@@ -299,11 +302,12 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: ((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                  query: (((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
                     offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
                     category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 1e6 / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users
+                    category="output"})) / 1e6 / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d]
+                    offset -30d)))
                   seriesNameFormat: 'External: $reference'
           - kind: TimeSeriesQuery
             spec:
@@ -311,19 +315,20 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
+                  query: ((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @
                     end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $usage_hours)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
-                    @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d] offset -30d)) * $worker_hours
+                    @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d] offset -30d)) * $worker_hours) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d]
+                    offset -30d)))
                   seriesNameFormat: 'Private: $private'
       blended:
         kind: Panel
         spec:
           display:
-            name: External $/1M tokens
-            description: Provider list price at the observed input/output mix of the workload.
+            name: "External \u20AC/1M tokens"
+            description: Provider list price at the observed input/output mix of the workload. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
           plugin:
             kind: StatChart
             spec:
@@ -338,7 +343,7 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
+                  query: (((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
                     offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
                     category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
@@ -347,7 +352,7 @@ spec:
                     + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}
                     offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours
                     * $users) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 2)
+                    category="output"})) / 2)) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
       capacity:
         kind: Panel
         spec:
@@ -374,8 +379,9 @@ spec:
         kind: Panel
         spec:
           display:
-            name: Private spend vs the same tokens at the external price (USD)
-            description: Serving hours of each private model in the time range x its worker price, against the tokens they served priced at the selected external model.
+            name: Private spend vs the same tokens at the external price (EUR)
+            description: Serving hours of each private model in the time range x its worker price, against the tokens they served priced at the selected external model. Converted from USD at 1 EUR = 1.1179
+              USD (ECB reference rate, 2026-11-03).
           plugin:
             kind: BarChart
             spec:
@@ -393,9 +399,9 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by
+                  query: (sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by
                     (model) (showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d)) and on(model) (showback_offer_info @ end() or last_over_time(showback_offer_info[30d]
-                    offset -30d)))
+                    offset -30d)))) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
                   seriesNameFormat: Private spend
           - kind: TimeSeriesQuery
             spec:
@@ -403,17 +409,18 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end() or
+                  query: ((sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end() or
                     last_over_time(showback_offer_info[30d] offset -30d)))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum(label_replace(sum
                     by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end() or last_over_time(showback_offer_info[30d]
-                    offset -30d)))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})
+                    offset -30d)))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d]
+                    offset -30d)))
                   seriesNameFormat: Same tokens at $reference
       fleetSavings:
         kind: Panel
         spec:
           display:
-            name: Savings vs external (USD)
-            description: External price minus private spend for the time range; red means the workers were under-used.
+            name: Savings vs external (EUR)
+            description: External price minus private spend for the time range; red means the workers were under-used. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
           plugin:
             kind: StatChart
             spec:
@@ -434,12 +441,13 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: ((sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end() or
+                  query: (((sum(label_replace(sum by (model_name) (increase(kserve_vllm:prompt_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end() or
                     last_over_time(showback_offer_info[30d] offset -30d)))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum(label_replace(sum
                     by (model_name) (increase(kserve_vllm:generation_tokens_total[$__range])), "model", "$1", "model_name", "(.+)") and on(model) (showback_offer_info @ end() or last_over_time(showback_offer_info[30d]
                     offset -30d)))) / 1e6 * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) - (sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]),
                     "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d]
-                    offset -30d)) and on(model) (showback_offer_info @ end() or last_over_time(showback_offer_info[30d] offset -30d))))
+                    offset -30d)) and on(model) (showback_offer_info @ end() or last_over_time(showback_offer_info[30d] offset -30d))))) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d]
+                    offset -30d)))
     layouts:
     - kind: Grid
       spec:

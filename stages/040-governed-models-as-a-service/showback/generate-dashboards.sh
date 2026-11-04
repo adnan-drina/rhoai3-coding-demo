@@ -5,7 +5,7 @@
 # what this script generates. --write: replaces dashboard-5-cost-per-token.yaml and dashboard-6-tokenomics-break-even.yaml
 # under gitops/stages/040-governed-models-as-a-service/040-maas-platform/observability/ (review and commit them); safe
 # to rerun. Cost per token prices are dashboard text variables; Tokenomics reads worker prices from the showback offer
-# catalog and reference prices from the external-metering price catalog.
+# catalog and reference prices from the external-metering price catalog; it shows euros through the catalog's rate.
 # Usage: stages/040-governed-models-as-a-service/showback/generate-dashboards.sh [--write|--check]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -161,6 +161,8 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 | "(\($workers)) * \($wprice) * $worker_hours" as $private_cost
 | "\($wprice) * $worker_hours / (\($blended)) * 1e6" as $breakeven
 # Private fleet in the time range, priced at the reference model
+| "scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))" as $rate
+| " Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03)." as $eur_note
 | "(showback_offer_info @ end() or last_over_time(showback_offer_info[30d] offset -30d))" as $info
 | "max by (model) (showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d))" as $worker
 | "label_replace(count by (model_name) (kserve_vllm:num_requests_running), \"model\", \"$1\", \"model_name\", \"(.+)\")" as $running
@@ -184,20 +186,21 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
        + "2. **External cost** prices those tokens at the provider list price, using the workload own input/output mix.\n"
        + "3. **Private cost** is GPU workers x worker price x GPU hours per month. Workers needed = projected tokens / capacity of one worker (from the offer catalog).\n"
        + "4. **Break-even** is the monthly volume at which one private worker costs the same as the external model. Above 100% moving to private saves money; check quality and latency before switching.\n\n"
-       + "Choose a time range that represents a typical working period, then raise users per team to see when the decision flips."),
+       + "Choose a time range that represents a typical working period, then raise users per team to see when the decision flips.\n\n"
+       + "Amounts are in euros: prices are kept in USD, as AWS and the providers charge them, and converted at the rate in the offer catalog (1 EUR = 1.1179 USD, ECB reference rate of 2026-11-03)."),
    ratio: gauge("Workload vs break-even"; "Projected monthly tokens as a share of the break-even volume; above 100% the private candidate is cheaper.";
        "100 * (\($vol)) / (\($breakeven))"),
    volume: stat("Projected tokens / month"; "Usage of the selected external workload in the time range, scaled to a month."; $vol; "decimal"; 0),
    breakeven: stat("Break-even tokens / month"; "Monthly volume at which one private worker costs the same as the external model."; $breakeven; "decimal"; 0),
-   savings: signed("Monthly savings if moved (USD)"; "External cost minus private cost; red means stay external."; "(\($spend)) - (\($private_cost))"; 0),
+   savings: signed("Monthly savings if moved (EUR)"; "External cost minus private cost; red means stay external.\($eur_note)"; "((\($spend)) - (\($private_cost))) / \($rate)"; 0),
    workers: stat("Private workers needed"; "Projected tokens divided by the demonstrated capacity of one worker, rounded up."; $workers; "decimal"; 0),
-   comparison: bar("External vs private cost / month (USD)"; "Projected tokens at the provider list price against workers needed x worker price x GPU hours per month.";
-       [[$spend, "External: $reference"], [$private_cost, "Private: $private"]]; 0),
-   blended: stat("External $/1M tokens"; "Provider list price at the observed input/output mix of the workload."; $blended; "decimal"; 2),
+   comparison: bar("External vs private cost / month (EUR)"; "Projected tokens at the provider list price against workers needed x worker price x GPU hours per month.\($eur_note)";
+       [["(\($spend)) / \($rate)", "External: $reference"], ["(\($private_cost)) / \($rate)", "Private: $private"]]; 0),
+   blended: stat("External €/1M tokens"; "Provider list price at the observed input/output mix of the workload.\($eur_note)"; "(\($blended)) / \($rate)"; "decimal"; 2),
    capacity: stat("Capacity of one worker (tokens / month)"; "Demonstrated tokens per second x usage hours per month."; $capacity; "decimal"; 0),
-   fleet: bar("Private spend vs the same tokens at the external price (USD)"; "Serving hours of each private model in the time range x its worker price, against the tokens they served priced at the selected external model.";
-       [[$spend_range, "Private spend"], [$ref_spend_range, "Same tokens at $reference"]]; 2),
-   fleetSavings: signed("Savings vs external (USD)"; "External price minus private spend for the time range; red means the workers were under-used."; "(\($ref_spend_range)) - (\($spend_range))"; 2)} as $tok_panels
+   fleet: bar("Private spend vs the same tokens at the external price (EUR)"; "Serving hours of each private model in the time range x its worker price, against the tokens they served priced at the selected external model.\($eur_note)";
+       [["(\($spend_range)) / \($rate)", "Private spend"], ["(\($ref_spend_range)) / \($rate)", "Same tokens at $reference"]]; 2),
+   fleetSavings: signed("Savings vs external (EUR)"; "External price minus private spend for the time range; red means the workers were under-used.\($eur_note)"; "((\($ref_spend_range)) - (\($spend_range))) / \($rate)"; 2)} as $tok_panels
 | [(grid("How the decision is calculated"; [["about", 0, 0, 24, 7]]) | .spec.display.collapse.open = false),
    grid("Recommendation"; [["ratio", 0, 0, 8, 8], ["volume", 8, 0, 8, 4], ["breakeven", 16, 0, 8, 4], ["savings", 8, 4, 16, 4]]),
    grid("Monthly comparison"; [["comparison", 0, 0, 24, 7]]),

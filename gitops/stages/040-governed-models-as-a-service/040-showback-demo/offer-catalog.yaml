@@ -9,6 +9,8 @@
 # Teams: every MaaS subscription belongs to the team of its owner; Platform carries the platform's own services. The
 # MaaS usage counters carry the subscription but not its cost centre, so the dashboards join on this mapping. A
 # subscription missing here shows as "unassigned" on the showback tabs.
+# Currency: prices stay in USD, as AWS and the providers charge them; the dashboards show euros through this one rate
+# (ECB euro reference rate of 2026-11-03). The panel descriptions quote the rate and its date: change them together.
 apiVersion: monitoring.rhobs/v1
 kind: PrometheusRule
 metadata:
@@ -25,6 +27,8 @@ spec:
     - name: showback-offer-catalog
       interval: 1m
       rules:
+        - record: showback_usd_per_eur
+          expr: vector(1.1179)
         # Shared private: consumers pay the tariff; the platform pays the worker.
         - record: showback_offer_info
           expr: vector(1)

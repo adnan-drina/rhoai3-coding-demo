@@ -81,6 +81,13 @@ if jq -e --slurpfile local "$work/local-models.json" '[.[] | select(.kind == "Pr
     record 'Offer catalog: every offered model has an offering, sponsor and price' pass
 else record 'Offer catalog: every offered model has an offering, sponsor and price' 'Catalog incomplete'; fi
 
+# Every showback tab divides its amounts by this one rate; without it the money panels are empty.
+if jq -e '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog")
+        | .spec.groups[].rules[] | select(.record == "showback_usd_per_eur")
+        | .expr | ltrimstr("vector(") | rtrimstr(")") | tonumber] | length == 1 and .[0] > 0' "$work/bundle.json" >/dev/null; then
+    record 'Offer catalog: one USD per EUR rate' pass
+else record 'Offer catalog: one USD per EUR rate' 'Rate missing, duplicated or not a positive number'; fi
+
 # A shared commitment names a team subscription on that shared model whose hourly token limit can carry it in
 # 168 working hours; otherwise the team could not use what it pays for.
 if jq -e '. as $b | [.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog")
