@@ -34,7 +34,7 @@ Open **Observe & monitor → Dashboard** in the OpenShift AI console. The six **
 | **Showback 5 · Break-even** | When should an external workload move to a private model? | A gauge of the workload against the break-even volume of the workers it needs, projected monthly tokens, and the monthly savings if moved (red when it should stay external); external against private cost per month as bars (GPU workers sized from the candidate's demonstrated capacity at the **Planning load %**, 70 by default); the private fleet's spend against the same tokens at the external price |
 | **Showback 6 · Fair share** | What if the teams paid the whole running cost? | An alternative to the tariffs on tabs 1 and 2: every private worker is paid in full by the teams using it. Running cost, team bills, fleet busy share and the shared worker's cost per token; cost recovered; a pie of the bill by team and one of usage against capacity; how each bill is built (usage = tokens x tier x model weight x base rate, capacity = the running cost usage does not cover, split by share of the worker's busiest hour; a dedicated sponsor pays all of its own worker); cost per token by utilization; the same tokens on private workers and external models; prompt mix, share of peak, GPU hours allocated by token share (an estimate), model weight and first-token latency; and a tier table saying what backs each tier: multipliers are prices, with no latency target or preemption behind them |
 
-The quality judge also uses the dedicated Mistral (it grades Qwen). It pays nothing for it, so the Dedicated tab counts only the sponsor's tokens in the sponsor's cost per token and shows the judge as an *other consumer*. **Cost per token** (a Stage 040 platform tab with one editable flat price in USD) is not part of the walkthrough.
+Any other consumer granted the dedicated Mistral, such as a benchmark, pays nothing for it, so the Dedicated tab counts only the sponsor's tokens in the sponsor's cost per token and shows it as an *other consumer*. **Cost per token** (a Stage 040 platform tab with one editable flat price in USD) is not part of the walkthrough.
 
 ### Talk track
 
@@ -159,9 +159,10 @@ differ from the Showback charges by design. Talk track: the Showback 1 · By tea
   max-tokens cap cut the answer off. Each trace gets only the verdicts it does not have yet. The scorer also registers its LLM judges
   in each experiment (Judges page: name, instructions, judge model; never the endpoint or key), so the page shows what
   grades that experiment; `finished` is not listed there, since MLflow registers custom code scorers only on Databricks. They are display only: MLflow cannot run them itself on OpenShift AI 3.5, the batch job does. The Quality tab shows each
-  scorer's average, the pass rate. The judges are the private models, reached through MaaS on their own subscription
-  `maas-quality-judge`: Qwen grades every model except itself and Mistral grades Qwen, so no model grades its own
-  answers and judging costs nothing at a provider. Both must be serving when the job runs; if either is stopped (GPUs
+  scorer's average, the pass rate. The judges are reached through MaaS on their own subscription
+  `maas-quality-judge`: Qwen grades every model except itself and GPT-6 Luna grades Qwen, so no model grades its own
+  answers and Marketing's Mistral serves only its sponsor. Grading Qwen sends its prompts and answers, playground
+  conversations included, to Luna's provider, and Platform pays for it at list price. Both must be serving when the job runs; if either is stopped (GPUs
   scaled down), the run is skipped with a message. A run stops after 2.5 hours, and unscored traces wait for the next
   one. To score right after a demo load, start it by hand:
   `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`.

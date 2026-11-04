@@ -1,7 +1,7 @@
 # The judge's own MaaS access, owned by the scoring ServiceAccount, so judging shows up as its own subscription (cost
-# centre ai-platform) and never consumes a team's allowance. The judges are the private models: Qwen 3.8 grades every
-# model except itself, Mistral Small 4 grades Qwen, so no model grades its own answers and judging costs no tokens at
-# a provider.
+# centre ai-platform, team Platform) and never consumes a team's allowance. Qwen 3.8 grades every model except itself;
+# GPT-6 Luna grades Qwen, so no model grades its own answers and Marketing's dedicated Mistral serves only its sponsor.
+# Grading Qwen sends its prompts and answers to Luna's provider, billed to Platform at list price.
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata:
@@ -21,14 +21,14 @@ spec:
       - system:serviceaccount:models-as-a-service:maas-quality-judge
   priority: 60
   modelRefs:
-    # Sized so a daily run grades a busy day's traces without 429s (1M on Mistral stopped the 2026-10-28 run).
+    # Sized so a daily run grades a busy day's traces without 429s (1M stopped the 2026-10-28 run).
     - name: qwen3-8-27b
       namespace: internal-models
       tokenRateLimits:
         - limit: 4000000
           window: 1h
-    - name: mistral-small4-119b
-      namespace: internal-models
+    - name: gpt-6-luna
+      namespace: external-models
       tokenRateLimits:
         - limit: 3000000
           window: 1h
@@ -60,5 +60,5 @@ spec:
   modelRefs:
     - name: qwen3-8-27b
       namespace: internal-models
-    - name: mistral-small4-119b
-      namespace: internal-models
+    - name: gpt-6-luna
+      namespace: external-models

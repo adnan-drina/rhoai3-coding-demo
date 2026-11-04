@@ -77,7 +77,7 @@ spec:
               text: |-
                 A **dedicated private model** runs on GPU capacity reserved for one sponsoring team. The sponsor pays the **full running cost** of that capacity for every hour the model is up, whether it is busy or idle. Usage does not change the charge; it changes the effective cost per token. A low busy share is paid idle capacity: a reason to schedule the model, right-size it or move it to the shared offering.
 
-                Other teams may be granted the model too (the quality judge uses it to grade the shared model). They pay nothing for it: the sponsor's effective cost counts only the sponsor's tokens, and *Who used the capacity* shows how much of the paid capacity went elsewhere.
+                Other consumers may be granted the model too (a benchmark, for example). They pay nothing for it: the sponsor's effective cost counts only the sponsor's tokens, and *Who used the capacity* shows how much of the paid capacity went elsewhere.
 
                 Running cost = serving hours × GPU worker price from the offer catalog. **In range** figures follow the time picker. **Per month** figures are projections: usage in the time range × usage hours per month × users per team, and private workers × GPU hours per month.
 

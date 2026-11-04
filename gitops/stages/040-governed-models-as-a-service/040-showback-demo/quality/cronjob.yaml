@@ -44,7 +44,7 @@ spec:
                 - name: JUDGE_MODEL
                   value: qwen3-8-27b
                 - name: SELF_JUDGE_MODEL
-                  value: mistral-small4-119b
+                  value: gpt-6-luna
                 - name: SAMPLE_RATE
                   value: '1.0'
                 - name: WINDOW_MINUTES

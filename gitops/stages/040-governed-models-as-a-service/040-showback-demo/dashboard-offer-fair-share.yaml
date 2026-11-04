@@ -699,7 +699,7 @@ spec:
               text: |-
                 | Tier | Multiplier | Who | Runs on | Pays for idle capacity | Backed today by |
                 |---|---|---|---|---|---|
-                | 1 Dedicated | 1.5 | `team-marketing` | Dedicated worker | All of its own worker | Its own GPU; no latency target enforced |
+                | 1 Dedicated | 1.0 | `team-marketing` | Dedicated worker | All of its own worker | Its own GPU; no latency target enforced |
                 | 2 Standard | 1.0 | Every other subscription | Shared worker | Share of the worker's peak | MaaS token limits per subscription |
                 | 3 Off-peak | 0.5 | `maas-quality-judge` | Shared worker | Only what overlaps the peak | Price only; requests are not preempted |
           queries: []

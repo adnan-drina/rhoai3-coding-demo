@@ -4,7 +4,7 @@
 
 **Symptom:** in a model experiment (`internal-<model>`, workspace `models-as-a-service`) many traces show `null` under `relevance`, `completeness` or `finished`.
 
-**Causes, in order:** the daily scorer has not run since the traces were written (it runs at 17:00 UTC); the run was skipped because a judge model (Qwen or Mistral) was not serving (`oc logs job/<scorer job> -n models-as-a-service` says "skipped"); the trace failed (status ERROR, no answer to grade) or predates 2026-10-27 15:30 UTC (no `finish_reason` tag; never graded); or a judge answer could not be parsed (logged as `Failed to parse response from judge model`; retried by the next run).
+**Causes, in order:** the daily scorer has not run since the traces were written (it runs at 17:00 UTC); the run was skipped because a judge model (Qwen or GPT-6 Luna) was not serving (`oc logs job/<scorer job> -n models-as-a-service` says "skipped"); the trace failed (status ERROR, no answer to grade) or predates 2026-10-27 15:30 UTC (no `finish_reason` tag; never graded); or a judge answer could not be parsed (logged as `Failed to parse response from judge model`; retried by the next run).
 
 **Recover:** start the models, then `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`. Each trace gets only its missing verdicts.
 

@@ -254,7 +254,7 @@ spec:
         kind: Panel
         spec:
           display:
-            name: maas-quality-judge · mistral-small4-119b
+            name: maas-quality-judge · qwen3-8-27b
             description: Highest 1-hour token total in the time range as a share of this subscription's hourly MaaS token limit; at 100% MaaS rejects requests (429). Not filtered by team.
           plugin:
             kind: GaugeChart
@@ -278,7 +278,7 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (100 * max_over_time((sum by (subscription, model) (increase(authorized_hits_total{subscription="maas-quality-judge", model="mistral-small4-119b"}[1h])))[$__range:1m] @ end()) / on(subscription, model) max by (subscription, model) ((showback_subscription_token_limit{subscription="maas-quality-judge", model="mistral-small4-119b"} @ end() or last_over_time(showback_subscription_token_limit{subscription="maas-quality-judge", model="mistral-small4-119b"}[30d] offset -30d)))) or on() vector(0)
+                  query: (100 * max_over_time((sum by (subscription, model) (increase(authorized_hits_total{subscription="maas-quality-judge", model="qwen3-8-27b"}[1h])))[$__range:1m] @ end()) / on(subscription, model) max by (subscription, model) ((showback_subscription_token_limit{subscription="maas-quality-judge", model="qwen3-8-27b"} @ end() or last_over_time(showback_subscription_token_limit{subscription="maas-quality-judge", model="qwen3-8-27b"}[30d] offset -30d)))) or on() vector(0)
                   seriesNameFormat: busiest hour
       sub_team-engineering:
         kind: Panel
