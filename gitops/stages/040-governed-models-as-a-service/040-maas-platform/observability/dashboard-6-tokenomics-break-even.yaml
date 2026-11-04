@@ -95,6 +95,16 @@ spec:
           name: GPU hours / month
           description: Hours a month a private GPU worker would run (730 = always on, 168 = working hours only).
           hidden: false
+    - kind: TextVariable
+      spec:
+        name: planning_load
+        value: '70'
+        constant: false
+        display:
+          name: Planning load %
+          description: Average share of its capacity a worker is planned to carry over the usage hours, leaving room for peaks. Demand rarely runs flat at the limit, so a fleet sized to 100% would be late
+            with its next worker.
+          hidden: false
     panels:
       about:
         kind: Panel
@@ -112,10 +122,11 @@ spec:
 
                 2. **External cost** prices those tokens at the provider list price, using the workload own input/output mix.
 
-                3. **Private cost** is GPU workers x worker price x GPU hours per month. Workers needed = projected tokens / capacity of one worker (from the offer catalog).
+                3. **Private cost** is GPU workers x worker price x GPU hours per month. Workers needed = projected tokens / (capacity of one worker from the offer catalog x planning load).
 
                 4. **Break-even** is the monthly volume at which the private workers needed cost the same as the external model. Above 100% moving to private saves money; check quality and latency before
-                switching. If break-even is more than those workers can carry (workers needed x capacity), private cannot win at these settings: keep the workers busier or run them fewer hours.
+                switching. If break-even is more than those workers can carry (workers needed x capacity x planning load), private cannot win at these settings: keep the workers busier or run them fewer
+                hours.
 
 
                 Choose a time range that represents a typical working period, then raise users per team to see when the decision flips.
@@ -157,8 +168,8 @@ spec:
                     subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
                     subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m])
-                    / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
-                    offset -30d)) * 3600 * $usage_hours)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
+                    / 60) * $usage_hours * $users) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
+                    offset -30d)) * 3600 * $usage_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
                     offset -30d)) * $worker_hours) / (((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
                     category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
@@ -198,7 +209,8 @@ spec:
         spec:
           display:
             name: Break-even tokens / month
-            description: Monthly volume at which the private workers needed cost the same as the external model. Above what they can carry (workers needed x capacity), private cannot win at these settings.
+            description: Monthly volume at which the private workers needed cost the same as the external model. Above what they can carry (workers needed x capacity x planning load), private cannot win
+              at these settings.
           plugin:
             kind: StatChart
             spec:
@@ -216,8 +228,8 @@ spec:
                   query: ((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @
-                    end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $usage_hours)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
+                    subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / ((max(showback_offer_capacity_tokens_per_second{model="$private"}
+                    @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $usage_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
                     @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d] offset -30d)) * $worker_hours) / (((((sum((showback_external_metering_input_tokens{model="$reference",
                     subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
                     subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference",
@@ -262,15 +274,15 @@ spec:
                     subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
                     subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m])
-                    / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
-                    offset -30d)) * 3600 * $usage_hours)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
+                    / 60) * $usage_hours * $users) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
+                    offset -30d)) * 3600 * $usage_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
                     offset -30d)) * $worker_hours)) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
       workers:
         kind: Panel
         spec:
           display:
             name: Private workers needed
-            description: Projected tokens divided by the demonstrated capacity of one worker, rounded up.
+            description: Projected tokens divided by what one worker carries at the planning load (demonstrated capacity x planning load), rounded up.
           plugin:
             kind: StatChart
             spec:
@@ -288,8 +300,8 @@ spec:
                   query: clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
                     offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @
-                    end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $usage_hours)), 1)
+                    subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / ((max(showback_offer_capacity_tokens_per_second{model="$private"}
+                    @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $usage_hours) * $planning_load / 100)), 1)
       comparison:
         kind: Panel
         spec:
@@ -329,8 +341,8 @@ spec:
                   query: ((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
                     subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
                     subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / (max(showback_offer_capacity_tokens_per_second{model="$private"} @
-                    end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $usage_hours)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
+                    subscription=~"$subscription"}))) / scalar(count_over_time(vector(1)[$__range:1m]) / 60) * $usage_hours * $users) / ((max(showback_offer_capacity_tokens_per_second{model="$private"}
+                    @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $usage_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
                     @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d] offset -30d)) * $worker_hours) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d]
                     offset -30d)))
                   seriesNameFormat: 'Private: $private'

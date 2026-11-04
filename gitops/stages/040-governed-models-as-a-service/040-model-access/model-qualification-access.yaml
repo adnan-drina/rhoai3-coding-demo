@@ -30,6 +30,11 @@ spec:
       tokenRateLimits:
         - limit: 5000000
           window: 1h
+    - name: mistral-small4-119b
+      namespace: internal-models
+      tokenRateLimits:
+        - limit: 5000000
+          window: 1h
     - name: gpt-6-luna
       namespace: external-models
       tokenRateLimits:
@@ -71,6 +76,8 @@ spec:
       - system:serviceaccount:evaluated-models:evalhub-maas-key-provisioner
   modelRefs:
     - name: qwen3-8-27b
+      namespace: internal-models
+    - name: mistral-small4-119b
       namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models

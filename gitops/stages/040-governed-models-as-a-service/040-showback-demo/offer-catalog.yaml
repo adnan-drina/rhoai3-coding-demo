@@ -7,6 +7,8 @@
 # tokens each (24 requests queue past --max-num-seqs=16); a prompt-heavy mix gives more total and less output. Mistral
 # Small 4: 253 at 3 concurrent requests in the 2026-10-20 demo run, not a measured limit. Projections size the private
 # worker count from it.
+# Tariffs: USD per million tokens, whichever way the tokens split. A worker at full capacity costs about 0.52, so 1.00
+# committed breaks even at about half load (2.5B tokens a month) and 1.50 on demand at about a third.
 # Shared commitments: a subscription commits to monthly tokens at the committed tariff, paid whether used or not;
 # usage above it is billed at the on-demand tariff. Its MaaS token-rate limit must allow the commitment in working hours.
 # Teams: every MaaS subscription belongs to the team of its owner; Platform carries the platform's own services. The
@@ -48,13 +50,13 @@ spec:
           expr: vector(3.36312)
           labels: {offer: shared, model: qwen3-8-27b, instance_type: g7e.2xlarge}
         - record: showback_offer_tariff_usd_per_million
-          expr: vector(4)
+          expr: vector(1.5)
           labels: {offer: shared, model: qwen3-8-27b}
         - record: showback_offer_capacity_tokens_per_second
           expr: vector(1800)
           labels: {offer: shared, model: qwen3-8-27b}
         - record: showback_offer_committed_tariff_usd_per_million
-          expr: vector(3)
+          expr: vector(1)
           labels: {offer: shared, model: qwen3-8-27b}
         - record: showback_offer_commitment_tokens
           expr: vector(150000000)
@@ -159,6 +161,9 @@ spec:
         - record: showback_subscription_token_limit
           expr: vector(5000000)
           labels: {subscription: model-qualification, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(5000000)
+          labels: {subscription: model-qualification, model: mistral-small4-119b}
         - record: showback_subscription_token_limit
           expr: vector(1000000)
           labels: {subscription: model-qualification, model: gpt-6-luna}

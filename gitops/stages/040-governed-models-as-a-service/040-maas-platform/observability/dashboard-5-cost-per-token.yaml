@@ -73,7 +73,7 @@ spec:
     - kind: TextVariable
       spec:
         name: price_prompt
-        value: '4.00'
+        value: '1.50'
         constant: false
         display:
           name: Price $/1M prompt tokens
@@ -82,7 +82,7 @@ spec:
     - kind: TextVariable
       spec:
         name: price_completion
-        value: '4.00'
+        value: '1.50'
         constant: false
         display:
           name: Price $/1M completion tokens
@@ -91,7 +91,7 @@ spec:
     - kind: TextVariable
       spec:
         name: price_blended
-        value: '4.00'
+        value: '1.50'
         constant: false
         display:
           name: Blended $/1M tokens (per user)

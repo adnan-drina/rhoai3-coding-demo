@@ -100,10 +100,10 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 | [listvar("model"; "model_name"; "kserve_vllm:prompt_tokens_total"; "Model"),
    listvar("user"; "user"; "authorized_hits_total{user!=\"\"}"; "User"),
    listvar("subscription"; "subscription"; "authorized_hits_total{subscription!=\"\"}"; "Subscription"),
-   textvar("price_prompt"; "4.00"; "Price $/1M prompt tokens";
+   textvar("price_prompt"; "1.50"; "Price $/1M prompt tokens";
        "Showback price for prompt (input) tokens, USD per million; default is the shared tariff from the showback offer catalog."),
-   textvar("price_completion"; "4.00"; "Price $/1M completion tokens"; "Showback price for generated (output) tokens, USD per million; default is the shared tariff."),
-   textvar("price_blended"; "4.00"; "Blended $/1M tokens (per user)";
+   textvar("price_completion"; "1.50"; "Price $/1M completion tokens"; "Showback price for generated (output) tokens, USD per million; default is the shared tariff."),
+   textvar("price_blended"; "1.50"; "Blended $/1M tokens (per user)";
        "MaaS counts total tokens per user and subscription without an input/output split; this blended price values them.")] as $cost_vars
 | {totalCost: stat("Total cost";
        "Prompt and completion tokens served by the private models over the Range window, priced with the dashboard'"'"'s price variables.";
@@ -157,7 +157,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 | "((\($spend)) / ((\($vol)) > 0) * 1e6 or (\($p_in) + \($p_out)) / 2)" as $blended
 | "max(showback_offer_worker_usd_per_hour{model=\"$private\"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model=\"$private\"}[30d] offset -30d))" as $wprice
 | "max(showback_offer_capacity_tokens_per_second{model=\"$private\"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model=\"$private\"}[30d] offset -30d)) * 3600 * $usage_hours" as $capacity
-| "clamp_min(ceil((\($vol)) / (\($capacity))), 1)" as $workers
+| "clamp_min(ceil((\($vol)) / ((\($capacity)) * $planning_load / 100)), 1)" as $workers
 | "(\($workers)) * \($wprice) * $worker_hours" as $private_cost
 | "(\($private_cost)) / (\($blended)) * 1e6" as $breakeven
 # Private fleet in the time range, priced at the reference model
@@ -179,21 +179,22 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
    single("private"; "Private candidate"; "model"; "showback_offer_info"; "qwen3-8-27b"),
    textvar("usage_hours"; "168"; "Usage hours / month"; "Hours a month the teams work at the pace seen in the time range (8 h x 21 working days = 168)."),
    textvar("users"; "1"; "Users per team"; "Scales the observed usage; each demo team is one synthetic user."),
-   textvar("worker_hours"; "730"; "GPU hours / month"; "Hours a month a private GPU worker would run (730 = always on, 168 = working hours only).")] as $tok_vars
+   textvar("worker_hours"; "730"; "GPU hours / month"; "Hours a month a private GPU worker would run (730 = always on, 168 = working hours only)."),
+   textvar("planning_load"; "70"; "Planning load %"; "Average share of its capacity a worker is planned to carry over the usage hours, leaving room for peaks. Demand rarely runs flat at the limit, so a fleet sized to 100% would be late with its next worker.")] as $tok_vars
 | {about: md("How the decision is calculated";
        "**Question:** should the selected external-model workload move to the private candidate?\n\n"
        + "1. **Projected monthly tokens** scale the usage in the time range to a month: usage hours per month x users per team.\n"
        + "2. **External cost** prices those tokens at the provider list price, using the workload own input/output mix.\n"
-       + "3. **Private cost** is GPU workers x worker price x GPU hours per month. Workers needed = projected tokens / capacity of one worker (from the offer catalog).\n"
-       + "4. **Break-even** is the monthly volume at which the private workers needed cost the same as the external model. Above 100% moving to private saves money; check quality and latency before switching. If break-even is more than those workers can carry (workers needed x capacity), private cannot win at these settings: keep the workers busier or run them fewer hours.\n\n"
+       + "3. **Private cost** is GPU workers x worker price x GPU hours per month. Workers needed = projected tokens / (capacity of one worker from the offer catalog x planning load).\n"
+       + "4. **Break-even** is the monthly volume at which the private workers needed cost the same as the external model. Above 100% moving to private saves money; check quality and latency before switching. If break-even is more than those workers can carry (workers needed x capacity x planning load), private cannot win at these settings: keep the workers busier or run them fewer hours.\n\n"
        + "Choose a time range that represents a typical working period, then raise users per team to see when the decision flips.\n\n"
        + "Amounts are in euros: prices are kept in USD, as AWS and the providers charge them, and converted at the rate in the offer catalog (1 EUR = 1.1179 USD, ECB reference rate of 2026-11-03)."),
    ratio: gauge("Workload vs break-even"; "Projected monthly tokens as a share of the break-even volume; above 100% the private candidate is cheaper.";
        "100 * (\($vol)) / (\($breakeven))"),
    volume: stat("Projected tokens / month"; "Usage of the selected external workload in the time range, scaled to a month."; $vol; "decimal"; 0),
-   breakeven: stat("Break-even tokens / month"; "Monthly volume at which the private workers needed cost the same as the external model. Above what they can carry (workers needed x capacity), private cannot win at these settings."; $breakeven; "decimal"; 0),
+   breakeven: stat("Break-even tokens / month"; "Monthly volume at which the private workers needed cost the same as the external model. Above what they can carry (workers needed x capacity x planning load), private cannot win at these settings."; $breakeven; "decimal"; 0),
    savings: signed("Monthly savings if moved (EUR)"; "External cost minus private cost; red means stay external.\($eur_note)"; "((\($spend)) - (\($private_cost))) / \($rate)"; 0),
-   workers: stat("Private workers needed"; "Projected tokens divided by the demonstrated capacity of one worker, rounded up."; $workers; "decimal"; 0),
+   workers: stat("Private workers needed"; "Projected tokens divided by what one worker carries at the planning load (demonstrated capacity x planning load), rounded up."; $workers; "decimal"; 0),
    comparison: bar("External vs private cost / month (EUR)"; "Projected tokens at the provider list price against workers needed x worker price x GPU hours per month.\($eur_note)";
        [["(\($spend)) / \($rate)", "External: $reference"], ["(\($private_cost)) / \($rate)", "Private: $private"]]; 0),
    blended: stat("External €/1M tokens"; "Provider list price at the observed input/output mix of the workload.\($eur_note)"; "(\($blended)) / \($rate)"; "decimal"; 2),
