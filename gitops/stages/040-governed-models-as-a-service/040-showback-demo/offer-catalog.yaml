@@ -5,7 +5,8 @@
 # Capacity: total tokens per second (prompt and completion) one worker sustains. Qwen 3.8 NVFP4: about 1,860 at 16
 # concurrent requests and 0.4 s mean first token in the 2026-11-04 GuideLLM run through MaaS, 380 prompt and 380 output
 # tokens each (24 requests queue past --max-num-seqs=16); a prompt-heavy mix gives more total and less output. Mistral
-# Small 4: 253 at 3 concurrent requests in the 2026-10-20 demo run, not a measured limit. Projections size the private
+# Small 4 NVFP4: about 1,070 at 16 concurrent requests and 0.3 s mean first token in the 2026-11-04 GuideLLM run, same
+# shape (past 16 requests queue: 5.3 s first token at 24). Projections size the private
 # worker count from it.
 # Tariffs: USD per million tokens, whichever way the tokens split. A worker at full capacity costs about 0.52, so 1.00
 # committed breaks even at about half load (2.5B tokens a month) and 1.50 on demand at about a third.
@@ -72,7 +73,7 @@ spec:
           expr: vector(3.36312)
           labels: {offer: dedicated, model: mistral-small4-119b, instance_type: g7e.2xlarge}
         - record: showback_offer_capacity_tokens_per_second
-          expr: vector(250)
+          expr: vector(1050)
           labels: {offer: dedicated, model: mistral-small4-119b}
     - name: showback-teams
       interval: 1m
