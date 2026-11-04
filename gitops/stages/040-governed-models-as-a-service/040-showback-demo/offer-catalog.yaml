@@ -19,6 +19,8 @@
 # (ECB euro reference rate of 2026-11-03). The panel descriptions quote the rate and its date: change them together.
 # Fair-share tiers: the multiplier a subscription's usage pays on Showback 6; a subscription not listed is Standard (1.0).
 # The tier table on that tab quotes these: change them together.
+# Test traffic: a subscription whose benchmarks stay out of team charges, peak shares and fleet savings; its tokens still
+# show as usage, and its external spend stays on the bills because a provider charges it.
 apiVersion: monitoring.rhobs/v1
 kind: PrometheusRule
 metadata:
@@ -43,6 +45,9 @@ spec:
         - record: showback_subscription_tier
           expr: vector(0.5)
           labels: {subscription: maas-quality-judge, tier: 3 Off-peak}
+        - record: showback_subscription_test_traffic
+          expr: vector(1)
+          labels: {subscription: model-qualification}
         # Shared private: consumers pay the tariff; the platform pays the worker.
         - record: showback_offer_info
           expr: vector(1)
