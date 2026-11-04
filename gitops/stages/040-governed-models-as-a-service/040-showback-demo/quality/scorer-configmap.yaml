@@ -50,16 +50,18 @@ data:
         "qwen3-8-27b": ("publishers/internal-models/models/qwen3-8-27b",
                         {"max_tokens": 2000, "temperature": 0, "chat_template_kwargs": {"enable_thinking": False}}),
         # 2000: a rationale that counts words (marketing length limits) cut the JSON verdict off at 1000.
-        "gpt-6-luna": ("gpt-6-luna", {"max_tokens": 2000, "temperature": 0}),
+        # Luna takes max_completion_tokens and only its default temperature, and reasons before it answers.
+        "gpt-6-luna": ("gpt-6-luna", {"max_completion_tokens": 2000}),
     }
 
     JUDGE_URL = f"https://{SHARED_HOST}/v1/chat/completions"
 
     def serving(model):
         """One short request: a judge whose model is stopped (GPUs scaled down) skips the run instead of retrying."""
-        model_id, _ = JUDGES_BY_MODEL[model]
+        model_id, params = JUDGES_BY_MODEL[model]
         url = JUDGE_URL
-        body = json.dumps({"model": model_id, "max_tokens": 1,
+        limit = {"max_completion_tokens": 200} if "max_completion_tokens" in params else {"max_tokens": 1}
+        body = json.dumps({"model": model_id, **limit,
                            "messages": [{"role": "user", "content": "ping"}]}).encode()
         req = urllib.request.Request(url, data=body, headers={"Authorization": f"Bearer {KEY}",
                                                               "Content-Type": "application/json"})
