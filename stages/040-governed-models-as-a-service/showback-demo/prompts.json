@@ -1,5 +1,5 @@
 {
-  "_comment": "Demo workload of the three showback teams, all working on the Coolstore retail application. Each task carries the facts a finished answer needs, so the quality judges grade the model, not a missing brief. Engineering agent tasks give the model read_file and run_tests tools; generate-load.sh plays the tools from the files and test_output below. A task with followups is a conversation: each follow-up is the next user turn, sent with the whole history, and all turns share one MLflow session.",
+  "_comment": "Demo workload of the three showback teams, all working on the Coolstore retail application. Each task carries the facts a finished answer needs, so the quality judges grade the model, not a missing brief. Engineering agent tasks give the model read_file and run_tests tools; generate-load.sh plays the tools from the files and test_output below. Marketing has one task set per use case, each its own subscription; the marketing-rag tasks carry product passages, some out of date or incomplete, so an answer that invents facts fails. A task with followups is a conversation: each follow-up is the next user turn, sent with the whole history, and all turns share one MLflow session.",
   "engineering": {
     "system": "You are a senior Java engineer on the Coolstore team (Quarkus 3, Java 21, PostgreSQL). Be concrete: name the defect, show the corrected code, and say how to test it. Keep answers under 400 words.",
     "tasks": [
@@ -73,38 +73,6 @@
       }
     ]
   },
-  "marketing": {
-    "system": "You are Coolstore's marketing copywriter. Deliver the finished artefact exactly as briefed, ready to publish: no placeholders, no brackets, no notes to the editor. Use only the facts in the brief.",
-    "tasks": [
-      {
-        "prompt": "Write a LinkedIn post (120-150 words) announcing Coolstore's free webinar 'Hybrid cloud cost control for IT leaders' on Thursday 12 November 2026, 16:00 CET, 45 minutes, speakers: Coolstore CTO Maria Keller and a Red Hat solution architect. Registration: https://coolstore.example/webinar. End with three hashtags.",
-        "followups": [
-          "Good. Now make it 80-100 words and put the date in the first line."
-        ]
-      },
-      {
-        "prompt": "Write three email subject lines (each under 50 characters) and a 60-word email for the spring launch of the Coolstore EcoTherm smart thermostat: saves up to 18% on heating, app control, 129 EUR, available from 1 March 2026 at https://coolstore.example/ecotherm.",
-        "followups": [
-          "Make the email warmer and mention the free installation guide at https://coolstore.example/ecotherm-guide."
-        ]
-      },
-      {
-        "prompt": "Write a product description (80-100 words) and two taglines (under 8 words each) for the Coolstore TrailFlask: 750 ml stainless steel bottle, keeps drinks cold 24 hours or hot 12 hours, 340 g, lifetime warranty, 34.90 EUR, aimed at hikers.",
-        "followups": [
-          "Shorten the description to 50 words for the mobile shop."
-        ]
-      },
-      {
-        "prompt": "Write a 40-word push notification and a 10-word in-app banner for Coolstore's weekend sale: 20% off all outdoor gear, Saturday 7 and Sunday 8 November 2026, code TRAIL20, online only."
-      },
-      {
-        "prompt": "Write a 100-word blog introduction for Coolstore's guide 'Packing for a three-day hut trek', aimed at first-time trekkers, mentioning the free checklist at https://coolstore.example/hut-trek."
-      },
-      {
-        "prompt": "Write two versions (A and B, each under 25 words) of a Google ad for Coolstore's free next-day delivery on orders over 50 EUR, valid in Germany and Austria."
-      }
-    ]
-  },
   "engineering-ci": {
     "system": "You are the code assistant in the Coolstore CI pipeline (Java, Quarkus, Maven). A job hands you its failure log. Reply with the root cause and the smallest change that fixes it.",
     "tasks": [
@@ -122,6 +90,78 @@
       },
       {
         "prompt": "Job maven-verify is flaky: InventoryNotificationTest passes locally and fails in about one CI run in five with\nAssertionError: expected 1 message on the orders topic, got 0\nThe test sends a message, calls Thread.sleep(200) and then reads the in-memory channel. Find the root cause and give a fix that removes the flakiness."
+      }
+    ]
+  },
+  "marketing-content": {
+    "system": "You are Coolstore's marketing copywriter. Deliver the finished artefact exactly as briefed, ready to publish: no placeholders, no brackets, no notes to the editor. Use only the facts in the brief.",
+    "tasks": [
+      {
+        "prompt": "Write a LinkedIn post (120-150 words) announcing Coolstore's free webinar 'Hybrid cloud cost control for IT leaders' on Thursday 12 November 2026, 16:00 CET, 45 minutes, speakers: Coolstore CTO Maria Keller and a Red Hat solution architect. Registration: https://coolstore.example/webinar. End with three hashtags.",
+        "followups": [
+          "Good. Now make it 80-100 words and put the date in the first line."
+        ]
+      },
+      {
+        "prompt": "Write a product description (80-100 words) and two taglines (under 8 words each) for the Coolstore TrailFlask: 750 ml stainless steel bottle, keeps drinks cold 24 hours or hot 12 hours, 340 g, lifetime warranty, 34.90 EUR, aimed at hikers.",
+        "followups": [
+          "Shorten the description to 50 words for the mobile shop."
+        ]
+      },
+      {
+        "prompt": "Write a 100-word blog introduction for Coolstore's guide 'Packing for a three-day hut trek', aimed at first-time trekkers, mentioning the free checklist at https://coolstore.example/hut-trek."
+      }
+    ]
+  },
+  "marketing-campaigns": {
+    "system": "You are Coolstore's marketing copywriter. Deliver the finished artefact exactly as briefed, ready to publish: no placeholders, no brackets, no notes to the editor. Use only the facts in the brief.",
+    "tasks": [
+      {
+        "prompt": "Write three email subject lines (each under 50 characters) and a 60-word email for the spring launch of the Coolstore EcoTherm smart thermostat: saves up to 18% on heating, app control, 129 EUR, available from 1 March 2026 at https://coolstore.example/ecotherm.",
+        "followups": [
+          "Make the email warmer and mention the free installation guide at https://coolstore.example/ecotherm-guide."
+        ]
+      },
+      {
+        "prompt": "Write a 40-word push notification and a 10-word in-app banner for Coolstore's weekend sale: 20% off all outdoor gear, Saturday 7 and Sunday 8 November 2026, code TRAIL20, online only."
+      },
+      {
+        "prompt": "Write two versions (A and B, each under 25 words) of a Google ad for Coolstore's free next-day delivery on orders over 50 EUR, valid in Germany and Austria."
+      },
+      {
+        "prompt": "Write a campaign brief (150-200 words) for Coolstore's winter outdoor sale, 27 November to 6 December 2026: 25% off jackets and boots, free next-day delivery over 50 EUR in Germany and Austria, audience: hikers aged 25-45. Include objective, audience, key message, channels (email, social, app) and one call to action.",
+        "followups": [
+          "Good. Now write two email subject lines from it, each under 45 characters."
+        ]
+      }
+    ]
+  },
+  "marketing-rag": {
+    "system": "You are Coolstore's product assistant for the marketing team. Answer only from the product passages in the request and cite them as [1], [2]. If the passages do not answer the question, contradict each other or look out of date, say so plainly and name what is missing. Never invent product facts, prices or dates.",
+    "tasks": [
+      {
+        "prompt": "Passages:\n[1] EcoTherm product sheet, October 2026: the EcoTherm smart thermostat saved up to 18% of heating energy in a 2025 field trial with 1,200 homes. It works with gas boilers and heat pumps. It does not support electric underfloor heating.\n[2] EcoTherm FAQ: the app needs iOS 17 or Android 13 or later. Installation takes about 30 minutes.\n\nQuestion: Can our spring campaign say that the EcoTherm works with every heating system and saves 20% on heating bills?",
+        "followups": [
+          "Then give me one accurate claim sentence about savings and compatibility that legal can approve."
+        ]
+      },
+      {
+        "prompt": "Passages:\n[1] Coolstore price list, November 2026: TrailFlask 750 ml stainless steel bottle, keeps drinks cold for 24 hours and hot for 12 hours, 34.90 EUR.\n[2] Spring 2025 catalogue: TrailFlask, 750 ml, 29.90 EUR, available in three colours.\n\nQuestion: Which price should the November newsletter use for the TrailFlask, and how many colours can we mention?"
+      },
+      {
+        "prompt": "Passages:\n[1] Delivery policy, updated 1 October 2026: free next-day delivery on orders over 50 EUR in Germany and Austria. Orders placed by 14:00 CET on a working day ship the same day.\n[2] Delivery FAQ: standard delivery takes two to four working days and costs 4.95 EUR below 50 EUR.\n\nQuestion: Can the Swiss landing page promise free next-day delivery on orders over 50 CHF?"
+      },
+      {
+        "prompt": "Passages:\n[1] Returns policy: customers can return unused items within 30 days of delivery for a full refund. Coolstore members get a free return label; others pay 3.95 EUR.\n[2] Returns FAQ: refunds reach the original payment method within five working days of the return arriving.\n\nTask: Write a 50-word FAQ answer to 'How do returns work?' using only these passages.",
+        "followups": [
+          "Add one sentence for members only, under 20 words."
+        ]
+      },
+      {
+        "prompt": "Passages:\n[1] Webinar 'Hybrid cloud cost control for IT leaders': Thursday 12 November 2026, 16:00 CET, 45 minutes. Speakers: Coolstore CTO Maria Keller and a Red Hat solution architect. Registration at https://coolstore.example/webinar.\n\nQuestion: Who is the Red Hat speaker, and will a recording be sent to people who registered?"
+      },
+      {
+        "prompt": "Passages:\n[1] Guide 'Packing for a three-day hut trek': aimed at first-time trekkers; covers layering, a 30-litre pack, hut sleeping bag liner, headlamp and blister care. A free printable checklist is at https://coolstore.example/hut-checklist.\n[2] Product page: Coolstore Ridge 30 backpack, 30 litres, 1.1 kg, rain cover included.\n\nTask: Suggest three Coolstore products the guide's email could link to, each with one sentence from the passages."
       }
     ]
   }

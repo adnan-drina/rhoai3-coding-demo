@@ -1,0 +1,98 @@
+# Marketing sponsors Mistral Small 4: one subscription per use case, all owned by the team user, each with its own key
+# and hourly limit, so the dedicated charge is shown per use case.
+---
+# marketing-content: content generation pipelines: product copy, social posts, blog drafts.
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: marketing-content
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: marketing-content
+    app.kubernetes.io/part-of: maas
+    app.kubernetes.io/component: maas-subscription
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+    demo.rhoai.io/team: marketing
+spec:
+  owner:
+    users:
+    - showback-marketing
+  modelRefs:
+  - name: mistral-small4-119b
+    namespace: internal-models
+    tokenRateLimits:
+    - limit: 700000
+      window: 1h
+  priority: 100
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: marketing
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: showback-demo
+---
+# marketing-rag: product questions answered from Coolstore documents (retrieval-augmented).
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: marketing-rag
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: marketing-rag
+    app.kubernetes.io/part-of: maas
+    app.kubernetes.io/component: maas-subscription
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+    demo.rhoai.io/team: marketing
+spec:
+  owner:
+    users:
+    - showback-marketing
+  modelRefs:
+  - name: mistral-small4-119b
+    namespace: internal-models
+    tokenRateLimits:
+    - limit: 700000
+      window: 1h
+  priority: 100
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: marketing
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: showback-demo
+---
+# marketing-campaigns: campaign briefs, email and ad variants.
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: marketing-campaigns
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: marketing-campaigns
+    app.kubernetes.io/part-of: maas
+    app.kubernetes.io/component: maas-subscription
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: '040'
+    demo.rhoai.io/team: marketing
+spec:
+  owner:
+    users:
+    - showback-marketing
+  modelRefs:
+  - name: mistral-small4-119b
+    namespace: internal-models
+    tokenRateLimits:
+    - limit: 700000
+      window: 1h
+  priority: 100
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: marketing
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: showback-demo

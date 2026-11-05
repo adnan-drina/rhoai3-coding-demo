@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Mint a MaaS API key for each showback team user (showback-engineering, showback-marketing, showback-support;
-# showback-engineering-ci on request).
+# showback-engineering-ci on request). Marketing gets one key per use case (marketing-content, marketing-rag,
+# marketing-campaigns), each on its own subscription owned by showback-marketing.
 # Creates a missing user in the existing `sso` Keycloak realm, signs in through the normal OpenShift OAuth browser
 # flow and asks MaaS for the user's own key on the team subscription. Passwords and keys stay in a private state
 # directory (default ~/.config/rhoai3-showback, override with SHOWBACK_STATE_DIR); never in Git or arguments.
-# Usage: team-keys.sh [--teams engineering,engineering-ci,marketing,support] [--hours 8] [--insecure]
+# Usage: team-keys.sh [--teams engineering,engineering-ci,marketing-content,marketing-rag,marketing-campaigns,support] [--hours 8] [--insecure]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-teams=engineering,marketing,support hours=8 insecure=false
+teams=engineering,marketing-content,marketing-rag,marketing-campaigns,support hours=8 insecure=false
 fail() { log_error "$*"; exit 1; }
 while (($#)); do
     case "$1" in
@@ -117,8 +118,8 @@ login() {
 
 IFS=, read -r -a selected <<<"$teams"
 for team in "${selected[@]}"; do
-    case "$team" in engineering|engineering-ci|marketing|support) ;; *) fail "Unknown team: $team" ;; esac
-    user="showback-$team" subscription="team-$team"
+    case "$team" in engineering|engineering-ci|marketing-content|marketing-rag|marketing-campaigns|support) ;; *) fail "Unknown team: $team" ;; esac
+    case "$team" in marketing-*) user=showback-marketing subscription=$team ;; *) user="showback-$team" subscription="team-$team" ;; esac
     ensure_user "$user"
     OWNER_TOKEN=$(login "$user")
     jq -n --arg s "$subscription" --arg n "showback-$team-$(date -u +%Y%m%dT%H%M%SZ)" --arg e "${hours}h" \

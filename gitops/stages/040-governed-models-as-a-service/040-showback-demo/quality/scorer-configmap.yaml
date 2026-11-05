@@ -84,8 +84,12 @@ data:
                                "fixes it. Advice that does not use the log, or a retry without a cause, fails.",
         "team-support": "The answer is a reply a support agent could send: empathetic, polite, addresses the customer's "
                         "actual problem and gives concrete next steps. It does not invent policies or promise refunds.",
-        "team-marketing": "The answer delivers exactly the requested marketing artefact (format, count and length), is on "
-                          "brief for the product and audience named in the request, and makes no unverifiable claims.",
+        "marketing-content": "The answer delivers exactly the requested marketing artefact (format, count and length), is on "
+                             "brief for the product and audience named in the request, and makes no unverifiable claims.",
+        "marketing-campaigns": "The answer delivers exactly the requested campaign artefact (format, count and length), is on "
+                               "brief for the product and audience named in the request, and makes no unverifiable claims.",
+        "marketing-rag": "The answer uses only the product passages it was given, says so when they do not answer the "
+                         "question or are out of date, and invents no product facts, prices or dates.",
     }
     def judges_for(judge_model):
         model_id, params = JUDGES_BY_MODEL[judge_model]

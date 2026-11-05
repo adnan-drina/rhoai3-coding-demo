@@ -30,13 +30,13 @@ All objects are in namespace `models-as-a-service`.
 
 | Kind | Name | Owner / subjects | Models and hourly token limits | Priority | Wave |
 |---|---|---|---|---|---|
-| MaaSSubscription + MaaSAuthPolicy | `personal-kube-admin` | users `kube:admin` and `admin` | `qwen3-8-27b` and `mistral-small4-119b` 1,000,000 each; `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` 100,000 each | 160 | 18 |
+| MaaSSubscription + MaaSAuthPolicy | `personal-kube-admin` | users `kube:admin` and `admin` | `qwen3-8-27b` 1,000,000; `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` 100,000 each | 160 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `personal-ai-developer` | user `ai-developer` | same as above | 150 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `personal-ai-admin` | user `ai-admin` | same as above | 170 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `devspaces-coding-models` | ServiceAccount `wksp-ai-developer/devspace-maas-key-provisioner` | `qwen3-8-27b` 60,000,000 (local model only) | 100 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `playground-sandbox` | ServiceAccount `demo-sandbox/playground-maas-key-provisioner` | `gpt-6-luna` 1,000,000 | 50 | 18 |
 | ServiceAccount, MaaSSubscription + MaaSAuthPolicy | `maas-quota-probe`, `quota-probe` | ServiceAccount `models-as-a-service/maas-quota-probe` | `qwen3-8-27b` 100 per minute | 40 | 18 |
-| MaaSSubscription + MaaSAuthPolicy | `model-qualification` | ServiceAccount `evaluated-models/evalhub-maas-key-provisioner` | `qwen3-8-27b` and `mistral-small4-119b` 5,000,000 each; each external model 1,000,000 | 70 | 30 |
+| MaaSSubscription + MaaSAuthPolicy | `model-qualification` | ServiceAccount `evaluated-models/evalhub-maas-key-provisioner` | `qwen3-8-27b` 5,000,000; each external model 1,000,000 (Mistral is dedicated to Marketing, not evaluated here) | 70 | 30 |
 
 Every subscription sets `tokenMetadata` (`organizationId: rhoai3-coding-demo`, `costCenter: ai-platform`, labels
 `environment`, `provider`, `modelSet`), and every auth policy sets the same `meteringMetadata`.

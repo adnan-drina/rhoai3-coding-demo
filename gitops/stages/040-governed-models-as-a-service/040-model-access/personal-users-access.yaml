@@ -25,11 +25,6 @@ spec:
       tokenRateLimits:
         - limit: 1000000
           window: 1h
-    - name: mistral-small4-119b
-      namespace: internal-models
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
     - name: gpt-6-luna
       namespace: external-models
       tokenRateLimits:
@@ -75,8 +70,6 @@ spec:
   modelRefs:
     - name: qwen3-8-27b
       namespace: internal-models
-    - name: mistral-small4-119b
-      namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
     - name: claude-sonnet-5-5
@@ -109,11 +102,6 @@ spec:
       - ai-developer
   modelRefs:
     - name: qwen3-8-27b
-      namespace: internal-models
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
-    - name: mistral-small4-119b
       namespace: internal-models
       tokenRateLimits:
         - limit: 1000000
@@ -162,8 +150,6 @@ spec:
   modelRefs:
     - name: qwen3-8-27b
       namespace: internal-models
-    - name: mistral-small4-119b
-      namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
     - name: claude-sonnet-5-5
@@ -196,11 +182,6 @@ spec:
       - ai-admin
   modelRefs:
     - name: qwen3-8-27b
-      namespace: internal-models
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
-    - name: mistral-small4-119b
       namespace: internal-models
       tokenRateLimits:
         - limit: 1000000
@@ -248,8 +229,6 @@ spec:
       - ai-admin
   modelRefs:
     - name: qwen3-8-27b
-      namespace: internal-models
-    - name: mistral-small4-119b
       namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models

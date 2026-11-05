@@ -26,15 +26,26 @@ if jq -e '
     refs("MaaSSubscription"; "team-engineering") == ["external-models/claude-sonnet-5-5", "external-models/gpt-6-luna",
         "external-models/nemotron-3-ultra-550b-a55b", "internal-models/qwen3-8-27b"]
     and refs("MaaSSubscription"; "team-engineering-ci") == ["external-models/claude-sonnet-5-5", "internal-models/qwen3-8-27b"]
-    and refs("MaaSSubscription"; "team-marketing") == ["internal-models/mistral-small4-119b"]
+    and (. as $b | all("marketing-content", "marketing-rag", "marketing-campaigns"; . as $u |
+        ($b | refs("MaaSSubscription"; $u)) == ["internal-models/mistral-small4-119b"]))
     and refs("MaaSSubscription"; "team-support") == ["internal-models/qwen3-8-27b"]
-    and (. as $b | all("team-engineering", "team-engineering-ci", "team-marketing", "team-support"; . as $t |
+    and (. as $b | all("team-engineering", "team-engineering-ci", "marketing-content", "marketing-rag", "marketing-campaigns",
+        "team-support"; . as $t |
         ($b | refs("MaaSSubscription"; $t)) == ($b | refs("MaaSAuthPolicy"; $t))))
     and all(.[] | select(.kind == "MaaSSubscription" and (.metadata.name | startswith("team-")));
         .spec.owner.users == ["showback-" + (.metadata.name | ltrimstr("team-"))])
+    and all(.[] | select(.kind == "MaaSSubscription" and (.metadata.name | startswith("marketing-")));
+        .spec.owner.users == ["showback-marketing"])
 ' "$work/bundle.json" >/dev/null; then
     record 'Team access matrix: shared Qwen, dedicated Mistral, external for Engineering' pass
 else record 'Team access matrix: shared Qwen, dedicated Mistral, external for Engineering' 'Subscriptions or policies differ'; fi
+
+# Mistral is dedicated to Marketing: no subscription or auth policy outside its use cases reaches it.
+if jq -s -e 'add | all(.[] | select(.kind == "MaaSSubscription" or .kind == "MaaSAuthPolicy")
+        | select(any(.spec.modelRefs[]; .name == "mistral-small4-119b")); .metadata.name | startswith("marketing-"))' \
+    "$work/bundle.json" "$work/model-access.json" >/dev/null; then
+    record 'Only the Marketing use cases reach the dedicated Mistral' pass
+else record 'Only the Marketing use cases reach the dedicated Mistral' 'Another subscription or policy grants Mistral'; fi
 
 # The bundle holds team access only; 040-local-models serves and publishes Mistral, on its own Gateway listener only,
 # because a second local model on the shared api listener breaks Qwen routing on RHOAI 3.5.2 (RHOAIENG-93709).

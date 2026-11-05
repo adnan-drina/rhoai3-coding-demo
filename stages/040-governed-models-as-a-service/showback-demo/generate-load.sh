@@ -3,7 +3,8 @@
 # application, with the tasks in prompts.json.
 #   shared     Engineering (code reviews and agent tasks) and Support (customer conversations) on Qwen 3.8, the shared
 #              private model
-#   dedicated  Marketing (campaign copy with revision rounds) on Mistral Small 4, its dedicated private model
+#   dedicated  Marketing on Mistral Small 4, its dedicated private model: one run per use case, each on its own
+#              subscription (marketing-content, marketing-rag with product passages, marketing-campaigns)
 #   external   Engineering (code reviews and agent tasks) on an external model (default gpt-6-luna)
 #   --offer shared --team engineering-ci   Engineering CI jobs (build and test failures) on Qwen 3.8; only on request,
 #              because its key is minted with team-keys.sh --teams engineering-ci
@@ -12,7 +13,8 @@
 # tool calls, model call). Support and Marketing tasks with follow-ups are conversations: each turn is sent with the
 # whole history. Each team runs CONCURRENCY parallel loops until MINUTES have passed, then prints a token summary.
 # --pause SECONDS or MIN-MAX sets the think time between a loop's requests for every team (default per team:
-# Engineering 2-6, Support 5-15, Marketing 10-30). --team limits a run to one team.
+# Engineering 2-6, Support 5-15, Marketing 10-30). --team takes engineering, engineering-ci, support or a Marketing use
+# case. --team limits a run to one team.
 # Every request turn is also written to MLflow as one trace (workspace models-as-a-service, one experiment per MaaS
 # model, internal-<model> or external-<model>): a root span with the team, subscription, offering and finish_reason
 # tags (AGENT when tools were used), one GenAI chat span per model call with model, provider, tokens, messages and the
@@ -45,14 +47,14 @@ done
 [[ -z "$pause" || "$pause" =~ ^[0-9]+(-[0-9]+)?$ ]] || fail '--pause must be SECONDS or MIN-MAX'
 [[ -z "$max_tokens" || ( "$max_tokens" =~ ^[0-9]+$ && "$max_tokens" -ge 16 && "$max_tokens" -le 4096 ) ]] || fail '--max-tokens must be 16-4096'
 PROMPTS="$SCRIPT_DIR/prompts.json"
-jq -e '.engineering.tasks and .support.tasks and .marketing.tasks' "$PROMPTS" >/dev/null || fail "Invalid $PROMPTS"
+jq -e '.engineering.tasks and .support.tasks and ."marketing-content".tasks and ."marketing-rag".tasks and ."marketing-campaigns".tasks' "$PROMPTS" >/dev/null || fail "Invalid $PROMPTS"
 QWEN=publishers/internal-models/models/qwen3-8-27b MISTRAL=publishers/internal-models/models/mistral-small4-119b
 # A run is "TEAM MODEL OFFERING": one team on one model.
 case "$offer" in
     shared) runs=("engineering $QWEN shared" "support $QWEN shared") ;;
-    dedicated) runs=("marketing $MISTRAL dedicated") ;;
+    dedicated) runs=("marketing-content $MISTRAL dedicated" "marketing-rag $MISTRAL dedicated" "marketing-campaigns $MISTRAL dedicated") ;;
     external) runs=("engineering $external_model external") ;;
-    all) runs=("engineering $QWEN shared" "support $QWEN shared" "marketing $MISTRAL dedicated" "engineering $external_model external") ;;
+    all) runs=("engineering $QWEN shared" "support $QWEN shared" "marketing-content $MISTRAL dedicated" "marketing-rag $MISTRAL dedicated" "marketing-campaigns $MISTRAL dedicated" "engineering $external_model external") ;;
     *) fail '--offer must be shared, dedicated, external or all' ;;
 esac
 [[ "$offer $team_filter" != "shared engineering-ci" ]] || runs+=("engineering-ci $QWEN shared")
@@ -68,8 +70,11 @@ team_tokens() {  # answer cap: --max-tokens for everyone, else the team's own (c
 }
 team_pause() {  # think time between requests: --pause for everyone, else the team's own pace
     [[ -z "$pause" ]] || { echo "$pause"; return; }
-    case "$1" in engineering*) echo 2-6 ;; support) echo 5-15 ;; marketing) echo 10-30 ;; esac
+    case "$1" in engineering*) echo 2-6 ;; support) echo 5-15 ;; marketing*) echo 10-30 ;; esac
 }
+# A run is a team, or a Marketing use case: the team's subscription is team-NAME, a use case is its own subscription.
+sub_of() { case "$1" in marketing-*) echo "$1" ;; *) echo "team-$1" ;; esac; }
+team_of() { case "$1" in marketing-*) echo marketing ;; *) echo "$1" ;; esac; }
 for run in "${runs[@]}"; do
     p=$(team_pause "${run%% *}"); (( ${p%-*} <= ${p#*-} && ${p#*-} <= 300 )) || fail '--pause range must be ascending and at most 300 seconds'
 done
@@ -157,7 +162,7 @@ fi
 # t0, t1, name, args, result}), in order.
 export_trace() {
     local idx=$1 team=$2 model=$3 offering=$4 steps=$5 session=$6 t0=$7 t1=$8 otlp
-    otlp=$(jq -n --slurpfile st "$steps" --slurpfile price "$work/run$idx.price" --arg team "$team" --arg offer "$offering" \
+    otlp=$(jq -n --slurpfile st "$steps" --slurpfile price "$work/run$idx.price" --arg team "$(team_of "$team")" --arg sub "$(sub_of "$team")" --arg offer "$offering" \
         --arg model "${model##*/}" --arg tid "$(openssl rand -hex 16)" --arg rid "$(openssl rand -hex 8)" \
         --arg session "$session" --arg t0 "$t0" --arg t1 "$t1" '
         def s($k; $v): {key: $k, value: {stringValue: ($v | tostring)}};
@@ -168,10 +173,10 @@ export_trace() {
         | ([$chats[] | select(.code != "200") | .code] | first // "200") as $code
         | {resourceSpans: [{resource: {attributes: [s("service.name"; "showback-load")]},
            scopeSpans: [{scope: {name: "rhoai3-showback"}, spans: ([
-            {traceId: $tid, spanId: $rid, name: "team-\($team) request", kind: 1,
+            {traceId: $tid, spanId: $rid, name: "\($sub) request", kind: 1,
              startTimeUnixNano: $t0, endTimeUnixNano: $t1, status: ok($code),
              attributes: ([s("mlflow.spanType"; if $agent then "\"AGENT\"" else "\"CHAIN\"" end), s("user.id"; "showback-\($team)"),
-               s("mlflow.traceTag.team"; $team), s("mlflow.traceTag.subscription"; "team-\($team)"),
+               s("mlflow.traceTag.team"; $team), s("mlflow.traceTag.subscription"; $sub),
                s("mlflow.traceTag.offering"; $offer), s("mlflow.traceTag.source"; "showback-load"),
                s("mlflow.traceTag.finish_reason"; ($final.finish_reason // "none")),
                # What the cost figure means: an indicative unit cost, not a charge (the Offer dashboards show charges).
