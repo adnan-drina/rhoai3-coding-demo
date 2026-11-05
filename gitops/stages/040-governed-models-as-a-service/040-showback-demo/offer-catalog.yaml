@@ -11,7 +11,10 @@
 # Tariffs: USD per million tokens, whichever way the tokens split. A worker at full capacity costs about 0.52, so 1.00
 # committed breaks even at about half load (2.5B tokens a month) and 1.50 on demand at about a third.
 # Shared commitments: a subscription commits to monthly tokens at the committed tariff, paid whether used or not;
-# usage above it is billed at the on-demand tariff. MaaS limits count per user, so the limit times the team's users must
+# usage above it is billed at the on-demand tariff. A commitment also promises peak capacity, so they are sized to fit the
+# workers: interactive commitments, fully used, stay within 80% of one worker in the busy hour (CI runs overnight).
+# Reservation: tokens per hour kept free for a service that must answer when needed, whatever its volume. Both are plans:
+# MaaS has no team cap or reservation, so nothing enforces them. MaaS limits count per user, so the limit times the team's users must
 # allow the commitment in working hours. showback_subscription_users is that planned headcount.
 # Teams: every MaaS subscription belongs to the team of its owner; Platform carries the platform's own services. The
 # MaaS usage counters carry the subscription but not its cost centre, so the dashboards join on this mapping. A
@@ -73,14 +76,23 @@ spec:
           expr: vector(1)
           labels: {offer: shared, model: qwen3-8-27b}
         - record: showback_offer_commitment_tokens
-          expr: vector(1200000000)
+          expr: vector(625000000)
           labels: {offer: shared, model: qwen3-8-27b, subscription: team-engineering}
         - record: showback_offer_commitment_tokens
-          expr: vector(800000000)
+          expr: vector(1000000000)
           labels: {offer: shared, model: qwen3-8-27b, subscription: team-engineering-ci}
         - record: showback_offer_commitment_tokens
           expr: vector(250000000)
           labels: {offer: shared, model: qwen3-8-27b, subscription: team-support}
+        - record: showback_offer_commitment_tokens
+          expr: vector(100000000)
+          labels: {offer: shared, model: qwen3-8-27b, subscription: maas-quality-judge}
+        - record: showback_offer_commitment_tokens
+          expr: vector(30000000)
+          labels: {offer: shared, model: qwen3-8-27b, subscription: personal-kube-admin}
+        - record: showback_offer_reservation_tokens_per_hour
+          expr: vector(100000)
+          labels: {offer: shared, model: qwen3-8-27b, subscription: openshift-lightspeed}
         - record: showback_subscription_users
           expr: vector(25)
           labels: {subscription: team-engineering}

@@ -18,6 +18,7 @@ record 'Shell scripts parse' "$syntax"
 
 kustomize build "$COMPONENT" | yaml_json > "$work/bundle.json"
 kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-local-models" | yaml_json > "$work/local-models.json"
+kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-model-access" | yaml_json > "$work/model-access.json"
 # Engineering and Support share Qwen; Marketing owns Mistral; Engineering alone reaches the external models.
 if jq -e '
     def refs($kind; $name): [.[] | select(.kind == $kind and .metadata.name == $name) | .spec.modelRefs[] |
@@ -99,9 +100,9 @@ if jq -e '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showbac
     record 'Offer catalog: every fair-share tier names a known subscription' pass
 else record 'Offer catalog: every fair-share tier names a known subscription' 'Tier incomplete'; fi
 
-# A shared commitment names a team subscription on that shared model whose hourly per-user token limit, times the
+# A shared commitment names a subscription on that shared model, in this bundle or in 040-model-access, whose hourly per-user token limit, times the
 # team's planned users, can carry it in 168 working hours; otherwise the team could not use what it pays for.
-if jq -e '. as $b | [.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog")
+if jq -e --slurpfile access "$work/model-access.json" '(. + $access[0]) as $b | [.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog")
         | .spec.groups[].rules[] | select(.record == "showback_offer_commitment_tokens")] as $c
     | [.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog")
         | .spec.groups[].rules[] | select(.record == "showback_subscription_users")] as $u | ($c | length) > 0
