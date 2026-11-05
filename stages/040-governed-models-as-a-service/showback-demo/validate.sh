@@ -18,21 +18,22 @@ record 'Shell scripts parse' "$syntax"
 
 kustomize build "$COMPONENT" | yaml_json > "$work/bundle.json"
 kustomize build "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-local-models" | yaml_json > "$work/local-models.json"
-# Engineering and Support share Qwen; Marketing owns Mistral; Support alone reaches the external models.
+# Engineering and Support share Qwen; Marketing owns Mistral; Engineering alone reaches the external models.
 if jq -e '
     def refs($kind; $name): [.[] | select(.kind == $kind and .metadata.name == $name) | .spec.modelRefs[] |
         .namespace + "/" + .name] | sort;
-    refs("MaaSSubscription"; "team-engineering") == ["internal-models/qwen3-8-27b"]
-    and refs("MaaSSubscription"; "team-marketing") == ["internal-models/mistral-small4-119b"]
-    and refs("MaaSSubscription"; "team-support") == ["external-models/claude-sonnet-5-5", "external-models/gpt-6-luna",
+    refs("MaaSSubscription"; "team-engineering") == ["external-models/claude-sonnet-5-5", "external-models/gpt-6-luna",
         "external-models/nemotron-3-ultra-550b-a55b", "internal-models/qwen3-8-27b"]
-    and (. as $b | all("team-engineering", "team-marketing", "team-support"; . as $t |
+    and refs("MaaSSubscription"; "team-engineering-ci") == ["external-models/claude-sonnet-5-5", "internal-models/qwen3-8-27b"]
+    and refs("MaaSSubscription"; "team-marketing") == ["internal-models/mistral-small4-119b"]
+    and refs("MaaSSubscription"; "team-support") == ["internal-models/qwen3-8-27b"]
+    and (. as $b | all("team-engineering", "team-engineering-ci", "team-marketing", "team-support"; . as $t |
         ($b | refs("MaaSSubscription"; $t)) == ($b | refs("MaaSAuthPolicy"; $t))))
     and all(.[] | select(.kind == "MaaSSubscription" and (.metadata.name | startswith("team-")));
         .spec.owner.users == ["showback-" + (.metadata.name | ltrimstr("team-"))])
 ' "$work/bundle.json" >/dev/null; then
-    record 'Team access matrix: shared Qwen, dedicated Mistral, external for Support' pass
-else record 'Team access matrix: shared Qwen, dedicated Mistral, external for Support' 'Subscriptions or policies differ'; fi
+    record 'Team access matrix: shared Qwen, dedicated Mistral, external for Engineering' pass
+else record 'Team access matrix: shared Qwen, dedicated Mistral, external for Engineering' 'Subscriptions or policies differ'; fi
 
 # The bundle holds team access only; 040-local-models serves and publishes Mistral, on its own Gateway listener only,
 # because a second local model on the shared api listener breaks Qwen routing on RHOAI 3.5.2 (RHOAIENG-93709).
@@ -72,6 +73,7 @@ else record 'Every MaaS subscription in Git maps to one showback team' "Unmapped
 # dedicated models a sponsor, and every dedicated model must be served by 040-local-models.
 if jq -e --slurpfile local "$work/local-models.json" '[.[] | select(.kind == "PrometheusRule" and .metadata.name == "showback-offer-catalog") | .spec.groups[].rules[]] as $r
     | ($r | map(select(.record == "showback_offer_info") | .labels)) as $info | ($info | length) > 0
+    and any($r[]; .record == "showback_platform_coefficient")
     and all($info[]; . as $i | any($r[]; .record == "showback_offer_worker_usd_per_hour" and .labels.model == $i.model)
         and (.sponsor | type == "string" and length > 0)
         and (if .offer == "shared" then any($r[]; .record == "showback_offer_tariff_usd_per_million" and .labels.model == $i.model)

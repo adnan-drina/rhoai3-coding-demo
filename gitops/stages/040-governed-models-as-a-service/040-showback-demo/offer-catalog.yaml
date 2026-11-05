@@ -40,12 +40,19 @@ spec:
       rules:
         - record: showback_usd_per_eur
           expr: vector(1.1179)
+        # Multiplies what teams pay on private models (shared tariffs, dedicated worker) to pay for running the platform.
+        # External models stay at provider list price.
+        - record: showback_platform_coefficient
+          expr: vector(1.2)
         - record: showback_subscription_tier
           expr: vector(1)
           labels: {subscription: team-marketing, tier: 1 Dedicated}
         - record: showback_subscription_tier
           expr: vector(0.5)
           labels: {subscription: maas-quality-judge, tier: 3 Off-peak}
+        - record: showback_subscription_tier
+          expr: vector(0.5)
+          labels: {subscription: team-engineering-ci, tier: 3 Off-peak}
         - record: showback_subscription_test_traffic
           expr: vector(1)
           labels: {subscription: model-qualification}
@@ -66,8 +73,11 @@ spec:
           expr: vector(1)
           labels: {offer: shared, model: qwen3-8-27b}
         - record: showback_offer_commitment_tokens
-          expr: vector(2000000000)
+          expr: vector(1200000000)
           labels: {offer: shared, model: qwen3-8-27b, subscription: team-engineering}
+        - record: showback_offer_commitment_tokens
+          expr: vector(800000000)
+          labels: {offer: shared, model: qwen3-8-27b, subscription: team-engineering-ci}
         - record: showback_offer_commitment_tokens
           expr: vector(250000000)
           labels: {offer: shared, model: qwen3-8-27b, subscription: team-support}
@@ -75,7 +85,10 @@ spec:
           expr: vector(25)
           labels: {subscription: team-engineering}
         - record: showback_subscription_users
-          expr: vector(15)
+          expr: vector(8)
+          labels: {subscription: team-engineering-ci}
+        - record: showback_subscription_users
+          expr: vector(10)
           labels: {subscription: team-support}
         # Dedicated private: the sponsoring subscription pays the worker, busy or idle.
         - record: showback_offer_info
@@ -108,6 +121,9 @@ spec:
         - record: showback_subscription_team
           expr: vector(1)
           labels: {subscription: team-engineering, team: engineering}
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: team-engineering-ci, team: engineering}
         - record: showback_subscription_team
           expr: vector(1)
           labels: {subscription: devspaces-coding-models, team: engineering}
@@ -259,14 +275,20 @@ spec:
           expr: vector(700000)
           labels: {subscription: team-marketing, model: mistral-small4-119b}
         - record: showback_subscription_token_limit
-          expr: vector(300000)
+          expr: vector(500000)
           labels: {subscription: team-support, model: qwen3-8-27b}
         - record: showback_subscription_token_limit
           expr: vector(200000)
-          labels: {subscription: team-support, model: gpt-6-luna}
+          labels: {subscription: team-engineering, model: gpt-6-luna}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: team-engineering, model: claude-sonnet-5-5}
         - record: showback_subscription_token_limit
           expr: vector(200000)
-          labels: {subscription: team-support, model: claude-sonnet-5-5}
+          labels: {subscription: team-engineering, model: nemotron-3-ultra-550b-a55b}
         - record: showback_subscription_token_limit
-          expr: vector(200000)
-          labels: {subscription: team-support, model: nemotron-3-ultra-550b-a55b}
+          expr: vector(1000000)
+          labels: {subscription: team-engineering-ci, model: qwen3-8-27b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
+          labels: {subscription: team-engineering-ci, model: claude-sonnet-5-5}

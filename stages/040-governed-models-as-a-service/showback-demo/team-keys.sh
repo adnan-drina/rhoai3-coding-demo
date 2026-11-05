@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Mint a MaaS API key for each showback team user (showback-engineering, showback-marketing, showback-support).
+# Mint a MaaS API key for each showback team user (showback-engineering, showback-marketing, showback-support;
+# showback-engineering-ci on request).
 # Creates a missing user in the existing `sso` Keycloak realm, signs in through the normal OpenShift OAuth browser
 # flow and asks MaaS for the user's own key on the team subscription. Passwords and keys stay in a private state
 # directory (default ~/.config/rhoai3-showback, override with SHOWBACK_STATE_DIR); never in Git or arguments.
-# Usage: team-keys.sh [--teams engineering,marketing,support] [--hours 8] [--insecure]
+# Usage: team-keys.sh [--teams engineering,engineering-ci,marketing,support] [--hours 8] [--insecure]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -116,7 +117,7 @@ login() {
 
 IFS=, read -r -a selected <<<"$teams"
 for team in "${selected[@]}"; do
-    case "$team" in engineering|marketing|support) ;; *) fail "Unknown team: $team" ;; esac
+    case "$team" in engineering|engineering-ci|marketing|support) ;; *) fail "Unknown team: $team" ;; esac
     user="showback-$team" subscription="team-$team"
     ensure_user "$user"
     OWNER_TOKEN=$(login "$user")

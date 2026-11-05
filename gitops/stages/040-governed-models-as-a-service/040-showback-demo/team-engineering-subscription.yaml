@@ -19,8 +19,23 @@ spec:
   - name: qwen3-8-27b
     namespace: internal-models
     tokenRateLimits:
-    # Per user. 25 planned users at this limit carry the 2B commitment in the offer catalog.
+    # Per user. 25 planned users at this limit carry the 1.2B commitment in the offer catalog.
     - limit: 1000000
+      window: 1h
+  - name: gpt-6-luna
+    namespace: external-models
+    tokenRateLimits:
+    - limit: 200000
+      window: 1h
+  - name: claude-sonnet-5-5
+    namespace: external-models
+    tokenRateLimits:
+    - limit: 1000000
+      window: 1h
+  - name: nemotron-3-ultra-550b-a55b
+    namespace: external-models
+    tokenRateLimits:
+    - limit: 200000
       window: 1h
   priority: 100
   tokenMetadata:

@@ -4,7 +4,7 @@
 #   shared     Engineering (code reviews and agent tasks) and Support (customer conversations) on Qwen 3.8, the shared
 #              private model
 #   dedicated  Marketing (campaign copy with revision rounds) on Mistral Small 4, its dedicated private model
-#   external   Support (customer conversations) on an external model (default gpt-6-luna)
+#   external   Engineering (code reviews and agent tasks) on an external model (default gpt-6-luna)
 #   all        every team and offering at once, each team at its own pace
 # Engineering agent tasks give the model read_file and run_tests tools and play the tools from prompts.json (model call,
 # tool calls, model call). Support and Marketing tasks with follow-ups are conversations: each turn is sent with the
@@ -49,8 +49,8 @@ QWEN=publishers/internal-models/models/qwen3-8-27b MISTRAL=publishers/internal-m
 case "$offer" in
     shared) runs=("engineering $QWEN shared" "support $QWEN shared") ;;
     dedicated) runs=("marketing $MISTRAL dedicated") ;;
-    external) runs=("support $external_model external") ;;
-    all) runs=("engineering $QWEN shared" "support $QWEN shared" "marketing $MISTRAL dedicated" "support $external_model external") ;;
+    external) runs=("engineering $external_model external") ;;
+    all) runs=("engineering $QWEN shared" "support $QWEN shared" "marketing $MISTRAL dedicated" "engineering $external_model external") ;;
     *) fail '--offer must be shared, dedicated, external or all' ;;
 esac
 if [[ -n "$team_filter" ]]; then
@@ -88,7 +88,7 @@ trap 'rm -rf "$work"' EXIT
 deadline=$(( $(date +%s) + minutes * 60 ))
 
 # ── MLflow traces ─────────────────────────────────────────────────────────────
-# Prices: shared private models pay the on-demand tariff; a dedicated model is priced at its worker cost per token at
+# Prices: shared private models pay the on-demand tariff times the platform coefficient; a dedicated model is priced at its worker cost per token at
 # demonstrated capacity (the sponsor pays the worker, busy or idle; the Offer dashboard shows the real charge);
 # external models at the provider list price of the versioned catalog. Never a price table looked up by model name.
 COMPONENT="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-showback-demo"
@@ -99,9 +99,10 @@ price() {
     local name=${1##*/}
     if [[ "$1" == publishers/* ]]; then
         yaml_json < "$COMPONENT/offer-catalog.yaml" | jq -c --arg m "$name" '
-            [.[0].spec.groups[].rules[] | select(.labels.model == $m)
+            ([.[0].spec.groups[].rules[] | select(.record == "showback_platform_coefficient") | .expr | capture("vector\\((?<v>[0-9.]+)\\)").v | tonumber] | first // 1) as $coef
+            | [.[0].spec.groups[].rules[] | select(.labels.model == $m)
              | {(.record): (.expr | capture("vector\\((?<v>[0-9.]+)\\)").v | tonumber)}] | (add // {}) as $r
-            | if $r.showback_offer_tariff_usd_per_million then ($r.showback_offer_tariff_usd_per_million / 1e6) as $t
+            | if $r.showback_offer_tariff_usd_per_million then ($r.showback_offer_tariff_usd_per_million * $coef / 1e6) as $t
                 | {model: $m, provider: "openshift-ai", input: $t, output: $t}
               elif $r.showback_offer_worker_usd_per_hour and $r.showback_offer_capacity_tokens_per_second then
                 ($r.showback_offer_worker_usd_per_hour / ($r.showback_offer_capacity_tokens_per_second * 3600)) as $t

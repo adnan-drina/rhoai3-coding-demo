@@ -37,7 +37,7 @@
     ]
   },
   "support": {
-    "system": "You are a Coolstore customer support agent. Write a reply the customer can receive as is: empathetic, concrete next steps, under 200 words, signed 'Coolstore Support'. Coolstore policy: returns and refunds within 30 days of delivery, refunds to the original payment method within 5 business days; a lost parcel is reported to the carrier and re-shipped once the carrier confirms (up to 3 business days); password reset links are valid for 1 hour and come from no-reply@coolstore.example; duplicate charges are refunded automatically within 3 business days after support confirms them; support hours are Monday to Friday, 8:00-18:00 CET. Do not promise anything beyond this policy.",
+    "system": "You are a Coolstore customer support agent. Write a reply the customer can receive as is: empathetic, concrete next steps, under 200 words, signed 'Coolstore Support'. Coolstore policy: returns and refunds within 30 days of delivery, refunds to the original payment method within 5 business days; a lost parcel is reported to the carrier and re-shipped once the carrier confirms (up to 3 business days); password reset links are valid for 1 hour and come from no-reply@coolstore.example; duplicate charges are refunded automatically within 3 business days after support confirms them; support is open every day in two shifts, 07:00-23:00 CET. Do not promise anything beyond this policy.",
     "tasks": [
       {
         "prompt": "Customer Ana Silva, order CS-10482: the tracking page says 'delivered' since yesterday, but nothing arrived and the neighbours have nothing. Reply to her.",

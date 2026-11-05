@@ -75,9 +75,9 @@ GenAI Studio exposes the Technology Preview tracing capability. Enable tracing e
 
 The optional [showback demo](showback-demo/README.md) answers "What did AI cost us?" with three teams and three service offerings. Its [040-showback-demo component](../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/README.md) is deployed only on request with `deploy.sh --component 040-showback-demo`; the default deployment does not select it.
 
-- **Shared private:** Engineering and Support use Qwen 3.8 and pay a published tariff per million tokens; the platform pays for the GPU worker and carries the difference.
+- **Shared private:** Engineering and Support use Qwen 3.8 and pay a published tariff per million tokens, including a platform coefficient of 1.2; the platform pays for the GPU worker and carries the difference.
 - **Dedicated private:** Marketing owns Mistral Small 4 119B on a second RTX PRO 6000 worker and pays its full running cost, busy or idle.
-- **External:** Support calls GPT-6 Luna, Claude Sonnet 5.5 and Nemotron; the gateway's metering plugin records each response at the provider's list price.
+- **External:** Engineering calls GPT-6 Luna, Claude Sonnet 5.5 and Nemotron; the gateway's metering plugin records each response at the provider's list price.
 
 `showback-demo/team-keys.sh` mints each team user's own key and `showback-demo/generate-load.sh --offer shared|dedicated|external|all` drives load: the three teams work on the Coolstore application (code reviews and tool-calling agent tasks, customer conversations, campaign briefs). The three **Offer** tabs on the Observability page compute usage and cost live for the selected time range.
 

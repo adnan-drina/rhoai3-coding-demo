@@ -5,6 +5,8 @@ kind: Kustomization
 resources:
   - team-engineering-subscription.yaml
   - team-engineering-auth-policy.yaml
+  - team-engineering-ci-subscription.yaml
+  - team-engineering-ci-auth-policy.yaml
   - team-support-subscription.yaml
   - team-support-auth-policy.yaml
   - offer-catalog.yaml

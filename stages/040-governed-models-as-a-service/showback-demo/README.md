@@ -4,8 +4,8 @@ This demo answers "What did AI cost us?" on a governed MaaS platform. Three team
 
 | Team | Offering | Model | How it is priced |
 |---|---|---|---|
-| Engineering | Shared private | Qwen 3.8 27B on a platform-owned RTX PRO 6000 worker | Committed tariff for 2B tokens a month, on demand above it; the platform carries idle capacity |
-| Support | Shared private and External | Qwen 3.8 27B; GPT-6 Luna, Claude Sonnet 5.5, Nemotron | Tariff for Qwen; provider list price per token for external models |
+| Engineering | Shared private and External | Qwen 3.8 27B on a platform-owned RTX PRO 6000 worker; Claude Sonnet 5.5, GPT-6 Luna, Nemotron | Committed tariff for 2B tokens a month (1.2B developers, 800M CI), on demand above it, the platform carries idle capacity; provider list price per token for external models |
+| Support | Shared private | Qwen 3.8 27B | Committed tariff for 250M tokens a month, on demand above it |
 | Marketing | Dedicated private | Mistral Small 4 119B on its own RTX PRO 6000 worker | Full running cost of the worker, busy or idle |
 
 The cluster resources are the optional [040-showback-demo component](../../../gitops/stages/040-governed-models-as-a-service/040-showback-demo/README.md): Engineering, Support and Marketing subscriptions and policies, the showback dashboards and the external metering service. Marketing's dedicated model, Mistral Small 4 (`mistral-small4-119b`), is served and published to MaaS by [040-local-models](../../../gitops/stages/040-governed-models-as-a-service/040-local-models/README.md), next to Qwen. Mistral is served on its own Gateway listener (`mistral-small4-maas.<cluster-domain>`), not the shared MaaS endpoint, because on RHOAI 3.5.2 a second local model on the shared listener breaks Qwen calls ([Troubleshooting](../../../docs/TROUBLESHOOTING.md#qwen-calls-through-maas-hang-then-return-503)); `team-keys.sh` records both endpoints and `generate-load.sh --offer dedicated` uses Mistral's.
@@ -18,7 +18,7 @@ Open **Observe & monitor → Dashboard** in the OpenShift AI console. The six **
 
 | Team | Subscriptions |
 |---|---|
-| Engineering | `team-engineering`, `devspaces-coding-models`, `personal-ai-developer`, `opencode-developer-qwen38`, `mta-migration-ai` |
+| Engineering | `team-engineering`, `team-engineering-ci`, `devspaces-coding-models`, `personal-ai-developer`, `opencode-developer-qwen38`, `mta-migration-ai` |
 | Support | `team-support`, `personal-ai-admin`, `hermes-private-qwen38`, `opencode-private-qwen38` |
 | Marketing | `team-marketing` |
 | Platform | `maas-quality-judge`, `openshift-lightspeed`, `model-qualification`, `quota-probe`, `playground-sandbox`, `personal-kube-admin` |
@@ -27,7 +27,7 @@ Open **Observe & monitor → Dashboard** in the OpenShift AI console. The six **
 
 | Tab | Question | Shows |
 |---|---|---|
-| **Showback 1 · By team** | What does each team cost? | An Overview that opens with a pie of the monthly cost by team next to the cost per team as stacked bars over time; then the platform's monthly balance (red when it carries a shortfall) beside each team's projected total bill across all offerings; then gauges of the busiest person's busiest hour per team subscription (the team's shared demo identity when it has no named people) as a share of the MaaS hourly token limit, which MaaS counts per user (100% means MaaS rejected requests); then the relevance and completeness pass rates per model. The Breakdown has a monthly bill per team (people on team subscriptions with usage, shared, dedicated, external, total), every subscription with its team, and the verdict counts behind the pass rates |
+| **Showback 1 · By team** | What does each team cost? | No filters: every team, at the default hours and users. An Overview that opens with a pie of the monthly cost by team next to the cost per team as stacked bars over time; then the platform's monthly balance across shared and dedicated workers (red when it carries a shortfall) beside each team's projected total bill across all offerings. The Breakdown has a monthly bill per team (people on team subscriptions with usage, shared, dedicated, external, total) and every subscription with its team |
 | **Showback 2 · Shared private** | Who uses the shared model, and does it pay for itself? | A pie of the monthly charge per team, bars of how much of each commitment is used, tokens by team as stacked bars; platform economics as bars (running cost, projected charges, committed floor), a cost coverage gauge and the balance with commitments and if all paid on demand (red when negative); the charges by consumer table |
 | **Showback 3 · Dedicated private** | What does Marketing get for its GPU? | A load gauge (the sponsor's tokens against what the worker can serve), a pie of the paid capacity split into used and unused, bars of who used the capacity (sponsor and other consumers); monthly charge, paid unused capacity, sponsor tokens and sponsor cost per million tokens; GPU utilisation and tokens by consumer; charges per model; every consumer of the dedicated model with its role |
 | **Showback 4 · External model** | What do the providers charge? | Spend, requests and tokens in range, projected monthly spend; a pie of spend by team and bars of spend by model; month-to-date spend stacked by team and requests by team; statement by team, subscription and model; the provider price list (collapsed) |
@@ -38,15 +38,15 @@ Any other consumer granted the dedicated Mistral, such as a benchmark, pays noth
 
 ### Talk track
 
-1. **By team:** "This is what AI cost each team this month, across every way they use it." The pie gives the split, the cost bars show when it was spent. Then the second row: the platform balance (red when the teams do not pay for the shared capacity yet) and each team's total bill. Below them, how close the subscriptions came to their MaaS limit, and how the models score on quality.
+1. **By team:** "This is what AI cost each team this month, across every way they use it." The pie gives the split, the cost bars show when it was spent. Then the second row: the platform balance (red when the teams do not pay for the shared capacity yet) and each team's total bill.
 2. **Shared private:** Engineering's commitment is its revenue floor; Dev Spaces, OpenCode and MTA count against Engineering too. Open *Platform economics*: cost coverage shows how much of the GPU the commitments pay for.
 3. **Dedicated private:** Marketing pays the whole worker. Load and paid unused capacity say how much of it is used; the *Who used the capacity* bars show who else uses capacity Marketing pays for.
-4. **External:** every response is metered at list price, per team. Run Support's external load on Claude or GPT before the demo; Nemotron is free and shows €0.
-5. **Break-even:** pick Support's external model and Qwen as the candidate, raise **Users per team** or set **GPU hours / month** to 168, and show where moving to private pays off.
-6. **Fair share:** the same workers, another way to split them. The tariffs left the platform with a shortfall; here the teams pay all of it. Show how little of each bill is usage and how much is capacity, then how the cost per token falls as the load rises.
+4. **External:** every response is metered at list price, per team. Run Engineering's external load on Claude or GPT before the demo; Nemotron is free and shows €0.
+5. **Break-even:** pick Engineering's external model and Qwen as the candidate, raise **Users per team** or set **GPU hours / month** to 168, and show where moving to private pays off.
+6. **Fair share:** the same workers, another way to split them. The tariffs carry the platform coefficient, so what the platform keeps moves with the load; here the teams pay exactly the running cost. Show how little of each bill is usage and how much is capacity, then how the cost per token falls as the load rises.
 7. **MLflow:** for any team, open the model's experiment with User = `showback-<team>` to show what was asked, how good the answers were and what a request costs (see below).
 
-The dashboards name no model. The **offer catalog** (`offer-catalog.yaml` in the component, a PrometheusRule evaluated by the RHOAI Prometheus) records the team of each MaaS subscription, which private models are shared or dedicated, the sponsoring subscription of each dedicated model, the demonstrated capacity of one worker, the GPU worker price ($3.36312 per hour, AWS `g7e.2xlarge` on-demand in us-east-2, saved 2026-10-15) the shared tariffs ($1.50 per million tokens on demand, $1.00 committed) and each team’s shared commitment (Engineering 2B, Support 250M tokens a month). Prices stay in USD, as AWS and the providers charge them; the six Showback tabs show euros through one catalog rate, `showback_usd_per_eur` (1 EUR = 1.1179 USD, ECB reference rate of 2026-11-03), so the monthly worker is €2,196. A committed team pays its commitment whether used or not and on-demand above it; MaaS limits count per user, so the limit times the team's planned users must carry the commitment in working hours (Engineering 25 × 1M tokens/hour), which `validate.sh` checks. To onboard another model or change a price, edit the catalog and redeploy the component. Running cost counts the minutes a model is serving; node start-up and model loading are not included. Every period is priced with the catalog values in force at the end of the selected time range.
+The dashboards name no model. The **offer catalog** (`offer-catalog.yaml` in the component, a PrometheusRule evaluated by the RHOAI Prometheus) records the team of each MaaS subscription, which private models are shared or dedicated, the sponsoring subscription of each dedicated model, the demonstrated capacity of one worker, the GPU worker price ($3.36312 per hour, AWS `g7e.2xlarge` on-demand in us-east-2, saved 2026-10-15) the shared tariffs ($1.50 per million tokens on demand, $1.00 committed), the platform coefficient `showback_platform_coefficient` (1.2) and each team’s shared commitment (Engineering 1.2B on `team-engineering` and 800M on `team-engineering-ci`, Support 250M tokens a month). Prices stay in USD, as AWS and the providers charge them; the six Showback tabs show euros through one catalog rate, `showback_usd_per_eur` (1 EUR = 1.1179 USD, ECB reference rate of 2026-11-03), so the monthly worker costs €2,196. The coefficient multiplies what teams pay on private models to pay for running the platform: Qwen is billed at $1.80 on demand and $1.20 committed, and Marketing pays €2,635 for its worker. External models stay at provider list price, and running costs and tab 6 do not use it. A committed team pays its commitment whether used or not and on-demand above it; MaaS limits count per user, so the limit times the team's planned users must carry the commitment in working hours (Engineering 25 × 1M tokens/hour, CI 8 × 1M), which `validate.sh` checks. To onboard another model or change a price, edit the catalog and redeploy the component. Running cost counts the minutes a model is serving, on shared models times the workers serving; node start-up and model loading are not included. Every period is priced with today's catalog, so a catalog change also reprices the past periods you look at.
 
 ## Run the demo
 
@@ -96,8 +96,8 @@ Run the commands from the repository root after the usual cluster login. Each st
    conversation). `--concurrency` (default 2 loops per team), `--max-tokens` (one answer cap for every team; by default
    Engineering 2048, since code answers are longer, and Support and Marketing 1024, so answers normally finish; an answer
    the cap cuts off is marked by the `finished` check) and `--team` (one team of the
-   offering) shape the load; Support's Qwen allowance is 300K tokens per hour. `--model` picks the external model for
-   Support (default `gpt-6-luna`; `nemotron-3-ultra-550b-a55b` is free). Each run prints turns, tokens and tool calls
+   offering) shape the load; Support's Qwen allowance is 500K tokens per hour per user. `--model` picks the external model for
+   Engineering (default `gpt-6-luna`; `nemotron-3-ultra-550b-a55b` is free). Each run prints turns, tokens and tool calls
    per team. External calls are billed by the provider.
 
 5. **Stop the models** when the demo ends: set both replicas back to 0 and run `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 0`.
@@ -129,7 +129,7 @@ ledger, so per-subscription charges are deliberately not rebuilt there. Each tra
 figure means: `tariff` (shared: the on-demand tariff), `capacity-equivalent` (dedicated: the worker price per token
 at demonstrated capacity; the sponsor's real charge is the worker, busy or idle, on the Showback 3 · Dedicated tab) or
 `list-price` (external: the provider's list price, the same catalog the metering ledger uses). MLflow totals therefore
-differ from the Showback charges by design. Talk track: the Showback 1 · By team tab shows Support's charge; MLflow, User =
+differ from the Showback charges by design. Talk track: the Showback 1 · By team tab shows a team's charge; MLflow, User =
 `showback-support`, shows what Support asked, how good the answers were and what a typical request costs.
 
 | Span | Content |
@@ -139,7 +139,7 @@ differ from the Showback charges by design. Talk track: the Showback 1 · By tea
 
 - **Sessions:** the turns of a conversation carry one `session.id` (OpenTelemetry semantic convention), which
   MLflow stores as the trace session, so the experiment's **Sessions** tab shows each conversation turn by turn.
-- **Cost:** shared private models at the on-demand tariff, a dedicated model at its worker price per token at
+- **Cost:** shared private models at the on-demand tariff with the platform coefficient, a dedicated model at its worker price per token at
   demonstrated capacity (both from `offer-catalog.yaml`), external models at the list price of
   `metering/provider-pricing.json`. A per-request figure is an indication: the sponsor of a dedicated model pays the
   worker busy or idle, and committed tariffs are monthly; the Showback tabs show those charges. MLflow does not look
@@ -167,7 +167,7 @@ differ from the Showback charges by design. Talk track: the Showback 1 · By tea
   one. To score right after a demo load, start it by hand:
   `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`.
   The exporter `showback-quality-exporter` (`redhat-ods-monitoring`) reads the verdicts of the last 7 days from MLflow
-  every 6 hours and publishes them to Prometheus, so tab 1 shows the pass rate per model and the verdict counts behind it.
+  every 6 hours and publishes them to Prometheus, so tab 5 shows the pass rate per model and the verdict counts behind it.
 - **Scope:** only this load generator's requests are traced. Platform-side tracing of every MaaS client is planned work.
 - **Other projects:**
 
