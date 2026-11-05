@@ -1,7 +1,7 @@
 # Quality exporter: publishes the judges' verdicts from MLflow as Prometheus gauges for the showback dashboards, which
 # read Prometheus only. Every 6 hours (scores change once a day) it counts the verdicts of the last WINDOW_DAYS days per model experiment,
-# judge, subscription and result; the dashboards turn the counts into pass rates and join the team from the offer
-# catalog. It runs beside the metering backend in redhat-ods-monitoring, the namespace the monitoring stack scrapes,
+# judge, subscription and result, plus a running total of all verdicts so a dashboard can read any time range (how much
+# the total grew); the dashboards turn the counts into pass rates and join the team from the offer catalog. It runs beside the metering backend in redhat-ods-monitoring, the namespace the monitoring stack scrapes,
 # and reads the MLflow workspace models-as-a-service through the in-cluster Service. It reads small pages with a pause
 # between them: a full scan in large pages kept MLflow too busy to answer its 1-second health checks.
 apiVersion: v1
@@ -93,13 +93,13 @@ data:
     def collect():
         client = mlflow.MlflowClient()
         cutoff = int((time.time() - WINDOW_DAYS * 86400) * 1000)
-        counts = collections.Counter()
+        counts, totals = collections.Counter(), collections.Counter()
         for prefix, offer in (("internal-", "private"), ("external-", "external")):
             for exp in client.search_experiments(filter_string=f"name LIKE '{prefix}%'"):
                 model, token = exp.name[len(prefix):], None
                 while True:
                     page = client.search_traces(locations=[exp.experiment_id], max_results=PAGE_SIZE, page_token=token,
-                                                filter_string=f"trace.timestamp_ms > {cutoff}")
+                                                include_spans=False)  # verdicts travel in the trace info
                     for t in page:
                         sub = (t.info.tags or {}).get("subscription", "")
                         for a in t.info.assessments or []:
@@ -107,7 +107,9 @@ data:
                             if value is None:
                                 continue
                             result = "pass" if value is True or str(value).lower() in PASS else "fail"
-                            counts[(model, offer, a.name, sub, result)] += 1
+                            totals[(model, offer, a.name, sub, result)] += 1
+                            if t.info.timestamp_ms > cutoff:
+                                counts[(model, offer, a.name, sub, result)] += 1
                     token = page.token
                     if not token:
                         break
@@ -116,6 +118,10 @@ data:
                  "# TYPE showback_quality_verdicts gauge"]
         lines += [f'showback_quality_verdicts{{model="{esc(m)}",offer="{o}",judge="{esc(j)}",subscription="{esc(s)}",'
                   f'result="{r}"}} {n}' for (m, o, j, s, r), n in sorted(counts.items())]
+        lines += ["# HELP showback_quality_verdicts_total All judge verdicts in MLflow so far.",
+                  "# TYPE showback_quality_verdicts_total counter"]
+        lines += [f'showback_quality_verdicts_total{{model="{esc(m)}",offer="{o}",judge="{esc(j)}",subscription="{esc(s)}",'
+                  f'result="{r}"}} {n}' for (m, o, j, s, r), n in sorted(totals.items())]
         lines += ["# HELP showback_quality_window_days Days of traces the verdict counts cover.",
                   "# TYPE showback_quality_window_days gauge", f"showback_quality_window_days {WINDOW_DAYS}",
                   "# HELP showback_quality_last_refresh_timestamp_seconds When the counts were last read from MLflow.",

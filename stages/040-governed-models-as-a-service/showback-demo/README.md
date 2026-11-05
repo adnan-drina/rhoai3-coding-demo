@@ -28,7 +28,7 @@ Open **Observe & monitor → Dashboard** in the OpenShift AI console. The six **
 | Tab | Question | Shows |
 |---|---|---|
 | **Showback 1 · By team** | What does each team cost? | No filters: every team, at the default hours and users. An Overview that opens with a pie of the monthly cost by team next to the cost per team as stacked bars over time; then the platform's monthly balance across shared and dedicated workers (red when it carries a shortfall) beside each team's projected total bill across all offerings. The Breakdown has a monthly bill per team (people on team subscriptions with usage, shared, dedicated, external, total) and every subscription with its team |
-| **Showback 2 · Shared private** | Who uses the shared model, and do teams use what they commit to? | Two filters: Team, and Model, which opens on the first shared model of the catalog (Qwen). A pie of total tokens per team, gauges of how much of each team's commitment was used in the selected period (red below 50%, green above 80%), tokens by team as stacked bars; demand against capacity, where each step of the capacity line is one worker, so a temporary second worker shows and adds its share of the month to the running cost; a Capacity plan section: each commitment against its monthly pace (the last 14 days) with an action, on plan from 67% to 115%, how the monthly capacity splits among commitments, the reservation, on demand and what is not allocated, and commitment use per subscription as bars; the charges by consumer table in Breakdown. A commitment promises peak capacity, so commitments are sized to fit: interactive ones, fully used, stay within 80% of one worker in the busy hour. The actions are advice, and MaaS enforces none of this: its limits count per user |
+| **Showback 2 · Shared private** | Who uses the shared model, do teams use what they commit to, and what do those tokens deliver? | Two filters: Team, and Model, which opens on the first shared model of the catalog (Qwen). Every section reads the selected period. Overview: a pie of total tokens per team, gauges of how much of each team's commitment was used (red below 67%, green to 115%, orange above: the bands of the capacity plan), tokens per subscription as stacked bars (subscriptions without a commitment together), and demand against capacity, where each step of the capacity line is one worker, so a temporary second worker shows and adds its share of the month to the running cost. Capacity plan: each commitment against its monthly pace with an action (on plan from 67% to 115%) and a suggested size, and how the monthly capacity splits among commitments, the reservation, on demand and what is not allocated (mostly nights and weekends). Quality: the MLflow judges' pass rate per subscription of the selected model (relevance, completeness, team guidelines, finished; blue from 95%, yellow from 90%, red below). Breakdown: the charges by consumer. A commitment promises peak capacity, so commitments are sized to fit: interactive ones, fully used, stay within 80% of one worker in the busy hour. The actions are advice, and MaaS enforces none of this: its limits count per user |
 | **Showback 3 · Dedicated private** | What does Marketing get for its GPU? | A load gauge (the sponsor's tokens against what the worker can serve), a pie of the paid capacity split into used and unused, bars of who used the capacity (sponsor and other consumers); monthly charge, paid unused capacity, sponsor tokens and sponsor cost per million tokens; GPU utilisation and tokens by consumer; charges per model; every consumer of the dedicated model with its role |
 | **Showback 4 · External model** | What do the providers charge? | Spend, requests and tokens in range, projected monthly spend; a pie of spend by team and bars of spend by model; month-to-date spend stacked by team and requests by team; statement by team, subscription and model; the provider price list (collapsed) |
 | **Showback 5 · Break-even** | When should an external workload move to a private model? | A gauge of the workload against the break-even volume of the workers it needs, projected monthly tokens, and the monthly savings if moved (red when it should stay external); external against private cost per month as bars (GPU workers sized from the candidate's demonstrated capacity over its **GPU hours / month** at the **Planning load %**, 70 by default); relevance and completeness pass rates of both models with the verdict counts behind them; the private fleet's spend against the same tokens at the external price |
@@ -77,6 +77,7 @@ Run the commands from the repository root after the usual cluster login. Each st
    ```bash
    stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer all --minutes 15 --insecure
    stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer shared --minutes 10 --insecure
+   stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer shared --team engineering-ci --minutes 10 --insecure
    stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer dedicated --minutes 10 --insecure
    stages/040-governed-models-as-a-service/showback-demo/generate-load.sh --offer external --model claude-sonnet-5-5 --minutes 30 --concurrency 1 --insecure
    ```
@@ -88,6 +89,7 @@ Run the commands from the repository root after the usual cluster login. Each st
    | Team | Work | Shape |
    |---|---|---|
    | Engineering | Code reviews with real code, and agent tasks: the model gets `read_file` and `run_tests` tools, which the script plays from `prompts.json` | One trace per task; an agent task is `AGENT > CHAT_MODEL > TOOL > TOOL > CHAT_MODEL` (the Tool calls tab) |
+| Engineering CI | CI job failures (build, test, container image) with their logs; only with `--team engineering-ci`, after `team-keys.sh --teams engineering-ci` mints its key | One trace per job; the `team_guidelines` judge asks for the root cause from the log and a specific fix |
    | Support | Customer cases grounded in the stated policy; most continue as a conversation with one or two customer replies | One trace per turn, the turns of a conversation in one MLflow session (the Sessions tab) |
    | Marketing | Campaign briefs; some with a revision round | Same as Support |
 
@@ -166,8 +168,10 @@ differ from the Showback charges by design. Talk track: the Showback 1 · By tea
   scaled down), the run is skipped with a message. A run stops after 2.5 hours, and unscored traces wait for the next
   one. To score right after a demo load, start it by hand:
   `oc create job --from=cronjob/maas-quality-scorer maas-quality-scorer-now -n models-as-a-service`.
-  The exporter `showback-quality-exporter` (`redhat-ods-monitoring`) reads the verdicts of the last 7 days from MLflow
-  every 6 hours and publishes them to Prometheus, so tab 5 shows the pass rate per model and the verdict counts behind it.
+  The exporter `showback-quality-exporter` (`redhat-ods-monitoring`) reads the verdicts from MLflow every 6 hours and
+  publishes them to Prometheus twice: the last 7 days, so tab 5 shows the pass rate per model and the verdict counts
+  behind it, and a running total of every verdict, so tab 2 shows the pass rate per subscription for any selected period
+  (verdicts count on the day they are scored, usually the day after the request).
 - **Scope:** only this load generator's requests are traced. Platform-side tracing of every MaaS client is planned work.
 - **Other projects:**
 

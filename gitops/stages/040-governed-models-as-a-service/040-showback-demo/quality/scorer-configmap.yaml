@@ -80,6 +80,8 @@ data:
     GUIDELINES = {
         "team-engineering": "The answer names the concrete defect or risk in the code or design it was given and proposes "
                             "a specific, correct fix or test. Generic advice that ignores the given code fails.",
+        "team-engineering-ci": "The answer names the root cause shown in the failure log and gives a specific change that "
+                               "fixes it. Advice that does not use the log, or a retry without a cause, fails.",
         "team-support": "The answer is a reply a support agent could send: empathetic, polite, addresses the customer's "
                         "actual problem and gives concrete next steps. It does not invent policies or promise refunds.",
         "team-marketing": "The answer delivers exactly the requested marketing artefact (format, count and length), is on "

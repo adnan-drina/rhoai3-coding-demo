@@ -104,5 +104,25 @@
         "prompt": "Write two versions (A and B, each under 25 words) of a Google ad for Coolstore's free next-day delivery on orders over 50 EUR, valid in Germany and Austria."
       }
     ]
+  },
+  "engineering-ci": {
+    "system": "You are the code assistant in the Coolstore CI pipeline (Java, Quarkus, Maven). A job hands you its failure log. Reply with the root cause and the smallest change that fixes it.",
+    "tasks": [
+      {
+        "prompt": "Job maven-verify failed.\n[ERROR] CartServiceTest.addItemUpdatesTotal:48 expected: <59.98> but was: <59.980000000000004>\nThe test does assertEquals(59.98, cart.getTotal()) and ShoppingCart.getTotal() returns a double built by adding item prices. Find the root cause and give the fix."
+      },
+      {
+        "prompt": "Job maven-compile failed.\n[ERROR] OrderResource.java:[31,17] cannot find symbol\n  symbol: class Inject\n  location: class com.redhat.coolstore.rest.OrderResource\nThe migration from Java EE to Quarkus replaced javax imports with jakarta in the other classes. Find the root cause and give the fix."
+      },
+      {
+        "prompt": "Job integration-test failed.\nCaused by: org.postgresql.util.PSQLException: ERROR: relation \"catalog_item\" does not exist\nThe tests start with quarkus.hibernate-orm.database.generation=none and no Flyway migration is on the classpath. They passed before the persistence.xml file was removed. Find the root cause and give the fix."
+      },
+      {
+        "prompt": "Job container-build failed.\nStep 7/9 : COPY target/quarkus-app/lib/ /deployments/lib/\nCOPY failed: stat target/quarkus-app/lib: file does not exist\nThe pom sets <quarkus.package.type>uber-jar</quarkus.package.type> since yesterday. Find the root cause and give two ways to fix it."
+      },
+      {
+        "prompt": "Job maven-verify is flaky: InventoryNotificationTest passes locally and fails in about one CI run in five with\nAssertionError: expected 1 message on the orders topic, got 0\nThe test sends a message, calls Thread.sleep(200) and then reads the in-memory channel. Find the root cause and give a fix that removes the flakiness."
+      }
+    ]
   }
 }

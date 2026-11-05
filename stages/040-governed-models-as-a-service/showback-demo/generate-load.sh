@@ -5,6 +5,8 @@
 #              private model
 #   dedicated  Marketing (campaign copy with revision rounds) on Mistral Small 4, its dedicated private model
 #   external   Engineering (code reviews and agent tasks) on an external model (default gpt-6-luna)
+#   --offer shared --team engineering-ci   Engineering CI jobs (build and test failures) on Qwen 3.8; only on request,
+#              because its key is minted with team-keys.sh --teams engineering-ci
 #   all        every team and offering at once, each team at its own pace
 # Engineering agent tasks give the model read_file and run_tests tools and play the tools from prompts.json (model call,
 # tool calls, model call). Support and Marketing tasks with follow-ups are conversations: each turn is sent with the
@@ -53,6 +55,7 @@ case "$offer" in
     all) runs=("engineering $QWEN shared" "support $QWEN shared" "marketing $MISTRAL dedicated" "engineering $external_model external") ;;
     *) fail '--offer must be shared, dedicated, external or all' ;;
 esac
+[[ "$offer $team_filter" != "shared engineering-ci" ]] || runs+=("engineering-ci $QWEN shared")
 if [[ -n "$team_filter" ]]; then
     selected=()
     for run in "${runs[@]}"; do [[ "${run%% *}" != "$team_filter" ]] || selected+=("$run"); done
@@ -61,11 +64,11 @@ if [[ -n "$team_filter" ]]; then
 fi
 team_tokens() {  # answer cap: --max-tokens for everyone, else the team's own (code answers are longer)
     [[ -z "$max_tokens" ]] || { echo "$max_tokens"; return; }
-    case "$1" in engineering) echo 2048 ;; *) echo 1024 ;; esac
+    case "$1" in engineering*) echo 2048 ;; *) echo 1024 ;; esac
 }
 team_pause() {  # think time between requests: --pause for everyone, else the team's own pace
     [[ -z "$pause" ]] || { echo "$pause"; return; }
-    case "$1" in engineering) echo 2-6 ;; support) echo 5-15 ;; marketing) echo 10-30 ;; esac
+    case "$1" in engineering*) echo 2-6 ;; support) echo 5-15 ;; marketing) echo 10-30 ;; esac
 }
 for run in "${runs[@]}"; do
     p=$(team_pause "${run%% *}"); (( ${p%-*} <= ${p#*-} && ${p#*-} <= 300 )) || fail '--pause range must be ascending and at most 300 seconds'
