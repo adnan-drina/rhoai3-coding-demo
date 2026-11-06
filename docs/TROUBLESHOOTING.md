@@ -2810,6 +2810,34 @@ curl -s http://127.0.0.1:18080/jobs | jq -r 'keys[]'
 
 **Recover:** The GPU panel is fixed by Stage 020's `020-nvidia-gpu-operator/rhoai-monitoring/dcgm-accelerator-servicemonitor.yaml`: a user-owned ServiceMonitor with the documented scrape label that reads the DCGM exporter and applies the product's own mapping (`DCGM_FI_DEV_GPU_UTIL` to `accelerator_gpu_utilization`) on the RHOAI side, labelling each series with the model name so the panel's model filter works (the panel groups by the collector's pod attribute, which is the DCGM exporter pod on each GPU node). The inter-token latency, error rate and user-workload target problems remain Red Hat items recorded in BACKLOG; nothing else in this repository is misconfigured (the DSCInitialization monitoring section, the Monitoring service conditions, the datasources and the scrape labels match the 3.5 guide). The Cluster, Models and Usage tabs and the custom Showback tabs are unaffected.
 
+## Showback Tabs Load Slowly Or Time Out
+
+**Affected stage:** Stage 040 showback tabs on the Stage 010 RHOAI Prometheus, RHOAI 3.5.2
+
+**Symptom:** On **Observe & monitor → Dashboard**, Showback 1 takes close to a minute on a 30-day range, and the **Cost per team** chart stays empty or fails while the tiles and tables fill.
+
+**Likely cause:** The RHOAI Prometheus runs with 1 CPU and 512Mi and its Thanos sidecar with 0.25 CPU. Perses sends every panel query at once; the **Cost per team** chart alone sends six (one per team, so each keeps its fixed colour), each evaluating the whole bill at every bucket. On one CPU they queue and pass the 2-minute Prometheus query timeout. The documented `spec.monitoring.metrics.resources` field of the DSCInitialization does not help on 3.5.2: the operator prunes it as an unknown field.
+
+**Diagnose:**
+
+```bash
+oc get monitoringstack data-science-monitoringstack -n redhat-ods-monitoring \
+  -o jsonpath='{.spec.resources.limits}{"\n"}{.spec.prometheusConfig.thanosResources.limits}{"\n"}'
+oc adm top pod -n redhat-ods-monitoring prometheus-data-science-monitoringstack-0 --containers
+```
+
+Limits of `{"cpu":1,"memory":"512Mi"}` and a sidecar near its 250m limit while a showback tab loads confirm it.
+
+**Recover:** Patch the operator-owned MonitoringStack; Prometheus restarts once and the operator keeps the values (measured 2026-11-06: the six chart queries at a one-hour step went from timing out to 37 seconds, and Showback 1 shows its top section in about 16 seconds):
+
+```bash
+oc patch monitoringstack data-science-monitoringstack -n redhat-ods-monitoring --type merge -p \
+  '{"spec":{"resources":{"limits":{"cpu":"4","memory":"2Gi"},"requests":{"cpu":"500m","memory":"512Mi"}},
+    "prometheusConfig":{"thanosResources":{"limits":{"cpu":"1","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}}}}'
+```
+
+The patch is not in Git: reapply it after a fresh deploy (BACKLOG, *Workarounds still required*). Open the showback tabs once before presenting; later loads are faster.
+
 ## Console Perses Models Dashboard Shows No Data, Or Two Models Dashboards
 
 **Affected stage:** Stage 010 observability stack with Stage 040 models, RHOAI 3.5.2
