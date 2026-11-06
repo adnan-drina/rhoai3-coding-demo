@@ -88,13 +88,38 @@ spec:
             name: Spend by team (in range, EUR)
             description: List-price spend of each team in the time range. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
           plugin:
-            kind: PieChart
+            kind: BarChart
             spec:
               calculation: last
               format:
                 unit: decimal
                 decimalPlaces: 2
                 shortValues: false
+              sort: desc
+              mode: value
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: (sum by (team) (((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))
+                  seriesNameFormat: "{{team}}"
+      spendByModel:
+        kind: Panel
+        spec:
+          display:
+            name: Use by model (tokens, in range)
+            description: Input and output tokens per external model in the time range, free models included.
+          plugin:
+            kind: PieChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: true
               mode: value
               radius: 70
               showLabels: true
@@ -117,32 +142,7 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (sum by (team) (((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))
-                  seriesNameFormat: "{{team}}"
-      spendByModel:
-        kind: Panel
-        spec:
-          display:
-            name: Spend by model (in range, EUR)
-            description: List-price spend per external model in the time range. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
-          plugin:
-            kind: BarChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-                shortValues: false
-              sort: desc
-              mode: value
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: (sum by (model) (((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))
+                  query: sum by (model) (((sum by (subscription, model) (increase(showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"}[$__range])) + sum by (subscription, model) (increase(showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"}[$__range]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (increase(showback_external_metering_input_tokens{subscription=~"$subscription", model=~"$model"}[$__range])) + sum by (subscription, model) (increase(showback_external_metering_output_tokens{subscription=~"$subscription", model=~"$model"}[$__range]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())))
                   seriesNameFormat: "{{model}}"
       trend:
         kind: Panel
@@ -608,13 +608,13 @@ spec:
           width: 12
           height: 8
           content:
-            "$ref": "#/spec/panels/spendByTeam"
+            "$ref": "#/spec/panels/spendByModel"
         - x: 12
           y: 0
           width: 12
           height: 8
           content:
-            "$ref": "#/spec/panels/spendByModel"
+            "$ref": "#/spec/panels/spendByTeam"
     - kind: Grid
       spec:
         display:
