@@ -127,6 +127,10 @@ spec:
                   unit: decimal
                   shortValues: true
                 min: 0
+              querySettings:
+              - queryIndex: 0
+                colorMode: fixed
+                colorValue: '#5E40BE'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -159,6 +163,10 @@ spec:
                   unit: decimal
                   shortValues: true
                 min: 0
+              querySettings:
+              - queryIndex: 0
+                colorMode: fixed
+                colorValue: '#0066CC'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -186,12 +194,12 @@ spec:
                 shortValues: false
               colorMode: background_solid
               thresholds:
-                defaultColor: '#C9190B'
+                defaultColor: '#F0561D'
                 steps:
                 - value: 0
-                  color: '#F0AB00'
+                  color: '#FFCC17'
                 - value: 250
-                  color: '#3E8635'
+                  color: '#63993D'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -244,12 +252,12 @@ spec:
                 decimalPlaces: 0
               max: 200
               thresholds:
-                defaultColor: '#C9190B'
+                defaultColor: '#F0561D'
                 steps:
                 - value: 90
-                  color: '#F0AB00'
+                  color: '#FFCC17'
                 - value: 110
-                  color: '#3E8635'
+                  color: '#63993D'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -321,19 +329,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: '#C9190B'
+                  textColor: '#F0561D'
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: '#B58100'
+                  textColor: '#B98412'
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: '#0066CC'
+                  textColor: '#4394E5'
               - align: right
                 enableSorting: true
                 format:
@@ -347,19 +355,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: '#C9190B'
+                  textColor: '#F0561D'
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: '#B58100'
+                  textColor: '#B98412'
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: '#0066CC'
+                  textColor: '#4394E5'
               - align: right
                 enableSorting: true
                 format:
@@ -373,19 +381,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: '#C9190B'
+                  textColor: '#F0561D'
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: '#B58100'
+                  textColor: '#B98412'
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: '#0066CC'
+                  textColor: '#4394E5'
               - align: right
                 enableSorting: true
                 format:
@@ -399,19 +407,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: '#C9190B'
+                  textColor: '#F0561D'
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: '#B58100'
+                  textColor: '#B98412'
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: '#0066CC'
+                  textColor: '#4394E5'
               - align: right
                 enableSorting: true
                 format:
@@ -539,19 +547,19 @@ spec:
                     spec:
                       min: -1000
                       max: -8.001
-                  textColor: '#C9190B'
+                  textColor: '#F0561D'
                 - condition:
                     kind: Range
                     spec:
                       min: -8
                       max: -3.001
-                  textColor: '#EC7A08'
+                  textColor: '#CA6C0F'
                 - condition:
                     kind: Range
                     spec:
                       min: -3
                       max: 1000
-                  textColor: '#3E8635'
+                  textColor: '#63993D'
               - align: left
                 enableSorting: true
                 format:
@@ -566,21 +574,21 @@ spec:
                       min: -1000
                       max: -8.001
                   text: Not ready
-                  textColor: '#C9190B'
+                  textColor: '#F0561D'
                 - condition:
                     kind: Range
                     spec:
                       min: -8
                       max: -3.001
                   text: Check
-                  textColor: '#EC7A08'
+                  textColor: '#CA6C0F'
                 - condition:
                     kind: Range
                     spec:
                       min: -3
                       max: 1000
                   text: Good enough
-                  textColor: '#3E8635'
+                  textColor: '#63993D'
               density: compact
               pagination: false
               transforms:
@@ -671,13 +679,13 @@ spec:
                     spec:
                       min: -1000000000
                       max: -0.001
-                  textColor: '#C9190B'
+                  textColor: '#F0561D'
                 - condition:
                     kind: Range
                     spec:
                       min: 0
                       max: 1000000000
-                  textColor: '#3E8635'
+                  textColor: '#63993D'
               density: compact
               pagination: false
               transforms:

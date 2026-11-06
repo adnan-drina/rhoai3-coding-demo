@@ -126,12 +126,12 @@ spec:
               sort: desc
               colorPalette:
               - "#0066CC"
-              - "#EC7A08"
-              - "#3E8635"
-              - "#5752D1"
-              - "#009596"
-              - "#F0AB00"
-              - "#8F4700"
+              - "#5E40BE"
+              - "#37A3A3"
+              - "#CA6C0F"
+              - "#B98412"
+              - "#92C5F9"
+              - "#B6A6E9"
               legend:
                 position: right
                 mode: list
@@ -148,8 +148,8 @@ spec:
         kind: Panel
         spec:
           display:
-            name: Month-to-date spend by team (EUR)
-            description: The ledger's running monthly total, stacked by team; it restarts on the 1st (UTC). Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
+            name: Daily spend by team (EUR)
+            description: List-price spend of each team over the trailing 24 hours, stacked by team. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
           plugin:
             kind: TimeSeriesChart
             spec:
@@ -164,19 +164,90 @@ spec:
                 lineWidth: 1.5
                 stack: all
                 palette:
-                  mode: categorical
+                  mode: auto
               yAxis:
                 format:
                   unit: decimal
                 min: 0
+              querySettings:
+              - queryIndex: 0
+                colorMode: fixed
+                colorValue: "#5E40BE"
+              - queryIndex: 1
+                colorMode: fixed
+                colorValue: "#0066CC"
+              - queryIndex: 2
+                colorMode: fixed
+                colorValue: "#CA6C0F"
+              - queryIndex: 3
+                colorMode: fixed
+                colorValue: "#37A3A3"
+              - queryIndex: 4
+                colorMode: fixed
+                colorValue: "#A3A3A3"
+              - queryIndex: 5
+                colorMode: fixed
+                colorValue: "#707070"
           queries:
           - kind: TimeSeriesQuery
             spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  datasource: *id001
-                  query: (sum by (team) (((sum by (subscription, model) (last_over_time(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (last_over_time(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: ((sum by (team) (((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))) and on(team) label_replace(vector(1), "team", "engineering", "", "")
+                  seriesNameFormat: "{{team}}"
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: ((sum by (team) (((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))) and on(team) label_replace(vector(1), "team", "marketing", "", "")
+                  seriesNameFormat: "{{team}}"
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: ((sum by (team) (((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))) and on(team) label_replace(vector(1), "team", "platform", "", "")
+                  seriesNameFormat: "{{team}}"
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: ((sum by (team) (((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))) and on(team) label_replace(vector(1), "team", "support", "", "")
+                  seriesNameFormat: "{{team}}"
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: ((sum by (team) (((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))) and on(team) label_replace(vector(1), "team", "unassigned", "", "")
+                  seriesNameFormat: "{{team}}"
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: ((sum by (team) (((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[1d]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))) unless on(team) (label_replace(vector(1), "team", "engineering", "", "") or label_replace(vector(1), "team", "marketing", "", "") or label_replace(vector(1), "team", "platform", "", "") or label_replace(vector(1), "team", "support", "", "") or label_replace(vector(1), "team", "unassigned", "", ""))
                   seriesNameFormat: "{{team}}"
       requestBars:
         kind: Panel
@@ -272,7 +343,7 @@ spec:
                 enableSorting: true
                 format:
                   unit: decimal
-                  decimalPlaces: 4
+                  decimalPlaces: 2
                   shortValues: false
                 sort: desc
                 width: 100
@@ -325,7 +396,7 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end()))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))
+                  query: ((((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) or (sum by (subscription, model) (increase(showback_external_metering_events{subscription=~"$subscription", model=~"$model"}[$__range]))) * 0) * on(subscription) group_left(team) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())) or label_replace(((sum by (subscription, model) (increase(showback_external_metering_estimated_usd{subscription=~"$subscription", model=~"$model"}[$__range]))) or (sum by (subscription, model) (increase(showback_external_metering_events{subscription=~"$subscription", model=~"$model"}[$__range]))) * 0) unless on(subscription) max by (subscription, team) ((last_over_time(showback_subscription_team[60d] offset -60d) or showback_subscription_team @ end())), "team", "unassigned", "", "")) and on(team) max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end()))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))
           - kind: TimeSeriesQuery
             spec:
               plugin:
@@ -440,19 +511,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: "#C9190B"
+                  textColor: "#F0561D"
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: "#B58100"
+                  textColor: "#B98412"
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: "#0066CC"
+                  textColor: "#4394E5"
               - name: 'value #2'
                 header: Completeness %
                 align: right
@@ -468,19 +539,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: "#C9190B"
+                  textColor: "#F0561D"
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: "#B58100"
+                  textColor: "#B98412"
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: "#0066CC"
+                  textColor: "#4394E5"
               - name: 'value #3'
                 header: Guidelines %
                 align: right
@@ -496,19 +567,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: "#C9190B"
+                  textColor: "#F0561D"
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: "#B58100"
+                  textColor: "#B98412"
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: "#0066CC"
+                  textColor: "#4394E5"
               - name: 'value #4'
                 header: Finished %
                 align: right
@@ -524,19 +595,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: "#C9190B"
+                  textColor: "#F0561D"
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: "#B58100"
+                  textColor: "#B98412"
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: "#0066CC"
+                  textColor: "#4394E5"
               - name: 'value #5'
                 header: Traces judged
                 align: right

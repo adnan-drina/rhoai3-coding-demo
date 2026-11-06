@@ -25,6 +25,8 @@ OUTPUT_DIR="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-maas-p
 # ── Dashboard model (jq) ─────────────────────────────────────────────────────────
 # One object: file name -> PersesDashboard. Key order is the emitted key order.
 DASHBOARDS='
+# Colours follow the Red Hat brand colour standards information palette: danger-orange-50 #F0561D, yellow-30 #FFCC17,
+# success-green-50 #63993D, orange-50 #CA6C0F (caution) and interaction-blue-50 #0066CC; never Red Hat red, the brand colour.
 def DS: {kind: "PrometheusDatasource", name: "data-science-prometheus-datasource"};
 def CDS: {kind: "PrometheusDatasource", name: "cluster-prometheus-datasource"};
 def q(expr; ds; name):
@@ -50,17 +52,17 @@ def table(name; desc; columns; queries):
 def gauge(name; desc; expr):
     {kind: "Panel", spec: {display: {name: name, description: desc},
         plugin: {kind: "GaugeChart", spec: {calculation: "last", format: {unit: "percent", decimalPlaces: 0}, max: 200,
-            thresholds: {steps: [{value: 0, color: "#c9190b"}, {value: 100, color: "#3e8635"}]}}},
+            thresholds: {steps: [{value: 0, color: "#F0561D"}, {value: 100, color: "#63993D"}]}}},
         queries: [q(expr; DS; null)]}};
 def qgauge(name; desc; expr):
     {kind: "Panel", spec: {display: {name: name, description: desc},
         plugin: {kind: "GaugeChart", spec: {calculation: "last", format: {unit: "percent", decimalPlaces: 0}, max: 100,
-            thresholds: {defaultColor: "#c9190b", steps: [{value: 70, color: "#ec7a08"}, {value: 90, color: "#3e8635"}]}}},
+            thresholds: {defaultColor: "#F0561D", steps: [{value: 70, color: "#FFCC17"}, {value: 90, color: "#63993D"}]}}},
         queries: [q(expr; DS; "{{model}}")]}};
 # A stat whose tile turns red below zero and green at or above it.
 def signed(name; desc; expr; decimals):
     stat(name; desc; expr; "decimal"; decimals)
-    | .spec.plugin.spec += {colorMode: "background_solid", thresholds: {defaultColor: "#c9190b", steps: [{value: 0, color: "#3e8635"}]}};
+    | .spec.plugin.spec += {colorMode: "background_solid", thresholds: {defaultColor: "#F0561D", steps: [{value: 0, color: "#63993D"}]}};
 # queries: [[expr, series name], ...]; one bar per series, largest first.
 def bar(name; desc; queries; decimals):
     {kind: "Panel", spec: {display: {name: name, description: desc},
@@ -101,7 +103,8 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 | "(\($tok_prompt) / 1e6 * $price_prompt) + (\($tok_gen) / 1e6 * $price_completion)" as $cost_by_model
 | "user!=\"\", user=~\"$user\", subscription=~\"$subscription\"" as $U
 | "sum by (user, subscription, model) (increase(authorized_hits_total{\($U), model=~\"$model\"}[$__range]))" as $hits_user
-| "sum by (user, subscription, model) (increase(authorized_calls_total{\($U)}[$__range]))" as $calls_user
+# MaaS counts requests per user and subscription, without a model: each token row of that pair shows its requests.
+| "sum by (user, subscription) (increase(authorized_calls_total{\($U)}[$__range])) * on(user, subscription) group_right() (0 * \($hits_user) + 1)" as $calls_user
 | [listvar("model"; "model_name"; "kserve_vllm:prompt_tokens_total"; "Model"),
    listvar("user"; "user"; "authorized_hits_total{user!=\"\"}"; "User"),
    listvar("subscription"; "subscription"; "authorized_hits_total{subscription!=\"\"}"; "Subscription"),
@@ -133,7 +136,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
         column("Cost ($)"; "value #3"; {decimalPlaces: 2, unit: "decimal"}) + {sort: "desc"}];
        [$tok_prompt, $tok_gen, $cost_by_model]),
    costByUser: table("Cost by user and subscription";
-       "Governed MaaS tokens per user, subscription and model over the Range window, valued at the blended price.";
+       "Governed MaaS tokens per user, subscription and model over the Range window, valued at the blended price. Requests are counted per user and subscription.";
        [{align: "left", enableSorting: true, header: "User", name: "user"},
         {align: "left", enableSorting: true, header: "Subscription", name: "subscription"},
         {align: "left", enableSorting: true, header: "Model", name: "model"},
@@ -188,10 +191,10 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
   "(\(passrate("$private")) - \(passrate("$reference")))" as $gap
 | def mverdicts(sel): "sum by (model) (increase(showback_quality_verdicts_total{subscription=\"$usecase\", model=~\"$reference|$private\", \(sel)}[$__range]))";
   def mpass(judge): "round(100 * (\(mverdicts("judge=\"" + judge + "\", result=\"pass\"")) or 0 * \(mverdicts("judge=\"" + judge + "\""))) / (\(mverdicts("judge=\"" + judge + "\"")) > 0))";
-  [{value: 0, max: 89.999, color: "#C9190B"}, {value: 90, max: 94.999, color: "#B58100"}, {value: 95, max: 100, color: "#0066CC"}]
+  [{value: 0, max: 89.999, color: "#F0561D"}, {value: 90, max: 94.999, color: "#B98412"}, {value: 95, max: 100, color: "#4394E5"}]
   | map({condition: {kind: "Range", spec: {min: .value, max: .max}}, textColor: .color}) as $qcolours
-| [{min: -1000, max: -8.001, color: "#C9190B", text: "Not ready"}, {min: -8, max: -3.001, color: "#EC7A08", text: "Check"},
-   {min: -3, max: 1000, color: "#3E8635", text: "Good enough"}] as $bands
+| [{min: -1000, max: -8.001, color: "#F0561D", text: "Not ready"}, {min: -8, max: -3.001, color: "#CA6C0F", text: "Check"},
+   {min: -3, max: 1000, color: "#63993D", text: "Good enough"}] as $bands
 # Start from a priced external model (free ones have no break-even), then a use case that runs on it (not the quality judge
 # or the playground test traffic).
 | [single("reference"; "External model"; "model"; "showback_external_metering_events{price_state!=\"free_prototype\"}"; "claude-sonnet-5-5"),
@@ -202,16 +205,18 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
    (textvar("worker_hours"; "730"; "GPU hours / month"; "Hours a month a private GPU worker would run (always on).") | .spec.constant = true | .spec.display.hidden = true),
    (textvar("planning_load"; "70"; "Planning load %"; "Average share of its capacity a worker is planned to carry, leaving room for peaks.") | .spec.constant = true | .spec.display.hidden = true)] as $tok_vars
 | {extTokens: (ts("Tokens on the external model (per hour)"; "Tokens of the selected use case on its external model in each trailing hour, from MaaS metering."; [["sum by (model) (increase(authorized_hits_total\($ext)[1h]))", "{{model}}"]]; "decimal"; DS)
-       | .spec.plugin.spec.visual += {areaOpacity: 0.3} | .spec.plugin.spec.yAxis.format += {shortValues: true}),
+       | .spec.plugin.spec.visual += {areaOpacity: 0.3} | .spec.plugin.spec.yAxis.format += {shortValues: true}
+       | .spec.plugin.spec.querySettings = [{queryIndex: 0, colorMode: "fixed", colorValue: "#5E40BE"}]),
    privTokens: (ts("Tokens on the private model (per hour)"; "Tokens of the selected use case on the selected private model in each trailing hour, from MaaS metering."; [["sum by (model) (increase(authorized_hits_total{subscription=\"$usecase\", model=\"$private\"}[1h]))", "{{model}}"]]; "decimal"; DS)
-       | .spec.plugin.spec.visual += {areaOpacity: 0.3} | .spec.plugin.spec.yAxis.format += {shortValues: true}),
+       | .spec.plugin.spec.visual += {areaOpacity: 0.3} | .spec.plugin.spec.yAxis.format += {shortValues: true}
+       | .spec.plugin.spec.querySettings = [{queryIndex: 0, colorMode: "fixed", colorValue: "#0066CC"}]),
    savings: (stat("Monthly savings if moved (EUR)"; "External cost of the monthly workload minus the cheapest private option. Zero is the break-even point: the private option costs as much as the external model (for a dedicated worker: its monthly cost divided by the external price per million tokens). Red below break-even (stay external), yellow up to 250 EUR a month (little to gain), green above.\($eur_note)"; $best_savings; "decimal"; 0)
        | .spec.plugin.spec.format.shortValues = false
-       | .spec.plugin.spec += {colorMode: "background_solid", thresholds: {defaultColor: "#C9190B", steps: [{value: 0, color: "#F0AB00"}, {value: 250, color: "#3E8635"}]}}),
+       | .spec.plugin.spec += {colorMode: "background_solid", thresholds: {defaultColor: "#F0561D", steps: [{value: 0, color: "#FFCC17"}, {value: 250, color: "#63993D"}]}}),
    workload: {kind: "Panel", spec: {display: {name: "Workload vs break-even",
        description: "Monthly tokens of the use case as a share of the break-even volume of a dedicated private worker: its monthly cost divided by the external price per million tokens at this use case mix. 100% is break-even. Red below 90% (the external model is cheaper), yellow from 90% to 110% (about even), green above 110% (a dedicated worker pays off). The shared private model at its tariff has no break-even volume: it is cheaper at any volume when its tariff is below the external price."},
        plugin: {kind: "GaugeChart", spec: {calculation: "last", format: {unit: "percent", decimalPlaces: 0}, max: 200,
-           thresholds: {defaultColor: "#C9190B", steps: [{value: 90, color: "#F0AB00"}, {value: 110, color: "#3E8635"}]}}},
+           thresholds: {defaultColor: "#F0561D", steps: [{value: 90, color: "#FFCC17"}, {value: 110, color: "#63993D"}]}}},
        queries: [q("100 * (\($vol)) / (\($breakeven))"; DS; "Break-even at 100%")]}},
    usecaseTable: (table("Per model (selected period)";
        "Tokens of the use case on each model, the share of its workload, the price per million tokens (external: list price at its mix; shared private: tariff with the platform coefficient) and the MLflow pass rates of this use case on each model. 95% and above shows blue, 90% to 95% yellow, below 90% red.\($eur_note)";
@@ -240,7 +245,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
        [{align: "left", enableSorting: true, header: "Option", name: "option", width: 300},
         (column("Cost / month"; "value #1"; {decimalPlaces: 0, shortValues: false, unit: "decimal"}) + {sort: "asc"}),
         (column("Savings / month"; "value #2"; {decimalPlaces: 0, shortValues: false, unit: "decimal"})
-         + {cellSettings: [{condition: {kind: "Range", spec: {min: -1000000000, max: -0.001}}, textColor: "#C9190B"}, {condition: {kind: "Range", spec: {min: 0, max: 1000000000}}, textColor: "#3E8635"}]})];
+         + {cellSettings: [{condition: {kind: "Range", spec: {min: -1000000000, max: -0.001}}, textColor: "#F0561D"}, {condition: {kind: "Range", spec: {min: 0, max: 1000000000}}, textColor: "#63993D"}]})];
        [options("round((" + . + ") / \($rate))"), options("round(((\($ext_cost)) - " + . + ") / \($rate))")]) | .spec.plugin.spec.pagination = false)} as $tok_panels
 | [grid("Overview"; [["extTokens", 0, 0, 14, 8], ["privTokens", 0, 8, 14, 8], ["savings", 14, 0, 10, 6], ["workload", 14, 6, 10, 10]]),
    grid("Quality and cost"; [["qualityCheck", 0, 0, 12, 7], ["options", 12, 0, 12, 7]]),

@@ -330,7 +330,7 @@ spec:
         spec:
           display:
             name: Cost by user and subscription
-            description: Governed MaaS tokens per user, subscription and model over the Range window, valued at the blended price.
+            description: Governed MaaS tokens per user, subscription and model over the Range window, valued at the blended price. Requests are counted per user and subscription.
           plugin:
             kind: Table
             spec:
@@ -391,7 +391,8 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: round(sum by (user, subscription, model) (increase(authorized_calls_total{user!="", user=~"$user", subscription=~"$subscription"}[$__range])))
+                  query: round(sum by (user, subscription) (increase(authorized_calls_total{user!="", user=~"$user", subscription=~"$subscription"}[$__range])) * on(user, subscription) group_right() (0
+                    * sum by (user, subscription, model) (increase(authorized_hits_total{user!="", user=~"$user", subscription=~"$subscription", model=~"$model"}[$__range])) + 1))
           - kind: TimeSeriesQuery
             spec:
               plugin:

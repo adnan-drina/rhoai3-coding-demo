@@ -99,13 +99,10 @@ spec:
               showLabels: true
               sort: desc
               colorPalette:
+              - "#C7C7C7"
+              - "#92C5F9"
               - "#0066CC"
-              - "#EC7A08"
-              - "#3E8635"
-              - "#5752D1"
-              - "#009596"
-              - "#F0AB00"
-              - "#8F4700"
+              - "#004D99"
               legend:
                 position: right
                 mode: list
@@ -131,7 +128,7 @@ spec:
               format:
                 unit: decimal
                 decimalPlaces: 0
-                shortValues: false
+                shortValues: true
               sort: desc
               mode: value
           queries:
@@ -194,19 +191,67 @@ spec:
                 display: bar
                 stack: all
                 palette:
-                  mode: categorical
+                  mode: auto
               yAxis:
                 format:
                   unit: decimal
                 min: 0
+              querySettings:
+              - queryIndex: 0
+                colorMode: fixed
+                colorValue: "#92C5F9"
+              - queryIndex: 1
+                colorMode: fixed
+                colorValue: "#0066CC"
+              - queryIndex: 2
+                colorMode: fixed
+                colorValue: "#004D99"
+              - queryIndex: 3
+                colorMode: fixed
+                colorValue: "#707070"
           queries:
           - kind: TimeSeriesQuery
             spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  datasource: *id001
-                  query: sum by (subscription) (increase(authorized_hits_total[$__interval]) and on(model) ((last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[60d] offset -60d) or showback_offer_info{offer="dedicated", model=~"$model"} @ end()) and on(sponsor) label_replace(max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())), "sponsor", "$1", "team", "(.+)")))
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (sum by (subscription) (increase(authorized_hits_total[$__interval]) and on(model) ((last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[60d] offset -60d) or showback_offer_info{offer="dedicated", model=~"$model"} @ end()) and on(sponsor) label_replace(max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())), "sponsor", "$1", "team", "(.+)")))) and on(subscription) label_replace(vector(1), "subscription", "marketing-campaigns", "", "")
+                  seriesNameFormat: "{{subscription}}"
+                  minStep: 15m
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (sum by (subscription) (increase(authorized_hits_total[$__interval]) and on(model) ((last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[60d] offset -60d) or showback_offer_info{offer="dedicated", model=~"$model"} @ end()) and on(sponsor) label_replace(max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())), "sponsor", "$1", "team", "(.+)")))) and on(subscription) label_replace(vector(1), "subscription", "marketing-content", "", "")
+                  seriesNameFormat: "{{subscription}}"
+                  minStep: 15m
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (sum by (subscription) (increase(authorized_hits_total[$__interval]) and on(model) ((last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[60d] offset -60d) or showback_offer_info{offer="dedicated", model=~"$model"} @ end()) and on(sponsor) label_replace(max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())), "sponsor", "$1", "team", "(.+)")))) and on(subscription) label_replace(vector(1), "subscription", "marketing-rag", "", "")
+                  seriesNameFormat: "{{subscription}}"
+                  minStep: 15m
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: data-science-prometheus-datasource
+                  query: (sum by (subscription) (increase(authorized_hits_total[$__interval]) and on(model) ((last_over_time(showback_offer_info{offer="dedicated", model=~"$model"}[60d] offset -60d) or showback_offer_info{offer="dedicated", model=~"$model"} @ end()) and on(sponsor) label_replace(max by (team) ((last_over_time(showback_team_info{team=~"$team"}[60d] offset -60d) or showback_team_info{team=~"$team"} @ end())), "sponsor", "$1", "team", "(.+)")))) unless on(subscription) (label_replace(vector(1), "subscription", "marketing-campaigns", "", "") or label_replace(vector(1), "subscription", "marketing-content", "", "") or label_replace(vector(1), "subscription", "marketing-rag", "", ""))
                   seriesNameFormat: "{{subscription}}"
                   minStep: 15m
       windows:
@@ -258,19 +303,19 @@ spec:
                     spec:
                       min: 0
                       max: 29.999
-                  textColor: "#C9190B"
+                  textColor: "#F0561D"
                 - condition:
                     kind: Range
                     spec:
                       min: 30
                       max: 80
-                  textColor: "#3E8635"
+                  textColor: "#63993D"
                 - condition:
                     kind: Range
                     spec:
                       min: 80.001
                       max: 1000
-                  textColor: "#EC7A08"
+                  textColor: "#CA6C0F"
               - name: 'value #3'
                 header: Idle hours (<10%)
                 align: right
@@ -305,35 +350,35 @@ spec:
                       min: 0
                       max: 14.999
                   text: 'Mostly idle: candidate to park the model'
-                  textColor: "#C9190B"
+                  textColor: "#F0561D"
                 - condition:
                     kind: Range
                     spec:
                       min: 15
                       max: 29.999
                   text: Room for more interactive use cases
-                  textColor: "#C9190B"
+                  textColor: "#F0561D"
                 - condition:
                     kind: Range
                     spec:
                       min: 30
                       max: 70
                   text: Balanced
-                  textColor: "#3E8635"
+                  textColor: "#63993D"
                 - condition:
                     kind: Range
                     spec:
                       min: 70.001
                       max: 80
                   text: 'Busy: plan before adding jobs'
-                  textColor: "#3E8635"
+                  textColor: "#63993D"
                 - condition:
                     kind: Range
                     spec:
                       min: 80.001
                       max: 1000
                   text: 'Near capacity: move batch work elsewhere'
-                  textColor: "#EC7A08"
+                  textColor: "#CA6C0F"
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -434,19 +479,19 @@ spec:
                     spec:
                       min: 0
                       max: 29.999
-                  textColor: "#EC7A08"
+                  textColor: "#CA6C0F"
                 - condition:
                     kind: Range
                     spec:
                       min: 30
                       max: 69.999
-                  textColor: "#3C3F42"
+                  textColor: "#37A3A3"
                 - condition:
                     kind: Range
                     spec:
                       min: 70
                       max: 100
-                  textColor: "#3E8635"
+                  textColor: "#63993D"
               - name: 'value #5'
                 header: Tokens (in range)
                 align: right
@@ -473,21 +518,21 @@ spec:
                       min: 0
                       max: 29.999
                   text: 'Office hours only: move batch work to nights or weekends'
-                  textColor: "#EC7A08"
+                  textColor: "#CA6C0F"
                 - condition:
                     kind: Range
                     spec:
                       min: 30
                       max: 69.999
                   text: 'Mixed: move the batch part off-peak'
-                  textColor: "#3C3F42"
+                  textColor: "#37A3A3"
                 - condition:
                     kind: Range
                     spec:
                       min: 70
                       max: 100
                   text: Already off-peak
-                  textColor: "#3E8635"
+                  textColor: "#63993D"
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -861,19 +906,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: "#C9190B"
+                  textColor: "#F0561D"
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: "#B58100"
+                  textColor: "#B98412"
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: "#0066CC"
+                  textColor: "#4394E5"
               - name: 'value #2'
                 header: Completeness %
                 align: right
@@ -889,19 +934,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: "#C9190B"
+                  textColor: "#F0561D"
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: "#B58100"
+                  textColor: "#B98412"
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: "#0066CC"
+                  textColor: "#4394E5"
               - name: 'value #3'
                 header: Guidelines %
                 align: right
@@ -917,19 +962,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: "#C9190B"
+                  textColor: "#F0561D"
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: "#B58100"
+                  textColor: "#B98412"
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: "#0066CC"
+                  textColor: "#4394E5"
               - name: 'value #4'
                 header: Finished %
                 align: right
@@ -945,19 +990,19 @@ spec:
                     spec:
                       min: 0
                       max: 89.999
-                  textColor: "#C9190B"
+                  textColor: "#F0561D"
                 - condition:
                     kind: Range
                     spec:
                       min: 90
                       max: 94.999
-                  textColor: "#B58100"
+                  textColor: "#B98412"
                 - condition:
                     kind: Range
                     spec:
                       min: 95
                       max: 100
-                  textColor: "#0066CC"
+                  textColor: "#4394E5"
               - name: 'value #5'
                 header: Traces judged
                 align: right
