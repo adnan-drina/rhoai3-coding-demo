@@ -1,4 +1,13 @@
 ---
+# The environment's cluster administrator (Keycloak platform realm user admin).
+# Platform operator only: no team, no workspace persona.
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: admin
+spec:
+  memberOf: []
+---
 apiVersion: backstage.io/v1alpha1
 kind: User
 metadata:
