@@ -194,6 +194,10 @@ spec:
         - record: showback_subscription_team
           expr: vector(1)
           labels: {subscription: personal-kube-admin, team: platform}
+        # The platform's guardrail checks on Nemotron (synthetic showback usage; no MaaSSubscription of its own).
+        - record: showback_subscription_team
+          expr: vector(1)
+          labels: {subscription: maas-guardrails, team: platform}
     # Hourly token limit of each subscription and model, copied from the MaaSSubscriptions (tokenRateLimits, 1h window)
     # because MaaS does not publish its limits as metrics. Stage 040 validate.sh fails when a live limit differs.
     # quota-probe (100 tokens a minute) has no hourly limit and is not listed.
