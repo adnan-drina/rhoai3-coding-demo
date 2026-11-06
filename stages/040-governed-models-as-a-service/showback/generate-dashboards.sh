@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Generate the two custom PersesDashboards (Cost per token, Tokenomics break-even) for the OpenShift AI Observability
-# page. Structure mirrors the product Usage dashboard (spec.config: display, duration, variables, panels, layouts).
-# Offline, no cluster access. Default: print both files. --check: read-only, fails when a committed file differs from
-# what this script generates. --write: replaces dashboard-5-cost-per-token.yaml and dashboard-6-tokenomics-break-even.yaml
-# under gitops/stages/040-governed-models-as-a-service/040-maas-platform/observability/ (review and commit them); safe
-# to rerun. Cost per token prices are dashboard text variables; Tokenomics reads worker prices from the showback offer
-# catalog and reference prices from the external-metering price catalog; it shows euros through the catalog's rate.
+# Generate the custom Showback 5 · Break-even PersesDashboard for the OpenShift AI Observability page. Structure mirrors
+# the product Usage dashboard (spec.config: display, duration, variables, panels, layouts). Offline, no cluster access.
+# Default: print the file. --check: read-only, fails when the committed file differs from what this script generates.
+# --write: replaces dashboard-6-tokenomics-break-even.yaml under
+# gitops/stages/040-governed-models-as-a-service/040-maas-platform/observability/ (review and commit it); safe to rerun.
+# Break-even reads worker prices from the showback offer catalog and reference prices from the external-metering price
+# catalog; it shows euros through the catalog's rate.
 # Usage: stages/040-governed-models-as-a-service/showback/generate-dashboards.sh [--write|--check]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,64 +96,13 @@ def single(name; title; label_name; matcher; default):
 def column(header; name; fmt): {align: "right", enableSorting: true, format: fmt, header: header, name: name};
 def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
 
-# ── Cost per token ──
-"model_name=~\"$model\"" as $M
-| "sum by (model_name) (increase(kserve_vllm:prompt_tokens_total{\($M)}[$__range]))" as $tok_prompt
-| "sum by (model_name) (increase(kserve_vllm:generation_tokens_total{\($M)}[$__range]))" as $tok_gen
-| "(\($tok_prompt) / 1e6 * $price_prompt) + (\($tok_gen) / 1e6 * $price_completion)" as $cost_by_model
-| "user!=\"\", user=~\"$user\", subscription=~\"$subscription\"" as $U
-| "sum by (user, subscription, model) (increase(authorized_hits_total{\($U), model=~\"$model\"}[$__range]))" as $hits_user
-# MaaS counts requests per user and subscription, without a model: each token row of that pair shows its requests.
-| "sum by (user, subscription) (increase(authorized_calls_total{\($U)}[$__range])) * on(user, subscription) group_right() (0 * \($hits_user) + 1)" as $calls_user
-| [listvar("model"; "model_name"; "kserve_vllm:prompt_tokens_total"; "Model"),
-   listvar("user"; "user"; "authorized_hits_total{user!=\"\"}"; "User"),
-   listvar("subscription"; "subscription"; "authorized_hits_total{subscription!=\"\"}"; "Subscription"),
-   textvar("price_prompt"; "1.80"; "Price $/1M prompt tokens";
-       "Showback price for prompt (input) tokens, USD per million; default is the shared tariff with the platform coefficient from the showback offer catalog."),
-   textvar("price_completion"; "1.80"; "Price $/1M completion tokens"; "Showback price for generated (output) tokens, USD per million; default is the shared tariff with the platform coefficient."),
-   textvar("price_blended"; "1.80"; "Blended $/1M tokens (per user)";
-       "MaaS counts total tokens per user and subscription without an input/output split; this blended price values them.")] as $cost_vars
-| {totalCost: stat("Total cost";
-       "Prompt and completion tokens served by the private models over the Range window, priced with the dashboard'"'"'s price variables.";
-       "sum(\($cost_by_model))"; "decimal"; 2),
-   totalTokens: stat("Total tokens"; "Prompt plus completion tokens over the Range window.";
-       "sum(\($tok_prompt)) + sum(\($tok_gen))"; "decimal"; 0),
-   blendedCost: stat("Observed $/1M tokens";
-       "Total cost divided by total tokens: the blended price actually realised with the current input/output mix.";
-       "sum(\($cost_by_model)) / clamp_min(sum(\($tok_prompt)) + sum(\($tok_gen)), 1) * 1e6"; "decimal"; 3),
-   costPer1kRequests: stat("$ per 1K requests"; "Total cost divided by governed requests (MaaS authorized calls) over the Range window.";
-       "sum(\($cost_by_model)) / clamp_min(sum(increase(authorized_calls_total{user!=\"\"}[$__range])), 1) * 1000"; "decimal"; 3),
-   costOverTime: ts("Cost rate by model"; "Hourly spend by model at the dashboard prices.";
-       [["(sum by (model_name) (rate(kserve_vllm:prompt_tokens_total{\($M)}[$__rate_interval])) * 3600 / 1e6 * $price_prompt) + (sum by (model_name) (rate(kserve_vllm:generation_tokens_total{\($M)}[$__rate_interval])) * 3600 / 1e6 * $price_completion)",
-         "{{model_name}} $/h"]]; "decimal"; DS),
-   tokensOverTime: ts("Token rate by model"; "Prompt and completion tokens per second by model.";
-       [["sum by (model_name) (rate(kserve_vllm:prompt_tokens_total{\($M)}[$__rate_interval]))", "{{model_name}} prompt"],
-        ["sum by (model_name) (rate(kserve_vllm:generation_tokens_total{\($M)}[$__rate_interval]))", "{{model_name}} completion"]];
-       "decimal"; DS),
-   costByModel: table("Cost by model"; "Tokens and cost per model over the Range window.";
-       [{align: "left", enableSorting: true, header: "Model", name: "model_name"},
-        column("Prompt tokens"; "value #1"; short0), column("Completion tokens"; "value #2"; short0),
-        column("Cost ($)"; "value #3"; {decimalPlaces: 2, unit: "decimal"}) + {sort: "desc"}];
-       [$tok_prompt, $tok_gen, $cost_by_model]),
-   costByUser: table("Cost by user and subscription";
-       "Governed MaaS tokens per user, subscription and model over the Range window, valued at the blended price. Requests are counted per user and subscription.";
-       [{align: "left", enableSorting: true, header: "User", name: "user"},
-        {align: "left", enableSorting: true, header: "Subscription", name: "subscription"},
-        {align: "left", enableSorting: true, header: "Model", name: "model"},
-        column("Tokens"; "value #1"; short0), column("Requests"; "value #2"; {decimalPlaces: 0, unit: "decimal"}),
-        column("Cost ($)"; "value #3"; {decimalPlaces: 2, unit: "decimal"}) + {sort: "desc"}];
-       ["round(\($hits_user))", "round(\($calls_user))", "\($hits_user) / 1e6 * $price_blended"])} as $cost_panels
-| [grid("Overview"; [["totalCost", 0, 0, 6, 5], ["totalTokens", 6, 0, 6, 5], ["blendedCost", 12, 0, 6, 5], ["costPer1kRequests", 18, 0, 6, 5]]),
-   grid("Trends"; [["costOverTime", 0, 0, 12, 8], ["tokensOverTime", 12, 0, 12, 8]]),
-   grid("Breakdown"; [["costByModel", 0, 0, 24, 8], ["costByUser", 0, 8, 24, 10]])] as $cost_layouts
-
 # ── Break-even per use case ──
 # Decision view: should one use case (a team subscription) move from an external model to a private one? The same
 # subscription has run on both, so its tokens, its MLflow pass rates and its cost compare like for like. Usage in the
 # time range is scaled to a month; worker prices, tariffs and capacity come from the showback offer catalog (current
 # values for any range), external list prices and amounts from the metering ledger. No apostrophes below: this program
 # sits in a single-quoted shell string.
-| def cat(x): "(last_over_time(\(x)[60d] offset -60d) or \(x) @ end())";
+def cat(x): "(last_over_time(\(x)[60d] offset -60d) or \(x) @ end())";
   "scalar(max(\(cat("showback_usd_per_eur"))))" as $rate
 | " Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03)." as $eur_note
 | "{subscription=\"$usecase\", model=\"$reference\"}" as $ext
@@ -251,10 +200,7 @@ def short0: {decimalPlaces: 0, shortValues: true, unit: "decimal"};
    grid("Quality and cost"; [["qualityCheck", 0, 0, 12, 7], ["options", 12, 0, 12, 7]]),
    grid("Breakdown"; [["usecaseTable", 0, 0, 24, 6]])] as $tok_layouts
 
-| {"dashboard-5-cost-per-token.yaml": dashboard("dashboard-5-cost-per-token-admin"; "Cost per token";
-       "Showback: tokens served by the private models and governed MaaS users, priced with editable per-million-token prices.";
-       $cost_vars; $cost_panels; $cost_layouts),
-   "dashboard-6-tokenomics-break-even.yaml": dashboard("dashboard-offer-5-break-even-admin"; "Showback 5 · Break-even";
+| {"dashboard-6-tokenomics-break-even.yaml": dashboard("dashboard-offer-5-break-even-admin"; "Showback 5 · Break-even";
        "Should a use case move from an external model to a private one? The same team subscription on both models: tokens, MLflow quality and the monthly cost of each option.";
        $tok_vars; $tok_panels; $tok_layouts),
    shared: DS}
@@ -316,7 +262,7 @@ trap 'rm -rf "$WORK"' EXIT
 jq -n "$DASHBOARDS" >"$WORK/dashboards.json"
 shared=$(jq -c '.shared' "$WORK/dashboards.json")
 status=0
-for file in dashboard-5-cost-per-token.yaml dashboard-6-tokenomics-break-even.yaml; do
+for file in dashboard-6-tokenomics-break-even.yaml; do
     {
         printf '%s\n' "$HEADER"
         jq -c --arg f "$file" '.[$f]' "$WORK/dashboards.json" | ruby -ryaml -rjson -e "$YAML_EMITTER" "$shared"
