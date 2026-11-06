@@ -24,7 +24,7 @@ of its Observability page, ordered by the number; the product ships tabs 0–4, 
 | Dashboard | Metrics | Default variables |
 |---|---|---|
 | `dashboard-5-cost-per-token-admin` | vLLM `kserve_vllm:prompt_tokens_total` and `generation_tokens_total` per model; MaaS `authorized_hits_total` and `authorized_calls_total` per user and subscription | Prompt, completion and blended 4.00 per million tokens, the shared tariff from the showback offer catalog |
-| `dashboard-offer-5-break-even-admin` | External-model workload (metering ledger) projected to a month against private GPU workers; private fleet throughput and spend | External model in use (default `claude-sonnet-5-5`), subscriptions, private candidate (offer catalog), usage hours, users per team, GPU hours per month |
+| `dashboard-offer-5-break-even-admin` | One use case (a team subscription) on its external model and on a private model: tokens over time on each, monthly savings if moved, workload against the break-even volume of a dedicated worker, MLflow pass rates per judge and the monthly cost of each option | External model (priced models only, default `claude-sonnet-5-5`), use case (subscriptions on that model, default `team-engineering-ci`), private model (offer catalog, default `qwen3-8-27b`); default range 30 days |
 
 They rely on three things other stages provide:
 

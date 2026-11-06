@@ -73,25 +73,25 @@ spec:
     - kind: TextVariable
       spec:
         name: price_prompt
-        value: '1.50'
+        value: '1.80'
         constant: false
         display:
           name: Price $/1M prompt tokens
-          description: Showback price for prompt (input) tokens, USD per million; default is the shared tariff from the showback offer catalog.
+          description: Showback price for prompt (input) tokens, USD per million; default is the shared tariff with the platform coefficient from the showback offer catalog.
           hidden: false
     - kind: TextVariable
       spec:
         name: price_completion
-        value: '1.50'
+        value: '1.80'
         constant: false
         display:
           name: Price $/1M completion tokens
-          description: Showback price for generated (output) tokens, USD per million; default is the shared tariff.
+          description: Showback price for generated (output) tokens, USD per million; default is the shared tariff with the platform coefficient.
           hidden: false
     - kind: TextVariable
       spec:
         name: price_blended
-        value: '1.50'
+        value: '1.80'
         constant: false
         display:
           name: Blended $/1M tokens (per user)

@@ -14,8 +14,8 @@ spec:
   config:
     display:
       name: "Showback 5 \xB7 Break-even"
-      description: Should an external-model workload move to a private model? Projected monthly volume and cost against the break-even volume of a private worker.
-    duration: 24h
+      description: 'Should a use case move from an external model to a private one? The same team subscription on both models: tokens, MLflow quality and the monthly cost of each option.'
+    duration: 30d
     variables:
     - kind: ListVariable
       spec:
@@ -24,7 +24,7 @@ spec:
         allowMultiple: false
         defaultValue: claude-sonnet-5-5
         display:
-          name: External model in use
+          name: External model
           hidden: false
         plugin:
           kind: PrometheusLabelValuesVariable
@@ -34,16 +34,15 @@ spec:
               name: data-science-prometheus-datasource
             labelName: model
             matchers:
-            - showback_external_metering_rate_usd_per_million{category="output"}
+            - showback_external_metering_events{price_state!="free_prototype"}
     - kind: ListVariable
       spec:
-        name: subscription
-        allowAllValue: true
-        allowMultiple: true
-        customAllValue: .*
-        defaultValue: $__all
+        name: usecase
+        allowAllValue: false
+        allowMultiple: false
+        defaultValue: team-engineering-ci
         display:
-          name: Subscriptions
+          name: Use case
           hidden: false
         plugin:
           kind: PrometheusLabelValuesVariable
@@ -51,7 +50,7 @@ spec:
             datasource: *id001
             labelName: subscription
             matchers:
-            - showback_external_metering_events
+            - showback_external_metering_events{model="$reference", subscription!~"maas-quality-judge|playground-.*"}
     - kind: ListVariable
       spec:
         name: private
@@ -59,7 +58,7 @@ spec:
         allowMultiple: false
         defaultValue: qwen3-8-27b
         display:
-          name: Private candidate
+          name: Private model
           hidden: false
         plugin:
           kind: PrometheusLabelValuesVariable
@@ -72,74 +71,170 @@ spec:
       spec:
         name: usage_hours
         value: '168'
-        constant: false
+        constant: true
         display:
           name: Usage hours / month
-          description: Hours a month the teams work at the pace seen in the time range (8 h x 21 working days = 168). A workload that also runs overnight projects at the pace of the whole range instead.
-          hidden: false
+          description: Hours a month the teams work at the pace seen in the time range (8 h x 21 working days = 168).
+          hidden: true
     - kind: TextVariable
       spec:
         name: users
         value: '1'
-        constant: false
+        constant: true
         display:
           name: Users per team
-          description: 'Scales the observed usage: 1 is the usage as measured; raise it to ask what if the team grew.'
-          hidden: false
+          description: 'Scales the observed usage: 1 is the usage as measured.'
+          hidden: true
     - kind: TextVariable
       spec:
         name: worker_hours
         value: '730'
-        constant: false
+        constant: true
         display:
           name: GPU hours / month
-          description: Hours a month a private GPU worker would run (730 = always on, 168 = working hours only).
-          hidden: false
+          description: Hours a month a private GPU worker would run (always on).
+          hidden: true
     - kind: TextVariable
       spec:
         name: planning_load
         value: '70'
-        constant: false
+        constant: true
         display:
           name: Planning load %
-          description: Average share of its capacity a worker is planned to carry over the usage hours, leaving room for peaks. Demand rarely runs flat at the limit, so a fleet sized to 100% would be late
-            with its next worker.
-          hidden: false
+          description: Average share of its capacity a worker is planned to carry, leaving room for peaks.
+          hidden: true
     panels:
-      about:
+      extTokens:
         kind: Panel
         spec:
           display:
-            name: How the decision is calculated
-            description: ''
+            name: Tokens on the external model (per hour)
+            description: Tokens of the selected use case on its external model in each trailing hour, from MaaS metering.
           plugin:
-            kind: Markdown
+            kind: TimeSeriesChart
             spec:
-              text: '**Question:** should the selected external-model workload move to the private candidate?
-
-
-                1. **Projected monthly tokens** scale the usage per active hour (hours in the time range with usage) to a month: usage hours per month x users per team.
-
-                2. **External cost** prices those tokens at the provider list price, using the workload own input/output mix.
-
-                3. **Private cost** is GPU workers x worker price x GPU hours per month. Workers needed = projected tokens / (capacity of one worker from the offer catalog x planning load).
-
-                4. **Break-even** is the monthly volume at which the private workers needed cost the same as the external model. Above 100% moving to private saves money; check quality and latency before
-                switching. If break-even is more than those workers can carry (workers needed x capacity x planning load), private cannot win at these settings: keep the workers busier or run them fewer
-                hours.
-
-
-                Choose a time range that contains typical work, then raise users per team to see when the decision flips.
-
-
-                Amounts are in euros: prices are kept in USD, as AWS and the providers charge them, and converted at the rate in the offer catalog (1 EUR = 1.1179 USD, ECB reference rate of 2026-11-03).'
-          queries: []
-      ratio:
+              legend:
+                mode: list
+                position: bottom
+                values: []
+              visual:
+                areaOpacity: 0.3
+                connectNulls: false
+                display: line
+                lineWidth: 1.5
+              yAxis:
+                format:
+                  unit: decimal
+                  shortValues: true
+                min: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum by (model) (increase(authorized_hits_total{subscription="$usecase", model="$reference"}[1h]))
+                  seriesNameFormat: '{{model}}'
+      privTokens:
+        kind: Panel
+        spec:
+          display:
+            name: Tokens on the private model (per hour)
+            description: Tokens of the selected use case on the selected private model in each trailing hour, from MaaS metering.
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              legend:
+                mode: list
+                position: bottom
+                values: []
+              visual:
+                areaOpacity: 0.3
+                connectNulls: false
+                display: line
+                lineWidth: 1.5
+              yAxis:
+                format:
+                  unit: decimal
+                  shortValues: true
+                min: 0
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum by (model) (increase(authorized_hits_total{subscription="$usecase", model="$private"}[1h]))
+                  seriesNameFormat: '{{model}}'
+      savings:
+        kind: Panel
+        spec:
+          display:
+            name: Monthly savings if moved (EUR)
+            description: 'External cost of the monthly workload minus the cheapest private option. Zero is the break-even point: the private option costs as much as the external model (for a dedicated worker:
+              its monthly cost divided by the external price per million tokens). Red below break-even (stay external), yellow up to 250 EUR a month (little to gain), green above. Converted from USD at
+              1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).'
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+              format:
+                unit: decimal
+                decimalPlaces: 0
+                shortValues: false
+              colorMode: background_solid
+              thresholds:
+                defaultColor: '#C9190B'
+                steps:
+                - value: 0
+                  color: '#F0AB00'
+                - value: 250
+                  color: '#3E8635'
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: max(label_replace((((((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase",
+                    model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60)))) * (((sum(increase(showback_external_metering_estimated_usd{subscription="$usecase", model="$reference"}[$__range]))) / (((sum(increase(showback_external_metering_input_tokens{subscription="$usecase",
+                    model="$reference"}[$__range])) + sum(increase(showback_external_metering_output_tokens{subscription="$usecase", model="$reference"}[$__range])))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 2)) / 1e6)) - (((sum(increase(authorized_hits_total{subscription="$usecase",
+                    model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h]))
+                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) * (max((last_over_time(showback_offer_tariff_usd_per_million{model="$private"}[60d]
+                    offset -60d) or showback_offer_tariff_usd_per_million{model="$private"} @ end())) * scalar(max((last_over_time(showback_platform_coefficient[60d] offset -60d) or showback_platform_coefficient
+                    @ end())))) / 1e6)) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end()))), "option", "shared", "", "") or label_replace((((((sum(increase(authorized_hits_total{subscription="$usecase",
+                    model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h]))
+                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) * (((sum(increase(showback_external_metering_estimated_usd{subscription="$usecase",
+                    model="$reference"}[$__range]))) / (((sum(increase(showback_external_metering_input_tokens{subscription="$usecase", model="$reference"}[$__range])) + sum(increase(showback_external_metering_output_tokens{subscription="$usecase",
+                    model="$reference"}[$__range])))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2)) / 1e6)) - (((clamp_min(ceil(((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours
+                    * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((max((last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[60d] offset
+                    -60d) or showback_offer_capacity_tokens_per_second{model="$private"} @ end())) * 3600 * $worker_hours) * $planning_load / 100)), 1)) * max((last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[60d]
+                    offset -60d) or showback_offer_worker_usd_per_hour{model="$private"} @ end())) * $worker_hours) unless on() (count(label_replace((last_over_time(showback_offer_info{offer="dedicated",
+                    model="$private"}[60d] offset -60d) or showback_offer_info{offer="dedicated", model="$private"} @ end()), "team", "$1", "sponsor", "(.+)") and on(team) (last_over_time(showback_subscription_team{subscription="$usecase"}[60d]
+                    offset -60d) or showback_subscription_team{subscription="$usecase"} @ end())) > 0))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end()))),
+                    "option", "worker", "", "") or label_replace((((((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours
+                    * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) * (((sum(increase(showback_external_metering_estimated_usd{subscription="$usecase", model="$reference"}[$__range])))
+                    / (((sum(increase(showback_external_metering_input_tokens{subscription="$usecase", model="$reference"}[$__range])) + sum(increase(showback_external_metering_output_tokens{subscription="$usecase",
+                    model="$reference"}[$__range])))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2)) / 1e6)) - (vector(0) and on() (count(label_replace((last_over_time(showback_offer_info{offer="dedicated", model="$private"}[60d] offset -60d) or showback_offer_info{offer="dedicated",
+                    model="$private"} @ end()), "team", "$1", "sponsor", "(.+)") and on(team) (last_over_time(showback_subscription_team{subscription="$usecase"}[60d] offset -60d) or showback_subscription_team{subscription="$usecase"}
+                    @ end())) > 0))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end()))), "option", "own", "", ""))
+      workload:
         kind: Panel
         spec:
           display:
             name: Workload vs break-even
-            description: Projected monthly tokens as a share of the break-even volume; above 100% the private candidate is cheaper.
+            description: 'Monthly tokens of the use case as a share of the break-even volume of a dedicated private worker: its monthly cost divided by the external price per million tokens at this use
+              case mix. 100% is break-even. Red below 90% (the external model is cheaper), yellow from 90% to 110% (about even), green above 110% (a dedicated worker pays off). The shared private model
+              at its tariff has no break-even volume: it is cheaper at any volume when its tariff is below the external price.'
           plugin:
             kind: GaugeChart
             spec:
@@ -149,293 +244,12 @@ spec:
                 decimalPlaces: 0
               max: 200
               thresholds:
+                defaultColor: '#C9190B'
                 steps:
-                - value: 0
-                  color: '#c9190b'
-                - value: 100
-                  color: '#3e8635'
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: 100 * (((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
-                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
-                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / (((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) * scalar(clamp_min(vector($usage_hours
-                    * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
-                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
-                    offset -30d)) * 3600 * $worker_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
-                    offset -30d)) * $worker_hours) / (((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 1e6 * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
-                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((((sum((showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) * scalar(clamp_min(vector($usage_hours
-                    * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
-                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"})
-                    + min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 2)) * 1e6)
-      volume:
-        kind: Panel
-        spec:
-          display:
-            name: Projected tokens / month
-            description: Usage of the selected external workload in the time range, scaled to a month.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: ((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
-                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
-                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))
-      breakeven:
-        kind: Panel
-        spec:
-          display:
-            name: Break-even tokens / month
-            description: Monthly volume at which the private workers needed cost the same as the external model. Above what they can carry (workers needed x capacity x planning load), private cannot win
-              at these settings.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: ((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
-                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((max(showback_offer_capacity_tokens_per_second{model="$private"}
-                    @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $worker_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
-                    @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d] offset -30d)) * $worker_hours) / (((((sum((showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 1e6 * scalar(clamp_min(vector($usage_hours * $users
-                    / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
-                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
-                    - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}))
-                    + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}
-                    offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference",
-                    subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m])
-                    / 60)))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 2)) * 1e6
-      savings:
-        kind: Panel
-        spec:
-          display:
-            name: Monthly savings if moved (EUR)
-            description: External cost minus private cost; red means stay external. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-              colorMode: background_solid
-              thresholds:
-                defaultColor: '#c9190b'
-                steps:
-                - value: 0
-                  color: '#3e8635'
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: ((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
-                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 1e6 * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
-                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) - ((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) * scalar(clamp_min(vector($usage_hours
-                    * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
-                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d]
-                    offset -30d)) * 3600 * $worker_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"} @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d]
-                    offset -30d)) * $worker_hours)) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
-      workers:
-        kind: Panel
-        spec:
-          display:
-            name: Private workers needed
-            description: Projected tokens divided by what one worker carries at the planning load (demonstrated capacity x planning load), rounded up.
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
-                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
-                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((max(showback_offer_capacity_tokens_per_second{model="$private"}
-                    @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $worker_hours) * $planning_load / 100)), 1)
-      comparison:
-        kind: Panel
-        spec:
-          display:
-            name: External vs private cost / month (EUR)
-            description: Projected tokens at the provider list price against workers needed x worker price x GPU hours per month. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
-          plugin:
-            kind: BarChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-                shortValues: false
-              mode: value
-              sort: desc
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: (((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
-                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 1e6 * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
-                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / scalar(max(showback_usd_per_eur
-                    @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
-                  seriesNameFormat: 'External: $reference'
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: ((clamp_min(ceil((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"}))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
-                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((max(showback_offer_capacity_tokens_per_second{model="$private"}
-                    @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 * $worker_hours) * $planning_load / 100)), 1)) * max(showback_offer_worker_usd_per_hour{model="$private"}
-                    @ end() or last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[30d] offset -30d)) * $worker_hours) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d]
-                    offset -30d)))
-                  seriesNameFormat: 'Private: $private'
-      blended:
-        kind: Panel
-        spec:
-          display:
-            name: "External \u20AC/1M tokens"
-            description: Provider list price at the observed input/output mix of the workload. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: (((((sum((showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"}
-                    offset $__range) or showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="input_uncached"}) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"})) * min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="output"})) / 1e6 * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h]))
-                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((((sum((showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"} - showback_external_metering_input_tokens{model="$reference", subscription=~"$subscription"} offset $__range) or showback_external_metering_input_tokens{model="$reference",
-                    subscription=~"$subscription"})) + (sum((showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"} - showback_external_metering_output_tokens{model="$reference",
-                    subscription=~"$subscription"} offset $__range) or showback_external_metering_output_tokens{model="$reference", subscription=~"$subscription"}))) * scalar(clamp_min(vector($usage_hours
-                    * $users / scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
-                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"})
-                    + min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 2)) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d]
-                    offset -30d)))
-      activeHours:
-        kind: Panel
-        spec:
-          display:
-            name: Active hours
-            description: 'Hours in the time range with usage of the selected external workload: the basis of the projection.'
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: scalar(count_over_time((sum(increase(authorized_hits_total{model="$reference", subscription=~"$subscription"}[1h])) > 0)[$__range:1h]) or vector(1))
-      qRelevance:
-        kind: Panel
-        spec:
-          display:
-            name: Relevance (% pass)
-            description: 'Answers the question asked (LLM judge), last 7 days. Different judges are not equally strict: compare with care. A model with no verdicts yet shows no gauge; the table beside it
-              says so.'
-          plugin:
-            kind: GaugeChart
-            spec:
-              calculation: last
-              format:
-                unit: percent
-                decimalPlaces: 0
-              max: 100
-              thresholds:
-                defaultColor: '#c9190b'
-                steps:
-                - value: 70
-                  color: '#ec7a08'
                 - value: 90
-                  color: '#3e8635'
+                  color: '#F0AB00'
+                - value: 110
+                  color: '#3E8635'
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -443,46 +257,24 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: 100 * sum by (model) (showback_quality_verdicts{judge="relevance", model=~"$reference|$private", result="pass"}) / sum by (model) (showback_quality_verdicts{judge="relevance", model=~"$reference|$private"})
-                  seriesNameFormat: '{{model}}'
-      qCompleteness:
+                  query: 100 * ((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase",
+                    model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60)))) / (((clamp_min(ceil(((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours * $users
+                    / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((max((last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[60d] offset
+                    -60d) or showback_offer_capacity_tokens_per_second{model="$private"} @ end())) * 3600 * $worker_hours) * $planning_load / 100)), 1)) * max((last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[60d]
+                    offset -60d) or showback_offer_worker_usd_per_hour{model="$private"} @ end())) * $worker_hours) / (((sum(increase(showback_external_metering_estimated_usd{subscription="$usecase", model="$reference"}[$__range])))
+                    / (((sum(increase(showback_external_metering_input_tokens{subscription="$usecase", model="$reference"}[$__range])) + sum(increase(showback_external_metering_output_tokens{subscription="$usecase",
+                    model="$reference"}[$__range])))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2)) * 1e6)
+                  seriesNameFormat: Break-even at 100%
+      usecaseTable:
         kind: Panel
         spec:
           display:
-            name: Completeness (% pass)
-            description: 'Answers every part of the request (LLM judge), last 7 days. Different judges are not equally strict: compare with care. A model with no verdicts yet shows no gauge; the table beside
-              it says so.'
-          plugin:
-            kind: GaugeChart
-            spec:
-              calculation: last
-              format:
-                unit: percent
-                decimalPlaces: 0
-              max: 100
-              thresholds:
-                defaultColor: '#c9190b'
-                steps:
-                - value: 70
-                  color: '#ec7a08'
-                - value: 90
-                  color: '#3e8635'
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: 100 * sum by (model) (showback_quality_verdicts{judge="completeness", model=~"$reference|$private", result="pass"}) / sum by (model) (showback_quality_verdicts{judge="completeness",
-                    model=~"$reference|$private"})
-                  seriesNameFormat: '{{model}}'
-      qCounts:
-        kind: Panel
-        spec:
-          display:
-            name: Verdicts behind the pass rates
-            description: 'Verdicts per model in the last 7 days. 0 means no verdicts yet: the daily scorer grades new traffic at 17:00 UTC.'
+            name: Per model (selected period)
+            description: 'Tokens of the use case on each model, the share of its workload, the price per million tokens (external: list price at its mix; shared private: tariff with the platform coefficient)
+              and the MLflow pass rates of this use case on each model. 95% and above shows blue, 90% to 95% yellow, below 90% red. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).'
           plugin:
             kind: Table
             spec:
@@ -493,15 +285,142 @@ spec:
                 enableSorting: true
                 header: Model
                 name: model
+                width: 180
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  shortValues: true
+                  unit: decimal
+                header: Tokens
+                name: 'value #1'
               - align: right
                 enableSorting: true
                 format:
                   decimalPlaces: 0
                   unit: decimal
-                header: Verdicts
-                name: value
+                header: Share %
+                name: 'value #2'
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 2
+                  unit: decimal
+                header: EUR / 1M
+                name: 'value #3'
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  unit: decimal
+                header: Relevance %
+                name: 'value #4'
+                cellSettings:
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 0
+                      max: 89.999
+                  textColor: '#C9190B'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 90
+                      max: 94.999
+                  textColor: '#B58100'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 95
+                      max: 100
+                  textColor: '#0066CC'
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  unit: decimal
+                header: Completeness %
+                name: 'value #5'
+                cellSettings:
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 0
+                      max: 89.999
+                  textColor: '#C9190B'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 90
+                      max: 94.999
+                  textColor: '#B58100'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 95
+                      max: 100
+                  textColor: '#0066CC'
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  unit: decimal
+                header: Guidelines %
+                name: 'value #6'
+                cellSettings:
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 0
+                      max: 89.999
+                  textColor: '#C9190B'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 90
+                      max: 94.999
+                  textColor: '#B58100'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 95
+                      max: 100
+                  textColor: '#0066CC'
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  unit: decimal
+                header: Finished %
+                name: 'value #7'
+                cellSettings:
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 0
+                      max: 89.999
+                  textColor: '#C9190B'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 90
+                      max: 94.999
+                  textColor: '#B58100'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 95
+                      max: 100
+                  textColor: '#0066CC'
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  unit: decimal
+                header: Traces judged
+                name: 'value #8'
               density: compact
-              pagination: true
+              pagination: false
               transforms:
               - kind: MergeSeries
                 spec: {}
@@ -512,21 +431,161 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: sum by (model) (showback_quality_verdicts{judge="relevance", model=~"$reference|$private"}) or label_replace(vector(0), "model", "$reference", "", "") or label_replace(vector(0),
-                    "model", "$private", "", "")
-      capacity:
+                  query: sum by (model) (increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: round(100 * sum by (model) (increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range])) / scalar(sum(increase(authorized_hits_total{subscription="$usecase",
+                    model=~"$reference|$private"}[$__range]))))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: label_replace((((sum(increase(showback_external_metering_estimated_usd{subscription="$usecase", model="$reference"}[$__range]))) / (((sum(increase(showback_external_metering_input_tokens{subscription="$usecase",
+                    model="$reference"}[$__range])) + sum(increase(showback_external_metering_output_tokens{subscription="$usecase", model="$reference"}[$__range])))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"})) / 2)) / scalar(max((last_over_time(showback_usd_per_eur[60d]
+                    offset -60d) or showback_usd_per_eur @ end()))), "model", "$reference", "", "") or label_replace((max((last_over_time(showback_offer_tariff_usd_per_million{model="$private"}[60d] offset
+                    -60d) or showback_offer_tariff_usd_per_million{model="$private"} @ end())) * scalar(max((last_over_time(showback_platform_coefficient[60d] offset -60d) or showback_platform_coefficient
+                    @ end())))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end()))), "model", "$private", "", "")
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: round(100 * (sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase", model=~"$reference|$private", judge="relevance", result="pass"}[$__range])) or 0 *
+                    sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase", model=~"$reference|$private", judge="relevance"}[$__range]))) / (sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase",
+                    model=~"$reference|$private", judge="relevance"}[$__range])) > 0))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: round(100 * (sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase", model=~"$reference|$private", judge="completeness", result="pass"}[$__range])) or
+                    0 * sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase", model=~"$reference|$private", judge="completeness"}[$__range]))) / (sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase",
+                    model=~"$reference|$private", judge="completeness"}[$__range])) > 0))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: round(100 * (sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase", model=~"$reference|$private", judge="team_guidelines", result="pass"}[$__range]))
+                    or 0 * sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase", model=~"$reference|$private", judge="team_guidelines"}[$__range]))) / (sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase",
+                    model=~"$reference|$private", judge="team_guidelines"}[$__range])) > 0))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: round(100 * (sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase", model=~"$reference|$private", judge="finished", result="pass"}[$__range])) or 0 *
+                    sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase", model=~"$reference|$private", judge="finished"}[$__range]))) / (sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase",
+                    model=~"$reference|$private", judge="finished"}[$__range])) > 0))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: sum by (model) (increase(showback_quality_verdicts_total{subscription="$usecase", model=~"$reference|$private", judge="relevance"}[$__range]))
+      qualityCheck:
         kind: Panel
         spec:
           display:
-            name: Capacity of one worker (tokens / month)
-            description: 'Demonstrated tokens per second x GPU hours per month: overnight batch counts, not only working hours.'
+            name: Quality check per judge
+            description: 'Pass rate of this use case on each model per MLflow judge in the selected period, and the gap in points (private minus external). Good enough: no more than 3 points lower; Check:
+              3 to 8 lower; Not ready: more than 8 lower. A judge without verdicts on one of the models has no row. Different judges are not equally strict: compare with care.'
           plugin:
-            kind: StatChart
+            kind: Table
             spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 0
+              columnSettings:
+              - hide: true
+                name: timestamp
+              - align: left
+                enableSorting: true
+                header: Judge
+                name: judge
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  unit: decimal
+                header: External %
+                name: 'value #1'
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  unit: decimal
+                header: Private %
+                name: 'value #2'
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  unit: decimal
+                header: Gap (points)
+                name: 'value #3'
+                cellSettings:
+                - condition:
+                    kind: Range
+                    spec:
+                      min: -1000
+                      max: -8.001
+                  textColor: '#C9190B'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: -8
+                      max: -3.001
+                  textColor: '#EC7A08'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: -3
+                      max: 1000
+                  textColor: '#3E8635'
+              - align: left
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  unit: decimal
+                header: Verdict
+                name: 'value #4'
+                cellSettings:
+                - condition:
+                    kind: Range
+                    spec:
+                      min: -1000
+                      max: -8.001
+                  text: Not ready
+                  textColor: '#C9190B'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: -8
+                      max: -3.001
+                  text: Check
+                  textColor: '#EC7A08'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: -3
+                      max: 1000
+                  text: Good enough
+                  textColor: '#3E8635'
+              density: compact
+              pagination: false
+              transforms:
+              - kind: MergeSeries
+                spec: {}
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -534,25 +593,96 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: max(showback_offer_capacity_tokens_per_second{model="$private"} @ end() or last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[30d] offset -30d)) * 3600 *
-                    $worker_hours
-      fleet:
+                  query: round(100 * (sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$reference", judge=~"relevance|completeness|team_guidelines|finished", result="pass"}[$__range]))
+                    or 0 * sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$reference", judge=~"relevance|completeness|team_guidelines|finished"}[$__range]))) /
+                    (sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$reference", judge=~"relevance|completeness|team_guidelines|finished"}[$__range])) > 0))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: round(100 * (sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$private", judge=~"relevance|completeness|team_guidelines|finished", result="pass"}[$__range]))
+                    or 0 * sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$private", judge=~"relevance|completeness|team_guidelines|finished"}[$__range]))) / (sum
+                    by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$private", judge=~"relevance|completeness|team_guidelines|finished"}[$__range])) > 0))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: (round(100 * (sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$private", judge=~"relevance|completeness|team_guidelines|finished", result="pass"}[$__range]))
+                    or 0 * sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$private", judge=~"relevance|completeness|team_guidelines|finished"}[$__range]))) / (sum
+                    by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$private", judge=~"relevance|completeness|team_guidelines|finished"}[$__range])) > 0)) - round(100
+                    * (sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$reference", judge=~"relevance|completeness|team_guidelines|finished", result="pass"}[$__range]))
+                    or 0 * sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$reference", judge=~"relevance|completeness|team_guidelines|finished"}[$__range]))) /
+                    (sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$reference", judge=~"relevance|completeness|team_guidelines|finished"}[$__range])) > 0)))
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource: *id001
+                  query: (round(100 * (sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$private", judge=~"relevance|completeness|team_guidelines|finished", result="pass"}[$__range]))
+                    or 0 * sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$private", judge=~"relevance|completeness|team_guidelines|finished"}[$__range]))) / (sum
+                    by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$private", judge=~"relevance|completeness|team_guidelines|finished"}[$__range])) > 0)) - round(100
+                    * (sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$reference", judge=~"relevance|completeness|team_guidelines|finished", result="pass"}[$__range]))
+                    or 0 * sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$reference", judge=~"relevance|completeness|team_guidelines|finished"}[$__range]))) /
+                    (sum by (judge) (increase(showback_quality_verdicts_total{subscription="$usecase", model="$reference", judge=~"relevance|completeness|team_guidelines|finished"}[$__range])) > 0)))
+      options:
         kind: Panel
         spec:
           display:
-            name: Private spend vs the same tokens at the external price (EUR)
-            description: Serving hours of each private model in the time range x its worker price, against the tokens teams used priced at the selected external model; benchmarks of test subscriptions are
-              left out. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
+            name: Monthly cost of each option (EUR)
+            description: 'The whole monthly workload of the use case on each option: the external model at its list price and observed mix, the shared private model at its tariff with the platform coefficient,
+              a dedicated private worker (workers needed x worker price x GPU hours), or a dedicated model the team already sponsors (no extra cost). Savings are against staying external. Converted from
+              USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).'
           plugin:
-            kind: BarChart
+            kind: Table
             spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-                shortValues: false
-              mode: value
-              sort: desc
+              columnSettings:
+              - hide: true
+                name: timestamp
+              - align: left
+                enableSorting: true
+                header: Option
+                name: option
+                width: 300
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  shortValues: false
+                  unit: decimal
+                header: Cost / month
+                name: 'value #1'
+                sort: asc
+              - align: right
+                enableSorting: true
+                format:
+                  decimalPlaces: 0
+                  shortValues: false
+                  unit: decimal
+                header: Savings / month
+                name: 'value #2'
+                cellSettings:
+                - condition:
+                    kind: Range
+                    spec:
+                      min: -1000000000
+                      max: -0.001
+                  textColor: '#C9190B'
+                - condition:
+                    kind: Range
+                    spec:
+                      min: 0
+                      max: 1000000000
+                  textColor: '#3E8635'
+              density: compact
+              pagination: false
+              transforms:
+              - kind: MergeSeries
+                spec: {}
           queries:
           - kind: TimeSeriesQuery
             spec:
@@ -560,186 +690,134 @@ spec:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: (sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model", "$1", "model_name", "(.+)") / 60) * on(model) group_left max by
-                    (model) (showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d)) and on(model) (showback_offer_info @ end() or last_over_time(showback_offer_info[30d]
-                    offset -30d)))) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
-                  seriesNameFormat: Private spend
+                  query: label_replace(round(((((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours * $users /
+                    scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) * (((sum(increase(showback_external_metering_estimated_usd{subscription="$usecase", model="$reference"}[$__range])))
+                    / (((sum(increase(showback_external_metering_input_tokens{subscription="$usecase", model="$reference"}[$__range])) + sum(increase(showback_external_metering_output_tokens{subscription="$usecase",
+                    model="$reference"}[$__range])))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2)) / 1e6)) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))), "option", "Stay external on $reference", "",
+                    "") or label_replace(round(((((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours * $users
+                    / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) * (max((last_over_time(showback_offer_tariff_usd_per_million{model="$private"}[60d] offset
+                    -60d) or showback_offer_tariff_usd_per_million{model="$private"} @ end())) * scalar(max((last_over_time(showback_platform_coefficient[60d] offset -60d) or showback_platform_coefficient
+                    @ end())))) / 1e6)) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))), "option", "Shared $private at its tariff", "", "") or label_replace(round(((((clamp_min(ceil(((sum(increase(authorized_hits_total{subscription="$usecase",
+                    model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h]))
+                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((max((last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[60d]
+                    offset -60d) or showback_offer_capacity_tokens_per_second{model="$private"} @ end())) * 3600 * $worker_hours) * $planning_load / 100)), 1)) * max((last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[60d]
+                    offset -60d) or showback_offer_worker_usd_per_hour{model="$private"} @ end())) * $worker_hours) unless on() (count(label_replace((last_over_time(showback_offer_info{offer="dedicated",
+                    model="$private"}[60d] offset -60d) or showback_offer_info{offer="dedicated", model="$private"} @ end()), "team", "$1", "sponsor", "(.+)") and on(team) (last_over_time(showback_subscription_team{subscription="$usecase"}[60d]
+                    offset -60d) or showback_subscription_team{subscription="$usecase"} @ end())) > 0))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))),
+                    "option", "A dedicated $private worker", "", "") or label_replace(round(((vector(0) and on() (count(label_replace((last_over_time(showback_offer_info{offer="dedicated", model="$private"}[60d]
+                    offset -60d) or showback_offer_info{offer="dedicated", model="$private"} @ end()), "team", "$1", "sponsor", "(.+)") and on(team) (last_over_time(showback_subscription_team{subscription="$usecase"}[60d]
+                    offset -60d) or showback_subscription_team{subscription="$usecase"} @ end())) > 0))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))),
+                    "option", "$private, already paid by the team", "", "")
           - kind: TimeSeriesQuery
             spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
                   datasource: *id001
-                  query: ((sum((sum by (subscription, model) (increase(authorized_hits_total[$__range])) and on(model) (showback_offer_info @ end() or last_over_time(showback_offer_info[30d] offset -30d)))
-                    unless on(subscription) max by (subscription) (showback_subscription_test_traffic @ end() or last_over_time(showback_subscription_test_traffic[30d] offset -30d)))) / 1e6 * (min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="input_uncached"}) * scalar((sum(increase(kserve_vllm:prompt_tokens_total[$__range]))) / ((sum(increase(kserve_vllm:prompt_tokens_total[$__range]))) + (sum(increase(kserve_vllm:generation_tokens_total[$__range])))))
-                    + min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"}) * (1 - scalar((sum(increase(kserve_vllm:prompt_tokens_total[$__range]))) / ((sum(increase(kserve_vllm:prompt_tokens_total[$__range])))
-                    + (sum(increase(kserve_vllm:generation_tokens_total[$__range])))))))) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d] offset -30d)))
-                  seriesNameFormat: Same tokens at $reference
-      fleetSavings:
-        kind: Panel
-        spec:
-          display:
-            name: Savings vs external (EUR)
-            description: External price minus private spend for the time range; red means the workers were under-used. Converted from USD at 1 EUR = 1.1179 USD (ECB reference rate, 2026-11-03).
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-              format:
-                unit: decimal
-                decimalPlaces: 2
-              colorMode: background_solid
-              thresholds:
-                defaultColor: '#c9190b'
-                steps:
-                - value: 0
-                  color: '#3e8635'
-          queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  datasource: *id001
-                  query: (((sum((sum by (subscription, model) (increase(authorized_hits_total[$__range])) and on(model) (showback_offer_info @ end() or last_over_time(showback_offer_info[30d] offset -30d)))
-                    unless on(subscription) max by (subscription) (showback_subscription_test_traffic @ end() or last_over_time(showback_subscription_test_traffic[30d] offset -30d)))) / 1e6 * (min(showback_external_metering_rate_usd_per_million{model="$reference",
-                    category="input_uncached"}) * scalar((sum(increase(kserve_vllm:prompt_tokens_total[$__range]))) / ((sum(increase(kserve_vllm:prompt_tokens_total[$__range]))) + (sum(increase(kserve_vllm:generation_tokens_total[$__range])))))
-                    + min(showback_external_metering_rate_usd_per_million{model="$reference", category="output"}) * (1 - scalar((sum(increase(kserve_vllm:prompt_tokens_total[$__range]))) / ((sum(increase(kserve_vllm:prompt_tokens_total[$__range])))
-                    + (sum(increase(kserve_vllm:generation_tokens_total[$__range])))))))) - (sum((label_replace(sum_over_time(count by (model_name) (kserve_vllm:num_requests_running)[$__range:1m]), "model",
-                    "$1", "model_name", "(.+)") / 60) * on(model) group_left max by (model) (showback_offer_worker_usd_per_hour @ end() or last_over_time(showback_offer_worker_usd_per_hour[30d] offset -30d))
-                    and on(model) (showback_offer_info @ end() or last_over_time(showback_offer_info[30d] offset -30d))))) / scalar(max(showback_usd_per_eur @ end() or last_over_time(showback_usd_per_eur[30d]
-                    offset -30d)))
+                  query: label_replace(round((((((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours * $users /
+                    scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) * (((sum(increase(showback_external_metering_estimated_usd{subscription="$usecase", model="$reference"}[$__range])))
+                    / (((sum(increase(showback_external_metering_input_tokens{subscription="$usecase", model="$reference"}[$__range])) + sum(increase(showback_external_metering_output_tokens{subscription="$usecase",
+                    model="$reference"}[$__range])))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2)) / 1e6)) - (((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours
+                    * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) * (((sum(increase(showback_external_metering_estimated_usd{subscription="$usecase", model="$reference"}[$__range])))
+                    / (((sum(increase(showback_external_metering_input_tokens{subscription="$usecase", model="$reference"}[$__range])) + sum(increase(showback_external_metering_output_tokens{subscription="$usecase",
+                    model="$reference"}[$__range])))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2)) / 1e6)) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))), "option", "Stay external on $reference", "",
+                    "") or label_replace(round((((((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours * $users
+                    / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) * (((sum(increase(showback_external_metering_estimated_usd{subscription="$usecase", model="$reference"}[$__range])))
+                    / (((sum(increase(showback_external_metering_input_tokens{subscription="$usecase", model="$reference"}[$__range])) + sum(increase(showback_external_metering_output_tokens{subscription="$usecase",
+                    model="$reference"}[$__range])))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2)) / 1e6)) - (((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours
+                    * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) * (max((last_over_time(showback_offer_tariff_usd_per_million{model="$private"}[60d] offset
+                    -60d) or showback_offer_tariff_usd_per_million{model="$private"} @ end())) * scalar(max((last_over_time(showback_platform_coefficient[60d] offset -60d) or showback_platform_coefficient
+                    @ end())))) / 1e6)) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))), "option", "Shared $private at its tariff", "", "") or label_replace(round((((((sum(increase(authorized_hits_total{subscription="$usecase",
+                    model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h]))
+                    > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) * (((sum(increase(showback_external_metering_estimated_usd{subscription="$usecase",
+                    model="$reference"}[$__range]))) / (((sum(increase(showback_external_metering_input_tokens{subscription="$usecase", model="$reference"}[$__range])) + sum(increase(showback_external_metering_output_tokens{subscription="$usecase",
+                    model="$reference"}[$__range])))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2)) / 1e6)) - (((clamp_min(ceil(((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) * scalar(clamp_min(vector($usage_hours
+                    * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h])) > 0)[$__range:1h]) or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m])
+                    / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) / ((max((last_over_time(showback_offer_capacity_tokens_per_second{model="$private"}[60d] offset
+                    -60d) or showback_offer_capacity_tokens_per_second{model="$private"} @ end())) * 3600 * $worker_hours) * $planning_load / 100)), 1)) * max((last_over_time(showback_offer_worker_usd_per_hour{model="$private"}[60d]
+                    offset -60d) or showback_offer_worker_usd_per_hour{model="$private"} @ end())) * $worker_hours) unless on() (count(label_replace((last_over_time(showback_offer_info{offer="dedicated",
+                    model="$private"}[60d] offset -60d) or showback_offer_info{offer="dedicated", model="$private"} @ end()), "team", "$1", "sponsor", "(.+)") and on(team) (last_over_time(showback_subscription_team{subscription="$usecase"}[60d]
+                    offset -60d) or showback_subscription_team{subscription="$usecase"} @ end())) > 0))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))),
+                    "option", "A dedicated $private worker", "", "") or label_replace(round((((((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[$__range]))) *
+                    scalar(clamp_min(vector($usage_hours * $users / scalar(count_over_time((sum(increase(authorized_hits_total{subscription="$usecase", model=~"$reference|$private"}[1h])) > 0)[$__range:1h])
+                    or vector(1)) * (scalar(count_over_time(vector(1)[$__range:1m]) / 60) < bool 168)), 730 * $users / scalar(count_over_time(vector(1)[$__range:1m]) / 60)))) * (((sum(increase(showback_external_metering_estimated_usd{subscription="$usecase",
+                    model="$reference"}[$__range]))) / (((sum(increase(showback_external_metering_input_tokens{subscription="$usecase", model="$reference"}[$__range])) + sum(increase(showback_external_metering_output_tokens{subscription="$usecase",
+                    model="$reference"}[$__range])))) > 0) * 1e6 or (min(showback_external_metering_rate_usd_per_million{model="$reference", category="input_uncached"}) + min(showback_external_metering_rate_usd_per_million{model="$reference",
+                    category="output"})) / 2)) / 1e6)) - (vector(0) and on() (count(label_replace((last_over_time(showback_offer_info{offer="dedicated", model="$private"}[60d] offset -60d) or showback_offer_info{offer="dedicated",
+                    model="$private"} @ end()), "team", "$1", "sponsor", "(.+)") and on(team) (last_over_time(showback_subscription_team{subscription="$usecase"}[60d] offset -60d) or showback_subscription_team{subscription="$usecase"}
+                    @ end())) > 0))) / scalar(max((last_over_time(showback_usd_per_eur[60d] offset -60d) or showback_usd_per_eur @ end())))), "option", "$private, already paid by the team", "", "")
     layouts:
     - kind: Grid
       spec:
         display:
-          title: How the decision is calculated
-          collapse:
-            open: false
-        items:
-        - x: 0
-          y: 0
-          width: 24
-          height: 7
-          content:
-            $ref: '#/spec/panels/about'
-    - kind: Grid
-      spec:
-        display:
-          title: Recommendation
+          title: Overview
           collapse:
             open: true
         items:
         - x: 0
           y: 0
-          width: 8
+          width: 14
           height: 8
           content:
-            $ref: '#/spec/panels/ratio'
-        - x: 8
-          y: 0
-          width: 8
-          height: 4
+            $ref: '#/spec/panels/extTokens'
+        - x: 0
+          y: 8
+          width: 14
+          height: 8
           content:
-            $ref: '#/spec/panels/volume'
-        - x: 16
+            $ref: '#/spec/panels/privTokens'
+        - x: 14
           y: 0
-          width: 8
-          height: 4
-          content:
-            $ref: '#/spec/panels/breakeven'
-        - x: 8
-          y: 4
-          width: 16
-          height: 4
+          width: 10
+          height: 6
           content:
             $ref: '#/spec/panels/savings'
-    - kind: Grid
-      spec:
-        display:
-          title: Monthly comparison
-          collapse:
-            open: true
-        items:
-        - x: 0
-          y: 0
-          width: 24
-          height: 7
+        - x: 14
+          y: 6
+          width: 10
+          height: 10
           content:
-            $ref: '#/spec/panels/comparison'
+            $ref: '#/spec/panels/workload'
     - kind: Grid
       spec:
         display:
-          title: Quality of both models
+          title: Quality and cost
           collapse:
             open: true
         items:
         - x: 0
           y: 0
           width: 12
-          height: 8
+          height: 7
           content:
-            $ref: '#/spec/panels/qRelevance'
+            $ref: '#/spec/panels/qualityCheck'
         - x: 12
           y: 0
           width: 12
-          height: 8
+          height: 7
           content:
-            $ref: '#/spec/panels/qCompleteness'
+            $ref: '#/spec/panels/options'
+    - kind: Grid
+      spec:
+        display:
+          title: Breakdown
+          collapse:
+            open: true
+        items:
         - x: 0
-          y: 8
+          y: 0
           width: 24
           height: 6
           content:
-            $ref: '#/spec/panels/qCounts'
-    - kind: Grid
-      spec:
-        display:
-          title: Assumptions
-          collapse:
-            open: false
-        items:
-        - x: 0
-          y: 0
-          width: 6
-          height: 5
-          content:
-            $ref: '#/spec/panels/activeHours'
-        - x: 6
-          y: 0
-          width: 6
-          height: 5
-          content:
-            $ref: '#/spec/panels/blended'
-        - x: 12
-          y: 0
-          width: 6
-          height: 5
-          content:
-            $ref: '#/spec/panels/capacity'
-        - x: 18
-          y: 0
-          width: 6
-          height: 5
-          content:
-            $ref: '#/spec/panels/workers'
-    - kind: Grid
-      spec:
-        display:
-          title: Private fleet in the time range
-          collapse:
-            open: true
-        items:
-        - x: 0
-          y: 0
-          width: 16
-          height: 7
-          content:
-            $ref: '#/spec/panels/fleet'
-        - x: 16
-          y: 0
-          width: 8
-          height: 7
-          content:
-            $ref: '#/spec/panels/fleetSavings'
+            $ref: '#/spec/panels/usecaseTable'
