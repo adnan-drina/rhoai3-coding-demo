@@ -14,7 +14,6 @@ resources:
   - dashboard-offer-external.yaml
   - dashboard-offer-dedicated.yaml
   - dashboard-offer-shared.yaml
-  - dashboard-offer-fair-share.yaml
   - metering
   - dedicated
   - quality

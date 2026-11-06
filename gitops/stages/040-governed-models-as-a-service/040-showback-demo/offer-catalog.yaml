@@ -21,9 +21,7 @@
 # subscription missing here shows as "unassigned" on the showback tabs.
 # Currency: prices stay in USD, as AWS and the providers charge them; the dashboards show euros through this one rate
 # (ECB euro reference rate of 2026-11-03). The panel descriptions quote the rate and its date: change them together.
-# Fair-share tiers: the multiplier a subscription's usage pays on Showback 6; a subscription not listed is Standard (1.0).
-# The tier table on that tab quotes these: change them together.
-# Test traffic: a subscription whose benchmarks stay out of team charges, peak shares and fleet savings; its tokens still
+# Test traffic: a subscription whose benchmarks stay out of team charges and capacity plans; its tokens still
 # show as usage, and its external spend stays on the bills because a provider charges it.
 apiVersion: monitoring.rhobs/v1
 kind: PrometheusRule
@@ -47,21 +45,6 @@ spec:
         # External models stay at provider list price.
         - record: showback_platform_coefficient
           expr: vector(1.2)
-        - record: showback_subscription_tier
-          expr: vector(1)
-          labels: {subscription: marketing-content, tier: 1 Dedicated}
-        - record: showback_subscription_tier
-          expr: vector(1)
-          labels: {subscription: marketing-rag, tier: 1 Dedicated}
-        - record: showback_subscription_tier
-          expr: vector(1)
-          labels: {subscription: marketing-campaigns, tier: 1 Dedicated}
-        - record: showback_subscription_tier
-          expr: vector(0.5)
-          labels: {subscription: maas-quality-judge, tier: 3 Off-peak}
-        - record: showback_subscription_tier
-          expr: vector(0.5)
-          labels: {subscription: team-engineering-ci, tier: 3 Off-peak}
         - record: showback_subscription_test_traffic
           expr: vector(1)
           labels: {subscription: model-qualification}
