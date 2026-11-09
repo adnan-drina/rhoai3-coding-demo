@@ -2826,14 +2826,14 @@ oc get monitoringstack data-science-monitoringstack -n redhat-ods-monitoring \
 oc adm top pod -n redhat-ods-monitoring prometheus-data-science-monitoringstack-0 --containers
 ```
 
-Limits of `{"cpu":1,"memory":"512Mi"}` and a sidecar near its 250m limit while a showback tab loads confirm it.
+Limits of `{"cpu":1,"memory":"512Mi"}`, or a sidecar held at its CPU limit while a showback tab loads, confirm it.
 
-**Recover:** Patch the operator-owned MonitoringStack; Prometheus restarts once and the operator keeps the values (measured 2026-11-06: the six chart queries at a one-hour step went from timing out to 37 seconds, and Showback 1 shows its top section in about 16 seconds):
+**Recover:** Patch the operator-owned MonitoringStack; Prometheus restarts once and the operator keeps the values (measured 2026-11-06: the six chart queries at a one-hour step went from timing out to 37 seconds, and Showback 1 shows its top section in about 16 seconds; on 2026-11-09 raising the sidecar from 1 to 4 CPU cut its CFS throttling during a tab load from 78% to 12%):
 
 ```bash
 oc patch monitoringstack data-science-monitoringstack -n redhat-ods-monitoring --type merge -p \
   '{"spec":{"resources":{"limits":{"cpu":"4","memory":"2Gi"},"requests":{"cpu":"500m","memory":"512Mi"}},
-    "prometheusConfig":{"thanosResources":{"limits":{"cpu":"1","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}}}}'
+    "prometheusConfig":{"thanosResources":{"limits":{"cpu":"4","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}}}}'
 ```
 
 The patch is not in Git: reapply it after a fresh deploy (BACKLOG, *Workarounds still required*). Open the showback tabs once before presenting; later loads are faster.
