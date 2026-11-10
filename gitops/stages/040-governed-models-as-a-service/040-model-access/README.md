@@ -30,7 +30,7 @@ All objects are in namespace `models-as-a-service`.
 
 | Kind | Name | Owner / subjects | Models and hourly token limits | Priority | Wave |
 |---|---|---|---|---|---|
-| MaaSSubscription + MaaSAuthPolicy | `personal-kube-admin` | users `kube:admin` and `admin` | `qwen3-8-27b` 1,000,000; `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` 100,000 each | 160 | 18 |
+| MaaSSubscription + MaaSAuthPolicy | `personal-kube-admin` | users `kube:admin` and `admin` | `qwen3-8-27b`, `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` 1,000,000 each | 160 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `personal-ai-developer` | user `ai-developer` | same as above | 150 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `personal-ai-admin` | user `ai-admin` | same as above | 170 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `devspaces-coding-models` | ServiceAccount `wksp-ai-developer/devspace-maas-key-provisioner` | `qwen3-8-27b` 60,000,000 (local model only) | 100 | 18 |
@@ -67,8 +67,10 @@ metered as personal use. Service subscriptions have unique owners, so their prio
 - `devspaces-coding-models` is 60,000,000 tokens per hour. Agentic assistants resend large contexts; a 20,000,000 budget
   throttled an autonomous migration that measured 25,000,000 tokens in its busiest hour (comment in the manifest). On a
   local GPU model the budget shows governance, not cost control. Dev Spaces gets only the private model.
-- Personal budgets are 1,000,000 tokens per hour for the local model and 100,000 for each external model, because
-  external tokens are paid per use.
+- Personal budgets are 1,000,000 tokens per hour for each model, local and external. IDE assistants such as GitHub
+  Copilot send their system prompt and tool definitions with every turn, about 50,000 to 80,000 tokens, so the former
+  100,000 external budget allowed about one turn per hour. External tokens are paid per use; the showback dashboards
+  show what each person spends.
 - `model-qualification` meters evaluation without becoming its bottleneck: the local limit is above what one GPU
   produces. External models are included because they are evaluated and serve as judge models.
 - `quota-probe` exists only for `stages/040-governed-models-as-a-service/validate.sh --quota`: its budget is reached within a few small requests and resets every minute, so the probe proves the gateway answers 429. No person or workload uses the identity.

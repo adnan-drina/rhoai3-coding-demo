@@ -28,18 +28,18 @@ spec:
     - name: gpt-6-luna
       namespace: external-models
       tokenRateLimits:
-        - limit: 100000
+        - limit: 1000000
           window: 1h
     # Native Messages usage is not subscription-token-metered; provider limits apply.
     - name: claude-sonnet-5-5
       namespace: external-models
       tokenRateLimits:
-        - limit: 100000
+        - limit: 1000000
           window: 1h
     - name: nemotron-3-ultra-550b-a55b
       namespace: external-models
       tokenRateLimits:
-        - limit: 100000
+        - limit: 1000000
           window: 1h
   priority: 160
   tokenMetadata:
@@ -109,18 +109,18 @@ spec:
     - name: gpt-6-luna
       namespace: external-models
       tokenRateLimits:
-        - limit: 100000
+        - limit: 1000000
           window: 1h
     # Native Messages usage is not subscription-token-metered; provider limits apply.
     - name: claude-sonnet-5-5
       namespace: external-models
       tokenRateLimits:
-        - limit: 100000
+        - limit: 1000000
           window: 1h
     - name: nemotron-3-ultra-550b-a55b
       namespace: external-models
       tokenRateLimits:
-        - limit: 100000
+        - limit: 1000000
           window: 1h
   priority: 150
   tokenMetadata:
@@ -189,18 +189,18 @@ spec:
     - name: gpt-6-luna
       namespace: external-models
       tokenRateLimits:
-        - limit: 100000
+        - limit: 1000000
           window: 1h
     # Native Messages usage is not subscription-token-metered; provider limits apply.
     - name: claude-sonnet-5-5
       namespace: external-models
       tokenRateLimits:
-        - limit: 100000
+        - limit: 1000000
           window: 1h
     - name: nemotron-3-ultra-550b-a55b
       namespace: external-models
       tokenRateLimits:
-        - limit: 100000
+        - limit: 1000000
           window: 1h
   priority: 170
   tokenMetadata:
