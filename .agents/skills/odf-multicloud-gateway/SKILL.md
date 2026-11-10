@@ -56,7 +56,7 @@ ODF 4.22 sections. Install-side facts live in
    [Managing hybrid and multicloud resources][mcg], check the schema with
    `oc explain`, record the decision in the 010-odf README, and keep it in
    the `010-odf` Application.
-4. For durable data, follow [Backup and recovery of the NooBaa DB][noobaa-db]
+4. For durable data, follow [Backing up and recovering the Multicloud Object Gateway database][noobaa-db] (chapter 20)
    before relying on the demo store; the demo does not configure it today.
 
 ## Pitfalls
@@ -75,7 +75,7 @@ ODF 4.22 sections. Install-side facts live in
 | Standalone MCG deployment and verification | [Deploy standalone MCG][aws-mcg], [Creating a standalone MCG][aws-mcg-create] |
 | Backing stores, bucket classes, namespace buckets, endpoints, security | [Managing hybrid and multicloud resources][mcg] |
 | Bucket claims | [Object Bucket Claim][obc] |
-| NooBaa DB backup | [Backup and recovery of the MCG metadata database][noobaa-db] |
+| NooBaa DB backup | [Backing up and recovering the MCG database][noobaa-db] (chapter 20) |
 | Monitoring and diagnostics | [Monitoring ODF][monitor], [must-gather][mustgather] |
 
 ## Related skills
@@ -86,6 +86,6 @@ ODF 4.22 sections. Install-side facts live in
 [aws-mcg-create]: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html-single/deploying_openshift_data_foundation_using_amazon_web_services/index#creating-standalone-multicloud-object-gateway_rhodf
 [mcg]: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html/managing_hybrid_and_multicloud_resources/index
 [obc]: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html/managing_hybrid_and_multicloud_resources/object-bucket-claim
-[noobaa-db]: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html-single/managing_and_allocating_storage_resources/index#enabling-automatic-backup-of-multicloud-object-gateway-metadata-database_rhodf
+[noobaa-db]: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html-single/managing_hybrid_and_multicloud_resources/index
 [monitor]: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html-single/monitoring_openshift_data_foundation/index
 [mustgather]: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.22/html-single/troubleshooting_openshift_data_foundation/index#downloading-log-files-and-diagnostic-information_rhodf

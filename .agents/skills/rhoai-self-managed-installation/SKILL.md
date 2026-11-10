@@ -49,7 +49,6 @@ OpenShift AI 3.5 sections. Detailed record:
    (`python3 .agents/tools/check-doc-links.py --family rhoai`).
 2. Deploy and validate through the stage scripts:
    `./stages/010-openshift-ai-platform-foundation/deploy.sh`, then
-   `./stages/010-openshift-ai-platform-foundation/deploy.sh` and
    `./stages/010-openshift-ai-platform-foundation/validate.sh`.
    `deploy.sh` runs the policy check before applying and waits up to 1800 s
    for the CSV afterwards.

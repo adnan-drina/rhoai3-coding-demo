@@ -56,6 +56,9 @@ Thin skill: Spark on OpenShift AI 3.5. **Not deployed in this demo.**
   its workbench chapter and this repo's `datasciencecluster.opendatahub.io/v2`
   DSC use `sparkoperator`. Unresolved: verify with
   `oc explain datasciencecluster.spec.components` before use in GitOps.
+- Support status: the 3.5 release notes list the operator as Developer
+  Preview (3.4 EA1, [Developer Preview features][relnotes-dp]); Spark Connect
+  from workbenches is Technology Preview ([Spark workloads from workbenches][connect]).
 - Editing `default-dsc` by hand is reverted by Argo CD while the field is
   not delegated.
 - Spark images are a runtime dependency of the workload; record their
@@ -84,3 +87,4 @@ Thin skill: Spark on OpenShift AI 3.5. **Not deployed in this demo.**
 [namespace]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index#creating-kubeflow-spark-namespace_data-processing
 [connect]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index#running-spark-workloads-from-rhoai-workbenches_data-processing
 [connect-ts]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator/index#troubleshooting-spark-connect-workbench-connectivity_running-spark-workloads-from-rhoai-workbenches
+[relnotes-dp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/release_notes/index#developer-preview-features_relnotes

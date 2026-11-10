@@ -42,7 +42,7 @@ official guidance" table.
 | Dashboard flags that enable preview UI: `connectionTest` (TP), `disableKueue: false` (DP), `modelAsService` (TP, Stage 040) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/README.md` (OdhDashboardConfig) | [3.5 GA TP features][tp35] |
 | MaaS and external models are labelled TP | `gitops/stages/040-governed-models-as-a-service/040-local-models/README.md` | [3.5 GA TP features][tp35] |
 | Stage 060 MCP Lifecycle Operator is labelled TP; the MCP Catalog and AgentOps view DP | `stages/060-agent-runtime-and-agentops/README.md` | [3.5 GA TP features][tp35], [3.5 GA DP features][dp35] |
-| Deprecated `llamastackoperator` stays `Removed`; OGX is used instead | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Deprecated][deprecated] |
+| `llamastackoperator` stays `Removed`; OGX is used instead (Llama Stack is renamed OGX from 3.5 EA1; the 3.5 docs do not list the old DSC field as deprecated) | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/datasciencecluster.yaml` | [Technology Preview features][tp] (3.5 EA1: Renaming of Llama Stack to OGX) |
 | AutoRAG and AutoML are out of scope | `docs/OPERATIONS.md` (Ownership and stage boundaries) | [Product features][features] |
 | Product doc version is pinned to the Subscription channel; upgrades change pin, map and skills together | `.agents/references/red-hat-doc-map.yaml`, `docs/PLATFORM_BASELINE.md` | [Release notes overview][overview] |
 

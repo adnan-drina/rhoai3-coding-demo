@@ -72,6 +72,11 @@ To introduce distributed workloads in a future stage:
   exclusive GPUs per ClusterQueue; plan quota before enabling them.
 - The live `Kueue` CR already lists Ray and training frameworks; that does not
   mean the operators behind them are installed.
+- DSC field name for Spark: the 3.5 activate chapter and release notes say
+  `kubeflowsparkoperator`, the same guide's Spark Connect prerequisite and the
+  repo DSC say `sparkoperator`. Check `oc explain
+  datasciencecluster.spec.components` before enabling Spark (see
+  `rhoai-kubeflow-spark-operator`).
 
 ## Official documentation (OpenShift AI 3.5)
 

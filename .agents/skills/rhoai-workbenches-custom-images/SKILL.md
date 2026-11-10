@@ -56,8 +56,8 @@ and users create project workbenches from the pre-installed images.
    only the platform singletons.
 3. Make the image honor `NB_PREFIX` (`rhoai-workbench-gateway-api-migration`).
 4. A Git-managed workbench is a `Notebook` CR in its project
-   ([Notebook CRD][nb-crd]). Read the served schema first:
-   `oc explain notebook.spec` (the 3.5 page does not state the API version).
+   ([Notebook CRD][nb-crd]; the 3.5 example uses `kubeflow.org/v1`). Read the
+   served schema first: `oc explain notebook.spec`.
    Give it a hardware profile whose LocalQueue exists in that project
    (`rhoai-hardware-profiles`).
 5. Validate after the OpenShift safety guard in `AGENTS.md`:
@@ -71,9 +71,11 @@ and users create project workbenches from the pre-installed images.
 
 - An image not built for a random UID with GID 0 fails at start; follow the
   `USER 1001` guidance in [from your own image][from-own].
-- Hiding a pre-installed image is a dashboard toggle with no documented field;
-  record it in `docs/OPERATIONS.md` rather than inventing one
-  ([Hide and show images][hide]).
+- Hiding a pre-installed image is a dashboard toggle ([Hide and show images][hide]);
+  3.5 stores it as the `opendatahub.io/notebook-image-hidden` annotation on the
+  operator-owned ImageStream (Working on projects, "Administrator control over
+  image visibility", beside [Default images][defaults]). Record a hide in
+  `docs/OPERATIONS.md`; do not declare operator-owned ImageStreams in Git.
 - Do not copy dashboard-generated annotations (timestamps, last activity) into Git.
 
 ## Official documentation (OpenShift AI 3.5)

@@ -80,7 +80,7 @@ MTA 8.3 UI guide. Native Agents are Developer Preview. Detailed record:
 | Topic | Section |
 |---|---|
 | Agents | [Workflow][flow], [Prerequisites][prereq], [Enable in Tackle][enable], [Gateway secret][gwsecret], [Gateway configuration][gwconf], [Deploy gateways][gwdeploy], [Skills and workflows][skills], [Runs][runs], [Troubleshooting][ts] |
-| Hub analysis | [Run an analysis][analysis], [Analysis profiles][profiles], [Task logs][tasklog] |
+| Hub analysis | [Run an analysis][analysis], [Analysis profiles (chapter 9)][profiles], [Task logs][tasklog] |
 | Instance setup | [Credentials][creds], [Custom migration targets][targets] |
 | Assessment | [Assess an application][assess] |
 
@@ -98,7 +98,7 @@ MTA 8.3 UI guide. Native Agents are Developer Preview. Detailed record:
 [runs]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#configuring-and-using-agent-and-workflow-runs_configuring-and-using-mta-agents
 [ts]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#troubleshooting-agents_configuring-and-using-mta-agents
 [analysis]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#configuring-and-running-an-application-analysis_analyzing-applications
-[profiles]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#centralized-configurations_user-interface-guide
+[profiles]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index
 [tasklog]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#reviewing-a-task-log_controlling-tasks-with-task-manager
 [creds]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#configuring-credentials_configuring-mta-instance-environment
 [targets]: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index#creating-custom-migration-targets_configuring-mta-instance-environment

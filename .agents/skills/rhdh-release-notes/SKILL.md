@@ -54,8 +54,10 @@ themselves are linked, not copied. Deployed version: `rhdh-operator.v1.10.6`
 
 - Support status of a plugin can change between z-streams; quote the release
   note section, not a skill, when recording a support claim.
-- Bulk Import and Orchestrator known issues do not affect this repo (neither
-  is enabled).
+- The Bulk Import known issue does not affect this repo (not enabled). Read
+  the two dynamic-plugin known issues (OCI auto-detect on
+  `registry.access.redhat.com`, stale install lock file) before changing the
+  OCI plugin packages ([Known issues][known]).
 - Fixed security issues are listed by advisory; check them before deferring
   a z-stream.
 

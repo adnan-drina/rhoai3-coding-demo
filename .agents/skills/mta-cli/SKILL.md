@@ -37,7 +37,7 @@ and the Stage 130 scaffold skill
 |---|---|---|
 | `mta-cli` 8.3.0 at `/opt/mta-cli` (symlinked to `/usr/local/bin`), archive and binary SHA-256 locked; `MTA_CLI_HOME=/opt/mta-cli` | `stages/070-advanced-app-platform/workspace-image/Dockerfile`, `artifacts.lock.json` | [Install the CLI from a .zip][zip] |
 | Image check proves hashes, the Java external provider, the analyzer bundle, `mta-cli version` and Java 21 | `stages/070-advanced-app-platform/workspace-image/verify-image.py`, run by `workspace-image/build.sh` | — |
-| Containerless Java analysis on Java 21 (the analyzer bundle wedges on 17) | `.../scan-with-mta/scripts/mta-analyze-legacy.sh` | [Containerless mode][containerless] |
+| Containerless Java analysis on Java 21 (the 8.3 guide requires JDK 17 or later; the wedge on 17 is a repo observation) | `.../scan-with-mta/scripts/mta-analyze-legacy.sh` | [Containerless mode][containerless] |
 | Migration workspaces set `JVM_MAX_MEM=8G` (below the 12Gi container limit), `HUB_URL` from the template, `HUB_INSECURE=false` | `gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/skeleton/devfile.yaml` | [Containerless mode][containerless] |
 | Invocation: `analyze --input <frozen copy> --output … --target <each> --rules <custom ruleset> --json-output --overwrite`; never `--source` | `.../scan-with-mta/scripts/mta-analyze-legacy.sh` | [analyze options][flags] |
 | Targets come from `migration.yaml` `analysis.targets`; the custom ruleset carries a canary rule that must fire | `.../.hermes/planning/mta-rules/rhoai3-canary.yaml` | see `mta-rules` |
@@ -47,7 +47,7 @@ and the Stage 130 scaffold skill
 ## Procedure
 
 1. Change the CLI only through the workspace image lock and verifier; the
-   operator (8.3.1) and the workspace CLI (8.3.0) are qualified separately
+   operator (8.3.3) and the workspace CLI (8.3.0) are qualified separately
    (`docs/OPERATIONS.md#stage-070--mta-mta-component`).
 2. In a workspace, prove usability, not presence:
 

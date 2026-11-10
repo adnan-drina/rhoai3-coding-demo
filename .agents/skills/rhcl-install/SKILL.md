@@ -34,7 +34,7 @@ Connectivity Link 1.4 sections. Detailed record:
 | `rhcl-operator` from `redhat-operators`, channel `stable`, Automatic, no `startingCSV`, in `openshift-operators` (global OperatorGroup) | `040-maas-operators/rhcl/rhcl-operator-subscription.yaml` | [Install from the CLI][install-cli] |
 | Authorino, Limitador and DNS operators declared as explicit Subscriptions on `stable` so their channel is reviewed | `040-maas-operators/rhcl/*-subscription.yaml` | [Install from the CLI][install-cli] (verification lists all four operators) |
 | Qualified minima: rhcl 1.4.3, authorino 1.4.3, limitador 1.4.2, dns 1.4.2; other channels refused | `check_operator_policy` in `scripts/lib.sh` | [Release notes][relnotes] (1.4.0 deprecated; use 1.4.1+) |
-| `servicemeshoperator3` on `stable-3.4`, kept for the Istio CRDs (ServiceEntry, DestinationRule, WasmPlugin, EnvoyFilter, Telemetry); no `Istio` CR | `040-maas-operators/rhcl/servicemeshoperator3-subscription.yaml` | [Required platforms and components][install-req] |
+| `servicemeshoperator3` on `stable-3.4`, kept for the Istio CRDs (ServiceEntry, DestinationRule, WasmPlugin, EnvoyFilter, Telemetry); no `Istio` CR | `040-maas-operators/rhcl/servicemeshoperator3-subscription.yaml` | [Supported configurations][install-req] |
 | Kuadrant operator override: `AUTH_SERVICE_TIMEOUT=2s`, requests 500m/512Mi, limits 2 CPU/1Gi via Subscription `config` | `040-maas-operators/rhcl/rhcl-operator-subscription.yaml` | not documented in the install guide (recorded as a Gap in the README) |
 | `Kuadrant` in `kuadrant-system` with `spec.observability.enable: true`; Authorino with a TLS listener using a service serving certificate | `040-gateway-governance/governance/kuadrant.yaml`, `authorino.yaml` | [Install from the CLI][install-cli]; see `rhoai-maas-governance` for the Authorino TLS requirement |
 
@@ -63,12 +63,15 @@ Connectivity Link 1.4 sections. Detailed record:
   `docs/TROUBLESHOOTING.md#kuadrant-operator-controller-restarts-until-probes-time-out`.
 - The guide's web-console path creates its own OperatorGroup; the repo relies
   on the existing global one in `openshift-operators`.
+- The 1.4 install guide says to set channel `stable-1.4` (it installs 1.4.4),
+  and the 1.4.4 release notes require it; the repo's Subscription and policy use
+  `stable`. Check which release `stable` delivers before raising the minimum.
 
 ## Official documentation (Connectivity Link 1.4)
 
 | Topic | Section |
 |---|---|
-| Platforms, prerequisites | [Required platforms and components][install-req], [Prerequisites for other components][install-opt] |
+| Platforms, prerequisites | [Supported configurations][install-req] (OpenShift, Service Mesh, cert-manager), [Install guide][install-opt] (DNS, Redis, console plugin) |
 | CLI install and verification | [Install from the CLI][install-cli] |
 | Istio as gateway controller (not used) | [Install with Istio][install-istio] |
 | Disconnected install (not used) | [Install in a disconnected environment][install-disc] |
@@ -78,9 +81,9 @@ Connectivity Link 1.4 sections. Detailed record:
 
 `rhcl-update`, `rhcl-configure`, `rhoai-maas-governance`, `ocp-ingress-gateway-routes`.
 
-[install-req]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/install_connectivity_link/index#rhcl-required-platforms-components_install-on-ocp
-[install-opt]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/install_connectivity_link/index#rhcl-optional-components_install-on-ocp
+[install-req]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/update_red_hat_connectivity_link/index#rhcl-supported-configs_updating-rhcl
+[install-opt]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/install_connectivity_link/index
 [install-cli]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/install_connectivity_link/index#proc-install-on-ocp-cmd-cio_install-on-ocp
 [install-istio]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/install_connectivity_link/index#proc-install-on-ocp-cmd-istio_install-on-ocp
-[install-disc]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/install_connectivity_link/index#rhcl-install-disconnected
+[install-disc]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/install_connectivity_link/index#con-rhcl-install-disconnected_rhcl-install-disconnected
 [relnotes]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-about_rhcl-release-notes

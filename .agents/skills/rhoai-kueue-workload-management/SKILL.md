@@ -70,9 +70,11 @@ OpenShift AI 3.5 sections. Detailed record:
 
 ## Pitfalls
 
-- `Managed` (embedded Kueue) is deprecated and incompatible with the Red Hat
-  build of Kueue Operator ([Kueue workload management][kueue]); migration:
-  [Migrate to the Red Hat build of Kueue Operator][kueue-migrate].
+- `Managed` (embedded Kueue) is incompatible with the Red Hat build of Kueue
+  Operator: the Kueue chapter calls it deprecated
+  ([Kueue workload management][kueue]), the 3.5 release notes list the
+  embedded component as removed in 3.0 ([Support removals][relnotes-removed]);
+  migration: [Migrate to the Red Hat build of Kueue Operator][kueue-migrate].
 - In 3.5 `autoCreateQueues` defaults to `false`; every project that selects a
   queue-based profile needs the LocalQueue, or admission fails
   ([local_queue does not exist][kueue-lq-missing]).
@@ -113,3 +115,4 @@ OpenShift AI 3.5 sections. Detailed record:
 [kueue-lq-missing]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#a_user_receives_a_local_queue_provided_does_not_exist_error_message
 [kueue-imgpull]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#the_pod_provisioned_by_kueue_is_terminated_before_the_image_is_pulled
 [kueue-migrate]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#migrating-to-the-rhbok-operator_kueue
+[relnotes-removed]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/release_notes/index#support-removals_relnotes

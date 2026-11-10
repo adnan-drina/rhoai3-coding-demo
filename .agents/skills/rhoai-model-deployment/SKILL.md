@@ -82,8 +82,9 @@ OpenShift AI 3.5 sections. Detailed record:
   (`docs/TROUBLESHOOTING.md#start-evaluation-run-offers-no-model-to-choose`).
 - No Kueue Workload means a missing queue label or unmanaged namespace
   (`docs/TROUBLESHOOTING.md#private-models-do-not-produce-kueue-workloads`).
-- The `hf://` URI form is proven by the running deployments, not named in the
-  3.5 storage chapter; verify after upgrades.
+- The `hf://` URI form is proven by the running deployments; the 3.5 storage
+  chapter does not name it (only the model cache chapter does, for
+  `LocalModelCache`, [Precache][precache]); verify after upgrades.
 
 ## Official documentation (RHOAI 3.5)
 

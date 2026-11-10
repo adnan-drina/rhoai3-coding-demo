@@ -71,8 +71,10 @@ MTA 8.3 sections. Detailed record:
   or guessed parameter. Check fields against the downstream operator by hand
   (the former offline test `product-schemas.test.py` is in git history at
   `82092e01`).
-- MTA 8.3 has no supported RWO storage-class parameter; a non-default class
-  leaves Hub claims Pending.
+- The 8.3 settings table lists `rwo_storage_class` ([Custom resource
+  settings][crs]), but the repo does not set it and relies on the default class;
+  a non-default class left Hub claims Pending (repo observation, not stated in
+  the 8.3 docs).
 - The operator hardcodes the `agentic-controller` 128Mi limit; removing the
   VPA brings the OOMKill back on the next pod recreation:
   `docs/TROUBLESHOOTING.md#mta-83-solution-server-crashes-or-its-agentic-controller-oomkills`.

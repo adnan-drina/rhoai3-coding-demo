@@ -72,8 +72,9 @@ Paths are relative to `gitops/stages/020-gpu-infrastructure-private-ai/` unless 
 
 - The pinned operand digest can differ from the image in the installed CSV;
   after an operator update compare them before blaming NFD.
-- The default PCI whitelist differs from the repo's; keep class `03`
-  (display controllers) or GPU detection breaks.
+- The guide's example `deviceClassWhitelist` matches the repo's but sets
+  `deviceLabelFields: ["class"]`; the repo uses `vendor` for `pci-10de.present`.
+  Keep class `03` (display controllers) or GPU detection breaks.
 - The `nfd-worker` DaemonSet runs on every node including control plane; a
   node without the worker has no labels.
 - With GPU pools at zero there are no GPU labels to check; resume a pool

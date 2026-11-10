@@ -8,7 +8,7 @@ metadata:
   skill-group: "Connectivity Link"
 description: >
   Use when checking which Connectivity Link 1.4 release fixes or breaks
-  something the demo depends on: the 1.4.0 deprecation, the 1.4.1-1.4.3
+  something the demo depends on: the 1.4.0 deprecation, the 1.4.1-1.4.4
   z-stream fixes (wasm-shim host matching, EnvoyFilter targeting, operator
   memory leak, large request bodies, AuthConfig v1beta3), Technology Preview
   status (MCP gateway, GRPCRoute), and known issues. Do NOT use for concepts
@@ -35,6 +35,7 @@ Re-read the notes themselves before acting; they are updated per z-stream.
 | 1.4.1 | AuthConfig `v1beta3` served, `v1beta2` removed (CONNLINK-1131) | Upgrades no longer blocked by CEL predicates | [1.4.1][z141] |
 | 1.4.2 | Request bodies over 1 MB corrupted next to other body filters (CONNLINK-1311) | Large prompts through the MaaS Gateway | [1.4.2][z142] |
 | 1.4.3 | Case-insensitive host matching in wasm-shim (CONNLINK-1448); EnvoyFilter `workloadSelector` instead of namespace-wide `targetRef` (CONNLINK-1510); operator reconcile loop causing OOMKills and 503 (CONNLINK-1567) | The installed baseline; gateway stability | [1.4.3][z143] |
+| 1.4.4 | Gateways health-check Authorino and Limitador (CONNLINK-1732); WASM filter no longer stalls on CEL failures; Authorino short downtime on upgrade; requires channel `stable-1.4` | Newest z-stream; the repo Subscription is on `stable` | [1.4.4][z144] |
 | known issue | First request after a Limitador restart with Redis storage is not limited (CONNLINK-856) | Applies only with Redis storage; Git sets no Limitador storage (the operator creates `limitador` from the `Kuadrant` CR) | [Known issues][known] |
 | Tech Preview | MCP gateway, GRPCRoute policy attachment | Neither is used by the demo | [Technology Preview][tp] |
 
@@ -60,4 +61,5 @@ Not in the release notes but affecting this demo: 1.4.3 ships wasm-shim
 [zstream]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-z-stream_rhcl-release-notes
 [z141]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-1.4.1-z-stream_rhcl-release-notes
 [z142]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-1.4.2-z-stream_rhcl-release-notes
+[z144]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-z-stream_rhcl-release-notes
 [z143]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index#rhcl-relnotes-1.4.3-z-stream_rhcl-release-notes

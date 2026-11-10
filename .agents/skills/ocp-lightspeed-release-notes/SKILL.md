@@ -30,7 +30,7 @@ Thin skill: repo facts here, release content in the linked release notes.
 | Decision | Where in Git | Official section |
 |---|---|---|
 | No Git pin: the subscription belongs to the provisioner; observed versions are recorded with dates (1.1.4 on 2026-10-05, 1.1.5 on 2026-10-15) | `docs/OPERATIONS.md`, `.agents/references/red-hat-doc-map.yaml` | [Release notes][relnotes] |
-| The documentation set labelled "1.0" is used for the 1.1.x operator: it is the only published set and its notes include 1.1 to 1.1.4 | `.agents/references/red-hat-doc-map.yaml` | [Version 1.1][v11] |
+| The documentation set labelled "1.0" is used for the 1.1.x operator: it is the only published set and its notes now run from 1.0 through 1.1.5 and 2.0 (checked 2026-11-10) | `.agents/references/red-hat-doc-map.yaml` | [Version 1.1][v11] |
 
 ## Procedure
 
@@ -42,7 +42,7 @@ Thin skill: repo facts here, release content in the linked release notes.
 
 ## Pitfalls
 
-- 1.1.5 had no release-notes section on 2026-10-15; do not cite one.
+- 1.1.5 had no release-notes section on 2026-10-15; the "1.0" set now has sections for 1.1.5 and 2.0 (checked 2026-11-10), reached from [All releases][relnotes]. 2.0 lists a known issue (tool classifier can fail a tool result as malicious; workaround: turn off tool inspection in the OLSConfig); an operator on 2.0 changes what the other Lightspeed skills assume.
 - Each z-stream has its own known-issues list; read the one for the installed
   version, not only the newest.
 
@@ -50,7 +50,7 @@ Thin skill: repo facts here, release content in the linked release notes.
 
 | Topic | Section |
 |---|---|
-| All releases | [Release notes][relnotes] |
+| All releases (1.0 to 1.1.5 and 2.0) | [Release notes][relnotes] |
 | 1.1.4 | [Version 1.1.4][v114], [its known issues][v114-known] |
 | 1.1.3 | [Version 1.1.3][v113] |
 | 1.1.2 | [Version 1.1.2][v112] |

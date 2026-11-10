@@ -37,8 +37,8 @@ Red Hat OpenShift distributed tracing platform 3.11 sections. Detailed record:
 | Operator only: namespace `openshift-tempo-operator` (cluster-monitoring label), AllNamespaces OperatorGroup, Subscription `tempo-product`, `stable`, Automatic | `010-observability-operators/tempo/` | [Installing the Tempo Operator][install] |
 | Rolling `stable` bounded fail-closed: minimum `0.22.0-2` (operator 0.22 = product 3.11) | `check_operator_policy` in `scripts/lib.sh` | [Installing the Tempo Operator][install] |
 | No `TempoStack`/`TempoMonolithic` in Git: RHOAI generates a `TempoMonolithic` in `redhat-ods-monitoring` (multitenancy `openshift`, tenant `redhat-ods-monitoring`), PV storage, retention `2160h0m0s` | `gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-platform/dsc-init.yaml` | [Configuring Tempo][configure] |
-| Read access: ClusterRole `rhoai-monitoring-traces-reader` (`get` on `tempo.grafana.com` / tenant / `traces`) bound to group `rhods-admins` only | `trace-roles/tempo-traces-reader-*.yaml` | [Configuring query RBAC][query-rbac] |
-| Write access: ClusterRole `rhoai-monitoring-traces-writer` (`create`) bound to SA `redhat-ods-monitoring/data-science-collector-collector`; not in the 3.11 docs (upstream-backed deviation, recorded in the README) | `trace-roles/tempo-traces-writer-*.yaml` | [Configuring Tempo][configure] |
+| Read access: ClusterRole `rhoai-monitoring-traces-reader` (`get` on `tempo.grafana.com` / tenant / `traces`) bound to group `rhods-admins` only | `trace-roles/tempo-traces-reader-*.yaml` | [Configuring the permissions and tenants][perms] (read permissions for tenants) |
+| Write access: ClusterRole `rhoai-monitoring-traces-writer` (`create`) bound to SA `redhat-ods-monitoring/data-science-collector-collector`; same shape as the documented write ClusterRole, with the repo's tenant name | `trace-roles/tempo-traces-writer-*.yaml` | [Configuring the permissions and tenants][perms] (write permissions for tenants) |
 | No object storage secret (PV backend) | — | [Configuring Tempo][configure] |
 
 Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/010-observability-operators/` unless they start with `gitops/` or `scripts/`.
@@ -66,7 +66,7 @@ Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/010-ob
 - The writer binding names a service account created later by the
   OpenTelemetry Operator; a binding to a missing subject is valid, so check
   the SubjectAccessReview, not the binding.
-- The guide's query RBAC example binds `system:authenticated`; the repo
+- The guide's read-permissions example binds `system:authenticated`; the repo
   narrows reads to `rhods-admins` on purpose. Do not widen it casually.
 - A new operator minor on `stable` fails `deploy.sh` closed until the policy
   minimum and the map's `distributed_tracing` docs_version are updated.
@@ -76,15 +76,16 @@ Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/010-ob
 | Topic | Section |
 |---|---|
 | Install | [Installing the Tempo Operator][install] |
-| Configure | [Configuring Tempo][configure], [Configuring query RBAC][query-rbac] |
-| Architecture (OCP 4.22 entry) | [Tempo architecture][arch] |
+| Configure | [Configuring Tempo][configure] (includes "Configuring query RBAC", which filters span attributes by namespace, not tenant read access) |
+| Permissions and tenants | [Configuring the permissions and tenants][perms] |
+| OCP 4.22 entry | [About the Distributed Tracing Platform][arch] (stub that points to the standalone docs) |
 
 ## Related skills
 
 `ocp-opentelemetry`, `ocp-observability`, `rhoai-observability`,
 `ocp-security-rbac-scc`.
 
-[install]: https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.11/html-single/installing_distributed_tracing/index#distr-tracing-tempo-installing
-[configure]: https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.11/html-single/configuring_distributed_tracing/index#distr-tracing-tempo-configuring
-[query-rbac]: https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.11/html-single/configuring_distributed_tracing/index#distr-tracing-tempo-configuring-query-rbac_distr-tracing-tempo-configuring
-[arch]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/distributed_tracing/index#distr-tracing-tempo-architecture
+[install]: https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.11/html-single/installing_distributed_tracing/index
+[perms]: https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.11/html-single/installing_distributed_tracing/index#configuring-permissions-and-tenants_distr-tracing-tempo-installing
+[configure]: https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.11/html-single/configuring_distributed_tracing/index
+[arch]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/distributed_tracing/index

@@ -60,6 +60,10 @@ Connectivity Link 1.4 sections.
 - On OpenShift 4.19+, pre-existing Gateway API CRDs must exactly match the
   version OpenShift supports before updating ([Update to 1.4][update-proc]).
 - Connectivity Link 1.4.0 is deprecated; never qualify it.
+- Channel naming differs inside the 1.4 docs: the update procedure says
+  `stable`, while the install guide and the 1.4.4 release notes say
+  `stable-1.4`. 1.4.4 (Oct 2026) needs `stable-1.4` and brings about 5 s of
+  Authorino downtime on upgrade; confirm what `stable` delivers first.
 - `openshift-operators` is shared: one InstallPlan can move the whole Kuadrant
   family at once.
 

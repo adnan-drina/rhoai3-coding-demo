@@ -80,10 +80,12 @@ OpenShift AI 3.5 sections. Detailed record:
 - 3.5 changed the default scheduler profile to four scorers; services with a
   custom config keep theirs on upgrade ([3.5 scheduler upgrade][sched-upgrade]).
   The inline config here gets no new defaults; revisit it before adding a replica.
-- A custom `args` list overrides the platform default list (stated for
-  access-log filtering in [Endpoint log filtering][log-filter]). Upgrade-time
-  default arguments are not picked up, and dropping the TLS args breaks the
-  HTTPS probes.
+- Owning the full `args` list means upgrade-time default arguments are not
+  picked up, and dropping the TLS args breaks the HTTPS probes (repo
+  observation; the 3.5 docs only state that `VLLM_ADDITIONAL_ARGS` merges with
+  the system defaults, [Configure vLLM args][vllm-args], and that a custom
+  `--disable-access-log-for-endpoints` list replaces the default endpoint
+  filter, [Endpoint log filtering][log-filter]).
 - Single-replica rollouts with `maxSurge` deadlock on a full GPU queue:
   `docs/TROUBLESHOOTING.md#qwen-serving-change-never-finishes-rolling-out`.
 - Console shows "Starting" with a Ready pod: Gateway preconditions, not the

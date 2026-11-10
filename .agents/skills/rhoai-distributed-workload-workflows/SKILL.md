@@ -45,7 +45,9 @@ run here.
    `rhoai-distributed-workload-operations`).
 2. Pick one path (Ray, Training Operator `PyTorchJob`, or Trainer v2
    `TrainJob` with a `ClusterTrainingRuntime`) and confirm its support status
-   for 3.5 (`rhoai-release-and-support-posture`) before demo use.
+   for 3.5 (`rhoai-release-and-support-posture`) before demo use. The
+   Kubeflow Training Operator (v1) is deprecated in favor of Trainer v2
+   ([Support removals][removals]).
 3. Keep jobs, runtimes and PVCs in GitOps under the new stage; tokens and S3
    keys stay in `.env` or cluster Secrets, never in notebooks.
 4. Label every job with its project LocalQueue (`kueue.x-k8s.io/queue-name`).
@@ -98,3 +100,4 @@ run here.
 [monitor]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#monitoring-distributed-workloads_distributed-workloads
 [ts]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#troubleshooting-common-problems-with-distributed-workloads-for-users_distributed-workloads
 [roce]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_distributed_workloads/index#configuring-roce-networking-for-distributed-llm-deployments_distributed-llm-roce
+[removals]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/release_notes/index#support-removals_relnotes

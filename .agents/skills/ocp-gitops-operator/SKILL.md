@@ -39,7 +39,7 @@ in `.agents/rules/gitops.md`; the bootstrap is run by
 |---|---|---|
 | Operator from `redhat-operators`, `installPlanApproval: Automatic`, channel `gitops-1.21` set by an overlay patch (the base holds a placeholder channel and is never applied alone); minimum `1.21.5` in the operator policy | `gitops/bootstrap/base/subscription.yaml`, `gitops/bootstrap/overlays/operator/patch-channel.yaml`, `check_operator_policy` in `scripts/lib.sh` | [Installing the GitOps Operator using CLI][install-cli] |
 | Two-phase bootstrap: overlay `operator`, wait for the CSV, then overlay `demo` (needs the Argo CD CRDs) | `stages/010-openshift-ai-platform-foundation/deploy.sh`, `gitops/bootstrap/overlays/demo/kustomization.yaml` | [Installing OLM Operators using GitOps][olm] |
-| Default `openshift-gitops` instance reused; `resourceTrackingMethod: annotation` | `gitops/bootstrap/overlays/demo/argocd-instance.yaml` | [Annotation-based resource tracking][tracking] |
+| Default `openshift-gitops` instance reused; `resourceTrackingMethod: annotation` (the guide's default is `label` and its example uses `annotation+label`; `annotation` is the repo's choice) | `gitops/bootstrap/overlays/demo/argocd-instance.yaml` | [Annotation-based resource tracking][tracking] |
 | Controller sized 4Gi request / 8Gi limit after a Stage 070 OOMKill | `gitops/bootstrap/overlays/demo/argocd-instance.yaml` | [Argo CD CR properties][cr-props] |
 | Custom Lua health for PVC (`Pending` is healthy under WaitForFirstConsumer), OLM Subscription and MLflow | `gitops/bootstrap/overlays/demo/argocd-instance.yaml` (`extraConfig`) | [Argo CD CR properties][cr-props] |
 | Demo posture: application controller bound to `cluster-admin` (least privilege is backlog) | `gitops/bootstrap/overlays/demo/argocd-cluster-admin.yaml` | [Default permissions of an Argo CD instance][default-perms] |
@@ -101,7 +101,7 @@ in `.agents/rules/gitops.md`; the bootstrap is run by
 [tracking]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/argo_cd_instance/index#con-enabling-annotation-based-resource-tracking-in-argo-cd_argo-cd-cr-component-properties
 [rbac]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/access_control_and_user_management/index#configuring-argo-cd-rbac
 [dex]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/access_control_and_user_management/index#configuring-sso-for-argo-cd-using-dex
-[dex-roles]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/access_control_and_user_management/index#gitops-dex-role-mappings_configuring-sso-for-argo-cd-using-dex
+[dex-roles]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/access_control_and_user_management/index#configuring-sso-for-argo-cd-using-dex
 [local-users]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/access_control_and_user_management/index#managing-local-users-in-argo-cd
 [default-perms]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/declarative_cluster_configuration/index#default-permissions-of-an-argocd-instance_configuring-an-openshift-cluster-by-deploying-an-application-with-cluster-configurations
 [olm]: https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html-single/declarative_cluster_configuration/index#gitops-installing-olm-operators-using-gitops_configuring-an-openshift-cluster-by-deploying-an-application-with-cluster-configurations
