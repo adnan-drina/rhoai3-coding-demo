@@ -54,7 +54,7 @@ The `rhdh-operator` and `rhdh` namespaces come from `070-namespaces`.
 | Role, RoleBinding | `job-generate-rhdh-catalog-maas-route` | `openshift-ingress` | `get` on Gateway `maas-default-gateway` and Service `maas-gateway-internal` only (wave 7) |
 | ClusterRole, ClusterRoleBinding | `job-generate-rhdh-catalog` | (cluster) | `get`/`list` Routes, `get` Applications, `get` cluster Ingress config (wave 7) |
 | Job | `job-generate-rhdh-catalog` | `rhdh` | Sync hook, wave 17, `BeforeHookCreation,HookSucceeded`: verifies the bundle against the GitLab mirror, renders and creates or patches `catalog-runtime-rhdh` |
-| CronJob | `refresh-rhdh-catalog` | `rhdh` | Every 5 minutes, `SKIP_IF_CURRENT=true`: converges after syncs that skip hooks; defers while `070-rhdh` has a running operation (wave 19) |
+| CronJob | `refresh-rhdh-catalog` | `rhdh` | Every 5 minutes, `SKIP_IF_CURRENT=true`: converges after syncs that skip hooks; defers while `070-rhdh` has a running operation. One pod per run, one failed Job kept, missed runs skipped after a lab stop (`startingDeadlineSeconds: 60`) (wave 19) |
 | ServiceAccount, Role, ClusterRole, bindings | `job-configure-rhdh`, `job-configure-rhdh-gitops-reader` | `rhdh`, `openshift-gitops`, cluster | Sync-hook RBAC (wave 18, deleted on success): read three named Secrets, patch `rhdh-secrets`, patch Deployments, read the operator-managed `rhdh-local-user` (Argo CD token), get/list Routes, get/patch ConsoleLinks |
 | Job | `job-configure-rhdh` | `rhdh` | Sync hook, wave 18: creates or updates the `rhdh` OIDC client, writes `rhdh-secrets`, patches the ConsoleLink, restarts the portal when values changed |
 
