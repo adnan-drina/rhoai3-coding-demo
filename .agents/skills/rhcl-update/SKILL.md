@@ -48,7 +48,19 @@ Connectivity Link 1.4 sections.
 3. Re-test the MaaS paths that depend on wasm-shim behavior (metering,
    streaming, error bodies) with `./stages/040-governed-models-as-a-service/validate.sh`
    and the `docs/TROUBLESHOOTING.md` diagnostics.
-4. Check live after the OpenShift safety guard in `AGENTS.md`:
+4. On a running cluster, a channel change in Git alone stops Stage 040
+   `deploy.sh`: `check_operator_policy` refuses a live Subscription whose
+   channel differs from Git (`Existing selected operator has incompatible
+   source/channel scope`), and patching the live Subscription does not help:
+   Argo CD self-heal restores the pinned revision's channel. After the change
+   is on `main`, merge-patch `spec.source.targetRevision` of
+   `040-maas-operators` to that commit, wait for the CSVs, move the other
+   Stage 040 Applications to the same commit (`stage-apps.sh status 040`
+   needs one revision and a sync operation at it; start syncs with
+   `operation.sync` carrying each app's own syncOptions), then run
+   `deploy.sh` and `validate.sh` (done for `stable` → `stable-1.4` on
+   2026-11-10).
+5. Check live after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash
    oc get csv -n openshift-operators | grep -E 'rhcl|authorino|limitador|dns-operator'
