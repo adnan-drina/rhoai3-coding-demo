@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "red-hat-documentation": {
+      "type": "streamable-http",
+      "url": "https://docs-mcp.api.redhat.com/mcp"
+    }
+  }
+}

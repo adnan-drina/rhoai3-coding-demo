@@ -32,6 +32,8 @@ Thumbs.db
 .cursor/context/
 .cursor/prompts/
 .cursor/mcp*.json
+# Shared, secret-free MCP config (Red Hat Documentation MCP; OAuth via Red Hat SSO).
+!.cursor/mcp.json
 
 # Build outputs
 /output/

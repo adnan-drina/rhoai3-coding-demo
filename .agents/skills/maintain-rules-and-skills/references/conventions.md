@@ -126,9 +126,12 @@ Keep tool-specific directories minimal:
 
 | Directory | Tracked in git? | Contains |
 |-----------|----------------|----------|
-| `.cursor/` | Yes | `hooks.json` (event wiring) and `agents/*.md` (thin subagent stubs pointing to shared skills) |
+| `.cursor/` | Yes | `hooks.json` (event wiring), `mcp.json` (shared, secret-free MCP servers) and `agents/*.md` (thin subagent stubs pointing to shared skills) |
+| `.mcp.json` | Yes | Claude Code project MCP servers (shared, secret-free) |
 | `.claude/` | No (gitignored) | Local Claude Code runtime preferences |
 | `.codex/` | No (gitignored) | Local Codex runtime preferences |
+
+Project MCP files list only servers every contributor should have and that hold no credentials (OAuth sign-in or none); today that is the Red Hat Documentation MCP. Keep `.mcp.json` and `.cursor/mcp.json` listing the same servers. Servers that need a key or token belong in home-directory config.
 
 Do not reintroduce tool-specific rules, skills, or hook implementations. Tool bridge files should only wire tool events to `.agents/hooks/` and provide thin subagent stubs that delegate to `.agents/skills/`.
 

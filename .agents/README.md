@@ -22,10 +22,20 @@ This directory contains tool-neutral shared agent guidance. It is the canonical 
 
 ## Tool-specific directories
 
-- `.cursor/` contains only `hooks.json` (event wiring) and `agents/*.md`
-  (thin subagent stubs that point to shared skills). It must not contain shared rules, skills, or hook implementations.
+- `.cursor/` contains only `hooks.json` (event wiring), `mcp.json` (shared MCP
+  servers) and `agents/*.md` (thin subagent stubs that point to shared skills). It must not contain shared rules, skills, or hook implementations.
+- `.mcp.json` (repo root) is the Claude Code project MCP config; it lists the
+  same secret-free servers as `.cursor/mcp.json`.
 - `.claude/` and `.codex/` are gitignored — they hold local runtime preferences
   only.
+
+## MCP servers
+
+| Server | URL | Auth | Tools |
+|--------|-----|------|-------|
+| `red-hat-documentation` | `https://docs-mcp.api.redhat.com/mcp` | Red Hat SSO (OAuth, first use) | `redhat_docs_search`, `redhat_docs_fetch` |
+
+Set up per the official [MCP server for Red Hat Documentation](https://docs.redhat.com/en/documentation/mcp_server_for_red_hat_documentation/current/get_started-configure_mcp_server_for_docs_in_your_ide) guide. Claude Code asks to approve the project server on first start (`claude mcp list` shows it); Cursor lists it under Settings > Tools & MCP. Other tools (VS Code, Codex, OpenCode) add the same URL in their own user config.
 
 ## Adding a new hook
 

@@ -151,6 +151,10 @@ Tag version-sensitive information explicitly. When official documentation confli
   into READMEs or skills.
 - `.agents/tools/check-doc-links.py` checks docs.redhat.com link versions in
   component READMEs (`gitops/stages/*/*/README.md`) and skills.
+- Read official sections through the Red Hat Documentation MCP
+  (`redhat_docs_search`, `redhat_docs_fetch`; see `.agents/README.md`) when it
+  is connected; fall back to a browser. Link the `docs_version` section, not
+  whatever version a search returned.
 - Prefer upstream project documentation only for open source internals not covered by Red Hat docs.
 
 ## Architecture Diagrams

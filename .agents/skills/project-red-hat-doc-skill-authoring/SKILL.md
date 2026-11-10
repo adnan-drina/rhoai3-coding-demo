@@ -60,8 +60,11 @@ make a version bump a checkable worklist. Not legal advice.
 3. Collect the repo facts: manifests, component README ("Why/What/How",
    "Alignment with official guidance"), `docs/TROUBLESHOOTING.md`, and the
    stage validate scripts. Repo facts are the skill's content.
-4. Read the official sections of `docs_version` that each decision depends on
-   (WebFetch or a browser). docs.redhat.com may answer 403/429/503 to
+4. Read the official sections of `docs_version` that each decision depends on.
+   Prefer the Red Hat Documentation MCP (`redhat_docs_search` to find the
+   section, `redhat_docs_fetch` to read it as markdown); check that the fetched
+   page is the `docs_version` book before relying on it. Without the MCP use a
+   browser or WebFetch; docs.redhat.com may answer 403/429/503 to
    automated clients: then say in the skill or the map route note what could
    not be verified. Never invent a field, channel, version, or anchor.
 5. Write `SKILL.md` from `examples/component-skill-outline.md`. Each kept
