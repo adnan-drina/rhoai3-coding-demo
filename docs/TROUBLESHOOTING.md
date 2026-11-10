@@ -122,6 +122,30 @@ used by `provision-migration-run`. Confirm the next catalog-refresh and
 project-provisioner Jobs succeed. A Healthy Argo application alone does not
 prove recurring Jobs or future Tekton steps can pull their images.
 
+## project-provisioner Pods In Error After A Lab Start
+
+**Affected stage:** Stage 070 (`070-pipelines`)
+
+**Likely cause:** The `project-provisioner` CronJob in `app-platform-build`
+ran while GitLab was still starting and got `HTTP Error 503: Service
+Unavailable` from the enrollment queue. Before this fix the run failed, and
+`failedJobsHistoryLimit` kept the failed Jobs (two pods each) until the next
+lab start. The reconciler now logs `pending: TRANSIENT_UPSTREAM` and exits 0
+for a 5xx, timeout or unreachable GitLab, so the next scheduled run is the
+retry. Only refusals of a recorded request still fail the Job.
+
+**Diagnose:**
+
+```bash
+oc get jobs -n app-platform-build | grep project-provisioner
+oc logs -n app-platform-build job/<failed-job> | tail -5
+oc get cronjob project-provisioner -n app-platform-build -o jsonpath='{.status.lastSuccessfulTime}{"\n"}'
+```
+
+**Recover:** Nothing to repair when `lastSuccessfulTime` is newer than the
+failure. Delete an old failed Job if you want the list clean:
+`oc delete job <failed-job> -n app-platform-build`.
+
 ## Argo CD App Is OutOfSync
 
 **Affected stage:** Any

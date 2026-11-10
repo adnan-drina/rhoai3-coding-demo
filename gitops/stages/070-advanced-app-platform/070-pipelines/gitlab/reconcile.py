@@ -25,15 +25,19 @@ class EnrollmentPending(ValueError):
     """A known native project operation has not reached a terminal state."""
 
 
-def enrollment_failure(error, created_at, now=None):
-    transient = isinstance(error, (EnrollmentPending, TimeoutError))
+def transient_error(error):
+    """An upstream that is still starting (GitLab 503 after a lab start) or a native operation in flight."""
     if isinstance(error, urllib.error.HTTPError):
-        transient = error.code in (408, 429) or 500 <= error.code <= 599
-    elif isinstance(error, urllib.error.URLError):
-        transient = True
-    elif isinstance(error, subprocess.CalledProcessError):
-        transient = '(NotFound)' in (error.stderr or '')
-    if transient:
+        return error.code in (408, 429) or 500 <= error.code <= 599
+    if isinstance(error, urllib.error.URLError):
+        return True
+    if isinstance(error, subprocess.CalledProcessError):
+        return '(NotFound)' in (error.stderr or '')
+    return isinstance(error, (EnrollmentPending, TimeoutError))
+
+
+def enrollment_failure(error, created_at, now=None):
+    if transient_error(error):
         if not created_at:
             return 'refused', 'MISSING_REQUEST_TIME'
         try:
@@ -507,11 +511,20 @@ def main():
             enroll(api,row,project,commit,config,row)
         except EnrollmentPending:
             print('Imported project bootstrap pending: native operation incomplete')
-        except (ValueError, KeyError, subprocess.CalledProcessError, urllib.error.URLError, TimeoutError):
+        except (ValueError, KeyError, subprocess.CalledProcessError, urllib.error.URLError, TimeoutError) as error:
+            if transient_error(error):
+                # The next scheduled run is the retry; a starting GitLab is not a refusal.
+                print('Imported project bootstrap pending: TRANSIENT_UPSTREAM')
+                continue
             failures += 1
             print('REFUSE imported project bootstrap: validation or platform command failed')
     for page in range(1,11):
-        issues = api.request('GET', "projects/%s/issues?state=opened&labels=platform-enrollment&per_page=100&page=%s" % (config['GITLAB_REGISTRATION_PROJECT_ID'],page))
+        try:
+            issues = api.request('GET', "projects/%s/issues?state=opened&labels=platform-enrollment&per_page=100&page=%s" % (config['GITLAB_REGISTRATION_PROJECT_ID'],page))
+        except (urllib.error.URLError, TimeoutError) as error:
+            if not transient_error(error): raise
+            print('Enrollment queue pending: TRANSIENT_UPSTREAM; the next scheduled run retries')
+            break
         for issue in issues:
             if 'platform-enrollment-refused' in issue.get('labels', []):
                 if retired_request(api, issue, config):

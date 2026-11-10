@@ -50,12 +50,15 @@ metadata:
 spec:
   schedule: '*/2 * * * *'
   concurrencyPolicy: Forbid
+  # A run missed while the lab was stopped is skipped, not caught up; the next tick reconciles.
+  startingDeadlineSeconds: 60
   successfulJobsHistoryLimit: 1
-  failedJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
       activeDeadlineSeconds: 600
-      backoffLimit: 1
+      # The schedule is the retry: one pod per run, no in-Job replacement pod.
+      backoffLimit: 0
       template:
         spec:
           serviceAccountName: project-provisioner
