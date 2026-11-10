@@ -42,7 +42,7 @@ Link 1.4 sections. The version lives in `.agents/references/red-hat-doc-map.yaml
 ## Pitfalls
 
 - Older skill text and Stage 220 notes described a 1.3.4 pin. That posture is
-  retired; Stage 040 runs 1.4.x (qualified minimum 1.4.3). Use `rhcl-update`.
+  retired; Stage 040 runs 1.4.x on `stable-1.4` (qualified minimum 1.4.4). Use `rhcl-update`.
 - Supported configurations change per minor; read them from the
   [supported configurations][configs] section, not from memory. For 1.4 the
   docs list OpenShift 4.19–4.22, Service Mesh 3.3 or 3.4 when used, and

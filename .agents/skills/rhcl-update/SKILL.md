@@ -8,7 +8,7 @@ metadata:
   skill-group: "Connectivity Link"
 description: >
   Use when updating Red Hat Connectivity Link in this demo: z-stream updates on
-  the stable channel, raising the qualified minimum in the operator policy,
+  the stable-1.4 channel, raising the qualified minimum in the operator policy,
   moving to a new minor, checking supported OpenShift / Service Mesh /
   cert-manager versions, and the Gateway API CRD constraint. Also use when old
   guidance says to pin 1.3.z or block 1.4 — that posture is retired. Do NOT use
@@ -30,8 +30,8 @@ Connectivity Link 1.4 sections.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| Channel `stable`, Automatic approval, no `startingCSV`: z-streams arrive without a Git change | `gitops/stages/040-governed-models-as-a-service/040-maas-operators/rhcl/rhcl-operator-subscription.yaml` | [Update with the web console][update-console] |
-| The qualified minor line and minimum (rhcl 1.4.3) live in the operator policy, which refuses other channels and older or other-minor releases | `check_operator_policy` in `scripts/lib.sh` (`minimum`, `channels`) | [Release notes][relnotes] |
+| Channel `stable-1.4`, Automatic approval, no `startingCSV`: 1.4 z-streams arrive without a Git change | `gitops/stages/040-governed-models-as-a-service/040-maas-operators/rhcl/rhcl-operator-subscription.yaml` | [Update with the web console][update-console] |
+| The qualified minor line and minimum (rhcl 1.4.4) live in the operator policy, which refuses other channels and older or other-minor releases | `check_operator_policy` in `scripts/lib.sh` (`minimum`, `channels`) | [Release notes][relnotes] |
 | The doc map's `products.rhcl.docs_version` must equal that minor; the checker enforces it | `.agents/references/red-hat-doc-map.yaml` | — |
 | The 1.3.4 pin with Manual approval (2026-07) is retired; its rollback is historical only | `docs/TROUBLESHOOTING.md#maas-gateway-times-out-on-every-path-rhcl-14x-drift` | [Release notes][relnotes] (1.4.0 deprecated; install or upgrade to 1.4.1+) |
 
@@ -62,8 +62,10 @@ Connectivity Link 1.4 sections.
 - Connectivity Link 1.4.0 is deprecated; never qualify it.
 - Channel naming differs inside the 1.4 docs: the update procedure says
   `stable`, while the install guide and the 1.4.4 release notes say
-  `stable-1.4`. 1.4.4 (Oct 2026) needs `stable-1.4` and brings about 5 s of
-  Authorino downtime on upgrade; confirm what `stable` delivers first.
+  `stable-1.4`. The live catalog (2026-11-10) has `stable` at 1.4.3,
+  `stable-1.4` at 1.4.4 and `stable-1.5` at 1.5.0, so the repo pins
+  `stable-1.4`; a new minor is a channel change. 1.4.4 brings about 5 s of
+  Authorino downtime on upgrade.
 - `openshift-operators` is shared: one InstallPlan can move the whole Kuadrant
   family at once.
 

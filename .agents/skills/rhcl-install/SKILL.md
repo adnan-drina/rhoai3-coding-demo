@@ -31,9 +31,9 @@ Connectivity Link 1.4 sections. Detailed record:
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| `rhcl-operator` from `redhat-operators`, channel `stable`, Automatic, no `startingCSV`, in `openshift-operators` (global OperatorGroup) | `040-maas-operators/rhcl/rhcl-operator-subscription.yaml` | [Install from the CLI][install-cli] |
+| `rhcl-operator` from `redhat-operators`, channel `stable-1.4`, Automatic, no `startingCSV`, in `openshift-operators` (global OperatorGroup) | `040-maas-operators/rhcl/rhcl-operator-subscription.yaml` | [Install from the CLI][install-cli] |
 | Authorino, Limitador and DNS operators declared as explicit Subscriptions on `stable` so their channel is reviewed | `040-maas-operators/rhcl/*-subscription.yaml` | [Install from the CLI][install-cli] (verification lists all four operators) |
-| Qualified minima: rhcl 1.4.3, authorino 1.4.3, limitador 1.4.2, dns 1.4.2; other channels refused | `check_operator_policy` in `scripts/lib.sh` | [Release notes][relnotes] (1.4.0 deprecated; use 1.4.1+) |
+| Qualified minima: rhcl 1.4.4, authorino 1.4.3, limitador 1.4.2, dns 1.4.2; other channels refused | `check_operator_policy` in `scripts/lib.sh` | [Release notes][relnotes] (1.4.0 deprecated; use 1.4.1+) |
 | `servicemeshoperator3` on `stable-3.4`, kept for the Istio CRDs (ServiceEntry, DestinationRule, WasmPlugin, EnvoyFilter, Telemetry); no `Istio` CR | `040-maas-operators/rhcl/servicemeshoperator3-subscription.yaml` | [Supported configurations][install-req] |
 | Kuadrant operator override: `AUTH_SERVICE_TIMEOUT=2s`, requests 500m/512Mi, limits 2 CPU/1Gi via Subscription `config` | `040-maas-operators/rhcl/rhcl-operator-subscription.yaml` | not documented in the install guide (recorded as a Gap in the README) |
 | `Kuadrant` in `kuadrant-system` with `spec.observability.enable: true`; Authorino with a TLS listener using a service serving certificate | `040-gateway-governance/governance/kuadrant.yaml`, `authorino.yaml` | [Install from the CLI][install-cli]; see `rhoai-maas-governance` for the Authorino TLS requirement |
@@ -63,9 +63,9 @@ Connectivity Link 1.4 sections. Detailed record:
   `docs/TROUBLESHOOTING.md#kuadrant-operator-controller-restarts-until-probes-time-out`.
 - The guide's web-console path creates its own OperatorGroup; the repo relies
   on the existing global one in `openshift-operators`.
-- The 1.4 install guide says to set channel `stable-1.4` (it installs 1.4.4),
-  and the 1.4.4 release notes require it; the repo's Subscription and policy use
-  `stable`. Check which release `stable` delivers before raising the minimum.
+- The 1.4 install guide's example shows channel `stable`, but its note and the
+  1.4.4 release notes require `stable-1.4` for 1.4.4. On the cluster (catalog
+  read 2026-11-10) `stable` stops at 1.4.3, so the repo uses `stable-1.4`.
 
 ## Official documentation (Connectivity Link 1.4)
 

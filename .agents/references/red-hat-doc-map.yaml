@@ -2698,16 +2698,16 @@ products:
     skill_prefix: rhcl-
     docs_slug: red_hat_connectivity_link
     docs_version: "1.4"
-    # MCP verification 2026-11-10: 10 skills; 1.4.4 needs channel stable-1.4 (release notes, install guide) while the update guide and the repo use stable. Anchor ids are not exposed by the MCP Markdown; ids are proven only where a cross-link carries them, otherwise the heading topic was matched.
+    # MCP verification 2026-11-10: 10 skills; 1.4.4 needs channel stable-1.4 (release notes, install guide; the update guide says stable). Live catalog: stable=1.4.3, stable-1.4=1.4.4; the repo moved to stable-1.4. Anchor ids are not exposed by the MCP Markdown; ids are proven only where a cross-link carries them, otherwise the heading topic was matched.
     deployed: true
     pin:
       # The Subscription in gitops/stages/040-governed-models-as-a-service/040-maas-operators/rhcl/
-      # follows the unversioned `stable` channel; the operator policy holds the qualified minor line.
+      # follows the minor channel `stable-1.4`; the operator policy holds the qualified minor line.
       file: scripts/lib.sh
       field: OPERATOR_POLICY["rhcl-operator"]
       pattern: "\"rhcl-operator\": \\[\"[^\"]*\", \"(\\d+\\.\\d+)\\.\\d+"
     note: >
-      Stage 040 installs Connectivity Link 1.4.x (qualified minimum 1.4.3) as the
+      Stage 040 installs Connectivity Link 1.4.x (qualified minimum 1.4.4) as the
       MaaS policy layer. The 1.4 release notes deprecate 1.4.0 and direct users to
       1.4.1 or later. Book slugs changed between 1.3 and 1.4 (installing_* ->
       install_*, troubleshooting -> troubleshoot).

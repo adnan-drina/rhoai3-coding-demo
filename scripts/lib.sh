@@ -247,7 +247,7 @@ OPERATOR_POLICY='{
   "odf-operator": ["stable-4.22", "4.22.5"], "cluster-observability-operator": ["stable", "1.5.3"],
   "opentelemetry-product": ["stable", "0.158.0-2"], "tempo-product": ["stable", "0.22.0-2"], "nfd": ["stable", "4.22.0"],
   "gpu-operator-certified": ["v26.7", "26.7.1"], "kueue-operator": ["stable-v1.4", "1.4.2"],
-  "leader-worker-set": ["stable-v1.0", "1.0.1"], "rhcl-operator": ["stable", "1.4.3"], "authorino-operator": ["stable", "1.4.3"],
+  "leader-worker-set": ["stable-v1.0", "1.0.1"], "rhcl-operator": ["stable-1.4", "1.4.4"], "authorino-operator": ["stable", "1.4.3"],
   "dns-operator": ["stable", "1.4.2"], "limitador-operator": ["stable", "1.4.2"], "servicemeshoperator3": ["stable-3.4", "3.4.3"],
   "agent-sandbox-operator": ["preview-0.9", "0.9.0"], "devspaces": ["stable", "3.31.0"]}'
 POLICY_JQ='def ver: [capture("^(?<a>[0-9]+)\\.(?<b>[0-9]+)\\.(?<c>[0-9]+)(-(?<d>[0-9]+)|-rhodf)?$")]

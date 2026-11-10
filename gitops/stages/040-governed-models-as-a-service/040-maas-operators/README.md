@@ -36,7 +36,7 @@ All Subscriptions are in `openshift-operators` (global OperatorGroup), source `r
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| Subscription | `rhcl-operator` | `openshift-operators` | Connectivity Link (Kuadrant) operator, channel `stable`, with `config.env` and `config.resources` (see How) |
+| Subscription | `rhcl-operator` | `openshift-operators` | Connectivity Link (Kuadrant) operator, channel `stable-1.4`, with `config.env` and `config.resources` (see How) |
 | Subscription | `authorino-operator` | `openshift-operators` | Authorino operator, channel `stable` |
 | Subscription | `limitador-operator` | `openshift-operators` | Limitador operator, channel `stable` |
 | Subscription | `dns-operator` | `openshift-operators` | DNS operator, channel `stable` |
@@ -81,7 +81,7 @@ oc get subscription leader-worker-set -n openshift-lws-operator -o jsonpath='{.s
 | Topic | Official guidance (link) | This repository | Status |
 |---|---|---|---|
 | Connectivity Link version and namespace | MaaS needs Connectivity Link 1.4.x in `openshift-operators` [1] | `rhcl-operator` 1.4.3 in `openshift-operators` | Aligned |
-| Connectivity Link channel | `stable` channel [2] | `stable` | Aligned |
+| Connectivity Link channel | `stable-1.4` for 1.4.4 [2][6] | `stable-1.4` (the unversioned `stable` channel stops at 1.4.3) | Aligned |
 | Authorino, Limitador, DNS operators | Present after installation; the guide has you verify them [2] | Explicit Subscriptions on `stable` | Aligned |
 | Gateway API provider | OpenShift Gateway controller is the default. No separate Service Mesh is required for Connectivity Link 1.3+; use 3.4 if installed [2][5] | `servicemeshoperator3` on `stable-3.4`; the Gateway uses the OpenShift controller | Aligned. The operator supplies the Istio API CRDs this platform consumes (`ServiceEntry`, `DestinationRule`, `WasmPlugin`; see Service Mesh above) |
 | LWS for llm-d | Needed only for multi-node llm-d deployments [3] | Installed; all served models are single-node | Deviation (justified: kept ready for a multi-node topology; not used by the current models) |
@@ -96,3 +96,4 @@ oc get subscription leader-worker-set -n openshift-lws-operator -o jsonpath='{.s
 3. Deploy models using Distributed Inference with llm-d, section 1.1 "Enable Distributed Inference with llm-d", Red Hat OpenShift AI Self-Managed 3.5. https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index
 4. AI workloads, "Leader Worker Set Operator" (3.3.1 "Installing the Leader Worker Set Operator"), OpenShift Container Platform 4.22. https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/ai_workloads/leader-worker-set-operator
 5. Ingress and load balancing, "Configuring Gateway API" (3.2.1), OpenShift Container Platform 4.22. https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/ingress_and_load_balancing/configuring-gateway-api
+6. Release notes for Connectivity Link 1.4, "Red Hat Connectivity Link 1.4.4 bug fix and security update" (requires channel `stable-1.4`). https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index
