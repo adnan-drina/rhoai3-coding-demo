@@ -40,10 +40,10 @@ Lightspeed documentation. The version lives in
 
 ## Pitfalls
 
-- Version naming: the installed operator is 1.1.x (1.1.5 observed on
-  2026-10-15, channel `stable`, Automatic), but Red Hat publishes one
-  documentation set labelled "1.0". Its release notes cover 1.1 to 1.1.4. Link
-  `/1.0/`; no other set was published on 2026-10-15.
+- Version naming: the installed operator is 2.0.0 (observed 2026-10-27 and
+  2026-11-10; 1.1.5 on 2026-10-15; channel `stable`, Automatic), but Red Hat
+  publishes one documentation set labelled "1.0". Its release notes cover 1.0
+  to 1.1.5 and 2.0 (checked 2026-11-10). Link `/1.0/`.
 - Operator `Succeeded` is not service health. On the observed cluster the
   OLSConfig was NotReady; see `ocp-lightspeed-troubleshoot`.
 - Questions leave the cluster to the configured provider. Read

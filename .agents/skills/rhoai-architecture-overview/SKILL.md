@@ -76,7 +76,9 @@ Workshop architecture lives in `README.md` and the stage list in `AGENTS.md`
 - `rhods-admins` is created by the operator from the `Auth` CR; its membership
   comes from `stages/010-openshift-ai-platform-foundation/deploy.sh`, not Git.
 - `llamastackoperator` stays `Removed`; the 3.5 generative AI service layer here
-  is `ogx` (enabled by Stage 040). Do not describe Llama Stack as deployed.
+  is `ogx` (enabled by Stage 040). Llama Stack was renamed OGX in 3.5 EA1 and
+  the 3.5 DSC example lists only `ogx` ([Install components by CLI][comp-cli];
+  [Technology Preview features][tp]). Do not describe Llama Stack as deployed.
 - Do not count catalog entries or dashboard tiles as deployed components
   (`docs/OPERATIONS.md`, Ownership and stage boundaries).
 
@@ -102,5 +104,6 @@ Workshop architecture lives in `README.md` and the stage list in `AGENTS.md`
 [op-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#installing-openshift-ai-operator-using-cli_operator-install
 [comp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#installing-and-managing-openshift-ai-components_component-install
 [comp-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#installing-openshift-ai-components-using-cli_component-install
+[tp]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/release_notes/index#technology-preview-features_relnotes
 [view]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/installing_and_uninstalling_openshift_ai_self-managed/index#viewing-installed-components_component-install
 [obs]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_openshift_ai/index#enabling-the-observability-stack_managing-rhoai

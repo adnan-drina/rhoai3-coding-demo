@@ -64,10 +64,13 @@ showback). Repo decisions here, product behavior in the linked OpenShift AI
 
 ## Pitfalls
 
-- `disableTracking` only hides the dashboard section; it does not stop
-  collection ([Hide the section][hide] vs [Disable][disable]).
-- The 3.5 MaaS guide calls the telemetry resource a `Tenant`; the API this repo
-  patches is `maastenantconfigs.maas.opendatahub.io`. Confirm with
+- The 3.5 docs disagree on `disableTracking`: [Hide the section][hide] only
+  hides the UI, while the [options table][options] says `true` also disables
+  tracking. To stop collection, use [Disable by using the CLI][disable-cli].
+- The 3.5 telemetry procedure still patches `tenants.maas.opendatahub.io`, but
+  the same guide lists `Tenant` as deprecated and `MaasTenantConfig`
+  (`default-tenant`) as the holder of telemetry options ([Configure MaaS][maas-config],
+  custom resources list); the repo patches `maastenantconfigs`. Confirm with
   `oc api-resources --api-group=maas.opendatahub.io` before changing names.
 - The 3.5 MaaS guide marks the observability dashboard Technology Preview
   and calls its data showback, not billing-grade metering
@@ -94,6 +97,7 @@ showback). Repo decisions here, product behavior in the linked OpenShift AI
 [disable-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#disabling-usage-data-collection-cli_data-collection
 [hide]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#hiding-usage-data-collection-ui_data-collection
 [options]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/managing_resources/index#ref-dashboard-configuration-options_dashboard
+[maas-config]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-configuration_maas-deploy
 [maas-obs]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-observability_maas-deploy
 [maas-overview]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-observability-overview_maas-deploy
 [maas-kuadrant]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#enable-kuadrant-observability-maas_maas-deploy

@@ -2192,7 +2192,7 @@ Verify: `oc get datasciencecluster default-dsc` reports Ready. If `Degraded` sta
 
 ## MaaS Gateway Times Out On Every Path (RHCL 1.4.x Drift)
 
-> **Historical (RHCL 1.3 era, 2026-07).** The demo now runs RHCL 1.4.3 on purpose, with Automatic approval on the `stable` channel. Do not use the 1.3.z rollback below on the current platform. For a gateway that holds responses open on 1.4.3, see [MaaS Gateway Holds A Response Open Until The Client Times Out](#maas-gateway-holds-a-response-open-until-the-client-times-out).
+> **Historical (RHCL 1.3 era, 2026-07).** The demo now runs RHCL 1.4.x on purpose, with Automatic approval on the `stable-1.4` channel (qualified minimum 1.4.4). Do not use the 1.3.z rollback below on the current platform. For a gateway that holds responses open on 1.4.3, see [MaaS Gateway Holds A Response Open Until The Client Times Out](#maas-gateway-holds-a-response-open-until-the-client-times-out).
 
 **Affected stage:** Stage 040 (breaks every AI consumer: Kilo Code, key provisioning, app LLM calls)
 

@@ -75,11 +75,11 @@ Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unle
 | Topic | Section |
 |---|---|
 | Install | [Installing the Red Hat build of OpenTelemetry][install] |
-| Architecture (OCP 4.22 entry) | [OpenTelemetry architecture][arch] |
+| OCP 4.22 entry | [About Red Hat build of OpenTelemetry][arch] (stub book) |
 
 ## Related skills
 
 `ocp-distributed-tracing`, `ocp-observability`, `rhoai-observability`.
 
 [install]: https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/3.11/html-single/installing_red_hat_build_of_opentelemetry/index#install-otel
-[arch]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/red_hat_build_of_opentelemetry/index#otel-architecture
+[arch]: https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html-single/red_hat_build_of_opentelemetry/index

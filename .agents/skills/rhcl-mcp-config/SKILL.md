@@ -40,6 +40,8 @@ These are the facts an adoption must respect and where they are documented.
 
 - `MCPServerRegistration` and `MCPVirtualServer` are `mcp.kuadrant.io/v1alpha1`
   ([CR reference][cr], [Virtual servers][virtual]).
+- `MCPServerRegistration` uses `spec.prefix` (renamed from `toolPrefix` in 1.4:
+  recreate old CRs, do not patch; lowercase letters, digits, `_`) ([Register][register], [1.4 release notes][relnotes]).
 - Credential Secrets need the label `mcp.kuadrant.io/secret=true` ([Register][register]).
 - Clients select a virtual server with the `X-Mcp-Virtualserver: namespace/name` header ([Virtual servers][virtual]).
 - Authentication AuthPolicy targets the `mcp` listener; tool authorization
@@ -72,3 +74,4 @@ These are the facts an adoption must respect and where they are documented.
 [authz]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#mcp-gateway-authorization
 [revoke]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#mcp-gateway-revoke-mcp-server-tool-access
 [vault]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/register_mcp_servers_and_create_policies/index#mcp-gateway-vault
+[relnotes]: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/release_notes/index

@@ -78,6 +78,7 @@ products:
     rule: .agents/rules/rhoai.md
     docs_slug: red_hat_openshift_ai_self-managed
     docs_version: "3.5"
+    # MCP verification 2026-11-10: 64 rhoai skills, every linked 3.5 book read through the Red Hat Documentation MCP. Embedded Kueue removed in 3.0; centralized observability, OGX, MLflow global prompt workspaces, vLLMDeploymentOnMaaS TP; Kubeflow Spark Operator DP. Open: the 3.5 docs use both kubeflowsparkoperator and sparkoperator for the DSC field; MaaS core has no TP label in 3.5. Anchor ids are not exposed by the MCP Markdown; ids are proven only where a cross-link carries them, otherwise the heading topic was matched.
     deployed: true
     pin:
       file: gitops/stages/010-openshift-ai-platform-foundation/010-rhoai-operator/subscription.yaml
@@ -1235,6 +1236,7 @@ products:
     rule: .agents/rules/ocp.md
     docs_slug: openshift_container_platform
     docs_version: "4.22"
+    # MCP verification 2026-11-10: 18 ocp skills against 4.22 and the separately versioned books; OTel and tracing 4.22 entries are stub books; Tempo writer ClusterRole is documented in tracing 3.11. Anchor ids are not exposed by the MCP Markdown; ids are proven only where a cross-link carries them, otherwise the heading topic was matched.
     deployed: true
     pin:
       # OpenShift itself is not installed from Git. The NFD operator ships per OpenShift
@@ -1510,6 +1512,7 @@ products:
     rule: .agents/rules/ocp.md
     docs_slug: red_hat_openshift_dev_spaces
     docs_version: "3.31"
+    # MCP verification 2026-11-10: 5 skills, all 83 linked 3.31 pages read; no drift. Anchor ids are not exposed by the MCP Markdown; ids are proven only where a cross-link carries them, otherwise the heading topic was matched.
     deployed: true
     pin:
       # The Subscription follows the unversioned `stable` channel (Dev Spaces GitOps guide); the operator policy
@@ -1647,6 +1650,7 @@ products:
     rule: .agents/rules/ocp.md
     docs_slug: red_hat_openshift_lightspeed
     docs_version: "1.0"
+    # MCP verification 2026-11-10: 6 skills; the 1.0 set now carries 1.1.5 and 2.0 release notes. Anchor ids are not exposed by the MCP Markdown; ids are proven only where a cross-link carries them, otherwise the heading topic was matched.
     deployed: true
     pin:
       none: >-
@@ -1739,6 +1743,7 @@ products:
     rule: .agents/rules/ocp.md
     docs_slug: red_hat_openshift_pipelines
     docs_version: "1.24"
+    # MCP verification 2026-11-10: 10 skills; release notes now include 1.24.2. Anchor ids are not exposed by the MCP Markdown; ids are proven only where a cross-link carries them, otherwise the heading topic was matched.
     deployed: true
     pin:
       file: gitops/stages/070-advanced-app-platform/070-pipelines/operators/pipelines-subscription.yaml
@@ -1899,6 +1904,7 @@ products:
     rule: .agents/rules/odf.md
     docs_slug: red_hat_openshift_data_foundation
     docs_version: "4.22"
+    # MCP verification 2026-11-10: 4 skills; NooBaa DB backup lives in managing_hybrid_and_multicloud_resources. Anchor ids are not exposed by the MCP Markdown; ids are proven only where a cross-link carries them, otherwise the heading topic was matched.
     deployed: true
     pin:
       file: gitops/stages/010-openshift-ai-platform-foundation/010-odf/subscription.yaml
@@ -2003,6 +2009,7 @@ products:
     skill_prefix: mta-
     docs_slug: migration_toolkit_for_applications
     docs_version: "8.3"
+    # MCP verification 2026-11-10: 8 skills; 8.3 settings table lists rwo_storage_class; release notes cover 8.3.0 only (repo pin 8.3.3). Anchor ids are not exposed by the MCP Markdown; ids are proven only where a cross-link carries them, otherwise the heading topic was matched.
     deployed: true
     pin:
       file: gitops/stages/070-advanced-app-platform/070-mta/mta-operator/subscription.yaml
@@ -2176,6 +2183,7 @@ products:
     skill_prefix: rhdh-
     docs_slug: red_hat_developer_hub
     docs_version: "1.10"
+    # MCP verification 2026-11-10: 36 skills; Adoption Insights is preinstalled and enabled by default; 1.10 known issues hold no Orchestrator item. Anchor ids are not exposed by the MCP Markdown; ids are proven only where a cross-link carries them, otherwise the heading topic was matched.
     deployed: true
     pin:
       file: gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/subscription.yaml
@@ -2690,15 +2698,16 @@ products:
     skill_prefix: rhcl-
     docs_slug: red_hat_connectivity_link
     docs_version: "1.4"
+    # MCP verification 2026-11-10: 10 skills; 1.4.4 needs channel stable-1.4 (release notes, install guide; the update guide says stable). Live catalog: stable=1.4.3, stable-1.4=1.4.4; the repo moved to stable-1.4. Anchor ids are not exposed by the MCP Markdown; ids are proven only where a cross-link carries them, otherwise the heading topic was matched.
     deployed: true
     pin:
       # The Subscription in gitops/stages/040-governed-models-as-a-service/040-maas-operators/rhcl/
-      # follows the unversioned `stable` channel; the operator policy holds the qualified minor line.
+      # follows the minor channel `stable-1.4`; the operator policy holds the qualified minor line.
       file: scripts/lib.sh
       field: OPERATOR_POLICY["rhcl-operator"]
       pattern: "\"rhcl-operator\": \\[\"[^\"]*\", \"(\\d+\\.\\d+)\\.\\d+"
     note: >
-      Stage 040 installs Connectivity Link 1.4.x (qualified minimum 1.4.3) as the
+      Stage 040 installs Connectivity Link 1.4.x (qualified minimum 1.4.4) as the
       MaaS policy layer. The 1.4 release notes deprecate 1.4.0 and direct users to
       1.4.1 or later. Book slugs changed between 1.3 and 1.4 (installing_* ->
       install_*, troubleshooting -> troubleshoot).

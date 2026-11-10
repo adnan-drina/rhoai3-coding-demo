@@ -57,10 +57,8 @@ Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unle
 2. Deploy and validate:
    `./stages/010-openshift-ai-platform-foundation/deploy.sh`, then
    `./stages/010-openshift-ai-platform-foundation/validate.sh` (operator CSVs,
-   DSCI monitoring fields, `observabilityDashboard`) and
-   `./stages/010-openshift-ai-platform-foundation/validate.sh`
-   (Prometheus `up` query, collector SubjectAccessReview, one OTLP span read
-   back from Tempo).
+   DSCI monitoring fields, `observabilityDashboard`, Prometheus `up` query,
+   collector SubjectAccessReview, one OTLP span read back from Tempo).
 3. By hand, after the OpenShift safety guard in `AGENTS.md`:
 
    ```bash
@@ -73,12 +71,14 @@ Paths are relative to `gitops/stages/010-openshift-ai-platform-foundation/` unle
 
 - The Cluster dashboard is for cluster administrators only; other users see
   the Models dashboard for namespaces they can access ([Dashboards overview][dash-overview]).
-- Alertmanager has no route by default ([Access built-in alerts][alerts]).
+- Alertmanager is internal and not exposed through a Route by default
+  ([Access built-in alerts][alerts]).
 - A new minor on a rolling `stable` channel makes `deploy.sh` fail closed
   until `check_operator_policy` is updated.
-- Support posture of the stack at 3.5 (Technology Preview or GA) could not be
-  verified: the 3.5 release notes did not load on 2026-10-15. Check them before
-  presenting it as supported.
+- The stack ("Centralized platform observability") is a Technology Preview
+  feature: the 3.5 release notes list it under Technology Preview features
+  (3.4 EA1 section; checked 2026-11-10). Do not present it as supported.
+  See `rhoai-release-and-support-posture`.
 - Known symptoms: `docs/TROUBLESHOOTING.md#observability-dashboard-shows-no-dashboards-found`,
   `docs/TROUBLESHOOTING.md#rhoai-monitoring-prometheus-stuck-in-init`,
   `docs/TROUBLESHOOTING.md#observability-dashboards-show-empty-gpu-inter-token-latency-or-error-rate-panels`.

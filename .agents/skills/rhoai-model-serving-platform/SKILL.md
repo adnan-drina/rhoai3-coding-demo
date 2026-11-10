@@ -73,8 +73,8 @@ OpenShift AI 3.5 sections. Detailed record:
   are not directly supported ([Custom runtime][custom], [Tested and verified][tested]).
 - A pinned runtime image digest does not follow platform upgrades; recheck
   `vllm-cuda-runtime` against the template after each OpenShift AI update.
-- `vLLMDeploymentOnMaaS` gates limited-support configurations and is a preview
-  feature; see [Limited-support runtime visibility][limited].
+- `vLLMDeploymentOnMaaS` gates limited-support LLMInferenceServiceConfigs and
+  is a Technology Preview feature in 3.5; see [Limited-support runtime visibility][limited].
 
 ## Official documentation (RHOAI 3.5)
 

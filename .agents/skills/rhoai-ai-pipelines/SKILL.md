@@ -68,7 +68,8 @@ OpenShift AI 3.5 sections. Detailed record:
 
 4. Start runs from the dashboard **Create run** form with the MLflow
    experiment set. A script must `POST /apis/v2beta1/runs` with
-   `plugins_input.mlflow.experiment_name` ([REST API and SDK][rest]).
+   `plugins_input.mlflow.experiment_name` (field not named in the 3.5 docs;
+   seen on the 3.5.1 API server; see also [REST API and SDK][rest]).
 5. New pipeline version: compile with `rhoai-kfp-pipeline-authoring`, commit,
    re-pin Stage 050, then delete the previous `PipelineVersion` by hand
    (Argo CD does not prune it).
@@ -79,7 +80,9 @@ OpenShift AI 3.5 sections. Detailed record:
 ## Pitfalls
 
 - KFP SDK `create_run_from_pipeline_*` sends no MLflow experiment; every step
-  then fails with `runID is required to update nested MLflow run`.
+  then fails with `runID is required to update nested MLflow run` (repo
+  observation on 3.5.1; the 3.5 docs say such a run goes to the MLflow
+  "Default" experiment, [MLflow experiment tracking][mlflow]).
 - Without the `insecureSkipVerify` copy, step drivers fail with
   `x509: certificate signed by unknown authority` against the in-cluster
   MLflow service on 3.5.1.

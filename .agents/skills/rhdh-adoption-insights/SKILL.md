@@ -9,26 +9,29 @@ metadata:
 description: >
   Use when someone asks about the Red Hat Developer Hub 1.10 Adoption Insights
   plugin: enabling, disabling or customizing it, and reading active users, top
-  templates, catalog entities, TechDocs and searches. Not used in this repo. Do
+  templates, catalog entities, TechDocs and searches. Not configured in this repo. Do
   NOT use for telemetry sent to Red Hat (use rhdh-telemetry) or platform metrics
   (use rhdh-monitoring).
 ---
 
 # Developer Hub Adoption Insights
 
-Thin skill, link-only stub: the feature is not used in this repo. Product
+Thin skill, link-only stub: the repo does not configure this feature. Product
 behavior lives in the linked Developer Hub 1.10 sections.
 
 ## When to use
 
 - Someone wants portal usage analytics inside Developer Hub.
 
-## Not used in this repo
+## Not configured in this repo
 
-No Adoption Insights plugin is enabled in
+The repo makes no Adoption Insights decision: no entry for it appears in
 `gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-instance/dynamic-plugins-configmap.yaml`.
-
-Adopting it is a Stage 070 change: record the decision in
+The 1.10 guide says the plugin is preinstalled and enabled by default
+([Overview][l1], [Enable][l2]) and the repo's ConfigMap `includes`
+`dynamic-plugins.default.yaml`, so it is presumably active with product
+defaults (not checked live). Tuning or disabling it is a Stage 070 change:
+record the decision in
 `gitops/stages/070-advanced-app-platform/070-rhdh/README.md` and convert this stub
 to a full thin skill.
 

@@ -73,7 +73,8 @@ Paths in the table are relative to `gitops/stages/010-openshift-ai-platform-foun
 - Removing a pointer from the `access` Application `ignoreDifferences` lets
   Argo CD wipe the `rhoai-developers` membership.
 - The dashboard admin role does not grant access to project namespaces; that
-  is why `demo-sandbox` has its own `admin` binding.
+  is why `demo-sandbox` has its own `admin` binding (not stated in the 3.5
+  docs; repo observation).
 - An LDAP identity provider needs group sync before its groups can be used
   ([Add users to user groups][add-users]).
 

@@ -20,8 +20,8 @@ description: >
 # RHOAI Guardrails Safety
 
 Thin skill: repo decisions and pitfalls here, product behavior in the linked
-OpenShift AI 3.5 sections. No guardrail resource is declared in Git; the
-dashboard creates one on request. Detailed record:
+OpenShift AI 3.5 sections. Both `NemoGuardrails` resources (playground and
+qualification candidate) are declared in Git; see Repo decisions. Detailed record:
 `gitops/stages/040-governed-models-as-a-service/040-maas-platform/README.md`.
 
 ## When to use

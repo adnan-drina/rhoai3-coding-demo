@@ -70,8 +70,8 @@ OpenShift AI 3.5 sections. Detailed record:
 
 - Changing the taint key means changing the `ClusterPolicy` tolerations, both
   GPU ResourceFlavors and the generator together.
-- KMM is not a prerequisite; it only appears in the verification list of
-  [Enable accelerators][accel-install].
+- KMM is not a prerequisite; it only appears in the verification lists of
+  [Enable accelerators][accel] and [Enable NVIDIA GPUs][nvidia].
 - A 100 GB root disk hit `DiskPressure` pulling a ~36 GB model image; keep 200 GB.
 - AWS capacity: `docs/TROUBLESHOOTING.md#gpu-machine-stays-provisioning-or-fails-capacity-or-spot-policy`;
   no nodes: `docs/TROUBLESHOOTING.md#gpu-nodes-do-not-appear`.

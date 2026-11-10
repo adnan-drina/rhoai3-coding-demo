@@ -80,8 +80,10 @@ its old name. Detailed record:
 - Playground answer or tool failures:
   `docs/TROUBLESHOOTING.md#gen-ai-playground-gets-no-answer-from-external-models`,
   `docs/TROUBLESHOOTING.md#gen-ai-playground-mcp-tools-fail-or-return-no-tools`.
-- The OGX book pages read state no support level for the OGX APIs; check API
-  stability with `rhoai-api-tiers` before promising it.
+- OGX integration is Technology Preview in 3.5 ([Overview][overview]), and each
+  API and provider has its own level, Developer Preview to GA, which differ
+  between the two tables ([OGX APIs][apis], [Provider support][providers]);
+  quote the level before promising an API, and the CRD tier with `rhoai-api-tiers`.
 
 ## Official documentation (OpenShift AI 3.5)
 

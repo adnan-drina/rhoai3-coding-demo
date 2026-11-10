@@ -56,6 +56,7 @@ OpenShift Pipelines 1.24 release notes.
 | Topic | Section |
 |---|---|
 | Versions and OpenShift support | [Compatibility and support matrix][matrix] |
+| 1.24.2 | [Release notes book][rnbook] (first section: Cache digest verification and fixed issues; no breaking changes listed) |
 | 1.24.1 | [Release notes 1.24.1][r1241], [Breaking changes][r1241-break] |
 | 1.24.0 | [Release notes 1.24.0][r1240], [New features][new], [Deprecated][deprecated], [Removed][removed] |
 
@@ -63,6 +64,7 @@ OpenShift Pipelines 1.24 release notes.
 
 `ocp-pipelines-install-config`, `ocp-pipelines-tekton-hub`, `ocp-pipelines-as-code`.
 
+[rnbook]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index
 [matrix]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#compatibility-support-matrix_op-release-notes-1-24
 [r1241]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#op-release-notes-1-24-1_op-release-notes-1-24
 [r1241-break]: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.24/html-single/release_notes/index#breaking-changes-1-24-1_op-release-notes-1-24
