@@ -42,7 +42,7 @@ fi
 oc get configs.imageregistry.operator.openshift.io cluster -o json | jq -e '.spec.storage | type == "object" and length > 0 and (has("emptyDir") | not)' >/dev/null ||
   { log_error "Internal registry must declare persistent storage; emptyDir or absent storage is refused."; exit 1; }
 oc get storageclass gp3-csi -o json | jq -e '.metadata.annotations["storageclass.kubernetes.io/is-default-class"] == "true"' >/dev/null ||
-  { log_error "gp3-csi must be the default: MTA 8.3 uses default-class RWO claims; rwo_storage_class is not a supported parameter."; exit 1; }
+  { log_error "gp3-csi must be the default: the repo leaves MTA rwo_storage_class unset, so Hub RWO claims use the default class (a non-default class left them Pending)."; exit 1; }
 oc get storageclass openshift-storage.noobaa.io >/dev/null
 oc get route s3 -n openshift-storage >/dev/null
 oc get keycloak keycloak -n keycloak -o json | jq -e 'any(.status.conditions[]?; .type == "Ready" and .status == "True")' >/dev/null ||
