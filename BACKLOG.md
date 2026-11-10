@@ -478,6 +478,7 @@ Stage 040 validation must keep asserting that `maas-api` uses `registry.redhat.i
 - [ ] Kuadrant recreates `kuadrant-limitador-monitor` about every 10 minutes, which gaps the Usage dashboard.
 - [ ] ExternalModel routes export no `model` label and no token-usage counters.
 - [ ] Argo CD has twice applied a new SHA while rendering stale manifests. The recovery recipe is in troubleshooting; the cause is not identified.
+- [ ] The MaaS-owned CronJob `maas-api-key-cleanup` (`redhat-ai-gateway-infra`, created by `Config/default`) leaves one `DeadlineExceeded` Job after most lab starts: its 60-second `activeDeadlineSeconds` runs out while the pod is still starting. Later runs succeed. It is operator-managed, so it is not changed in Git (2026-11-10).
 
 ## Planned
 

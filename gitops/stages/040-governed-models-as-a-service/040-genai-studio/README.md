@@ -49,7 +49,7 @@ Application holds them because they all change with the playground experience an
 |---|---|---|---|
 | PersistentVolumeClaim | `genai-playground-state` | `demo-sandbox` | 1 Gi RWO volume for the playground's SQLite state (`kvstore.db`, `sql_store.db`, `inference_store.db`, `files/`). Wave 8, `Prune=false,Delete=false` |
 | ConfigMap | `playground-state-prune` | `demo-sandbox` | `prune.py`, run before the playground starts: removes retained records of dashboard-configured models from `kvstore.db`, keeping one backup at `kvstore.db.bak-prune`. Wave 18 |
-| ServiceAccount, Role, RoleBinding, CronJob | `playground-state-attacher` | `demo-sandbox` | Every 2 minutes, mounts `genai-playground-state` at `/opt/app-root/src/.llama/distributions/rh` in the dashboard-created playground through the `OGXServer` fields `spec.workload.overrides.volumes`/`volumeMounts`, and runs `prune.py` first through `overrides.command`, keeping the other overrides. Role: `get`/`list`/`patch` OGXServers, `get` that PVC. Waves 18/20 |
+| ServiceAccount, Role, RoleBinding, CronJob | `playground-state-attacher` | `demo-sandbox` | Every 2 minutes, mounts `genai-playground-state` at `/opt/app-root/src/.llama/distributions/rh` in the dashboard-created playground through the `OGXServer` fields `spec.workload.overrides.volumes`/`volumeMounts`, and runs `prune.py` first through `overrides.command`, keeping the other overrides. One pod per run, a 300-second deadline that covers pod start-up after a lab start, missed runs skipped (`startingDeadlineSeconds: 60`), one failed Job kept. Role: `get`/`list`/`patch` OGXServers, `get` that PVC. Waves 18/20 |
 
 ### Playground guardrails
 

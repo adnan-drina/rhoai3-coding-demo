@@ -119,12 +119,16 @@ metadata:
 spec:
   schedule: "*/2 * * * *"
   concurrencyPolicy: Forbid
+  # A run missed while the lab was stopped is skipped, not caught up; the next tick reconciles.
+  startingDeadlineSeconds: 60
   successfulJobsHistoryLimit: 1
-  failedJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
-      backoffLimit: 1
-      activeDeadlineSeconds: 120
+      # The schedule is the retry: one pod per run.
+      backoffLimit: 0
+      # A run takes seconds; the headroom covers pod start-up while the cluster is still starting after a lab start.
+      activeDeadlineSeconds: 300
       template:
         metadata:
           labels:
