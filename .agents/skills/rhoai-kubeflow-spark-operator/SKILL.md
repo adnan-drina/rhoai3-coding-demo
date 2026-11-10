@@ -52,10 +52,11 @@ Thin skill: Spark on OpenShift AI 3.5. **Not deployed in this demo.**
 
 ## Pitfalls
 
-- Field name: the 3.5 activate chapter uses `kubeflowsparkoperator`, while
-  its workbench chapter and this repo's `datasciencecluster.opendatahub.io/v2`
-  DSC use `sparkoperator`. Unresolved: verify with
-  `oc explain datasciencecluster.spec.components` before use in GitOps.
+- Field name: the served `datasciencecluster.opendatahub.io/v2` CRD has
+  `spec.components.sparkoperator` and no `kubeflowsparkoperator` (`oc explain`,
+  RHOAI 3.5, 2026-11-10). The 3.5 activate chapter and release notes say
+  `kubeflowsparkoperator`: a doc defect. Use `sparkoperator`, as the repo DSC
+  and the guide's workbench chapter do.
 - Support status: the 3.5 release notes list the operator as Developer
   Preview (3.4 EA1, [Developer Preview features][relnotes-dp]); Spark Connect
   from workbenches is Technology Preview ([Spark workloads from workbenches][connect]).
