@@ -89,7 +89,7 @@ endpoint() {  # the dedicated model has its own Gateway listener
     if [[ "$1" == "$MISTRAL" ]]; then echo "$(cat "$STATE/dedicated-url")/v1/chat/completions"
     else echo "$(cat "$STATE/gateway-url")/v1/chat/completions"; fi
 }
-tls=(); [[ "$insecure" == false ]] || tls=(--insecure)
+tls=(--proto '=https'); [[ "$insecure" == false ]] || tls+=(--insecure)
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
