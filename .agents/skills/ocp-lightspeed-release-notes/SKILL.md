@@ -29,8 +29,8 @@ Thin skill: repo facts here, release content in the linked release notes.
 
 | Decision | Where in Git | Official section |
 |---|---|---|
-| No Git pin: the subscription belongs to the provisioner; observed versions are recorded with dates (1.1.4 on 2026-10-05, 1.1.5 on 2026-10-15) | `docs/OPERATIONS.md`, `.agents/references/red-hat-doc-map.yaml` | [Release notes][relnotes] |
-| The documentation set labelled "1.0" is used for the 1.1.x operator: it is the only published set and its notes now run from 1.0 through 1.1.5 and 2.0 (checked 2026-11-10) | `.agents/references/red-hat-doc-map.yaml` | [Version 1.1][v11] |
+| No Git pin: the subscription belongs to the provisioner; observed versions are recorded with dates (1.1.4 on 2026-10-05, 1.1.5 on 2026-10-15, 2.0.0 on 2026-10-27 and 2026-11-10) | `docs/OPERATIONS.md`, `.agents/references/red-hat-doc-map.yaml` | [Release notes][relnotes] |
+| The documentation set labelled "1.0" is used for the 1.1.x and 2.0 operator: it is the only published set and its notes run from 1.0 through 1.1.5 and 2.0 (checked 2026-11-10) | `.agents/references/red-hat-doc-map.yaml` | [Version 1.1][v11] |
 
 ## Procedure
 
@@ -42,7 +42,11 @@ Thin skill: repo facts here, release content in the linked release notes.
 
 ## Pitfalls
 
-- 1.1.5 had no release-notes section on 2026-10-15; the "1.0" set now has sections for 1.1.5 and 2.0 (checked 2026-11-10), reached from [All releases][relnotes]. 2.0 lists a known issue (tool classifier can fail a tool result as malicious; workaround: turn off tool inspection in the OLSConfig); an operator on 2.0 changes what the other Lightspeed skills assume.
+- The "1.0" set has sections for 1.1.5 and 2.0 (checked 2026-11-10), reached
+  from [All releases][relnotes]. 2.0 lists fixes and no breaking changes; its
+  known issue: the tool classifier can fail a large tool result as malicious
+  (workaround: turn off tool inspection in the OLSConfig). The notes say
+  OCP 5.0-specific 2.0 documentation will follow.
 - Each z-stream has its own known-issues list; read the one for the installed
   version, not only the newest.
 
