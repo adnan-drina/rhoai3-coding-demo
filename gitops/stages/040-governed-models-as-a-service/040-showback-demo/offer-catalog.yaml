@@ -227,37 +227,37 @@ spec:
           expr: vector(1000000)
           labels: {subscription: personal-ai-admin, model: qwen3-8-27b}
         - record: showback_subscription_token_limit
-          expr: vector(100000)
+          expr: vector(1000000)
           labels: {subscription: personal-ai-admin, model: gpt-6-luna}
         - record: showback_subscription_token_limit
-          expr: vector(100000)
+          expr: vector(1000000)
           labels: {subscription: personal-ai-admin, model: claude-sonnet-5-5}
         - record: showback_subscription_token_limit
-          expr: vector(100000)
+          expr: vector(1000000)
           labels: {subscription: personal-ai-admin, model: nemotron-3-ultra-550b-a55b}
         - record: showback_subscription_token_limit
           expr: vector(1000000)
           labels: {subscription: personal-ai-developer, model: qwen3-8-27b}
         - record: showback_subscription_token_limit
-          expr: vector(100000)
+          expr: vector(1000000)
           labels: {subscription: personal-ai-developer, model: gpt-6-luna}
         - record: showback_subscription_token_limit
-          expr: vector(100000)
+          expr: vector(1000000)
           labels: {subscription: personal-ai-developer, model: claude-sonnet-5-5}
         - record: showback_subscription_token_limit
-          expr: vector(100000)
+          expr: vector(1000000)
           labels: {subscription: personal-ai-developer, model: nemotron-3-ultra-550b-a55b}
         - record: showback_subscription_token_limit
           expr: vector(1000000)
           labels: {subscription: personal-kube-admin, model: qwen3-8-27b}
         - record: showback_subscription_token_limit
-          expr: vector(100000)
+          expr: vector(1000000)
           labels: {subscription: personal-kube-admin, model: gpt-6-luna}
         - record: showback_subscription_token_limit
-          expr: vector(100000)
+          expr: vector(1000000)
           labels: {subscription: personal-kube-admin, model: claude-sonnet-5-5}
         - record: showback_subscription_token_limit
-          expr: vector(100000)
+          expr: vector(1000000)
           labels: {subscription: personal-kube-admin, model: nemotron-3-ultra-550b-a55b}
         - record: showback_subscription_token_limit
           expr: vector(1000000)
