@@ -228,6 +228,9 @@ spec:
           labels: {subscription: personal-ai-admin, model: qwen3-8-27b}
         - record: showback_subscription_token_limit
           expr: vector(1000000)
+          labels: {subscription: personal-ai-admin, model: mistral-small4-119b}
+        - record: showback_subscription_token_limit
+          expr: vector(1000000)
           labels: {subscription: personal-ai-admin, model: gpt-6-luna}
         - record: showback_subscription_token_limit
           expr: vector(1000000)

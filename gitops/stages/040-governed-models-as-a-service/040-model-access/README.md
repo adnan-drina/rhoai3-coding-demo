@@ -32,7 +32,7 @@ All objects are in namespace `models-as-a-service`.
 |---|---|---|---|---|---|
 | MaaSSubscription + MaaSAuthPolicy | `personal-kube-admin` | users `kube:admin` and `admin` | `qwen3-8-27b`, `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` 1,000,000 each | 160 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `personal-ai-developer` | user `ai-developer` | same as above | 150 | 18 |
-| MaaSSubscription + MaaSAuthPolicy | `personal-ai-admin` | user `ai-admin` | same as above | 170 | 18 |
+| MaaSSubscription + MaaSAuthPolicy | `personal-ai-admin` | user `ai-admin` | same as above, plus Marketing's dedicated `mistral-small4-119b` 1,000,000 so the admin can show it in the playground | 170 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `devspaces-coding-models` | ServiceAccount `wksp-ai-developer/devspace-maas-key-provisioner` | `qwen3-8-27b` 60,000,000 (local model only) | 100 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `playground-sandbox` | ServiceAccount `demo-sandbox/playground-maas-key-provisioner` | `gpt-6-luna` 1,000,000 | 50 | 18 |
 | ServiceAccount, MaaSSubscription + MaaSAuthPolicy | `maas-quota-probe`, `quota-probe` | ServiceAccount `models-as-a-service/maas-quota-probe` | `qwen3-8-27b` 100 per minute | 40 | 18 |

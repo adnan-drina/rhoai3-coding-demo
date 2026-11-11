@@ -40,12 +40,14 @@ if jq -e '
     record 'Team access matrix: shared Qwen, dedicated Mistral, external for Engineering' pass
 else record 'Team access matrix: shared Qwen, dedicated Mistral, external for Engineering' 'Subscriptions or policies differ'; fi
 
-# Mistral is dedicated to Marketing: no subscription or auth policy outside its use cases reaches it.
+# Mistral is dedicated to Marketing: no subscription or auth policy outside its use cases reaches it, except the
+# platform admin's personal one, which shows the model in the playground during the demo.
 if jq -s -e 'add | all(.[] | select(.kind == "MaaSSubscription" or .kind == "MaaSAuthPolicy")
-        | select(any(.spec.modelRefs[]; .name == "mistral-small4-119b")); .metadata.name | startswith("marketing-"))' \
+        | select(any(.spec.modelRefs[]; .name == "mistral-small4-119b"));
+        (.metadata.name | startswith("marketing-")) or .metadata.name == "personal-ai-admin")' \
     "$work/bundle.json" "$work/model-access.json" >/dev/null; then
-    record 'Only the Marketing use cases reach the dedicated Mistral' pass
-else record 'Only the Marketing use cases reach the dedicated Mistral' 'Another subscription or policy grants Mistral'; fi
+    record 'Only the Marketing use cases and the platform admin reach the dedicated Mistral' pass
+else record 'Only the Marketing use cases and the platform admin reach the dedicated Mistral' 'Another subscription or policy grants Mistral'; fi
 
 # The bundle holds team access only; 040-local-models serves and publishes Mistral, on its own Gateway listener only,
 # because a second local model on the shared api listener breaks Qwen routing on RHOAI 3.5.2 (RHOAIENG-93709).

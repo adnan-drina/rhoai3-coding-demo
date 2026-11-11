@@ -186,6 +186,12 @@ spec:
       tokenRateLimits:
         - limit: 1000000
           window: 1h
+    # Demo exception: the platform admin shows Marketing's dedicated Mistral in the playground.
+    - name: mistral-small4-119b
+      namespace: internal-models
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
     - name: gpt-6-luna
       namespace: external-models
       tokenRateLimits:
@@ -229,6 +235,8 @@ spec:
       - ai-admin
   modelRefs:
     - name: qwen3-8-27b
+      namespace: internal-models
+    - name: mistral-small4-119b
       namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
