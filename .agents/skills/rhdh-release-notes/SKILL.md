@@ -19,8 +19,9 @@ description: >
 # Developer Hub release notes
 
 Thin skill: which release-note facts the repo depends on; the notes
-themselves are linked, not copied. Deployed version: `rhdh-operator.v1.10.6`
+themselves are linked, not copied. Deployed version: `rhdh-operator.v1.10.7`
 (`gitops/stages/070-advanced-app-platform/070-rhdh/rhdh-operator/subscription.yaml`).
+The 1.10 release notes had no 1.10.7 section when it was adopted (2026-11-12).
 
 ## When to use
 
