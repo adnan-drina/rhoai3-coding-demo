@@ -238,8 +238,10 @@ spec:
               # timed out; until 2026-11-12 the candidate checked itself. max_tokens 512 matches what Garak asks of the
               # bare model; the candidate serves enable_thinking false by default. The guard model reasons before it
               # answers (the reasoning parser keeps that out of the content the rail reads), so its budget covers the
-              # reasoning; a truncated check returns no yes and the rail would let the message through. The predictor name
-              # comes from the prompts ConfigMap's annotation, so this file is written here.
+              # reasoning. A check cut off by max_tokens returns an empty answer, which the rail counts as a block, so
+              # truncation adds refusals the guard never judged; at 1024 tokens 3.6% of checks were cut off (run 9ct98,
+              # 2026-11-12), hence 4096 within the guard's 32768-token context. The predictor name comes from the
+              # prompts ConfigMap's annotation, so this file is written here.
               CANDIDATE="$(oc get configmap candidate-guardrails-prompts -n "${NS}" -o jsonpath='{.metadata.annotations.demo\.rhoai\.io/guarded-model}' 2>/dev/null || true)"
               CANDIDATE="${CANDIDATE:-qwen3-8-27b-nvfp4}"
               GUARD=gpt-oss-safeguard-20b
@@ -259,7 +261,7 @@ spec:
                   parameters:
                     base_url: https://${GUARD}-predictor.${NS}.svc.cluster.local:8443/v1
                     temperature: 0
-                    max_tokens: 1024
+                    max_tokens: 4096
                 - type: self_check_output
                   engine: openai
                   model: ${GUARD}
@@ -267,7 +269,7 @@ spec:
                   parameters:
                     base_url: https://${GUARD}-predictor.${NS}.svc.cluster.local:8443/v1
                     temperature: 0
-                    max_tokens: 1024
+                    max_tokens: 4096
               rails:
                 input:
                   flows:
