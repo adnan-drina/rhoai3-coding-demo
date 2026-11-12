@@ -46,20 +46,22 @@ PIP_INDEX = ["https://pypi.org/simple"]
 SERVICE_CA_DIR = "/etc/pki/ca-trust/source/anchors"
 SERVICE_CA_CONFIGMAP = "pipeline-tasks-service-ca"
 
-# (step name, skip parameter, collection id or "", garak benchmark id or "", --timeout seconds, through the guardrail),
-# in run order.
+# (step name, skip parameter, collection id or "", garak benchmark id or "", --timeout seconds, through the guardrail,
+# model-trace-proxy port or 0), in run order. A step with a port reaches the candidate through model-trace-proxy,
+# which writes each call with its prompt and answer to MLflow models-onboarding; latency and throughput stay direct so
+# the proxy is never part of what they measure, and the guarded scan is traced by the guardrail.
 EVALUATIONS = [
-    ("latency", "skip_latency", "agentic-coding-latency-v1", "", 3600, False),
-    ("throughput", "skip_throughput", "agentic-coding-throughput-v2", "", 3600, False),
+    ("latency", "skip_latency", "agentic-coding-latency-v1", "", 3600, False, 0),
+    ("throughput", "skip_throughput", "agentic-coding-throughput-v2", "", 3600, False, 0),
     # Capability runs as two collections one after the other: LiveCodeBench needs every sequence slot of the
     # model, so it runs alone; the report combines both into the weighted capability score.
-    ("livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v3", "", 2 * 3600, False),
-    ("python-tasks", "skip_python_tasks", "agentic-coding-python-tasks-v1", "", 3600, False),
+    ("livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v3", "", 2 * 3600, False, 9001),
+    ("python-tasks", "skip_python_tasks", "agentic-coding-python-tasks-v1", "", 3600, False, 9002),
     # Prompt generation and the scan run in the job pod; the scan itself is bounded by INTENTS_TIMEOUT.
-    ("risk-assessment", "skip_risk_assessment", "", "intents", 4 * 3600, False),
+    ("risk-assessment", "skip_risk_assessment", "", "intents", 4 * 3600, False, 9003),
     # The same scan through the candidate's NeMo Guardrails (run parameter guardrails): this result is the risk gate,
     # the bare model's is reported beside it. Every attack also waits for the guardrail's two self-checks.
-    ("risk-assessment-guarded", "skip_risk_assessment", "", "intents", 4 * 3600, True),
+    ("risk-assessment-guarded", "skip_risk_assessment", "", "intents", 4 * 3600, True, 0),
 ]
 GUARDED = " (guarded)"
 TENANT_SECRET = "garak-kfp-model-auth"
@@ -182,6 +184,7 @@ def evaluate(
     skip: bool,
     guarded: bool,
     guardrails: str,
+    trace_port: int,
     previous: dsl.Input[dsl.Dataset],
     results: dsl.Output[dsl.Dataset],
 ):
@@ -232,6 +235,22 @@ def evaluate(
     if guardrails:
         # The guardrail's internal Service (NemoGuardrails, port 443 behind kube-rbac-proxy, service CA certificate).
         model_url = f"https://{guardrails}.{tenant}.svc:443/v1"
+    trace_url = ""
+    if trace_port:
+        # model-trace-proxy: register this run on the step's port, then send the job there. Tracing never fails a
+        # qualification: when the proxy does not answer, the job calls the candidate directly.
+        trace_url = f"https://model-trace-proxy.{tenant}.svc:{trace_port}"
+        try:
+            req = urllib.request.Request(f"{trace_url}/_trace/context", method="PUT", data=json.dumps(
+                {"run_id": run_id, "run_name": run_name, "model": model_name}).encode(),
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, context=ssl.create_default_context(
+                    cafile="/etc/pki/ca-trust/source/anchors/service-ca.crt"), timeout=15) as r:
+                print(f"model-trace-proxy: {r.read().decode()}")
+            model_url = f"{trace_url}/v1"
+        except Exception as exc:
+            print(f"model-trace-proxy not reachable ({exc}); the job calls the candidate directly, without MLflow traces")
+            trace_url = ""
     client = httpx.Client(base_url=evalhub_url, timeout=60, verify="/etc/pki/ca-trust/source/anchors/service-ca.crt",
                           headers={"Authorization": f"Bearer {token}", "X-Tenant": tenant})
     work = tempfile.mkdtemp()
@@ -287,6 +306,14 @@ def evaluate(
     # the documented jobs endpoint.
     job = client.get(f"/api/v1/evaluations/jobs/{job_id}").raise_for_status().json()
     state = (job.get("status") or {}).get("state")
+    if trace_url:
+        try:
+            req = urllib.request.Request(f"{trace_url}/_trace/context", method="DELETE")
+            with urllib.request.urlopen(req, context=ssl.create_default_context(
+                    cafile="/etc/pki/ca-trust/source/anchors/service-ca.crt"), timeout=15) as r:
+                r.read()
+        except Exception as exc:
+            print(f"model-trace-proxy context not cleared: {exc}")
     for b in (job.get("results") or {}).get("benchmarks") or []:
         t = b.get("test") or {}
         print(f"  {b.get('id')}: {t.get('primary_score_metric')} {t.get('primary_score')} "
@@ -604,7 +631,7 @@ def qualification(
         guard_model=GUARD_MODEL, skip_risk_assessment=skip_risk_assessment))
     ledger = validated.outputs["candidate"]
     # One straight chain: each step extends the results ledger of the one before it.
-    for label, skip_name, collection_id, benchmark_id, timeout, guarded in EVALUATIONS:
+    for label, skip_name, collection_id, benchmark_id, timeout, guarded, trace_port in EVALUATIONS:
         step = _small(_named(evaluate, label)(
             model_name=model_name, collection_id=collection_id, benchmark_id=benchmark_id,
             auth_secret=TENANT_SECRET, experiment=EXPERIMENT, evalhub_url=EVALHUB_URL, queue=QUEUE,
@@ -613,13 +640,13 @@ def qualification(
             sdg_num_samples=SDG_NUM_SAMPLES,
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
             timeout_seconds=timeout, skip=skips[skip_name], previous=ledger,
-            guarded=guarded, guardrails=guardrails,
+            guarded=guarded, guardrails=guardrails, trace_port=trace_port,
         ))
         ledger = step.outputs["results"]
     judged = _small(_named(verdict, "verdict")(
         model_version_id=model_version_id, evalhub_url=EVALHUB_URL, registry_url=REGISTRY_URL,
         capability_threshold=CAPABILITY_THRESHOLD, unanswered_budget=UNANSWERED_BUDGET, mlflow_url=MLFLOW_URL,
-        evaluations=[(c or f"garak/{b}") + (GUARDED if g else "") for _, _, c, b, _, g in EVALUATIONS],
+        evaluations=[(c or f"garak/{b}") + (GUARDED if g else "") for _, _, c, b, _, g, _ in EVALUATIONS],
         run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER, results=ledger,
     ))
     _small(_named(report, "report")(

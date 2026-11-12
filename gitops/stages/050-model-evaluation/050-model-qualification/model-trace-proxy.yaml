@@ -1,0 +1,598 @@
+# Model trace proxy: the evaluation steps that call the candidate directly (LiveCodeBench, Python tasks, the bare risk
+# assessment) reach it through this proxy, which passes every call on unchanged and writes it to the MLflow experiment
+# models-onboarding as a trace with its prompt and answer, the way the Stage 040 showback load generator writes the
+# MaaS traces. Nothing on the platform records them otherwise: vLLM 0.24 puts timing and token counts on its
+# llm_request span but never the messages, EvalHub logs only aggregate metrics to MLflow, and this MLflow distribution
+# has its AI Gateway off. Not an RHOAI procedure; upstream MLflow OTLP ingest, as guardrail-trace-collector.
+# Latency and throughput stay direct, so the proxy never sits in what they measure, and the guarded scan's traces come
+# from the guardrail. One HTTPS port per step, because the EvalHub job sidecar keeps only the scheme and host of a
+# job's model URL; the pipeline step registers its run on that port before it submits the job.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: model-trace-proxy
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: model-trace-proxy
+    app.kubernetes.io/component: model-tracing
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+---
+# Trace ingest into models-onboarding only ("Working with MLflow" 3.5, 2.3, resource-name granularity).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: model-trace-proxy-mlflow-traces
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: model-trace-proxy
+    app.kubernetes.io/component: model-tracing
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [mlflow.kubeflow.org]
+    resources: [experiments]
+    resourceNames: [models-onboarding]
+    verbs: [get, list, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: model-trace-proxy-mlflow-traces
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: model-trace-proxy
+    app.kubernetes.io/component: model-tracing
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: model-trace-proxy-mlflow-traces
+subjects:
+  - kind: ServiceAccount
+    name: model-trace-proxy
+    namespace: evaluated-models
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-trace-proxy
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: model-trace-proxy
+    app.kubernetes.io/component: model-tracing
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+data:
+  proxy.py: |
+    """Model trace proxy: passes evaluation calls to the candidate unchanged and writes each one to MLflow as a trace.
+
+    One HTTPS port per evaluation step (EVALUATION_PORTS); the EvalHub job sidecar keeps only the scheme and host of the
+    job's model URL, so the port is what tells the steps apart. The pipeline step registers its run on that port
+    (PUT /_trace/context) before it submits the job and clears it afterwards (DELETE). Every other request goes to the
+    candidate's predictor Service unchanged, byte for byte, streamed when the model streams; the proxy adds only a
+    traceparent, so vLLM's llm_request span joins the same trace id in Tempo. After the answer is complete, the call is
+    queued for MLflow as OTLP/HTTP JSON (a root span with the prompt and the answer and a chat span with the gen_ai
+    attributes, the layout of the Stage 040 showback load generator). Export fails open: a full queue or an MLflow error
+    drops the trace and never touches the call.
+    """
+    import http.client
+    import http.server
+    import json
+    import os
+    import queue
+    import re
+    import secrets
+    import socketserver
+    import ssl
+    import sys
+    import threading
+    import time
+    import urllib.request
+
+    NAMESPACE = os.environ.get("NAMESPACE", "evaluated-models")
+    PORTS = {int(p): name for p, name in json.loads(os.environ["EVALUATION_PORTS"]).items()}
+    UPSTREAM_PORT = int(os.environ.get("UPSTREAM_PORT", "8443"))
+    UPSTREAM_HOST = os.environ.get("UPSTREAM_HOST", "{model}-predictor.{namespace}.svc.cluster.local")
+    MLFLOW_URL = os.environ.get("MLFLOW_URL", "https://mlflow.redhat-ods-applications.svc:8443").rstrip("/")
+    EXPERIMENT_ID = os.environ.get("MLFLOW_EXPERIMENT_ID", "")
+    SA = os.environ.get("SA_DIR", "/var/run/secrets/kubernetes.io/serviceaccount")
+    TLS_DIR = os.environ.get("TLS_DIR", "/etc/tls/private")
+    MAX_TEXT = int(os.environ.get("MAX_TEXT", "65536"))  # per message attribute; longer text is cut with a marker
+    MAX_CAPTURE = 8 * 1024 * 1024  # response bytes kept for the trace; the client always gets everything
+    UPSTREAM_TIMEOUT = 3600
+    HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "trailers",
+           "transfer-encoding", "upgrade", "host", "content-length"}
+    MODEL_NAME = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
+
+    contexts = {}  # port -> {"run_id", "run_name", "model"} set by the pipeline step
+    contexts_lock = threading.Lock()
+    traces = queue.Queue(maxsize=5000)
+    stats = {"calls": 0, "exported": 0, "dropped": 0, "failed": 0}
+    upstream_ctx = ssl.create_default_context(cafile=f"{SA}/service-ca.crt")
+    local = threading.local()
+
+
+    def log(msg):
+        print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), msg, flush=True)
+
+
+    def clip(text):
+        text = "" if text is None else str(text)
+        return text if len(text) <= MAX_TEXT else text[:MAX_TEXT] + f"... [cut, {len(text)} characters]"
+
+
+    def as_text(content):
+        """Text of an OpenAI content value: a string or a list of text parts."""
+        if isinstance(content, list):
+            return "".join(p.get("text") or "" for p in content if isinstance(p, dict))
+        return "" if content is None else str(content)
+
+
+    def request_messages(req):
+        """Chat Completions messages, or the Responses API instructions and input as messages."""
+        if isinstance(req.get("messages"), list):
+            return req["messages"]
+        if isinstance(req.get("prompt"), (str, list)):  # legacy completions
+            return [{"role": "user", "content": req["prompt"] if isinstance(req["prompt"], str) else req["prompt"][0]}]
+        msgs = []
+        if req.get("instructions"):
+            msgs.append({"role": "system", "content": req["instructions"]})
+        inp = req.get("input")
+        if isinstance(inp, str):
+            msgs.append({"role": "user", "content": inp})
+        elif isinstance(inp, list):
+            for item in inp:
+                if isinstance(item, dict) and item.get("role"):
+                    msgs.append({"role": item["role"], "content": as_text(item.get("content"))})
+        return msgs
+
+
+    def parse_answer(req, ctype, raw):
+        """(output messages, finish reasons, input tokens, output tokens) from a JSON or event-stream answer."""
+        text = raw.decode("utf-8", "replace")
+        if "text/event-stream" in ctype:
+            chats, reasons, usage, final = {}, {}, {}, None
+            for line in text.splitlines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    continue
+                try:
+                    ev = json.loads(data)
+                except ValueError:
+                    continue
+                if ev.get("type") in ("response.completed", "response.incomplete", "response.failed"):
+                    final = ev.get("response") or {}
+                for ch in ev.get("choices") or []:
+                    i = ch.get("index", 0)
+                    d = ch.get("delta") or {}
+                    m = chats.setdefault(i, {"role": "assistant", "content": "", "reasoning": ""})
+                    m["content"] += d.get("content") or ch.get("text") or ""
+                    m["reasoning"] += d.get("reasoning_content") or d.get("reasoning") or ""
+                    if ch.get("finish_reason"):
+                        reasons[i] = ch["finish_reason"]
+                usage = ev.get("usage") or usage
+            if final is not None:
+                return parse_answer(req, "application/json", json.dumps(final).encode())
+            out = []
+            for i in sorted(chats):
+                m = {"role": "assistant", "content": chats[i]["content"]}
+                if chats[i]["reasoning"]:
+                    m["reasoning_content"] = chats[i]["reasoning"]
+                out.append(m)
+            return out, [reasons[i] for i in sorted(reasons)], usage.get("prompt_tokens"), usage.get("completion_tokens")
+        try:
+            body = json.loads(text)
+        except ValueError:
+            return [{"role": "assistant", "content": text}], [], None, None
+        usage = body.get("usage") or {}
+        if isinstance(body.get("choices"), list):
+            out, reasons = [], []
+            for ch in body["choices"]:
+                out.append(ch.get("message") or {"role": "assistant", "content": ch.get("text") or ""})
+                if ch.get("finish_reason"):
+                    reasons.append(ch["finish_reason"])
+            return out, reasons, usage.get("prompt_tokens"), usage.get("completion_tokens")
+        if isinstance(body.get("output"), list):  # Responses API
+            content, reasoning = "", ""
+            for item in body["output"]:
+                if item.get("type") == "message":
+                    content += as_text(item.get("content"))
+                elif item.get("type") == "reasoning":
+                    reasoning += as_text(item.get("content")) or as_text(item.get("summary"))
+            m = {"role": "assistant", "content": content}
+            if reasoning:
+                m["reasoning_content"] = reasoning
+            return [m], [body.get("status")] if body.get("status") else [], usage.get("input_tokens"), usage.get(
+                "output_tokens")
+        if body.get("error"):
+            return [{"role": "assistant", "content": json.dumps(body["error"])}], [], None, None
+        return [], [], None, None
+
+
+    def s(k, v):
+        return {"key": k, "value": {"stringValue": v if isinstance(v, str) else json.dumps(v)}}
+
+
+    def i(k, v):
+        return {"key": k, "value": {"intValue": str(int(v))}}
+
+
+    def build_spans(evaluation, ctx, model, path, trace_id, chat_id, t0, t1, req, status, ctype, raw, error):
+        """The two spans of one call: '<evaluation> request' (CHAIN) and 'chat <model>' (LLM)."""
+        root_id = secrets.token_hex(8)
+        ok = error is None and 200 <= status < 300
+        st = {"code": 1} if ok else {"code": 2, "message": error or f"HTTP {status}"}
+        msgs = request_messages(req)
+        try:
+            out, reasons, tin, tout = parse_answer(req, ctype, raw) if raw else ([], [], None, None)
+        except Exception as exc:  # never lose the call for a parse problem
+            out, reasons, tin, tout = [{"role": "assistant", "content": raw[:MAX_TEXT].decode("utf-8", "replace")}], [], None, None
+            log(f"answer not parsed ({exc})")
+        for m in msgs + out:
+            if "content" in m:
+                m["content"] = clip(as_text(m["content"]) if isinstance(m["content"], list) else m["content"])
+            if m.get("reasoning_content"):
+                m["reasoning_content"] = clip(m["reasoning_content"])
+        last_user = next((as_text(m.get("content")) for m in reversed(msgs) if m.get("role") == "user"), "")
+        answer = out[0].get("content") if out else ""
+        run_name = ctx.get("run_name") or "unregistered"
+        root = [s("mlflow.spanType", "\"CHAIN\""), s("user.id", f"qualification-{evaluation}"),
+                s("mlflow.traceTag.source", "model-trace-proxy"),
+                s("mlflow.traceTag.evaluation", evaluation), s("mlflow.traceTag.model", model),
+                s("mlflow.traceTag.run_name", run_name), s("mlflow.traceTag.api", path),
+                s("mlflow.traceTag.finish_reason", reasons[0] if reasons else ("error" if not ok else "none")),
+                s("mlflow.spanInputs", {"prompt": clip(last_user)}), s("mlflow.spanOutputs", {"response": answer or ""})]
+        if ctx.get("run_id"):
+            root.append(s("mlflow.traceTag.run", ctx["run_id"]))
+        if ctx.get("run_name"):  # one MLflow session per qualification run (the Sessions tab)
+            root.append(s("session.id", ctx["run_name"]))
+        chat = [s("mlflow.spanType", "\"LLM\""), s("gen_ai.operation.name", "chat"), s("gen_ai.request.model", model),
+                s("gen_ai.provider.name", "vllm"), s("gen_ai.input.messages", msgs), s("gen_ai.output.messages", out),
+                i("http.response.status_code", status), s("url.path", path)]
+        for key, attr in (("temperature", "gen_ai.request.temperature"), ("top_p", "gen_ai.request.top_p")):
+            if isinstance(req.get(key), (int, float)):
+                chat.append({"key": attr, "value": {"doubleValue": float(req[key])}})
+        mt = req.get("max_tokens") or req.get("max_completion_tokens") or req.get("max_output_tokens")
+        if isinstance(mt, int):
+            chat.append(i("gen_ai.request.max_tokens", mt))
+        if reasons:
+            chat.append({"key": "gen_ai.response.finish_reasons",
+                         "value": {"arrayValue": {"values": [{"stringValue": str(r)} for r in reasons]}}})
+        if tin is not None:
+            chat.append(i("gen_ai.usage.input_tokens", tin))
+        if tout is not None:
+            chat.append(i("gen_ai.usage.output_tokens", tout))
+        if req.get("tools"):
+            chat.append(s("gen_ai.tool.definitions", req["tools"]))
+        return [{"traceId": trace_id, "spanId": root_id, "name": f"{evaluation} request", "kind": 1,
+                 "startTimeUnixNano": str(t0), "endTimeUnixNano": str(t1), "status": st, "attributes": root},
+                {"traceId": trace_id, "spanId": chat_id, "parentSpanId": root_id, "name": f"chat {model}", "kind": 3,
+                 "startTimeUnixNano": str(t0), "endTimeUnixNano": str(t1), "status": st, "attributes": chat}]
+
+
+    def exporter():
+        """Posts queued traces to MLflow in batches; drops a batch MLflow rejects."""
+        while True:
+            batch = [traces.get()]
+            deadline = time.time() + 2
+            while len(batch) < 20 and time.time() < deadline:
+                try:
+                    batch.append(traces.get(timeout=max(0.05, deadline - time.time())))
+                except queue.Empty:
+                    break
+            body = json.dumps({"resourceSpans": [{"resource": {"attributes": [s("service.name", "model-trace-proxy")]},
+                                                  "scopeSpans": [{"scope": {"name": "model-trace-proxy"},
+                                                                  "spans": [sp for t in batch for sp in t]}]}]}).encode()
+            try:
+                token = open(f"{SA}/token").read().strip()
+                r = urllib.request.Request(f"{MLFLOW_URL}/v1/traces", data=body, method="POST", headers={
+                    "Authorization": f"Bearer {token}", "Content-Type": "application/json",
+                    "X-MLFLOW-WORKSPACE": NAMESPACE, "x-mlflow-experiment-id": EXPERIMENT_ID})
+                with urllib.request.urlopen(r, context=upstream_ctx, timeout=60) as resp:
+                    resp.read()
+                stats["exported"] += len(batch)
+            except Exception as exc:
+                stats["failed"] += len(batch)
+                log(f"MLflow export of {len(batch)} traces failed: {exc}")
+
+
+    def upstream(host):
+        """A kept-alive connection to the predictor per handler thread."""
+        pool = getattr(local, "pool", None)
+        if pool is None:
+            pool = local.pool = {}
+        conn = pool.get(host)
+        if conn is None:
+            conn = pool[host] = http.client.HTTPSConnection(host, UPSTREAM_PORT, context=upstream_ctx,
+                                                            timeout=UPSTREAM_TIMEOUT)
+        return conn
+
+
+    def drop_upstream(host):
+        conn = getattr(local, "pool", {}).pop(host, None)
+        if conn is not None:
+            conn.close()
+
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+        server_version = "model-trace-proxy"
+        timeout = 900  # idle keep-alive connection from the job sidecar
+
+        def setup(self):
+            self.request.settimeout(30)
+            self.request.do_handshake()
+            super().setup()
+
+        def log_message(self, *args):
+            pass
+
+        def port(self):
+            return self.server.server_address[1]
+
+        def read_body(self):
+            if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
+                data = b""
+                while True:
+                    size = int(self.rfile.readline().split(b";")[0].strip() or b"0", 16)
+                    if size == 0:
+                        while self.rfile.readline() not in (b"\r\n", b"\n", b""):
+                            pass
+                        return data
+                    data += self.rfile.read(size)
+                    self.rfile.readline()
+            return self.rfile.read(int(self.headers.get("Content-Length") or 0))
+
+        def reply(self, status, obj):
+            data = json.dumps(obj).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def control(self, body):
+            port = self.port()
+            if self.command == "GET":
+                return self.reply(200, {"evaluation": PORTS[port], "context": contexts.get(port), **stats})
+            if self.command == "DELETE":
+                with contexts_lock:
+                    contexts.pop(port, None)
+                log(f"{PORTS[port]}: context cleared")
+                return self.reply(200, {"cleared": True})
+            try:
+                ctx = json.loads(body or b"{}")
+            except ValueError:
+                return self.reply(400, {"error": "body is not JSON"})
+            if not MODEL_NAME.match(str(ctx.get("model", ""))):
+                return self.reply(400, {"error": "model must be an InferenceService name"})
+            ctx = {k: str(ctx[k]) for k in ("run_id", "run_name", "model") if ctx.get(k)}
+            with contexts_lock:
+                contexts[port] = ctx
+            log(f"{PORTS[port]}: context {ctx}")
+            return self.reply(200, {"evaluation": PORTS[port], "context": ctx})
+
+        def handle_one(self):
+            body = self.read_body()
+            if self.path.split("?")[0].startswith("/_trace/"):
+                return self.control(body)
+            port = self.port()
+            evaluation = PORTS[port]
+            ctx = contexts.get(port) or {}
+            try:
+                req = json.loads(body) if body else {}
+                if not isinstance(req, dict):
+                    req = {}
+            except ValueError:
+                req = {}
+            model = ctx.get("model") or str(req.get("model", ""))
+            if not MODEL_NAME.match(model):
+                return self.reply(503, {"error": f"no candidate registered on the {evaluation} port"})
+            host = UPSTREAM_HOST.format(model=model, namespace=NAMESPACE)
+            trace_id, chat_id = secrets.token_hex(16), secrets.token_hex(8)
+            headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP and k.lower() != "traceparent"}
+            headers["Host"] = f"{host}:{UPSTREAM_PORT}"
+            headers["traceparent"] = f"00-{trace_id}-{chat_id}-01"
+            if body or self.command in ("POST", "PUT", "PATCH"):
+                headers["Content-Length"] = str(len(body))
+            t0 = time.time_ns()
+            captured, status, ctype, error = bytearray(), 502, "", None
+            try:
+                for attempt in (1, 2):  # a kept-alive connection the predictor closed fails before any answer
+                    conn = upstream(host)
+                    try:
+                        conn.request(self.command, self.path, body=body or None, headers=headers)
+                        resp = conn.getresponse()
+                        break
+                    except (http.client.HTTPException, ConnectionError, ssl.SSLError, OSError):
+                        drop_upstream(host)
+                        if attempt == 2:
+                            raise
+                status, ctype = resp.status, resp.getheader("Content-Type", "")
+                self.send_response(resp.status, resp.reason)
+                length = resp.getheader("Content-Length")
+                for k, v in resp.getheaders():
+                    if k.lower() not in HOP:
+                        self.send_header(k, v)
+                if length is not None:
+                    self.send_header("Content-Length", length)
+                else:
+                    self.send_header("Transfer-Encoding", "chunked")
+                self.end_headers()
+                while True:
+                    chunk = resp.read1(65536) if length is None else resp.read(65536)
+                    if not chunk:
+                        break
+                    if len(captured) < MAX_CAPTURE:
+                        captured += chunk
+                    if length is None:
+                        self.wfile.write(b"%x\r\n%s\r\n" % (len(chunk), chunk))
+                    else:
+                        self.wfile.write(chunk)
+                    self.wfile.flush()
+                if length is None:
+                    self.wfile.write(b"0\r\n\r\n")
+                    self.wfile.flush()
+                if resp.getheader("Connection", "").lower() == "close":
+                    drop_upstream(host)
+            except (BrokenPipeError, ConnectionResetError) as exc:
+                error = f"client went away: {exc}"
+                drop_upstream(host)
+                self.close_connection = True
+            except Exception as exc:
+                error = f"upstream: {exc}"
+                drop_upstream(host)
+                if status == 502 and not captured:
+                    try:
+                        self.reply(502, {"error": f"model-trace-proxy could not reach {host}: {exc}"})
+                    except OSError:
+                        self.close_connection = True
+                else:
+                    self.close_connection = True
+            t1 = time.time_ns()
+            stats["calls"] += 1
+            if self.command != "POST":
+                return
+            try:
+                traces.put_nowait(build_spans(evaluation, ctx, model, self.path.split("?")[0], trace_id, chat_id, t0, t1,
+                                              req, status, ctype, bytes(captured), error))
+            except queue.Full:
+                stats["dropped"] += 1
+            except Exception as exc:
+                stats["dropped"] += 1
+                log(f"trace not built: {exc}")
+
+        do_GET = do_POST = do_PUT = do_DELETE = do_PATCH = handle_one
+
+
+    class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+        allow_reuse_address = True
+        request_queue_size = 128
+
+
+    def main():
+        tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        tls.load_cert_chain(f"{TLS_DIR}/tls.crt", f"{TLS_DIR}/tls.key")
+        threading.Thread(target=exporter, daemon=True).start()
+        for port, name in PORTS.items():
+            srv = Server(("0.0.0.0", port), Handler)
+            # The handshake runs in the handler thread on the first read, so a slow client never blocks accept().
+            srv.socket = tls.wrap_socket(srv.socket, server_side=True, do_handshake_on_connect=False)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            log(f"{name}: listening on {port}")
+        log(f"MLflow {MLFLOW_URL} workspace {NAMESPACE} experiment {EXPERIMENT_ID or '(none)'}")
+        while True:
+            time.sleep(300)
+            log(f"stats {stats} queued {traces.qsize()}")
+
+
+    if __name__ == "__main__":
+        sys.exit(main())
+---
+# The service CA signs the proxy's certificate; the job sidecar already trusts it (ca_cert of garak-kfp-model-auth).
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-trace-proxy
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: model-trace-proxy
+    app.kubernetes.io/component: model-tracing
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+    service.beta.openshift.io/serving-cert-secret-name: model-trace-proxy-tls
+spec:
+  selector:
+    app.kubernetes.io/name: model-trace-proxy
+  ports:
+    - name: livecodebench
+      port: 9001
+      targetPort: 9001
+    - name: python-tasks
+      port: 9002
+      targetPort: 9002
+    - name: risk-assessment
+      port: 9003
+      targetPort: 9003
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-trace-proxy
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: model-trace-proxy
+    app.kubernetes.io/component: model-tracing
+  annotations:
+    # After the provision-evalhub-model-auth hook (wave 13) wrote the experiment id.
+    argocd.argoproj.io/sync-wave: "14"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: model-trace-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: model-trace-proxy
+    spec:
+      serviceAccountName: model-trace-proxy
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: proxy
+          # The RHOAI 3.5 pipeline runtime image the qualification steps run on; the proxy needs only its Python.
+          image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
+          command: [python3, -u, /etc/model-trace-proxy/proxy.py]
+          ports:
+            - {name: livecodebench, containerPort: 9001}
+            - {name: python-tasks, containerPort: 9002}
+            - {name: risk-assessment, containerPort: 9003}
+          env:
+            - name: EVALUATION_PORTS
+              value: '{"9001": "livecodebench", "9002": "python-tasks", "9003": "risk-assessment"}'
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MLFLOW_URL
+              value: https://mlflow.redhat-ods-applications.svc:8443
+            - name: MLFLOW_EXPERIMENT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: qualification-endpoints
+                  key: mlflow_experiment_id
+          readinessProbe:
+            httpGet:
+              path: /_trace/context
+              port: livecodebench
+              scheme: HTTPS
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          volumeMounts:
+            - name: script
+              mountPath: /etc/model-trace-proxy
+              readOnly: true
+            - name: tls
+              mountPath: /etc/tls/private
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: model-trace-proxy
+        - name: tls
+          secret:
+            secretName: model-trace-proxy-tls

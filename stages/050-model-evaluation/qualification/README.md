@@ -70,6 +70,9 @@ gates and records the verdict on the candidate's model registry version (Stage 0
 pipeline"). It runs the risk assessment twice, on the bare model and through the candidate's NeMo Guardrails
 (`candidate-guardrails`); the guarded result is the risk gate. The steps form one chain: `validate`, one step per
 evaluation, `verdict` (gates plus the weighted capability score) and `report` (HTML report and summary metrics).
+From v26, LiveCodeBench, the Python tasks and the bare scan reach the candidate through `model-trace-proxy`, so each
+of their calls is a trace in MLflow `models-onboarding` with its prompt and answer, one session per run; latency
+and throughput stay direct (050-model-qualification README, "Model metrics and traces").
 
 - **Run:** dashboard **Create run** with the latest version, MLflow experiment `models-onboarding`, `model_name` and
   `model_version_id` (OPERATIONS, "Stage 050 model qualification pipeline").

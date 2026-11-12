@@ -94,6 +94,8 @@ Application in deploy order, so its hook runs before the components that need Tr
 | NemoGuardrails | `candidate-guardrails` | `evaluated-models` | Wave 14, `enable-auth`. Loads `candidate-guardrails-config` only (written by the hook; one ConfigMap per configuration, because the 3.5.2 operator mounts every listed ConfigMap at the same path); CA bundle `candidate-guardrails-ca` with `configMapNamespace` set; `CANDIDATE_API_KEY` from `candidate-model-client-token`. The operator creates its Deployment, Service (443) and Route. |
 | Role / RoleBinding | `candidate-guardrails-client` | `evaluated-models` | Wave 12. `get` on services in the project (the operator's proxy check carries no Service name) for `candidate-model-client`, whose token evaluation jobs send through kube-rbac-proxy. |
 | ServiceAccount / OpenTelemetryCollector | `guardrail-trace-collector` | `evaluated-models` | Waves 12 and 14. Receives the guardrail's OTLP spans and forwards them to the platform collector (Tempo) and, reshaped for MLflow, to experiment `models-onboarding`. |
+| ServiceAccount / ConfigMap / Service / Deployment | `model-trace-proxy` (`model-trace-proxy.yaml`) | `evaluated-models` | Waves 12 and 14. HTTPS passthrough to the candidate's predictor for `livecodebench` (port 9001), `python-tasks` (9002) and `risk-assessment` (9003); writes each call with its prompt and answer to experiment `models-onboarding`. Standard-library Python on the RHOAI pipeline runtime image; service-serving certificate `model-trace-proxy-tls`. A changed `proxy.py` needs `oc rollout restart deployment/model-trace-proxy -n evaluated-models`. |
+| Role / RoleBinding | `model-trace-proxy-mlflow-traces` | `evaluated-models` | Wave 12. The same experiment-scoped MLflow rule as the trace collector's, for the proxy's ServiceAccount. |
 | Role / RoleBinding | `guardrail-trace-collector-mlflow-traces` | `evaluated-models` | Wave 12. `get`, `list` and `update` on MLflow `experiments` named `models-onboarding` only ("Working with MLflow" 2.3, resource-name granularity): MLflow checks `update` on the experiment the OTLP `x-mlflow-experiment-id` header names. |
 
 The `provision-evalhub-model-auth` hook also writes `candidate-guardrails-config` (`config.yaml`: the candidate
@@ -144,11 +146,26 @@ only in the guardrail spans, because vLLM spans never carry them. `guardrail-tra
   only (Role `guardrail-trace-collector-mlflow-traces`). Rail and action spans are named after their rail
   (`input rail: self check input`) and action. When the input rail blocks, NeMo 0.24 records no user message for the
   request span, so Request stays empty for blocked attacks; the attack is inside the guard's prompt on the
-  `self_check_input` span. Only the guarded scan goes through the guardrail: the capability steps (latency,
-  throughput, LiveCodeBench, Python tasks) and the bare scan call the candidate directly, so a run's traces appear in
-  `models-onboarding` only from its guarded scan on. Their calls are vLLM spans in Tempo, without messages: vLLM 0.24
-  puts timing, token counts and request parameters on `llm_request`, never the prompt or completion, EvalHub logs
-  only aggregate metrics to MLflow, and this MLflow distribution has the AI Gateway off.
+  `self_check_input` span.
+
+The steps that call the candidate directly reach it through `model-trace-proxy` (`model-trace-proxy.yaml`), because
+nothing on the platform records their messages: vLLM 0.24 puts timing, token counts and request parameters on
+`llm_request` but never the prompt or completion, EvalHub logs only aggregate metrics to MLflow, and this MLflow
+distribution has its AI Gateway off. The proxy does for the evaluation adapters what the Stage 040 showback load
+generator does for its own calls:
+
+- **Passthrough:** every call goes to the candidate's predictor unchanged (Chat Completions and Responses, streamed
+  or not); the proxy adds only a `traceparent`, so vLLM's `llm_request` span carries the same trace id in Tempo.
+- **Trace:** after the answer, one trace per call in `models-onboarding`: root `<step> request` with the prompt and
+  the answer, child `chat <model>` with the messages, token usage and finish reason. Tags `source`
+  (`model-trace-proxy`), `evaluation`, `model`, `run` and `run_name`; user `qualification-<step>`; session = the
+  pipeline run, so the **Sessions** tab lists one session per qualification run. Export fails open.
+- **Steps:** `livecodebench`, `python-tasks` and `risk-assessment` (the bare scan's target calls; the attacker and
+  judge models have their own URLs). `latency` and `throughput` stay direct, so the proxy is never part of what they
+  measure; the guarded scan is traced by the guardrail. The EvalHub job sidecar keeps only the scheme and host of a
+  job's model URL, so each step has its own port, and the step registers its run there (`PUT /_trace/context`)
+  before it submits the job and clears it afterwards. When the proxy does not answer, the step calls the candidate
+  directly and the run goes on without these traces.
 
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
 
@@ -173,7 +190,7 @@ only in the guardrail spans, because vLLM spans never carry them. `guardrail-tra
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | Pipeline | `agentic-coding-model-qualification` | `evaluated-models` | Wave 16 (kustomize patch), `SkipDryRunOnMissingResource`. |
-| PipelineVersion | `agentic-coding-model-qualification-v25` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `risk-assessment` (built-in `garak` `intents`, the Context-aware vulnerability scan, as a single task in the job pod), `risk-assessment-guarded` (the same scan through `candidate-guardrails`; the risk gate; both scans send the target `max_tokens` 512 and suppress Garak's `stop` sequences), `verdict` (judges the run, counts each Garak job's unanswered attempts in its `scan.report.jsonl` from MLflow, and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
+| PipelineVersion | `agentic-coding-model-qualification-v26` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `risk-assessment` (built-in `garak` `intents`, the Context-aware vulnerability scan, as a single task in the job pod; `livecodebench`, `python-tasks` and `risk-assessment` reach the candidate through `model-trace-proxy`), `risk-assessment-guarded` (the same scan through `candidate-guardrails`; the risk gate; both scans send the target `max_tokens` 512 and suppress Garak's `stop` sequences), `verdict` (judges the run, counts each Garak job's unanswered attempts in its `scan.report.jsonl` from MLflow, and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
 
 ### `storage/`
 
@@ -302,6 +319,7 @@ oc get isvc,dspa,pipelineversion -n evaluated-models
 | Model runtime | vLLM NVIDIA GPU ServingRuntime for KServe; token authentication option [4] | Template instance, auth on | Aligned |
 | Model call traces | Instrumented workloads send OTLP to the platform collector `data-science-collector` on 4317 or 4318, which stores traces in Tempo [12] | vLLM `--otlp-traces-endpoint` to Service `data-science-collector-collector:4317`, request spans only (no `--collect-detailed-traces`) | Deviation (justified: 3.5 documents no tracing setting for vLLM on an InferenceService, the flag is upstream vLLM; the guide's host `data-science-collector` has no Service on 3.5.2, the collector's Service is `data-science-collector-collector`) |
 | Guardrail traces | NeMo Guardrails `tracing` block (`span_format: opentelemetry`, adapter `OpenTelemetry`) plus `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME`, `OTEL_METRICS_EXPORTER=none` on the CR, to an OTLP backend; content capture off in production; sampling in the collector [13] | Same block and variables, to `guardrail-trace-collector`, which forwards every span unchanged to the platform collector and Tempo; content capture on; no sampling | Deviation (justified: content capture on because the scans send synthetic attacks and the project is admin-only; every call kept because a qualification run is bounded; `OTEL_LOGS_EXPORTER=none` and `OTEL_PYTHON_EXCLUDED_URLS` added, marked in the CR) |
+| Evaluation call traces in MLflow | No 3.5 procedure: vLLM spans carry no messages [12], EvalHub logs aggregate metrics [1], the MLflow AI Gateway is not in this distribution | `model-trace-proxy` passes the calls of three steps on and posts each to MLflow's OTLP endpoint, like the Stage 040 load generator | Deviation (justified: the only way to see what the candidate was asked and answered per benchmark item on 3.5; custom passthrough, latency and throughput kept direct) |
 | Guardrail traces in MLflow | 3.5 documents the experiment Traces tab [14] but no OTLP ingest procedure; OTLP trace ingestion appears in 3.6 Early Access enablement material [15] | `guardrail-trace-collector` filters, reshapes and sends the guardrail's spans to MLflow's OTLP endpoint | Deviation (justified: the only way to show guarded calls beside the qualification runs on 3.5; upstream MLflow ingest and collector transform; blocked attacks show no Request) |
 | MLflow trace access | Workloads get MLflow access through Roles on `mlflow.kubeflow.org` pseudo-resources; `resourceName` restricts an agent to sending traces to one experiment (`get`, `list`, `update` on `experiments`) [14] | Role `guardrail-trace-collector-mlflow-traces` with exactly that rule for `models-onboarding` | Aligned |
 | Models dashboard | Operator-generated Models dashboards read `kserve_vllm:*` [12] | Extra ServiceMonitor renames `vllm:*` to `kserve_vllm:*` for InferenceServices; `validate.sh` fails on a second source | Deviation (justified: on 3.5.2 only the llm-d PodMonitor adds the prefix; BACKLOG) |

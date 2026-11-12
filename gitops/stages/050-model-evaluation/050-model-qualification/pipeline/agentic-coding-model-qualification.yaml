@@ -12,13 +12,13 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v25
+  name: agentic-coding-model-qualification-v26
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
     the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v25
+  displayName: agentic-coding-model-qualification v26
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -68,6 +68,8 @@ spec:
             skip:
               parameterType: BOOLEAN
             timeout_seconds:
+              parameterType: NUMBER_INTEGER
+            trace_port:
               parameterType: NUMBER_INTEGER
         outputDefinitions:
           artifacts:
@@ -122,6 +124,8 @@ spec:
               parameterType: BOOLEAN
             timeout_seconds:
               parameterType: NUMBER_INTEGER
+            trace_port:
+              parameterType: NUMBER_INTEGER
         outputDefinitions:
           artifacts:
             results:
@@ -174,6 +178,8 @@ spec:
             skip:
               parameterType: BOOLEAN
             timeout_seconds:
+              parameterType: NUMBER_INTEGER
+            trace_port:
               parameterType: NUMBER_INTEGER
         outputDefinitions:
           artifacts:
@@ -252,6 +258,8 @@ spec:
               parameterType: BOOLEAN
             timeout_seconds:
               parameterType: NUMBER_INTEGER
+            trace_port:
+              parameterType: NUMBER_INTEGER
         outputDefinitions:
           artifacts:
             results:
@@ -305,6 +313,8 @@ spec:
               parameterType: BOOLEAN
             timeout_seconds:
               parameterType: NUMBER_INTEGER
+            trace_port:
+              parameterType: NUMBER_INTEGER
         outputDefinitions:
           artifacts:
             results:
@@ -357,6 +367,8 @@ spec:
             skip:
               parameterType: BOOLEAN
             timeout_seconds:
+              parameterType: NUMBER_INTEGER
+            trace_port:
               parameterType: NUMBER_INTEGER
         outputDefinitions:
           artifacts:
@@ -454,14 +466,14 @@ spec:
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
               \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
               \    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n \
-              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
-              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
-              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
-              \ candidate and wait for it. Reads the results\n    ledger of the step\
-              \ before, appends this evaluation (job, state, each benchmark's metric,\
-              \ value, gate and pass) and\n    hands it on, so the run graph shows\
-              \ the intermediate results between the steps as garak's datasets do.\"\
-              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    trace_port:\
+              \ int,\n    previous: dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n\
+              ):\n    \"\"\"Run one EvalHub collection, or one garak benchmark, on\
+              \ the candidate and wait for it. Reads the results\n    ledger of the\
+              \ step before, appends this evaluation (job, state, each benchmark's\
+              \ metric, value, gate and pass) and\n    hands it on, so the run graph\
+              \ shows the intermediate results between the steps as garak's datasets\
+              \ do.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
               \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
               \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
@@ -486,7 +498,22 @@ spec:
               )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    if guardrails:\n\
               \        # The guardrail's internal Service (NemoGuardrails, port 443\
               \ behind kube-rbac-proxy, service CA certificate).\n        model_url\
-              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    client = httpx.Client(base_url=evalhub_url,\
+              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    trace_url = \"\
+              \"\n    if trace_port:\n        # model-trace-proxy: register this run\
+              \ on the step's port, then send the job there. Tracing never fails a\n\
+              \        # qualification: when the proxy does not answer, the job calls\
+              \ the candidate directly.\n        trace_url = f\"https://model-trace-proxy.{tenant}.svc:{trace_port}\"\
+              \n        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"PUT\", data=json.dumps(\n                {\"run_id\": run_id,\
+              \ \"run_name\": run_name, \"model\": model_name}).encode(),\n      \
+              \          headers={\"Content-Type\": \"application/json\"})\n     \
+              \       with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                print(f\"model-trace-proxy: {r.read().decode()}\"\
+              )\n            model_url = f\"{trace_url}/v1\"\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy not reachable ({exc});\
+              \ the job calls the candidate directly, without MLflow traces\")\n \
+              \           trace_url = \"\"\n    client = httpx.Client(base_url=evalhub_url,\
               \ timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
               ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
               , \"X-Tenant\": tenant})\n    work = tempfile.mkdtemp()\n    profile\
@@ -539,23 +566,28 @@ spec:
               \ drops the gate results (results.test, benchmarks[].test), so the job\
               \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
               /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
-              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
-              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
-              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
-              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
-              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
-              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
-              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
-              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
-              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
-              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
-              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
-              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
-              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
-              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
-              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
-              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
-              benchmarks\") or []]})\n\n"
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
+              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
+              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
+              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
+              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
+              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
+              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
+              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
+              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
+              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
+              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
+              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
+              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
+              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -601,14 +633,14 @@ spec:
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
               \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
               \    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n \
-              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
-              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
-              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
-              \ candidate and wait for it. Reads the results\n    ledger of the step\
-              \ before, appends this evaluation (job, state, each benchmark's metric,\
-              \ value, gate and pass) and\n    hands it on, so the run graph shows\
-              \ the intermediate results between the steps as garak's datasets do.\"\
-              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    trace_port:\
+              \ int,\n    previous: dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n\
+              ):\n    \"\"\"Run one EvalHub collection, or one garak benchmark, on\
+              \ the candidate and wait for it. Reads the results\n    ledger of the\
+              \ step before, appends this evaluation (job, state, each benchmark's\
+              \ metric, value, gate and pass) and\n    hands it on, so the run graph\
+              \ shows the intermediate results between the steps as garak's datasets\
+              \ do.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
               \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
               \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
@@ -633,7 +665,22 @@ spec:
               )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    if guardrails:\n\
               \        # The guardrail's internal Service (NemoGuardrails, port 443\
               \ behind kube-rbac-proxy, service CA certificate).\n        model_url\
-              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    client = httpx.Client(base_url=evalhub_url,\
+              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    trace_url = \"\
+              \"\n    if trace_port:\n        # model-trace-proxy: register this run\
+              \ on the step's port, then send the job there. Tracing never fails a\n\
+              \        # qualification: when the proxy does not answer, the job calls\
+              \ the candidate directly.\n        trace_url = f\"https://model-trace-proxy.{tenant}.svc:{trace_port}\"\
+              \n        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"PUT\", data=json.dumps(\n                {\"run_id\": run_id,\
+              \ \"run_name\": run_name, \"model\": model_name}).encode(),\n      \
+              \          headers={\"Content-Type\": \"application/json\"})\n     \
+              \       with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                print(f\"model-trace-proxy: {r.read().decode()}\"\
+              )\n            model_url = f\"{trace_url}/v1\"\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy not reachable ({exc});\
+              \ the job calls the candidate directly, without MLflow traces\")\n \
+              \           trace_url = \"\"\n    client = httpx.Client(base_url=evalhub_url,\
               \ timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
               ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
               , \"X-Tenant\": tenant})\n    work = tempfile.mkdtemp()\n    profile\
@@ -686,23 +733,28 @@ spec:
               \ drops the gate results (results.test, benchmarks[].test), so the job\
               \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
               /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
-              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
-              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
-              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
-              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
-              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
-              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
-              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
-              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
-              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
-              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
-              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
-              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
-              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
-              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
-              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
-              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
-              benchmarks\") or []]})\n\n"
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
+              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
+              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
+              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
+              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
+              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
+              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
+              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
+              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
+              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
+              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
+              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
+              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
+              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -748,14 +800,14 @@ spec:
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
               \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
               \    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n \
-              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
-              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
-              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
-              \ candidate and wait for it. Reads the results\n    ledger of the step\
-              \ before, appends this evaluation (job, state, each benchmark's metric,\
-              \ value, gate and pass) and\n    hands it on, so the run graph shows\
-              \ the intermediate results between the steps as garak's datasets do.\"\
-              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    trace_port:\
+              \ int,\n    previous: dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n\
+              ):\n    \"\"\"Run one EvalHub collection, or one garak benchmark, on\
+              \ the candidate and wait for it. Reads the results\n    ledger of the\
+              \ step before, appends this evaluation (job, state, each benchmark's\
+              \ metric, value, gate and pass) and\n    hands it on, so the run graph\
+              \ shows the intermediate results between the steps as garak's datasets\
+              \ do.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
               \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
               \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
@@ -780,7 +832,22 @@ spec:
               )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    if guardrails:\n\
               \        # The guardrail's internal Service (NemoGuardrails, port 443\
               \ behind kube-rbac-proxy, service CA certificate).\n        model_url\
-              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    client = httpx.Client(base_url=evalhub_url,\
+              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    trace_url = \"\
+              \"\n    if trace_port:\n        # model-trace-proxy: register this run\
+              \ on the step's port, then send the job there. Tracing never fails a\n\
+              \        # qualification: when the proxy does not answer, the job calls\
+              \ the candidate directly.\n        trace_url = f\"https://model-trace-proxy.{tenant}.svc:{trace_port}\"\
+              \n        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"PUT\", data=json.dumps(\n                {\"run_id\": run_id,\
+              \ \"run_name\": run_name, \"model\": model_name}).encode(),\n      \
+              \          headers={\"Content-Type\": \"application/json\"})\n     \
+              \       with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                print(f\"model-trace-proxy: {r.read().decode()}\"\
+              )\n            model_url = f\"{trace_url}/v1\"\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy not reachable ({exc});\
+              \ the job calls the candidate directly, without MLflow traces\")\n \
+              \           trace_url = \"\"\n    client = httpx.Client(base_url=evalhub_url,\
               \ timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
               ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
               , \"X-Tenant\": tenant})\n    work = tempfile.mkdtemp()\n    profile\
@@ -833,23 +900,28 @@ spec:
               \ drops the gate results (results.test, benchmarks[].test), so the job\
               \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
               /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
-              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
-              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
-              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
-              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
-              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
-              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
-              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
-              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
-              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
-              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
-              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
-              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
-              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
-              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
-              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
-              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
-              benchmarks\") or []]})\n\n"
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
+              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
+              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
+              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
+              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
+              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
+              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
+              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
+              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
+              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
+              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
+              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
+              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
+              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -980,14 +1052,14 @@ spec:
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
               \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
               \    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n \
-              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
-              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
-              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
-              \ candidate and wait for it. Reads the results\n    ledger of the step\
-              \ before, appends this evaluation (job, state, each benchmark's metric,\
-              \ value, gate and pass) and\n    hands it on, so the run graph shows\
-              \ the intermediate results between the steps as garak's datasets do.\"\
-              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    trace_port:\
+              \ int,\n    previous: dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n\
+              ):\n    \"\"\"Run one EvalHub collection, or one garak benchmark, on\
+              \ the candidate and wait for it. Reads the results\n    ledger of the\
+              \ step before, appends this evaluation (job, state, each benchmark's\
+              \ metric, value, gate and pass) and\n    hands it on, so the run graph\
+              \ shows the intermediate results between the steps as garak's datasets\
+              \ do.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
               \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
               \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
@@ -1012,7 +1084,22 @@ spec:
               )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    if guardrails:\n\
               \        # The guardrail's internal Service (NemoGuardrails, port 443\
               \ behind kube-rbac-proxy, service CA certificate).\n        model_url\
-              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    client = httpx.Client(base_url=evalhub_url,\
+              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    trace_url = \"\
+              \"\n    if trace_port:\n        # model-trace-proxy: register this run\
+              \ on the step's port, then send the job there. Tracing never fails a\n\
+              \        # qualification: when the proxy does not answer, the job calls\
+              \ the candidate directly.\n        trace_url = f\"https://model-trace-proxy.{tenant}.svc:{trace_port}\"\
+              \n        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"PUT\", data=json.dumps(\n                {\"run_id\": run_id,\
+              \ \"run_name\": run_name, \"model\": model_name}).encode(),\n      \
+              \          headers={\"Content-Type\": \"application/json\"})\n     \
+              \       with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                print(f\"model-trace-proxy: {r.read().decode()}\"\
+              )\n            model_url = f\"{trace_url}/v1\"\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy not reachable ({exc});\
+              \ the job calls the candidate directly, without MLflow traces\")\n \
+              \           trace_url = \"\"\n    client = httpx.Client(base_url=evalhub_url,\
               \ timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
               ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
               , \"X-Tenant\": tenant})\n    work = tempfile.mkdtemp()\n    profile\
@@ -1065,23 +1152,28 @@ spec:
               \ drops the gate results (results.test, benchmarks[].test), so the job\
               \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
               /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
-              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
-              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
-              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
-              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
-              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
-              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
-              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
-              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
-              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
-              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
-              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
-              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
-              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
-              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
-              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
-              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
-              benchmarks\") or []]})\n\n"
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
+              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
+              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
+              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
+              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
+              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
+              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
+              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
+              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
+              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
+              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
+              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
+              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
+              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -1127,14 +1219,14 @@ spec:
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
               \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
               \    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n \
-              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
-              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
-              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
-              \ candidate and wait for it. Reads the results\n    ledger of the step\
-              \ before, appends this evaluation (job, state, each benchmark's metric,\
-              \ value, gate and pass) and\n    hands it on, so the run graph shows\
-              \ the intermediate results between the steps as garak's datasets do.\"\
-              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    trace_port:\
+              \ int,\n    previous: dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n\
+              ):\n    \"\"\"Run one EvalHub collection, or one garak benchmark, on\
+              \ the candidate and wait for it. Reads the results\n    ledger of the\
+              \ step before, appends this evaluation (job, state, each benchmark's\
+              \ metric, value, gate and pass) and\n    hands it on, so the run graph\
+              \ shows the intermediate results between the steps as garak's datasets\
+              \ do.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
               \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
               \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
@@ -1159,7 +1251,22 @@ spec:
               )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    if guardrails:\n\
               \        # The guardrail's internal Service (NemoGuardrails, port 443\
               \ behind kube-rbac-proxy, service CA certificate).\n        model_url\
-              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    client = httpx.Client(base_url=evalhub_url,\
+              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    trace_url = \"\
+              \"\n    if trace_port:\n        # model-trace-proxy: register this run\
+              \ on the step's port, then send the job there. Tracing never fails a\n\
+              \        # qualification: when the proxy does not answer, the job calls\
+              \ the candidate directly.\n        trace_url = f\"https://model-trace-proxy.{tenant}.svc:{trace_port}\"\
+              \n        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"PUT\", data=json.dumps(\n                {\"run_id\": run_id,\
+              \ \"run_name\": run_name, \"model\": model_name}).encode(),\n      \
+              \          headers={\"Content-Type\": \"application/json\"})\n     \
+              \       with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                print(f\"model-trace-proxy: {r.read().decode()}\"\
+              )\n            model_url = f\"{trace_url}/v1\"\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy not reachable ({exc});\
+              \ the job calls the candidate directly, without MLflow traces\")\n \
+              \           trace_url = \"\"\n    client = httpx.Client(base_url=evalhub_url,\
               \ timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
               ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
               , \"X-Tenant\": tenant})\n    work = tempfile.mkdtemp()\n    profile\
@@ -1212,23 +1319,28 @@ spec:
               \ drops the gate results (results.test, benchmarks[].test), so the job\
               \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
               /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
-              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
-              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
-              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
-              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
-              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
-              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
-              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
-              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
-              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
-              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
-              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
-              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
-              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
-              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
-              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
-              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
-              benchmarks\") or []]})\n\n"
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
+              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
+              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
+              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
+              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
+              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
+              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
+              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
+              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
+              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
+              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
+              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
+              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
+              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -1274,14 +1386,14 @@ spec:
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
               \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
               \    run_name: str,\n    run_id: str,\n    timeout_seconds: int,\n \
-              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    previous:\
-              \ dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n):\n\
-              \    \"\"\"Run one EvalHub collection, or one garak benchmark, on the\
-              \ candidate and wait for it. Reads the results\n    ledger of the step\
-              \ before, appends this evaluation (job, state, each benchmark's metric,\
-              \ value, gate and pass) and\n    hands it on, so the run graph shows\
-              \ the intermediate results between the steps as garak's datasets do.\"\
-              \"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
+              \   skip: bool,\n    guarded: bool,\n    guardrails: str,\n    trace_port:\
+              \ int,\n    previous: dsl.Input[dsl.Dataset],\n    results: dsl.Output[dsl.Dataset],\n\
+              ):\n    \"\"\"Run one EvalHub collection, or one garak benchmark, on\
+              \ the candidate and wait for it. Reads the results\n    ledger of the\
+              \ step before, appends this evaluation (job, state, each benchmark's\
+              \ metric, value, gate and pass) and\n    hands it on, so the run graph\
+              \ shows the intermediate results between the steps as garak's datasets\
+              \ do.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
               \ if guarded else \"\"\n    with open(previous.path) as f:\n       \
               \ ledger = json.load(f)\n\n    def hand_on(entry):\n        ledger[\"\
@@ -1306,7 +1418,22 @@ spec:
               )[\n        \"status\"][\"url\"].rstrip(\"/\") + \"/v1\"\n    if guardrails:\n\
               \        # The guardrail's internal Service (NemoGuardrails, port 443\
               \ behind kube-rbac-proxy, service CA certificate).\n        model_url\
-              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    client = httpx.Client(base_url=evalhub_url,\
+              \ = f\"https://{guardrails}.{tenant}.svc:443/v1\"\n    trace_url = \"\
+              \"\n    if trace_port:\n        # model-trace-proxy: register this run\
+              \ on the step's port, then send the job there. Tracing never fails a\n\
+              \        # qualification: when the proxy does not answer, the job calls\
+              \ the candidate directly.\n        trace_url = f\"https://model-trace-proxy.{tenant}.svc:{trace_port}\"\
+              \n        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"PUT\", data=json.dumps(\n                {\"run_id\": run_id,\
+              \ \"run_name\": run_name, \"model\": model_name}).encode(),\n      \
+              \          headers={\"Content-Type\": \"application/json\"})\n     \
+              \       with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                print(f\"model-trace-proxy: {r.read().decode()}\"\
+              )\n            model_url = f\"{trace_url}/v1\"\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy not reachable ({exc});\
+              \ the job calls the candidate directly, without MLflow traces\")\n \
+              \           trace_url = \"\"\n    client = httpx.Client(base_url=evalhub_url,\
               \ timeout=60, verify=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
               ,\n                          headers={\"Authorization\": f\"Bearer {token}\"\
               , \"X-Tenant\": tenant})\n    work = tempfile.mkdtemp()\n    profile\
@@ -1359,23 +1486,28 @@ spec:
               \ drops the gate results (results.test, benchmarks[].test), so the job\
               \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
               /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
-              \ state = (job.get(\"status\") or {}).get(\"state\")\n    for b in (job.get(\"\
-              results\") or {}).get(\"benchmarks\") or []:\n        t = b.get(\"test\"\
-              ) or {}\n        print(f\"  {b.get('id')}: {t.get('primary_score_metric')}\
-              \ {t.get('primary_score')} \"\n              f\"(threshold {t.get('threshold')})\
-              \ {'pass' if t.get('pass') else 'fail'}\")\n    print(f\"{what}: job\
-              \ {job_id} {state} (exit {run.returncode})\")\n    if state not in (\"\
-              completed\", \"failed\", \"cancelled\", \"partially_failed\"):\n   \
-              \     raise RuntimeError(f\"job {job_id} did not finish within {timeout_seconds}s\
-              \ (state {state})\")\n    hand_on({\"evaluation\": what, \"job_id\"\
-              : job_id, \"job_name\": body[\"name\"], \"state\": state,\n        \
-              \     \"target\": model_url, \"guardrails\": guardrails, \"benchmarks\"\
-              : [\n        {\"id\": b.get(\"id\"), \"metric\": (b.get(\"test\") or\
-              \ {}).get(\"primary_score_metric\"),\n         \"value\": (b.get(\"\
-              test\") or {}).get(\"primary_score\"), \"threshold\": (b.get(\"test\"\
-              ) or {}).get(\"threshold\"),\n         \"pass\": (b.get(\"test\") or\
-              \ {}).get(\"pass\")}\n        for b in (job.get(\"results\") or {}).get(\"\
-              benchmarks\") or []]})\n\n"
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
+              \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
+              \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
+              )\n    if state not in (\"completed\", \"failed\", \"cancelled\", \"\
+              partially_failed\"):\n        raise RuntimeError(f\"job {job_id} did\
+              \ not finish within {timeout_seconds}s (state {state})\")\n    hand_on({\"\
+              evaluation\": what, \"job_id\": job_id, \"job_name\": body[\"name\"\
+              ], \"state\": state,\n             \"target\": model_url, \"guardrails\"\
+              : guardrails, \"benchmarks\": [\n        {\"id\": b.get(\"id\"), \"\
+              metric\": (b.get(\"test\") or {}).get(\"primary_score_metric\"),\n \
+              \        \"value\": (b.get(\"test\") or {}).get(\"primary_score\"),\
+              \ \"threshold\": (b.get(\"test\") or {}).get(\"threshold\"),\n     \
+              \    \"pass\": (b.get(\"test\") or {}).get(\"pass\")}\n        for b\
+              \ in (job.get(\"results\") or {}).get(\"benchmarks\") or []]})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -1756,6 +1888,9 @@ spec:
                 timeout_seconds:
                   runtimeValue:
                     constant: 3600.0
+                trace_port:
+                  runtimeValue:
+                    constant: 0.0
             taskInfo:
               name: latency
           livecodebench:
@@ -1828,6 +1963,9 @@ spec:
                 timeout_seconds:
                   runtimeValue:
                     constant: 7200.0
+                trace_port:
+                  runtimeValue:
+                    constant: 9001.0
             taskInfo:
               name: livecodebench
           python-tasks:
@@ -1900,6 +2038,9 @@ spec:
                 timeout_seconds:
                   runtimeValue:
                     constant: 3600.0
+                trace_port:
+                  runtimeValue:
+                    constant: 9002.0
             taskInfo:
               name: python-tasks
           report:
@@ -1996,6 +2137,9 @@ spec:
                 timeout_seconds:
                   runtimeValue:
                     constant: 14400.0
+                trace_port:
+                  runtimeValue:
+                    constant: 9003.0
             taskInfo:
               name: risk-assessment
           risk-assessment-guarded:
@@ -2068,6 +2212,9 @@ spec:
                 timeout_seconds:
                   runtimeValue:
                     constant: 14400.0
+                trace_port:
+                  runtimeValue:
+                    constant: 0.0
             taskInfo:
               name: risk-assessment-guarded
           throughput:
@@ -2140,6 +2287,9 @@ spec:
                 timeout_seconds:
                   runtimeValue:
                     constant: 3600.0
+                trace_port:
+                  runtimeValue:
+                    constant: 0.0
             taskInfo:
               name: throughput
           validate:

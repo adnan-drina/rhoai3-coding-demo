@@ -236,6 +236,28 @@ if ! allowed "$TRACE_SA" "$TRACE_GROUPS" mlflow.kubeflow.org experiments update 
 elif allowed "$TRACE_SA" "$TRACE_GROUPS" mlflow.kubeflow.org experiments update "$TENANT" another-experiment; then R="may write other experiments"
 else R=pass; fi
 record "Guardrail trace collector may write traces to models-onboarding only" "$R"
+PROXY_SA=system:serviceaccount:$TENANT:model-trace-proxy
+if ! allowed "$PROXY_SA" "$TRACE_GROUPS" mlflow.kubeflow.org experiments update "$TENANT" models-onboarding; then R=denied
+elif allowed "$PROXY_SA" "$TRACE_GROUPS" mlflow.kubeflow.org experiments update "$TENANT" another-experiment; then R="may write other experiments"
+else R=pass; fi
+record "Model trace proxy may write traces to models-onboarding only" "$R"
+# The pipeline's traced steps (EVALUATIONS ports in pipeline.py) reach the candidate through model-trace-proxy.
+trace_proxy() {
+  read_json deployment model-trace-proxy -n "$TENANT" | jq -e '(.status.availableReplicas // 0) >= 1 and
+    .status.observedGeneration == .metadata.generation' >/dev/null || { echo "model-trace-proxy not available"; return; }
+  read_json service model-trace-proxy -n "$TENANT" | jq -e '[.spec.ports[].port] == [9001, 9002, 9003]' >/dev/null ||
+    { echo "model-trace-proxy Service does not expose 9001-9003"; return; }
+  local port out
+  for port in 9001 9002 9003; do
+    out=$(oc --request-timeout=20s exec -n "$TENANT" deploy/model-trace-proxy -c proxy -- python3 -c "
+import json, ssl, sys, urllib.request
+ctx = ssl.create_default_context(cafile='/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt')
+print(json.load(urllib.request.urlopen('https://model-trace-proxy.$TENANT.svc:$port/_trace/context', context=ctx, timeout=10))['evaluation'])" 2>/dev/null) ||
+      { echo "model-trace-proxy port $port does not answer over its service certificate"; return; }
+  done
+  echo yes
+}
+check "Model trace proxy serves the traced steps over the service certificate" trace_proxy yes
 admin_access() {
   local g=rhods-admins,system:authenticated
   all_allowed ai-admin "$g" trustyai.opendatahub.io evaluations "$TENANT" create get && all_allowed ai-admin "$g" trustyai.opendatahub.io providers "$TENANT" get &&

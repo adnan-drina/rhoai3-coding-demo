@@ -22,6 +22,7 @@ resources:
   - candidate-model-auth.yaml
   - evaluation-enablement
   - guardrails
+  - model-trace-proxy.yaml
   - risk-assessment-gemma-2-9b-abliterated.yaml
   - guardrail-gpt-oss-safeguard-20b.yaml
   - model-metrics-servicemonitor.yaml
