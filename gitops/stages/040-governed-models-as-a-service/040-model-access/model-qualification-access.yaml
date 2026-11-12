@@ -4,7 +4,8 @@
 # consumer: identity, token quota and usage attribution apply. Candidates are served in evaluated-models
 # itself; this subscription reaches the production models (the baseline a candidate would replace, and any
 # model evaluated manually) and the external models, which are evaluated like the private ones and serve as
-# judges (a judge must differ from the model under test, 3.5 guide chapter 7). The hourly token limit of the
+# judges (a judge must differ from the model under test, 3.5 guide chapter 7; Mistral Small 4 is the risk assessment
+# judge of the qualification pipeline). The hourly token limit of the
 # private models sits above what their single-GPU servers produce, so governance meters evaluation without
 # becoming its bottleneck. The key is minted by the evaluated-models provisioner ServiceAccount.
 apiVersion: maas.opendatahub.io/v1alpha1
@@ -26,6 +27,12 @@ spec:
   priority: 70
   modelRefs:
     - name: qwen3-8-27b
+      namespace: internal-models
+      tokenRateLimits:
+        - limit: 5000000
+          window: 1h
+    # The risk assessment judge and TAP evaluator of the qualification pipeline (Stage 050).
+    - name: mistral-small4-119b
       namespace: internal-models
       tokenRateLimits:
         - limit: 5000000
@@ -71,6 +78,8 @@ spec:
       - system:serviceaccount:evaluated-models:evalhub-maas-key-provisioner
   modelRefs:
     - name: qwen3-8-27b
+      namespace: internal-models
+    - name: mistral-small4-119b
       namespace: internal-models
     - name: gpt-6-luna
       namespace: external-models
