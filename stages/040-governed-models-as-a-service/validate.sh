@@ -3,7 +3,7 @@
 # AIGateway/OGX/KServe and dashboard flags, the MaaS database, Authorino TLS, the Gateway and its listener isolation,
 # the local model and its routes, serving templates, external providers and models, MaaS governance objects, the
 # Studio catalog entries, and the gateway's network boundary. No HTTP to models, provider calls or writes; no Secret
-# value or command error reaches the output. RHOAI_STAGE040_EXPECTED_REVISION pins the components to one commit.
+# value or command error reaches the output. The components must track GIT_REPO_BRANCH (default main).
 # --functional additionally runs the bounded, explicit MaaS functional check as an existing persona login: one
 # synthetic expiring API key, each reviewed model (fail-closed without and with an invalid key, a completion with usage,
 # an incremental SSE stream, a GPT-6 Luna tool call, the local traffic metric), then the key revoked and refused.
@@ -75,9 +75,8 @@ SHOWBACK_DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as
 # Source reconciliation is separate from model inference, MaaS access enforcement and actual report scraping.
 showback_source_state() {
     local d kind ns name group live args tracking profile expected current
-    "$STAGE_APPS" status 040 --app 040-showback-demo \
-        ${RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION:+--revision "$RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION"} \
-        >/dev/null 2>&1 || { echo "showback Application not Synced and Healthy at its reviewed revision"; return; }
+    "$STAGE_APPS" status 040 --app 040-showback-demo >/dev/null 2>&1 ||
+        { echo "showback Application not Synced and Healthy at ${GIT_REPO_BRANCH:-main}"; return; }
     jq -e '. as $all | [.[] | select(.metadata.labels["app.kubernetes.io/component"] == "external-metering")] as $metering |
         # Team access only: both local models, the dedicated Mistral included, belong to 040-local-models.
         # Quality scoring of the team traces adds the judge subscription, its key hook and the hourly scorer.
@@ -188,8 +187,7 @@ DESIRED=$(oc kustomize "$REPO_ROOT/gitops/stages/040-governed-models-as-a-servic
 desired_of() { jq -c --arg k "$1" '[.[] | select(.kind == $k)]' <<<"$DESIRED"; }
 
 components_reconciled() {
-    "$STAGE_APPS" status 040 ${RHOAI_STAGE040_EXPECTED_REVISION:+--revision "$RHOAI_STAGE040_EXPECTED_REVISION"} \
-        >/dev/null 2>&1 || { echo "components not reconciled"; return; }
+    "$STAGE_APPS" status 040 >/dev/null 2>&1 || { echo "components not reconciled"; return; }
     [[ -z "$(oc --request-timeout="$TIMEOUT" get applications.argoproj.io 040-governed-models-as-a-service \
         -n openshift-gitops --ignore-not-found -o name)" ]] && echo yes || echo "retired single Application still exists"
 }
@@ -465,8 +463,7 @@ studio_catalog() {
     local key server url value cm journal
     [[ -n "$(oc --request-timeout=10s get applications.argoproj.io 060-agent-tools -n openshift-gitops --ignore-not-found -o name)" ]] ||
         { echo yes; return; }
-    RHOAI_STAGE060_EXPECTED_REVISION=$(oc --request-timeout=10s get applications.argoproj.io 060-agent-tools -n openshift-gitops \
-        -o jsonpath='{.spec.source.targetRevision}') "$REPO_ROOT/stages/060-agent-runtime-and-agentops/validate.sh" --component 060-agent-tools \
+    "$REPO_ROOT/stages/060-agent-runtime-and-agentops/validate.sh" --component 060-agent-tools \
         >/dev/null 2>&1 || { echo "Stage 060 MCP servers not ready"; return; }
     cm=$(read_json configmap gen-ai-aa-mcp-servers -n redhat-ods-applications)
     for key in OpenShift-MCP OpenShift-MCP-ReadWrite; do
@@ -498,7 +495,7 @@ gateway_policy_plugin() {
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-check "Stage 040 components Synced and Healthy at one immutable revision; retired single Application absent" components_reconciled yes
+check "Stage 040 components Synced and Healthy at ${GIT_REPO_BRANCH:-main}; retired single Application absent" components_reconciled yes
 check "Six selected operators match Git; CSVs Succeeded with available workloads" operators yes
 check "GPU LocalQueues Active in internal-models and promoted-models" local_queues yes
 check "AIGateway, OGX and KServe Managed and Ready; MaaS enabled; dashboard feature flags on" components_and_flags yes

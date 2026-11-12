@@ -35,12 +35,12 @@ The Applications have no `resources-finalizer`, and tracking is by annotation: a
    - in-cluster references: RBAC `resourceNames` on `applications.argoproj.io`, hook scripts that `oc get application <name>`;
    - hook Jobs that check a target's tracking-id prefix;
    - `managed-by` label values are object labels, not Application names: leave them.
-4. Push the commit. Every Application is pinned to that full SHA.
+4. Push the commit to a branch of its own, never straight to `main`. The live Applications track `main`: a moved folder on `main` makes the old Application render fewer objects at once, and automated prune would delete them before the new Application takes them over. The new Applications track the move branch until "After the move" switches them to `main`.
 
 ## Run
 
 ```bash
-NS=openshift-gitops R=<full pushed sha> U=<GIT_REPO_URL>
+NS=openshift-gitops R=<pushed move branch> U=<GIT_REPO_URL>
 # 1. Read-only: objects the new Applications will take over (reported as lacking their tracking id)
 scripts/stage-apps.sh preflight NNN --repo-url "$U" --app NEW [--app NEW ...]
 #    Record each object's tracking id and UID before the move
@@ -61,13 +61,13 @@ oc delete applications.argoproj.io OLD -n "$NS" --cascade=orphan
 - Apply, sync and wait one Application at a time in deploy order (`scripts/stage-apps.sh names NNN --all`) when a component's hooks need another component's hooks to have run at the new revision (Stage 070: the GitLab integration hub needs the earlier components, Developer Hub's catalog hook needs the GitLab mirror).
 - Objects that no new Application renders stay tracked by the old Application; review that list before deleting any of them by hand.
 - Re-running after a failure is safe as long as the UIDs from step 1 are kept.
-- `scripts/stage-apps.sh sync` starts one hook-strategy sync per Application that has not yet synced the new source (automated sync does not run one when the render is unchanged), carrying the Application's own `syncOptions` and `prune`.
+- `scripts/stage-apps.sh sync` starts one hook-strategy sync per Application that is not Synced after a successful sync (a new Application always gets one), carrying the Application's own `syncOptions` and `prune`.
 
 ## Rules (and why)
 
 - **Stop automated sync on the old Application first.** Otherwise both Applications reconcile the same objects and the old one rewrites the tracking ids back.
 - **Manual-sync Applications (all of Stage 060) need one explicit sync, carrying their own `syncOptions`.** A bare `operation.sync` drops them, so `RespectIgnoreDifferences` is not applied and delegated data is overwritten (the 2026-10-13 MCP list wipe). Use `scripts/stage-apps.sh sync`, never a hand-written sync patch.
-- **Sync gates.** `060-openshell-runtime` waits in its `openshell-runtime-prerequisites` hook for `stages/060-agent-runtime-and-agentops/deploy.sh --revision <sha>` to stamp `openshell-runtime-ready`. The stamp must be written after this sync applied the ConfigMap; written earlier, the sync's own apply puts the old value back. Run the gate between `sync` and `wait` for that Application, and do the same for any new Application whose hook waits for a runtime step.
+- **Sync gates.** `060-openshell-runtime` waits in its `openshell-runtime-prerequisites` hook for `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-openshell-runtime` to write `openshell-runtime-ready` (with the sync operation's commit). The stamp must be written after this sync applied the ConfigMap; written earlier, the sync's own apply puts the old value back. Run the gate between `sync` and `wait` for that Application, and do the same for any new Application whose hook waits for a runtime step.
 - **Sync hooks with `BeforeHookCreation` get a new UID on every sync.** Only their owner is checked.
 - **Cluster-specific Application settings live only on the cluster** (Stage 040 Gateway hostname `source.kustomize` patch, Stage 020 MachineSet replica `ignoreDifferences`). Read them from the Application that currently owns the objects and carry them over: `--kustomize-patches` for `source.kustomize`, as Stage 040 `deploy.sh` does; the Stage 020 delegation by re-running its `deploy.sh`.
 - **No apply may delete keys only `last-applied-configuration` still records.** An ignore rule under `RespectIgnoreDifferences` copies live fields (controller-owned annotations included) into last-applied; the first apply without the rule deletes them. Compare the live objects' `kubectl.kubernetes.io/last-applied-configuration` with the new render before step 3 and stop if keys would be removed. On 2026-10-14 this deleted OpenShift's `openshift.io/sa.scc.*` allocations from the Stage 070 namespaces (`.agents/rules/gitops.md` "Removing an ignore rule").
@@ -76,9 +76,10 @@ oc delete applications.argoproj.io OLD -n "$NS" --cascade=orphan
 
 ## After the move
 
-1. Run the stage `validate.sh` (and the component validators for script-deployed Applications) from the moved revision.
-2. Merge the branch into `main` with a merge commit so the pinned SHA stays reachable.
+1. Run the stage `validate.sh` with `GIT_REPO_BRANCH=<move branch>` (and the component validators for script-deployed Applications).
+2. Merge the move branch into `main`.
+3. Re-run the stage `deploy.sh` (default `main`): it switches the new Applications from the move branch to `main` with no change to what they render. Then delete the move branch.
 
 ## Rollback
 
-Re-create the previous Application at its last revision with automated sync off, sync it so it takes the objects back, delete the new Applications (no cascade), then turn automated sync on again.
+Re-create the previous Application at its last revision (a tag or commit as `--revision`) with automated sync off, sync it so it takes the objects back, delete the new Applications (no cascade), then turn automated sync on again.

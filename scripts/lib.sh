@@ -152,13 +152,12 @@ _record() {
 record()      { _record fail "$@"; }
 record_warn() { _record warn "$@"; }
 
-# Every component Application of a stage (script-deployed ones too) Synced at one immutable revision, Healthy (or its
-# declared accepted health) and last synced successfully; one line per component. An optional revision is required.
+# Every component Application of a stage (script-deployed ones too) tracking GIT_REPO_BRANCH (default main), Synced,
+# Healthy (or its declared accepted health) and last synced successfully; one line per component.
 check_stage_applications() {
-    local stage="$1" revision="${2:-}" output line rc=0 failed=0
+    local stage="$1" output line rc=0 failed=0
     local args=(status "$stage")
     [[ -z "${GIT_REPO_URL:-}" ]] || args+=(--repo-url "$GIT_REPO_URL")
-    [[ -z "$revision" ]] || args+=(--revision "$revision")
     output=$("$REPO_ROOT/scripts/stage-apps.sh" "${args[@]}" 2>&1) || rc=$?
     [[ -n "$output" ]] || output="ERROR no output from stage-apps status $stage"
     while IFS= read -r line; do
@@ -169,9 +168,9 @@ check_stage_applications() {
             *) echo "    $line" ;;
         esac
     done <<< "$output"
-    # A stage-wide problem (components at different revisions) fails status without marking one component FAIL.
+    # A problem status reports without marking one component FAIL still fails the check.
     if [[ "$rc" -ne 0 && "$failed" -eq 0 ]]; then
-        echo -e "${RED}[FAIL]${NC} Stage $stage Applications not reconciled at one revision (stage-apps status exit $rc)"
+        echo -e "${RED}[FAIL]${NC} Stage $stage Applications not reconciled (stage-apps status exit $rc)"
         VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
     fi
 }
@@ -337,10 +336,11 @@ check_operator_policy() {
 # ready. Parked GPU capacity is not a prerequisite; broken scheduled GPU workloads are.
 check_serving_prerequisites() {
     local stage="$1" policy subscription installed ds report
-    # A component Git declares but the cluster does not have yet is new: this deployment creates it. Any other problem
-    # (out of sync, unhealthy, another revision) must be reconciled first.
+    # A component Git declares but the cluster does not have yet is new: this deployment creates it; a component
+    # tracking another revision is switched by this deployment. Any other problem (out of sync, unhealthy, a failed
+    # sync) must be reconciled first.
     if ! report=$("$REPO_ROOT/scripts/stage-apps.sh" status "$stage" --repo-url "$GIT_REPO_URL" 2>&1); then
-        grep '^  - ' <<<"$report" | grep -qv ': missing$' &&
+        grep '^  - ' <<<"$report" | grep -v -e ': missing$' -e ': tracks ' | grep -q . &&
             { log_error "Existing Stage $stage source must be reconciled before update"; return 1; }
         log_info "New Stage $stage component(s) to create: $(sed -n 's/^  - \(.*\): missing$/\1/p' <<<"$report" | paste -sd, -)"
     fi

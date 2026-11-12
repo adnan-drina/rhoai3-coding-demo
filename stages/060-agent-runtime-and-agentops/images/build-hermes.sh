@@ -3,8 +3,8 @@
 # BuildConfig: the selected Stage 130 Hermes fork plus its hash-locked native HTTP dependency wheels. The tag is an
 # output handle, never a runtime pin; the script prints the immutable image reference the Build produced.
 # Changes: starts one OpenShift Build (a new image in the ai-agents ImageStream); nothing else. Safe to rerun (each run
-# is a new Build of the same reviewed input). The revision is RHOAI_STAGE060_EXPECTED_REVISION, default HEAD; it must
-# be published on origin, match this checkout's build inputs, and be the revision 060-openshell-runtime is synced to.
+# is a new Build of the same reviewed input). The revision is the commit 060-openshell-runtime is Synced at
+# (status.sync.revision); this checkout's build inputs must equal it.
 # Usage: stages/060-agent-runtime-and-agentops/images/build-hermes.sh
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,20 +20,18 @@ RUNTIME_PATH=gitops/stages/060-agent-runtime-and-agentops/060-openshell-runtime
 NAME=hermes-runtime-api TAG=hermes-runtime-api:0.20.5-api
 
 # ── Read-only preflight: published revision, unchanged build inputs, GitOps-owned build objects ─────────────────────
-REVISION="${RHOAI_STAGE060_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
-[[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || fail "The revision must be a full commit SHA"
-git -C "$REPO_ROOT" ls-remote origin | awk -v revision="$REVISION" '$1 == revision { found=1 } END { exit !found }' ||
-  fail "Revision $REVISION is not published on origin"
-git -C "$REPO_ROOT" diff --quiet "$REVISION" -- "$SCRIPT_DIR/build-hermes.sh" "$SCRIPT_DIR/hermes-api" "$RUNTIME_PATH/hermes-images" ||
-  fail "The build inputs differ from revision $REVISION"
-SOURCE=$(jq -n -c --arg repo "${GIT_REPO_URL:-https://github.com/adnan-drina/rhoai3-coding-demo.git}" --arg rev "$REVISION" --arg path "$RUNTIME_PATH" \
-  '{repoURL: $repo, targetRevision: $rev, path: $path}')
-get applications.argoproj.io "$APP" -n openshift-gitops | jq -e --argjson src "$SOURCE" --arg rev "$REVISION" '.spec as $s
-  | $s.source == $src and $s.project == "rhoai-demo" and $s.destination == {server: "https://kubernetes.default.svc", namespace: "openshift-gitops"}
+APP_JSON=$(get applications.argoproj.io "$APP" -n openshift-gitops)
+jq -e --arg repo "${GIT_REPO_URL:-https://github.com/adnan-drina/rhoai3-coding-demo.git}" --arg rev "${GIT_REPO_BRANCH:-main}" --arg path "$RUNTIME_PATH" '
+  .spec as $s | $s.source == {repoURL: $repo, targetRevision: $rev, path: $path} and $s.project == "rhoai-demo"
+  and $s.destination == {server: "https://kubernetes.default.svc", namespace: "openshift-gitops"}
   and (.metadata.ownerReferences // [] | length) == 0 and .operation == null and .metadata.deletionTimestamp == null
-  and .status.sync.status == "Synced" and .status.sync.revision == $rev
-  and .status.operationState.phase == "Succeeded" and .status.operationState.syncResult.revision == $rev
-  and .status.operationState.syncResult.source == $src' >/dev/null || fail "$APP is not synced at $REVISION"
+  and .status.sync.status == "Synced" and .status.operationState.phase == "Succeeded"' <<<"$APP_JSON" >/dev/null ||
+  fail "$APP is not Synced at ${GIT_REPO_BRANCH:-main}"
+REVISION=$(jq -r '.status.sync.revision' <<<"$APP_JSON")
+git -C "$REPO_ROOT" cat-file -e "$REVISION^{commit}" 2>/dev/null || git -C "$REPO_ROOT" fetch -q --no-tags origin "${GIT_REPO_BRANCH:-main}" ||
+  fail "Could not fetch ${GIT_REPO_BRANCH:-main}"
+git -C "$REPO_ROOT" diff --quiet "$REVISION" -- "$SCRIPT_DIR/build-hermes.sh" "$SCRIPT_DIR/hermes-api" "$RUNTIME_PATH/hermes-images" ||
+  fail "The build inputs differ from $REVISION, the commit $APP is Synced at"
 for kind in buildconfig.build.openshift.io imagestream.image.openshift.io; do
   get "$kind" "$NAME" -n ai-agents | jq -e --arg app "$APP" --arg name "$NAME" '.metadata as $m
     | $m.deletionTimestamp == null and ($m.ownerReferences // [] | length) == 0

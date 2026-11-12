@@ -21,15 +21,14 @@ check_oc_logged_in
 GITOPS=gitops/stages/060-agent-runtime-and-agentops
 read_json() { oc --request-timeout=10s get "$@" --ignore-not-found -o json 2>/dev/null || true; }
 yes_no() { jq -e "$@" >/dev/null 2>&1 && echo yes || echo no; }
-# Application at its pinned immutable revision: Synced, Healthy, and its last operation a successful sync of it.
+# Application tracking the branch: Synced, Healthy, and its last operation a successful sync of this source.
 reconciled() {
-  read_json applications.argoproj.io "$1" -n openshift-gitops | yes_no --arg repo "$GIT_REPO_URL" --arg path "$GITOPS/$1" --arg rev "${RHOAI_STAGE060_EXPECTED_REVISION:-}" '
+  read_json applications.argoproj.io "$1" -n openshift-gitops | yes_no --arg repo "$GIT_REPO_URL" --arg path "$GITOPS/$1" --arg rev "${GIT_REPO_BRANCH:-main}" '
     .spec as $s | .status as $st | $s.source.repoURL == $repo and $s.source.path == $path and $s.project == "rhoai-demo"
-    and ($rev == "" or $s.source.targetRevision == $rev) and $s.sources == null and (.metadata.ownerReferences // [] | length) == 0
+    and $s.source.targetRevision == $rev and $s.sources == null and (.metadata.ownerReferences // [] | length) == 0
     and $s.destination == {server: "https://kubernetes.default.svc", namespace: "openshift-gitops"}
-    and $st.sync.status == "Synced" and $st.sync.revision == $s.source.targetRevision and $st.health.status == "Healthy"
-    and $st.operationState.phase == "Succeeded" and $st.operationState.syncResult.revision == $s.source.targetRevision
-    and $st.operationState.syncResult.source.path == $s.source.path'
+    and $st.sync.status == "Synced" and $st.health.status == "Healthy"
+    and $st.operationState.phase == "Succeeded" and $st.operationState.syncResult.source.path == $s.source.path'
 }
 
 # ── 060-agent-console: AgentOps flag; personas discover only their own workspace, read-only ──────────────────
@@ -178,7 +177,7 @@ registry_entries() {
 case "$COMPONENT" in
   "")
     log_step "Stage 060 component Applications"
-    check_stage_applications 060 "${RHOAI_STAGE060_EXPECTED_REVISION:-}"
+    check_stage_applications 060
     validate_console; validate_mcp_platform; validate_agent_tools
     # The agent sandboxes are created by the opt-in sandboxes/create.sh (persona sessions), never by deploy.sh; a
     # missing one is a pending provisioning step, so name the command that creates it.

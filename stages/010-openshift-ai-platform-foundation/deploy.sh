@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Stage 010: bootstraps OpenShift GitOps, deploys the foundation components (ODF, RHOAI, observability, access) at one
-# reviewed published revision, then the three script-deployed components (sandbox storage, console observability, the
+# Stage 010: bootstraps OpenShift GitOps, deploys the foundation components (ODF, RHOAI, observability, access) tracking
+# GIT_REPO_BRANCH (default main, or --revision), then the three script-deployed components (sandbox storage, console observability, the
 # shared MLflow tracking service) and the demo group membership of the existing provider identities.
-# --component deploys only one script-deployed component, at its own revision, after its read-only adoption preflight.
+# --component deploys only one script-deployed component, after its read-only adoption preflight.
 # Usage: stages/010-openshift-ai-platform-foundation/deploy.sh [--revision REF] [--component 010-sandbox-storage|010-console-observability|010-mlflow]
 set -euo pipefail
 
@@ -15,7 +15,7 @@ REPO_ROOT="$ROOT_DIR"
 source "$ROOT_DIR/scripts/lib.sh"
 load_env
 check_oc_logged_in
-# Use a reviewed published revision; never silently deploy old main content.
+# --revision sets the branch, tag or commit the Applications track; this checkout's stage source must match it.
 COMPONENT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -28,7 +28,7 @@ require_env GIT_REPO_URL "repository URL containing the reviewed Stage 010 sourc
 assert_required_env
 STAGE_APPS="$ROOT_DIR/scripts/stage-apps.sh"
 # The reviewed, published commit; Applications are pinned to it even when the input was a branch.
-selected_commit=$("$STAGE_APPS" select 010 --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" \
+selected_commit=$("$STAGE_APPS" select 010 --ref "${GIT_REPO_BRANCH:-main}" --repo-url "$GIT_REPO_URL" \
   --extra gitops/bootstrap)
 
 # ── 010-mlflow runtime: database credentials and readiness (Argo CD owns every workload and CR) ──────────────────
@@ -128,7 +128,7 @@ deploy_component() {
     if (( SECONDS >= deadline )); then "$SCRIPT_DIR/validate.sh" --component "$app"; return 1; fi
     sleep 10
   done
-  log_success "$app deployed and validated at ${selected_commit:0:12}"
+  log_success "$app deployed and validated at ${selected_commit}"
 }
 case "$COMPONENT" in
   "") ;;
@@ -200,7 +200,7 @@ oc apply -k "$ROOT_DIR/gitops/bootstrap/overlays/demo" --insecure-skip-tls-verif
 echo "✓ ArgoCD configured (annotation resource tracking)"
 echo "✓ AppProject rhoai-demo created"
 
-# ── Step 4: Apply the Stage 010 component Applications at the reviewed revision ──
+# ── Step 4: Apply the Stage 010 component Applications at the tracked revision ──
 echo ""
 echo "── Step 4: Applying Stage 010 component Argo CD Applications ──"
 echo "  Argo CD syncs ODF and RHOAI; this takes 10–20 minutes."

@@ -15,7 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-ref="${GIT_REPO_BRANCH:-HEAD}" COMPONENT=""
+ref="" COMPONENT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --revision) ref="${2:?}"; shift 2 ;;
@@ -25,6 +25,7 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -z "$COMPONENT" || "$COMPONENT" == 040-showback-demo ]] || { log_error "Unknown Stage 040 component: $COMPONENT"; exit 1; }
 load_env
+ref="${ref:-${GIT_REPO_BRANCH:-main}}"
 check_oc_logged_in
 require_env GIT_REPO_URL "reviewed Stage 040 source repository"
 assert_required_env
@@ -390,13 +391,10 @@ register_model_cards() {
     NS=internal-models
     REGISTRY=demo-registry
     LOCAL_MODELS="$REPO_ROOT/gitops/stages/040-governed-models-as-a-service/040-local-models"
-    local revision
     fail() { echo "ERROR: registry publication stopped: $*" >&2; exit 1; }
     yaml_stream_json() { ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_stream(STDIN.read).compact)'; }
 
-    revision="${RHOAI_STAGE040_EXPECTED_REVISION:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
-    [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || fail "reviewed immutable source differs"
-    "$REPO_ROOT/scripts/stage-apps.sh" status 040 --revision "$revision" \
+    "$REPO_ROOT/scripts/stage-apps.sh" status 040 --revision "$ref" \
         --repo-url "$GIT_REPO_URL" >/dev/null || fail "Stage 040 must reconcile before model registration"
     host=$(oc --request-timeout=10s get modelregistries.modelregistry.opendatahub.io "$REGISTRY" -n rhoai-model-registries \
         -o jsonpath='{.status.hosts[0]}')
@@ -593,7 +591,7 @@ deploy_showback() {
     "$STAGE_APPS" sync 040 --app 040-showback-demo
     "$STAGE_APPS" wait 040 --app 040-showback-demo --revision "$revision" --repo-url "$GIT_REPO_URL" --timeout 900
     showback_metering_profile activate
-    RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION="$revision" "$SCRIPT_DIR/validate.sh" --component 040-showback-demo
+    GIT_REPO_BRANCH="$revision" "$SCRIPT_DIR/validate.sh" --component 040-showback-demo
 }
 
 if [[ "$COMPONENT" == 040-showback-demo ]]; then
@@ -605,7 +603,6 @@ fi
 
 revision=$("$STAGE_APPS" select 040 --ref "$ref" --repo-url "$GIT_REPO_URL" \
 )
-export RHOAI_STAGE040_EXPECTED_REVISION="$revision"
 
 # Read-only: operator channels, prerequisites and ownership, serving state, node sizing.
 check_operator_policy "$REPO_ROOT/gitops/stages/040-governed-models-as-a-service"
@@ -677,4 +674,4 @@ done
 # Register the deployed model and its prepared format alternates in the model registry (idempotent, never overwrites).
 register_model_cards
 
-log_success "Stage 040 reconciled at ${revision:0:12}; authenticated inference and Studio acceptance are separate (validate.sh --functional)."
+log_success "Stage 040 reconciled at ${revision}; authenticated inference and Studio acceptance are separate (validate.sh --functional)."

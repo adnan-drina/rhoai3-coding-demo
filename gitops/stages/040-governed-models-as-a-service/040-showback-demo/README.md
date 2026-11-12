@@ -27,9 +27,8 @@ The dashboards are the generated output of a small, uncommitted generator; edit 
 [040-showback-demo](../../../applications/040-showback-demo.yaml) uses the `rhoai-demo` project and the `openshift-gitops` destination, with `demo.rhoai.io/optional: 'true'`, a `deploy-script` annotation, no `deploy-order` and no automated sync. It ignores the image of the metering Deployment, which the OpenShift image trigger resolves. Deploy and validate only through the stage entrypoints:
 
 ```bash
-./stages/040-governed-models-as-a-service/deploy.sh --component 040-showback-demo --revision <full-sha>
-RHOAI_STAGE040_SHOWBACK_EXPECTED_REVISION=<full-sha> \
-  ./stages/040-governed-models-as-a-service/validate.sh --component 040-showback-demo
+./stages/040-governed-models-as-a-service/deploy.sh --component 040-showback-demo
+./stages/040-governed-models-as-a-service/validate.sh --component 040-showback-demo
 ```
 
 Mistral needs a second GPU worker (`stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus 2`); its replicas belong to `040-local-models`.

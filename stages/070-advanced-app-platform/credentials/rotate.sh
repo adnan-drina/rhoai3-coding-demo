@@ -2,10 +2,10 @@
 # Rotate one Stage 070 platform credential through its provider's API, write the new value into its Secret(s), then
 # prove the replacement works and the predecessor is refused. Explicit operator action; never part of a routine sync.
 # Changes: the provider credential and the named Secret keys of COMPONENT (see README.md); annotation_copy changes
-# only Secret metadata. Refuses unless the checkout and the live Stage 070 Applications are exactly the reviewed
-# published REVISION, --execute is given and the report file does not exist yet. Not safe to rerun blindly: one run per
+# only Secret metadata. Refuses unless the checkout's Stage 070 source is what the repository serves for REVISION
+# (default GIT_REPO_BRANCH), the live Stage 070 Applications are reconciled at it, --execute is given and the report file does not exist yet. Not safe to rerun blindly: one run per
 # component with a new report path; a partial result needs diagnosis first. The report holds results, never credentials.
-# Usage: stages/070-advanced-app-platform/credentials/rotate.sh COMPONENT --revision SHA --report FILE [--repo-url URL] [--secret NAMESPACE/NAME] [--execute]
+# Usage: stages/070-advanced-app-platform/credentials/rotate.sh COMPONENT [--revision REV] --report FILE [--repo-url URL] [--secret NAMESPACE/NAME] [--execute]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -24,12 +24,13 @@ while [[ $# -gt 0 ]]; do
     *) [[ -z "$COMPONENT" && " $COMPONENTS " == *" $1 "* ]] || usage; COMPONENT=$1; shift ;;
   esac
 done
-[[ -n "$COMPONENT" && -n "$REVISION" && -n "$REPORT" ]] || usage
+[[ -n "$COMPONENT" && -n "$REPORT" ]] || usage
 if [[ -n "$SECRET" && "$COMPONENT" != annotation_copy ]] || [[ -z "$SECRET" && "$COMPONENT" == annotation_copy ]]; then
   log_error "--secret is required only for annotation_copy"; exit 1
 fi
 load_env
 check_oc_logged_in
+REVISION=${REVISION:-${GIT_REPO_BRANCH:-main}}
 REPO_URL=${REPO_URL:-${GIT_REPO_URL:-}}
 [[ -n "$REPO_URL" ]] || { log_error "Pass --repo-url or set GIT_REPO_URL in .env"; exit 1; }
 
@@ -40,13 +41,13 @@ SONAR_NAME=rhoai3.io/sonar-token-name
 LAST_APPLIED=kubectl.kubernetes.io/last-applied-configuration
 die() { log_error "$*"; exit 1; }
 
-# ── Guards: reviewed published revision, deployed and reconciled; explicit execution; a new report ───────────────────
-# A locally modified rotation implementation or another publication refuses, as deployment refuses unpublished source.
+# ── Guards: published source, deployed and reconciled; explicit execution; a new report ─────────────────────────────
+# A locally modified rotation implementation refuses, as deployment refuses source the repository does not serve.
 SELECTED=$("$REPO_ROOT/scripts/stage-apps.sh" select 070 --ref "$REVISION" --repo-url "$REPO_URL") ||
-  die "Use the reviewed published correction revision"
-[[ "$SELECTED" == "$REVISION" ]] || die "Use the reviewed published correction revision"
+  die "Publish the rotation source first"
+[[ "$SELECTED" == "$REVISION" ]] || die "Publish the rotation source first"
 "$REPO_ROOT/scripts/stage-apps.sh" status 070 --revision "$REVISION" --repo-url "$REPO_URL" >/dev/null ||
-  die "Deploy and qualify the corrected pinned stage before rotation"
+  die "Deploy Stage 070 at $REVISION before rotation"
 [[ "$EXECUTE" == true ]] || die "Rotation requires the explicit --execute flag"
 [[ ! -e "$REPORT" ]] || die "Preserve the existing rotation report; do not silently rotate twice"
 
@@ -476,7 +477,7 @@ rotate_annotation_copy() {
 }
 
 # ── Run ───────────────────────────────────────────────────────────────────────────────────────────────────────────
-log_step "Rotate $COMPONENT at ${REVISION:0:12} (report: $REPORT)"
+log_step "Rotate $COMPONENT at ${REVISION} (report: $REPORT)"
 [[ "$COMPONENT" == annotation_copy ]] || providers
 "rotate_$COMPONENT"
 if printf '%s' "$CHECKS" | jq -e 'del(.inference_performed) | all(.[]; . == true)' >/dev/null; then

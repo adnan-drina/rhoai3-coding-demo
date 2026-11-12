@@ -24,18 +24,21 @@ Every GitOps stage must be reproducible from `gitops/` and operated through `dep
 
 ## Mandatory: Argo CD Applications in Every deploy.sh
 
-Every stage's `deploy.sh` applies its Argo CD Applications as its first cluster-modifying action, pinned to one reviewed published commit, through the shared flow:
+Applications track a branch. Every `spec.source.targetRevision` is `GIT_REPO_BRANCH` (default `main`); Argo CD resolves it to a commit, syncs automatically (except the manual-sync components below) and reports that commit as `status.sync.revision`. Git is the desired state: a push to the branch reaches the cluster without a script. To freeze a demo, set `GIT_REPO_BRANCH` in `.env` to a tag (for example `rhoai-3.4-stable`) and re-run the stage `deploy.sh`. Scripts never replace the tracked revision with the commit Argo CD resolved, and never read `targetRevision` as that commit; a script that needs the deployed commit reads `status.sync.revision` (or, inside a running sync hook, `status.operationState.syncResult.revision`).
+
+Every stage's `deploy.sh` applies its Argo CD Applications as its first cluster-modifying action, through the shared flow:
 ```bash
 source "$REPO_ROOT/scripts/lib.sh"; load_env; check_oc_logged_in        # cluster guard
-SHA=$("$REPO_ROOT/scripts/stage-apps.sh" select NNN --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" [--extra PATH ...])
+REV=$("$REPO_ROOT/scripts/stage-apps.sh" select NNN --ref "${GIT_REPO_BRANCH:-main}" --repo-url "$GIT_REPO_URL" [--extra PATH ...])
 # stage-specific read-only preflight here
-"$REPO_ROOT/scripts/stage-apps.sh" deploy NNN --revision "$SHA" --repo-url "$GIT_REPO_URL"
+"$REPO_ROOT/scripts/stage-apps.sh" deploy NNN --revision "$REV" --repo-url "$GIT_REPO_URL"
 ```
-- `select` refuses a checkout whose stage source differs from the commit, untracked stage files, and a commit `GIT_REPO_URL` does not advertise. Never hand-write the publish check.
-- `deploy` applies every deploy-order component, starts a sync only where this source has not been synced yet (carrying the Application's own `syncOptions` and prune), and waits for each to be Synced and Healthy. A stage whose own setup must run before its components can become healthy uses `--no-wait`, runs the setup, then `stage-apps.sh wait`. Components that declare `demo.rhoai.io/deploy-mode: sequential` deploy one order group at a time (Stage 070). `--resync` re-runs every hook. A cluster-specific value reaches one component as a Kustomize patch on its Application (`--kustomize-patches FILE`, Stage 040 Gateway hostnames), so Git stays cluster-neutral.
+- `select` refuses only when this checkout's stage source (and the shared `scripts/lib.sh` and `scripts/stage-apps.sh`) differs from what `GIT_REPO_URL` serves for the revision, or has untracked stage files: the scripts never act on source Argo CD does not deploy. Unpushed work in other paths of the checkout does not matter. Never hand-write this check.
+- `deploy` applies every deploy-order component at the revision, has Argo CD refresh it, starts a sync only for a component that is not Synced after a successful sync (carrying the Application's own `syncOptions` and prune), and waits for each to be Synced and Healthy. A stage whose own setup must run before its components can become healthy uses `--no-wait`, runs the setup, then `stage-apps.sh wait`. Components that declare `demo.rhoai.io/deploy-mode: sequential` deploy one order group at a time (Stage 070). `--resync` re-runs every hook. A cluster-specific value reaches one component as a Kustomize patch on its Application (`--kustomize-patches FILE`, Stage 040 Gateway hostnames), so Git stays cluster-neutral.
+- A change that moves objects between Applications or changes a component's folder goes to a branch of its own first (skill `gitops-move-applications`): on `main`, the old Application would render the move at once and prune what it loses.
 - A `deploy-script` component is deployed by `stages/NNN-name/deploy.sh --component NAME` with the same commands for one component: `select`, `stage-apps.sh preflight NNN --app NAME` and its own read-only checks, `stage-apps.sh apply NNN --app NAME`, `sync NNN --app NAME`, `wait NNN --app NAME`. No script calls the `argocd` CLI.
-- Each stage takes `deploy.sh [--revision REF]`; the default is `GIT_REPO_BRANCH`, then `HEAD`. No default repository URL in scripts.
-- `validate.sh` checks its Applications with `check_stage_applications NNN [SHA]` (`scripts/lib.sh`, which calls `stage-apps.sh status`): every component, never a subset. Exit 0 pass, 1 fail, 2 warnings or pending.
+- Each stage takes `deploy.sh [--revision REV]` (a branch, tag or commit); the default is `GIT_REPO_BRANCH`, then `main`. No default repository URL in scripts.
+- `validate.sh` checks its Applications with `check_stage_applications NNN` (`scripts/lib.sh`, which calls `stage-apps.sh status`): every component, never a subset, tracking `GIT_REPO_BRANCH`, Synced and Healthy. Exit 0 pass, 1 fail, 2 warnings or pending.
 
 Every GitOps stage (`stages/NNN-name/deploy.sh` present) MUST have:
 1. `gitops/stages/NNN-name/NNN-<component>/` - one folder per Argo CD Application (its `source.path`), named exactly like the Application, with the component README beside its `kustomization.yaml`; nested folders inside it are not prefixed
@@ -135,7 +138,7 @@ Every Application MUST use `destination: {server: https://kubernetes.default.svc
 | `SkipDryRunOnMissingResource` | `true` | CRDs may not exist at first sync |
 | `RespectIgnoreDifferences` | `true` | Sync also skips the ignored fields, not only the diff |
 
-Exception: the five Stage 060 Applications have no `automated` policy. A runtime sync gate (`openshell-runtime-prerequisites`) needs per-revision values that `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-openshell-runtime` stamps during the sync, and an automatic sync of a new commit on `main` would start the agent runtime rollout unattended. Their scripts start each sync explicitly at the selected SHA.
+Exception: the five Stage 060 Applications have no `automated` policy. A runtime sync gate (`openshell-runtime-prerequisites`) waits for values that `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-openshell-runtime` writes during the sync (the operation's commit among them), and an automatic sync of a new commit on `main` would start the agent runtime rollout unattended. They track the branch like every Application and show OutOfSync after a change; their scripts start each sync explicitly.
 
 **Do NOT use:** `ServerSideApply=true` or `Replace=true`.
 

@@ -53,8 +53,8 @@ Paths starting with `...` are under `gitops/stages/060-agent-runtime-and-agentop
 2. Sync the `060-openshell-runtime` Application at that revision with
    `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-openshell-runtime`
    (it has no automated sync), then run `images/build-opencode.sh` or
-   `images/build-hermes.sh` (published revision in
-   `RHOAI_STAGE060_EXPECTED_REVISION`), which starts the build and prints the
+   `images/build-hermes.sh` (they build the commit the runtime is Synced at, its
+   `status.sync.revision`), which starts the build and prints the
    immutable output reference.
 3. Validate after the OpenShift safety guard in `AGENTS.md`:
 

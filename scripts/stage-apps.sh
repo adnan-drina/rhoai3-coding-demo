@@ -3,21 +3,25 @@
 #
 # A stage keeps one Argo CD Application per component in gitops/applications/<name>.yaml (file name = metadata.name,
 # which starts with the stage number), rendering gitops/stages/<NNN-stage>/<name>/. Components with a numeric
-# demo.rhoai.io/deploy-order annotation deploy together at one reviewed revision, in that order; components with
-# demo.rhoai.io/deploy-script are deployed by the stage deploy.sh separately (their own revision and procedure).
+# demo.rhoai.io/deploy-order annotation deploy together, in that order; components with demo.rhoai.io/deploy-script
+# are deployed by the stage deploy.sh separately (its own procedure).
 # A manual-sync deploy-script component may declare demo.rhoai.io/optional: 'true'; broad status reports its
 # absence as not activated, while an explicit status --app still requires it to be present and reconciled.
 # gitops/stages/<NNN-stage>/kustomization.yaml renders exactly the union of all components.
 #
-# Usage: scripts/stage-apps.sh COMMAND STAGE [options]
-#   select STAGE --ref REF --repo-url URL [--extra PATH]...    reviewed, published commit of the stage source
-#   deploy STAGE --revision SHA --repo-url URL [--resync] [--no-wait] [--timeout S] [--kustomize-patches FILE]
-#   apply STAGE --app NAME... --revision SHA --repo-url URL [--kustomize-patches FILE]   apply only, no sync
+# Every Application tracks one Git revision (spec.source.targetRevision): GIT_REPO_BRANCH, default main, or a tag or
+# commit given with --revision to freeze a demo. Argo CD resolves it and reconciles; "ready" means Synced and Healthy
+# at that revision. The commit Argo CD rendered is status.sync.revision (always a full SHA).
+#
+# Usage: scripts/stage-apps.sh COMMAND STAGE [options]      REV defaults to GIT_REPO_BRANCH, then main
+#   select STAGE --ref REV --repo-url URL [--extra PATH]...    REV, once the checkout's stage source matches it on URL
+#   deploy STAGE --revision REV --repo-url URL [--resync] [--no-wait] [--timeout S] [--kustomize-patches FILE]
+#   apply STAGE --app NAME... --revision REV --repo-url URL [--kustomize-patches FILE]   apply only, no sync
 #   sync STAGE [--app NAME]... [--resync]                       start syncs only
-#   wait STAGE --revision SHA --repo-url URL [--app NAME]... [--timeout S]
-#   status STAGE [--revision SHA] [--repo-url URL] [--app NAME]...   OK/FAIL; absent optional components SKIP
+#   wait STAGE --revision REV --repo-url URL [--app NAME]... [--timeout S]
+#   status STAGE [--revision REV] [--repo-url URL] [--app NAME]...   OK/FAIL; absent optional components SKIP
 #   names STAGE [--all] [--reverse]                             deploy order (--reverse: deletion order)
-#   applications STAGE --revision SHA --repo-url URL [--kustomize-patches FILE]   JSON List of pinned Applications
+#   applications STAGE --revision REV --repo-url URL [--kustomize-patches FILE]   JSON List of the Applications
 #   owner STAGE KIND NAME [NAMESPACE] [--group G]               component that renders the object
 #   delegated STAGE KIND NAME [NAMESPACE] [--group G]           JSON pointers its live owner leaves to later stages
 #   preflight STAGE --repo-url URL [--skip-kind K]... [--all] [--app NAME]...   read-only adoption guard before the first write
@@ -106,7 +110,7 @@ owner() {
 }
 get_application() { oc --request-timeout=10s get applications.argoproj.io "$1" -n "$NS" --ignore-not-found -o json; }
 
-# Reasons (one per line) an Application is not exactly reconciled at an immutable revision; nothing when ready.
+# Reasons (one per line) an Application is not Synced and Healthy at the revision it tracks; nothing when ready.
 APP_PROBLEMS='def app_problems($rev; $repo; $path; $accepted; $dest): .metadata.name as $n | .spec as $spec | .status as $s
     | ($spec.source.targetRevision // "") as $target | ($s.operationState // {}) as $op
     | [ (if (.metadata.ownerReferences // [] | length) > 0 or .metadata.deletionTimestamp != null or $spec.sources != null
@@ -114,17 +118,16 @@ APP_PROBLEMS='def app_problems($rev; $repo; $path; $accepted; $dest): .metadata.
         (if $spec.project != "rhoai-demo" or $spec.destination != $dest then "\($n): project or destination differs" else empty end),
         (if $repo != "" and $spec.source.repoURL != $repo then "\($n): repository differs" else empty end),
         (if $path != "" and $spec.source.path != $path then "\($n): source path differs" else empty end),
-        (if ($target | test("^[0-9a-f]{40}$") | not) or ($rev != "" and $target != $rev)
-            then "\($n): revision is not the reviewed immutable commit" else empty end),
+        (if $rev != "" and $target != $rev then "\($n): tracks \($target), not \($rev)" else empty end),
         (if ($spec.syncPolicy.syncOptions // [] | index("RespectIgnoreDifferences=true")) == null
             then "\($n): RespectIgnoreDifferences is off" else empty end),
-        (if $s.sync.status != "Synced" or $s.sync.revision != $target then "\($n): not Synced at its revision" else empty end),
+        (if $s.sync.status != "Synced" then "\($n): \($s.sync.status // "not compared") at \($target)" else empty end),
         (if ($accepted | index($s.health.status)) == null then "\($n): health \($s.health.status)" else empty end),
-        (if $op.phase != "Succeeded" or $op.syncResult.revision != $target or $op.syncResult.source.path != $spec.source.path
-            then "\($n): last operation is not a successful sync of this source" else empty end) ];'
+        (if .operation != null or $op.phase == "Running" or $op.phase == "Terminating" then "\($n): sync in progress"
+         elif $op.phase != "Succeeded" then "\($n): last sync \($op.phase // "never ran")" else empty end) ];'
 # Problems across a stage's components; --all also checks script-deployed ones (validation always does).
 stage_problems() {
-    local stage=$1 revision=${2:-} repo=${3:-} all=${4:-false} desired name live order revisions=""
+    local stage=$1 revision=${2:-} repo=${3:-} all=${4:-false} desired name live
     shift 4
     desired=$(components "$stage" "$all") || return 1
     for name in "$@"; do
@@ -148,22 +151,18 @@ stage_problems() {
             ! jq -e '.spec.syncPolicy.automated == null' <<<"$live" >/dev/null; then
             echo "$name: optional component requires manual sync (no automated policy)"
         fi
-        order=$(jq -r '.metadata.annotations["demo.rhoai.io/deploy-order"] // ""' <<<"$want")
-        # Deploy-order components share the stage's one revision; a script-deployed one has its own.
-        [[ -n "$order" ]] && revisions+="$(jq -r '.spec.source.targetRevision' <<<"$live")"$'\n'
-        jq -r --argjson want "$want" --arg rev "$([[ -n "$order" || $# -gt 0 ]] && echo "$revision")" --arg repo "$repo" \
+        jq -r --argjson want "$want" --arg rev "$revision" --arg repo "$repo" \
             "$APP_PROBLEMS"' ($want.metadata.annotations["demo.rhoai.io/accepted-health"] // "" | split(",") | map(gsub("^\\s+|\\s+$"; ""))
                 | map(select(. != "")) + ["Healthy"]) as $acc
             | app_problems($rev; $repo; $want.spec.source.path; $acc; $want.spec.destination)[]' <<<"$live" ||
             die "$name: could not validate Application"
     done < <(jq -c '.[]' <<<"$desired")
-    [[ $(printf '%s' "$revisions" | sort -u | grep -c .) -le 1 ]] || echo "components are at different revisions"
 }
 
-# Applications pinned to the revision and repository, with per-component Kustomize patches ({name: [patch...]}).
+# Applications tracking the revision in the repository, with per-component Kustomize patches ({name: [patch...]}).
 stamped() {
     local stage=$1 revision=$2 repo=$3 patches=${4:-} all=${5:-false}
-    [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || die "A 40-character commit SHA is required"
+    [[ -n "$revision" && -n "$repo" ]] || die "A revision and a repository URL are required"
     components "$stage" "$all" | jq -c --arg rev "$revision" --arg repo "$repo" --argjson p "$( [[ -n "$patches" ]] && cat "$patches" || echo '{}')" '
         (($p | keys) - map(.metadata.name)) as $unknown
         | if ($unknown | length) > 0 then error("Patches for unknown components: \($unknown | join(", "))") else . end
@@ -171,9 +170,24 @@ stamped() {
             | .metadata.name as $n | if $p[$n] then .spec.source.kustomize.patches = $p[$n] else . end)'
 }
 apply_app() { oc --request-timeout=15s apply -f - <<<"$1" || die "Could not apply $(jq -r '.metadata.name' <<<"$1")"; }
-# One hook-strategy sync for each component whose last operation is not a successful sync of its current source
-# (every one with resync). Carries the Application's own syncOptions and prune (a bare sync drops them); Argo CD
-# reports Synced without an operation when the render is unchanged, so automated sync alone never runs hooks.
+# Have Argo CD compare the named Applications with their revision's current commit now instead of at its next poll
+# (about three minutes), and wait until the controller has done so: it removes the refresh annotation.
+refresh() {
+    local deadline=$((SECONDS + 180)) name
+    for name in "$@"; do
+        oc --request-timeout=10s annotate applications.argoproj.io "$name" -n "$NS" argocd.argoproj.io/refresh=normal \
+            --overwrite >/dev/null || die "Could not refresh $name"
+    done
+    for name in "$@"; do
+        while get_application "$name" | jq -e '.metadata.annotations["argocd.argoproj.io/refresh"] != null' >/dev/null; do
+            (( SECONDS < deadline )) || die "Argo CD did not refresh $name in time"
+            sleep 2
+        done
+    done
+}
+# One hook-strategy sync for each component that is not Synced after a successful sync (every one with resync): a
+# new or changed source, a manual-sync component behind its revision, or an earlier failure. Automated sync covers
+# later changes on its own. Carries the Application's own syncOptions and prune (a bare sync drops them).
 start_syncs() {
     local stage=$1 resync=$2; shift 2
     local all=false name app
@@ -184,8 +198,7 @@ start_syncs() {
         [[ -n "$app" ]] || continue
         jq -e '.operation != null or (.status.operationState.phase == "Running" or .status.operationState.phase == "Terminating")' \
             <<<"$app" >/dev/null && continue
-        if [[ "$resync" == false ]] && jq -e '(.status.operationState // {}) as $op | $op.phase == "Succeeded"
-            and $op.syncResult.revision == .spec.source.targetRevision and $op.syncResult.source.path == .spec.source.path' \
+        if [[ "$resync" == false ]] && jq -e '.status.sync.status == "Synced" and .status.operationState.phase == "Succeeded"' \
             <<<"$app" >/dev/null; then continue; fi
         jq -c '{operation: ({initiatedBy: {username: "stage-deploy"}, sync: ({revision: .spec.source.targetRevision, syncStrategy: {hook: {}}}
             + (if (.spec.syncPolicy.syncOptions // []) | length > 0 then {syncOptions: .spec.syncPolicy.syncOptions} else {} end)
@@ -196,7 +209,7 @@ start_syncs() {
         echo "$name"
     done
 }
-# Wait until every named component is reconciled at the revision; fail on a failed operation or the deadline.
+# Wait until every named component is Synced and Healthy at the revision; fail on a failed operation or the deadline.
 wait_for() {
     local stage=$1 revision=$2 repo=$3 timeout=$4; shift 4
     local deadline=$((SECONDS + timeout)) desired problems name app want
@@ -206,9 +219,8 @@ wait_for() {
         for name in "$@"; do
             app=$(get_application "$name")
             if [[ -z "$app" ]]; then problems+="$name: missing; "; continue; fi
-            jq -e --arg rev "$revision" '(.status.operationState // {}) as $op | .operation == null
-                and ($op.syncResult.revision // $op.operation.sync.revision) == $rev and ($op.phase == "Failed" or $op.phase == "Error")' \
-                <<<"$app" >/dev/null && die "$name: sync at ${revision:0:12} failed; inspect its hooks"
+            jq -e '(.status.operationState // {}) as $op | .operation == null and ($op.phase == "Failed" or $op.phase == "Error")' \
+                <<<"$app" >/dev/null && die "$name: sync of $(jq -r '.status.operationState.syncResult.revision // "?" | .[:12]' <<<"$app") failed; inspect its hooks"
             want=$(jq -c --arg n "$name" '.[] | select(.metadata.name == $n)' <<<"$desired")
             problems+=$(jq -r --argjson want "$want" --arg rev "$revision" --arg repo "$repo" "$APP_PROBLEMS"'
                 ($want.metadata.annotations["demo.rhoai.io/accepted-health"] // "" | split(",") | map(gsub("^\\s+|\\s+$"; ""))
@@ -220,7 +232,7 @@ wait_for() {
         sleep 10
     done
 }
-# Apply every deploy-order component pinned to the revision, start syncs, and wait (sequential stages per group).
+# Apply every deploy-order component at the revision, start syncs, and wait (sequential stages per group).
 deploy() {
     local stage=$1 revision=$2 repo=$3 timeout=$4 resync=$5 wait=$6 patches=$7
     local apps groups group names_ app started
@@ -234,25 +246,42 @@ deploy() {
     while IFS= read -r group; do
         names_=$(jq -r '.[].metadata.name' <<<"$group")
         while IFS= read -r app; do apply_app "$app" | sed 's/^/  /'; done < <(jq -c '.[]' <<<"$group")
+        refresh $names_
         started=$(start_syncs "$stage" "$resync" $names_ | paste -sd, - | sed 's/,/, /g')
-        echo "applied $(paste -sd, - <<<"$names_" | sed 's/,/, /g') at ${revision:0:12}${started:+; started sync of $started}$([[ -n "$started" ]] || echo "; no sync needed")"
+        echo "applied $(paste -sd, - <<<"$names_" | sed 's/,/, /g') at $revision${started:+; started sync of $started}$([[ -n "$started" ]] || echo "; no sync needed")"
         [[ "$wait" == true ]] || return 0
         wait_for "$stage" "$revision" "$repo" "$timeout" $names_
-        echo "PASS $(paste -sd, - <<<"$names_" | sed 's/,/, /g') Synced and Healthy at ${revision:0:12}"
+        echo "PASS $(paste -sd, - <<<"$names_" | sed 's/,/, /g') Synced and Healthy at $revision"
     done <<<"$groups"
 }
-# The full commit of ref, provided the stage source in the checkout is exactly that commit (no edits, nothing
-# untracked) and the configured repository advertises it: only reviewed, published source is deployed.
+# The commit the repository serves for a branch, tag or commit, fetched so the checkout can be compared with it.
+published_commit() {
+    local ref=$1 repo=$2 object
+    if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+        object=$ref
+    else
+        object=$(git -C "$REPO_ROOT" ls-remote "$repo" "refs/heads/$ref" "refs/tags/$ref" | awk 'NR == 1 {print $1}')
+        [[ -n "$object" ]] || die "$repo has no branch or tag $ref"
+    fi
+    git -C "$REPO_ROOT" cat-file -e "$object^{commit}" 2>/dev/null || git -C "$REPO_ROOT" fetch -q --no-tags "$repo" "$ref" ||
+        die "Could not fetch $ref from $repo"
+    git -C "$REPO_ROOT" rev-parse --verify "$object^{commit}" || die "$ref on $repo is not a commit"
+}
+# The revision, provided the stage source in this checkout is exactly what the repository serves for it (no edits,
+# nothing untracked, not behind): what the stage scripts check and do always matches what Argo CD deploys. Unpushed
+# work elsewhere in the checkout does not matter.
 select_revision() {
     local stage=$1 ref=$2 repo=$3; shift 3
     local commit dir paths
-    commit=$(git -C "$REPO_ROOT" rev-parse --verify "$ref^{commit}") || die "unknown ref $ref"
+    [[ -n "$repo" ]] || die "--repo-url is required"
+    commit=$(published_commit "$ref" "$repo")
     dir=$(stage_dir "$stage")
     paths=("gitops/stages/$dir" ":(glob)gitops/applications/$stage-*.yaml" "stages/$dir" scripts/lib.sh scripts/stage-apps.sh "$@")
-    git -C "$REPO_ROOT" diff --quiet "$commit" -- "${paths[@]}" || die "Stage $stage source differs from ${commit:0:12}; commit and publish it first"
-    [[ -z "$(git -C "$REPO_ROOT" ls-files --others --exclude-standard -- "${paths[@]}")" ]] || die "Untracked Stage $stage source is not in ${commit:0:12}"
-    git -C "$REPO_ROOT" ls-remote "$repo" | cut -f1 | grep -qx "$commit" || die "${commit:0:12} is not advertised by $repo (push it first)"
-    echo "$commit"
+    git -C "$REPO_ROOT" diff --quiet "$commit" -- "${paths[@]}" ||
+        die "Stage $stage source in this checkout differs from $ref on $repo (${commit:0:12}); push or pull it first"
+    [[ -z "$(git -C "$REPO_ROOT" ls-files --others --exclude-standard -- "${paths[@]}")" ]] ||
+        die "Untracked Stage $stage source is not in $ref on $repo"
+    echo "$ref"
 }
 delegated() {
     local stage=$1 kind=$2 name=$3 namespace=${4:-} group=${5:-} app
@@ -363,12 +392,12 @@ check_delegations() {
 command=$1; shift
 stage=""
 [[ "$command" == check-delegations ]] || { stage=${1:-}; [[ "$stage" =~ ^[0-9]{3}$ ]] || die "STAGE must be three digits"; shift; }
-revision="" repo="" ref=HEAD timeout=1800 resync=false wait=true patches="" all=false reverse=false group="" extra=() apps=() skip="" positional=()
+revision="${GIT_REPO_BRANCH:-main}" repo="" timeout=1800 resync=false wait=true patches="" all=false reverse=false group="" extra=() apps=() skip="" positional=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --revision) revision=$2; shift 2 ;;
         --repo-url) repo=$2; shift 2 ;;
-        --ref) ref=$2; shift 2 ;;
+        --ref) revision=$2; shift 2 ;;
         --timeout) timeout=$2; shift 2 ;;
         --resync) resync=true; shift ;;
         --no-wait) wait=false; shift ;;
@@ -385,7 +414,7 @@ while [[ $# -gt 0 ]]; do
 done
 case "$command" in
     names) if [[ "$reverse" == true ]]; then names "$stage" "$all" | sed '1!G;h;$!d'; else names "$stage" "$all"; fi ;;
-    select) select_revision "$stage" "$ref" "$repo" ${extra[@]+"${extra[@]}"} ;;
+    select) select_revision "$stage" "$revision" "$repo" ${extra[@]+"${extra[@]}"} ;;
     deploy) deploy "$stage" "$revision" "$repo" "$timeout" "$resync" "$wait" "$patches" ;;
     apply)
         stamped "$stage" "$revision" "$repo" "$patches" true >"$CACHE/stamped.json"
@@ -393,15 +422,16 @@ case "$command" in
             jq -e -c --arg n "$app" '.[] | select(.metadata.name == $n)' "$CACHE/stamped.json" >"$CACHE/one.json" ||
                 die "Unknown Stage $stage component: $app"
             apply_app "$(cat "$CACHE/one.json")"
-        done ;;
+        done
+        refresh "${apps[@]}" ;;
     sync) for name in $(start_syncs "$stage" "$resync" ${apps[@]+"${apps[@]}"}); do echo "started sync of $name"; done ;;
     wait)
         if [[ ${#apps[@]} -gt 0 ]]; then
             wait_for "$stage" "$revision" "$repo" "$timeout" "${apps[@]}"
-            echo "PASS $(printf '%s, ' "${apps[@]}" | sed 's/, $//') Synced and Healthy at ${revision:0:12}"
+            echo "PASS $(printf '%s, ' "${apps[@]}" | sed 's/, $//') Synced and Healthy at $revision"
         else
             wait_for "$stage" "$revision" "$repo" "$timeout" $(names "$stage")
-            echo "PASS Stage $stage components Synced and Healthy at ${revision:0:12}"
+            echo "PASS Stage $stage components Synced and Healthy at $revision"
         fi ;;
     applications) stamped "$stage" "$revision" "$repo" "$patches" | jq -c '{apiVersion: "v1", kind: "List", items: .}' ;;
     status)

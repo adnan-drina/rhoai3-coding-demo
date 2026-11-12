@@ -39,7 +39,7 @@ FRESH='def fresh: (.spec.replicas // 1) as $n | .status as $s | $n > 0 and .meta
   and ($s.updatedReplicas // 0) == $n and ($s.replicas // 0) == $n and ($s.availableReplicas // 0) == $n;'
 
 # ── Component Applications ────────────────────────────────────────────────────
-check_stage_applications 050 "${RHOAI_STAGE050_EXPECTED_REVISION:-}"
+check_stage_applications 050
 # A deliberately stopped candidate model (serving.kserve.io/stop) leaves 050-model-qualification Suspended;
 # nothing else may be unhealthy.
 parked_only() {

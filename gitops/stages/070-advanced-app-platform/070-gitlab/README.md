@@ -80,7 +80,7 @@ Not in Git: every generated Secret, the `*-runtime` ConfigMaps, `gitlab-initial-
    - links the personas to their platform-realm subjects, as `platform-developer` and `platform-admin`;
    - creates the service users `rhdh-publisher`, `platform-enroller` and `platform-catalog-reader`, with 90-day tokens that carry an `rhoai3.io/expires-at` annotation, and `demo-operator` (Owner of the workload group, a 180-day `api` token in `gitlab-system/gitlab-demo-operator`) for the Stage 070 `demo-reset/` task scripts;
    - imports the platform, golden and sample repositories from GitHub;
-   - fast-forwards the platform mirror to the Application's exact `targetRevision` (never a force push);
+   - fast-forwards the platform mirror to the commit of its own sync operation (`status.operationState.syncResult.revision`, the branch resolved by Argo CD; never a force push);
    - publishes the two goldens as one ordinary commit;
    - creates the Dev Spaces GitLab OAuth application and the `gitlab-oauth-config` Secret, and patches CheCluster `gitServices` and `allowedSources`, and the ConsoleLink `gitlab` to the live URL (cluster role `gitlab-integrations-bootstrap-ingress` allows only that link);
    - repoints the stopped `coolstore-inventory-service` workspaces;

@@ -84,5 +84,5 @@ check_oc_logged_in
 
 - A changed check is proven against the live cluster: the same PASS/FAIL as before, and a negative probe (an `oc`
   wrapper that mutates one JSON read) that makes exactly the intended check fail.
-- A changed deploy step is proven read-only first (a wrapper that refuses `oc` writes), then idempotently at the
-  deployed revision.
+- A changed deploy step is proven read-only first (a wrapper that refuses `oc` writes), then idempotently once pushed
+  to the tracked branch.

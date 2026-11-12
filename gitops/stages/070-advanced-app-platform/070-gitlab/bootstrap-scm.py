@@ -323,8 +323,11 @@ def main():
         # Developer Hub's Argo CD token is the operator-managed local user (openshift-gitops/rhdh-local-user).
         argo_host = oc('get', 'route', 'openshift-gitops-server', '-n', 'openshift-gitops', '-o', 'json')['spec']['host']
         synced = oc('get', 'application', '070-gitlab', '-n', 'openshift-gitops', '-o', 'json')
-        platform_sha = synced['spec']['source']['targetRevision']
-        if not platform_sha or not re.fullmatch('[0-9a-f]{40}', platform_sha): raise RuntimeError('Stage 070 has no immutable source revision')
+        # The commit of this sync operation (Argo CD resolves the tracked branch to it), never the branch name.
+        status = synced.get('status', {})
+        platform_sha = (status.get('operationState', {}).get('syncResult', {}).get('revision')
+                        or status.get('sync', {}).get('revision'))
+        if not platform_sha or not re.fullmatch('[0-9a-f]{40}', platform_sha): raise RuntimeError('Stage 070 has no resolved source commit')
         mirror = imports['rhoai3-coding-demo']
         try:
             api('GET', f"projects/{mirror['id']}/repository/commits/{platform_sha}")

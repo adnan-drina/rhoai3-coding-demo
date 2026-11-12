@@ -24,8 +24,7 @@ publish_studio_mcp() {
     KEY=OpenShift-MCP
     VALIDATE=false DEFER=false REPLACE=false DELEGATE=false STATE="${RHOAI_STUDIO_MCP_STATE:-}"
     KUBE="${KUBECONFIG:-$HOME/.kube/config}"
-    EXPECTED_040="${RHOAI_STAGE040_EXPECTED_REVISION:-}"
-    EXPECTED_060="${RHOAI_STAGE060_EXPECTED_REVISION:-}"
+    BRANCH="${GIT_REPO_BRANCH:-main}"
     fail() { echo "FAIL $*"; exit 1; }
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -36,8 +35,6 @@ publish_studio_mcp() {
             --delegate) DELEGATE=true; shift ;;
             --state) STATE=${2:-}; shift 2 ;;
             --bootstrap-kubeconfig) KUBE=${2:-}; shift 2 ;;
-            --expected-stage040-revision) EXPECTED_040=${2:-}; shift 2 ;;
-            --expected-stage060-revision) EXPECTED_060=${2:-}; shift 2 ;;
             *) fail "unknown Studio catalog option $1" ;;
         esac
     done
@@ -71,25 +68,14 @@ publish_studio_mcp() {
             fail "Exact owned patch failed; response suppressed"
     }
 
-    # Stage 060 runtime: absent means defer; otherwise its pinned revision must be reviewed and its MCP stack qualified.
+    # Stage 060 runtime: absent means defer; otherwise its MCP stack must be qualified at the tracked branch.
     backend=$(read_optional applications.argoproj.io 060-agent-tools -n openshift-gitops)
     if [[ -z "$backend" ]]; then
         [[ "$DEFER" == true ]] || fail "Stage060 catalog runtime is absent"
         echo "DEFERRED Studio catalog entry: deploy and qualify the separately owned Stage060 runtime first."
         return 0
     fi
-    pinned=$(jq -r '.spec.source.targetRevision' <<<"$backend")
-    if [[ -z "$EXPECTED_060" ]]; then
-        EXPECTED_060=$pinned
-        # Publishing accepts Stage 060's own pinned commit only when it is part of origin/main (published and reviewed).
-        if [[ "$VALIDATE" == false ]]; then
-            git -C "$REPO_ROOT" fetch -q origin main 2>/dev/null || true
-            [[ "$pinned" =~ ^[0-9a-f]{40}$ ]] && git -C "$REPO_ROOT" merge-base --is-ancestor "$pinned" origin/main ||
-                fail "Stage060 pinned revision is not part of origin/main; supply --expected-stage060-revision"
-        fi
-    fi
-    [[ "$EXPECTED_060" =~ ^[0-9a-f]{40}$ && "$pinned" == "$EXPECTED_060" ]] || fail "Stage060 source differs from supplied reviewed revision"
-    RHOAI_STAGE060_EXPECTED_REVISION="$pinned" "$REPO_ROOT/stages/060-agent-runtime-and-agentops/validate.sh" --component 060-agent-tools \
+    "$REPO_ROOT/stages/060-agent-runtime-and-agentops/validate.sh" --component 060-agent-tools \
         >/dev/null 2>&1 || fail "Current catalog native ownership/configuration/readiness gate failed"
     if [[ "$SOURCE_KIND" == route ]]; then
         host=$(oc --request-timeout=10s get route "$SERVER" -n mcp-servers -o jsonpath='{.spec.host}')
@@ -101,27 +87,17 @@ publish_studio_mcp() {
     fi
     VALUE=$(jq -n -c -S --arg u "$url" --arg d "$DESCRIPTION" '{url: $u, transport: "streamable-http", description: $d}')
 
-    # The 040-genai-studio Application: this repository, reconciled at the reviewed revision, preserving delegated fields.
+    # The 040-genai-studio Application: this repository, Synced and Healthy at the tracked branch, preserving delegated fields.
     app=$(oc --request-timeout=10s get applications.argoproj.io "$APP" -n openshift-gitops -o json)
-    if [[ -z "$EXPECTED_040" ]]; then
-        # Run alone (not from deploy.sh): the deployed revision, which a publish accepts only when it is on origin/main.
-        EXPECTED_040=$(jq -r '.spec.source.targetRevision' <<<"$app")
-        if [[ "$VALIDATE" == false ]]; then
-            git -C "$REPO_ROOT" fetch -q origin main 2>/dev/null || true
-            [[ "$EXPECTED_040" =~ ^[0-9a-f]{40}$ ]] && git -C "$REPO_ROOT" merge-base --is-ancestor "$EXPECTED_040" origin/main ||
-                fail "Stage040 deployed revision is not part of origin/main; supply --expected-stage040-revision"
-        fi
-    fi
-    [[ "$EXPECTED_040" =~ ^[0-9a-f]{40}$ ]] || fail "Stage040 source differs from supplied reviewed revision"
-    jq -e --arg repo "$GIT_REPO_URL" --arg path "$SOURCE" --arg rev "$EXPECTED_040" '.spec as $spec | .spec.source as $src | .status as $s
+    jq -e --arg repo "$GIT_REPO_URL" --arg path "$SOURCE" --arg rev "$BRANCH" '.spec as $spec | .spec.source as $src | .status as $s
         | (.metadata.ownerReferences // [] | length) == 0 and .metadata.deletionTimestamp == null and .operation == null
         and $spec.project == "rhoai-demo" and ($spec.sources | not) and $src.repoURL == $repo and $src.path == $path
         and $spec.destination == {server: "https://kubernetes.default.svc", namespace: "openshift-gitops"}
-        and $src.targetRevision == $rev and $s.sync.status == "Synced" and $s.sync.revision == $rev and $s.health.status == "Healthy"
-        and $s.operationState.phase == "Succeeded" and $s.operationState.syncResult.revision == $rev
+        and $src.targetRevision == $rev and $s.sync.status == "Synced" and $s.health.status == "Healthy"
+        and $s.operationState.phase == "Succeeded"
         and $s.operationState.syncResult.source.repoURL == $src.repoURL and $s.operationState.syncResult.source.path == $src.path
         and ($spec.syncPolicy.syncOptions // [] | index("RespectIgnoreDifferences=true"))' <<<"$app" >/dev/null ||
-        fail "Stage040 Application is foreign, busy, not reconciled at the reviewed revision, or lacks field preservation"
+        fail "Stage040 Application is foreign, busy, not Synced and Healthy at $BRANCH, or lacks field preservation"
     cm=$(oc --request-timeout=10s get configmap "$CM" -n "$NS" -o json)
     jq -e --arg t "$APP:/ConfigMap:$NS/$CM" '(.metadata.ownerReferences // [] | length) == 0 and .metadata.deletionTimestamp == null
         and .metadata.annotations["argocd.argoproj.io/tracking-id"] == $t' <<<"$cm" >/dev/null ||

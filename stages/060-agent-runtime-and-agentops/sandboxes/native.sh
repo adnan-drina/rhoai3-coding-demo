@@ -339,9 +339,9 @@ setup_init() {
 setup_preflight() {
   local revision=$1 gateway desired subscription file sources=()
   shift
-  bget applications.argoproj.io 060-openshell-runtime openshift-gitops | jq -e --arg rev "$revision" '.spec.source.targetRevision == $rev
-    and .status.sync.revision == $rev and .status.sync.status == "Synced" and .status.health.status == "Healthy" and .operation == null' >/dev/null ||
-    fail "Exact runtime revision is not ready"
+  bget applications.argoproj.io 060-openshell-runtime openshift-gitops | jq -e --arg rev "$revision" '.status.sync.revision == $rev
+    and .status.sync.status == "Synced" and .status.health.status == "Healthy" and .operation == null' >/dev/null ||
+    fail "The runtime is not Synced and Healthy at commit $revision (its status.sync.revision)"
   for file in "$INPUTS"/*; do
     if [[ -f "$file" ]]; then sources+=("$file"); fi
   done

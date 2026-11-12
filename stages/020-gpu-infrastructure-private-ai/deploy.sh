@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Stage 020: GPU infrastructure (Node Feature Discovery, NVIDIA GPU Operator, Kueue, GPU MachineSets, quotas).
 #   deploy.sh [--revision REF]
-#       Deploys the component Applications at the reviewed published commit (REF defaults to GIT_REPO_BRANCH, then
-#       HEAD) after the read-only prerequisites: Stage 010 reconciled, every generated GPU MachineSet still matching
+#       Deploys the component Applications tracking REF (default GIT_REPO_BRANCH, then main)
+#       after the read-only prerequisites: Stage 010 reconciled, every generated GPU MachineSet still matching
 #       the active CPU worker it was derived from. The GPU MachineSets are declared with zero replicas.
 #   deploy.sh --gpus N
 #       Scales GPU capacity: 1 or 2 starts that many workers in the selected pool (GPU_POOL=rtxpro6000, the default,
@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 REPO_ROOT="$ROOT_DIR"
 source "$ROOT_DIR/scripts/lib.sh"
-MODE=deploy ref="${GIT_REPO_BRANCH:-HEAD}" GPUS=""
+MODE=deploy ref="" GPUS=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --revision) ref="${2:?}"; shift 2 ;;
@@ -24,6 +24,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 load_env >&2
+ref="${ref:-${GIT_REPO_BRANCH:-main}}"
 check_oc_logged_in >&2
 
 # ── GPU capacity ──────────────────────────────────────────────────────────────

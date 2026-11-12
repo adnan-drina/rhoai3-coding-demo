@@ -70,7 +70,7 @@ NVIDIA validator and DCGM exporter) and refuses before any change when none is r
 ./stages/030-private-model-serving/validate.sh
 ```
 
-Deployment uses a reviewed published revision. See [Operations](../../docs/OPERATIONS.md#stage-030) for prerequisites and the existing-cluster registry handoff. Validation checks native serving readiness, persistent monitoring and authenticated discovery APIs; actual persona and browser interaction are separate checks.
+The Application tracks `GIT_REPO_BRANCH` (default `main`); `deploy.sh` runs once the stage source in your checkout matches that branch. See [Operations](../../docs/OPERATIONS.md#stage-030) for prerequisites and the existing-cluster registry handoff. Validation checks native serving readiness, persistent monitoring and authenticated discovery APIs; actual persona and browser interaction are separate checks.
 
 ## References
 

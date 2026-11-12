@@ -10,8 +10,8 @@ does not change a running sandbox until a reviewed template change uses its dige
 | `build-opencode.sh` | After a reviewed change of `opencode/` (release version, asset checksum or Dockerfile). Downloads the official release asset, checks its SHA-256 and that it holds exactly one `opencode` binary, builds `opencode-runtime:1.18.16` and prints the immutable image reference. |
 | `build-hermes.sh` | After a reviewed change of `hermes-api/` (base image, dependency closure or packaging check). Downloads the hash-locked wheels from `dependency-source.json`, checks each SHA-256, builds `hermes-runtime-api:0.20.5-api` and prints the immutable image reference. |
 
-Both scripts build only a published revision: `RHOAI_STAGE060_EXPECTED_REVISION` (default `HEAD`) must be on `origin`,
-this checkout's build inputs must equal it, and `060-openshell-runtime` must be synced at it. Each run starts one
+Both scripts build the commit `060-openshell-runtime` is Synced at (its `status.sync.revision`, tracking
+`GIT_REPO_BRANCH`); this checkout's build inputs must equal it. Each run starts one
 OpenShift Build and changes nothing else; rerunning builds the same input again.
 
 Build contexts:

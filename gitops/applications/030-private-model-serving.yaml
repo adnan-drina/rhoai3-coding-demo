@@ -18,7 +18,7 @@ metadata:
 spec:
   project: rhoai-demo
   source:
-    # repoURL and targetRevision are set by deploy.sh from .env (GIT_REPO_URL, GIT_REPO_BRANCH)
+    # deploy.sh sets repoURL and targetRevision from .env (GIT_REPO_URL, GIT_REPO_BRANCH, default main)
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
     path: gitops/stages/030-private-model-serving/030-private-model-serving

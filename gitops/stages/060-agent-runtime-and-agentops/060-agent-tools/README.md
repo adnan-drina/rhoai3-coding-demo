@@ -154,7 +154,7 @@ name is committed.
 ## Validation
 
 ```bash
-RHOAI_STAGE060_EXPECTED_REVISION=<deployed-sha> stages/060-agent-runtime-and-agentops/validate.sh --component 060-agent-tools
+stages/060-agent-runtime-and-agentops/validate.sh --component 060-agent-tools
 oc get mcpserver -n mcp-servers
 ```
 

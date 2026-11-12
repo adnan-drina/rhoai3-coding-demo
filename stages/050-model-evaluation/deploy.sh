@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Stage 050: EvalHub, evaluation content and the model qualification pipeline, at one reviewed published revision.
+# Stage 050: EvalHub, evaluation content and the model qualification pipeline, tracking GIT_REPO_BRANCH (default main).
 # They track to the shared MLflow that Stage 010 deploys (010-mlflow). Before the first write: Stage 010-040
 # prerequisites and the adoption preflight. After the Applications: the EvalHub database credentials and the MLflow
 # tracking address it needs (Argo CD owns every workload and CR).
 # Running an evaluation is a separate step (dashboard Develop & train → Evaluations).
-# Usage: stages/050-model-evaluation/deploy.sh [--revision REF]   (REF defaults to GIT_REPO_BRANCH, then HEAD)
+# Usage: stages/050-model-evaluation/deploy.sh [--revision REF]   (REF defaults to GIT_REPO_BRANCH, then main)
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -13,7 +13,7 @@ load_env
 check_oc_logged_in
 require_env GIT_REPO_URL "reviewed Stage 050 source repository"
 assert_required_env
-ref="${GIT_REPO_BRANCH:-HEAD}"
+ref="${GIT_REPO_BRANCH:-main}"
 if [[ "${1:-}" == --revision && $# -eq 2 ]]; then ref="$2"; elif [[ $# -ne 0 ]]; then sed -n 's/^# Usage: //p' "$0" >&2; exit 1; fi
 STAGE_APPS="$REPO_ROOT/scripts/stage-apps.sh"
 APPS=redhat-ods-applications
@@ -199,10 +199,9 @@ register_helper_model gemma-2-9b-abliterated gemma-2-9b-it-abliterated
 register_helper_model gpt-oss-safeguard-20b gpt-oss-safeguard-20b
 
 # Exit 2 (services ready, no evaluation evidence) is the expected result of a deployment.
-export RHOAI_STAGE050_EXPECTED_REVISION="$revision"
 deadline=$((SECONDS + 900))
 until result=0; "$SCRIPT_DIR/validate.sh" >/dev/null 2>&1 || result=$?; [[ "$result" == 0 || "$result" == 2 ]]; do
   (( SECONDS < deadline )) || { "$SCRIPT_DIR/validate.sh" || true; fail "Stage 050 services did not reconcile"; }
   sleep 10
 done
-log_success "Stage 050 reconciled at ${revision:0:12}; evaluation execution remains a separate step."
+log_success "Stage 050 reconciled at ${revision}; evaluation execution remains a separate step."

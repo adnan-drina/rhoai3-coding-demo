@@ -105,13 +105,13 @@ OpenShift Machine API creates GPU worker capacity from a declarative MachineSet.
 
 ## Deploy And Validate
 
-The stage is deployed as five Argo CD Applications at one reviewed revision: `020-node-feature-discovery`, `020-nvidia-gpu-operator`, `020-kueue`, `020-gpu-machinesets` (the generated pools in `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets/`, with replicas left to `deploy.sh --gpus N`) and `020-gpu-quotas` (Kueue queues and hardware profiles). Changing a pool or a quota syncs only that component. The pool generator is a task script, described in [`machinesets/README.md`](machinesets/README.md).
+The stage is deployed as five Argo CD Applications that track `GIT_REPO_BRANCH` (default `main`): `020-node-feature-discovery`, `020-nvidia-gpu-operator`, `020-kueue`, `020-gpu-machinesets` (the generated pools in `gitops/stages/020-gpu-infrastructure-private-ai/020-gpu-machinesets/`, with replicas left to `deploy.sh --gpus N`) and `020-gpu-quotas` (Kueue queues and hardware profiles). Changing a pool or a quota syncs only that component. The pool generator is a task script, described in [`machinesets/README.md`](machinesets/README.md).
 
 ```bash
 # Generate the cluster-specific GPU pools (required on each new environment; all start at 0 replicas)
 ./stages/020-gpu-infrastructure-private-ai/machinesets/generate.sh "$RHOAI_SOURCE_WORKER_MACHINESET" --write
 
-# Review and publish the generated pool files, then deploy their exact revision
+# Review and push the generated pool files to the tracked branch, then deploy
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 
 # Start one GPU worker in the default pool (GPU_POOL=rtxpro6000, or l40s), or park every pool

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Stage 030: native KServe, the model registry and catalogs, and persistent monitoring, at one reviewed published
-# revision (REF defaults to GIT_REPO_BRANCH, then HEAD). Read-only prerequisites first: Stage 010 reconciled and
+# Stage 030: native KServe, the model registry and catalogs, and persistent monitoring, tracking
+# REF (default GIT_REPO_BRANCH, then main). Read-only prerequisites first: Stage 010 reconciled and
 # delegating what Stage 030 owns, existing objects already ours, a retained registry database intact, the agent
 # catalog source ours or the installer's empty one, and serving prerequisites. Never re-points Stage 010 or seeds models.
 # Usage: stages/030-private-model-serving/deploy.sh [--revision REF]
@@ -13,7 +13,7 @@ load_env
 check_oc_logged_in
 require_env GIT_REPO_URL "reviewed Stage 030 source repository"
 assert_required_env
-ref="${GIT_REPO_BRANCH:-HEAD}"
+ref="${GIT_REPO_BRANCH:-main}"
 if [[ "${1:-}" == --revision && $# -eq 2 ]]; then ref="$2"; elif [[ $# -ne 0 ]]; then sed -n 's/^# Usage: //p' "$0" >&2; exit 1; fi
 STAGE_APPS="$ROOT_DIR/scripts/stage-apps.sh"
 revision=$("$STAGE_APPS" select 030 --ref "$ref" --repo-url "$GIT_REPO_URL" \

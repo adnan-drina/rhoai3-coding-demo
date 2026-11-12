@@ -44,11 +44,11 @@ OpenShift AI 3.5 sections. Detailed record:
 
 ## Procedure
 
-1. Change manifests under `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/`, commit,
-   publish, then deploy the component at that SHA:
+1. Change manifests under `gitops/stages/010-openshift-ai-platform-foundation/010-mlflow/`, commit and
+   push to the tracked branch (Argo CD syncs it), then deploy and validate the component:
 
    ```bash
-   ./stages/010-openshift-ai-platform-foundation/deploy.sh --revision <sha> --component 010-mlflow
+   ./stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-mlflow
    ./stages/010-openshift-ai-platform-foundation/validate.sh --component 010-mlflow
    ```
 

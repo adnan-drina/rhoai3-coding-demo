@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage 060: the five component Applications, each deployed by this script at one reviewed published revision after
+# Stage 060: the five component Applications, each deployed by this script tracking GIT_REPO_BRANCH (default main) after
 # its own read-only preflight (060 components sync manually by design, .agents/rules/gitops.md):
 #   060-openshell-identity  Keycloak realm import, then the OpenShift broker, clients and the two curated personas
 #   060-openshell-runtime   the agent sandbox operator and OpenShell gateway, its retained key and issuer, the
@@ -16,7 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
-ref="${GIT_REPO_BRANCH:-HEAD}" COMPONENT=""
+ref="" COMPONENT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --revision) ref="${2:?}"; shift 2 ;;
@@ -25,13 +25,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 load_env
+ref="${ref:-${GIT_REPO_BRANCH:-main}}"
 check_oc_logged_in
 require_env GIT_REPO_URL "reviewed Stage 060 source repository"
 assert_required_env
 STAGE_APPS="$REPO_ROOT/scripts/stage-apps.sh"
 GITOPS=gitops/stages/060-agent-runtime-and-agentops
 REVISION=$("$STAGE_APPS" select 060 --ref "$ref" --repo-url "$GIT_REPO_URL")
-export RHOAI_STAGE060_EXPECTED_REVISION="$REVISION"
 W=$(mktemp -d)
 trap 'while read -r p; do kill "$p" 2>/dev/null || true; done <"$W/pids"; rm -rf "$W"' EXIT
 : >"$W/pids"
@@ -318,17 +318,17 @@ patch_data() {
 # Initialize the retained key-encryption key and the issuer (prepare), then release the startup barrier once the
 # native controller is qualified (full).
 runtime_setup() {
-  local issuer csv installed sub
+  local issuer csv installed sub commit
   get applications.argoproj.io 060-openshell-runtime -n openshift-gitops | jq -e --arg rev "$REVISION" --arg repo "$GIT_REPO_URL" --arg path "$RUNTIME_PATH" '
     {repoURL: $repo, targetRevision: $rev, path: $path} as $src | .spec as $s | .status.operationState as $op
     | ($s.source == $src) and $s.project == "rhoai-demo" and (.metadata.ownerReferences // [] | length) == 0 and .metadata.deletionTimestamp == null
-    and ($op.phase == "Running" or $op.phase == "Succeeded") and $op.syncResult.revision == $rev and $op.syncResult.source == $src
+    and ($op.phase == "Running" or $op.phase == "Succeeded") and ($op.syncResult.revision | test("^[0-9a-f]{40}$")) and $op.syncResult.source == $src
     and ($s.syncPolicy.syncOptions | index("RespectIgnoreDifferences=true")) != null
     and all(["Secret", "openshell-credentials", ["/data/key-encryption-key"]], ["ConfigMap", "openshell-identity", ["/data/issuer"]],
         ["ConfigMap", "openshell-runtime-ready", ["/data/controller-ready", "/data/source-revision", "/data/controller-csv-uid"]];
       . as [$k, $n, $p] | any($s.ignoreDifferences[]?; (.group // "") == "" and .kind == $k and .name == $n and .namespace == "openshell"
         and (.jsonPointers == $p or .jsonPointers == ["/data"])))' >/dev/null ||
-    fail "060-openshell-runtime is not this revision's operation, or a runtime field delegation is missing"
+    fail "060-openshell-runtime has no operation of this source, or a runtime field delegation is missing"
   tracked namespace openshell openshell >/dev/null
   tracked configmap openshell-identity openshell >/dev/null
   tracked configmap openshell-runtime-ready openshell >/dev/null
@@ -369,7 +369,9 @@ runtime_setup() {
   done < <(jq -c '.spec.install.spec.deployments[]' <<<"$csv")
   get crd sandboxes.agents.x-k8s.io | jq -e 'any(.status.conditions[]?; .type == "Established" and .status == "True")
     and any(.spec.versions[]; .served and (.name == "v1alpha1" or .name == "v1beta1"))' >/dev/null || fail "Sandbox API is not served"
-  jq -n -c --arg rev "$REVISION" --arg uid "$(jq -r '.metadata.uid' <<<"$csv")" '{"controller-ready": "true", "source-revision": $rev, "controller-csv-uid": $uid}' |
+  # The commit of the runtime's sync operation; its init hook releases only for that same operation's commit.
+  commit=$(get applications.argoproj.io 060-openshell-runtime -n openshift-gitops | jq -r '.status.operationState.syncResult.revision')
+  jq -n -c --arg rev "$commit" --arg uid "$(jq -r '.metadata.uid' <<<"$csv")" '{"controller-ready": "true", "source-revision": $rev, "controller-csv-uid": $uid}' |
     patch_data configmap openshell-runtime-ready openshell
   log_success "Native Automatic CSV, controller and Sandbox API qualified; startup barrier released"
 }
@@ -394,8 +396,8 @@ ai_agents_setup() {
   [[ -f "$cli" && $(shasum -a 256 "$cli" | cut -d' ' -f1) == $(jq -r '.cliBinarySha256' "$pins") ]] ||
     fail "Install the pinned OpenShell CLI at $cli or set RHOAI_STAGE060_OPENSHELL_CLI (chart/source-pins.json cliBinarySha256)"
   get applications.argoproj.io 060-openshell-runtime -n openshift-gitops | jq -e --arg rev "$REVISION" '.spec.source.targetRevision == $rev
-    and .status.sync.revision == $rev and .status.sync.status == "Synced" and .status.health.status == "Healthy" and .operation == null' >/dev/null ||
-    fail "Exact runtime GitOps revision is not ready"
+    and .status.sync.status == "Synced" and .status.health.status == "Healthy" and .operation == null' >/dev/null ||
+    fail "Runtime Application is not Synced and Healthy at $REVISION"
   get namespace ai-agents | jq -e '.metadata.labels["rhoai3.redhat.com/openshell-workspace"] == "true" and .metadata.labels["opendatahub.io/dashboard"] == "true"
     and .metadata.deletionTimestamp == null' >/dev/null || fail "GitOps workspace namespace is not admitted"
   get namespace openshell-developer | jq -e '.metadata.labels["rhoai3.redhat.com/openshell-workspace"] == "true" and .metadata.deletionTimestamp == null' \
@@ -458,21 +460,23 @@ ai_agents_setup() {
 }
 
 deploy_runtime() {
-  local deadline
+  local deadline previous started
   check_operator_policy "$REPO_ROOT/$RUNTIME_PATH/chart/controller"
   idle 060-openshell-runtime
   "$STAGE_APPS" preflight 060 --repo-url "$GIT_REPO_URL" --app 060-openshell-runtime
   "$STAGE_APPS" apply 060 --app 060-openshell-runtime --revision "$REVISION" --repo-url "$GIT_REPO_URL"
-  "$STAGE_APPS" sync 060 --app 060-openshell-runtime
+  previous=$(get applications.argoproj.io 060-openshell-runtime -n openshift-gitops | jq -r '.status.operationState.startedAt // ""')
+  started=$("$STAGE_APPS" sync 060 --app 060-openshell-runtime)
   deadline=$((SECONDS + 180))
   until oc --request-timeout=10s get secret/openshell-credentials configmap/openshell-identity configmap/openshell-runtime-ready -n openshell >/dev/null 2>&1; do
     (( SECONDS < deadline )) || fail "Runtime prerequisite creation timed out"
     sleep 5
   done
-  # The sync request precedes status population; wait for this revision's own operation.
+  # The sync request precedes status population; wait for the operation just started (none when already Synced).
   deadline=$((SECONDS + 60))
-  until get applications.argoproj.io 060-openshell-runtime -n openshift-gitops | jq -e --arg rev "$REVISION" '.status.operationState as $o
-      | ($o.phase == "Running" or $o.phase == "Succeeded") and $o.syncResult.revision == $rev and $o.syncResult.source == .spec.source' >/dev/null; do
+  until [[ -z "$started" ]] || get applications.argoproj.io 060-openshell-runtime -n openshift-gitops | jq -e --arg prev "$previous" '
+      .status.operationState as $o | $o.startedAt != $prev
+      and ($o.phase == "Running" or $o.phase == "Succeeded") and $o.syncResult.source == .spec.source' >/dev/null; do
     (( SECONDS < deadline )) || fail "The runtime sync operation did not start within 60 s"
     sleep 3
   done
@@ -643,4 +647,4 @@ case "$COMPONENT" in
   060-agent-tools) deploy_agent_tools ;;
   *) fail "Unknown component $COMPONENT" ;;
 esac
-log_success "Stage 060 ${COMPONENT:-components} reconciled at ${REVISION:0:12}; persona handshake and agent lifecycle remain explicit acceptance steps."
+log_success "Stage 060 ${COMPONENT:-components} reconciled at ${REVISION}; persona handshake and agent lifecycle remain explicit acceptance steps."

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Stage 070: the developer platform (identity clients, GitLab and its NooBaa storage, Dev Spaces, Pipelines and
-# Trusted Artifact Signer, SonarQube, Developer Hub, MTA 8.3 with its AI components) at one reviewed published
-# revision. Read-only preconditions first; the components deploy sequentially (deploy-mode sequential). Credentials and
+# Trusted Artifact Signer, SonarQube, Developer Hub, MTA 8.3 with its AI components) tracking
+# GIT_REPO_BRANCH (default main). Read-only preconditions first; the components deploy sequentially (deploy-mode sequential). Credentials and
 # chart migrations are native sync hooks; models stay at their operator-selected scale and no model call is made.
 # STAGE070_RESYNC=true re-runs every component's hooks; STAGE070_SYNC_TIMEOUT sets the per-component wait (s).
-# Usage: stages/070-advanced-app-platform/deploy.sh [--revision <published ref or commit>]
+# Usage: stages/070-advanced-app-platform/deploy.sh [--revision <branch, tag or commit>]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -20,7 +20,7 @@ fi
 require_env GIT_REPO_URL "reviewed Stage 070 source repository"
 assert_required_env
 STAGE_APPS="$REPO_ROOT/scripts/stage-apps.sh"
-REVISION=$("$STAGE_APPS" select 070 --ref "${GIT_REPO_BRANCH:-HEAD}" --repo-url "$GIT_REPO_URL" \
+REVISION=$("$STAGE_APPS" select 070 --ref "${GIT_REPO_BRANCH:-main}" --repo-url "$GIT_REPO_URL" \
   --extra stages/120-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold \
   --extra stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold)
 # The GitLab hub publishes those two goldens from this revision, so they must be the reviewed, published source too.
@@ -62,12 +62,12 @@ if [[ "$SONAR_DATABASE_IMAGE" == *postgresql-15* ]]; then
   exit 1
 fi
 
-# First cluster mutation: install the component Argo CD owners. Publish/review the
-# configured source revision before invoking this script; local edits are not
-# a deployment source. Credentials and chart migrations are native sync hooks.
+# First cluster mutation: install the component Argo CD owners, tracking the branch. Push the stage source before
+# invoking this script; local edits are not a deployment source. Credentials and chart migrations are native sync hooks.
 # The components declare deploy-mode sequential: each is applied, synced and waited for before the next, because
-# sync waves order hooks only inside one Application. A component already synced at this commit is not re-synced;
-# pass STAGE070_RESYNC=true to re-run every component's hooks.
+# sync waves order hooks only inside one Application. A component already Synced is not re-synced; pass
+# STAGE070_RESYNC=true to re-run every component's hooks (for example after a change to the 120/130 scaffolds that the
+# GitLab hook publishes, which lie outside 070-gitlab's own source path).
 "$STAGE_APPS" deploy 070 --revision "$REVISION" --repo-url "$GIT_REPO_URL" \
   --timeout "${STAGE070_SYNC_TIMEOUT:-3600}" ${STAGE070_RESYNC:+--resync}
 

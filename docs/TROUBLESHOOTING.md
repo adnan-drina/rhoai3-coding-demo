@@ -3187,7 +3187,7 @@ The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` a
 
 **Likely cause:** Before `c3f3e959` the hook waited for the fixed CSV `kueue-operator.v1.4.2`. With Automatic approval the operator rolled to a newer CSV in the same channel, so the pinned name never reported `Succeeded`.
 
-**Recover:** The hook now reads `status.installedCSV` from the `kueue-operator` Subscription through a namespaced Role. On an older pinned revision, re-pin Stage 020 to a revision with that fix; terminate a stuck operation by setting `status.operationState.phase` to `Terminating` on the Application.
+**Recover:** The hook now reads `status.installedCSV` from the `kueue-operator` Subscription through a namespaced Role. On an older revision, re-run the Stage 020 `deploy.sh` at the branch that has the fix; terminate a stuck operation by setting `status.operationState.phase` to `Terminating` on the Application.
 
 ## Application OutOfSync On Delegated ConfigMaps, Or Playground MCP Entries Vanish
 
@@ -3203,12 +3203,11 @@ The Stage 050 candidate `InferenceService` uses `deploymentStrategy: Recreate` a
 **Recover:** Restore the annotations from the Application file in `gitops/applications/` (`oc annotate application ... --overwrite`, one key at a time) and hard-refresh. Republish both playground entries by re-running Stage 040 `deploy.sh`, which publishes them after its sync:
 
 ```bash
-RHOAI_STAGE060_EXPECTED_REVISION=<060-agent-tools revision> \
-  ./stages/040-governed-models-as-a-service/deploy.sh --revision <Stage 040 revision>
+./stages/040-governed-models-as-a-service/deploy.sh
 # a reviewed change of an already published entry: ./stages/040-governed-models-as-a-service/studio-mcp/publish.sh --replace
 ```
 
-Change an Application's revision with `oc patch` on `spec.source.targetRevision` (and `spec.ignoreDifferences` when needed), not by re-applying the whole object. When an explicit operation is needed, pass the Application's options with it: `{"operation":{"sync":{"revision":"<sha>","syncOptions":["RespectIgnoreDifferences=true","ServerSideDiff=true", ...]}}}`, or use `argocd --core app sync`.
+Applications track `GIT_REPO_BRANCH`; move a stage to another branch or tag with its `deploy.sh --revision`. For a one-off change of a single Application, `oc patch` its `spec.source.targetRevision` (and `spec.ignoreDifferences` when needed), not re-apply the whole object; the next stage `deploy.sh` sets it back. When an explicit operation is needed, pass the Application's options with it: `{"operation":{"sync":{"revision":"<branch>","syncOptions":["RespectIgnoreDifferences=true","ServerSideDiff=true", ...]}}}`, or use `argocd --core app sync`.
 
 ## A Listener Or List Entry Removed From Git Stays On The Live Resource
 
@@ -3420,7 +3419,7 @@ Separately, automated Developer Hub popup starts produced two `/api/auth/oidc/st
 
 ## Stage 070 correction deployment or credential validation refuses
 
-A moving source, dirty stage checkout, unpublished revision, old successful operation or active operation for another commit cannot qualify deployment. Publish the reviewed source and use `deploy.sh --revision <commit>`; inspect the native operation and its hook results rather than selectively applying operands. Exact auto-sync already in progress is joined. A permanent enrollment failure is not “pending”: inspect the issue IID/refusal reason and fix the request before removing its refusal label.
+A Stage 070 checkout that differs from the tracked branch (modified, unpushed, behind or untracked stage source) is refused before any write. Push or pull the stage source and re-run `deploy.sh`; inspect the native operation and its hook results rather than selectively applying operands. Exact auto-sync already in progress is joined. A permanent enrollment failure is not “pending”: inspect the issue IID/refusal reason and fix the request before removing its refusal label.
 
 A missing credential annotation does not prove that its earlier copy is harmless. Argo’s declarative Secrets need both the resource SSA setting and the disabled client-apply migration bridge; otherwise a later full sync can recreate copies. The vendor Rails write must also use the corrected renderer. Complete the reviewed operator rotation and preserve its non-secret report. Never print the Secret, restore a revoked predecessor or rerun all rotations after one partial failure. Portal environment tokens require a normal backend rollout after both copies are persisted. Dev Spaces OAuth renewal preserves its application ID; verify fresh private-source access after operator reconciliation. Keycloak client credentials must work only in the retained application realm, with base/master administration denied.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read-only Stage 030 checks: the Application is reconciled at its pinned revision, the native DSC and KServe
+# Read-only Stage 030 checks: the Application is Synced and Healthy at the tracked branch, the native DSC and KServe
 # component are ready with current owned serving workloads, platform and user-workload monitoring are persistent,
 # and model discovery works: the demo model registry, its database and authenticated list API, the native model catalog,
 # dashboard discovery flags, and authenticated model and agent catalog listings through the dashboard's registry UI
@@ -18,11 +18,10 @@ read_json() { oc --request-timeout=20s get "$@" -o json; }
 COND='def cond($t): any(.status.conditions[]?; .type == $t and .status == "True");'
 
 reconciled() {
-    read_json application 030-private-model-serving -n openshift-gitops | jq -e '.spec.source as $src | .status as $s
-        | ($src.targetRevision | length) == 40 and $s.sync.revision == $src.targetRevision
+    read_json application 030-private-model-serving -n openshift-gitops | jq -e --arg rev "${GIT_REPO_BRANCH:-main}" '
+        .spec.source as $src | .status as $s | $src.targetRevision == $rev
         and $s.sync.status == "Synced" and $s.health.status == "Healthy"
-        and $s.operationState.phase == "Succeeded" and $s.operationState.syncResult.revision == $src.targetRevision
-        and $s.operationState.syncResult.source.path == $src.path' >/dev/null && echo yes || echo no
+        and $s.operationState.phase == "Succeeded" and $s.operationState.syncResult.source.path == $src.path' >/dev/null && echo yes || echo no
 }
 dsc_ready() {
     read_json datasciencecluster default-dsc | jq -e "$COND"' .status.observedGeneration == .metadata.generation
@@ -60,7 +59,7 @@ monitoring_persistent() {
     echo yes
 }
 
-check "030-private-model-serving Synced, Healthy and last synced at its pinned revision" reconciled yes
+check "030-private-model-serving Synced and Healthy at ${GIT_REPO_BRANCH:-main}" reconciled yes
 check "DataScienceCluster current, Ready and KServe Ready; KServe and Model Registry Managed" dsc_ready yes
 check "Native KServe component current and ready with current owned serving workloads" kserve_ready yes
 check "Platform monitoring persistent (gp3-csi 40Gi) and rolled out" \

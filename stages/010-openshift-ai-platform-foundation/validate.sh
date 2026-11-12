@@ -66,13 +66,11 @@ validate_core() {
   [[ "$ARGOCD_PHASE" == "Available" ]] && R="pass" || R="phase=${ARGOCD_PHASE:-not found}"
   record "ArgoCD instance Available" "$R"
 
-  # ── 3. Component Applications Synced + Healthy at one revision ──────────────
+  # ── 3. Component Applications Synced + Healthy at the tracked branch ────────
   STAGE_APPS="$ROOT_DIR/scripts/stage-apps.sh"
-  revision_args=()
-  [[ -n "${RHOAI_STAGE010_EXPECTED_REVISION:-}" ]] && revision_args=(--revision "$RHOAI_STAGE010_EXPECTED_REVISION")
-  if APP_STATUS=$("$STAGE_APPS" status 010 ${revision_args[@]+"${revision_args[@]}"} 2>&1); then R="pass"
+  if APP_STATUS=$("$STAGE_APPS" status 010 2>&1); then R="pass"
   else R="$(printf '%s\n' "$APP_STATUS" | grep -E '^(  - |ERROR)' | head -3 | tr '\n' ' ')"; fi
-  record "Stage 010 component Applications (all seven) Synced/Healthy at one revision" "$R"
+  record "Stage 010 component Applications (all seven) Synced/Healthy at ${GIT_REPO_BRANCH:-main}" "$R"
 
   # ── 4. ODF operator ───────────────────────────────────────────────────────────
   ODF_CSV=$(csv_phase_from_subscription openshift-storage odf-operator)
@@ -315,12 +313,11 @@ validate_console_observability() {
   statefulsets=$(read_json statefulsets -n "$NS" | owned_by "$(jq -r '.[0].metadata.uid // ""' <<<"$perses")")
 
   reconciled() {
-      jq -e '.spec.source as $src | .status as $s
-          | ($src.targetRevision | length) == 40
-          and $s.sync.status == "Synced" and $s.sync.revision == $src.targetRevision
+      jq -e --arg rev "${GIT_REPO_BRANCH:-main}" '.spec.source as $src | .status as $s
+          | $src.targetRevision == $rev
+          and $s.sync.status == "Synced"
           and $s.health.status == "Healthy"
           and $s.operationState.phase == "Succeeded"
-          and $s.operationState.syncResult.revision == $src.targetRevision
           and $s.operationState.syncResult.source.path == $src.path' <<<"$app" >/dev/null && echo yes || echo no
   }
   perses_ui() {
@@ -355,7 +352,7 @@ validate_console_observability() {
           <<<"$statefulsets" >/dev/null && echo yes || echo no
   }
 
-  check "010-console-observability Synced, Healthy and last synced at its pinned revision" reconciled yes
+  check "010-console-observability Synced and Healthy at ${GIT_REPO_BRANCH:-main}" reconciled yes
   check "Monitoring UIPlugin enables Perses and is tracked by 010-console-observability" perses_ui yes
   check "Every installed console plugin that Git declares is enabled" declared_enabled yes
   check "No installed console plugin is missing from Git" nothing_undeclared yes

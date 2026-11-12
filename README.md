@@ -128,8 +128,10 @@ scripts/validate-stage-flow.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
 ./stages/050-model-evaluation/deploy.sh
 ./stages/060-agent-runtime-and-agentops/deploy.sh
-./stages/070-advanced-app-platform/deploy.sh --revision <reviewed-published-commit>
+./stages/070-advanced-app-platform/deploy.sh
 ```
+
+Every Argo CD Application tracks `GIT_REPO_BRANCH` from `.env` (default `main`), so a push to that branch reaches the cluster through Argo CD alone. A stage `deploy.sh` runs only when its source in your checkout matches the branch on `GIT_REPO_URL`. To freeze the demo, set `GIT_REPO_BRANCH` to a tag such as `rhoai-3.4-stable` and re-run the stage scripts.
 
 Each stage has one `deploy.sh` and one `validate.sh`; stage capabilities are options of those two (for example Stage 020 `deploy.sh --gpus 1` starts a GPU worker, `--gpus 0` parks them all; Stage 060 `deploy.sh --component NAME` deploys one of its five components). See each stage README.
 

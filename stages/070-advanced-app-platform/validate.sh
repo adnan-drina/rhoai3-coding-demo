@@ -4,7 +4,7 @@
 # MTA native Agents and Developer Lightspeed; the signing service and Developer Hub; and the corrected security
 # boundaries (no retained credential annotations, server-side diff, scoped identity clients, ingress policies).
 # --static checks only the repository: the stage renders, its components are disjoint, and the scripts parse.
-# Usage: stages/070-advanced-app-platform/validate.sh [--static | --revision <commit>]
+# Usage: stages/070-advanced-app-platform/validate.sh [--static | --revision <branch or tag>]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -15,9 +15,8 @@ if [[ "${1:-}" == --static ]]; then
   echo 'PASS: Stage 070 authoring checks. Live deployment and model-dependent checks are separate.'
   exit 0
 fi
-EXPECTED_REVISION="${RHOAI_STAGE070_EXPECTED_REVISION:-}"
 if [[ "${1:-}" == --revision && $# -eq 2 ]]; then
-  EXPECTED_REVISION="$2"
+  export GIT_REPO_BRANCH="$2"
 elif [[ $# -ne 0 ]]; then
   sed -n 's/^# Usage: //p' "$0" >&2; exit 1
 fi
@@ -97,7 +96,7 @@ security_boundaries() {
 }
 
 log_step 'Stage 070 GitOps and selected operators'
-check_stage_applications 070 "$EXPECTED_REVISION"
+check_stage_applications 070
 for row in \
   'openshift-operators devspaces devspacesoperator.v3.31.' \
   'rhdh-operator rhdh rhdh-operator.v1.10.7' \
