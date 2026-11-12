@@ -2,7 +2,7 @@
 name: ocp-lightspeed-configure
 metadata:
   author: rhoai3-coding-demo
-  version: 2.0.0
+  version: 2.1.0
   product: ocp_lightspeed
   docs-version: "1.0"
   skill-group: "OpenShift Platform"
@@ -32,6 +32,7 @@ sections. Take field names from the OLSConfig API reference, never from memory.
 | The OLSConfig is in Git since 2026-10-27 (`040-openshift-lightspeed`); the provisioner still owns the operator and the Azure credentials Secret `azure-api-keys` | `gitops/stages/040-governed-models-as-a-service/040-openshift-lightspeed/olsconfig.yaml` | [Configuring and deploying][configure] |
 | Provider credentials are corrected only by their owner through the native Secret path; never rotated blindly or committed | `docs/TROUBLESHOOTING.md` (Lightspeed API unready) | [Create the credentials secret (CLI)][secret-cli] |
 | Default provider `qwen-maas`: type `rhoai_vllm`, `https://maas.<cluster-domain>/v1` (patched by Stage 040 `deploy.sh`), model `publishers/internal-models/models/qwen3-8-27b`, Secret `qwen-maas-api-keys` key `apitoken` minted by a Sync-hook Job on MaaS subscription `openshift-lightspeed`; the gateway certificate is publicly trusted, so no CA ConfigMap. Azure stays as a second provider, its endpoint read from the live OLSConfig, never committed | `040-openshift-lightspeed/`, `040-model-access/openshift-lightspeed-access.yaml` | [OLSConfig `.spec.llm.providers[]`][api-providers] |
+| Fallback `nemotron-maas` (`rhoai_vllm`, same URL and Secret, model `nemotron-3-ultra-550b-a55b`, same subscription). Lightspeed has one default and no failover, so `stages/040-governed-models-as-a-service/lightspeed/select-model.sh nemotron\|qwen` moves the default by patching the Argo CD Application (self-heal reverts a direct OLSConfig edit); deploy returns to Qwen. GPT-6 Luna is not usable: `rhoai_vllm` always sends `top_p` (Luna 400), `openai` uses the Responses API the Luna MaaS route lacks | `040-openshift-lightspeed/olsconfig.yaml`, `stages/040-governed-models-as-a-service/lightspeed/` | [Configuring and deploying][configure], [`.spec.llm.providers[]`][api-providers] |
 
 ## Procedure
 
@@ -52,6 +53,11 @@ sections. Take field names from the OLSConfig API reference, never from memory.
   [authentication flow][introspection-auth] before enabling them on the demo.
 - A provider behind a private CA needs the trusted-CA configuration; see
   [trusted CA for the LLM][trusted-ca].
+- The readiness probe calls the default model: a parked or failing default makes
+  `ApiReady=False` and the console panel silent, whatever other providers exist.
+- A provider type fixes the request shape: `rhoai_vllm`/`rhelai_vllm` add
+  `top_p 0.95` and `frequency_penalty 1.03`; `openai` uses the Responses API
+  (no OLSConfig switch). Probe a candidate model with that exact shape first.
 
 ## Official documentation (OpenShift Lightspeed, "1.0" set)
 

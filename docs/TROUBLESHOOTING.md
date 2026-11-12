@@ -2812,6 +2812,38 @@ The guarded 2026-10-05 11:16 UTC check found Lightspeed 1.1.4 installed but its 
 
 After owner correction, verify native operator reconciliation, `ApiReady=True`, current deployment availability and a bounded authenticated user query. No service repair was performed during this investigation: valid replacement/provider correction was unavailable. The same provider-authentication problem was recorded in the initial environment baseline.
 
+## Lightspeed API unready while Qwen is parked
+
+**Affected stage:** Stage 040 (`040-openshift-lightspeed`), OpenShift Lightspeed 2.0.1
+
+**Symptom:** the console's Lightspeed panel does not answer; `OLSConfig cluster` reports `ApiReady=False` and the
+`lightspeed-service-api` containers are running but unready. Observed 2026-11-12 with `qwen3-8-27b` at `replicas: 0`.
+
+**Cause:** the app server's readiness probe calls the default provider. With Qwen parked, MaaS answers
+`503 failed to find endpoint candidates for serving the request`, and the app server log shows
+`LLM connection check failed`. Lightspeed has one default provider and no failover between providers.
+
+**Diagnose:**
+
+```bash
+oc get llminferenceservice qwen3-8-27b -n internal-models -o jsonpath='{.spec.replicas}{"\n"}'
+oc get olsconfig cluster -o jsonpath='{.spec.ols.defaultProvider}{"\n"}'
+oc logs deployment/lightspeed-app-server -n openshift-lightspeed -c lightspeed-service-api --tail=200 | grep 'LLM connection check'
+```
+
+**Recover:** select the external fallback, then return to Qwen once it serves again. The script patches the
+`040-openshift-lightspeed` Application (Argo CD reverts a direct `OLSConfig` edit) and waits for `ApiReady=True`:
+
+```bash
+./stages/040-governed-models-as-a-service/lightspeed/select-model.sh nemotron
+./stages/040-governed-models-as-a-service/lightspeed/select-model.sh qwen
+```
+
+While Nemotron is selected, Lightspeed's questions and the cluster resources it reads go to NVIDIA's API; see the
+[component README](../gitops/stages/040-governed-models-as-a-service/040-openshift-lightspeed/README.md). Do not point
+Lightspeed at GPT-6 Luna: its `rhoai_vllm` provider always sends `top_p`, which Luna rejects with HTTP 400, and its
+`openai` provider calls the Responses API, which the MaaS route for Luna does not serve.
+
 ## Historical failed control-plane installer pods
 
 The same investigation found five terminal revision-2 installer pods from 2026-09-28: four kube-controller-manager attempts and one scheduler attempt. Successful successor installers exist; all three control-plane nodes run kube-controller-manager revision 7 and scheduler revision 6, with no installation target pending. Operators are Available and not Degraded; all seven nodes are Ready without pressure.

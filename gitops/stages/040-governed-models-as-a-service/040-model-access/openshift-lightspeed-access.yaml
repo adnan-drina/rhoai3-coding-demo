@@ -1,4 +1,6 @@
-# OpenShift Lightspeed's governed access to the private production model. The key is minted by the
+# OpenShift Lightspeed's governed access: the private production model (Qwen, its primary) and Nemotron 3 Ultra, the
+# approved external model it falls back to while Qwen is parked. Lightspeed's request shape (top_p, frequency_penalty,
+# max_completion_tokens) is accepted by Nemotron; GPT-6 Luna rejects top_p. The key is minted by the
 # 040-openshift-lightspeed provisioner Job as this ServiceAccount, so Lightspeed traffic has its own quota and metering.
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
@@ -19,6 +21,11 @@ spec:
   modelRefs:
     - name: qwen3-8-27b
       namespace: internal-models
+      tokenRateLimits:
+        - limit: 2000000
+          window: 1h
+    - name: nemotron-3-ultra-550b-a55b
+      namespace: external-models
       tokenRateLimits:
         - limit: 2000000
           window: 1h
@@ -50,6 +57,8 @@ spec:
   modelRefs:
     - name: qwen3-8-27b
       namespace: internal-models
+    - name: nemotron-3-ultra-550b-a55b
+      namespace: external-models
   meteringMetadata:
     organizationId: rhoai3-coding-demo
     costCenter: ai-platform

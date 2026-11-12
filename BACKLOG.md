@@ -479,6 +479,7 @@ Stage 040 validation must keep asserting that `maas-api` uses `registry.redhat.i
 - [ ] ExternalModel routes export no `model` label and no token-usage counters.
 - [ ] Argo CD has twice applied a new SHA while rendering stale manifests. The recovery recipe is in troubleshooting; the cause is not identified.
 - [ ] The MaaS-owned CronJob `maas-api-key-cleanup` (`redhat-ai-gateway-infra`, created by `Config/default`) leaves one `DeadlineExceeded` Job after most lab starts: its 60-second `activeDeadlineSeconds` runs out while the pod is still starting. Later runs succeed. It is operator-managed, so it is not changed in Git (2026-11-10).
+- [ ] OpenShift Lightspeed 2.0.1 has one default provider and no failover; its readiness probe calls that model, so a parked Qwen stops the console assistant until `stages/040-governed-models-as-a-service/lightspeed/select-model.sh nemotron` is run (manual, by decision 2026-11-12). GPT-6 Luna cannot be the fallback: the `rhoai_vllm` provider always sends `top_p` (Luna: HTTP 400) and the `openai` provider uses the Responses API, which the Luna MaaS route (`openai-chat`) does not serve. Revisit when the OLSConfig exposes failover or Chat Completions for the `openai` provider.
 
 ## Planned
 

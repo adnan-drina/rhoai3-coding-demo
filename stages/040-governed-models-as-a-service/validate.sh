@@ -624,25 +624,34 @@ listener_rule_names() {
     [[ "$shared" == "[]" ]] && echo yes || echo "shared rule names: $(jq -r 'map(.listener + " (" + (.shared | join(",")) + ")") | join("; ")' <<<"$shared")"
 }
 check "No two routes on one gateway listener share a rule name (endpoint-picker collision)" listener_rule_names yes
-# OpenShift Lightspeed answers on the private production model: Qwen through MaaS is the default provider at this
-# cluster's api listener, its key Secret carries apitoken (presence only, never the value), and the API is Ready.
+# OpenShift Lightspeed answers on the private production model: Qwen (primary) and Nemotron 3 Ultra (external fallback)
+# are providers through MaaS at this cluster's api listener with the one key Secret, which carries apitoken (presence
+# only, never the value); the default is one of the two and the API is Ready. A selected fallback is a warning.
 lightspeed_provider() {
     local ols api_host
     ols=$(read_json olsconfig cluster) || { echo "OLSConfig cluster unreadable"; return; }
     api_host=$(jq -r '.spec.listeners[] | select(.name == "api") | .hostname' <<<"$GATEWAY")
-    jq -e --arg u "https://$api_host/v1" '.spec.ols.defaultProvider == "qwen-maas"
-        and .spec.ols.defaultModel == "publishers/internal-models/models/qwen3-8-27b"
-        and any(.spec.llm.providers[]; .name == "qwen-maas" and .type == "rhoai_vllm" and .url == $u
-            and .credentialsSecretRef.name == "qwen-maas-api-keys")
+    jq -e --arg u "https://$api_host/v1" '
+        def maas($p; $m): any(.spec.llm.providers[]; .name == $p and .type == "rhoai_vllm" and .url == $u
+            and .credentialsSecretRef.name == "qwen-maas-api-keys" and any(.models[]; .name == $m));
+        maas("qwen-maas"; "publishers/internal-models/models/qwen3-8-27b")
+        and maas("nemotron-maas"; "nemotron-3-ultra-550b-a55b")
+        and ([.spec.ols.defaultProvider, .spec.ols.defaultModel] | IN(["qwen-maas", "publishers/internal-models/models/qwen3-8-27b"],
+            ["nemotron-maas", "nemotron-3-ultra-550b-a55b"]))
         and all(.spec.llm.providers[]; (.url | contains("placeholder")) | not)' <<<"$ols" >/dev/null ||
-        { echo "Qwen MaaS provider, default or URL differs"; return; }
+        { echo "Qwen or Nemotron MaaS provider, default or URL differs"; return; }
     [[ $(oc --request-timeout="$TIMEOUT" get secret qwen-maas-api-keys -n openshift-lightspeed -o json 2>/dev/null |
         jq -r '.data.apitoken // "" | length > 0') == true ]] || { echo "provider Secret lacks apitoken"; return; }
     jqd -e 'any(.status.conditions[]?; .type == "ApiReady" and .status == "True")' <<<"$ols" >/dev/null ||
         { echo "Lightspeed API not Ready"; return; }
     echo yes
 }
-check "OpenShift Lightspeed uses Qwen through MaaS by default (key Secret present, API Ready)" lightspeed_provider yes
+check "OpenShift Lightspeed uses Qwen or its Nemotron fallback through MaaS (key Secret present, API Ready)" lightspeed_provider yes
+lightspeed_primary() {
+    read_json olsconfig cluster | jq -r 'if .spec.ols.defaultProvider == "qwen-maas" then "yes"
+        else "\(.spec.ols.defaultProvider // "none") selected; run lightspeed/select-model.sh qwen once Qwen serves" end'
+}
+check_warn "OpenShift Lightspeed default is the private model (Qwen), not the external fallback" lightspeed_primary yes
 check "Studio catalog entries current, or deferred until Stage 060 deploys the MCP servers" studio_catalog yes
 # The playground keeps its SQLite state on the retained PVC (040-genai-studio playground-state-attacher). No playground
 # yet is fine; one the attacher left alone (created before it, with an empty PVC) is a warning naming the remedy.

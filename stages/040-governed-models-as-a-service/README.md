@@ -54,7 +54,7 @@ Red Hat OpenShift AI 3.5, OpenShift Container Platform 4.22, Red Hat Connectivit
 
 The default deployment selects nine Argo CD Applications, one per component, all at the same reviewed revision: `040-maas-operators`, `040-maas-database`, `040-gateway-governance`, `040-maas-platform`, `040-local-models`, `040-external-models`, `040-model-access`, `040-genai-studio` and `040-openshift-lightspeed`. Switching a model or changing who may use it syncs only that component. A tenth Application, `040-showback-demo`, is optional and manually synced through explicit component selection.
 
-`040-openshift-lightspeed` points the console's OpenShift Lightspeed assistant at Qwen through MaaS (its own `openshift-lightspeed` subscription), keeping the provisioner's Azure OpenAI provider as a second choice ([component README](../../gitops/stages/040-governed-models-as-a-service/040-openshift-lightspeed/README.md)).
+`040-openshift-lightspeed` points the console's OpenShift Lightspeed assistant at Qwen through MaaS (its own `openshift-lightspeed` subscription), with Nemotron 3 Ultra on the same subscription as the fallback while Qwen is parked and the provisioner's Azure OpenAI provider as a further choice ([component README](../../gitops/stages/040-governed-models-as-a-service/040-openshift-lightspeed/README.md)). [`lightspeed/select-model.sh`](lightspeed/README.md) `nemotron` or `qwen` moves Lightspeed's default model; a deploy returns it to Qwen.
 
 ```bash
 ./stages/040-governed-models-as-a-service/deploy.sh

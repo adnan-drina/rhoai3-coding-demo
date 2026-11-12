@@ -628,9 +628,10 @@ oc --request-timeout=10s get ingresscontroller default -n openshift-ingress-oper
     patch: ("[" + ([["maas", "qwen3-8-maas", "mistral-small4-maas", "promoted-models-maas"] | to_entries[]
       | "{\"op\": \"replace\", \"path\": \"/spec/listeners/\(.key)/hostname\", \"value\": \"\(.value).\($d)\"}"] | join(", ")) + "]")}]}' \
   > "$work/gateway-patches.json"
-# OpenShift Lightspeed (operator preinstalled by the provisioner): the Qwen provider URL is this cluster's MaaS api
-# listener; the provisioner's Azure OpenAI provider keeps its endpoint, read from the live OLSConfig (never committed),
-# or the entry is dropped when the environment has none.
+# OpenShift Lightspeed (operator preinstalled by the provisioner): the Qwen and Nemotron provider URLs are this cluster's
+# MaaS api listener; the provisioner's Azure OpenAI provider keeps its endpoint, read from the live OLSConfig (never
+# committed), or the entry is dropped when the environment has none. The default is Git's (Qwen): a deploy ends a
+# fallback that lightspeed/select-model.sh selected.
 oc --request-timeout=10s get crd olsconfigs.ols.openshift.io >/dev/null ||
   { log_error "OpenShift Lightspeed operator (OLSConfig API) is not installed; 040-openshift-lightspeed needs it"; exit 1; }
 azure_url=$(oc --request-timeout=10s get olsconfig cluster --ignore-not-found -o json |
@@ -639,8 +640,9 @@ azure_url=$(oc --request-timeout=10s get olsconfig cluster --ignore-not-found -o
 oc --request-timeout=10s get ingresscontroller default -n openshift-ingress-operator -o json | jq -c --arg azure "$azure_url" \
   --slurpfile g "$work/gateway-patches.json" '(.status.domain) as $d | $g[0] + {"040-openshift-lightspeed": [{target: {group: "ols.openshift.io",
     version: "v1alpha1", kind: "OLSConfig", name: "cluster"}, patch: ([{op: "replace", path: "/spec/llm/providers/0/url",
-    value: "https://maas.\($d)/v1"}] + (if $azure == "" then [{op: "remove", path: "/spec/llm/providers/1"}]
-    else [{op: "replace", path: "/spec/llm/providers/1/url", value: $azure}] end) | tojson)}]}' > "$work/patches.json"
+    value: "https://maas.\($d)/v1"}, {op: "replace", path: "/spec/llm/providers/1/url", value: "https://maas.\($d)/v1"}]
+    + (if $azure == "" then [{op: "remove", path: "/spec/llm/providers/2"}]
+    else [{op: "replace", path: "/spec/llm/providers/2/url", value: $azure}] end) | tojson)}]}' > "$work/patches.json"
 
 # First change: the component Applications at the reviewed commit. Their hooks wait for the credentials below
 # (040-maas-database's wait-db-credentials Job), so set those up before waiting.

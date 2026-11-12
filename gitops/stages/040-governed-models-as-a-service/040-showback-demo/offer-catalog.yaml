@@ -227,6 +227,9 @@ spec:
           expr: vector(2000000)
           labels: {subscription: openshift-lightspeed, model: qwen3-8-27b}
         - record: showback_subscription_token_limit
+          expr: vector(2000000)
+          labels: {subscription: openshift-lightspeed, model: nemotron-3-ultra-550b-a55b}
+        - record: showback_subscription_token_limit
           expr: vector(1000000)
           labels: {subscription: personal-ai-admin, model: qwen3-8-27b}
         - record: showback_subscription_token_limit

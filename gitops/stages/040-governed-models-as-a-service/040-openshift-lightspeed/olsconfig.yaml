@@ -1,10 +1,13 @@
 # OpenShift Lightspeed answers on the private production model: Qwen through Models-as-a-Service with the
 # openshift-lightspeed subscription (provider type rhoai_vllm, URL ending in /v1, Secret key apitoken, as the
-# Lightspeed "Configure" guide documents). The environment provisioner's Azure OpenAI provider stays as a second,
-# selectable provider with its own Secret. Every other setting is the provisioner's, unchanged.
+# Lightspeed "Configure" guide documents). Nemotron 3 Ultra, an approved external model behind the same MaaS gateway,
+# subscription and key, is the fallback: Lightspeed has one default provider and no automatic failover, so
+# stages/040-governed-models-as-a-service/lightspeed/select-model.sh switches the default while Qwen is parked and back
+# when it returns. The environment provisioner's Azure OpenAI provider stays as a further, selectable provider with its
+# own Secret. Every other setting is the provisioner's, unchanged.
 # Cluster-specific values arrive as a deploy-time patch from stages/040-governed-models-as-a-service/deploy.sh:
-# providers/0 url = https://<MaaS api listener host>/v1; providers/1 url = the provisioner's Azure endpoint (read from
-# the live OLSConfig), or providers/1 removed when the environment has no Azure provider.
+# providers/0 and providers/1 url = https://<MaaS api listener host>/v1; providers/2 url = the provisioner's Azure
+# endpoint (read from the live OLSConfig), or providers/2 removed when the environment has no Azure provider.
 apiVersion: ols.openshift.io/v1alpha1
 kind: OLSConfig
 metadata:
@@ -25,6 +28,17 @@ spec:
           name: qwen-maas-api-keys
         models:
           - name: publishers/internal-models/models/qwen3-8-27b
+            contextWindowSize: 131072
+            parameters:
+              maxTokensForResponse: 4096
+      # Same key Secret as qwen-maas: one MaaS key for the openshift-lightspeed subscription covers both models.
+      - name: nemotron-maas
+        type: rhoai_vllm
+        url: https://maas.placeholder.example.com/v1
+        credentialsSecretRef:
+          name: qwen-maas-api-keys
+        models:
+          - name: nemotron-3-ultra-550b-a55b
             contextWindowSize: 131072
             parameters:
               maxTokensForResponse: 4096
