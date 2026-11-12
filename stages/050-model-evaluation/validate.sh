@@ -106,6 +106,18 @@ model_trace_args() {
     echo yes || echo "an InferenceService lacks the platform trace endpoint or collects detailed traces"
 }
 check "Model servers trace to the platform collector without detailed traces" model_trace_args yes
+# Guardrail traces (Guardrails guide 1.2.8): the OTEL endpoint on the CR starts the server instrumented, and the
+# config.yaml tracing block (written by the provision-evalhub-model-auth hook) adds rail spans with the messages.
+guardrail_tracing() {
+  read_json nemoguardrails candidate-guardrails -n "$TENANT" | jq -e \
+    '[.spec.env[]? | select(.name == "OTEL_EXPORTER_OTLP_ENDPOINT") | .value]
+      == ["http://data-science-collector-collector.redhat-ods-monitoring.svc:4317"]' >/dev/null ||
+    { echo "candidate-guardrails does not export to the platform collector"; return; }
+  read_json configmap candidate-guardrails-config -n "$TENANT" | jq -r '.data["config.yaml"] // ""' |
+    awk '/^tracing:/{t=1;next} /^[^ ]/{t=0} t&&/enabled: true/{e=1} t&&/enable_content_capture: true/{c=1} END{exit !(e&&c)}' &&
+    echo yes || echo "candidate-guardrails-config has no tracing block with content capture"
+}
+check "Guardrail traces rails and messages to the platform collector" guardrail_tracing yes
 # Models dashboard: evaluated-models-vllm-dashboard is the only source of kserve_vllm:* in the tenant. A second job for
 # the same pod (the platform adding the prefix itself, or a candidate moved to LLMInferenceService) would make the
 # dashboard's sum-by-model queries count every request twice; remove the ServiceMonitor when this fails (BACKLOG).

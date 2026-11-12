@@ -277,6 +277,15 @@ spec:
                 output:
                   flows:
                     - self check output
+              # Guardrail spans with the messages ("Enabling AI safety with Guardrails" 1.2.8): input rail, LLM call and
+              # output rail per request, exported through the OTEL_* variables on candidate-guardrails. Content capture
+              # stays on: the scans send synthetic attacks and Evaluated Models is admin-only.
+              tracing:
+                enabled: true
+                span_format: opentelemetry
+                enable_content_capture: true
+                adapters:
+                  - name: OpenTelemetry
               YAML
               # One ConfigMap per configuration: the 3.5.2 operator mounts every ConfigMap of a configuration at the same
               # path, so the prompts and rails from Git (candidate-guardrails-prompts) are copied in beside config.yaml.

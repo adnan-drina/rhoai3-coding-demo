@@ -114,6 +114,21 @@ spec:
         secretKeyRef:
           name: candidate-model-client-token
           key: token
+    # Traces to the platform OpenTelemetry Collector, which stores them in the platform Tempo (guide 1.2.8; "Managing
+    # OpenShift AI" 12.5). The server image starts under opentelemetry-instrument when OTEL_EXPORTER_OTLP_ENDPOINT is
+    # set, so its HTTP client passes the trace context on and the model servers' llm_request spans join the trace.
+    # The config.yaml tracing block (written by the provision-evalhub-model-auth hook) adds the rail spans.
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://data-science-collector-collector.redhat-ods-monitoring.svc:4317
+    - name: OTEL_EXPORTER_OTLP_PROTOCOL
+      value: grpc
+    - name: OTEL_SERVICE_NAME
+      value: candidate-guardrails
+    - name: OTEL_METRICS_EXPORTER
+      value: none
+    # Not in the guide: the platform collector has no logs pipeline for this tenant.
+    - name: OTEL_LOGS_EXPORTER
+      value: none
 ---
 # Evaluation jobs reach the guardrail with the candidate-model-client token (Secret garak-kfp-model-auth, api-key);
 # kube-rbac-proxy admits a caller that may get services in this project. The 3.5.2 operator's proxy config sets
