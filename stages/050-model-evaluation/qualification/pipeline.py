@@ -368,7 +368,10 @@ def verdict(
     def unanswered(mlflow_run_id):
         """(unanswered, attempts) from the Garak report in the job's MLflow run, or None when it cannot be read.
         An attempt is unanswered when none of its outputs carries text other than the guardrail server's error answer
-        (nemoguardrails returns HTTP 200 with "Internal server error" as the message when its model call fails)."""
+        (nemoguardrails returns HTTP 200 with "Internal server error" as the message when its model call fails).
+        Garak's EarlyStopHarness writes one summary attempt per intent (seq -1, no outputs, EarlyStop detector) that
+        never called the target, so it is not counted (through v24 these rows were every "unanswered" attempt: 35 in
+        the bare and 39 in the guarded scan of run agentic-coding-model-qualification-9ct98, which voided the latter)."""
         if not mlflow_run_id:
             return None
         url = f"{mlflow_url}/get-artifact?" + urllib.parse.urlencode(
@@ -380,6 +383,8 @@ def verdict(
                 for line in r:
                     e = json.loads(line)
                     if e.get("entry_type") != "attempt" or e.get("status") != 2:
+                        continue
+                    if e.get("probe_classname") == "garak.harnesses.earlystop.EarlyStopHarness":
                         continue
                     total += 1
                     texts = [o.get("text") if isinstance(o, dict) else o for o in e.get("outputs") or []]

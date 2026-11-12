@@ -41,7 +41,9 @@ pipeline (decision 2026-10-23). The translation strategy is off (guide 7.2 `gara
 translates with the risk assessment model. TAP runs one round (`depth: 1`, pipeline v20): in the shipped Garak every
 later round sends empty attack prompts, and the default ten rounds took about 30 minutes per intent, so two scans ran
 past their 2 h limit. Garak counts an attempt without a response as a refusal, so the verdict counts unanswered
-attempts in each scan's report and voids a result above 2%. Both scans suppress Garak's default `stop` sequences
+attempts in each scan's report and voids a result above 2%. It skips the summary attempt Garak's
+EarlyStopHarness writes per intent without calling the target (pipeline v25; through v24 those rows were every
+unanswered attempt and voided a guarded scan in which every attack was answered). Both scans suppress Garak's default `stop` sequences
 (`#`, `;`; pipeline v23): they cut answers short and the guardrail server rejects a request that carries them. The guardrail answers such a failure with HTTP 200 and the
 text `Internal server error`, which the verdict counts as unanswered (v22). It needs the candidate model auth Secret `garak-kfp-model-auth`, which splits the
 risk assessment models by role (pipeline v24, 2026-11-12; "Evaluating AI systems" 7.3: the judge differs from the
@@ -49,7 +51,9 @@ target). `sdg_url` and `attacker_url` point at the abliterated model (`gemma-2-9
 which writes the attack prompts and TAP's attacks, because an aligned model refuses to; `judge_url` and
 `evaluator_url` point at Mistral Small 4 through its MaaS listener (`model-qualification` subscription), which scores
 the responses and TAP's progress, so no model scores attacks it wrote. Until v23 the abliterated model also judged.
-The guarded scan's guardrail checks every input and output with its own guard model, `gpt-oss-safeguard-20b`. The `garak-kfp` provider stays available for manual pipeline-mode scans
+The guarded scan's guardrail checks every input and output with its own guard model, `gpt-oss-safeguard-20b`. Each check
+may use 4096 tokens: the guard reasons before it answers, and a check cut off by `max_tokens` counts as a block
+(at 1024, 3.6% of checks were cut off). The `garak-kfp` provider stays available for manual pipeline-mode scans
 ([evaluation README](../evaluation/README.md)).
 
 Change criteria in a new `-v<N+1>` collection, never in place, so every MLflow run stays attributable to the
