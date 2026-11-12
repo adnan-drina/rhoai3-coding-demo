@@ -1,0 +1,57 @@
+# Promoted Models: the production project for models that passed qualification (Stage 050) and are deployed from the
+# model registry in the dashboard (AI hub -> Registry -> Deploy, "Publish as MaaS"; RHOAI 3.5 "Govern LLM access with
+# Models-as-a-Service" 1.10 and "Working with model registries" 2.11). Only the Gateway listener promoted-models admits
+# this namespace: the dashboard's MaaS gateway reference carries no sectionName, so a model deployed in internal-models
+# would also attach to the shared api listener and take over Qwen's endpoint picker (RHOAIENG-93709). The deployments,
+# their MaaSModelRefs and any subscriptions created from the dashboard are not in Git.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: promoted-models
+  labels:
+    app.kubernetes.io/name: promoted-models
+    app.kubernetes.io/component: local-model-serving
+    opendatahub.io/dashboard: "true"
+    kueue.openshift.io/managed: "true"
+    maas-gateway-access: "true"
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    openshift.io/display-name: Promoted Models
+    openshift.io/description: Models promoted from the model registry after qualification and published through Models-as-a-Service.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rhods-admins-promoted-models-admin
+  namespace: promoted-models
+  labels:
+    app.kubernetes.io/name: rhods-admins-promoted-models-admin
+    app.kubernetes.io/component: maas-access
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: rhods-admins
+---
+# The RTX PRO 6000 hardware profile (gpu-rtxpro6000) schedules through this queue, as for Qwen in internal-models.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: lq-gpu-rtxpro6000
+  namespace: promoted-models
+  labels:
+    app.kubernetes.io/name: lq-gpu-rtxpro6000
+    app.kubernetes.io/component: gpu-scheduling
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "8"
+spec:
+  clusterQueue: cq-gpu-rtxpro6000

@@ -222,6 +222,8 @@ local_queues() {
     for q in lq-gpu-reserved-demo lq-gpu-rtxpro6000; do
         read_json localqueue "$q" -n internal-models | jqd -e 'ready_cond("Active")' >/dev/null || { echo "$q"; return; }
     done
+    read_json localqueue lq-gpu-rtxpro6000 -n promoted-models | jqd -e 'ready_cond("Active")' >/dev/null ||
+        { echo "promoted-models/lq-gpu-rtxpro6000"; return; }
     echo yes
 }
 components_and_flags() {
@@ -274,7 +276,7 @@ authorino() {
 
 GATEWAY=$(read_json gateway maas-default-gateway -n openshift-ingress)
 CONTROLLER=$(read_json gatewayclass "$(jq -r '.spec.gatewayClassName' <<<"$GATEWAY")" | jq -r '.spec.controllerName // ""')
-NAMESPACES=$(for n in models-as-a-service internal-models external-models redhat-ai-gateway-infra; do read_json namespace "$n"; done | jq -s -c 'INDEX(.metadata.name)')
+NAMESPACES=$(for n in models-as-a-service internal-models promoted-models external-models redhat-ai-gateway-infra; do read_json namespace "$n"; done | jq -s -c 'INDEX(.metadata.name)')
 # Route attached to maas-default-gateway's listener $section by the native controller, Accepted and ResolvedRefs now.
 ROUTE_READY='def route_ready($section; $controller): .metadata.generation as $g | .metadata.namespace as $rns
     | $controller != "" and ([.status.parents[]? | select(.controllerName == $controller
@@ -290,27 +292,29 @@ gateway() {
     jqd -e --argjson e "$expected" --argjson ns "$NAMESPACES" '
         cond_fresh("Accepted") and cond_fresh("Programmed") and .metadata.generation as $g
         | (.spec.listeners | map({key: .name, value: .}) | from_entries) as $l
-        | ($l | keys) == ["api", "mistral-small4", "qwen3-8"]
-        and ([$l[].hostname] | unique | length == 3 and all(.[]; . != null and (contains("*") | not) and (contains("placeholder") | not)))
+        | ($l | keys) == ["api", "mistral-small4", "promoted-models", "qwen3-8"]
+        and ([$l[].hostname] | unique | length == 4 and all(.[]; . != null and (contains("*") | not) and (contains("placeholder") | not)))
         and ((.status.listeners // []) | map({key: .name, value: .}) | from_entries) as $st
         | all($l | to_entries[]; .key as $name | .value as $li
             | ($e.spec.listeners[] | select(.name == $name) | .allowedRoutes) == $li.allowedRoutes
             and $li.port == 443 and $li.protocol == "HTTPS" and $li.tls.mode == "Terminate"
             and all("Accepted", "ResolvedRefs"; . as $t | any($st[$name].conditions[]?; .type == $t and .status == "True" and .observedGeneration == $g))
-            # Each model listener carries exactly the route of its model.
-            and (($st[$name].attachedRoutes // 0) | if $name == "api" then . >= 1 else . == 1 end)
+            # Each model listener carries exactly the route of its model; promoted-models carries the routes of the
+            # models promoted from the dashboard, none until the first promotion.
+            and (($st[$name].attachedRoutes // 0) | if $name == "api" then . >= 1 elif $name == "promoted-models" then . >= 0 else . == 1 end)
             and all($ns | to_entries[]; .key as $n | .value.metadata.labels as $labels
                 | ($li.allowedRoutes.namespaces.from == "Selector" and ($li.allowedRoutes.namespaces.selector // {} | selects($labels // {})))
-                  == (if $name == "api" then ($n == "external-models" or $n == "redhat-ai-gateway-infra" or $n == "internal-models") else $n == "internal-models" end)))' \
+                  == (if $name == "api" then ($n == "external-models" or $n == "redhat-ai-gateway-infra" or $n == "internal-models")
+                      elif $name == "promoted-models" then $n == "promoted-models" else $n == "internal-models" end)))' \
         <<<"$GATEWAY" >/dev/null && echo yes || echo no
 }
 namespace_access() {
     local n
-    for n in models-as-a-service internal-models external-models redhat-ai-gateway-infra redhat-ods-applications; do
+    for n in models-as-a-service internal-models promoted-models external-models redhat-ai-gateway-infra redhat-ods-applications; do
         [[ $(oc --request-timeout="$TIMEOUT" get namespace "$n" -o jsonpath='{.metadata.labels.maas-gateway-access}') == true ]] ||
             { echo "$n lacks maas-gateway-access"; return; }
     done
-    for n in internal-models external-models; do
+    for n in internal-models promoted-models external-models; do
         read_json rolebinding "rhods-admins-$n-admin" -n "$n" | jq -e '.roleRef == {apiGroup: "rbac.authorization.k8s.io", kind: "ClusterRole", name: "admin"}
             and .subjects == [{apiGroup: "rbac.authorization.k8s.io", kind: "Group", name: "rhods-admins"}]' >/dev/null ||
             { echo "$n administrator binding"; return; }
@@ -496,11 +500,11 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 check "Stage 040 components Synced and Healthy at one immutable revision; retired single Application absent" components_reconciled yes
 check "Six selected operators match Git; CSVs Succeeded with available workloads" operators yes
-check "GPU LocalQueues Active in internal-models" local_queues yes
+check "GPU LocalQueues Active in internal-models and promoted-models" local_queues yes
 check "AIGateway, OGX and KServe Managed and Ready; MaaS enabled; dashboard feature flags on" components_and_flags yes
 check "MaaS PostgreSQL available on Bound gp3-csi storage; runtime credential keys present" database yes
 check "Authorino TLS, CA bundle and owned workload projecting the service CA (live TLS requests pending)" authorino yes
-check "Gateway Accepted/Programmed; listeners api, qwen3-8 and mistral-small4 isolated, TLS-terminated and current" gateway yes
+check "Gateway Accepted/Programmed; listeners api, qwen3-8, mistral-small4 and promoted-models isolated, TLS-terminated and current" gateway yes
 check "MaaS gateway policy plugin loaded: an unauthenticated request gets 401, not 503" gateway_policy_plugin yes
 check "MaaS namespaces admitted to the Gateway; hosting-project administrator bindings" namespace_access yes
 check "MaaS API and external routes attached to the api listener only" api_routes yes

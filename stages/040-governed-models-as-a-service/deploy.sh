@@ -625,7 +625,7 @@ oc --request-timeout=10s get ingresscontroller default -n openshift-ingress-oper
   | if ($d | test("^[a-z0-9.-]+$")) | not then error("the default ingress domain is unavailable") else . end
   | {"040-gateway-governance": [{target: {group: "gateway.networking.k8s.io", version: "v1", kind: "Gateway",
       name: "maas-default-gateway", namespace: "openshift-ingress"},
-    patch: ("[" + ([["maas", "qwen3-8-maas", "mistral-small4-maas"] | to_entries[]
+    patch: ("[" + ([["maas", "qwen3-8-maas", "mistral-small4-maas", "promoted-models-maas"] | to_entries[]
       | "{\"op\": \"replace\", \"path\": \"/spec/listeners/\(.key)/hostname\", \"value\": \"\(.value).\($d)\"}"] | join(", ")) + "]")}]}' \
   > "$work/gateway-patches.json"
 # OpenShift Lightspeed (operator preinstalled by the provisioner): the Qwen provider URL is this cluster's MaaS api

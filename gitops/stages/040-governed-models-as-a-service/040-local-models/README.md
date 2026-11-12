@@ -43,6 +43,9 @@ own models.
 | RoleBinding | `rhods-admins-internal-models-admin` | `internal-models` | ClusterRole `admin` for group `rhods-admins` (hosting administrators). Wave 3 |
 | LocalQueue | `lq-gpu-rtxpro6000` | `internal-models` | Queue for the RTX PRO 6000 flavor (ClusterQueue `cq-gpu-rtxpro6000`). Used by both models. Wave 8 |
 | LocalQueue | `lq-gpu-reserved-demo` | `internal-models` | Queue for the L40S flavor (ClusterQueue `cq-gpu-reserved-demo`), used by the `gpu-reserved-demo` hardware profile. No model in Git uses it. Wave 8 |
+| Namespace | `promoted-models` | cluster | **Promoted Models** (`promoted-models.yaml`): production project for models that passed Stage 050 qualification and are deployed from the model registry in the dashboard with **Publish as MaaS** (the deployments, their `MaaSModelRef`s and their subscriptions are not in Git). Same labels as `internal-models`; admitted only by the Gateway `promoted-models` listener, because the dashboard's gateway reference carries no `sectionName` and a second local model on `api` would take over Qwen's endpoint picker (RHOAIENG-93709). Wave 1, `Prune=false,Delete=false` |
+| RoleBinding | `rhods-admins-promoted-models-admin` | `promoted-models` | ClusterRole `admin` for `rhods-admins`. Wave 3 |
+| LocalQueue | `lq-gpu-rtxpro6000` | `promoted-models` | Queue of the `gpu-rtxpro6000` hardware profile in this project. Wave 8 |
 
 ### Dashboard deployment templates (`redhat-ods-applications`)
 

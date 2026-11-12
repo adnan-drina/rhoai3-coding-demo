@@ -131,7 +131,10 @@ spec:
     action: Allow
     to:
     - namespaces:
-        matchLabels: {kubernetes.io/metadata.name: internal-models}
+        matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [internal-models, promoted-models]
     ports:
     - portNumber: {protocol: TCP, port: 8000}
     - portNumber: {protocol: TCP, port: 9002}

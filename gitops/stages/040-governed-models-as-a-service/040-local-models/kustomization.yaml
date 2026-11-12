@@ -19,6 +19,7 @@ resources:
   - qwen38-27b-maas-modelref.yaml
   - mistral-small4-119b-llminferenceservice.yaml
   - mistral-small4-119b-maas-modelref.yaml
+  - promoted-models.yaml
   - monitoring
 
 # Qwen 3.8 checkpoint format. Default: RedHatAI/Qwen3.8-27B-NVFP4. Both NVFP4 and FP8 are

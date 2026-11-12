@@ -729,8 +729,11 @@ for the Qwen request IDs; in the gateway's `config_dump`, the `v1-model-routing`
 `publishers/internal-models/models/qwen3-8-27b` on the `api` listener name the other model's `epp-service` cluster.
 
 **Prevention:** Keep one local model on the shared `api` listener. Mistral (`040-local-models`) attaches only to
-its own Gateway listener, `mistral-small4` (`mistral-small4-maas.<apps-domain>`); Stage 040 `validate.sh` checks the three
-listeners and every model route.
+its own Gateway listener, `mistral-small4` (`mistral-small4-maas.<apps-domain>`); Stage 040 `validate.sh` checks the four
+listeners and every model route. Deploy a qualified model from the dashboard with **Publish as MaaS** only into the
+**Promoted Models** project (`promoted-models`): the dashboard adds `maas-default-gateway` without a listener name, so
+in `internal-models` the route would attach to `api`, `qwen3-8` and `mistral-small4`; only the `promoted-models`
+listener admits `promoted-models`.
 
 **Recover:** If a second local model was attached to `api`, move its `router.gateway.refs` to its own listener in Git,
 publish and redeploy. Return the model to `api` only after an OpenShift update with the Istio fix is installed and the
