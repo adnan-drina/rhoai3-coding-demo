@@ -54,11 +54,11 @@ parked_only() {
   echo yes
 }
 check "050-model-qualification is Suspended only by a stopped candidate InferenceService" parked_only yes
-# The risk assessment model is registered once (pinned version and artifact, the labels and properties of
-# model-registry-metadata.json) and its InferenceService is linked to that record.
-risk_model_record() {
-  local dir="$REPO_ROOT/gitops/stages/050-model-evaluation/050-model-qualification" name=gemma-2-9b-abliterated
-  local host meta uri title rev model mid vid isvc
+# Each helper model (the risk assessment model and the guardrail's guard model) is registered once (pinned version
+# and artifact, the labels and properties of model-registry-metadata.json) and its InferenceService is linked to it.
+helper_model_record() {
+  local dir="$REPO_ROOT/gitops/stages/050-model-evaluation/050-model-qualification" name=$1 title=$2
+  local host meta uri rev model mid vid isvc
   host=$(oc --request-timeout=10s get modelregistries.modelregistry.opendatahub.io demo-registry -n rhoai-model-registries \
     -o jsonpath='{.status.hosts[0]}' 2>/dev/null) || { echo "demo-registry unreadable"; return; }
   registry() {
@@ -67,7 +67,11 @@ risk_model_record() {
   }
   uri=$(oc kustomize "$dir" | yaml_json | jq -r --arg n "$name" '.[] | select(.kind == "InferenceService" and .metadata.name == $n)
     | .spec.predictor.model.storageUri')
-  title=${uri##*/}; title=${title%%:*}; rev=${uri##*:}
+  case "$uri" in
+    hf://*) rev=${uri##*:} ;;
+    oci://*@sha256:*) rev=${uri##*@sha256:} ;;
+    *) echo "$name source not pinned"; return ;;
+  esac
   meta=$(jq -c -e --arg t "$title" '.[$t]' "$dir/model-registry-metadata.json") || { echo "$title metadata missing"; return; }
   model=$(registry '/registered_models?pageSize=500' | jq -c --arg t "$title" '[.items[] | select(.name == $t)]') ||
     { echo "registry listing failed"; return; }
@@ -88,7 +92,26 @@ risk_model_record() {
     <<<"$isvc" >/dev/null || { echo "InferenceService $name not linked to $title"; return; }
   echo yes
 }
-check "Risk assessment model registered with its labels and linked to its InferenceService" risk_model_record yes
+check "Risk assessment model registered with its labels and linked to its InferenceService" \
+  "helper_model_record gemma-2-9b-abliterated gemma-2-9b-it-abliterated" yes
+check "Guard model registered with its labels and linked to its InferenceService" \
+  "helper_model_record gpt-oss-safeguard-20b gpt-oss-safeguard-20b" yes
+# Model call traces: the onboarding trace collector runs and exports to the models-onboarding experiment of this
+# workspace (the experiment id comes from the hook-written ConfigMap, not from Git).
+trace_collector_state() {
+  local c id
+  c=$(read_json opentelemetrycollector onboarding-trace-collector -n "$TENANT")
+  jq -e '.metadata.name' <<<"$c" >/dev/null || { echo "collector missing"; return; }
+  jq -e '.spec.config.exporters["otlphttp/mlflow"].headers | .["X-MLFLOW-WORKSPACE"] == "evaluated-models"
+    and .["x-mlflow-experiment-id"] == "${env:MLFLOW_EXPERIMENT_ID}"' <<<"$c" >/dev/null ||
+    { echo "exporter does not target the workspace experiment"; return; }
+  id=$(oc --request-timeout=10s get configmap qualification-endpoints -n "$TENANT" -o jsonpath='{.data.mlflow_experiment_id}' 2>/dev/null)
+  [[ -n "$id" ]] || { echo "experiment id missing from qualification-endpoints"; return; }
+  read_json deployment onboarding-trace-collector-collector -n "$TENANT" |
+    jq -e '(.status.readyReplicas // 0) >= 1' >/dev/null || { echo "collector not Ready"; return; }
+  echo yes
+}
+check "Onboarding trace collector Ready and exporting to MLflow experiment models-onboarding" trace_collector_state yes
 # Stage 020 owns the ClusterQueues; this stage owns the consumer LocalQueues in the tenant.
 for queue in lq-gpu-reserved-demo lq-gpu-rtxpro6000; do
   record "LocalQueue $queue Active in $TENANT" "$(read_json localqueue "$queue" -n "$TENANT" |

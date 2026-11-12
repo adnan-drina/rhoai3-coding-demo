@@ -41,6 +41,8 @@ spec:
       env:
         - name: PYTORCH_ALLOC_CONF
           value: expandable_segments:True
+        - name: OTEL_SERVICE_NAME
+          value: qwen3-8-27b-nvfp4
       # Production arguments (040-local-models/qwen38-27b-llminferenceservice.yaml) without its TLS flags.
       args:
         - --enable-force-include-usage
@@ -60,6 +62,10 @@ spec:
         - --reasoning-parser=qwen3
         - --enable-auto-tool-choice
         - --tool-call-parser=qwen3_xml
+        # Model call traces to onboarding-trace-collector (MLflow experiment models-onboarding): request spans with
+        # timing and token usage, and with detailed traces the model forward and worker timings (upstream vLLM).
+        - --otlp-traces-endpoint=grpc://onboarding-trace-collector-collector.evaluated-models.svc:4317
+        - --collect-detailed-traces=all
       resources:
         requests:
           cpu: "2"

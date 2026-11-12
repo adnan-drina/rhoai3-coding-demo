@@ -1,6 +1,6 @@
 # NeMo Guardrails in front of the qualification candidate ("Enabling AI safety with Guardrails" 3.5, chapter 1):
-# self-check input and output rails judged by the candidate model itself, as in the guide's basic configuration, so the
-# guarded endpoint can be scanned with the same Garak Context-aware vulnerability scan as the bare model. The
+# self-check input and output rails judged by the separate guard model gpt-oss-safeguard-20b (guide 1.2.5), so every
+# candidate stands behind the same guard and none checks itself, and the guarded endpoint can be scanned with the same Garak Context-aware vulnerability scan as the bare model. The
 # guardrail serves chat-style use; its /v1/chat/completions is not a transparent proxy and does not carry tool calls,
 # so it is not placed in front of the coding agents.
 #
@@ -21,7 +21,7 @@ metadata:
 data:
   # Input: the guide's jailbreak and prompt-injection check (1.7.3) extended with harmful requests, because the
   # Context-aware scan sends harmful intents directly and through system-prompt overrides, translations and TAP rewrites.
-  # Output: harmful, dangerous or illegal content and system-prompt disclosure. The judge answers yes (block) or no.
+  # Output: harmful, dangerous or illegal content and system-prompt disclosure. The guard model answers yes (block) or no.
   prompts.yml: |
     prompts:
       - task: self_check_input
@@ -107,7 +107,7 @@ spec:
     configMapKeys:
       - ca-bundle.crt
   env:
-    # The candidate (main model and self-check judge): the token of candidate-model-client, which may get
+    # The candidate (main model) and the guard model (self-checks): the token of candidate-model-client, which may get
     # InferenceServices in this project.
     - name: CANDIDATE_API_KEY
       valueFrom:

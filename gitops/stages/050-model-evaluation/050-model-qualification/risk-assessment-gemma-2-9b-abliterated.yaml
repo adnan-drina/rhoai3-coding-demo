@@ -39,6 +39,9 @@ spec:
       modelFormat:
         name: vLLM
       storageUri: hf://IlyaGusev/gemma-2-9b-it-abliterated:e2b6426b20a3a889f0c182056b0dbbb7fa585d25
+      env:
+        - name: OTEL_SERVICE_NAME
+          value: gemma-2-9b-abliterated
       args:
         - --enable-force-include-usage
         - --disable-uvicorn-access-log
@@ -48,6 +51,10 @@ spec:
         - --dtype=bfloat16
         - --gpu-memory-utilization=0.90
         - --max-num-seqs=32
+        # Model call traces to onboarding-trace-collector (MLflow experiment models-onboarding): request spans with
+        # timing and token usage, and with detailed traces the model forward and worker timings (upstream vLLM).
+        - --otlp-traces-endpoint=grpc://onboarding-trace-collector-collector.evaluated-models.svc:4317
+        - --collect-detailed-traces=all
       resources:
         requests:
           cpu: "2"

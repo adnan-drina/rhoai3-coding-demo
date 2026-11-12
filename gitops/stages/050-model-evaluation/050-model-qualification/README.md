@@ -67,22 +67,23 @@ Application in deploy order, so its hook runs before the components that need Tr
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | ServiceAccount | `evalhub-maas-key-provisioner` | `evaluated-models` | Wave 12. Owner of the MaaS key for subscription `model-qualification`. |
-| Role / RoleBinding | `evalhub-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch/update Secrets and ConfigMaps in the project. |
+| Role / RoleBinding | `evalhub-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch/update Secrets and ConfigMaps in the project; get/list/create MLflow `experiments` (the `models-onboarding` lookup). |
 | Role / RoleBinding | `qualification-model-auth-gateway-reader` | `openshift-ingress` | Wave 12. `get` on Gateway `maas-default-gateway` and Route `data-science-gateway` only, to read the MaaS API and dashboard hostnames. |
-| Job | `provision-evalhub-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Keeps the stored key while the MaaS API reports it active, otherwise revokes it and mints a new one; writes Secret `evalhub-model-auth-maas` (`api-key`, `key_id`, `expires_at`, `subscription`) and ConfigMap `qualification-endpoints` (`dashboard_url`, for the links the pipeline records). |
+| Job | `provision-evalhub-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Keeps the stored key while the MaaS API reports it active, otherwise revokes it and mints a new one; writes Secret `evalhub-model-auth-maas` (`api-key`, `key_id`, `expires_at`, `subscription`) and ConfigMap `qualification-endpoints` (`dashboard_url`, for the links the pipeline records; `mlflow_experiment_id`, the id of MLflow experiment `models-onboarding` in workspace `evaluated-models`, looked up by name and created if missing, for the trace collector). |
 
 ### Candidate model (`serving-runtime.yaml`, `candidate-qwen3-8-27b-nvfp4.yaml`, `candidate-model-auth.yaml`)
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
-| ServingRuntime | `vllm-cuda-runtime` | `evaluated-models` | Wave 20. Instance of the platform template `vllm-cuda-runtime-template`: the 3.5.2 vLLM image, the same digest as the platform's 3.5.2 LLMInferenceService templates that production MaaS uses (updated 2026-10-23 from the 3.5.1 image). Serves the candidate and the risk assessment model. |
+| ServingRuntime | `vllm-cuda-runtime` | `evaluated-models` | Wave 20. Instance of the platform template `vllm-cuda-runtime-template`: the 3.5.2 vLLM image, the same digest as the platform's 3.5.2 LLMInferenceService templates that production MaaS uses (updated 2026-10-23 from the 3.5.1 image). Serves the candidate, the risk assessment model and the guard model. |
 | InferenceService | `qwen3-8-27b-nvfp4` | `evaluated-models` | Wave 40. `RedHatAI/Qwen3.8-27B-NVFP4` at the production revision (registered as Qwen3.8-27B-NVFP4; the version id differs per environment) with production's serving arguments, RawDeployment, token authentication on, hardware profile `gpu-rtxpro6000`, queue `lq-gpu-rtxpro6000`, one RTX PRO 6000, `serving.kserve.io/stop: "true"` between runs. It replaced an INT4 candidate on L40S, which missed the first-token gate and was removed on 2026-10-26. |
-| InferenceService | `gemma-2-9b-abliterated` | `evaluated-models` | Wave 40, stopped (`serving.kserve.io/stop`). Risk assessment helper for the Garak intents scan (attack prompt generation and judge) on one L40S; `IlyaGusev/gemma-2-9b-it-abliterated` at a pinned revision, token authentication. `stages/050-model-evaluation/deploy.sh` registers it as `gemma-2-9b-it-abliterated` with the labels and properties of `model-registry-metadata.json` (`evaluation-helper`, `no-safety-alignment`, `risk-assessment`, `text-generation`) and links the InferenceService; Argo CD ignores drift on its three `modelregistry.opendatahub.io/*` labels. Never a qualification candidate. |
+| InferenceService | `gemma-2-9b-abliterated` | `evaluated-models` | Wave 40, stopped (`serving.kserve.io/stop`). Risk assessment helper for the Garak intents scan (attack prompt generation and TAP attacker; an aligned model refuses to write attacks) on one L40S; `IlyaGusev/gemma-2-9b-it-abliterated` at a pinned revision, token authentication. `stages/050-model-evaluation/deploy.sh` registers it as `gemma-2-9b-it-abliterated` with the labels and properties of `model-registry-metadata.json` (`evaluation-helper`, `no-safety-alignment`, `risk-assessment`, `text-generation`) and links the InferenceService; Argo CD ignores drift on its three `modelregistry.opendatahub.io/*` labels. Never a qualification candidate. |
+| InferenceService | `gpt-oss-safeguard-20b` | `evaluated-models` | Wave 40, stopped between runs. Guard model of `candidate-guardrails` (self-check input and output, "Enabling AI safety with Guardrails" 1.2.5): `openai/gpt-oss-safeguard-20b` from the model catalog (source Other), the catalog ModelCar pinned by digest, MXFP4 on one L40S (`gpu-reserved-demo`), `--reasoning-parser=openai_gptoss`, token authentication. Separate from the candidate, so every candidate stands behind the same guard and is not checked by itself, and from the judge. `deploy.sh` registers it as `gpt-oss-safeguard-20b` (`evaluation-helper`, `guardrail`, `safety-classifier`, `text-generation`) and links the InferenceService; Argo CD ignores drift on its registry labels. |
 | Role / RoleBinding | `qwen3-8-27b-nvfp4-view-role` / `evalhub-job-model-access-nvfp4` | `evaluated-models` | Wave 21. `get` on this InferenceService for the tenant job ServiceAccount `evalhub-evalhub-job` (implicit authentication). |
 | ServiceAccount, Secret (`kubernetes.io/service-account-token`), Role, RoleBinding | `candidate-model-client`, `candidate-model-client-token` | `evaluated-models` | Wave 12. A token that may only `get` InferenceServices in this project, used as the candidate API key. |
 | ConfigMap | `candidate-model-service-ca` | `evaluated-models` | Wave 12. Injected service CA. |
 | ServiceAccount, Role, RoleBinding | `candidate-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch Secrets. |
-| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `garak-kfp-model-auth`, the one model auth Secret for every candidate evaluation: `api-key` (the `candidate-model-client` token); `ca_cert` with the service CA and the cluster CA; `judge_url`/`judge_api-key` and `sdg_url`/`sdg_api-key` (the abliterated risk assessment model and the same token, EvalHub's multi-model convention that the in-pod `garak` `intents` scan reads; TAP's attacker and evaluator inherit the judge); `JUDGE_API_KEY` and `SDG_API_KEY` (the same token under the names `garak-kfp` reads, guide 7.7.4); `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token` for `garak-kfp`. Other adapters ignore the extra keys. Until 2026-10-23 a second Secret `qualification-model-auth` held only `api-key` and `ca_cert`. |
+| Job | `provision-candidate-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Writes Secret `garak-kfp-model-auth`, the one model auth Secret for every candidate evaluation: `api-key` (the `candidate-model-client` token); `ca_cert` with the service CA, the cluster CA and the cluster's trusted CAs (the MaaS gateway certificate); `sdg_url`/`sdg_api-key` and `attacker_url`/`attacker_api-key` (the abliterated risk assessment model and the same token, EvalHub's multi-model convention that the in-pod `garak` `intents` scan reads); `SDG_API_KEY` (the same token under the name `garak-kfp` reads, guide 7.7.4); `kfp_url`, `kfp_sa_token`, `k8s_url`, `k8s_sa_token` for `garak-kfp`. `provision-evalhub-model-auth` adds the scoring side under its own field manager: `judge_url`/`judge_api-key`, `evaluator_url`/`evaluator_api-key` and `JUDGE_API_KEY`, Mistral Small 4 through its MaaS listener with the `model-qualification` key, so the judge differs from the attacker and from every candidate ("Evaluating AI systems" 7.3; until 2026-11-12 the abliterated model also judged). Other adapters ignore the extra keys. Until 2026-10-23 a second Secret `qualification-model-auth` held only `api-key` and `ca_cert`. |
 
 ### Candidate guardrail (`guardrails/`)
 
@@ -94,11 +95,30 @@ Application in deploy order, so its hook runs before the components that need Tr
 | Role / RoleBinding | `candidate-guardrails-client` | `evaluated-models` | Wave 12. `get` on services in the project (the operator's proxy check carries no Service name) for `candidate-model-client`, whose token evaluation jobs send through kube-rbac-proxy. |
 
 The `provision-evalhub-model-auth` hook also writes `candidate-guardrails-config` (`config.yaml`: the candidate
-through its internal predictor Service as the main model, capped at 512 output tokens like the bare scan, and as the
-judge of both self-check rails, as in the guide's basic configuration; plus `prompts.yml` and `rails.co` copied from
-`candidate-guardrails-prompts`) and `candidate-guardrails-ca` (service CA plus the trusted bundle). Until 2026-10-23 the
-judge was Nemotron 3 Ultra through MaaS; under a guarded scan NVIDIA's hosted API answered HTTP 429 and the guardrail
-timed out (TROUBLESHOOTING).
+through its internal predictor Service as the main model, capped at 512 output tokens like the bare scan, and the guard
+model `gpt-oss-safeguard-20b` through its predictor Service for both self-check rails, with 1,024 output tokens for its
+reasoning; plus `prompts.yml` and `rails.co` copied from `candidate-guardrails-prompts`) and `candidate-guardrails-ca`
+(service CA plus the trusted bundle). Until 2026-10-23 the judge was Nemotron 3 Ultra through MaaS; under a guarded scan
+NVIDIA's hosted API answered HTTP 429 and the guardrail timed out (TROUBLESHOOTING). Until 2026-11-12 the candidate
+judged its own self-checks, as in the guide's basic configuration.
+
+### Model metrics and traces (`model-metrics-servicemonitor.yaml`, `onboarding-trace-collector.yaml`)
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| ServiceMonitor | `evaluated-models-vllm-dashboard` | `evaluated-models` | Wave 12. Scrapes the platform's `<model>-metrics` Services (port `vllm-cuda-runtime-metrics`, so every candidate on that runtime) and keeps only `vllm:*`, renamed `kserve_vllm:*`, with its own `job` label. The operator-generated Models dashboards read `kserve_vllm:*`, the prefix the llm-d PodMonitors add; without it the candidate and helper models never appear under **Observe & monitor → Dashboard → Models**. |
+| ServiceAccount, RoleBinding | `onboarding-trace-collector`, `onboarding-trace-collector-mlflow-trace-export` | `evaluated-models` | Wave 12. The collector's identity, bound to the platform ClusterRole `data-science-collector-mlflow-trace-export` (MLflow `experiments` update, which trace ingest requires). |
+| OpenTelemetryCollector | `onboarding-trace-collector` | `evaluated-models` | Wave 14. OTLP gRPC 4317 and HTTP 4318, batch, `otlphttp/mlflow` to `https://mlflow.redhat-ods-applications.svc:8443` with the ServiceAccount token, headers `X-MLFLOW-WORKSPACE: evaluated-models` and `x-mlflow-experiment-id` from `qualification-endpoints`, and the service CA; the pattern of the Gen AI studio's `gen-ai-trace-collector`. |
+
+The candidate, `gemma-2-9b-abliterated` and `gpt-oss-safeguard-20b` start vLLM with
+`--otlp-traces-endpoint=grpc://onboarding-trace-collector-collector.evaluated-models.svc:4317`,
+`--collect-detailed-traces=all` and `OTEL_SERVICE_NAME=<model>`, so each model call of an evaluation is a trace in
+MLflow experiment `models-onboarding`, beside the pipeline's and EvalHub's runs. Limits: vLLM spans carry timing and
+token usage, not prompts or completions; EvalHub adapters do not propagate `traceparent`, so a trace relates to a
+pipeline run only by its time window; detailed traces add timing work in the engine, so latency and throughput measured
+since tracing (2026-11-12) are not strictly comparable with earlier runs. The Mistral judge is reached through MaaS and
+is out of scope here (MaaS tracing). Changing these arguments restarts the predictors: change them while the models are
+idle.
 
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
 
@@ -123,7 +143,7 @@ timed out (TROUBLESHOOTING).
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | Pipeline | `agentic-coding-model-qualification` | `evaluated-models` | Wave 16 (kustomize patch), `SkipDryRunOnMissingResource`. |
-| PipelineVersion | `agentic-coding-model-qualification-v23` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `risk-assessment` (built-in `garak` `intents`, the Context-aware vulnerability scan, as a single task in the job pod), `risk-assessment-guarded` (the same scan through `candidate-guardrails`; the risk gate; both scans send the target `max_tokens` 512 and suppress Garak's `stop` sequences), `verdict` (judges the run, counts each Garak job's unanswered attempts in its `scan.report.jsonl` from MLflow, and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
+| PipelineVersion | `agentic-coding-model-qualification-v24` | `evaluated-models` | Wave 17. Compiled by `stages/050-model-evaluation/qualification/compile.py` from `pipeline.py`; do not edit by hand. One straight chain: `validate`, `latency`, `throughput`, `livecodebench`, `python-tasks`, `risk-assessment` (built-in `garak` `intents`, the Context-aware vulnerability scan, as a single task in the job pod), `risk-assessment-guarded` (the same scan through `candidate-guardrails`; the risk gate; both scans send the target `max_tokens` 512 and suppress Garak's `stop` sequences), `verdict` (judges the run, counts each Garak job's unanswered attempts in its `scan.report.jsonl` from MLflow, and records the verdict and evidence on the registry version), `report` (HTML report and summary metrics, the last step like garak's `write-kfp-outputs`). |
 
 ### `storage/`
 
@@ -202,7 +222,7 @@ submitted without an authentication Secret, a dashboard limitation fixed in 3.6 
 `kfp_config.endpoint` to the pipeline server, as the 3.5 guide's example in 7.3 does, calls it without a token and fails
 with HTTP 401 ([troubleshooting](../../../../docs/TROUBLESHOOTING.md#garak-kfp-evaluation-fails-with-401-unauthorized)).
 
-**MaaS key.** Production and judge models are reached through MaaS. The provisioner discovers the Gateway hostname, calls
+**MaaS key.** Production and judge models (Mistral Small 4, the risk assessment judge) are reached through MaaS. The provisioner discovers the Gateway hostname, calls
 the MaaS API as its own ServiceAccount, and stores the key under the documented `api-key` key [1]. Keys use the server's
 maximum lifetime and are re-minted on the next sync once expired or revoked. The calls use `curl -k`.
 
@@ -218,8 +238,18 @@ Git.
 InferenceServices cause it. `stages/050-model-evaluation/validate.sh` checks that `evaluated-models` is the only EvalHub tenant, that
 tenant discovery (`evalhub-discovery`) and the service CA were reconciled, that `evalhub-evalhub-job` exists and may write
 MLflow experiments, that `rhods-admins` may create and read evaluations, providers, collections and experiments, and that
-`rhoai-developers` may not create evaluations, and that the risk assessment model is registered with its labels and linked
-to its InferenceService.
+`rhoai-developers` may not create evaluations, that the risk assessment model and the guard model are registered with their
+labels and linked to their InferenceServices, and that the onboarding trace collector is Ready and exports to MLflow
+experiment `models-onboarding` by workspace header.
+
+Traces of a run, from a workstation (the dashboard gateway serves MLflow at `/mlflow`):
+
+```bash
+D=$(oc get route data-science-gateway -n openshift-ingress -o jsonpath='{.spec.host}')
+ID=$(oc get configmap qualification-endpoints -n evaluated-models -o jsonpath='{.data.mlflow_experiment_id}')
+curl -sk -H "Authorization: Bearer $(oc whoami -t)" -H "X-MLFLOW-WORKSPACE: evaluated-models" \
+  "https://$D/mlflow/ajax-api/2.0/mlflow/traces?experiment_ids=$ID&max_results=5"
+```
 
 By hand:
 
@@ -241,6 +271,8 @@ oc get isvc,dspa,pipelineversion -n evaluated-models
 | Pipeline server as code | Pipeline definitions stored as Kubernetes resources [2] | Pipeline and PipelineVersion in Git; DSPA created by a hook Job | Gap (DSPA not declared in Git; see findings) |
 | MLflow for pipeline runs | MLflow integration per DSPA (`spec.mlflow`) [2] | Default detection plus plugin `insecureSkipVerify: true` | Deviation (justified: 3.5.1 passes no CA to step MLflow calls; operator decision 2026-10-12) |
 | Model runtime | vLLM NVIDIA GPU ServingRuntime for KServe; token authentication option [4] | Template instance, auth on | Aligned |
+| Model call traces | Documented model-side tracing is `LLMInferenceService` `spec.tracing` (distributed inference with llm-d) | vLLM `--otlp-traces-endpoint` on KServe InferenceServices and MLflow OTLP ingest (`/v1/traces`), both upstream vLLM and MLflow 3.6+ features | Deviation (justified: no documented tracing for KServe InferenceServices; same deviation as the showback tracing) |
+| Models dashboard | Operator-generated Models dashboards [1] | Extra ServiceMonitor renames `vllm:*` to `kserve_vllm:*` for InferenceServices | Deviation (justified: the generated dashboards only read the llm-d prefix) |
 | Model provenance | Use validated models where possible | `RedHatAI/Qwen3.8-27B-NVFP4` from Hugging Face at the production revision, the same source as production MaaS (Stage 040) | As production |
 | Stop a model | Stopped InferenceService reports `Suspended` in Argo CD [8] | Accepted health `Suspended`, validated | Aligned |
 | Bucket provisioning | OBC on `openshift-storage.noobaa.io` [5] | Fixed `bucketName` | Deviation (justified: connection skeletons reference known names) |

@@ -38,6 +38,9 @@ spec:
       modelFormat:
         name: vLLM
       storageUri: oci://registry.redhat.io/rhai/modelcar-openai-gpt-oss-safeguard-20b@sha256:73d3c1b453784f287607ac51e8b547a42a20c061b3753b6217e2cae82c25a35f
+      env:
+        - name: OTEL_SERVICE_NAME
+          value: gpt-oss-safeguard-20b
       args:
         - --enable-force-include-usage
         - --disable-uvicorn-access-log
@@ -48,6 +51,10 @@ spec:
         - --max-num-seqs=32
         # Harmony output: the reasoning goes to reasoning_content, the label to content, which the guardrail reads.
         - --reasoning-parser=openai_gptoss
+        # Model call traces to onboarding-trace-collector (MLflow experiment models-onboarding): request spans with
+        # timing and token usage, and with detailed traces the model forward and worker timings (upstream vLLM).
+        - --otlp-traces-endpoint=grpc://onboarding-trace-collector-collector.evaluated-models.svc:4317
+        - --collect-detailed-traces=all
       resources:
         requests:
           cpu: "2"

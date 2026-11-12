@@ -1,0 +1,100 @@
+# Model call traces of model onboarding: the vLLM servers in this project (the candidate and the helper models) export
+# OpenTelemetry spans (--otlp-traces-endpoint) to this collector, which forwards them to the MLflow experiment
+# models-onboarding in workspace evaluated-models, where the qualification pipeline and EvalHub log their runs. Same
+# exporter pattern as the gen-ai-trace-collector that the Gen AI studio manages in redhat-ods-monitoring: OTLP HTTP to
+# MLflow's /v1/traces with the collector ServiceAccount's token, the workspace and experiment headers, and the
+# service CA. The experiment id is not in Git: the provision-evalhub-model-auth hook looks the experiment up by name
+# (creating it if missing) and writes its id to ConfigMap qualification-endpoints (key mlflow_experiment_id); the
+# collector reads it at start.
+# Limits: vLLM spans carry timing and token usage, not prompts or completions; EvalHub adapters do not propagate
+# traceparent, so a span relates to a pipeline run only by its time window. vLLM's --otlp-traces-endpoint on a KServe
+# InferenceService and MLflow's OTLP ingest are upstream vLLM and MLflow features, not procedures of the RHOAI 3.5
+# books (their documented model-side tracing is LLMInferenceService spec.tracing). The Mistral judge is reached through
+# MaaS and is traced, if at all, by the MaaS tracing work, not here.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: onboarding-trace-collector
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: onboarding-trace-collector
+    app.kubernetes.io/component: model-tracing
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+---
+# MLflow accepts trace ingest from a caller that may update experiments in the workspace; the platform's ClusterRole
+# grants exactly that.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: onboarding-trace-collector-mlflow-trace-export
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: onboarding-trace-collector
+    app.kubernetes.io/component: model-tracing
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: data-science-collector-mlflow-trace-export
+subjects:
+  - kind: ServiceAccount
+    name: onboarding-trace-collector
+    namespace: evaluated-models
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: onboarding-trace-collector
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: onboarding-trace-collector
+    app.kubernetes.io/component: model-tracing
+  annotations:
+    # After the hook (wave 13) wrote the experiment id.
+    argocd.argoproj.io/sync-wave: "14"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  mode: deployment
+  replicas: 1
+  serviceAccount: onboarding-trace-collector
+  env:
+    - name: MLFLOW_EXPERIMENT_ID
+      valueFrom:
+        configMapKeyRef:
+          name: qualification-endpoints
+          key: mlflow_experiment_id
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  config:
+    extensions:
+      bearertokenauth:
+        filename: /var/run/secrets/kubernetes.io/serviceaccount/token
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      batch: {}
+    exporters:
+      otlphttp/mlflow:
+        endpoint: https://mlflow.redhat-ods-applications.svc:8443
+        auth:
+          authenticator: bearertokenauth
+        headers:
+          X-MLFLOW-WORKSPACE: evaluated-models
+          x-mlflow-experiment-id: ${env:MLFLOW_EXPERIMENT_ID}
+        tls:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+    service:
+      extensions: [bearertokenauth]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlphttp/mlflow]

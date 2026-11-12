@@ -17,7 +17,7 @@ eval.yaml, `evalhub health`, `evalhub eval run --config eval.yaml --wait --timeo
 performance steps submit an agentic-coding-* collection; risk-assessment submits the Context-aware vulnerability scan
 (garak intents) of the built-in garak provider, which runs as a single task in the job pod rather than as a separate
 garak-kfp pipeline. Every job uses the candidate model auth Secret garak-kfp-model-auth (api-key and ca_cert for the
-evaluation sidecar, and the risk assessment model's judge_url/judge_api-key and sdg_url/sdg_api-key) and logs to the
+evaluation sidecar, the attack model's sdg_* and attacker_* entries and the judge's judge_* and evaluator_* entries) and logs to the
 MLflow experiment models-onboarding, where the pipeline server also tracks this run. Every
 job carries the tag run=<pipeline run id>, and verdict judges exactly the jobs in this run's ledger, so a verdict
 never mixes results of different runs.
@@ -67,11 +67,17 @@ EXPERIMENT = "models-onboarding"
 EVALHUB_URL = "https://evalhub.evalhub.svc.cluster.local:8443"
 REGISTRY_URL = "https://demo-registry.rhoai-model-registries.svc:8443/api/model_registry/v1alpha3"
 QUEUE = "lq-cpu-default"
-# Risk assessment helper model: the abliterated model in this project generates the attack prompts (SDG), judges the
-# responses and drives TAP (attacker and evaluator inherit the judge). Its address and key come from the Secret
-# (judge_url, sdg_url); the job names the models. sdg_max_tokens stays unset: in the 3.5.2 provider it
-# rebuilds the SDG block without its model and the step fails ("Model not configured").
+# Risk assessment models ("Evaluating AI systems" 7.3: the judge differs from the target). The attack side is the
+# abliterated model in this project: it generates the attack prompts (SDG) and is TAP's attacker, because an aligned
+# model refuses to write attacks. The scoring side is Mistral Small 4 through MaaS (model-qualification subscription):
+# it judges the responses and is TAP's evaluator, so no model scores attacks it wrote and no candidate judges itself.
+# Addresses and keys come from the Secret (sdg_*, attacker_*, judge_*, evaluator_*); the job names the models.
+# sdg_max_tokens stays unset: in the 3.5.2 provider it rebuilds the SDG block without its model and the step fails
+# ("Model not configured").
 RISK_MODEL = "gemma-2-9b-abliterated"
+JUDGE_MODEL = "mistral-small4-119b"
+# The candidate guardrail's guard model (self-check input and output), checked before the guarded scan.
+GUARD_MODEL = "gpt-oss-safeguard-20b"
 INTENTS_TIMEOUT = 3 * 3600
 # The translation strategy is off, as the risk assessment guide documents for skipping it: in-pod the provider
 # translates with the attacker LLM. TAP runs one round (depth 1): in the shipped Garak (0.15.0+rhaiv.6) every later
@@ -99,10 +105,10 @@ MLFLOW_URL = "https://mlflow.redhat-ods-applications.svc:8443/mlflow"
 
 
 @dsl.component(base_image=RUNTIME_IMAGE)
-def validate(model_name: str, model_version_id: str, registry_url: str, risk_model: str,
+def validate(model_name: str, model_version_id: str, registry_url: str, risk_model: str, guard_model: str,
              skip_risk_assessment: bool, candidate: dsl.Output[dsl.Dataset]):
     """Fail before any job when the candidate, its registry version or (unless skipped) the risk assessment model
-    is not ready, or the endpoints ConfigMap is missing. Starts the results ledger that every evaluation step extends
+    or the guardrail's guard model is not ready, or the endpoints ConfigMap is missing. Starts the results ledger that every evaluation step extends
     (the candidate dataset: model, URL, registry version, no results yet)."""
     import json
     import ssl
@@ -140,6 +146,7 @@ def validate(model_name: str, model_version_id: str, registry_url: str, risk_mod
     print(f"candidate {model_name}: {url}")
     if not skip_risk_assessment:
         print(f"risk assessment model {risk_model}: {ready(risk_model)}")
+        print(f"guard model {guard_model}: {ready(guard_model)}")
     version = get(f"{registry_url}/model_versions/{model_version_id}", service_ctx)
     if version is None or "name" not in version:
         raise RuntimeError(f"model registry version {model_version_id} not found")
@@ -164,6 +171,7 @@ def evaluate(
     evalhub_url: str,
     queue: str,
     risk_model: str,
+    judge_model: str,
     intents_timeout: int,
     intents_garak_config: str,
     intents_target_parameters: str,
@@ -254,7 +262,8 @@ def evaluate(
         parameters = {}
         if benchmark_id == "intents":
             parameters = {"timeout": intents_timeout, "sdg_num_samples": sdg_num_samples,
-                          "intents_models": {"judge": {"name": risk_model},
+                          "intents_models": {"judge": {"name": judge_model}, "evaluator": {"name": judge_model},
+                                             "attacker": {"name": risk_model},
                                              "sdg": {"name": f"hosted_vllm/{risk_model}"}},
                           "garak_config": json.loads(intents_garak_config),
                           "model_parameters": json.loads(intents_target_parameters)}
@@ -587,14 +596,14 @@ def qualification(
              "skip_python_tasks": skip_python_tasks, "skip_risk_assessment": skip_risk_assessment}
     validated = _small(_named(validate, "validate")(
         model_name=model_name, model_version_id=model_version_id, registry_url=REGISTRY_URL, risk_model=RISK_MODEL,
-        skip_risk_assessment=skip_risk_assessment))
+        guard_model=GUARD_MODEL, skip_risk_assessment=skip_risk_assessment))
     ledger = validated.outputs["candidate"]
     # One straight chain: each step extends the results ledger of the one before it.
     for label, skip_name, collection_id, benchmark_id, timeout, guarded in EVALUATIONS:
         step = _small(_named(evaluate, label)(
             model_name=model_name, collection_id=collection_id, benchmark_id=benchmark_id,
             auth_secret=TENANT_SECRET, experiment=EXPERIMENT, evalhub_url=EVALHUB_URL, queue=QUEUE,
-            risk_model=RISK_MODEL, intents_timeout=INTENTS_TIMEOUT,
+            risk_model=RISK_MODEL, judge_model=JUDGE_MODEL, intents_timeout=INTENTS_TIMEOUT,
             intents_garak_config=INTENTS_GARAK_CONFIG, intents_target_parameters=INTENTS_TARGET_PARAMETERS,
             sdg_num_samples=SDG_NUM_SAMPLES,
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,

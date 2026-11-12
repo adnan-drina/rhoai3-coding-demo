@@ -163,28 +163,34 @@ spec:
               # the job ServiceAccount token and route to the matching *_url. The garak pipeline pods mount this
               # Secret at /mnt/model-auth (api-key) and call the model directly at the job's kfp_config.model_url
               # (EvalHub rewrites every *_url in the adapter's copy to the sidecar). ca_cert trusts the service CA
-              # (model, KFP API) and the cluster CA (Kubernetes API).
-              cat /service-ca/service-ca.crt /kube-root-ca/ca.crt > "${WORK}/ca_cert"
-              # intents benchmarks also call a judge and an SDG model (TAP's attacker and evaluator default to the
-              # judge). Both are the abliterated helper model in this project (risk-assessment-gemma-2-9b-abliterated.yaml),
-              # so their key is the candidate-model-client token, which may get every InferenceService here. The
-              # qualification pipeline runs intents in the job pod (built-in garak provider): the adapter reads each role
-              # with the EvalHub multi-model convention <role>_url and <role>_api-key, and the sidecar routes the role's
-              # calls there with ca_cert. garak-kfp reads JUDGE_API_KEY and SDG_API_KEY instead (guide 7.7.4).
-              # Translation uses the provider's default Helsinki-NLP models and needs no key.
+              # (model, KFP API), the cluster CA (Kubernetes API) and the cluster's trusted CAs (the MaaS gateway's
+              # public certificate, for the judge).
+              for i in $(seq 1 30); do grep -q 'BEGIN CERTIFICATE' /trusted-ca/ca-bundle.crt 2>/dev/null && break; sleep 5; done
+              grep -q 'BEGIN CERTIFICATE' /trusted-ca/ca-bundle.crt
+              cat /service-ca/service-ca.crt /kube-root-ca/ca.crt /trusted-ca/ca-bundle.crt > "${WORK}/ca_cert"
+              # intents benchmarks also call an SDG model, a judge, and TAP's attacker and evaluator. The attack side
+              # (sdg, attacker) is the abliterated helper model in this project (risk-assessment-gemma-2-9b-abliterated.yaml),
+              # so its key is the candidate-model-client token, which may get every InferenceService here. The scoring
+              # side (judge, evaluator) is Mistral Small 4 through MaaS, which provision-evalhub-model-auth writes into
+              # this Secret with the MaaS key (judge_*, evaluator_*, JUDGE_API_KEY under its own field manager), so a
+              # judge never scores attacks it wrote ("Evaluating AI systems" 7.3). The qualification pipeline runs
+              # intents in the job pod (built-in garak provider): the adapter reads each role with the EvalHub
+              # multi-model convention <role>_url and <role>_api-key, and the sidecar routes the role's calls there with
+              # ca_cert; a role with its own entries does not inherit the judge's. garak-kfp reads JUDGE_API_KEY and
+              # SDG_API_KEY instead (guide 7.7.4). Translation is off in the qualification pipeline.
               GEMMA=https://gemma-2-9b-abliterated-predictor.evaluated-models.svc.cluster.local:8443/v1
               oc create secret generic garak-kfp-model-auth -n evaluated-models \
                 --from-file=api-key="${WORK}/api-key" --from-file=ca_cert="${WORK}/ca_cert" \
-                --from-literal=judge_url="${GEMMA}" --from-file=judge_api-key="${WORK}/api-key" \
+                --from-literal=attacker_url="${GEMMA}" --from-file=attacker_api-key="${WORK}/api-key" \
                 --from-literal=sdg_url="${GEMMA}" --from-file=sdg_api-key="${WORK}/api-key" \
-                --from-file=JUDGE_API_KEY="${WORK}/api-key" --from-file=SDG_API_KEY="${WORK}/api-key" \
+                --from-file=SDG_API_KEY="${WORK}/api-key" \
                 --from-literal=kfp_url=https://ds-pipeline-dspa.evaluated-models.svc.cluster.local:8443 \
                 --from-literal=kfp_sa_token= \
                 --from-literal=k8s_url=https://kubernetes.default.svc:443 \
                 --from-literal=k8s_sa_token= \
                 --dry-run=client -o yaml | oc apply --server-side --force-conflicts --field-manager=candidate-model-auth -f -
               oc annotate secret garak-kfp-model-auth -n evaluated-models kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true  # no credential copy in annotations
-              echo "garak-kfp-model-auth ready (api-key, ca_cert, judge_url, judge_api-key, sdg_url, sdg_api-key, JUDGE_API_KEY, SDG_API_KEY, kfp_url, kfp_sa_token, k8s_url, k8s_sa_token)"
+              echo "garak-kfp-model-auth ready (api-key, ca_cert, attacker_url, attacker_api-key, sdg_url, sdg_api-key, SDG_API_KEY, kfp_url, kfp_sa_token, k8s_url, k8s_sa_token)"
           resources:
             requests: {cpu: 50m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}
@@ -195,6 +201,9 @@ spec:
             - name: kube-root-ca
               mountPath: /kube-root-ca
               readOnly: true
+            - name: trusted-ca
+              mountPath: /trusted-ca
+              readOnly: true
       volumes:
         - name: service-ca
           configMap:
@@ -202,3 +211,6 @@ spec:
         - name: kube-root-ca
           configMap:
             name: kube-root-ca.crt
+        - name: trusted-ca
+          configMap:
+            name: candidate-guardrails-trusted-ca

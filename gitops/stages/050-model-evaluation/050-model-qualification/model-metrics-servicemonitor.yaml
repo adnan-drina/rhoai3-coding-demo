@@ -24,6 +24,12 @@ spec:
     - port: vllm-cuda-runtime-metrics
       path: /metrics
       scheme: http
+      # Its own job label: with the default (the Service name) its up and scrape_* series would carry the same labels as
+      # the platform ServiceMonitor's for the same target, and Prometheus drops one of the duplicates.
+      relabelings:
+        - targetLabel: job
+          replacement: evaluated-models-vllm-dashboard
+          action: replace
       metricRelabelings:
         - sourceLabels: [__name__]
           regex: "vllm:.*"

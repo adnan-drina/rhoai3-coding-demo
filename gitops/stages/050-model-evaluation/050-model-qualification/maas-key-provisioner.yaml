@@ -28,10 +28,11 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 rules:
-  # Only the tenant key Secret and the endpoint ConfigMap; create cannot be limited by name.
+  # Only the tenant key Secret and the endpoint ConfigMap; create cannot be limited by name. The judge entries of the
+  # risk assessment Secret garak-kfp-model-auth, which provision-candidate-model-auth creates.
   - apiGroups: [""]
     resources: [secrets]
-    resourceNames: [evalhub-model-auth-maas]
+    resourceNames: [evalhub-model-auth-maas, garak-kfp-model-auth]
     verbs: [get, patch, update]
   - apiGroups: [""]
     resources: [configmaps]
@@ -83,6 +84,11 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 rules:
+  # The MLflow experiment models-onboarding, whose id the onboarding trace collector needs (looked up by name, created
+  # if missing).
+  - apiGroups: [mlflow.kubeflow.org]
+    resources: [experiments]
+    verbs: [get, list, create]
   - apiGroups: [gateway.networking.k8s.io]
     resources: [gateways]
     resourceNames: [maas-default-gateway]
@@ -204,20 +210,57 @@ spec:
               }
               # The evaluation key (EvalHub model.auth.secret_ref).
               provision_key model-qualification evalhub-model-auth-maas model-qualification-evalhub
+              # The risk assessment judge and TAP evaluator: Mistral Small 4 on its own MaaS listener, with the
+              # model-qualification key, added to garak-kfp-model-auth beside the attack side (gemma) that
+              # provision-candidate-model-auth writes; this field manager owns only these entries.
+              JUDGE_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[?(@.name=="mistral-small4")].hostname}')"
+              if [ -z "${JUDGE_HOST}" ] || echo "${JUDGE_HOST}" | grep -q placeholder; then echo "ERROR: MaaS Gateway mistral-small4 hostname is not ready" >&2; exit 1; fi
+              JUDGE_URL="https://${JUDGE_HOST}/internal-models/mistral-small4-119b/v1"
+              for i in $(seq 1 60); do oc get secret garak-kfp-model-auth -n "${NS}" >/dev/null 2>&1 && break; sleep 5; done
+              oc get secret garak-kfp-model-auth -n "${NS}" >/dev/null
+              oc get secret evalhub-model-auth-maas -n "${NS}" -o jsonpath='{.data.api-key}' | base64 -d > "${WORK}/judge-key"
+              [ -s "${WORK}/judge-key" ]
+              oc create secret generic garak-kfp-model-auth -n "${NS}" \
+                --from-literal=judge_url="${JUDGE_URL}" --from-file=judge_api-key="${WORK}/judge-key" \
+                --from-literal=evaluator_url="${JUDGE_URL}" --from-file=evaluator_api-key="${WORK}/judge-key" \
+                --from-file=JUDGE_API_KEY="${WORK}/judge-key" --dry-run=client -o yaml \
+                | oc apply --server-side --force-conflicts --field-manager=evalhub-maas-key-provisioner -f - >/dev/null
+              oc annotate secret garak-kfp-model-auth -n "${NS}" kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true
+              rm -f "${WORK}/judge-key"
+              echo "garak-kfp-model-auth judge and evaluator: mistral-small4-119b through MaaS (${JUDGE_HOST})"
               # The qualification pipeline reads the dashboard address (links it records on the model registry version)
-              # from this ConfigMap.
+              # from this ConfigMap; the onboarding trace collector reads the id of the MLflow experiment
+              # models-onboarding (workspace evaluated-models), looked up by name and created if missing, so no
+              # environment-specific id is in Git.
               DASHBOARD_HOST="$(oc get route data-science-gateway -n openshift-ingress -o jsonpath='{.spec.host}')"
               [ -n "${DASHBOARD_HOST}" ] || { echo "ERROR: dashboard Route data-science-gateway has no host" >&2; exit 1; }
+              MLFLOW=https://mlflow.redhat-ods-applications.svc:8443/mlflow/api/2.0/mlflow
+              mlflow_api() { curl -s -m 20 --cacert /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt \
+                -H "Authorization: Bearer ${SA_TOKEN}" -H "X-MLFLOW-WORKSPACE: ${NS}" "$@"; }
+              EXPERIMENT_ID="$(mlflow_api "${MLFLOW}/experiments/get-by-name?experiment_name=models-onboarding" \
+                | python3 -c 'import json,sys; print(json.load(sys.stdin).get("experiment",{}).get("experiment_id",""))' 2>/dev/null || true)"
+              if [ -z "${EXPERIMENT_ID}" ]; then
+                EXPERIMENT_ID="$(mlflow_api -X POST -H 'Content-Type: application/json' -d '{"name":"models-onboarding"}' \
+                  "${MLFLOW}/experiments/create" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("experiment_id",""))' 2>/dev/null || true)"
+              fi
+              [ -n "${EXPERIMENT_ID}" ] || { echo "ERROR: MLflow experiment models-onboarding not found and not created" >&2; exit 1; }
               oc create configmap qualification-endpoints -n "${NS}" --from-literal=dashboard_url="https://${DASHBOARD_HOST}" \
-                --dry-run=client -o yaml | oc apply -f -
+                --from-literal=mlflow_experiment_id="${EXPERIMENT_ID}" --dry-run=client -o yaml | oc apply -f -
+              echo "MLflow experiment models-onboarding: ${EXPERIMENT_ID}"
               # NeMo Guardrails configuration of the qualification candidate's guardrail (guardrails/): the guarded model
-              # through its internal predictor Service, which also judges the self-check rails, as in the guide's basic
-              # configuration. The external Nemotron judge was dropped on 2026-10-23: under a scan, NVIDIA's hosted API
-              # answered 429 and the guardrail timed out. max_tokens 512 matches what Garak asks of the bare model; the
-              # candidate serves enable_thinking false by default. The predictor name comes from the prompts ConfigMap's
-              # annotation, so this file is written here.
+              # through its internal predictor Service as the main model, and the separate guard model
+              # gpt-oss-safeguard-20b (guardrail-gpt-oss-safeguard-20b.yaml) through its predictor Service for both
+              # self-check rails ("Enabling AI safety with Guardrails" 1.2.5), so a candidate never checks itself. The
+              # candidate-model-client token may get every InferenceService here, so one key serves both. The external
+              # Nemotron judge was dropped on 2026-10-23: under a scan, NVIDIA's hosted API answered 429 and the guardrail
+              # timed out; until 2026-11-12 the candidate checked itself. max_tokens 512 matches what Garak asks of the
+              # bare model; the candidate serves enable_thinking false by default. The guard model reasons before it
+              # answers (the reasoning parser keeps that out of the content the rail reads), so its budget covers the
+              # reasoning; a truncated check returns no yes and the rail would let the message through. The predictor name
+              # comes from the prompts ConfigMap's annotation, so this file is written here.
               CANDIDATE="$(oc get configmap candidate-guardrails-prompts -n "${NS}" -o jsonpath='{.metadata.annotations.demo\.rhoai\.io/guarded-model}' 2>/dev/null || true)"
               CANDIDATE="${CANDIDATE:-qwen3-8-27b-nvfp4}"
+              GUARD=gpt-oss-safeguard-20b
               cat > "${WORK}/config.yaml" <<YAML
               models:
                 - type: main
@@ -229,20 +272,20 @@ spec:
                     max_tokens: 512
                 - type: self_check_input
                   engine: openai
-                  model: ${CANDIDATE}
+                  model: ${GUARD}
                   api_key_env_var: CANDIDATE_API_KEY
                   parameters:
-                    base_url: https://${CANDIDATE}-predictor.${NS}.svc.cluster.local:8443/v1
+                    base_url: https://${GUARD}-predictor.${NS}.svc.cluster.local:8443/v1
                     temperature: 0
-                    max_tokens: 5
+                    max_tokens: 1024
                 - type: self_check_output
                   engine: openai
-                  model: ${CANDIDATE}
+                  model: ${GUARD}
                   api_key_env_var: CANDIDATE_API_KEY
                   parameters:
-                    base_url: https://${CANDIDATE}-predictor.${NS}.svc.cluster.local:8443/v1
+                    base_url: https://${GUARD}-predictor.${NS}.svc.cluster.local:8443/v1
                     temperature: 0
-                    max_tokens: 5
+                    max_tokens: 1024
               rails:
                 input:
                   flows:
@@ -269,4 +312,4 @@ spec:
               cat "${WORK}/service-ca.crt" "${WORK}/trusted.crt" > "${WORK}/ca-bundle.crt"
               oc create configmap candidate-guardrails-ca -n "${NS}" --from-file=ca-bundle.crt="${WORK}/ca-bundle.crt" \
                 --dry-run=client -o yaml | oc apply -f -
-              echo "candidate-guardrails-config (guarded model ${CANDIDATE}) and candidate-guardrails-ca ready"
+              echo "candidate-guardrails-config (guarded model ${CANDIDATE}, guard model ${GUARD}) and candidate-guardrails-ca ready"

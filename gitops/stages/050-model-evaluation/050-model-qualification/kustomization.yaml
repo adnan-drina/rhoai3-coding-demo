@@ -25,4 +25,5 @@ resources:
   - risk-assessment-gemma-2-9b-abliterated.yaml
   - guardrail-gpt-oss-safeguard-20b.yaml
   - model-metrics-servicemonitor.yaml
+  - onboarding-trace-collector.yaml
   - garak-kfp-access.yaml
