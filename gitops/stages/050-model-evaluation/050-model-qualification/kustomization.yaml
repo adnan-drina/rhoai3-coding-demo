@@ -23,4 +23,5 @@ resources:
   - evaluation-enablement
   - guardrails
   - risk-assessment-gemma-2-9b-abliterated.yaml
+  - guardrail-gpt-oss-safeguard-20b.yaml
   - garak-kfp-access.yaml

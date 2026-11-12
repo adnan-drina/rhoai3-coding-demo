@@ -53,3 +53,12 @@ spec:
     - /metadata/labels/modelregistry.opendatahub.io~1model-version-id
     # Written by the platform's model registry controller.
     - /metadata/labels/modelregistry.opendatahub.io~1inference-service-id
+  - group: serving.kserve.io
+    kind: InferenceService
+    name: gpt-oss-safeguard-20b
+    namespace: evaluated-models
+    jsonPointers:
+    - /metadata/labels/modelregistry.opendatahub.io~1name
+    - /metadata/labels/modelregistry.opendatahub.io~1registered-model-id
+    - /metadata/labels/modelregistry.opendatahub.io~1model-version-id
+    - /metadata/labels/modelregistry.opendatahub.io~1inference-service-id

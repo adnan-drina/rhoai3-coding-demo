@@ -128,13 +128,15 @@ if ! evalhub_workspaces; then
   wait_until 300 "EvalHub MLflow workspace probe" evalhub_workspaces
 fi
 
-# ── Model registry record of the risk assessment model ───────────────────────
+# ── Model registry records of the helper models ─────────────────────────────
 # Registered the way Stage 040 registers its models: one registered model per checkpoint, one version per immutable
 # revision with its source artifact, the labels and properties of model-registry-metadata.json (a label is a string
 # property with an empty value), and the InferenceService linked to the record. Never overwrites an artifact.
-register_risk_model() {
-  local dir="$REPO_ROOT/gitops/stages/050-model-evaluation/050-model-qualification" name=gemma-2-9b-abliterated
-  local ns=evaluated-models host base meta uri title rev model mid version vid artifacts current desired isvc
+# Helpers: the risk assessment model (Hugging Face, pinned commit) and the guardrail's guard model (catalog ModelCar,
+# pinned digest); the registered model name is the metadata key, its description and version description come from it.
+register_helper_model() {
+  local dir="$REPO_ROOT/gitops/stages/050-model-evaluation/050-model-qualification" name=$1 title=$2
+  local ns=evaluated-models host base meta uri rev model mid version vid artifacts current desired isvc
   host=$(oc --request-timeout=10s get modelregistries.modelregistry.opendatahub.io demo-registry -n rhoai-model-registries \
     -o jsonpath='{.status.hosts[0]}')
   base="https://$host/api/model_registry/v1alpha3"
@@ -145,15 +147,17 @@ register_risk_model() {
   }
   uri=$(oc kustomize "$dir" | yaml_json | jq -r --arg n "$name" '.[] | select(.kind == "InferenceService" and .metadata.name == $n)
     | .spec.predictor.model.storageUri')
-  title=${uri##*/}; title=${title%%:*}; rev=${uri##*:}
-  [[ ${#rev} == 40 ]] || fail "$name source must be immutable"
+  case "$uri" in
+    hf://*) rev=${uri##*:}; [[ ${#rev} == 40 ]] || fail "$name source must be a pinned commit" ;;
+    oci://*@sha256:*) rev=${uri##*@sha256:}; [[ ${#rev} == 64 ]] || fail "$name source must be a pinned digest" ;;
+    *) fail "$name source must be immutable" ;;
+  esac
   meta=$(jq -c -e --arg t "$title" '.[$t]' "$dir/model-registry-metadata.json") || fail "$title registry metadata missing"
   model=$(api "/registered_models?pageSize=500" | jq -c --arg t "$title" '[.items[] | select(.name == $t)]')
   [[ $(jq length <<<"$model") -le 1 ]] || fail "ambiguous registered model name $title"
   if [[ $(jq length <<<"$model") == 0 ]]; then
-    model=$(api /registered_models "$(jq -n --arg t "$title" --arg l "${uri#*://}" '{name: $t, owner: "rhoai3-coding-demo",
-      description: ("Risk assessment helper (Garak intents SDG and judge) without safety alignment, served only in the "
-      + "admin project evaluated-models. Pinned model artifact (\($l | split(":")[0])). Not a qualification candidate.")}')")
+    model=$(api /registered_models "$(jq -n --arg t "$title" --argjson m "$meta" '{name: $t, owner: "rhoai3-coding-demo",
+      description: $m.description}')")
   else
     model=$(jq -c '.[0]' <<<"$model")
   fi
@@ -161,8 +165,8 @@ register_risk_model() {
   version=$(api "/registered_models/$mid/versions?pageSize=500" | jq -c --arg v "source-$rev" '[.items[] | select(.name == $v)]')
   [[ $(jq length <<<"$version") -le 1 ]] || fail "ambiguous registered model version source-$rev"
   if [[ $(jq length <<<"$version") == 0 ]]; then
-    version=$(api /model_versions "$(jq -n --arg v "source-$rev" --arg m "$mid" --arg r "$rev" \
-      '{name: $v, registeredModelId: $m, description: "BF16 weights. Immutable source \($r)"}')")
+    version=$(api /model_versions "$(jq -n --arg v "source-$rev" --arg m "$mid" --arg r "$rev" --argjson meta "$meta" \
+      '{name: $v, registeredModelId: $m, description: "\($meta.version_description) Immutable source \($r)"}')")
   else
     version=$(jq -c '.[0]' <<<"$version")
   fi
@@ -191,7 +195,8 @@ register_risk_model() {
     fail "$name registry linkage patch failed"
   log_success "Registered $name as $title (model $mid, version $vid) and linked its InferenceService"
 }
-register_risk_model
+register_helper_model gemma-2-9b-abliterated gemma-2-9b-it-abliterated
+register_helper_model gpt-oss-safeguard-20b gpt-oss-safeguard-20b
 
 # Exit 2 (services ready, no evaluation evidence) is the expected result of a deployment.
 export RHOAI_STAGE050_EXPECTED_REVISION="$revision"

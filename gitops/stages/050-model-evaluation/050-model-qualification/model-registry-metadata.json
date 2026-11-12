@@ -1,11 +1,37 @@
 {
   "gemma-2-9b-it-abliterated": {
-    "labels": ["evaluation-helper", "no-safety-alignment", "risk-assessment", "text-generation"],
+    "description": "Risk assessment helper (Garak intents SDG and judge) without safety alignment, served only in the admin project evaluated-models. Pinned model artifact (hf://IlyaGusev/gemma-2-9b-it-abliterated). Not a qualification candidate.",
+    "version_description": "BF16 weights.",
+    "labels": [
+      "evaluation-helper",
+      "no-safety-alignment",
+      "risk-assessment",
+      "text-generation"
+    ],
     "properties": {
       "model_type": "generative",
       "provider": "Google (abliterated by IlyaGusev)",
       "license": "gemma",
       "role": "Garak intents risk assessment: attack prompt generation (SDG) and judge; never a qualification candidate",
+      "owner_stage": "050"
+    }
+  },
+  "gpt-oss-safeguard-20b": {
+    "description": "Guard model of the candidate guardrail (NeMo Guardrails self-check input and output), from the model catalog (openai/gpt-oss-safeguard-20b, ModelCar registry.redhat.io/rhai/modelcar-openai-gpt-oss-safeguard-20b:3.0), served only in the admin project evaluated-models. Not a qualification candidate.",
+    "version_description": "MXFP4 weights, catalog ModelCar tag 3.0.",
+    "labels": [
+      "evaluation-helper",
+      "guardrail",
+      "safety-classifier",
+      "text-generation"
+    ],
+    "properties": {
+      "model_type": "generative",
+      "provider": "OpenAI",
+      "license": "Apache 2.0",
+      "catalog_source": "other_models",
+      "catalog_model": "openai/gpt-oss-safeguard-20b",
+      "role": "Guard model of the candidate guardrail (NeMo Guardrails self-check input and output); never a qualification candidate",
       "owner_stage": "050"
     }
   }

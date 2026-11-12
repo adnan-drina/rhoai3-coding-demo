@@ -1,0 +1,63 @@
+---
+# Guard model of the candidate guardrail (guardrails/candidate-guardrails): the separate self-check model of RHOAI 3.5
+# "Enabling AI safety with Guardrails" 1.2.5, which judges each input and output of the guarded candidate against the
+# policies in candidate-guardrails-prompts. Separate from the candidate so that every candidate stands behind the same
+# guardrail and the guarded risk assessment does not measure a model against itself; separate from the risk assessment
+# judge so that the guard's blind spots cannot hide in the verdict. openai/gpt-oss-safeguard-20b from the model catalog
+# (source Other): a policy-following safety classifier (Apache 2.0), MXFP4 weights (about 14 GB) on one L40S
+# (gpu-reserved-demo: GPU_POOL=l40s deploy.sh --gpus 2 while the risk assessment model runs). The catalog's ModelCar is
+# pinned by digest (tag 3.0). Stage 050 deploy.sh registers it in demo-registry and links this InferenceService.
+# Stop it with serving.kserve.io/stop "true" to hand the GPU back.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: gpt-oss-safeguard-20b
+  namespace: evaluated-models
+  labels:
+    kueue.x-k8s.io/queue-name: lq-gpu-reserved-demo
+    # Stage 050 deploy.sh registers this model and adds the registered-model-id and model-version-id labels; Argo CD
+    # ignores drift on all three.
+    modelregistry.opendatahub.io/name: demo-registry
+  annotations:
+    openshift.io/display-name: gpt-oss-safeguard 20B (candidate guardrail judge)
+    serving.kserve.io/stop: "false"
+    serving.kserve.io/deploymentMode: RawDeployment
+    security.opendatahub.io/enable-auth: "true"
+    opendatahub.io/hardware-profile-name: gpu-reserved-demo
+    opendatahub.io/hardware-profile-namespace: redhat-ods-applications
+    # Same last wave as the candidate: a stopped model reports Suspended and must not hold later waves.
+    argocd.argoproj.io/sync-wave: "40"
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 1
+    deploymentStrategy:
+      type: Recreate
+    model:
+      runtime: vllm-cuda-runtime
+      modelFormat:
+        name: vLLM
+      storageUri: oci://registry.redhat.io/rhai/modelcar-openai-gpt-oss-safeguard-20b@sha256:73d3c1b453784f287607ac51e8b547a42a20c061b3753b6217e2cae82c25a35f
+      args:
+        - --enable-force-include-usage
+        - --disable-uvicorn-access-log
+        # The policy prompt repeats on every check.
+        - --enable-prefix-caching
+        - --max-model-len=32768
+        - --gpu-memory-utilization=0.90
+        - --max-num-seqs=32
+        # Harmony output: the reasoning goes to reasoning_content, the label to content, which the guardrail reads.
+        - --reasoning-parser=openai_gptoss
+      resources:
+        requests:
+          cpu: "2"
+          memory: 16Gi
+          nvidia.com/gpu: "1"
+        limits:
+          cpu: "4"
+          memory: 24Gi
+          nvidia.com/gpu: "1"
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
