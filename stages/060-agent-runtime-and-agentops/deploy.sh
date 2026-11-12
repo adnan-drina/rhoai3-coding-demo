@@ -322,7 +322,8 @@ runtime_setup() {
   get applications.argoproj.io 060-openshell-runtime -n openshift-gitops | jq -e --arg rev "$REVISION" --arg repo "$GIT_REPO_URL" --arg path "$RUNTIME_PATH" '
     {repoURL: $repo, targetRevision: $rev, path: $path} as $src | .spec as $s | .status.operationState as $op
     | ($s.source == $src) and $s.project == "rhoai-demo" and (.metadata.ownerReferences // [] | length) == 0 and .metadata.deletionTimestamp == null
-    and ($op.phase == "Running" or $op.phase == "Succeeded") and ($op.syncResult.revision | test("^[0-9a-f]{40}$")) and $op.syncResult.source == $src
+    and ($op.phase == "Running" or $op.phase == "Succeeded") and ($op.syncResult.revision | test("^[0-9a-f]{40}$"))
+    and $op.syncResult.source.repoURL == $repo and $op.syncResult.source.path == $path
     and ($s.syncPolicy.syncOptions | index("RespectIgnoreDifferences=true")) != null
     and all(["Secret", "openshell-credentials", ["/data/key-encryption-key"]], ["ConfigMap", "openshell-identity", ["/data/issuer"]],
         ["ConfigMap", "openshell-runtime-ready", ["/data/controller-ready", "/data/source-revision", "/data/controller-csv-uid"]];
