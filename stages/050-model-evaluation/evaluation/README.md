@@ -60,7 +60,8 @@ Both name the pipeline server's project and S3 connection and the candidate's in
   `intents_models.translation` role sent translation to Nemotron 3 Ultra through MaaS.
 - Automated risk assessment is a Technology Preview feature in RHOAI 3.5 (guide 7): read its attack success rate as
   advisory, and spot-check the judge's classifications (Complied, Rejected, Alternative, Other) against the answers in
-  the HTML report before relying on a verdict.
+  the HTML report before relying on a verdict; `../qualification/judge-cross-check.sh --job-id ID` re-scores a scan
+  with two more judges ([qualification README](../qualification/README.md), "Judge cross-check").
 - `sdg_num_samples: 5` prompts per harm category; `disable_cache: true` so a rerun generates fresh prompts instead of
   reusing the cached SDG step. Do not set `sdg_max_tokens`: in the 3.5.2 provider it rebuilds the SDG block without
   its model and the step fails with `Model not configured for block 'generate_adversarial_prompt'` (TROUBLESHOOTING).
