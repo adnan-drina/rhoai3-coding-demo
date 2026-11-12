@@ -625,7 +625,7 @@ listener_rule_names() {
 }
 check "No two routes on one gateway listener share a rule name (endpoint-picker collision)" listener_rule_names yes
 # OpenShift Lightspeed answers on the private production model: Qwen (primary) and Nemotron 3 Ultra (external fallback)
-# are providers through MaaS at this cluster's api listener with the one key Secret, which carries apitoken (presence
+# are providers through MaaS at this cluster's api listener, each with its own key Secret carrying apitoken (presence
 # only, never the value); the default is one of the two and the API is Ready. A selected fallback is a warning.
 lightspeed_provider() {
     local ols api_host
@@ -633,20 +633,22 @@ lightspeed_provider() {
     api_host=$(jq -r '.spec.listeners[] | select(.name == "api") | .hostname' <<<"$GATEWAY")
     jq -e --arg u "https://$api_host/v1" '
         def maas($p; $m): any(.spec.llm.providers[]; .name == $p and .type == "rhoai_vllm" and .url == $u
-            and .credentialsSecretRef.name == "qwen-maas-api-keys" and any(.models[]; .name == $m));
+            and .credentialsSecretRef.name == "\($p)-api-keys" and any(.models[]; .name == $m));
         maas("qwen-maas"; "publishers/internal-models/models/qwen3-8-27b")
         and maas("nemotron-maas"; "nemotron-3-ultra-550b-a55b")
         and ([.spec.ols.defaultProvider, .spec.ols.defaultModel] | IN(["qwen-maas", "publishers/internal-models/models/qwen3-8-27b"],
             ["nemotron-maas", "nemotron-3-ultra-550b-a55b"]))
         and all(.spec.llm.providers[]; (.url | contains("placeholder")) | not)' <<<"$ols" >/dev/null ||
         { echo "Qwen or Nemotron MaaS provider, default or URL differs"; return; }
-    [[ $(oc --request-timeout="$TIMEOUT" get secret qwen-maas-api-keys -n openshift-lightspeed -o json 2>/dev/null |
-        jq -r '.data.apitoken // "" | length > 0') == true ]] || { echo "provider Secret lacks apitoken"; return; }
+    for secret in qwen-maas-api-keys nemotron-maas-api-keys; do
+        [[ $(oc --request-timeout="$TIMEOUT" get secret "$secret" -n openshift-lightspeed -o json 2>/dev/null |
+            jq -r '.data.apitoken // "" | length > 0') == true ]] || { echo "$secret lacks apitoken"; return; }
+    done
     jqd -e 'any(.status.conditions[]?; .type == "ApiReady" and .status == "True")' <<<"$ols" >/dev/null ||
         { echo "Lightspeed API not Ready"; return; }
     echo yes
 }
-check "OpenShift Lightspeed uses Qwen or its Nemotron fallback through MaaS (key Secret present, API Ready)" lightspeed_provider yes
+check "OpenShift Lightspeed uses Qwen or its Nemotron fallback through MaaS (key Secrets present, API Ready)" lightspeed_provider yes
 lightspeed_primary() {
     read_json olsconfig cluster | jq -r 'if .spec.ols.defaultProvider == "qwen-maas" then "yes"
         else "\(.spec.ols.defaultProvider // "none") selected; run lightspeed/select-model.sh qwen once Qwen serves" end'

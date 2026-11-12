@@ -11,7 +11,7 @@ selectable one.
 |---|---|
 | Application | [040-openshift-lightspeed](../../../applications/040-openshift-lightspeed.yaml), deploy-order 8, after `040-model-access` |
 | Deployed by | `stages/040-governed-models-as-a-service/deploy.sh`, which passes the cluster-specific provider URLs as a `source.kustomize` patch |
-| Validated by | `stages/040-governed-models-as-a-service/validate.sh` (Qwen and Nemotron are providers at this cluster's MaaS api listener, the default is one of them, the key Secret carries `apitoken`, the Lightspeed API is Ready; a selected fallback is a warning) |
+| Validated by | `stages/040-governed-models-as-a-service/validate.sh` (Qwen and Nemotron are providers at this cluster's MaaS api listener, the default is one of them, both key Secrets carry `apitoken`, the Lightspeed API is Ready; a selected fallback is a warning) |
 | Operated by | [`stages/040-governed-models-as-a-service/lightspeed/select-model.sh`](../../../../stages/040-governed-models-as-a-service/lightspeed/README.md) `qwen\|nemotron` selects the default model |
 | Requires | The Lightspeed operator (OLSConfig API) preinstalled by the provisioner, `qwen3-8-27b`, `nemotron-3-ultra-550b-a55b` and the `openshift-lightspeed` subscription in `040-model-access` |
 
@@ -39,10 +39,10 @@ selectable one.
 
 | Kind | Name | Namespace | Notes |
 |---|---|---|---|
-| ServiceAccount, Role, RoleBinding | `lightspeed-maas-key-provisioner` | `openshift-lightspeed` | Owns the MaaS subscription; may create the Secret and update only `qwen-maas-api-keys`. Wave 18 |
+| ServiceAccount, Role, RoleBinding | `lightspeed-maas-key-provisioner` | `openshift-lightspeed` | Owns the MaaS subscription; may create Secrets and update only `qwen-maas-api-keys` and `nemotron-maas-api-keys`. Wave 18 |
 | Role, RoleBinding | `lightspeed-maas-key-provisioner-gateway-reader` | `openshift-ingress` | Reads the MaaS Gateway's api hostname. Wave 18 |
-| Job (Sync hook) | `provision-lightspeed-maas-key` | `openshift-lightspeed` | Keeps a MaaS key in Secret `qwen-maas-api-keys` (key `apitoken`, plus `key_id`, `expires_at`); re-uses an active key, re-mints an expired or revoked one. Wave 19 |
-| OLSConfig | `cluster` | cluster | Providers `qwen-maas` (`rhoai_vllm`, `https://maas.<cluster-domain>/v1`, model `publishers/internal-models/models/qwen3-8-27b`, 128k context, 4096 response tokens), `nemotron-maas` (same type, URL and Secret, model `nemotron-3-ultra-550b-a55b`, 128k context, 4096 response tokens) and `Azure` (the provisioner's). Default `qwen-maas`. Other settings are the provisioner's. Wave 20 |
+| Job (Sync hook) | `provision-lightspeed-maas-key` | `openshift-lightspeed` | Keeps a MaaS key in Secret `qwen-maas-api-keys` (key `apitoken`, plus `key_id`, `expires_at`); re-uses an active key, re-mints an expired or revoked one, and copies it to `nemotron-maas-api-keys` (the operator mounts one volume per provider Secret and rejects a Secret shared by two providers). Wave 19 |
+| OLSConfig | `cluster` | cluster | Providers `qwen-maas` (`rhoai_vllm`, `https://maas.<cluster-domain>/v1`, model `publishers/internal-models/models/qwen3-8-27b`, 128k context, 4096 response tokens), `nemotron-maas` (same type and URL, Secret `nemotron-maas-api-keys`, model `nemotron-3-ultra-550b-a55b`, 128k context, 4096 response tokens) and `Azure` (the provisioner's). Default `qwen-maas`. Other settings are the provisioner's. Wave 20 |
 
 The MaaSSubscription and MaaSAuthPolicy `openshift-lightspeed` (Qwen and Nemotron, 2,000,000 tokens per hour each,
 priority 60) live in `040-model-access` with the other subscriptions.
@@ -55,8 +55,8 @@ priority 60) live in `040-model-access` with the other subscriptions.
 - **Model selection.** `select-model.sh nemotron` adds one more patch to the same Application, replacing
   `spec.ols.defaultProvider` and `defaultModel`; `select-model.sh qwen` removes it, and so does the next `deploy.sh`.
   Argo CD self-heal would revert a direct `OLSConfig` edit. The operator restarts the app server on each switch (about a
-  minute); conversation history stays in PostgreSQL. One key covers both providers, so a re-minted key needs the same
-  single restart.
+  minute); conversation history stays in PostgreSQL. One key covers both providers; the Job writes it to both Secrets, so
+  a re-minted key needs the same single restart.
 - **Key lifecycle.** Keys default to the MaaS maximum (90 days). Every sync re-checks the key; an expired one is
   re-minted. `credentialHotReload` stays off, so a re-minted key reaches Lightspeed after its app server restarts
   (`oc rollout restart deployment/lightspeed-app-server -n openshift-lightspeed`).

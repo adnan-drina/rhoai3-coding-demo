@@ -27,7 +27,7 @@ rules:
     verbs: [create]
   - apiGroups: [""]
     resources: [secrets]
-    resourceNames: [qwen-maas-api-keys]
+    resourceNames: [qwen-maas-api-keys, nemotron-maas-api-keys]
     verbs: [get, patch, update]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

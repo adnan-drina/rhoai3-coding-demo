@@ -69,8 +69,15 @@ until jq -e --arg p "$PROVIDER" --arg m "$DEFAULT_MODEL" '.spec.ols.defaultProvi
     [[ $SECONDS -lt $deadline ]] || { log_error "Argo CD did not apply the selection within ${TIMEOUT}s; check $APP"; exit 1; }
     sleep 10
 done
-oc rollout status deployment/lightspeed-app-server -n openshift-lightspeed --timeout="$((deadline > SECONDS ? deadline - SECONDS : 1))s" ||
-    { log_error "lightspeed-app-server did not become ready; see docs/TROUBLESHOOTING.md (Lightspeed API unready)"; exit 1; }
+# Polled, not oc rollout status: a deployment left past its progress deadline (unready while its model was down)
+# makes rollout status fail at once, although the operator's new rollout still proceeds.
+until oc --request-timeout=15s get deployment lightspeed-app-server -n openshift-lightspeed -o json 2>/dev/null | jq -e '
+    .status.observedGeneration == .metadata.generation and (.status.updatedReplicas // 0) == .spec.replicas
+    and (.status.availableReplicas // 0) == .spec.replicas and (.status.replicas // 0) == .spec.replicas' >/dev/null; do
+    [[ $SECONDS -lt $deadline ]] ||
+        { log_error "lightspeed-app-server did not become ready; see docs/TROUBLESHOOTING.md (Lightspeed API unready)"; exit 1; }
+    sleep 10
+done
 until olsconfig | jq -e '. as $ols | any(.status.conditions[]?; .type == "ApiReady" and .status == "True"
     and .observedGeneration == $ols.metadata.generation)' >/dev/null; do
     [[ $SECONDS -lt $deadline ]] || { log_error "OLSConfig ApiReady is not True after ${TIMEOUT}s"; exit 1; }

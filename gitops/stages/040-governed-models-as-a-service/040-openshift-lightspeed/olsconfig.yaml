@@ -31,12 +31,13 @@ spec:
             contextWindowSize: 131072
             parameters:
               maxTokensForResponse: 4096
-      # Same key Secret as qwen-maas: one MaaS key for the openshift-lightspeed subscription covers both models.
+      # The same MaaS key as qwen-maas (one openshift-lightspeed subscription key covers both models) in its own Secret,
+      # copied by the provisioner Job: the operator rejects one Secret shared by two providers.
       - name: nemotron-maas
         type: rhoai_vllm
         url: https://maas.placeholder.example.com/v1
         credentialsSecretRef:
-          name: qwen-maas-api-keys
+          name: nemotron-maas-api-keys
         models:
           - name: nemotron-3-ultra-550b-a55b
             contextWindowSize: 131072
