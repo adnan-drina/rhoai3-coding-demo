@@ -139,8 +139,11 @@ only in the guardrail spans, because vLLM spans never carry them. `guardrail-tra
   completion. NeMo builds its spans under the HTTP server span and keeps the messages in events MLflow does not read,
   so the collector makes `guardrails.request` the root and copies the messages into `gen_ai.input.messages` and
   `gen_ai.output.messages`. The hook looks the experiment up by name (creating it if missing) and writes its id to
-  ConfigMap `qualification-endpoints` (`mlflow_experiment_id`). The bare scan calls the candidate directly, so its
-  attacks appear only as vLLM spans in Tempo, without messages.
+  ConfigMap `qualification-endpoints` (`mlflow_experiment_id`). Rail and action spans are named after their rail
+  (`input rail: self check input`) and action. When the input rail blocks, NeMo 0.24 records no user message for the
+  request span, so Request stays empty for blocked attacks; the attack is inside the guard's prompt on the
+  `self_check_input` span. The bare scan calls the candidate directly, so its attacks appear only as vLLM spans in
+  Tempo, without messages.
 
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
 
