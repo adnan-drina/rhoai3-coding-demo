@@ -95,6 +95,10 @@ spec:
               - set(span.attributes["mlflow.spanType"], "\"CHAIN\"") where span.name == "guardrails.request"
               - set(span.attributes["mlflow.traceTag.source"], "candidate-guardrails") where span.name == "guardrails.request"
               - set(span.attributes["mlflow.spanType"], "\"LLM\"") where span.attributes["gen_ai.request.model"] != nil
+              # Readable span tree: "input rail: self check input" and "action: self_check_input" for the generic
+              # guardrails.rail and guardrails.action names.
+              - 'set(span.name, Concat([span.attributes["rail.type"], " rail: ", span.attributes["rail.name"]], "")) where span.name == "guardrails.rail" and span.attributes["rail.name"] != nil'
+              - 'set(span.name, Concat(["action: ", span.attributes["action.name"]], "")) where span.name == "guardrails.action" and span.attributes["action.name"] != nil'
           - statements:
               # Request and response: the user message and the bot answer on the request span, prompt and completion
               # on each LLM call.
@@ -103,11 +107,11 @@ spec:
               - set(span.attributes["gen_ai.input.messages"], spanevent.attributes["content"]) where spanevent.name == "gen_ai.content.prompt"
               - set(span.attributes["gen_ai.output.messages"], spanevent.attributes["content"]) where spanevent.name == "gen_ai.content.completion"
     exporters:
-      otlp/platform:
+      otlp_grpc/platform:
         endpoint: data-science-collector-collector.redhat-ods-monitoring.svc:4317
         tls:
           insecure: true
-      otlphttp/mlflow:
+      otlp_http/mlflow:
         endpoint: https://mlflow.redhat-ods-applications.svc:8443
         auth:
           authenticator: bearertokenauth
@@ -122,8 +126,8 @@ spec:
         traces/platform:
           receivers: [otlp]
           processors: [batch]
-          exporters: [otlp/platform]
+          exporters: [otlp_grpc/platform]
         traces/mlflow:
           receivers: [otlp]
           processors: [filter/guardrail-spans, transform/mlflow, batch]
-          exporters: [otlphttp/mlflow]
+          exporters: [otlp_http/mlflow]
