@@ -44,6 +44,11 @@ rules:
     resources: [configmaps]
     resourceNames: [candidate-model-service-ca, candidate-guardrails-trusted-ca, candidate-guardrails-prompts]
     verbs: [get]
+  # The MLflow experiment models-onboarding, whose id the onboarding trace collector needs (looked up by name, created
+  # if missing).
+  - apiGroups: [mlflow.kubeflow.org]
+    resources: [experiments]
+    verbs: [get, list, create]
   - apiGroups: [""]
     resources: [secrets, configmaps]
     verbs: [create]
@@ -84,11 +89,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 rules:
-  # The MLflow experiment models-onboarding, whose id the onboarding trace collector needs (looked up by name, created
-  # if missing).
-  - apiGroups: [mlflow.kubeflow.org]
-    resources: [experiments]
-    verbs: [get, list, create]
   - apiGroups: [gateway.networking.k8s.io]
     resources: [gateways]
     resourceNames: [maas-default-gateway]
