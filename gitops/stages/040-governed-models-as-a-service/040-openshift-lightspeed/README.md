@@ -61,8 +61,8 @@ priority 60) live in `040-model-access` with the other subscriptions.
   re-minted. `credentialHotReload` stays off, so a re-minted key reaches Lightspeed after its app server restarts
   (`oc rollout restart deployment/lightspeed-app-server -n openshift-lightspeed`).
 - **Operator version.** The provisioner's `stable` channel installed operator 2.0.1. Red Hat published the 2.0
-  documentation set on 2026-11-12; this component's links stay on the "1.0" set the repository's documentation map pins.
-  The fields used here are in both sets' OLSConfig reference and the installed CRD.
+  documentation set on 2026-11-12, and this component's links use it.
+  The fields used here are in its OLSConfig reference and the installed CRD.
 
 ## Validation
 
@@ -83,8 +83,8 @@ selected).
 | Trusted CA | `additionalCAConfigMapRef` for a provider behind a private CA [1] | Not set: the MaaS gateway certificate is publicly trusted | Aligned |
 | Multiple providers | Several providers, one default [1] | `qwen-maas` default, `nemotron-maas` fallback, provisioner's `Azure` kept | Aligned |
 | Provider failover | Not offered: one default provider; the OLSConfig has no fallback field [1] | Default moved by `select-model.sh` through the Argo CD Application | Gap: manual switch |
-| Documentation version | Red Hat publishes "1.0" and, since 2026-11-12, "2.0" | Installed operator 2.0.1; links on "1.0" (the map's pin); fields used exist in both and the installed CRD | Gap: links not moved to 2.0 yet |
+| Documentation version | Red Hat publishes "2.0" since 2026-11-12 | Installed operator 2.0.1; links on "2.0", the doc map's version; fields used exist in the installed CRD | Aligned |
 
 ## References
 
-1. Configure, "Creating the credentials secret" and "Creating the Lightspeed custom resource file", Red Hat OpenShift Lightspeed 1.0. https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index
+1. Configure, "Creating the credentials secret" and "Creating the Lightspeed custom resource file", Red Hat OpenShift Lightspeed 1.0. https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index

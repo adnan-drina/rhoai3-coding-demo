@@ -2,9 +2,9 @@
 name: ocp-lightspeed-configure
 metadata:
   author: rhoai3-coding-demo
-  version: 2.1.0
+  version: 3.0.0
   product: ocp_lightspeed
-  docs-version: "1.0"
+  docs-version: "2.0"
   skill-group: "OpenShift Platform"
 description: >
   Use when someone wants to change OpenShift Lightspeed's OLSConfig on the demo
@@ -48,9 +48,18 @@ sections. Take field names from the OLSConfig API reference, never from memory.
 
 - Access is not granted to every authenticated user; see the
   [RBAC framework][rbac] before announcing Lightspeed to workshop users.
-- Cluster interaction and MCP servers let the assistant read live cluster
-  state with the user's identity; read [cluster interaction][cluster] and
-  [authentication flow][introspection-auth] before enabling them on the demo.
+- Cluster interaction (`introspectionEnabled: true` here) lets the assistant
+  read live cluster state with the user's identity; read
+  [cluster interaction][cluster] and [authentication flow][introspection-auth].
+  Since 2.0.1 the OpenShift MCP server also offers write tools; the 2.0
+  [security defaults][security-defaults] keep human approval for non-read
+  operations (`spec.ols.toolsApprovalConfig`) and
+  [tool-result safety inspection][tool-inspection] on. Keep both.
+- Autonomous agents (`agentic.openshift.io` LLMProvider, Agent and
+  ApprovalPolicy; Technology Preview) need OpenShift 5.0, see
+  [autonomous agents][agentic]. On this 4.22 cluster the operator's agentic
+  console stays unready with `UnsupportedOCPVersion`; the demo configures no
+  agents.
 - A provider behind a private CA needs the trusted-CA configuration; see
   [trusted CA for the LLM][trusted-ca].
 - Two providers cannot share one `credentialsSecretRef`: the operator mounts
@@ -62,7 +71,7 @@ sections. Take field names from the OLSConfig API reference, never from memory.
   `top_p 0.95` and `frequency_penalty 1.03`; `openai` uses the Responses API
   (no OLSConfig switch). Probe a candidate model with that exact shape first.
 
-## Official documentation (OpenShift Lightspeed, "1.0" set)
+## Official documentation (OpenShift Lightspeed, "2.0" set)
 
 | Topic | Section |
 |---|---|
@@ -72,6 +81,8 @@ sections. Take field names from the OLSConfig API reference, never from memory.
 | Data redaction | [Filtering and redacting information][filters] |
 | Custom knowledge | [Custom documentation (BYO knowledge)][byok] |
 | Cluster interaction, MCP | [Live cluster state][cluster], [custom MCP server][mcp], [tool approvals][approvals] |
+| Security defaults | [Defaults by deployment mode][security-defaults], [tool-result safety inspection][tool-inspection] |
+| Autonomous agents (OpenShift 5.0) | [Deploying autonomous agents][agentic] |
 | Quotas | [Token quota limits][quotas] |
 | Persistence | [Conversation history][postgres] |
 | Field reference | [OLSConfig API][api], [`.spec.llm.providers[]`][api-providers] |
@@ -82,22 +93,25 @@ sections. Take field names from the OLSConfig API reference, never from memory.
 `ocp-lightspeed-about`, `ocp-lightspeed-troubleshoot`, `rhoai-maas-governance`,
 `ocp-security-rbac-scc`.
 
-[configure]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-configuring-openshift-lightspeed
-[secret-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-creating-the-credentials-secret-using-cli_ols-configuring-openshift-lightspeed
-[cr-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-creating-lightspeed-custom-resource-file-using-cli_ols-configuring-openshift-lightspeed
-[trusted-ca]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-configuring-lightspeed-with-a-trusted-ca-certificate-for-the-llm_ols-configuring-openshift-lightspeed
-[tls]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#configuring-custom-tls-certificates_ols-configuring-openshift-lightspeed
-[verify]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-verifying-openshift-lightspeed-deployment_ols-configuring-openshift-lightspeed
-[rbac]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-about-lightspeed-and-role-based-access-control_ols-configuring-openshift-lightspeed
-[route]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-proc-expose-the-ols-service-by-using-a-route_ols-configuring-openshift-lightspeed
-[filters]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-filtering-and-redacting-information_ols-configuring-openshift-lightspeed
-[byok]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#about-the-byo-knowledge-tool_ols-configuring-openshift-lightspeed
-[cluster]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#about-cluster-interaction_ols-configuring-openshift-lightspeed
-[mcp]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-enabling-mcp-server_ols-configuring-openshift-lightspeed
-[introspection-auth]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-con-authentication-flow-for-cluster-introspection_ols-configuring-openshift-lightspeed
-[approvals]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-about-operation-approvals_ols-configuring-openshift-lightspeed
-[quotas]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-tokens-and-token-quota-limits_ols-configuring-openshift-lightspeed
-[postgres]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#about-postgresql-persistence_ols-configuring-openshift-lightspeed
-[api]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#olsconfig-api
-[api-providers]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#spec-llm-providers-2
-[audit]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/configure/index#ols-configuring-audit-logging-tracing
+[configure]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-configuring-openshift-lightspeed
+[secret-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-creating-the-credentials-secret-using-cli_ols-configuring-openshift-lightspeed
+[cr-cli]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-creating-lightspeed-custom-resource-file-using-cli_ols-configuring-openshift-lightspeed
+[trusted-ca]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-configuring-lightspeed-with-a-trusted-ca-certificate-for-the-llm_ols-configuring-openshift-lightspeed
+[tls]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#configuring-custom-tls-certificates_ols-configuring-openshift-lightspeed
+[verify]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-verifying-openshift-lightspeed-deployment_ols-configuring-openshift-lightspeed
+[rbac]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-about-lightspeed-and-role-based-access-control_ols-configuring-openshift-lightspeed
+[route]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-proc-expose-the-ols-service-by-using-a-route_ols-configuring-openshift-lightspeed
+[filters]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-filtering-and-redacting-information_ols-configuring-openshift-lightspeed
+[byok]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#about-the-byo-knowledge-tool_ols-configuring-openshift-lightspeed
+[cluster]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#about-cluster-interaction_ols-configuring-openshift-lightspeed
+[mcp]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-enabling-mcp-server_ols-configuring-openshift-lightspeed
+[introspection-auth]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-con-authentication-flow-for-cluster-introspection_ols-configuring-openshift-lightspeed
+[approvals]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-about-operation-approvals_ols-configuring-openshift-lightspeed
+[quotas]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-tokens-and-token-quota-limits_ols-configuring-openshift-lightspeed
+[postgres]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#about-postgresql-persistence_ols-configuring-openshift-lightspeed
+[api]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#olsconfig-api
+[api-providers]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#spec-llm-providers-2
+[audit]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-configuring-audit-logging-tracing
+[security-defaults]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-security-defaults-by-deployment-mode_ols-configuring-openshift-lightspeed
+[tool-inspection]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-ref-tool-result-safety-inspection_ols-configuring-openshift-lightspeed
+[agentic]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/configure/index#ols-configuring-deploying-agentic-lightspeed

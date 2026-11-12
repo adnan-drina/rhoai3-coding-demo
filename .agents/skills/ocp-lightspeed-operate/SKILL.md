@@ -2,9 +2,9 @@
 name: ocp-lightspeed-operate
 metadata:
   author: rhoai3-coding-demo
-  version: 2.0.0
+  version: 3.0.0
   product: ocp_lightspeed
-  docs-version: "1.0"
+  docs-version: "2.0"
   skill-group: "OpenShift Platform"
 description: >
   Use when using OpenShift Lightspeed on the demo cluster: the console chat,
@@ -48,7 +48,7 @@ Thin skill: repo posture here, usage and API details in the linked sections.
   service faults; read [API authentication requirements][authmatrix] and
   [error handling][errors].
 
-## Official documentation (OpenShift Lightspeed, "1.0" set)
+## Official documentation (OpenShift Lightspeed, "2.0" set)
 
 | Topic | Section |
 |---|---|
@@ -62,14 +62,14 @@ Thin skill: repo posture here, usage and API details in the linked sections.
 
 `ocp-lightspeed-configure`, `ocp-lightspeed-troubleshoot`, `ocp-web-console`.
 
-[chat]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-initiating-chat-using-chat-window_ols-using-openshift-lightspeed
-[conversations]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-about-lightspeed-conversations_ols-using-openshift-lightspeed
-[attach]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-attaching-a-resource-object-to-your-query_ols-using-openshift-lightspeed
-[alerts]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-using-lightspeed-to-troubleshoot-alerts_ols-using-openshift-lightspeed
-[datacollection]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-disabling-data-collection-operator_ols-using-openshift-lightspeed
-[api]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-interacting-with-the-api
-[apiauth]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-authenticate-api-requests_ols-interacting-with-the-api
-[authmatrix]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-api-authentication-matrix_ols-interacting-with-the-api
-[endpoints]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-ref-api-endpoints-reference_ols-interacting-with-the-api
-[errors]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-ref-api-error-handling_ols-interacting-with-the-api
-[spec]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/operate/index#ols-con-openshift-lightspeed-rest-api-specifications_ols-interacting-with-the-openshift-lightspeed-rest-api
+[chat]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/operate/index#ols-initiating-chat-using-chat-window_ols-using-openshift-lightspeed
+[conversations]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/operate/index#ols-about-lightspeed-conversations_ols-using-openshift-lightspeed
+[attach]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/operate/index#ols-attaching-a-resource-object-to-your-query_ols-using-openshift-lightspeed
+[alerts]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/operate/index#ols-using-lightspeed-to-troubleshoot-alerts_ols-using-openshift-lightspeed
+[datacollection]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/operate/index#ols-disabling-data-collection-operator_ols-using-openshift-lightspeed
+[api]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/operate/index#ols-interacting-with-the-api
+[apiauth]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/operate/index#ols-authenticate-api-requests_ols-interacting-with-the-api
+[authmatrix]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/operate/index#ols-api-authentication-matrix_ols-interacting-with-the-api
+[endpoints]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/operate/index#ols-ref-api-endpoints-reference_ols-interacting-with-the-api
+[errors]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/operate/index#ols-ref-api-error-handling_ols-interacting-with-the-api
+[spec]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/operate/index#ols-con-openshift-lightspeed-rest-api-specifications_ols-interacting-with-the-openshift-lightspeed-rest-api

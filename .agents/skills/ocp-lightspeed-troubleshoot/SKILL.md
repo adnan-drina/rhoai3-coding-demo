@@ -2,9 +2,9 @@
 name: ocp-lightspeed-troubleshoot
 metadata:
   author: rhoai3-coding-demo
-  version: 2.0.0
+  version: 3.0.0
   product: ocp_lightspeed
-  docs-version: "1.0"
+  docs-version: "2.0"
   skill-group: "OpenShift Platform"
 description: >
   Use when OpenShift Lightspeed on the demo cluster misbehaves: OLSConfig
@@ -50,7 +50,7 @@ sections. Repo records: `docs/TROUBLESHOOTING.md` and `docs/OPERATIONS.md`.
 - Do not switch providers, bypass readiness or patch the operator-generated
   deployment to hide a failure.
 
-## Official documentation (OpenShift Lightspeed, "1.0" set)
+## Official documentation (OpenShift Lightspeed, "2.0" set)
 
 | Symptom | Section |
 |---|---|
@@ -65,11 +65,11 @@ sections. Repo records: `docs/TROUBLESHOOTING.md` and `docs/OPERATIONS.md`.
 
 `ocp-lightspeed-configure`, `ocp-lightspeed-release-notes`, `inspect-cluster`.
 
-[troubleshoot]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-troubleshooting-openshift-lightspeed
-[502]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-502-bad-gateway-errors_ols-troubleshooting-openshift-lightspeed
-[operatorhub]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-operator-missing-from-operatorhub-list_ols-troubleshooting-openshift-lightspeed
-[delineator]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-reasoning-model-generates-delineator-prompt_ols-troubleshooting-openshift-lightspeed
-[apiauth]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-troubleshoot-api-authentication-failures_ols-troubleshooting-openshift-lightspeed
-[toolong]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-proc-error-prompt-is-too-long_ols-troubleshooting-openshift-lightspeed
-[truncated]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-proc-resolving-truncated-responses_ols-troubleshooting-openshift-lightspeed
-[history]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/troubleshoot/index#ols-proc-resolving-issues-with-conversation-history_ols-troubleshooting-openshift-lightspeed
+[troubleshoot]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/troubleshoot/index#ols-troubleshooting-openshift-lightspeed
+[502]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/troubleshoot/index#ols-502-bad-gateway-errors_ols-troubleshooting-openshift-lightspeed
+[operatorhub]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/troubleshoot/index#ols-operator-missing-from-operatorhub-list_ols-troubleshooting-openshift-lightspeed
+[delineator]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/troubleshoot/index#ols-reasoning-model-generates-delineator-prompt_ols-troubleshooting-openshift-lightspeed
+[apiauth]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/troubleshoot/index#ols-troubleshoot-api-authentication-failures_ols-troubleshooting-openshift-lightspeed
+[toolong]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/troubleshoot/index#ols-proc-error-prompt-is-too-long_ols-troubleshooting-openshift-lightspeed
+[truncated]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/troubleshoot/index#ols-proc-resolving-truncated-responses_ols-troubleshooting-openshift-lightspeed
+[history]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/troubleshoot/index#ols-proc-resolving-issues-with-conversation-history_ols-troubleshooting-openshift-lightspeed

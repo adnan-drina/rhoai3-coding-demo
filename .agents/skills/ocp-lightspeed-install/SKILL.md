@@ -2,9 +2,9 @@
 name: ocp-lightspeed-install
 metadata:
   author: rhoai3-coding-demo
-  version: 2.0.0
+  version: 3.0.0
   product: ocp_lightspeed
-  docs-version: "1.0"
+  docs-version: "2.0"
   skill-group: "OpenShift Platform"
 description: >
   Use when asked to install, reinstall, or take ownership of the OpenShift
@@ -46,7 +46,7 @@ Thin skill: repo decisions here, installation steps in the linked sections.
 - The operator is listed only on supported architectures; see
   `ocp-lightspeed-troubleshoot`.
 
-## Official documentation (OpenShift Lightspeed, "1.0" set)
+## Official documentation (OpenShift Lightspeed, "2.0" set)
 
 | Topic | Section |
 |---|---|
@@ -59,8 +59,8 @@ Thin skill: repo decisions here, installation steps in the linked sections.
 `ocp-lightspeed-about`, `ocp-lightspeed-configure`, `ocp-gitops-operator`,
 `ocp-web-console`.
 
-[llm]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/install/index#ols-large-language-model-overview_ols-installing-openshift-lightspeed
-[subs]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/install/index#about-subscription-requirements_ols-installing-openshift-lightspeed
-[operators]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/install/index#ols-about-adding-operators-to-a-cluster_ols-installing-openshift-lightspeed
-[hub]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/install/index#ols-installing-operator-from-operatorhub_ols-installing-openshift-lightspeed
-[catalog]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html-single/install/index#ols-installing-operator-from-software-catalog_ols-installing-openshift-lightspeed
+[llm]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/install/index#ols-large-language-model-overview_ols-installing-openshift-lightspeed
+[subs]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/install/index#about-subscription-requirements_ols-installing-openshift-lightspeed
+[operators]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/install/index#ols-about-adding-operators-to-a-cluster_ols-installing-openshift-lightspeed
+[hub]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/install/index#ols-installing-operator-from-operatorhub_ols-installing-openshift-lightspeed
+[catalog]: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/2.0/html-single/install/index#ols-installing-operator-from-software-catalog_ols-installing-openshift-lightspeed
