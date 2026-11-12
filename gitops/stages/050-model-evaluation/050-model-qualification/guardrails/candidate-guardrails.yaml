@@ -129,6 +129,10 @@ spec:
     # Not in the guide: the platform collector has no logs pipeline for this tenant.
     - name: OTEL_LOGS_EXPORTER
       value: none
+    # Not in the guide: the operator's readiness probe GETs / every 5 s, one trace each; a regex on the full URL that
+    # matches only the root path keeps them out (the API is under /v1).
+    - name: OTEL_PYTHON_EXCLUDED_URLS
+      value: "^[a-z]+://[^/]+/$"
 ---
 # Evaluation jobs reach the guardrail with the candidate-model-client token (Secret garak-kfp-model-auth, api-key);
 # kube-rbac-proxy admits a caller that may get services in this project. The 3.5.2 operator's proxy config sets
