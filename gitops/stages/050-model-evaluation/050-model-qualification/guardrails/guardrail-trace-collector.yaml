@@ -22,12 +22,28 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "12"
 ---
-# MLflow accepts trace ingest from a caller that may update experiments in the workspace; the platform's ClusterRole
-# grants exactly that.
+# Trace ingest into models-onboarding only ("Working with MLflow" 3.5, 2.3, resource-name granularity): MLflow checks
+# update on the experiment that the x-mlflow-experiment-id header names, resolved to its name.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: guardrail-trace-collector-mlflow-traces
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: guardrail-trace-collector
+    app.kubernetes.io/component: guardrails
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+rules:
+  - apiGroups: [mlflow.kubeflow.org]
+    resources: [experiments]
+    resourceNames: [models-onboarding]
+    verbs: [get, list, update]
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: guardrail-trace-collector-mlflow-trace-export
+  name: guardrail-trace-collector-mlflow-traces
   namespace: evaluated-models
   labels:
     app.kubernetes.io/name: guardrail-trace-collector
@@ -36,8 +52,8 @@ metadata:
     argocd.argoproj.io/sync-wave: "12"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: data-science-collector-mlflow-trace-export
+  kind: Role
+  name: guardrail-trace-collector-mlflow-traces
 subjects:
   - kind: ServiceAccount
     name: guardrail-trace-collector

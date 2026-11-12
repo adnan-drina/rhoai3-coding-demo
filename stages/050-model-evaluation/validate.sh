@@ -208,11 +208,11 @@ JOB_ACCOUNT=evalhub-evalhub-job
 oc --request-timeout=10s get serviceaccount "$JOB_ACCOUNT" -n "$TENANT" >/dev/null 2>&1 && R=pass || R=missing
 record "Tenant evaluation job service account exists" "$R"
 
-# allowed USER GROUPS-CSV API-GROUP RESOURCE VERB NAMESPACE: a SubjectAccessReview for the exact attributes.
+# allowed USER GROUPS-CSV API-GROUP RESOURCE VERB NAMESPACE [NAME]: a SubjectAccessReview for the exact attributes.
 allowed() {
-  jq -n --arg u "$1" --arg g "$2" --arg api "$3" --arg r "$4" --arg v "$5" --arg ns "$6" '{apiVersion: "authorization.k8s.io/v1",
+  jq -n --arg u "$1" --arg g "$2" --arg api "$3" --arg r "$4" --arg v "$5" --arg ns "$6" --arg n "${7:-}" '{apiVersion: "authorization.k8s.io/v1",
     kind: "SubjectAccessReview", spec: {user: $u, groups: ($g | split(",")),
-    resourceAttributes: {group: $api, resource: $r, verb: $v, namespace: $ns}}}' |
+    resourceAttributes: ({group: $api, resource: $r, verb: $v, namespace: $ns} + (if $n == "" then {} else {name: $n} end))}}' |
     oc --request-timeout=10s create -f - -o json 2>/dev/null | jq -e '.status.allowed == true' >/dev/null
 }
 all_allowed() { local user=$1 groups=$2 api=$3 resource=$4 ns=$5 verb; shift 5; for verb in "$@"; do allowed "$user" "$groups" "$api" "$resource" "$verb" "$ns" || return 1; done; }
@@ -228,6 +228,14 @@ record "EvalHub service authorized to create tenant jobs" "$R"
 all_allowed "system:serviceaccount:$TENANT:$JOB_ACCOUNT" "system:serviceaccounts,system:serviceaccounts:$TENANT,system:authenticated" \
   mlflow.kubeflow.org experiments "$TENANT" create get update && R=pass || R=denied
 record "Tenant job authorized for MLflow experiment results" "$R"
+# MLflow checks update on the experiment the OTLP x-mlflow-experiment-id header names; the collector's Role names
+# models-onboarding only ("Working with MLflow" 2.3, resource-name granularity).
+TRACE_SA=system:serviceaccount:$TENANT:guardrail-trace-collector
+TRACE_GROUPS=system:serviceaccounts,system:serviceaccounts:$TENANT,system:authenticated
+if ! allowed "$TRACE_SA" "$TRACE_GROUPS" mlflow.kubeflow.org experiments update "$TENANT" models-onboarding; then R=denied
+elif allowed "$TRACE_SA" "$TRACE_GROUPS" mlflow.kubeflow.org experiments update "$TENANT" another-experiment; then R="may write other experiments"
+else R=pass; fi
+record "Guardrail trace collector may write traces to models-onboarding only" "$R"
 admin_access() {
   local g=rhods-admins,system:authenticated
   all_allowed ai-admin "$g" trustyai.opendatahub.io evaluations "$TENANT" create get && all_allowed ai-admin "$g" trustyai.opendatahub.io providers "$TENANT" get &&
