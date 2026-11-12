@@ -144,8 +144,11 @@ only in the guardrail spans, because vLLM spans never carry them. `guardrail-tra
   only (Role `guardrail-trace-collector-mlflow-traces`). Rail and action spans are named after their rail
   (`input rail: self check input`) and action. When the input rail blocks, NeMo 0.24 records no user message for the
   request span, so Request stays empty for blocked attacks; the attack is inside the guard's prompt on the
-  `self_check_input` span. The bare scan calls the candidate directly, so its attacks appear only as vLLM spans in
-  Tempo, without messages.
+  `self_check_input` span. Only the guarded scan goes through the guardrail: the capability steps (latency,
+  throughput, LiveCodeBench, Python tasks) and the bare scan call the candidate directly, so a run's traces appear in
+  `models-onboarding` only from its guarded scan on. Their calls are vLLM spans in Tempo, without messages: vLLM 0.24
+  puts timing, token counts and request parameters on `llm_request`, never the prompt or completion, EvalHub logs
+  only aggregate metrics to MLflow, and this MLflow distribution has the AI Gateway off.
 
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
 
