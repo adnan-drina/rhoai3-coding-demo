@@ -13,7 +13,7 @@ description: >
   maas-default-gateway and Authorino TLS, MaaSModelRef publication of
   qwen3-8-27b and external models (ExternalProvider, ExternalModel),
   MaaSSubscription and MaaSAuthPolicy in models-as-a-service, API keys, token
-  limits, 401/403/429 from the MaaS gateway, and usage export. Do NOT use for
+  limits, 401/403/429, usage export, internal vs external model endpoints. Do NOT use for
   the llm-d serving spec (use rhoai-distributed-inference-llmd), generated
   Kuadrant policies (use rhcl-configure), Connectivity Link upgrades (use
   rhcl-update), or playground setup (use rhoai-gen-ai-playground).
@@ -45,6 +45,7 @@ repo lessons not in Git live in `references/working-configuration.md`.
 | Gateway `maas-default-gateway` in `openshift-ingress`, class `data-science-gateway-class`, both required annotations, listeners `api` and `qwen3-8` on the cert-manager ingress certificate; hostnames patched at deploy time | `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/gateway/` | [Gateway requirements][gw], [Configure TLS][tls] |
 | Authorino TLS: serving-cert annotation by hook Job, TLS listener and CA mount declared on the Authorino CR instead of `oc set env` | `gitops/stages/040-governed-models-as-a-service/040-gateway-governance/governance/`, `.../gateway-governance/jobs/` | [Configure TLS][tls] |
 | Private model `qwen3-8-27b` published by `MaaSModelRef` in `internal-models` | `gitops/stages/040-governed-models-as-a-service/040-local-models/qwen38-27b-maas-modelref.yaml` | [Deploy models with MaaS][deploy] |
+| One registration, two network paths: an `LLMInferenceService` whose `router.gateway.refs` names only `maas-default-gateway` (with a `sectionName`) plus a `MaaSModelRef` in the model's namespace. External clients use `maas.<cluster-domain>`; in-cluster clients reach the same gateway through Service `maas-gateway-internal` (ClusterIP `172.30.250.250`) and keep the public hostname for SNI and Host matching (workspace `hostAlias`), so keys, limits and metering are the same | `040-gateway-governance/gateway/service-maas-gateway-internal.yaml`, `040-local-models/*-llminferenceservice.yaml` | [Deploy models with MaaS][deploy], [Select Gateway using YAML][gwyaml] |
 | External models `gpt-6-luna`, `claude-sonnet-5-5`, `nemotron-3-ultra-550b-a55b` in `external-models`, all `apiFormat: openai-chat` so every model is subscription-token-metered; Claude uses Anthropic's OpenAI-compatible path | `gitops/stages/040-governed-models-as-a-service/040-external-models/` | [External models][ext], [apiFormat values][apiformat] |
 | Provider keys in Secrets `*-provider-api-key` (key `api-key`, label `inference.llm-d.ai/ipp-managed=true`) created from `.env`, never in Git | `stages/040-governed-models-as-a-service/deploy.sh` | [External models][ext] |
 | One `MaaSSubscription` + `MaaSAuthPolicy` pair per consumer, owned by a user or one ServiceAccount (not groups); personal priority 150-170 above service subscriptions; 1 h windows | `gitops/stages/040-governed-models-as-a-service/040-model-access/` | [Subscriptions][subs], [Priority levels][prio], [Authorization policies][authz] |
@@ -85,6 +86,10 @@ repo lessons not in Git live in `references/working-configuration.md`.
 
 - A subscription without a matching `MaaSAuthPolicy` returns 403 even with
   quota ([Authorization policies][authz]).
+- A `router.gateway.refs` entry to a non-MaaS Gateway (e.g. ClusterIP-only) bypasses MaaS: no keys, quotas or
+  metering, only llm-d auth; the wizard cannot select MaaS Gateways ([Select Gateway using YAML][gwyaml]).
+- The 3.5 guide links an unpublished "Publish a model ... using YAML" section; the YAML is `spec.modelRef:
+  {kind: LLMInferenceService | ExternalModel, name}` in the model's namespace ([External models][ext]).
 - Subscription token limits apply only to OpenAI Chat Completions; `messages`
   and `openai-responses` models are not metered ([apiFormat values][apiformat]).
 - `ExternalProvider`/`ExternalModel` are `inference.opendatahub.io/v1alpha1`;
@@ -106,6 +111,7 @@ repo lessons not in Git live in `references/working-configuration.md`.
 |---|---|
 | Prerequisites (Connectivity Link, user workload monitoring) | [Prerequisites][prereq] |
 | Gateway and TLS | [Gateway requirements][gw], [Configure TLS][tls] |
+| Model gateway references (llm-d guide) | [Select Gateway using YAML][gwyaml] |
 | Database Secret | [Database secret][db] |
 | Enablement and dashboard | [MaaS configuration][config], [Dashboard configuration][dash] |
 | Subscriptions and authorization | [Subscriptions][subs], [Authorization policies][authz] |
@@ -127,6 +133,7 @@ repo lessons not in Git live in `references/working-configuration.md`.
 [config]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-configuration_maas-deploy
 [dash]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-dashboard-configuration_maas-deploy
 [deploy]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#deploy-models-using-dashboard-wizard_maas-deploy
+[gwyaml]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/deploy_models_using_distributed_inference_with_llm-d/index#select-gateway-yaml_gateway-discovery
 [subs]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-subscriptions_maas-deploy
 [prio]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#priority_levels
 [authz]: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/govern_llm_access_with_models-as-a-service/index#maas-authorization-policies_maas-deploy
