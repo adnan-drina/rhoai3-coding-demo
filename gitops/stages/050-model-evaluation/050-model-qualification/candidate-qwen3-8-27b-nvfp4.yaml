@@ -63,10 +63,10 @@ spec:
         - --reasoning-parser=qwen3
         - --enable-auto-tool-choice
         - --tool-call-parser=qwen3_xml
-        # Model call traces to onboarding-trace-collector (MLflow experiment models-onboarding): request spans with
-        # timing and token usage, and with detailed traces the model forward and worker timings (upstream vLLM).
-        - --otlp-traces-endpoint=grpc://onboarding-trace-collector-collector.evaluated-models.svc:4317
-        - --collect-detailed-traces=all
+        # Request spans (timing and token usage) to the platform OpenTelemetry Collector, which stores them in the
+        # platform Tempo ("Managing OpenShift AI" 12.5). No --collect-detailed-traces: its per-step timing work in the
+        # engine would skew the latency and throughput the qualification measures.
+        - --otlp-traces-endpoint=grpc://data-science-collector-collector.redhat-ods-monitoring.svc:4317
       resources:
         requests:
           cpu: "2"

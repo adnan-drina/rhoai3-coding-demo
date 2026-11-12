@@ -96,22 +96,32 @@ check "Risk assessment model registered with its labels and linked to its Infere
   "helper_model_record gemma-2-9b-abliterated gemma-2-9b-it-abliterated" yes
 check "Guard model registered with its labels and linked to its InferenceService" \
   "helper_model_record gpt-oss-safeguard-20b gpt-oss-safeguard-20b" yes
-# Model call traces: the onboarding trace collector runs and exports to the models-onboarding experiment of this
-# workspace (the experiment id comes from the hook-written ConfigMap, not from Git).
-trace_collector_state() {
-  local c id
-  c=$(read_json opentelemetrycollector onboarding-trace-collector -n "$TENANT")
-  jq -e '.metadata.name' <<<"$c" >/dev/null || { echo "collector missing"; return; }
-  jq -e '.spec.config.exporters["otlphttp/mlflow"].headers | .["X-MLFLOW-WORKSPACE"] == "evaluated-models"
-    and .["x-mlflow-experiment-id"] == "${env:MLFLOW_EXPERIMENT_ID}"' <<<"$c" >/dev/null ||
-    { echo "exporter does not target the workspace experiment"; return; }
-  id=$(oc --request-timeout=10s get configmap qualification-endpoints -n "$TENANT" -o jsonpath='{.data.mlflow_experiment_id}' 2>/dev/null)
-  [[ -n "$id" ]] || { echo "experiment id missing from qualification-endpoints"; return; }
-  read_json deployment onboarding-trace-collector-collector -n "$TENANT" |
-    jq -e '(.status.readyReplicas // 0) >= 1' >/dev/null || { echo "collector not Ready"; return; }
-  echo yes
+# Model call traces: every model server in the tenant sends its request spans to the platform OpenTelemetry Collector
+# (Tempo, "Managing OpenShift AI" 12.5) and none collects detailed traces, whose engine timing work would skew the
+# latency and throughput the qualification measures.
+model_trace_args() {
+  read_json inferenceservice -n "$TENANT" | jq -e --arg e "--otlp-traces-endpoint=grpc://data-science-collector-collector.redhat-ods-monitoring.svc:4317" \
+    '[.items[]? | .spec.predictor.model.args // []] | length > 0
+      and all(any(.[]; . == $e) and all(.[]; startswith("--collect-detailed-traces") | not))' >/dev/null &&
+    echo yes || echo "an InferenceService lacks the platform trace endpoint or collects detailed traces"
 }
-check "Onboarding trace collector Ready and exporting to MLflow experiment models-onboarding" trace_collector_state yes
+check "Model servers trace to the platform collector without detailed traces" model_trace_args yes
+# Models dashboard: evaluated-models-vllm-dashboard is the only source of kserve_vllm:* in the tenant. A second job for
+# the same pod (the platform adding the prefix itself, or a candidate moved to LLMInferenceService) would make the
+# dashboard's sum-by-model queries count every request twice; remove the ServiceMonitor when this fails (BACKLOG).
+kserve_vllm_single_source() {
+  local host out
+  host=$(oc --request-timeout=10s get route thanos-querier -n openshift-monitoring -o jsonpath='{.spec.host}' 2>/dev/null)
+  [[ -n "$host" ]] || { echo "Thanos querier route not found"; return; }
+  out=$(printf 'header = "Authorization: Bearer %s"\n' "$(oc whoami -t)" |
+    curl --config - -sk -m 20 -G "https://$host/api/v1/query" --data-urlencode \
+      "query=count by (pod) (count by (pod, job) (kserve_vllm:num_requests_running{namespace=\"$TENANT\"})) > 1") ||
+    { echo "Thanos query failed"; return; }
+  jq -e '.status == "success"' <<<"$out" >/dev/null || { echo "Thanos query failed"; return; }
+  jq -e '.data.result == []' <<<"$out" >/dev/null && echo yes ||
+    echo "kserve_vllm:* from more than one job for: $(jq -r '[.data.result[].metric.pod] | join(", ")' <<<"$out")"
+}
+check "Models dashboard series of $TENANT come from one scrape job per pod" kserve_vllm_single_source yes
 # Stage 020 owns the ClusterQueues; this stage owns the consumer LocalQueues in the tenant.
 for queue in lq-gpu-reserved-demo lq-gpu-rtxpro6000; do
   record "LocalQueue $queue Active in $TENANT" "$(read_json localqueue "$queue" -n "$TENANT" |

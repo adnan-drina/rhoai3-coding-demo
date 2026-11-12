@@ -44,11 +44,6 @@ rules:
     resources: [configmaps]
     resourceNames: [candidate-model-service-ca, candidate-guardrails-trusted-ca, candidate-guardrails-prompts]
     verbs: [get]
-  # The MLflow experiment models-onboarding, whose id the onboarding trace collector needs (looked up by name, created
-  # if missing).
-  - apiGroups: [mlflow.kubeflow.org]
-    resources: [experiments]
-    verbs: [get, list, create]
   - apiGroups: [""]
     resources: [secrets, configmaps]
     verbs: [create]
@@ -229,24 +224,11 @@ spec:
               rm -f "${WORK}/judge-key"
               echo "garak-kfp-model-auth judge and evaluator: mistral-small4-119b through MaaS (${JUDGE_HOST})"
               # The qualification pipeline reads the dashboard address (links it records on the model registry version)
-              # from this ConfigMap; the onboarding trace collector reads the id of the MLflow experiment
-              # models-onboarding (workspace evaluated-models), looked up by name and created if missing, so no
-              # environment-specific id is in Git.
+              # from this ConfigMap.
               DASHBOARD_HOST="$(oc get route data-science-gateway -n openshift-ingress -o jsonpath='{.spec.host}')"
               [ -n "${DASHBOARD_HOST}" ] || { echo "ERROR: dashboard Route data-science-gateway has no host" >&2; exit 1; }
-              MLFLOW=https://mlflow.redhat-ods-applications.svc:8443/mlflow/api/2.0/mlflow
-              mlflow_api() { curl -s -m 20 --cacert /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt \
-                -H "Authorization: Bearer ${SA_TOKEN}" -H "X-MLFLOW-WORKSPACE: ${NS}" "$@"; }
-              EXPERIMENT_ID="$(mlflow_api "${MLFLOW}/experiments/get-by-name?experiment_name=models-onboarding" \
-                | python3 -c 'import json,sys; print(json.load(sys.stdin).get("experiment",{}).get("experiment_id",""))' 2>/dev/null || true)"
-              if [ -z "${EXPERIMENT_ID}" ]; then
-                EXPERIMENT_ID="$(mlflow_api -X POST -H 'Content-Type: application/json' -d '{"name":"models-onboarding"}' \
-                  "${MLFLOW}/experiments/create" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("experiment_id",""))' 2>/dev/null || true)"
-              fi
-              [ -n "${EXPERIMENT_ID}" ] || { echo "ERROR: MLflow experiment models-onboarding not found and not created" >&2; exit 1; }
               oc create configmap qualification-endpoints -n "${NS}" --from-literal=dashboard_url="https://${DASHBOARD_HOST}" \
-                --from-literal=mlflow_experiment_id="${EXPERIMENT_ID}" --dry-run=client -o yaml | oc apply -f -
-              echo "MLflow experiment models-onboarding: ${EXPERIMENT_ID}"
+                --dry-run=client -o yaml | oc apply -f -
               # NeMo Guardrails configuration of the qualification candidate's guardrail (guardrails/): the guarded model
               # through its internal predictor Service as the main model, and the separate guard model
               # gpt-oss-safeguard-20b (guardrail-gpt-oss-safeguard-20b.yaml) through its predictor Service for both

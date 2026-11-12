@@ -67,9 +67,9 @@ Application in deploy order, so its hook runs before the components that need Tr
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | ServiceAccount | `evalhub-maas-key-provisioner` | `evaluated-models` | Wave 12. Owner of the MaaS key for subscription `model-qualification`. |
-| Role / RoleBinding | `evalhub-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch/update Secrets and ConfigMaps in the project; get/list/create MLflow `experiments` (the `models-onboarding` lookup). |
+| Role / RoleBinding | `evalhub-model-auth-provisioner` | `evaluated-models` | Wave 12. create/get/patch/update Secrets and ConfigMaps in the project. |
 | Role / RoleBinding | `qualification-model-auth-gateway-reader` | `openshift-ingress` | Wave 12. `get` on Gateway `maas-default-gateway` and Route `data-science-gateway` only, to read the MaaS API and dashboard hostnames. |
-| Job | `provision-evalhub-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Keeps the stored key while the MaaS API reports it active, otherwise revokes it and mints a new one; writes Secret `evalhub-model-auth-maas` (`api-key`, `key_id`, `expires_at`, `subscription`) and ConfigMap `qualification-endpoints` (`dashboard_url`, for the links the pipeline records; `mlflow_experiment_id`, the id of MLflow experiment `models-onboarding` in workspace `evaluated-models`, looked up by name and created if missing, for the trace collector). |
+| Job | `provision-evalhub-model-auth` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation,HookSucceeded`. Keeps the stored key while the MaaS API reports it active, otherwise revokes it and mints a new one; writes Secret `evalhub-model-auth-maas` (`api-key`, `key_id`, `expires_at`, `subscription`) and ConfigMap `qualification-endpoints` (`dashboard_url`, for the links the pipeline records). |
 
 ### Candidate model (`serving-runtime.yaml`, `candidate-qwen3-8-27b-nvfp4.yaml`, `candidate-model-auth.yaml`)
 
@@ -102,22 +102,26 @@ reasoning; plus `prompts.yml` and `rails.co` copied from `candidate-guardrails-p
 NVIDIA's hosted API answered HTTP 429 and the guardrail timed out (TROUBLESHOOTING). Until 2026-11-12 the candidate
 judged its own self-checks, as in the guide's basic configuration.
 
-### Model metrics and traces (`model-metrics-servicemonitor.yaml`, `onboarding-trace-collector.yaml`)
+### Model metrics and traces (`model-metrics-servicemonitor.yaml`)
 
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | ServiceMonitor | `evaluated-models-vllm-dashboard` | `evaluated-models` | Wave 12. Scrapes the platform's `<model>-metrics` Services (port `vllm-cuda-runtime-metrics`, so every candidate on that runtime) and keeps only `vllm:*`, renamed `kserve_vllm:*`, with its own `job` label. The operator-generated Models dashboards read `kserve_vllm:*`, the prefix the llm-d PodMonitors add; without it the candidate and helper models never appear under **Observe & monitor → Dashboard → Models**. |
-| ServiceAccount, RoleBinding | `onboarding-trace-collector`, `onboarding-trace-collector-mlflow-trace-export` | `evaluated-models` | Wave 12. The collector's identity, bound to the platform ClusterRole `data-science-collector-mlflow-trace-export` (MLflow `experiments` update, which trace ingest requires). |
-| OpenTelemetryCollector | `onboarding-trace-collector` | `evaluated-models` | Wave 14. OTLP gRPC 4317 and HTTP 4318, batch, `otlphttp/mlflow` to `https://mlflow.redhat-ods-applications.svc:8443` with the ServiceAccount token, headers `X-MLFLOW-WORKSPACE: evaluated-models` and `x-mlflow-experiment-id` from `qualification-endpoints`, and the service CA; the pattern of the Gen AI studio's `gen-ai-trace-collector`. |
+
+The scrape is a second one: the platform's own `<model>-metrics` ServiceMonitors keep scraping `vllm:*`. `validate.sh`
+fails when a second job delivers `kserve_vllm:*` for the same pod (the platform prefixing InferenceService metrics
+itself, or a candidate moved to `LLMInferenceService`), because the dashboard's per-model sums would then count every
+request twice; remove this ServiceMonitor then (BACKLOG).
 
 The candidate, `gemma-2-9b-abliterated` and `gpt-oss-safeguard-20b` start vLLM with
-`--otlp-traces-endpoint=grpc://onboarding-trace-collector-collector.evaluated-models.svc:4317`,
-`--collect-detailed-traces=all` and `OTEL_SERVICE_NAME=<model>`, so each model call of an evaluation is a trace in
-MLflow experiment `models-onboarding`, beside the pipeline's and EvalHub's runs. Limits: vLLM spans carry timing and
-token usage, not prompts or completions; EvalHub adapters do not propagate `traceparent`, so a trace relates to a
-pipeline run only by its time window; detailed traces add timing work in the engine, so latency and throughput measured
-since tracing (2026-11-12) are not strictly comparable with earlier runs. The Mistral judge is reached through MaaS and
-is out of scope here (MaaS tracing). Changing these arguments restarts the predictors: change them while the models are
+`--otlp-traces-endpoint=grpc://data-science-collector-collector.redhat-ods-monitoring.svc:4317` and
+`OTEL_SERVICE_NAME=<model>`: request spans with timing and token usage go to the platform OpenTelemetry Collector, which
+stores them in the platform Tempo ("Managing OpenShift AI" 12.5; the DSCI enables traces in Stage 010). Spans carry no
+prompts or completions, and EvalHub adapters do not propagate `traceparent`, so a span relates to a pipeline run only by
+its time window. `--collect-detailed-traces` is not set: its per-step timing work in the engine would skew the latency
+and throughput the qualification measures, and production serves without it. Runs between 2026-11-12 and this change ran
+with detailed traces; compare their latency and throughput with care. The Mistral judge is reached through MaaS and is
+out of scope here (MaaS tracing). Changing these arguments restarts the predictors: change them while the models are
 idle.
 
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
@@ -239,17 +243,12 @@ InferenceServices cause it. `stages/050-model-evaluation/validate.sh` checks tha
 tenant discovery (`evalhub-discovery`) and the service CA were reconciled, that `evalhub-evalhub-job` exists and may write
 MLflow experiments, that `rhods-admins` may create and read evaluations, providers, collections and experiments, and that
 `rhoai-developers` may not create evaluations, that the risk assessment model and the guard model are registered with their
-labels and linked to their InferenceServices, and that the onboarding trace collector is Ready and exports to MLflow
-experiment `models-onboarding` by workspace header.
+labels and linked to their InferenceServices, that every model server here traces to the platform collector without
+detailed traces, and that `kserve_vllm:*` in the project comes from one scrape job per pod.
 
-Traces of a run, from a workstation (the dashboard gateway serves MLflow at `/mlflow`):
-
-```bash
-D=$(oc get route data-science-gateway -n openshift-ingress -o jsonpath='{.spec.host}')
-ID=$(oc get configmap qualification-endpoints -n evaluated-models -o jsonpath='{.data.mlflow_experiment_id}')
-curl -sk -H "Authorization: Bearer $(oc whoami -t)" -H "X-MLFLOW-WORKSPACE: evaluated-models" \
-  "https://$D/mlflow/ajax-api/2.0/mlflow/traces?experiment_ids=$ID&max_results=5"
-```
+Traces of a run: the operator's Perses dashboard `data-science-tempo-traces` (OpenShift console **Observe → Dashboards
+(Perses)**, project `redhat-ods-monitoring`; Tempo tenant `redhat-ods-monitoring`, readable by `rhods-admins`), filtered
+to the model's `OTEL_SERVICE_NAME` over the run's time window.
 
 By hand:
 
@@ -271,8 +270,8 @@ oc get isvc,dspa,pipelineversion -n evaluated-models
 | Pipeline server as code | Pipeline definitions stored as Kubernetes resources [2] | Pipeline and PipelineVersion in Git; DSPA created by a hook Job | Gap (DSPA not declared in Git; see findings) |
 | MLflow for pipeline runs | MLflow integration per DSPA (`spec.mlflow`) [2] | Default detection plus plugin `insecureSkipVerify: true` | Deviation (justified: 3.5.1 passes no CA to step MLflow calls; operator decision 2026-10-12) |
 | Model runtime | vLLM NVIDIA GPU ServingRuntime for KServe; token authentication option [4] | Template instance, auth on | Aligned |
-| Model call traces | Documented model-side tracing is `LLMInferenceService` `spec.tracing` (distributed inference with llm-d) | vLLM `--otlp-traces-endpoint` on KServe InferenceServices and MLflow OTLP ingest (`/v1/traces`), both upstream vLLM and MLflow 3.6+ features | Deviation (justified: no documented tracing for KServe InferenceServices; same deviation as the showback tracing) |
-| Models dashboard | Operator-generated Models dashboards [1] | Extra ServiceMonitor renames `vllm:*` to `kserve_vllm:*` for InferenceServices | Deviation (justified: the generated dashboards only read the llm-d prefix) |
+| Model call traces | Instrumented workloads send OTLP to the platform collector `data-science-collector`, which stores traces in Tempo [12] | vLLM `--otlp-traces-endpoint` to that collector, request spans only (no `--collect-detailed-traces`) | Aligned (the vLLM flag itself is upstream vLLM) |
+| Models dashboard | Operator-generated Models dashboards read `kserve_vllm:*` [12] | Extra ServiceMonitor renames `vllm:*` to `kserve_vllm:*` for InferenceServices; `validate.sh` fails on a second source | Deviation (justified: on 3.5.2 only the llm-d PodMonitor adds the prefix; BACKLOG) |
 | Model provenance | Use validated models where possible | `RedHatAI/Qwen3.8-27B-NVFP4` from Hugging Face at the production revision, the same source as production MaaS (Stage 040) | As production |
 | Stop a model | Stopped InferenceService reports `Suspended` in Argo CD [8] | Accepted health `Suspended`, validated | Aligned |
 | Bucket provisioning | OBC on `openshift-storage.noobaa.io` [5] | Fixed `bucketName` | Deviation (justified: connection skeletons reference known names) |
@@ -291,3 +290,4 @@ oc get isvc,dspa,pipelineversion -n evaluated-models
 9. Diff strategies (Server-Side Diff), Argo CD (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/diff-strategies/
 10. EvalHub runtime sidecar, model proxy ref tokens (`*_sa_token`, `*_url`), upstream. https://github.com/eval-hub/eval-hub/blob/main/internal/eval_runtime_sidecar/proxy/model_proxy.go
 11. EvalHub *Model Authentication*, scenario 3 "In-cluster SA-token-authenticated services (KFP and others)", upstream. https://github.com/eval-hub/eval-hub.github.io/blob/main/src/content/docs/guides/model-authentication.mdx
+12. Manage observability (12.2 Observe platform and model metrics, 12.5 View traces in external tracing platforms), Managing OpenShift AI, Red Hat OpenShift AI Self-Managed 3.5. https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/managing_openshift_ai/managing-observability_managing-rhoai
