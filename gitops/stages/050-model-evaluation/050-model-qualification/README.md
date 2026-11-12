@@ -93,6 +93,7 @@ Application in deploy order, so its hook runs before the components that need Tr
 | ConfigMap | `candidate-guardrails-trusted-ca` | `evaluated-models` | Wave 12. Cluster trusted CA bundle (`config.openshift.io/inject-trusted-cabundle`), added to the guardrail's CA bundle. |
 | NemoGuardrails | `candidate-guardrails` | `evaluated-models` | Wave 14, `enable-auth`. Loads `candidate-guardrails-config` only (written by the hook; one ConfigMap per configuration, because the 3.5.2 operator mounts every listed ConfigMap at the same path); CA bundle `candidate-guardrails-ca` with `configMapNamespace` set; `CANDIDATE_API_KEY` from `candidate-model-client-token`. The operator creates its Deployment, Service (443) and Route. |
 | Role / RoleBinding | `candidate-guardrails-client` | `evaluated-models` | Wave 12. `get` on services in the project (the operator's proxy check carries no Service name) for `candidate-model-client`, whose token evaluation jobs send through kube-rbac-proxy. |
+| ServiceAccount / RoleBinding / OpenTelemetryCollector | `guardrail-trace-collector` | `evaluated-models` | Waves 12 and 14. Receives the guardrail's OTLP spans and forwards them to the platform collector (Tempo) and, reshaped for MLflow, to experiment `models-onboarding`; the RoleBinding grants the platform's `data-science-collector-mlflow-trace-export` (update experiments) for ingest. |
 
 The `provision-evalhub-model-auth` hook also writes `candidate-guardrails-config` (`config.yaml`: the candidate
 through its internal predictor Service as the main model, capped at 512 output tokens like the bare scan, and the guard
@@ -124,12 +125,22 @@ with detailed traces; compare their latency and throughput with care. The Mistra
 out of scope here (MaaS tracing). Changing these arguments restarts the predictors: change them while the models are
 idle.
 
-The guardrail `candidate-guardrails` traces to the same collector ("Enabling AI safety with Guardrails" 1.2.8): the
-`OTEL_*` variables on the NemoGuardrails CR start the server under `opentelemetry-instrument`, and the `tracing` block
-the hook writes into `config.yaml` adds a span per input rail, LLM call and output rail, with the messages
-(`enable_content_capture: true`; the scans send synthetic attacks and this project is admin-only). The instrumented
-HTTP client passes the trace context on, so the guard and candidate `llm_request` spans of a guarded call join the
-guardrail's trace; the messages live only in the guardrail spans, because vLLM spans never carry them.
+The guardrail `candidate-guardrails` traces itself ("Enabling AI safety with Guardrails" 1.2.8): the `OTEL_*`
+variables on the NemoGuardrails CR start the server under `opentelemetry-instrument`, and the `tracing` block the hook
+writes into `config.yaml` adds a span per input rail, LLM call and output rail, with the messages
+(`enable_content_capture: true`; the scans send synthetic attacks and this project is admin-only). The messages live
+only in the guardrail spans, because vLLM spans never carry them. `guardrail-trace-collector`
+(`guardrails/guardrail-trace-collector.yaml`) forwards them two ways:
+
+- **Tempo:** every span, unchanged, to the platform collector. The instrumented HTTP client passes the trace context
+  on, so the guard and candidate `llm_request` spans of a guarded call join the guardrail's trace there.
+- **MLflow:** the guardrail's own spans to experiment `models-onboarding`, like the MaaS experiments: Request is the
+  attack, Response the guardrail's answer (the candidate's or the refusal), and each LLM call shows its prompt and
+  completion. NeMo builds its spans under the HTTP server span and keeps the messages in events MLflow does not read,
+  so the collector makes `guardrails.request` the root and copies the messages into `gen_ai.input.messages` and
+  `gen_ai.output.messages`. The hook looks the experiment up by name (creating it if missing) and writes its id to
+  ConfigMap `qualification-endpoints` (`mlflow_experiment_id`). The bare scan calls the candidate directly, so its
+  attacks appear only as vLLM spans in Tempo, without messages.
 
 ### Garak in pipeline mode (`garak-kfp-access.yaml`)
 
@@ -251,14 +262,15 @@ tenant discovery (`evalhub-discovery`) and the service CA were reconciled, that 
 MLflow experiments, that `rhods-admins` may create and read evaluations, providers, collections and experiments, and that
 `rhoai-developers` may not create evaluations, that the risk assessment model and the guard model are registered with their
 labels and linked to their InferenceServices, that every model server here traces to the platform collector without
-detailed traces, that the guardrail exports traces with content capture to the same collector, and that
+detailed traces, that the guardrail exports traces with content capture through an available
+`guardrail-trace-collector`, and that
 `kserve_vllm:*` in the project comes from one scrape job per pod.
 
 Traces of a run: the operator's Perses dashboard `data-science-tempo-traces` (OpenShift console **Observe → Dashboards
 (Perses)**, project `redhat-ods-monitoring`; Tempo tenant `redhat-ods-monitoring`, readable by `rhods-admins`), filtered
-to the model's `OTEL_SERVICE_NAME` (or `candidate-guardrails` for the guarded scan, whose traces hold the messages)
-over the run's time window. MLflow experiment `models-onboarding` holds the run records and the model spans of
-2026-11-12 only (see OPERATIONS).
+to the model's `OTEL_SERVICE_NAME` (or `candidate-guardrails` for the guarded scan) over the run's time window. The
+guarded calls with their messages: MLflow experiment `models-onboarding` (workspace `evaluated-models`), **Traces**,
+tag `source` = `candidate-guardrails`.
 
 By hand:
 
@@ -281,7 +293,7 @@ oc get isvc,dspa,pipelineversion -n evaluated-models
 | MLflow for pipeline runs | MLflow integration per DSPA (`spec.mlflow`) [2] | Default detection plus plugin `insecureSkipVerify: true` | Deviation (justified: 3.5.1 passes no CA to step MLflow calls; operator decision 2026-10-12) |
 | Model runtime | vLLM NVIDIA GPU ServingRuntime for KServe; token authentication option [4] | Template instance, auth on | Aligned |
 | Model call traces | Instrumented workloads send OTLP to the platform collector `data-science-collector`, which stores traces in Tempo [12] | vLLM `--otlp-traces-endpoint` to that collector, request spans only (no `--collect-detailed-traces`) | Aligned (the vLLM flag itself is upstream vLLM) |
-| Guardrail traces | NeMo Guardrails `tracing` block plus `OTEL_*` variables on the CR; content capture off in production [13] | Same, to the platform collector; content capture on | Aligned (content capture on: synthetic attacks, admin-only project) |
+| Guardrail traces | NeMo Guardrails `tracing` block plus `OTEL_*` variables on the CR, to a tracing backend such as Tempo; content capture off in production [13] | Same, through `guardrail-trace-collector` to Tempo and to MLflow; content capture on | Aligned (content capture on: synthetic attacks, admin-only project; the MLflow copy uses upstream MLflow OTLP ingest) |
 | Models dashboard | Operator-generated Models dashboards read `kserve_vllm:*` [12] | Extra ServiceMonitor renames `vllm:*` to `kserve_vllm:*` for InferenceServices; `validate.sh` fails on a second source | Deviation (justified: on 3.5.2 only the llm-d PodMonitor adds the prefix; BACKLOG) |
 | Model provenance | Use validated models where possible | `RedHatAI/Qwen3.8-27B-NVFP4` from Hugging Face at the production revision, the same source as production MaaS (Stage 040) | As production |
 | Stop a model | Stopped InferenceService reports `Suspended` in Argo CD [8] | Accepted health `Suspended`, validated | Aligned |

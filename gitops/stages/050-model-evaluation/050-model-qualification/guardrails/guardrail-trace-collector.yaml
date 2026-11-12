@@ -1,0 +1,129 @@
+# Traces of the candidate guardrail (candidate-guardrails exports OTLP here), forked two ways:
+# - platform: every span unchanged to the platform OpenTelemetry Collector and Tempo ("Managing OpenShift AI" 12.5),
+#   where the guard and candidate vLLM llm_request spans join the guardrail's trace.
+# - mlflow: the guardrail's own spans (scope nemo_guardrails) to the MLflow experiment models-onboarding in workspace
+#   evaluated-models, beside the qualification runs, so each guarded call shows its request and response the way the
+#   MaaS experiments do. NeMo builds its spans after the request under the HTTP server span; here guardrails.request
+#   becomes the root and NeMo's message events become the gen_ai.input.messages and gen_ai.output.messages attributes
+#   MLflow's OTLP ingest reads (MLflow does not read NeMo's guardrails.* and gen_ai.content.* events).
+# The MLflow exporter follows the gen-ai-trace-collector the Gen AI studio manages in redhat-ods-monitoring: OTLP HTTP
+# to /v1/traces with the collector ServiceAccount's token, the workspace and experiment headers and the service CA.
+# The experiment id is not in Git: the provision-evalhub-model-auth hook (wave 13) looks models-onboarding up by name,
+# creates it if missing, and writes the id to ConfigMap qualification-endpoints (mlflow_experiment_id). MLflow's OTLP
+# ingest and the collector transform are upstream features, not RHOAI 3.5 procedures.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: guardrail-trace-collector
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: guardrail-trace-collector
+    app.kubernetes.io/component: guardrails
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+---
+# MLflow accepts trace ingest from a caller that may update experiments in the workspace; the platform's ClusterRole
+# grants exactly that.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: guardrail-trace-collector-mlflow-trace-export
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: guardrail-trace-collector
+    app.kubernetes.io/component: guardrails
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: data-science-collector-mlflow-trace-export
+subjects:
+  - kind: ServiceAccount
+    name: guardrail-trace-collector
+    namespace: evaluated-models
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: guardrail-trace-collector
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: guardrail-trace-collector
+    app.kubernetes.io/component: guardrails
+  annotations:
+    # After the hook (wave 13) wrote the experiment id.
+    argocd.argoproj.io/sync-wave: "14"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  mode: deployment
+  replicas: 1
+  serviceAccount: guardrail-trace-collector
+  env:
+    - name: MLFLOW_EXPERIMENT_ID
+      valueFrom:
+        configMapKeyRef:
+          name: qualification-endpoints
+          key: mlflow_experiment_id
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  config:
+    extensions:
+      bearertokenauth:
+        filename: /var/run/secrets/kubernetes.io/serviceaccount/token
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+    processors:
+      batch: {}
+      # MLflow view: only the guardrail's own spans (the HTTP server and client spans stay in Tempo).
+      filter/guardrail-spans:
+        error_mode: ignore
+        traces:
+          span:
+            - instrumentation_scope.name != "nemo_guardrails"
+      transform/mlflow:
+        error_mode: ignore
+        # Two groups, so each gets its own inferred context (span, then span event).
+        trace_statements:
+          - statements:
+              # The request span is the root once its HTTP server parent is filtered out; an empty parent id marks it.
+              - set(span.parent_span_id, SpanID(0x0000000000000000)) where span.name == "guardrails.request"
+              - set(span.attributes["mlflow.spanType"], "\"CHAIN\"") where span.name == "guardrails.request"
+              - set(span.attributes["mlflow.traceTag.source"], "candidate-guardrails") where span.name == "guardrails.request"
+              - set(span.attributes["mlflow.spanType"], "\"LLM\"") where span.attributes["gen_ai.request.model"] != nil
+          - statements:
+              # Request and response: the user message and the bot answer on the request span, prompt and completion
+              # on each LLM call.
+              - set(span.attributes["gen_ai.input.messages"], spanevent.attributes["content"]) where spanevent.name == "guardrails.user_message"
+              - set(span.attributes["gen_ai.output.messages"], spanevent.attributes["content"]) where spanevent.name == "guardrails.utterance.bot.started"
+              - set(span.attributes["gen_ai.input.messages"], spanevent.attributes["content"]) where spanevent.name == "gen_ai.content.prompt"
+              - set(span.attributes["gen_ai.output.messages"], spanevent.attributes["content"]) where spanevent.name == "gen_ai.content.completion"
+    exporters:
+      otlp/platform:
+        endpoint: data-science-collector-collector.redhat-ods-monitoring.svc:4317
+        tls:
+          insecure: true
+      otlphttp/mlflow:
+        endpoint: https://mlflow.redhat-ods-applications.svc:8443
+        auth:
+          authenticator: bearertokenauth
+        headers:
+          X-MLFLOW-WORKSPACE: evaluated-models
+          x-mlflow-experiment-id: ${env:MLFLOW_EXPERIMENT_ID}
+        tls:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+    service:
+      extensions: [bearertokenauth]
+      pipelines:
+        traces/platform:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlp/platform]
+        traces/mlflow:
+          receivers: [otlp]
+          processors: [filter/guardrail-spans, transform/mlflow, batch]
+          exporters: [otlphttp/mlflow]

@@ -114,12 +114,13 @@ spec:
         secretKeyRef:
           name: candidate-model-client-token
           key: token
-    # Traces to the platform OpenTelemetry Collector, which stores them in the platform Tempo (guide 1.2.8; "Managing
-    # OpenShift AI" 12.5). The server image starts under opentelemetry-instrument when OTEL_EXPORTER_OTLP_ENDPOINT is
-    # set, so its HTTP client passes the trace context on and the model servers' llm_request spans join the trace.
-    # The config.yaml tracing block (written by the provision-evalhub-model-auth hook) adds the rail spans.
+    # Traces (guide 1.2.8) to guardrail-trace-collector, which forwards them to the platform Tempo and, with the
+    # messages as request and response, to the MLflow experiment models-onboarding. The server image starts under
+    # opentelemetry-instrument when OTEL_EXPORTER_OTLP_ENDPOINT is set, so its HTTP client passes the trace context on
+    # and the model servers' llm_request spans join the trace in Tempo. The config.yaml tracing block (written by the
+    # provision-evalhub-model-auth hook) adds the rail spans.
     - name: OTEL_EXPORTER_OTLP_ENDPOINT
-      value: http://data-science-collector-collector.redhat-ods-monitoring.svc:4317
+      value: http://guardrail-trace-collector-collector.evaluated-models.svc:4317
     - name: OTEL_EXPORTER_OTLP_PROTOCOL
       value: grpc
     - name: OTEL_SERVICE_NAME
