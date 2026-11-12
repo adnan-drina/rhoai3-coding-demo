@@ -1,0 +1,35 @@
+# vLLM metrics of the models in this project under the names the RHOAI Models dashboard reads. The platform creates a
+# <model>-metrics Service and ServiceMonitor for every vLLM InferenceService, which user workload monitoring scrapes as
+# vllm:*; the operator-generated Models dashboards (dashboard-1-model, dashboard-1-model-admin) query kserve_vllm:*, the
+# prefix that the llm-d PodMonitors (kserve-llm-isvc-vllm-engine) add for LLMInferenceService deployments. Without
+# this prefix the candidate and the helper models never appear on Observe & monitor -> Dashboard -> Models. This
+# ServiceMonitor scrapes the same Services (the vllm-cuda-runtime-metrics port, so any candidate deployed on that
+# runtime is included) and keeps only the vllm:* series, renamed kserve_vllm:*, as the llm-d PodMonitor does. The
+# platform's own ServiceMonitors stay untouched.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: evaluated-models-vllm-dashboard
+  namespace: evaluated-models
+  labels:
+    app.kubernetes.io/name: evaluated-models-vllm-dashboard
+    app.kubernetes.io/component: model-metrics
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  selector:
+    matchLabels:
+      monitoring.opendatahub.io/scrape: "true"
+  endpoints:
+    - port: vllm-cuda-runtime-metrics
+      path: /metrics
+      scheme: http
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: "vllm:.*"
+          action: keep
+        - sourceLabels: [__name__]
+          regex: "(.*)"
+          targetLabel: __name__
+          replacement: kserve_$1
+          action: replace
