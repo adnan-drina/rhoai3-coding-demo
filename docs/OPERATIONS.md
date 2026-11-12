@@ -547,7 +547,7 @@ oc get applications -n openshift-gitops \
 
 ## Argo CD Operations
 
-Argo CD SSO administration uses the dedicated `rhoai-gitops-admins` OpenShift Group with the confirmed `admin` member and an additive operator-managed Argo RBAC mapping. Direct OpenShift User cluster-admin bindings do not supply this Dex group claim. Keep the default Argo role empty; refresh the SSO session after group membership changes. See [the SSO visibility troubleshooting procedure](TROUBLESHOOTING.md#argo-cd-applications-missing-after-openshift-sso-login). The targeted access repair preserves Application revisions and all other Argo settings; it does not require a foundation sync.
+Argo CD SSO administration uses the dedicated `rhoai-gitops-admins` OpenShift Group with the confirmed `admin` member and an additive operator-managed Argo RBAC mapping. Direct OpenShift User cluster-admin bindings do not supply this Dex group claim. The RHOAI admin group `rhods-admins` (persona `ai-admin`) maps to `role:app-admin`: every Application action and pod logs in the `rhoai-demo`, `runtime-projects` and `platform-projects` projects, read-only projects, and no Argo CD settings, repositories or clusters. Keep the default Argo role empty; refresh the SSO session after group membership changes. See [the SSO visibility troubleshooting procedure](TROUBLESHOOTING.md#argo-cd-applications-missing-after-openshift-sso-login). The targeted access repair preserves Application revisions and all other Argo settings; it does not require a foundation sync.
 
 Inspect an application, or every component Application of a stage:
 

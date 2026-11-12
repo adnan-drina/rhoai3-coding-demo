@@ -103,6 +103,14 @@ spec:
       p, role:rhdh-reader, applications, get, runtime-projects/*, allow
       p, role:rhdh-reader, applications, get, platform-projects/*, allow
       g, rhdh, role:rhdh-reader
+      p, role:app-admin, applications, *, rhoai-demo/*, allow
+      p, role:app-admin, applications, *, runtime-projects/*, allow
+      p, role:app-admin, applications, *, platform-projects/*, allow
+      p, role:app-admin, logs, get, rhoai-demo/*, allow
+      p, role:app-admin, logs, get, runtime-projects/*, allow
+      p, role:app-admin, logs, get, platform-projects/*, allow
+      p, role:app-admin, projects, get, *, allow
+      g, rhods-admins, role:app-admin
     scopes: '[groups]'
   server:
     route:
