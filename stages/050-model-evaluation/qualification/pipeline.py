@@ -442,6 +442,25 @@ def verdict(
             by_evaluation[entry["evaluation"]] = job
             jobs.append(job)
 
+    collections = {}
+
+    def specs(job):
+        """A job's benchmark definitions (id, provider_id, primary_score, pass_criteria). A benchmark job carries them as
+        benchmarks; a collection job carries only collection.id, so they come from the collection's definition (through
+        v37 collection jobs recorded no evidence on the registry version), or from its results when that is unreadable."""
+        if job.get("benchmarks"):
+            return job["benchmarks"]
+        cid = (job.get("collection") or {}).get("id")
+        if cid and cid not in collections:
+            try:
+                collections[cid] = call(f"{evalhub_url}/api/v1/evaluations/collections/{cid}",
+                                        tenant_header=True).get("benchmarks") or []
+            except (urllib.error.URLError, ValueError) as exc:
+                print(f"collection {cid} not readable, using its results' benchmark ids: {exc}")
+                collections[cid] = []
+        return collections.get(cid) or [{"id": b.get("id"), "provider_id": b.get("provider_id")}
+                                        for b in (job.get("results") or {}).get("benchmarks") or []]
+
     def benchmark_result(b):
         """(value, pass, note) for one benchmark result of a job."""
         t = b.get("test") or {}
@@ -562,7 +581,7 @@ def verdict(
         results = job.get("results") or {}
         if state != "completed" and evaluation not in informative:
             reasons.append(f"{evaluation}: job {job['resource']['id']} {state}")
-        thresholds = {b.get("id"): (b.get("pass_criteria") or {}).get("threshold") for b in job.get("benchmarks") or []}
+        thresholds = {b.get("id"): (b.get("pass_criteria") or {}).get("threshold") for b in specs(job)}
         for b in results.get("benchmarks") or []:
             # Validity first: a Garak result with too many unanswered attempts is not valid, like a cut-off one.
             if state == "completed" and (b.get("provider_id") or "").startswith("garak"):
@@ -630,14 +649,14 @@ def verdict(
     def key_of(job, bid):
         return f"{bid}_guarded" if job["resource"]["id"] in guarded_jobs else bid
 
-    benchmark_ids = {key_of(j, b.get("id")) for j in completed for b in (j.get("benchmarks") or [])}
+    benchmark_ids = {key_of(j, b.get("id")) for j in completed for b in specs(j)}
     props = {k: v for k, v in (version.get("customProperties") or {}).items()
              if not k.startswith("evalhub.qualification.")
              and not any(k.startswith(f"evalhub.{b}.") for b in benchmark_ids)}
     for job in completed:
         jid = job["resource"]["id"]
         results = {b.get("id"): b for b in (job.get("results") or {}).get("benchmarks") or []}
-        for b in job.get("benchmarks") or []:
+        for b in specs(job):
             k = f"evalhub.{key_of(job, b['id'])}."
             r = results.get(b["id"]) or {}
             t = r.get("test")

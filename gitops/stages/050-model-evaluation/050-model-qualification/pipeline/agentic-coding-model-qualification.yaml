@@ -12,13 +12,13 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v37
+  name: agentic-coding-model-qualification-v38
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
     the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v37
+  displayName: agentic-coding-model-qualification v38
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -2311,29 +2311,47 @@ spec:
               \ e in ledger[\"results\"]}\n    for entry in ledger[\"results\"]:\n\
               \        if entry.get(\"job_id\"):\n            job = call(f\"{evalhub_url}/api/v1/evaluations/jobs/{entry['job_id']}\"\
               , tenant_header=True)\n            by_evaluation[entry[\"evaluation\"\
-              ]] = job\n            jobs.append(job)\n\n    def benchmark_result(b):\n\
-              \        \"\"\"(value, pass, note) for one benchmark result of a job.\"\
-              \"\"\n        t = b.get(\"test\") or {}\n        metrics = b.get(\"\
-              metrics\") or {}\n        if (b.get(\"provider_id\") or \"\").startswith(\"\
-              garak\") or \"attack_success_rate\" in metrics:\n            # A Garak\
-              \ result always has one <probe>_asr per probe; only the aggregate means\
-              \ the adapter skipped the\n            # results download and scored\
-              \ an empty scan.\n            if not any(k.endswith(\"_asr\") and k\
-              \ != \"attack_success_rate\" for k in metrics):\n                return\
-              \ None, False, \"no per-probe results (empty scan)\"\n        elif not\
-              \ any(isinstance(v, (int, float)) and v for v in metrics.values()):\n\
-              \            return None, False, \"no successful requests\"\n      \
-              \  return t.get(\"primary_score\"), t.get(\"pass\"), t.get(\"primary_score_metric\"\
-              ) or \"\"\n\n    def unanswered(mlflow_run_id):\n        \"\"\"(unanswered,\
-              \ attempts) from the Garak report in the job's MLflow run, or None when\
-              \ it cannot be read.\n        An attempt is unanswered when none of\
-              \ its outputs carries text other than the guardrail server's error answer\n\
-              \        (nemoguardrails returns HTTP 200 with \"Internal server error\"\
-              \ as the message when its model call fails).\n        Garak's EarlyStopHarness\
-              \ writes one summary attempt per intent (seq -1, no outputs, EarlyStop\
-              \ detector) that\n        never called the target, so it is not counted\
-              \ (through v24 these rows were every \"unanswered\" attempt: 35 in\n\
-              \        the bare and 39 in the guarded scan of run agentic-coding-model-qualification-9ct98,\
+              ]] = job\n            jobs.append(job)\n\n    collections = {}\n\n \
+              \   def specs(job):\n        \"\"\"A job's benchmark definitions (id,\
+              \ provider_id, primary_score, pass_criteria). A benchmark job carries\
+              \ them as\n        benchmarks; a collection job carries only collection.id,\
+              \ so they come from the collection's definition (through\n        v37\
+              \ collection jobs recorded no evidence on the registry version), or\
+              \ from its results when that is unreadable.\"\"\"\n        if job.get(\"\
+              benchmarks\"):\n            return job[\"benchmarks\"]\n        cid\
+              \ = (job.get(\"collection\") or {}).get(\"id\")\n        if cid and\
+              \ cid not in collections:\n            try:\n                collections[cid]\
+              \ = call(f\"{evalhub_url}/api/v1/evaluations/collections/{cid}\",\n\
+              \                                        tenant_header=True).get(\"\
+              benchmarks\") or []\n            except (urllib.error.URLError, ValueError)\
+              \ as exc:\n                print(f\"collection {cid} not readable, using\
+              \ its results' benchmark ids: {exc}\")\n                collections[cid]\
+              \ = []\n        return collections.get(cid) or [{\"id\": b.get(\"id\"\
+              ), \"provider_id\": b.get(\"provider_id\")}\n                      \
+              \                  for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []]\n\n    def benchmark_result(b):\n        \"\"\"(value, pass,\
+              \ note) for one benchmark result of a job.\"\"\"\n        t = b.get(\"\
+              test\") or {}\n        metrics = b.get(\"metrics\") or {}\n        if\
+              \ (b.get(\"provider_id\") or \"\").startswith(\"garak\") or \"attack_success_rate\"\
+              \ in metrics:\n            # A Garak result always has one <probe>_asr\
+              \ per probe; only the aggregate means the adapter skipped the\n    \
+              \        # results download and scored an empty scan.\n            if\
+              \ not any(k.endswith(\"_asr\") and k != \"attack_success_rate\" for\
+              \ k in metrics):\n                return None, False, \"no per-probe\
+              \ results (empty scan)\"\n        elif not any(isinstance(v, (int, float))\
+              \ and v for v in metrics.values()):\n            return None, False,\
+              \ \"no successful requests\"\n        return t.get(\"primary_score\"\
+              ), t.get(\"pass\"), t.get(\"primary_score_metric\") or \"\"\n\n    def\
+              \ unanswered(mlflow_run_id):\n        \"\"\"(unanswered, attempts) from\
+              \ the Garak report in the job's MLflow run, or None when it cannot be\
+              \ read.\n        An attempt is unanswered when none of its outputs carries\
+              \ text other than the guardrail server's error answer\n        (nemoguardrails\
+              \ returns HTTP 200 with \"Internal server error\" as the message when\
+              \ its model call fails).\n        Garak's EarlyStopHarness writes one\
+              \ summary attempt per intent (seq -1, no outputs, EarlyStop detector)\
+              \ that\n        never called the target, so it is not counted (through\
+              \ v24 these rows were every \"unanswered\" attempt: 35 in\n        the\
+              \ bare and 39 in the guarded scan of run agentic-coding-model-qualification-9ct98,\
               \ which voided the latter).\n        From v27 it also returns the reply\
               \ counts (replies, compliant, blocked) that the report sets beside the\
               \ attack\n        success rate: replies the judge (MulticlassJudge)\
@@ -2426,12 +2444,12 @@ spec:
               \ evaluation not in informative:\n            reasons.append(f\"{evaluation}:\
               \ job {job['resource']['id']} {state}\")\n        thresholds = {b.get(\"\
               id\"): (b.get(\"pass_criteria\") or {}).get(\"threshold\") for b in\
-              \ job.get(\"benchmarks\") or []}\n        for b in results.get(\"benchmarks\"\
-              ) or []:\n            # Validity first: a Garak result with too many\
-              \ unanswered attempts is not valid, like a cut-off one.\n          \
-              \  if state == \"completed\" and (b.get(\"provider_id\") or \"\").startswith(\"\
-              garak\"):\n                counted = unanswered(b.get(\"mlflow_run_id\"\
-              ))\n                if counted is None:\n                    void.add(evaluation)\n\
+              \ specs(job)}\n        for b in results.get(\"benchmarks\") or []:\n\
+              \            # Validity first: a Garak result with too many unanswered\
+              \ attempts is not valid, like a cut-off one.\n            if state ==\
+              \ \"completed\" and (b.get(\"provider_id\") or \"\").startswith(\"garak\"\
+              ):\n                counted = unanswered(b.get(\"mlflow_run_id\"))\n\
+              \                if counted is None:\n                    void.add(evaluation)\n\
               \                    if evaluation not in informative:\n           \
               \             invalid.append(f\"{evaluation}/{b['id']}: not valid: unanswered\
               \ attempts not counted (no scan \"\n                               \
@@ -2491,19 +2509,19 @@ spec:
               \ = {e: (n, k) for e, n, k in completeness_rows}\n\n    def key_of(job,\
               \ bid):\n        return f\"{bid}_guarded\" if job[\"resource\"][\"id\"\
               ] in guarded_jobs else bid\n\n    benchmark_ids = {key_of(j, b.get(\"\
-              id\")) for j in completed for b in (j.get(\"benchmarks\") or [])}\n\
-              \    props = {k: v for k, v in (version.get(\"customProperties\") or\
-              \ {}).items()\n             if not k.startswith(\"evalhub.qualification.\"\
-              )\n             and not any(k.startswith(f\"evalhub.{b}.\") for b in\
-              \ benchmark_ids)}\n    for job in completed:\n        jid = job[\"resource\"\
-              ][\"id\"]\n        results = {b.get(\"id\"): b for b in (job.get(\"\
-              results\") or {}).get(\"benchmarks\") or []}\n        for b in job.get(\"\
-              benchmarks\") or []:\n            k = f\"evalhub.{key_of(job, b['id'])}.\"\
-              \n            r = results.get(b[\"id\"]) or {}\n            t = r.get(\"\
-              test\")\n            lower = bool((b.get(\"primary_score\") or {}).get(\"\
-              lower_is_better\"))\n            props[k + \"job_id\"] = s(jid)\n  \
-              \          props[k + \"job_name\"] = s(job.get(\"name\", \"\"))\n  \
-              \          props[k + \"evaluation_url\"] = s(f\"{dashboard_url}/evaluation/{tenant}/results/{jid}\"\
+              id\")) for j in completed for b in specs(j)}\n    props = {k: v for\
+              \ k, v in (version.get(\"customProperties\") or {}).items()\n      \
+              \       if not k.startswith(\"evalhub.qualification.\")\n          \
+              \   and not any(k.startswith(f\"evalhub.{b}.\") for b in benchmark_ids)}\n\
+              \    for job in completed:\n        jid = job[\"resource\"][\"id\"]\n\
+              \        results = {b.get(\"id\"): b for b in (job.get(\"results\")\
+              \ or {}).get(\"benchmarks\") or []}\n        for b in specs(job):\n\
+              \            k = f\"evalhub.{key_of(job, b['id'])}.\"\n            r\
+              \ = results.get(b[\"id\"]) or {}\n            t = r.get(\"test\")\n\
+              \            lower = bool((b.get(\"primary_score\") or {}).get(\"lower_is_better\"\
+              ))\n            props[k + \"job_id\"] = s(jid)\n            props[k\
+              \ + \"job_name\"] = s(job.get(\"name\", \"\"))\n            props[k\
+              \ + \"evaluation_url\"] = s(f\"{dashboard_url}/evaluation/{tenant}/results/{jid}\"\
               )\n            props[k + \"provider\"] = s(b.get(\"provider_id\", \"\
               \"))\n            props[k + \"model_name\"] = s((job.get(\"model\")\
               \ or {}).get(\"name\", \"\"))\n            if t:\n                props[k\

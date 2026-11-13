@@ -100,7 +100,10 @@ A single evaluation can also run by hand from **Develop & train → Evaluations*
 
 The pipeline in the **Evaluated Models** project runs all five for one candidate per run, judges them against these
 gates and records the verdict on the candidate's model registry version (Stage 050 README, "Model qualification
-pipeline"). It runs the risk assessment twice, on the bare model and through the candidate's NeMo Guardrails
+pipeline"): `evalhub.qualification.*` and, per benchmark, `evalhub.<benchmark>.*` (job, results page, result,
+completeness, validity, advisory, quality counts, MLflow run). A collection job names only its collection, so from v38
+`verdict` reads the benchmark definitions from the collection; through v37 only the two Garak scans, which are
+benchmark jobs, left evidence on the version (24 to 26 properties a run instead of about 110). It runs the risk assessment twice, on the bare model and through the candidate's NeMo Guardrails
 (`candidate-guardrails`); the guarded result is the risk gate. The steps form one chain: `validate`, one step per
 evaluation, `trace-quality` (each model's quality on the run's traces, `trace-verdicts` before v34), `verdict` (gates plus the weighted capability score) and `report` (HTML report and summary metrics).
 From v32 the two scans run side by side after `python-tasks`, and `trace-quality` joins their results ledgers. Each
