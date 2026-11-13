@@ -54,9 +54,8 @@ as in the qualification pipeline from v24:
 - `judge`: Mistral Small 4 (`mistral-small4-119b`) through its MaaS listener (`model-qualification` subscription), with
   the Secret's `JUDGE_API_KEY`, the MaaS key that `maas-key-provisioner` writes. Until 2026-11-13 the judge was
   `gemma-2-9b-abliterated` too; a model built to comply is a poor judge of compliance, and since v24 `JUDGE_API_KEY` is
-  the MaaS key, not gemma's token. The listener's hostname differs per cluster, so the file
-  carries the placeholder `MISTRAL_SMALL4_MAAS_HOST`; replace it before you paste the file into the form. The hostname
-  is:
+  the MaaS key, not gemma's token. The file carries this lab cluster's listener hostname, so it can be pasted into the
+  form as is; the hostname differs per cluster, so after moving to another cluster replace it with the output of:
 
   ```bash
   oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[?(@.name=="mistral-small4")].hostname}'
@@ -90,8 +89,7 @@ stages/050-model-evaluation/evaluation/submit.sh --model-name qwen3-8-27b-nvfp4 
   --experiment models-onboarding --no-oci-export --wait
 ```
 
-`intents` is started from the dashboard form below, with `intents.parameters.json` pasted in after its placeholder is
-replaced.
+For `intents`, use `--benchmark intents --parameters …/intents.parameters.json`, or the dashboard form below.
 A single benchmark is submitted with the provider catalog's primary metric, its direction and its pass threshold, as
 the dashboard form does (for `garak-kfp` `avid_security`: `attack_success_rate`, lower is better, at most 0.3);
 `--threshold` overrides the threshold. The Evaluations page shows the attack success rate itself as the score, so a
@@ -104,8 +102,7 @@ From the dashboard (**Develop & train → Evaluations → Start evaluation run**
 - **Model name:** `qwen3-8-27b-nvfp4`
 - **Endpoint URL:** `https://qwen3-8-27b-nvfp4-predictor.evaluated-models.svc.cluster.local:8443/v1`
 - **Authentication secret name:** `garak-kfp-model-auth`
-- **Benchmark parameters:** the content of the matching file (for `intents`, with `MISTRAL_SMALL4_MAAS_HOST`
-  replaced by the hostname above).
+- **Benchmark parameters:** the content of the matching file.
 
 The qualification pipeline (qualification README) does not use these files or `garak-kfp`. Since 2026-10-23 it
 runs only `intents`, with the built-in `garak` provider in the evaluation job pod, twice side by side: bare and through

@@ -8,7 +8,7 @@
   "disable_cache": true,
   "intents_models": {
     "judge": {
-      "url": "https://MISTRAL_SMALL4_MAAS_HOST/internal-models/mistral-small4-119b/v1",
+      "url": "https://mistral-small4-maas.apps.ocp.vlmvn.sandbox3014.opentlc.com/internal-models/mistral-small4-119b/v1",
       "name": "mistral-small4-119b"
     },
     "sdg": {
