@@ -2582,6 +2582,27 @@ oc get cm -n evaluated-models <job-id-prefix>-...-spec -o jsonpath='{.data.sidec
 
 **Recover:** Keep each request under 30 seconds: the Stage 040 Qwen 3.8 profile admits 16 concurrent sequences (since 2026-10-09) (a 16-sample request then takes about 14 seconds), keep the helper's code-only system prompt and 512-token cap, and bound the job with `--num-examples` so it ends inside the adapter's one-hour limit. If every sample reports `finish_reason: length` with empty content, the model is serving thinking mode by default (Qwen 3.6): the adapter cannot pass `enable_thinking` per request and Qwen 3.6 ignores `/no_think`, so the server default must be non-thinking with the card's non-thinking sampling, as on Qwen 3.8. Delete the zero-score probe (`DELETE /api/v1/evaluations/jobs/<id>?hard_delete=true`) and its MLflow run so comparisons stay clean. The timeout itself is a Red Hat item (BACKLOG).
 
+## EvalHub LightEval Job Fails At Start With `HfApi.list_models` TypeError
+
+**Affected stage:** Stage 050 (built-in `lighteval` provider, `community-lighteval:v0.5.4`, RHOAI 3.5.3)
+
+**Symptom:** Every LightEval job, for example LiveCodeBench in the qualification pipeline's `livecodebench` step, fails within a few minutes and before the first model request. The job message shows `LightEval CLI failed with exit code 1` and ends with `TypeError: HfApi.list_models() got an unexpected keyword argument 'model_name'` after `--- LOADING TASKS ---`. The model URL makes no difference.
+
+**Likely cause:** RHOAI 3.5.3 moved the six community EvalHub providers from `quay.io/evalhub/community-*:v0.5.0` to `v0.5.4`. The `v0.5.4` LightEval image pins `lighteval==0.13.0` but not `huggingface-hub`, so its rebuild on 2026-11-02 installed `huggingface-hub` 2.x, which removed the `model_name` argument. lighteval 0.13.0 imports every task module when it starts, and the `mix_eval` judge check calls `list_models(model_name=...)` at import. Upstream capped `huggingface-hub` below 2 in eval-hub-contrib #232 on `main` only.
+
+**Diagnose:**
+
+```bash
+oc get csv -n redhat-ods-operator | grep rhods
+oc get cm evalhub-provider-lighteval -n evalhub -o jsonpath='{.data.lighteval\.yaml}' | grep image:
+# The failed job's message names the TypeError:
+curl -sk -H "Authorization: Bearer $(oc whoami -t)" -H "X-Tenant: evaluated-models" \
+  "https://$(oc get route evalhub -n evalhub -o jsonpath='{.spec.host}')/api/v1/evaluations/jobs/<job-id>" \
+  | jq -r .status.message.message | grep -E 'TypeError|LOADING TASKS'
+```
+
+**Recover:** The built-in provider ConfigMap is operator-owned, so the repository runs LiveCodeBench on its own provider `lighteval-coding` (`050-evaluation-content/edd/lighteval-coding-provider.yaml`): the same `v0.5.4` image pinned by digest, with an entrypoint that installs `huggingface-hub>=0.30.2,<2` before `python main.py`. The job pod downloads the package from PyPI at start. Drop the install once a `v0.5.x` image carries the cap.
+
 ## Model Catalog Safety And Security Insights Tab Spins Forever
 
 **Affected stage:** Stage 050 (Eval Hub dashboard extension on the Stage 030 model catalog), RHOAI 3.5.1

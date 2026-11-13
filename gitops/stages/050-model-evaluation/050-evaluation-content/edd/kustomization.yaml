@@ -8,3 +8,4 @@ resources:
   - agentic-coding-livecodebench-v3.yaml
   - agentic-coding-python-tasks-v1.yaml
   - inspect-coding-provider.yaml
+  - lighteval-coding-provider.yaml

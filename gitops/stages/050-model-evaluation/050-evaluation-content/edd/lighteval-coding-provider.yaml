@@ -1,0 +1,56 @@
+# System-owned EvalHub provider for LiveCodeBench in agentic-coding-livecodebench-v3 (RHOAI 3.5 "Evaluating AI
+# systems", Add a custom provider by using a ConfigMap). The image is the operator's own built-in lighteval
+# adapter, quay.io/evalhub/community-lighteval:v0.5.4 (RHOAI 3.5.3), pinned by digest. That build installs
+# huggingface-hub 2.x, which removed HfApi.list_models(model_name=...); lighteval 0.13.0 imports every task module at
+# start-up and its mix_eval judge check calls that function, so every lighteval job fails with a TypeError before the
+# first model request. The entrypoint therefore installs huggingface-hub below 2 before starting the adapter, the
+# cap eval-hub-contrib #232 put on main (not on the v0.5.4 branch). Drop the install once a v0.5.x image carries it.
+# The job pod downloads the package from PyPI at start, as it already downloads NLTK data.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evalhub-provider-lighteval-coding
+  namespace: redhat-ods-applications
+  labels:
+    trustyai.opendatahub.io/evalhub-provider-type: system
+    trustyai.opendatahub.io/evalhub-provider-name: lighteval-coding
+    app.kubernetes.io/name: evalhub-provider-lighteval-coding
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+data:
+  lighteval-coding.yaml: |
+    id: lighteval-coding
+    name: Lighteval (huggingface-hub below 2)
+    title: Lighteval (huggingface-hub below 2)
+    description: >-
+      The built-in lighteval adapter v0.5.4 with huggingface-hub held below 2, which lighteval 0.13.0 needs to
+      load its tasks.
+    runtime:
+      k8s:
+        image: quay.io/evalhub/community-lighteval@sha256:3a09b06ff2e7faaa0f9c832acecd0932595aa5a759a268f4b3d9a4aa56a7b570
+        entrypoint:
+          - sh
+          - -c
+          - pip install --no-cache-dir -q 'huggingface-hub>=0.30.2,<2' && exec python main.py
+        cpu_request: 500m
+        memory_request: 1Gi
+        cpu_limit: 4000m
+        memory_limit: 8Gi
+    benchmarks:
+      - id: lcb:codegeneration_v6
+        name: LiveCodeBench v6 code generation
+        description: >-
+          Competitive programming problems from Codeforces, LeetCode and AtCoder collected after the model knowledge
+          cutoff; generated code runs against hidden test cases.
+        category: code
+        metrics: [codegen_pass@1]
+        num_few_shot: 0
+        tags: [code, competitive-programming, execution, contamination-free, lighteval]
+        primary_score:
+          metric: codegen_pass@1
+          lower_is_better: false
+        pass_criteria:
+          threshold: 0.25

@@ -1,7 +1,7 @@
 # Evaluation content (`050-evaluation-content`)
 
 This Application holds the evaluation definitions EvalHub serves: four versioned `agentic-coding-*` collections (the
-evaluation-driven development criteria for coding models), one bounded custom provider (`inspect-coding`), and the
+evaluation-driven development criteria for coding models), two custom providers (`inspect-coding`, `lighteval-coding`), and the
 staged SWE-bench provider with the RBAC, agent configuration and S3 test-data Secret its runs
 need. The qualification pipeline (`050-model-qualification`) and jobs submitted from the dashboard or the EvalHub REST
 API consume it through `050-evalhub`. Criteria change more often than the service, so they are a separate Application.
@@ -42,9 +42,10 @@ All objects are ConfigMaps in `redhat-ods-applications`, wave 10.
 |---|---|---|---|
 | `evalhub-collection-agentic-coding-latency-v1` | `agentic-coding-latency-v1` | interactive TTFT, 8,000/256 tokens, one session (`guidellm`) | pipeline step 1 |
 | `evalhub-collection-agentic-coding-throughput-v2` | `agentic-coding-throughput-v2` | same, fixed 64 requests (`guidellm`) | pipeline step 2 |
-| `evalhub-collection-agentic-coding-livecodebench-v3` | `agentic-coding-livecodebench-v3` | LiveCodeBench v6 (`lighteval`), gate 0.20 (v2 had 0.25) | pipeline step 3 |
+| `evalhub-collection-agentic-coding-livecodebench-v3` | `agentic-coding-livecodebench-v3` | LiveCodeBench v6 (`lighteval-coding`), gate 0.20 (v2 had 0.25) | pipeline step 3 |
 | `evalhub-collection-agentic-coding-python-tasks-v1` | `agentic-coding-python-tasks-v1` | MBPP, HumanEval (`inspect-coding`) | pipeline step 4 |
 | `evalhub-provider-inspect-coding` | provider `inspect-coding` | `inspect/humaneval`, `inspect/mbpp`; image `quay.io/evalhub/community-inspect` pinned by digest, `INSPECT_EVAL_MAX_TOKENS=512`, `MAX_CONNECTIONS=8`, `MAX_RETRIES=3` | python-tasks-v1 |
+| `evalhub-provider-lighteval-coding` | provider `lighteval-coding` | `lcb:codegeneration_v6`; the built-in `quay.io/evalhub/community-lighteval:v0.5.4` image pinned by digest, its entrypoint installing `huggingface-hub<2` before the adapter starts (the image's 2.x breaks lighteval 0.13.0, see [TROUBLESHOOTING](../../../../docs/TROUBLESHOOTING.md#evalhub-lighteval-job-fails-at-start-with-hfapilist_models-typeerror)) | livecodebench-v3 |
 
 ### `swebench/`
 
@@ -114,7 +115,7 @@ oc get configmap -n redhat-ods-applications -l trustyai.opendatahub.io/evalhub-p
 | Custom providers | ConfigMap with type/name labels, discovered by the operator, id in `spec.providers` [1] | Three providers, ids listed in `050-evalhub` | Aligned |
 | Custom collections | ConfigMap with type/name labels, id in `spec.collections`; pass criteria and weights [1] | Nine collections | Aligned |
 | ConfigMap namespace | Guide says "Operator namespace" in the introduction and "EvalHub custom resource namespace" in the procedure [1] | Operator namespace `redhat-ods-applications`, where the built-in provider ConfigMaps live | Aligned (doc is inconsistent; behaviour verified on the cluster) |
-| Image provenance | Red Hat registry images or a documented exception | `inspect-coding` and `swebench` use `quay.io/evalhub` community images pinned by digest | Deviation (justified: the operator's own built-in `inspect` provider uses `quay.io/evalhub/community-inspect:v0.5.0`; SWE-bench has no built-in) |
+| Image provenance | Red Hat registry images or a documented exception | `inspect-coding`, `lighteval-coding` and `swebench` use `quay.io/evalhub` community images pinned by digest | Deviation (justified: the operator's own built-in `inspect` and `lighteval` providers use `quay.io/evalhub/community-*:v0.5.4` on 3.5.3; SWE-bench has no built-in) |
 | S3 test data | Documented credential Secret for custom S3 data [1] | Composed by a hook | Aligned |
 | SCC | Grant SCCs to specific ServiceAccounts; `anyuid` allows any UID/GID [3] | Two ServiceAccounts | Deviation (justified: SWE-bench images require root; operator approval) |
 | Kueue for evaluation jobs | Route evaluation jobs through Kueue [1][2] | Tenant uses `lq-cpu-default` (in `050-model-qualification`) | Aligned |

@@ -36,7 +36,8 @@ data:
       threshold: 0.2
     benchmarks:
       - id: lcb:codegeneration_v6
-        provider_id: lighteval
+        # Not the built-in lighteval, whose 3.5.3 image fails at start (edd/lighteval-coding-provider.yaml).
+        provider_id: lighteval-coding
         weight: 3
         primary_score:
           # The exact key LightEval reports; EvalHub matches the primary metric by exact key (v1 named

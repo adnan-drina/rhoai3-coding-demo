@@ -34,6 +34,9 @@ spec:
     # Bounded Inspect coding benchmarks for the agentic coding Python tasks collection
     # (edd/inspect-coding-provider.yaml).
     - inspect-coding
+    # LiveCodeBench on the built-in lighteval image with huggingface-hub held below 2
+    # (edd/lighteval-coding-provider.yaml).
+    - lighteval-coding
   # EvalHub MCP server for AI coding agents (RHOAI 3.5 "Evaluating AI systems", 4.3 Deploy the EvalHub MCP
   # server). The 3.5.1 CRD has no port field; the operator chooses the port and exposes the evalhub-mcp
   # Service and its re-encrypt Route; mcp-access-rolebinding.yaml admits the MCP principal.
