@@ -244,7 +244,9 @@ data:
                 s("mlflow.traceTag.source", "model-trace-proxy"),
                 s("mlflow.traceTag.evaluation", evaluation), s("mlflow.traceTag.model", model),
                 s("mlflow.traceTag.run_name", run_name), s("mlflow.traceTag.api", path),
-                s("mlflow.traceTag.finish_reason", reasons[0] if reasons else ("error" if not ok else "none")),
+                # A cut-off choice wins, so the tag shows a cap hit even when only one of several choices hit it.
+                s("mlflow.traceTag.finish_reason", next((r for r in reasons if r in ("length", "incomplete")),
+                                                        reasons[0] if reasons else ("error" if not ok else "none"))),
                 s("mlflow.spanInputs", {"prompt": clip(last_user)}), s("mlflow.spanOutputs", {"response": answer or ""})]
         if ctx.get("run_id"):
             root.append(s("mlflow.traceTag.run", ctx["run_id"]))
@@ -256,7 +258,9 @@ data:
         for key, attr in (("temperature", "gen_ai.request.temperature"), ("top_p", "gen_ai.request.top_p")):
             if isinstance(req.get(key), (int, float)):
                 chat.append({"key": attr, "value": {"doubleValue": float(req[key])}})
-        mt = req.get("max_tokens") or req.get("max_completion_tokens") or req.get("max_output_tokens")
+        # vLLM applies max_completion_tokens over max_tokens: LightEval requests carry max_tokens 32768 and stop at
+        # their 512-token cap, so the cap the model ran with comes first.
+        mt = req.get("max_completion_tokens") or req.get("max_tokens") or req.get("max_output_tokens")
         if isinstance(mt, int):
             chat.append(i("gen_ai.request.max_tokens", mt))
         if reasons:
