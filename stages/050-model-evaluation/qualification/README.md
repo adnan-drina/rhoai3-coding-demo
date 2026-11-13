@@ -96,6 +96,10 @@ From v32 the two scans run side by side after `python-tasks`, and `trace-quality
 scan takes about an hour, two thirds of it in TAP: Garak's `TAPIntent` (0.15.0+rhaiv.6) sends one request at a time
 and ignores `parallel_attempts` (16, which the SPO probes use), so running the scans one after the other took about
 2 h 10 min (run 20261113-1). They share only Mistral Small 4, which judges both, and the abliterated attacker.
+Each scan sent the judge about 3M tokens an hour with 512-token replies (run 20261113-1), more with the 2,048-token
+replies from v33, and `trace-quality` adds its own judge calls, so the `model-qualification` subscription allows
+Mistral 20M tokens an hour: Garak counts a failed judge call as a refusal, and a judge throttled by the limit would
+lower the attack success rate.
 From v26, LiveCodeBench, the Python tasks and the bare scan reach the candidate through `model-trace-proxy`, so each
 of their calls is a trace in MLflow `models-onboarding` with its prompt and answer, one session per run; latency
 and throughput stay direct (050-model-qualification README, "Model metrics and traces").
@@ -156,7 +160,12 @@ valid, and QUALIFIED otherwise. The report lists each evaluation's cut-off share
 run 20261113-1 (512-token scan cap): 23 of 666 Python-task answers cut off (valid), 397 of 2,940 judged bare replies
 and 122 of 158 guarded replies that passed the input rail (both not valid), so v33 raises the scan cap to 2,048 tokens
 for the bare model and the guardrail's main model alike. Run 20261113-2 (v30) cut off 54 of the first 57 LiveCodeBench
-answers at the collection's 512-token cap.
+answers at the collection's 512-token cap. Every scan request passes the evaluation sidecar, which ends a request after
+30 s. A replay of run 20261113-1's prompts with the longest replies, 16 at a time (2026-11-13), stayed inside it at
+2,048 tokens: 48 bare prompts all finished on their own (median 422 tokens, at most 15 s); 32 that passed the input rail
+took a median 17.8 s through the guardrail, p90 25.7 s and at most 29.3 s, about the same as at 1,024 tokens, because
+the two self-checks take most of the time. The guarded scan is therefore close to the limit whatever the cap; a request
+past 30 s is an unanswered attempt, which the verdict counts against its 2% budget.
 
 - **Run:** dashboard **Create run** with the latest version, MLflow experiment `models-onboarding`, `model_name` and
   `model_version_id` (OPERATIONS, "Stage 050 model qualification pipeline").

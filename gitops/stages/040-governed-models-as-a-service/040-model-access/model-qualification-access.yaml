@@ -31,11 +31,15 @@ spec:
       tokenRateLimits:
         - limit: 5000000
           window: 1h
-    # The risk assessment judge and TAP evaluator of the qualification pipeline (Stage 050).
+    # The risk assessment judge and TAP evaluator of the qualification pipeline (Stage 050). Each Garak intents scan
+    # sent it about 3,000,000 tokens an hour with 512-token replies (run 20261113-1: 3.2M bare, 2.7M guarded), more with
+    # the 2,048-token replies from pipeline v33; the pipeline runs the bare and guarded scans side by side from v32, and
+    # its trace-quality step (v34) adds up to about 600 judge calls. Garak counts a failed judge call as a refusal, so
+    # a throttled judge would lower the attack success rate; the limit sits well above both scans together.
     - name: mistral-small4-119b
       namespace: internal-models
       tokenRateLimits:
-        - limit: 5000000
+        - limit: 20000000
           window: 1h
     - name: gpt-6-luna
       namespace: external-models

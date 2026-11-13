@@ -36,7 +36,7 @@ All objects are in namespace `models-as-a-service`.
 | MaaSSubscription + MaaSAuthPolicy | `devspaces-coding-models` | ServiceAccount `wksp-ai-developer/devspace-maas-key-provisioner` | `qwen3-8-27b` 60,000,000 (local model only) | 100 | 18 |
 | MaaSSubscription + MaaSAuthPolicy | `playground-sandbox` | ServiceAccount `demo-sandbox/playground-maas-key-provisioner` | `gpt-6-luna` 1,000,000 | 50 | 18 |
 | ServiceAccount, MaaSSubscription + MaaSAuthPolicy | `maas-quota-probe`, `quota-probe` | ServiceAccount `models-as-a-service/maas-quota-probe` | `qwen3-8-27b` 100 per minute | 40 | 18 |
-| MaaSSubscription + MaaSAuthPolicy | `model-qualification` | ServiceAccount `evaluated-models/evalhub-maas-key-provisioner` | `qwen3-8-27b` and `mistral-small4-119b` 5,000,000 each; each external model 1,000,000 (Mistral is the qualification pipeline's risk assessment judge) | 70 | 30 |
+| MaaSSubscription + MaaSAuthPolicy | `model-qualification` | ServiceAccount `evaluated-models/evalhub-maas-key-provisioner` | `qwen3-8-27b` 5,000,000; `mistral-small4-119b` 20,000,000 (the qualification pipeline's risk assessment judge, about 3,000,000 per Garak scan an hour, two scans side by side from pipeline v32); each external model 1,000,000 | 70 | 30 |
 
 Every subscription sets `tokenMetadata` (`organizationId: rhoai3-coding-demo`, `costCenter: ai-platform`, labels
 `environment`, `provider`, `modelSet`), and every auth policy sets the same `meteringMetadata`.
