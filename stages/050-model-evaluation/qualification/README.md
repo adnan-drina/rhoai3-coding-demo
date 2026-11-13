@@ -28,12 +28,15 @@ LiveCodeBench is advisory).
 
 **Latency and throughput run as their one benchmark (from v41).** The pipeline reads each performance collection and
 submits its single GuideLLM benchmark with the collection's definition (metric, direction, gate, parameters), keeping
-the collection's name in the job name, a `collection=<id>` job tag and the MLflow run's `collection` parameter. The
-dashboard's Evaluations tab shows a collection job's score as a 0 to 1 share in percent and names the alphabetically
-first metric as primary, so a collection job read 331.85 output tokens/s as "33185%" with primary metric
-`mean_itl_ms`, and a 707 ms first-token time as "-70649%", failed against the collection's default 0.5. A benchmark
-job shows "331.85 output tokens/s" or "707.49 ms" with its own metric and gate. The capability collections stay
-collection jobs: their scores are 0 to 1 pass rates, which the dashboard shows correctly.
+the collection's name in the job name, a `collection=<id>` job tag and the MLflow run's `collection` parameter. On a
+collection job the dashboard's results page names the alphabetically first metric as primary (`mean_itl_ms` for
+throughput); a benchmark job names its own metric and gate. The **Evaluation score** at the top of the page stays
+wrong on the RHOAI 3.5 dashboard for every job: it shows the job score times 100 as a percentage, so 331.85 output
+tokens/s reads "33185%". EvalHub stores a lower-is-better score as 1 minus the value, so a 707 ms first-token time
+reads "-70649%" (and fails the job's default 0.5) and the guarded scan's attack success rate 0.0256 reads "97%". Read
+the benchmark row (pass, metric, threshold) and the job's MLflow run for the values. The upstream dashboard formats a
+benchmark job's score in its unit ("331.85 output tokens/s"), a collection job's still in percent, so the benchmark
+shape is the one that displays correctly once RHOAI ships it.
 
 **LiveCodeBench is advisory on RHOAI 3.5.3 (from v37).** The evaluation sidecar's model proxy ends every request after
 a fixed 30 s (`DefaultHTTPTimeout` in the eval-hub sidecar: the job's `sidecar_config.json` carries no model timeout, and

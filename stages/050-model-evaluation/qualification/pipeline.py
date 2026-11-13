@@ -18,7 +18,7 @@ EvalHub job, as garak's own steps do for benchmarks that do not need them.
 Each evaluation step follows the EvalHub CI/CD pattern ("Add automated AI evaluations to your CI/CD pipeline"):
 eval.yaml, `evalhub health`, `evalhub eval run --config eval.yaml --wait --timeout`. The four capability and
 performance steps submit an agentic-coding-* collection (latency and throughput as its one benchmark, from v41, so the
-dashboard shows their scores in ms and tokens/s, not as a percentage); risk-assessment submits the Context-aware vulnerability scan
+dashboard names their own primary metric and gate); risk-assessment submits the Context-aware vulnerability scan
 (garak intents) of the built-in garak provider, which runs as a single task in the job pod rather than as a separate
 garak-kfp pipeline. Every job uses the candidate model auth Secret garak-kfp-model-auth (api-key and ca_cert for the
 evaluation sidecar, the attack model's attacker_* entries and the judge's judge_* and evaluator_* entries) and logs to the
@@ -234,7 +234,7 @@ def evaluate(
     results: dsl.Output[dsl.Dataset],
 ):
     """Run one EvalHub collection, or one garak benchmark, on the candidate and wait for it (a performance collection of
-    one benchmark runs as that benchmark, from v41, so the dashboard shows its score in the metric's unit). Reads the results
+    one benchmark runs as that benchmark, from v41, so the dashboard names its primary metric and gate). Reads the results
     ledger of the step before, appends this evaluation (job, state, each benchmark's metric, value, gate and pass,
     the job's MLflow run) and hands it on, so the run graph shows the intermediate results between the steps as
     garak's datasets do.
@@ -520,10 +520,11 @@ def evaluate(
     }
     if collection_id:
         # A performance collection of one benchmark (latency, throughput) runs as that benchmark, with the collection's
-        # definition (from v41): the dashboard shows a collection job's score as a 0-1 share in percent (331.85
-        # output tokens/s as "33185%", a lower-is-better 707 ms as "-70649%" and failed against the collection's 0.5)
-        # and names the alphabetically first metric as the primary one. A benchmark job shows "331.85 output tokens/s"
-        # with its own metric and gate. The collection stays named in the job's tags and its MLflow run.
+        # definition (from v41), so the dashboard's results page names its own primary metric and gate (a collection
+        # job shows the alphabetically first metric, mean_itl_ms). The RHOAI 3.5 dashboard still shows every job's
+        # score as a 0-1 share in percent (331.85 output tokens/s as "33185%"); the upstream dashboard formats a
+        # benchmark job's score in its unit ("331.85 output tokens/s"), a collection job's still in percent. The
+        # collection stays named in the job's name and tags and in its MLflow run.
         definition = client.get(f"/api/v1/evaluations/collections/{collection_id}").raise_for_status().json()
         members = definition.get("benchmarks") or []
         if definition.get("category") == "performance" and len(members) == 1:

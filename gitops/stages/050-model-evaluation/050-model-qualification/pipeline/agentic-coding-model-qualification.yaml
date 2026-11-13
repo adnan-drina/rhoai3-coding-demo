@@ -12,13 +12,13 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v41
+  name: agentic-coding-model-qualification-v42
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
     the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v41
+  displayName: agentic-coding-model-qualification v42
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -549,25 +549,25 @@ spec:
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
               \ or one garak benchmark, on the candidate and wait for it (a performance\
               \ collection of\n    one benchmark runs as that benchmark, from v41,\
-              \ so the dashboard shows its score in the metric's unit). Reads the\
-              \ results\n    ledger of the step before, appends this evaluation (job,\
-              \ state, each benchmark's metric, value, gate and pass,\n    the job's\
-              \ MLflow run) and hands it on, so the run graph shows the intermediate\
-              \ results between the steps as\n    garak's datasets do.\n\n    Then\
-              \ completes the job's MLflow data (from v39; best effort, an MLflow\
-              \ or Thanos error is printed and never fails\n    the step). EvalHub\
-              \ opens one run per job (<job name>, tag evaluation_job_id) holding\
-              \ only evaluation-card.json and\n    leaves it RUNNING; the adapter\
-              \ logs one run per benchmark (<job id>_<n>, the run the dashboard's\
-              \ Compare opens)\n    without a parent; GuideLLM logs none. This step\
-              \ logs the job's results to the job run (every benchmark metric as\n\
-              \    <benchmark>.<metric>, <benchmark>.primary_score, .threshold and\
-              \ .pass, the job's score; parameters: collection,\n    benchmarks, providers,\
-              \ model, target and each benchmark's generation settings), the gate\
-              \ to each benchmark run\n    (primary_score, threshold, pass and the\
-              \ same settings), the candidate's vLLM metrics over the job's time window\n\
-              \    from Thanos (system/*), nests the job run under the pipeline run's\
-              \ MLflow run and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
+              \ so the dashboard names its primary metric and gate). Reads the results\n\
+              \    ledger of the step before, appends this evaluation (job, state,\
+              \ each benchmark's metric, value, gate and pass,\n    the job's MLflow\
+              \ run) and hands it on, so the run graph shows the intermediate results\
+              \ between the steps as\n    garak's datasets do.\n\n    Then completes\
+              \ the job's MLflow data (from v39; best effort, an MLflow or Thanos\
+              \ error is printed and never fails\n    the step). EvalHub opens one\
+              \ run per job (<job name>, tag evaluation_job_id) holding only evaluation-card.json\
+              \ and\n    leaves it RUNNING; the adapter logs one run per benchmark\
+              \ (<job id>_<n>, the run the dashboard's Compare opens)\n    without\
+              \ a parent; GuideLLM logs none. This step logs the job's results to\
+              \ the job run (every benchmark metric as\n    <benchmark>.<metric>,\
+              \ <benchmark>.primary_score, .threshold and .pass, the job's score;\
+              \ parameters: collection,\n    benchmarks, providers, model, target\
+              \ and each benchmark's generation settings), the gate to each benchmark\
+              \ run\n    (primary_score, threshold, pass and the same settings), the\
+              \ candidate's vLLM metrics over the job's time window\n    from Thanos\
+              \ (system/*), nests the job run under the pipeline run's MLflow run\
+              \ and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
               \ and closes the job run FINISHED, FAILED or KILLED at the job's last\
               \ update.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
@@ -813,21 +813,22 @@ spec:
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
               \        # A performance collection of one benchmark (latency, throughput)\
               \ runs as that benchmark, with the collection's\n        # definition\
-              \ (from v41): the dashboard shows a collection job's score as a 0-1\
-              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
-              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
-              \ 0.5)\n        # and names the alphabetically first metric as the primary\
-              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
-              \ its own metric and gate. The collection stays named in the job's tags\
-              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
-              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
-              ) or []\n        if definition.get(\"category\") == \"performance\"\
-              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
-              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
-              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
-              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
-              \ collection_id})\n        else:\n            body[\"collection\"] =\
-              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ (from v41), so the dashboard's results page names its own primary\
+              \ metric and gate (a collection\n        # job shows the alphabetically\
+              \ first metric, mean_itl_ms). The RHOAI 3.5 dashboard still shows every\
+              \ job's\n        # score as a 0-1 share in percent (331.85 output tokens/s\
+              \ as \"33185%\"); the upstream dashboard formats a\n        # benchmark\
+              \ job's score in its unit (\"331.85 output tokens/s\"), a collection\
+              \ job's still in percent. The\n        # collection stays named in the\
+              \ job's name and tags and in its MLflow run.\n        definition = client.get(f\"\
+              /api/v1/evaluations/collections/{collection_id}\").raise_for_status().json()\n\
+              \        members = definition.get(\"benchmarks\") or []\n        if\
+              \ definition.get(\"category\") == \"performance\" and len(members) ==\
+              \ 1:\n            body[\"benchmarks\"] = [{k: v for k, v in members[0].items()\
+              \ if k != \"weight\"}]\n            body[\"tags\"].append(f\"collection={collection_id}\"\
+              )\n            body[\"experiment\"][\"tags\"].append({\"key\": \"collection\"\
+              , \"value\": collection_id})\n        else:\n            body[\"collection\"\
+              ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
               \ primary metric, direction and threshold, as the dashboard form sends\
               \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
               \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
@@ -945,25 +946,25 @@ spec:
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
               \ or one garak benchmark, on the candidate and wait for it (a performance\
               \ collection of\n    one benchmark runs as that benchmark, from v41,\
-              \ so the dashboard shows its score in the metric's unit). Reads the\
-              \ results\n    ledger of the step before, appends this evaluation (job,\
-              \ state, each benchmark's metric, value, gate and pass,\n    the job's\
-              \ MLflow run) and hands it on, so the run graph shows the intermediate\
-              \ results between the steps as\n    garak's datasets do.\n\n    Then\
-              \ completes the job's MLflow data (from v39; best effort, an MLflow\
-              \ or Thanos error is printed and never fails\n    the step). EvalHub\
-              \ opens one run per job (<job name>, tag evaluation_job_id) holding\
-              \ only evaluation-card.json and\n    leaves it RUNNING; the adapter\
-              \ logs one run per benchmark (<job id>_<n>, the run the dashboard's\
-              \ Compare opens)\n    without a parent; GuideLLM logs none. This step\
-              \ logs the job's results to the job run (every benchmark metric as\n\
-              \    <benchmark>.<metric>, <benchmark>.primary_score, .threshold and\
-              \ .pass, the job's score; parameters: collection,\n    benchmarks, providers,\
-              \ model, target and each benchmark's generation settings), the gate\
-              \ to each benchmark run\n    (primary_score, threshold, pass and the\
-              \ same settings), the candidate's vLLM metrics over the job's time window\n\
-              \    from Thanos (system/*), nests the job run under the pipeline run's\
-              \ MLflow run and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
+              \ so the dashboard names its primary metric and gate). Reads the results\n\
+              \    ledger of the step before, appends this evaluation (job, state,\
+              \ each benchmark's metric, value, gate and pass,\n    the job's MLflow\
+              \ run) and hands it on, so the run graph shows the intermediate results\
+              \ between the steps as\n    garak's datasets do.\n\n    Then completes\
+              \ the job's MLflow data (from v39; best effort, an MLflow or Thanos\
+              \ error is printed and never fails\n    the step). EvalHub opens one\
+              \ run per job (<job name>, tag evaluation_job_id) holding only evaluation-card.json\
+              \ and\n    leaves it RUNNING; the adapter logs one run per benchmark\
+              \ (<job id>_<n>, the run the dashboard's Compare opens)\n    without\
+              \ a parent; GuideLLM logs none. This step logs the job's results to\
+              \ the job run (every benchmark metric as\n    <benchmark>.<metric>,\
+              \ <benchmark>.primary_score, .threshold and .pass, the job's score;\
+              \ parameters: collection,\n    benchmarks, providers, model, target\
+              \ and each benchmark's generation settings), the gate to each benchmark\
+              \ run\n    (primary_score, threshold, pass and the same settings), the\
+              \ candidate's vLLM metrics over the job's time window\n    from Thanos\
+              \ (system/*), nests the job run under the pipeline run's MLflow run\
+              \ and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
               \ and closes the job run FINISHED, FAILED or KILLED at the job's last\
               \ update.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
@@ -1209,21 +1210,22 @@ spec:
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
               \        # A performance collection of one benchmark (latency, throughput)\
               \ runs as that benchmark, with the collection's\n        # definition\
-              \ (from v41): the dashboard shows a collection job's score as a 0-1\
-              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
-              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
-              \ 0.5)\n        # and names the alphabetically first metric as the primary\
-              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
-              \ its own metric and gate. The collection stays named in the job's tags\
-              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
-              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
-              ) or []\n        if definition.get(\"category\") == \"performance\"\
-              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
-              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
-              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
-              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
-              \ collection_id})\n        else:\n            body[\"collection\"] =\
-              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ (from v41), so the dashboard's results page names its own primary\
+              \ metric and gate (a collection\n        # job shows the alphabetically\
+              \ first metric, mean_itl_ms). The RHOAI 3.5 dashboard still shows every\
+              \ job's\n        # score as a 0-1 share in percent (331.85 output tokens/s\
+              \ as \"33185%\"); the upstream dashboard formats a\n        # benchmark\
+              \ job's score in its unit (\"331.85 output tokens/s\"), a collection\
+              \ job's still in percent. The\n        # collection stays named in the\
+              \ job's name and tags and in its MLflow run.\n        definition = client.get(f\"\
+              /api/v1/evaluations/collections/{collection_id}\").raise_for_status().json()\n\
+              \        members = definition.get(\"benchmarks\") or []\n        if\
+              \ definition.get(\"category\") == \"performance\" and len(members) ==\
+              \ 1:\n            body[\"benchmarks\"] = [{k: v for k, v in members[0].items()\
+              \ if k != \"weight\"}]\n            body[\"tags\"].append(f\"collection={collection_id}\"\
+              )\n            body[\"experiment\"][\"tags\"].append({\"key\": \"collection\"\
+              , \"value\": collection_id})\n        else:\n            body[\"collection\"\
+              ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
               \ primary metric, direction and threshold, as the dashboard form sends\
               \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
               \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
@@ -1341,25 +1343,25 @@ spec:
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
               \ or one garak benchmark, on the candidate and wait for it (a performance\
               \ collection of\n    one benchmark runs as that benchmark, from v41,\
-              \ so the dashboard shows its score in the metric's unit). Reads the\
-              \ results\n    ledger of the step before, appends this evaluation (job,\
-              \ state, each benchmark's metric, value, gate and pass,\n    the job's\
-              \ MLflow run) and hands it on, so the run graph shows the intermediate\
-              \ results between the steps as\n    garak's datasets do.\n\n    Then\
-              \ completes the job's MLflow data (from v39; best effort, an MLflow\
-              \ or Thanos error is printed and never fails\n    the step). EvalHub\
-              \ opens one run per job (<job name>, tag evaluation_job_id) holding\
-              \ only evaluation-card.json and\n    leaves it RUNNING; the adapter\
-              \ logs one run per benchmark (<job id>_<n>, the run the dashboard's\
-              \ Compare opens)\n    without a parent; GuideLLM logs none. This step\
-              \ logs the job's results to the job run (every benchmark metric as\n\
-              \    <benchmark>.<metric>, <benchmark>.primary_score, .threshold and\
-              \ .pass, the job's score; parameters: collection,\n    benchmarks, providers,\
-              \ model, target and each benchmark's generation settings), the gate\
-              \ to each benchmark run\n    (primary_score, threshold, pass and the\
-              \ same settings), the candidate's vLLM metrics over the job's time window\n\
-              \    from Thanos (system/*), nests the job run under the pipeline run's\
-              \ MLflow run and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
+              \ so the dashboard names its primary metric and gate). Reads the results\n\
+              \    ledger of the step before, appends this evaluation (job, state,\
+              \ each benchmark's metric, value, gate and pass,\n    the job's MLflow\
+              \ run) and hands it on, so the run graph shows the intermediate results\
+              \ between the steps as\n    garak's datasets do.\n\n    Then completes\
+              \ the job's MLflow data (from v39; best effort, an MLflow or Thanos\
+              \ error is printed and never fails\n    the step). EvalHub opens one\
+              \ run per job (<job name>, tag evaluation_job_id) holding only evaluation-card.json\
+              \ and\n    leaves it RUNNING; the adapter logs one run per benchmark\
+              \ (<job id>_<n>, the run the dashboard's Compare opens)\n    without\
+              \ a parent; GuideLLM logs none. This step logs the job's results to\
+              \ the job run (every benchmark metric as\n    <benchmark>.<metric>,\
+              \ <benchmark>.primary_score, .threshold and .pass, the job's score;\
+              \ parameters: collection,\n    benchmarks, providers, model, target\
+              \ and each benchmark's generation settings), the gate to each benchmark\
+              \ run\n    (primary_score, threshold, pass and the same settings), the\
+              \ candidate's vLLM metrics over the job's time window\n    from Thanos\
+              \ (system/*), nests the job run under the pipeline run's MLflow run\
+              \ and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
               \ and closes the job run FINISHED, FAILED or KILLED at the job's last\
               \ update.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
@@ -1605,21 +1607,22 @@ spec:
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
               \        # A performance collection of one benchmark (latency, throughput)\
               \ runs as that benchmark, with the collection's\n        # definition\
-              \ (from v41): the dashboard shows a collection job's score as a 0-1\
-              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
-              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
-              \ 0.5)\n        # and names the alphabetically first metric as the primary\
-              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
-              \ its own metric and gate. The collection stays named in the job's tags\
-              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
-              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
-              ) or []\n        if definition.get(\"category\") == \"performance\"\
-              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
-              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
-              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
-              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
-              \ collection_id})\n        else:\n            body[\"collection\"] =\
-              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ (from v41), so the dashboard's results page names its own primary\
+              \ metric and gate (a collection\n        # job shows the alphabetically\
+              \ first metric, mean_itl_ms). The RHOAI 3.5 dashboard still shows every\
+              \ job's\n        # score as a 0-1 share in percent (331.85 output tokens/s\
+              \ as \"33185%\"); the upstream dashboard formats a\n        # benchmark\
+              \ job's score in its unit (\"331.85 output tokens/s\"), a collection\
+              \ job's still in percent. The\n        # collection stays named in the\
+              \ job's name and tags and in its MLflow run.\n        definition = client.get(f\"\
+              /api/v1/evaluations/collections/{collection_id}\").raise_for_status().json()\n\
+              \        members = definition.get(\"benchmarks\") or []\n        if\
+              \ definition.get(\"category\") == \"performance\" and len(members) ==\
+              \ 1:\n            body[\"benchmarks\"] = [{k: v for k, v in members[0].items()\
+              \ if k != \"weight\"}]\n            body[\"tags\"].append(f\"collection={collection_id}\"\
+              )\n            body[\"experiment\"][\"tags\"].append({\"key\": \"collection\"\
+              , \"value\": collection_id})\n        else:\n            body[\"collection\"\
+              ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
               \ primary metric, direction and threshold, as the dashboard form sends\
               \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
               \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
@@ -1884,25 +1887,25 @@ spec:
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
               \ or one garak benchmark, on the candidate and wait for it (a performance\
               \ collection of\n    one benchmark runs as that benchmark, from v41,\
-              \ so the dashboard shows its score in the metric's unit). Reads the\
-              \ results\n    ledger of the step before, appends this evaluation (job,\
-              \ state, each benchmark's metric, value, gate and pass,\n    the job's\
-              \ MLflow run) and hands it on, so the run graph shows the intermediate\
-              \ results between the steps as\n    garak's datasets do.\n\n    Then\
-              \ completes the job's MLflow data (from v39; best effort, an MLflow\
-              \ or Thanos error is printed and never fails\n    the step). EvalHub\
-              \ opens one run per job (<job name>, tag evaluation_job_id) holding\
-              \ only evaluation-card.json and\n    leaves it RUNNING; the adapter\
-              \ logs one run per benchmark (<job id>_<n>, the run the dashboard's\
-              \ Compare opens)\n    without a parent; GuideLLM logs none. This step\
-              \ logs the job's results to the job run (every benchmark metric as\n\
-              \    <benchmark>.<metric>, <benchmark>.primary_score, .threshold and\
-              \ .pass, the job's score; parameters: collection,\n    benchmarks, providers,\
-              \ model, target and each benchmark's generation settings), the gate\
-              \ to each benchmark run\n    (primary_score, threshold, pass and the\
-              \ same settings), the candidate's vLLM metrics over the job's time window\n\
-              \    from Thanos (system/*), nests the job run under the pipeline run's\
-              \ MLflow run and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
+              \ so the dashboard names its primary metric and gate). Reads the results\n\
+              \    ledger of the step before, appends this evaluation (job, state,\
+              \ each benchmark's metric, value, gate and pass,\n    the job's MLflow\
+              \ run) and hands it on, so the run graph shows the intermediate results\
+              \ between the steps as\n    garak's datasets do.\n\n    Then completes\
+              \ the job's MLflow data (from v39; best effort, an MLflow or Thanos\
+              \ error is printed and never fails\n    the step). EvalHub opens one\
+              \ run per job (<job name>, tag evaluation_job_id) holding only evaluation-card.json\
+              \ and\n    leaves it RUNNING; the adapter logs one run per benchmark\
+              \ (<job id>_<n>, the run the dashboard's Compare opens)\n    without\
+              \ a parent; GuideLLM logs none. This step logs the job's results to\
+              \ the job run (every benchmark metric as\n    <benchmark>.<metric>,\
+              \ <benchmark>.primary_score, .threshold and .pass, the job's score;\
+              \ parameters: collection,\n    benchmarks, providers, model, target\
+              \ and each benchmark's generation settings), the gate to each benchmark\
+              \ run\n    (primary_score, threshold, pass and the same settings), the\
+              \ candidate's vLLM metrics over the job's time window\n    from Thanos\
+              \ (system/*), nests the job run under the pipeline run's MLflow run\
+              \ and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
               \ and closes the job run FINISHED, FAILED or KILLED at the job's last\
               \ update.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
@@ -2148,21 +2151,22 @@ spec:
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
               \        # A performance collection of one benchmark (latency, throughput)\
               \ runs as that benchmark, with the collection's\n        # definition\
-              \ (from v41): the dashboard shows a collection job's score as a 0-1\
-              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
-              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
-              \ 0.5)\n        # and names the alphabetically first metric as the primary\
-              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
-              \ its own metric and gate. The collection stays named in the job's tags\
-              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
-              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
-              ) or []\n        if definition.get(\"category\") == \"performance\"\
-              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
-              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
-              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
-              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
-              \ collection_id})\n        else:\n            body[\"collection\"] =\
-              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ (from v41), so the dashboard's results page names its own primary\
+              \ metric and gate (a collection\n        # job shows the alphabetically\
+              \ first metric, mean_itl_ms). The RHOAI 3.5 dashboard still shows every\
+              \ job's\n        # score as a 0-1 share in percent (331.85 output tokens/s\
+              \ as \"33185%\"); the upstream dashboard formats a\n        # benchmark\
+              \ job's score in its unit (\"331.85 output tokens/s\"), a collection\
+              \ job's still in percent. The\n        # collection stays named in the\
+              \ job's name and tags and in its MLflow run.\n        definition = client.get(f\"\
+              /api/v1/evaluations/collections/{collection_id}\").raise_for_status().json()\n\
+              \        members = definition.get(\"benchmarks\") or []\n        if\
+              \ definition.get(\"category\") == \"performance\" and len(members) ==\
+              \ 1:\n            body[\"benchmarks\"] = [{k: v for k, v in members[0].items()\
+              \ if k != \"weight\"}]\n            body[\"tags\"].append(f\"collection={collection_id}\"\
+              )\n            body[\"experiment\"][\"tags\"].append({\"key\": \"collection\"\
+              , \"value\": collection_id})\n        else:\n            body[\"collection\"\
+              ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
               \ primary metric, direction and threshold, as the dashboard form sends\
               \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
               \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
@@ -2280,25 +2284,25 @@ spec:
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
               \ or one garak benchmark, on the candidate and wait for it (a performance\
               \ collection of\n    one benchmark runs as that benchmark, from v41,\
-              \ so the dashboard shows its score in the metric's unit). Reads the\
-              \ results\n    ledger of the step before, appends this evaluation (job,\
-              \ state, each benchmark's metric, value, gate and pass,\n    the job's\
-              \ MLflow run) and hands it on, so the run graph shows the intermediate\
-              \ results between the steps as\n    garak's datasets do.\n\n    Then\
-              \ completes the job's MLflow data (from v39; best effort, an MLflow\
-              \ or Thanos error is printed and never fails\n    the step). EvalHub\
-              \ opens one run per job (<job name>, tag evaluation_job_id) holding\
-              \ only evaluation-card.json and\n    leaves it RUNNING; the adapter\
-              \ logs one run per benchmark (<job id>_<n>, the run the dashboard's\
-              \ Compare opens)\n    without a parent; GuideLLM logs none. This step\
-              \ logs the job's results to the job run (every benchmark metric as\n\
-              \    <benchmark>.<metric>, <benchmark>.primary_score, .threshold and\
-              \ .pass, the job's score; parameters: collection,\n    benchmarks, providers,\
-              \ model, target and each benchmark's generation settings), the gate\
-              \ to each benchmark run\n    (primary_score, threshold, pass and the\
-              \ same settings), the candidate's vLLM metrics over the job's time window\n\
-              \    from Thanos (system/*), nests the job run under the pipeline run's\
-              \ MLflow run and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
+              \ so the dashboard names its primary metric and gate). Reads the results\n\
+              \    ledger of the step before, appends this evaluation (job, state,\
+              \ each benchmark's metric, value, gate and pass,\n    the job's MLflow\
+              \ run) and hands it on, so the run graph shows the intermediate results\
+              \ between the steps as\n    garak's datasets do.\n\n    Then completes\
+              \ the job's MLflow data (from v39; best effort, an MLflow or Thanos\
+              \ error is printed and never fails\n    the step). EvalHub opens one\
+              \ run per job (<job name>, tag evaluation_job_id) holding only evaluation-card.json\
+              \ and\n    leaves it RUNNING; the adapter logs one run per benchmark\
+              \ (<job id>_<n>, the run the dashboard's Compare opens)\n    without\
+              \ a parent; GuideLLM logs none. This step logs the job's results to\
+              \ the job run (every benchmark metric as\n    <benchmark>.<metric>,\
+              \ <benchmark>.primary_score, .threshold and .pass, the job's score;\
+              \ parameters: collection,\n    benchmarks, providers, model, target\
+              \ and each benchmark's generation settings), the gate to each benchmark\
+              \ run\n    (primary_score, threshold, pass and the same settings), the\
+              \ candidate's vLLM metrics over the job's time window\n    from Thanos\
+              \ (system/*), nests the job run under the pipeline run's MLflow run\
+              \ and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
               \ and closes the job run FINISHED, FAILED or KILLED at the job's last\
               \ update.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
@@ -2544,21 +2548,22 @@ spec:
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
               \        # A performance collection of one benchmark (latency, throughput)\
               \ runs as that benchmark, with the collection's\n        # definition\
-              \ (from v41): the dashboard shows a collection job's score as a 0-1\
-              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
-              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
-              \ 0.5)\n        # and names the alphabetically first metric as the primary\
-              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
-              \ its own metric and gate. The collection stays named in the job's tags\
-              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
-              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
-              ) or []\n        if definition.get(\"category\") == \"performance\"\
-              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
-              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
-              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
-              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
-              \ collection_id})\n        else:\n            body[\"collection\"] =\
-              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ (from v41), so the dashboard's results page names its own primary\
+              \ metric and gate (a collection\n        # job shows the alphabetically\
+              \ first metric, mean_itl_ms). The RHOAI 3.5 dashboard still shows every\
+              \ job's\n        # score as a 0-1 share in percent (331.85 output tokens/s\
+              \ as \"33185%\"); the upstream dashboard formats a\n        # benchmark\
+              \ job's score in its unit (\"331.85 output tokens/s\"), a collection\
+              \ job's still in percent. The\n        # collection stays named in the\
+              \ job's name and tags and in its MLflow run.\n        definition = client.get(f\"\
+              /api/v1/evaluations/collections/{collection_id}\").raise_for_status().json()\n\
+              \        members = definition.get(\"benchmarks\") or []\n        if\
+              \ definition.get(\"category\") == \"performance\" and len(members) ==\
+              \ 1:\n            body[\"benchmarks\"] = [{k: v for k, v in members[0].items()\
+              \ if k != \"weight\"}]\n            body[\"tags\"].append(f\"collection={collection_id}\"\
+              )\n            body[\"experiment\"][\"tags\"].append({\"key\": \"collection\"\
+              , \"value\": collection_id})\n        else:\n            body[\"collection\"\
+              ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
               \ primary metric, direction and threshold, as the dashboard form sends\
               \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
               \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
@@ -2676,25 +2681,25 @@ spec:
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
               \ or one garak benchmark, on the candidate and wait for it (a performance\
               \ collection of\n    one benchmark runs as that benchmark, from v41,\
-              \ so the dashboard shows its score in the metric's unit). Reads the\
-              \ results\n    ledger of the step before, appends this evaluation (job,\
-              \ state, each benchmark's metric, value, gate and pass,\n    the job's\
-              \ MLflow run) and hands it on, so the run graph shows the intermediate\
-              \ results between the steps as\n    garak's datasets do.\n\n    Then\
-              \ completes the job's MLflow data (from v39; best effort, an MLflow\
-              \ or Thanos error is printed and never fails\n    the step). EvalHub\
-              \ opens one run per job (<job name>, tag evaluation_job_id) holding\
-              \ only evaluation-card.json and\n    leaves it RUNNING; the adapter\
-              \ logs one run per benchmark (<job id>_<n>, the run the dashboard's\
-              \ Compare opens)\n    without a parent; GuideLLM logs none. This step\
-              \ logs the job's results to the job run (every benchmark metric as\n\
-              \    <benchmark>.<metric>, <benchmark>.primary_score, .threshold and\
-              \ .pass, the job's score; parameters: collection,\n    benchmarks, providers,\
-              \ model, target and each benchmark's generation settings), the gate\
-              \ to each benchmark run\n    (primary_score, threshold, pass and the\
-              \ same settings), the candidate's vLLM metrics over the job's time window\n\
-              \    from Thanos (system/*), nests the job run under the pipeline run's\
-              \ MLflow run and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
+              \ so the dashboard names its primary metric and gate). Reads the results\n\
+              \    ledger of the step before, appends this evaluation (job, state,\
+              \ each benchmark's metric, value, gate and pass,\n    the job's MLflow\
+              \ run) and hands it on, so the run graph shows the intermediate results\
+              \ between the steps as\n    garak's datasets do.\n\n    Then completes\
+              \ the job's MLflow data (from v39; best effort, an MLflow or Thanos\
+              \ error is printed and never fails\n    the step). EvalHub opens one\
+              \ run per job (<job name>, tag evaluation_job_id) holding only evaluation-card.json\
+              \ and\n    leaves it RUNNING; the adapter logs one run per benchmark\
+              \ (<job id>_<n>, the run the dashboard's Compare opens)\n    without\
+              \ a parent; GuideLLM logs none. This step logs the job's results to\
+              \ the job run (every benchmark metric as\n    <benchmark>.<metric>,\
+              \ <benchmark>.primary_score, .threshold and .pass, the job's score;\
+              \ parameters: collection,\n    benchmarks, providers, model, target\
+              \ and each benchmark's generation settings), the gate to each benchmark\
+              \ run\n    (primary_score, threshold, pass and the same settings), the\
+              \ candidate's vLLM metrics over the job's time window\n    from Thanos\
+              \ (system/*), nests the job run under the pipeline run's MLflow run\
+              \ and each benchmark run under the job\n    run (tag mlflow.parentRunId),\
               \ and closes the job run FINISHED, FAILED or KILLED at the job's last\
               \ update.\"\"\"\n    import json\n    what = (collection_id or f\"garak/{benchmark_id}\"\
               ) + (\" (guarded)\" if guarded else \"\")\n    guardrails = guardrails.strip()\
@@ -2940,21 +2945,22 @@ spec:
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
               \        # A performance collection of one benchmark (latency, throughput)\
               \ runs as that benchmark, with the collection's\n        # definition\
-              \ (from v41): the dashboard shows a collection job's score as a 0-1\
-              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
-              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
-              \ 0.5)\n        # and names the alphabetically first metric as the primary\
-              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
-              \ its own metric and gate. The collection stays named in the job's tags\
-              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
-              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
-              ) or []\n        if definition.get(\"category\") == \"performance\"\
-              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
-              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
-              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
-              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
-              \ collection_id})\n        else:\n            body[\"collection\"] =\
-              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ (from v41), so the dashboard's results page names its own primary\
+              \ metric and gate (a collection\n        # job shows the alphabetically\
+              \ first metric, mean_itl_ms). The RHOAI 3.5 dashboard still shows every\
+              \ job's\n        # score as a 0-1 share in percent (331.85 output tokens/s\
+              \ as \"33185%\"); the upstream dashboard formats a\n        # benchmark\
+              \ job's score in its unit (\"331.85 output tokens/s\"), a collection\
+              \ job's still in percent. The\n        # collection stays named in the\
+              \ job's name and tags and in its MLflow run.\n        definition = client.get(f\"\
+              /api/v1/evaluations/collections/{collection_id}\").raise_for_status().json()\n\
+              \        members = definition.get(\"benchmarks\") or []\n        if\
+              \ definition.get(\"category\") == \"performance\" and len(members) ==\
+              \ 1:\n            body[\"benchmarks\"] = [{k: v for k, v in members[0].items()\
+              \ if k != \"weight\"}]\n            body[\"tags\"].append(f\"collection={collection_id}\"\
+              )\n            body[\"experiment\"][\"tags\"].append({\"key\": \"collection\"\
+              , \"value\": collection_id})\n        else:\n            body[\"collection\"\
+              ] = {\"id\": collection_id}\n    else:\n        # The provider catalog's\
               \ primary metric, direction and threshold, as the dashboard form sends\
               \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
               \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
