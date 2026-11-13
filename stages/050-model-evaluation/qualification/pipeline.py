@@ -144,6 +144,10 @@ GUARD_TOKEN_CAP = 4096
 # this many traces per evaluation and check; they are reported, not gated.
 JUDGE_SAMPLE = 100
 MLFLOW_URL = "https://mlflow.redhat-ods-applications.svc:8443/mlflow"
+# Thanos Querier's tenancy port: answers a namespace-scoped query for a token that may get pods.metrics.k8s.io in that
+# namespace; evaluate logs the candidate's vLLM metrics over each job to its MLflow run (system/*). The pipeline-runner
+# ServiceAccount has no such grant yet (BACKLOG), so the step prints the refusal and logs no system metrics.
+THANOS_URL = "https://thanos-querier.openshift-monitoring.svc:9092"
 
 
 @dsl.component(base_image=RUNTIME_IMAGE)
@@ -226,12 +230,25 @@ def evaluate(
     guarded: bool,
     guardrails: str,
     trace_port: int,
+    mlflow_url: str,
+    thanos_url: str,
     previous: dsl.Input[dsl.Dataset],
     results: dsl.Output[dsl.Dataset],
 ):
     """Run one EvalHub collection, or one garak benchmark, on the candidate and wait for it. Reads the results
-    ledger of the step before, appends this evaluation (job, state, each benchmark's metric, value, gate and pass) and
-    hands it on, so the run graph shows the intermediate results between the steps as garak's datasets do."""
+    ledger of the step before, appends this evaluation (job, state, each benchmark's metric, value, gate and pass,
+    the job's MLflow run) and hands it on, so the run graph shows the intermediate results between the steps as
+    garak's datasets do.
+
+    Then completes the job's MLflow data (from v39; best effort, an MLflow or Thanos error is printed and never fails
+    the step). EvalHub opens one run per job (<job name>, tag evaluation_job_id) holding only evaluation-card.json and
+    leaves it RUNNING; the adapter logs one run per benchmark (<job id>_<n>, the run the dashboard's Compare opens)
+    without a parent; GuideLLM logs none. This step logs the job's results to the job run (every benchmark metric as
+    <benchmark>.<metric>, <benchmark>.primary_score, .threshold and .pass, the job's score; parameters: collection,
+    benchmarks, providers, model, target and each benchmark's generation settings), the gate to each benchmark run
+    (primary_score, threshold, pass and the same settings), the candidate's vLLM metrics over the job's time window
+    from Thanos (system/*), nests the job run under the pipeline run's MLflow run and each benchmark run under the job
+    run (tag mlflow.parentRunId), and closes the job run FINISHED, FAILED or KILLED at the job's last update."""
     import json
     what = (collection_id or f"garak/{benchmark_id}") + (" (guarded)" if guarded else "")
     guardrails = guardrails.strip() if guarded else ""
@@ -302,6 +319,195 @@ def evaluate(
     env = dict(os.environ, EVALHUB_CONFIG=profile)
     subprocess.run(["evalhub", "health"], env=env, check=True)
 
+    def record_in_mlflow(job, job_id, state, terminal, what, tags, target, client):
+        """Complete the job's MLflow data (see the docstring); returns the job run's id or None. Each write is its own
+        best-effort call, so one refused write leaves the others."""
+        import datetime
+        import math
+        import time
+        import urllib.parse
+
+        service_ctx = ssl.create_default_context(cafile="/etc/pki/ca-trust/source/anchors/service-ca.crt")
+
+        def ml(path, data=None):
+            req = urllib.request.Request(f"{mlflow_url}{path}", method="POST" if data is not None else "GET",
+                                         data=json.dumps(data).encode() if data is not None else None, headers={
+                                             "Authorization": f"Bearer {token}", "X-MLflow-Workspace": tenant,
+                                             "Content-Type": "application/json"})
+            with urllib.request.urlopen(req, context=service_ctx, timeout=60) as r:
+                return json.load(r)
+
+        def attempt(name, fn):
+            try:
+                return fn()
+            except Exception as exc:
+                detail = exc.read().decode(errors="replace")[:300] if hasattr(exc, "read") else ""
+                print(f"MLflow: {name} failed: {exc} {detail}")
+                return None
+
+        def num(v):
+            if isinstance(v, bool):
+                return float(v)
+            return float(v) if isinstance(v, (int, float)) and math.isfinite(v) else None
+
+        def mkey(k):
+            # MLflow keys allow alphanumerics, _ - . space : and /.
+            return re.sub(r"[^A-Za-z0-9_\-. :/]", "_", str(k))[:250]
+
+        def ms(iso):
+            return int(datetime.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() * 1000)
+
+        def settings(parameters):
+            """The generation settings in a benchmark's parameters: token_cap, temperature, top_p."""
+            found = {}
+
+            def walk(x):
+                if isinstance(x, dict):
+                    for k, v in x.items():
+                        if k in ("max_new_tokens", "max_tokens", "max_gen_toks") and num(v) is not None:
+                            found.setdefault("token_cap", v)
+                        elif k in ("temperature", "top_p") and num(v) is not None:
+                            found.setdefault(k, v)
+                        elif k == "data" and isinstance(v, str) and re.search(r"output_tokens=(\d+)", v):
+                            found.setdefault("token_cap", int(re.search(r"output_tokens=(\d+)", v).group(1)))
+                        else:
+                            walk(v)
+
+            walk(parameters)
+            return found
+
+        def log_batch(run_uuid, metrics=(), params=(), tags=()):
+            # A batch with one key twice at different values is refused whole: the first value of a key wins.
+            params = list({p["key"]: p for p in reversed(list(params))}.values())[::-1]
+            tags = list({t["key"]: t for t in reversed(list(tags))}.values())[::-1]
+            metrics = list(metrics)
+            # One call takes at most 1000 metrics, 100 params and 100 tags.
+            while metrics or params or tags:
+                attempt(f"log-batch to run {run_uuid}", lambda: ml("/api/2.0/mlflow/runs/log-batch", {
+                    "run_id": run_uuid, "metrics": metrics[:1000], "params": params[:100], "tags": tags[:100]}))
+                metrics, params, tags = metrics[1000:], params[100:], tags[100:]
+
+        experiment_id = (job.get("resource") or {}).get("mlflow_experiment_id")
+        if not experiment_id:
+            print(f"MLflow: job {job_id} names no MLflow experiment; nothing recorded")
+            return None
+
+        def search(filter_string):
+            return ml("/api/2.0/mlflow/runs/search", {"experiment_ids": [experiment_id], "filter": filter_string,
+                                                      "max_results": 100}).get("runs") or []
+
+        # EvalHub opens the job run when it stores the job's final state, so it can lag the --wait return.
+        job_runs = []
+        for _ in range(12 if terminal else 1):
+            job_runs = attempt("job run search", lambda: search(f"tags.evaluation_job_id = '{job_id}'")) or []
+            if job_runs:
+                break
+            time.sleep(5)
+        if not job_runs:
+            print(f"MLflow: no run tagged evaluation_job_id={job_id} in experiment {experiment_id}; nothing recorded")
+            return None
+        job_run = job_runs[0]["info"]["run_id"]
+        pipeline_runs = [r for r in attempt("pipeline run search", lambda: search(
+            f"tags.`kfp.pipeline_run_id` = '{run_id}'")) or []
+            if not any(t["key"] == "mlflow.parentRunId" for t in r["data"].get("tags") or [])]
+        res = job.get("results") or {}
+        benchmarks = res.get("benchmarks") or []
+        # A benchmark job carries its definitions; a collection job only collection.id (verdict's specs()).
+        specs = job.get("benchmarks") or []
+        collection = (job.get("collection") or {}).get("id") or ""
+        if not specs and collection:
+            specs = attempt(f"collection {collection}", lambda: client.get(
+                f"/api/v1/evaluations/collections/{collection}").raise_for_status().json().get("benchmarks")) or []
+        spec_of = {s.get("id"): s for s in specs}
+        now = int(time.time() * 1000)
+        resource = job.get("resource") or {}
+        start = ms(resource["created_at"]) if resource.get("created_at") else None
+        end = ms(resource["updated_at"]) if resource.get("updated_at") else now
+
+        # The job run: every benchmark metric, each benchmark's gate, the job's score, the run's parameters.
+        metrics, params = [], [{"key": "collection", "value": collection or "-"},
+                               {"key": "benchmarks", "value": ",".join(str(b.get("id")) for b in benchmarks)
+                                or ",".join(str(s.get("id")) for s in specs)},
+                               {"key": "providers", "value": ",".join(sorted({str(b.get("provider_id")) for b in
+                                                                              benchmarks or specs}))},
+                               {"key": "model", "value": model_name}, {"key": "target", "value": target},
+                               {"key": "evaluation", "value": what}, {"key": "pipeline_run", "value": run_name}]
+        for k, v in (res.get("test") or {}).items():
+            if num(v) is not None:
+                metrics.append({"key": mkey(f"job.{k}"), "value": num(v), "timestamp": now, "step": 0})
+        benchmark_runs = {}
+        for b in benchmarks:
+            bid, t, spec = str(b.get("id")), b.get("test") or {}, spec_of.get(b.get("id")) or {}
+            for k, v in (b.get("metrics") or {}).items():
+                if num(v) is not None:
+                    metrics.append({"key": mkey(k if str(k).startswith(bid) else f"{bid}.{k}"), "value": num(v),
+                                    "timestamp": now, "step": 0})
+            gate = {"primary_score": num(t.get("primary_score")), "threshold": num(t.get("threshold")),
+                    "pass": num(t.get("pass")) if "pass" in t else None}
+            gate = {k: v for k, v in gate.items() if v is not None}
+            metrics += [{"key": mkey(f"{bid}.{k}"), "value": v, "timestamp": now, "step": 0} for k, v in gate.items()]
+            bparams = {"primary_score_metric": t.get("primary_score_metric")
+                       or (spec.get("primary_score") or {}).get("metric"),
+                       "lower_is_better": str(bool((spec.get("primary_score") or {}).get("lower_is_better"))).lower(),
+                       "weight": spec.get("weight"), **settings(spec.get("parameters") or {})}
+            bparams = {k: v for k, v in bparams.items() if v is not None}
+            params += [{"key": mkey(f"{bid}.{k}"), "value": str(v)[:6000]} for k, v in bparams.items()]
+            params.append({"key": mkey(f"{bid}.parameters"), "value": json.dumps(spec.get("parameters") or {})[:6000]})
+            if b.get("mlflow_run_id"):
+                benchmark_runs[b["mlflow_run_id"]] = (gate, bparams)
+        # The adapter names its runs <job id>_<benchmark index>; a benchmark whose result carries no run id is found so.
+        for r in attempt("benchmark run search", lambda: search(f"attributes.run_name LIKE '{job_id}_%'")) or []:
+            benchmark_runs.setdefault(r["info"]["run_id"], ({}, {}))
+
+        # The candidate's vLLM metrics over the job's time window (Thanos, tenancy port: namespace-scoped).
+        if thanos_url and start:
+            series = {"generation_tokens_per_second": f'sum(rate(vllm:generation_tokens_total{{model_name="{model_name}"}}[1m]))',
+                      "kv_cache_usage": f'max(vllm:kv_cache_usage_perc{{model_name="{model_name}"}})',
+                      "requests_running": f'sum(vllm:num_requests_running{{model_name="{model_name}"}})',
+                      "requests_waiting": f'sum(vllm:num_requests_waiting{{model_name="{model_name}"}})'}
+            step = max(15, (end - start) // 1000 // 500)
+            for name, query in series.items():
+                def query_range(query=query):
+                    url = f"{thanos_url}/api/v1/query_range?" + urllib.parse.urlencode(
+                        {"namespace": tenant, "query": query, "start": start / 1000, "end": end / 1000, "step": step})
+                    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+                    with urllib.request.urlopen(req, context=service_ctx, timeout=60) as r:
+                        return json.load(r)["data"]["result"]
+                result = attempt(f"Thanos {name} (needs get pods.metrics.k8s.io in {tenant})", query_range)
+                if result is None:
+                    break  # one refusal or outage stands for every series
+                points = [(int(float(t) * 1000), float(v)) for t, v in (result[0]["values"] if result else [])
+                          if math.isfinite(float(v))]
+                metrics += [{"key": f"system/{name}", "value": v, "timestamp": t, "step": i}
+                            for i, (t, v) in enumerate(points)]
+                if points:
+                    values = [v for _, v in points]
+                    metrics += [{"key": f"system/{name}.mean", "value": sum(values) / len(values), "timestamp": end, "step": 0},
+                                {"key": f"system/{name}.max", "value": max(values), "timestamp": end, "step": 0}]
+
+        run_tags = [{"key": k, "value": str(v)} for k, v in tags.items()]
+        if pipeline_runs:
+            run_tags.append({"key": "mlflow.parentRunId", "value": pipeline_runs[0]["info"]["run_id"]})
+        else:
+            print(f"MLflow: no run tagged kfp.pipeline_run_id={run_id}; the job run stays top level")
+        log_batch(job_run, metrics, params, run_tags)
+        # Each benchmark run: nested under the job run, with its gate and generation settings for Compare.
+        for brun, (gate, bparams) in benchmark_runs.items():
+            log_batch(brun, [{"key": k, "value": v, "timestamp": now, "step": 0} for k, v in gate.items()],
+                      [{"key": "collection", "value": collection or "-"}, {"key": "pipeline_run", "value": run_name}]
+                      + [{"key": mkey(k), "value": str(v)[:6000]} for k, v in bparams.items()],
+                      [{"key": "mlflow.parentRunId", "value": job_run}])
+        if terminal:
+            status = {"completed": "FINISHED", "cancelled": "KILLED"}.get(state, "FAILED")
+            # EvalHub opens the run just after the job's last update; the end never precedes the start.
+            attempt(f"closing job run {job_run}", lambda: ml("/api/2.0/mlflow/runs/update", {
+                "run_id": job_run, "status": status,
+                "end_time": max(end, int(job_runs[0]["info"].get("start_time") or end))}))
+        print(f"MLflow: job run {job_run} ({len(metrics)} metrics, {len(params)} parameters"
+              f"{', closed ' + status if terminal else ''}); {len(benchmark_runs)} benchmark runs nested under it"
+              + (f"; under pipeline run {pipeline_runs[0]['info']['run_id']}" if pipeline_runs else ""))
+        return job_run
+
     tags = {"run": run_id, "run_name": run_name, "model": model_name, "evaluation": what}
     if guardrails:
         tags["guardrails"] = guardrails
@@ -371,10 +577,16 @@ def evaluate(
         print(f"  {b.get('id')}: {t.get('primary_score_metric')} {t.get('primary_score')} "
               f"(threshold {t.get('threshold')}) {'pass' if t.get('pass') else 'fail'}")
     print(f"{what}: job {job_id} {state} (exit {run.returncode})")
-    if state not in ("completed", "failed", "cancelled", "partially_failed"):
+    terminal = state in ("completed", "failed", "cancelled", "partially_failed")
+    job_run_id = None
+    try:
+        job_run_id = record_in_mlflow(job, job_id, state, terminal, what, tags, model_url, client)
+    except Exception as exc:
+        print(f"MLflow: job {job_id} not recorded: {exc}")
+    if not terminal:
         raise RuntimeError(f"job {job_id} did not finish within {timeout_seconds}s (state {state})")
     hand_on({"evaluation": what, "job_id": job_id, "job_name": body["name"], "state": state,
-             "target": model_url, "guardrails": guardrails, "benchmarks": [
+             "mlflow_job_run_id": job_run_id, "target": model_url, "guardrails": guardrails, "benchmarks": [
         {"id": b.get("id"), "metric": (b.get("test") or {}).get("primary_score_metric"),
          "value": (b.get("test") or {}).get("primary_score"), "threshold": (b.get("test") or {}).get("threshold"),
          "pass": (b.get("test") or {}).get("pass")}
@@ -688,6 +900,8 @@ def verdict(
             props[k + "mlflow_experiment"] = s((job.get("experiment") or {}).get("name", ""))
             if r.get("mlflow_run_id"):
                 props[k + "mlflow_run_id"] = s(r["mlflow_run_id"])
+            if (entries.get(evaluation) or {}).get("mlflow_job_run_id"):
+                props[k + "mlflow_job_run_id"] = s(entries[evaluation]["mlflow_job_run_id"])
             props[k + "recorded_at"] = s(now)
     props["evalhub.qualification.verdict"] = s(result)
     props["evalhub.qualification.pipeline_run"] = s(run_name)
@@ -746,7 +960,9 @@ def trace_quality(
     TAP's search queries are not judged by Garak and get only candidate_complete. Feedback already on a trace is
     counted, not attached again. The judge model is reached with the model auth Secret's judge_url and judge_api-key
     (JUDGE_URL, JUDGE_API_KEY). An evaluation this step could not read gets no counts, which verdict treats as not
-    checked. Quality checks never fail the run: errors are printed and counted as unchecked."""
+    checked. From v39 each evaluation's traces are linked to its EvalHub job run in MLflow (traces/link-to-run), so
+    the run's Traces tab lists them with their feedback. Quality checks never fail the run: errors are printed and
+    counted as unchecked."""
     import datetime
     import hashlib
     import json
@@ -1081,9 +1297,35 @@ def trace_quality(
               + ", ".join(f"{n} {p}/{t}" for n, (p, t) in sorted(quality.items())))
         return quality, ({"replies": counts["seen"], "cut_off": counts["cut"]} if counts["seen"] else None)
 
-    def capability_quality(evaluation, trace_tag, experiment_id):
+    def link(evaluation, entry, trace_ids, experiment_id):
+        """Link an evaluation's traces to its EvalHub job run (the run's Traces tab), 100 per call. Best effort: the
+        job run comes from the ledger (evaluate, v39) or by its evaluation_job_id tag."""
+        if not trace_ids:
+            return
+        try:
+            job_run = entry.get("mlflow_job_run_id")
+            if not job_run:
+                runs = call(f"{mlflow_url}/api/2.0/mlflow/runs/search", "POST", {
+                    "experiment_ids": [experiment_id], "max_results": 1,
+                    "filter": f"tags.evaluation_job_id = '{entry['job_id']}'"}).get("runs") or []
+                job_run = runs[0]["info"]["run_id"] if runs else None
+            if not job_run:
+                print(f"{evaluation}: no MLflow run for job {entry['job_id']}, traces not linked")
+                return
+            linked = 0
+            for i in range(0, len(trace_ids), 100):
+                try:
+                    call(f"{mlflow_url}/api/2.0/mlflow/traces/link-to-run", "POST",
+                         {"trace_ids": trace_ids[i:i + 100], "run_id": job_run})
+                    linked += len(trace_ids[i:i + 100])
+                except Exception as exc:
+                    print(f"{evaluation}: traces {i}-{i + 99} not linked to run {job_run}: {exc}")
+            print(f"{evaluation}: {linked} of {len(trace_ids)} traces linked to job run {job_run}")
+        except Exception as exc:
+            print(f"{evaluation}: traces not linked: {exc}")
+
+    def capability_quality(evaluation, trace_ids):
         """Checks on one capability evaluation's traces; returns (quality, completeness)."""
-        trace_ids = search(f"tags.run = '{run_id}' AND tags.evaluation = '{trace_tag}'", experiment_id)
         quality, items = quality_of.setdefault(evaluation, {}), []
         totals = {"answers": 0, "cut": 0, "errors": 0}
 
@@ -1138,7 +1380,10 @@ def trace_quality(
                 if evaluation not in traced:
                     print(f"{evaluation}: not traced, no quality checked")
                     continue
-                quality, completeness = capability_quality(evaluation, traced[evaluation], experiment_id)
+                trace_ids = search(f"tags.run = '{run_id}' AND tags.evaluation = '{traced[evaluation]}'",
+                                   experiment_id)
+                link(evaluation, entry, trace_ids, experiment_id)
+                quality, completeness = capability_quality(evaluation, trace_ids)
             else:
                 guarded = evaluation.endswith(" (guarded)")
                 job = call(f"{evalhub_url}/api/v1/evaluations/jobs/{job_id}", tenant_header=True)
@@ -1157,6 +1402,7 @@ def trace_quality(
                 else:
                     trace_ids = search(f"tags.run = '{run_id}' AND tags.evaluation = 'risk-assessment'", experiment_id)
                     extra = {}
+                link(evaluation, entry, trace_ids, experiment_id)
                 quality, completeness = scan_quality(evaluation, "guarded" if guarded else "bare", scan_runs,
                                                      trace_ids, extra)
             entry["quality"] = quality
@@ -1323,6 +1569,7 @@ def qualification(
             run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
             timeout_seconds=timeout, skip=skips[skip_name], previous=ledger,
             guarded=guarded, guardrails=guardrails, trace_port=trace_port,
+            mlflow_url=MLFLOW_URL, thanos_url=THANOS_URL,
         ))
         if benchmark_id:
             scans.append(step.outputs["results"])  # the ledger stays the one before the scans

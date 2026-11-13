@@ -185,6 +185,34 @@ took a median 17.8 s through the guardrail, p90 25.7 s and at most 29.3 s, about
 the two self-checks take most of the time. The guarded scan is therefore close to the limit whatever the cap; a request
 past 30 s is an unanswered attempt, which the verdict counts against its 2% budget.
 
+**MLflow runs (from v39).** EvalHub logs each job's results to MLflow ("Evaluating AI systems", [2.2 EvalHub
+architecture overview](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/evaluating_ai_systems/evaluating-llms-with-evalhub_evaluate)),
+but in three unlinked places: the job run (`<job name>`, tag `evaluation_job_id`) with only `evaluation-card.json`,
+opened when the job ends and left RUNNING; one benchmark run per benchmark from the adapter (`<job id>_<n>`, metrics,
+parameters, Garak's scan artifacts, no parent), none for GuideLLM; and the pipeline server's step run (`latency`,
+`throughput`, ...) with the step's inputs. Each evaluation step now completes this best effort, never failing the run:
+in experiment `models-onboarding` the pipeline run's MLflow run (`onboarding-<model>-<date>-<n>`) holds each job run
+as a child (tag `mlflow.parentRunId`), and each job run its benchmark runs. A job run carries every benchmark metric as
+`<benchmark>.<metric>`, each gate as `<benchmark>.primary_score`, `.threshold` and `.pass` (1 or 0), the job's
+`job.score`, `.threshold` and `.pass`, parameters `collection`, `benchmarks`, `providers`, `model`, `target`, and per
+benchmark `primary_score_metric`, `lower_is_better`, `weight`, the generation settings found in its parameters
+(`token_cap`, `temperature`, `top_p`) and the parameters as JSON, plus the run's tags (`run`, `run_name`,
+`evaluation`); it is closed FINISHED (FAILED for a failed job, KILLED for a cancelled one) at the job's last update.
+So latency and throughput, which have no benchmark run, are in MLflow at all. Each benchmark run gets `primary_score`,
+`threshold`, `pass` and the same parameters, because **Develop & train > Evaluations > Compare**
+([3.3 Evaluation run comparison](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/evaluating_ai_systems/evalhub-use-the-dashboard-to-evaluate-your-system_evaluate))
+opens the benchmark runs a job's results name (`results.benchmarks[].mlflow_run_id`, `eval-hub-ui` 3.5.3), never the
+job run: a GuideLLM benchmark names none, so compare latency and throughput by selecting their job runs in MLflow's
+own runs list instead. `trace-quality` links each traced evaluation's traces to its job run (`traces/link-to-run`, 100
+a call), so the job run's **Traces** tab lists them with their feedback; the ledger carries the job run
+(`mlflow_job_run_id`) and `verdict` records it on the registry version (`evalhub.<benchmark>.mlflow_job_run_id`).
+The step also queries the candidate's vLLM metrics over the job's time window from Thanos Querier's tenancy port
+(`system/generation_tokens_per_second`, `kv_cache_usage`, `requests_running`, `requests_waiting`, as series and
+`.mean`, `.max`); that port admits a token that may get `pods.metrics.k8s.io` in the project, which
+`pipeline-runner-dspa` cannot, so until that read is granted the step prints the refusal once and logs no `system/`
+metrics. The two scans run side by side on the same candidate, so their `system/` metrics show both. EvalHub opens the
+job run a moment after the job's last update, so its duration shows as 0; the job's own times are on its results page.
+
 - **Run:** dashboard **Create run** with the latest version, MLflow experiment `models-onboarding`, `model_name` and
   `model_version_id` (OPERATIONS, "Stage 050 model qualification pipeline").
 - **Change:** edit `pipeline.py`, compile with kfp 2.16.1 (`python compile.py v<N>`), commit, deploy Stage 050 at that
