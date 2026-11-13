@@ -247,6 +247,12 @@ if ! allowed "$PROXY_SA" "$TRACE_GROUPS" mlflow.kubeflow.org experiments update 
 elif allowed "$PROXY_SA" "$TRACE_GROUPS" mlflow.kubeflow.org experiments update "$TENANT" another-experiment; then R="may write other experiments"
 else R=pass; fi
 record "Model trace proxy may write traces to models-onboarding only" "$R"
+# The pipeline's trace-verdicts step adds feedback and tags to traces (update on their experiment).
+RUNNER_SA=system:serviceaccount:$TENANT:pipeline-runner-dspa
+if ! allowed "$RUNNER_SA" "$TRACE_GROUPS" mlflow.kubeflow.org experiments update "$TENANT" models-onboarding; then R=denied
+elif allowed "$RUNNER_SA" "$TRACE_GROUPS" mlflow.kubeflow.org experiments update "$TENANT" another-experiment; then R="may write other experiments"
+else R=pass; fi
+record "Pipeline runner may attach trace verdicts in models-onboarding only" "$R"
 # The pipeline's traced steps (EVALUATIONS ports in pipeline.py) reach the candidate through model-trace-proxy.
 trace_proxy() {
   read_json deployment model-trace-proxy -n "$TENANT" | jq -e '(.status.availableReplicas // 0) >= 1 and

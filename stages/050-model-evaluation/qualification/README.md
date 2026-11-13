@@ -80,6 +80,13 @@ evaluation, `verdict` (gates plus the weighted capability score) and `report` (H
 From v26, LiveCodeBench, the Python tasks and the bare scan reach the candidate through `model-trace-proxy`, so each
 of their calls is a trace in MLflow `models-onboarding` with its prompt and answer, one session per run; latency
 and throughput stay direct (050-model-qualification README, "Model metrics and traces").
+From v29, step `trace-verdicts` (beside `verdict`) puts Garak's own verdicts on the scans' traces: a reply's trace
+gets feedback `attack_complied` (the judge scored it complied, 0.5 or above) and tags `probe` and `intent`, and a
+guarded trace also `guardrail_blocked` and the run's tags. A trace matches when its Request and Response equal the
+attempt's last user message and reply in the job's `scan.report.jsonl`; TAP's search queries are not judged and get
+nothing. In **Traces**, filter on the feedback to open the attacks that got through. LiveCodeBench and the Python
+tasks get no verdicts: the pinned LightEval and Inspect adapters log no per-sample results to MLflow (upstream
+eval-hub-contrib #224, in v0.6 adapters and later).
 
 - **Run:** dashboard **Create run** with the latest version, MLflow experiment `models-onboarding`, `model_name` and
   `model_version_id` (OPERATIONS, "Stage 050 model qualification pipeline").
