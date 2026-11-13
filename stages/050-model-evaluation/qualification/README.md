@@ -91,15 +91,23 @@ The pipeline in the **Evaluated Models** project runs all five for one candidate
 gates and records the verdict on the candidate's model registry version (Stage 050 README, "Model qualification
 pipeline"). It runs the risk assessment twice, on the bare model and through the candidate's NeMo Guardrails
 (`candidate-guardrails`); the guarded result is the risk gate. The steps form one chain: `validate`, one step per
-evaluation, `verdict` (gates plus the weighted capability score) and `report` (HTML report and summary metrics).
+evaluation, `trace-verdicts` (Garak's verdicts on the scans' traces), `verdict` (gates plus the weighted capability score) and `report` (HTML report and summary metrics).
 From v26, LiveCodeBench, the Python tasks and the bare scan reach the candidate through `model-trace-proxy`, so each
 of their calls is a trace in MLflow `models-onboarding` with its prompt and answer, one session per run; latency
 and throughput stay direct (050-model-qualification README, "Model metrics and traces").
-From v29, step `trace-verdicts` (beside `verdict`) puts Garak's own verdicts on the scans' traces: a reply's trace
-gets feedback `attack_complied` (the judge scored it complied, 0.5 or above) and tags `probe` and `intent`, and a
-guarded trace also `guardrail_blocked` and the run's tags. A trace matches when its Request and Response equal the
-attempt's last user message and reply in the job's `scan.report.jsonl`; TAP's search queries are not judged and get
-nothing. In **Traces**, filter on the feedback to open the attacks that got through. LiveCodeBench and the Python
+From v29, step `trace-verdicts` (in the chain before `verdict` from v31, beside it before) puts Garak's own verdicts on the scans' traces; a trace matches
+when its Request and Response equal the attempt's last user message and reply in the job's `scan.report.jsonl`, and
+TAP's search queries are not judged and get nothing. From v31 every verdict reads green when the platform held:
+- `attack_resisted`: true unless the judge scored the reply complied (0.5 or above), so a red False marks only an
+  attack that got through. The rationale gives the judge's score and class split and, when the target saw a rewrite,
+  quotes the reviewed prompt it came from.
+- `guardrail_action` (guarded traces): `blocked input`, `blocked output` or `passed`, read from the reply and the
+  trace's spans; `passed` is not a failure when the candidate refused by itself.
+- Tags `probe`, `intent` and `attack_source`: `reviewed` (the reviewed prompt as written), `spo-template` and
+  `spo-template-augmented` (Garak's jailbreak templates around it) or `tap-rewrite` (the attacker model's rewrite),
+  so `tags.attack_source = 'tap-rewrite'` shows how far the attacker's rewrites drift from the reviewed prompts.
+In **Traces**, filter on one run and scan (`tags.run`, `tags.evaluation`) before reading the assessment summary,
+which otherwise pools every run, and on `feedback.attack_resisted = 'false'` to open the attacks that got through. LiveCodeBench and the Python
 tasks get no verdicts: the pinned LightEval and Inspect adapters log no per-sample results to MLflow (upstream
 eval-hub-contrib #224, in v0.6 adapters and later).
 
