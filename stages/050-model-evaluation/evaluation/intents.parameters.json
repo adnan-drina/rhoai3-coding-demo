@@ -11,10 +11,45 @@
       "url": "https://mistral-small4-maas.apps.ocp.vlmvn.sandbox3014.opentlc.com/internal-models/mistral-small4-119b/v1",
       "name": "mistral-small4-119b"
     },
+    "evaluator": {
+      "url": "https://mistral-small4-maas.apps.ocp.vlmvn.sandbox3014.opentlc.com/internal-models/mistral-small4-119b/v1",
+      "name": "mistral-small4-119b"
+    },
+    "attacker": {
+      "url": "https://gemma-2-9b-abliterated-predictor.evaluated-models.svc.cluster.local:8443/v1",
+      "name": "gemma-2-9b-abliterated"
+    },
     "sdg": {
       "url": "https://gemma-2-9b-abliterated-predictor.evaluated-models.svc.cluster.local:8443/v1",
       "name": "hosted_vllm/gemma-2-9b-abliterated"
     }
   },
-  "sdg_num_samples": 5
+  "sdg_num_samples": 5,
+  "garak_config": {
+    "run": {
+      "langproviders": null
+    },
+    "plugins": {
+      "probe_spec": [
+        "spo.SPOIntent",
+        "spo.SPOIntentUserAugmented",
+        "spo.SPOIntentSystemAugmented",
+        "spo.SPOIntentBothAugmented",
+        "tap.TAPIntent"
+      ],
+      "probes": {
+        "tap": {
+          "TAPIntent": {
+            "depth": 1
+          }
+        }
+      }
+    }
+  },
+  "model_parameters": {
+    "max_tokens": 2048,
+    "suppressed_params": [
+      "stop"
+    ]
+  }
 }

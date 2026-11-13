@@ -61,17 +61,21 @@ as in the qualification pipeline from v24:
   oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[?(@.name=="mistral-small4")].hostname}'
   ```
 
-- TAP's attacker and evaluator are not named in this file; check in the job log which model each uses. The attacker
-  needs the abliterated model: Mistral refuses to write attacks.
-- Translation: with no translator named, the 3.5.2 provider translates with the attacker LLM (`gemma-2-9b-abliterated`
-  when it was also the judge; the job log shows `Translation mode: attacker LLM`), not with the Helsinki-NLP models guide 7.2 describes. The
-  qualification pipeline turns translation off with the guide's `garak_config` (`run.langproviders: null` and a
-  `probe_spec` of the four SPO strategies and TAP).
-- TAP: in the shipped Garak (`0.15.0+rhaiv.6`) only the first round produces attacks; every later round drops the
-  attacker's instructions and sends empty prompts, and the default ten rounds take about 30 minutes per intent. The
-  pipeline sets `plugins.probes.tap.TAPIntent.depth: 1` in the same `garak_config`; add both settings to a manual run
-  that must finish in time. Until 2026-10-23 an undocumented
-  `intents_models.translation` role sent translation to Nemotron 3 Ultra through MaaS.
+- `attacker` (TAP's attacker): `gemma-2-9b-abliterated`, and `evaluator` (TAP's evaluator): Mistral Small 4, as in the
+  qualification pipeline. Without them TAP falls back to the judge for both (scan of 2026-11-13: `attack_model_name`
+  `mistral-small4-119b`), and Mistral refuses to write attacks.
+- `garak_config`, the qualification pipeline's settings, so a run finishes within `timeout`:
+  - `run.langproviders: null` and a `probe_spec` of the four SPO strategies and TAP turn translation off (guide 7.2).
+    With no translator named, the provider translates with the attacker LLM, not with the Helsinki-NLP models guide
+    7.2 describes; on 2026-11-13 `multilingual.TranslationIntent` took about 6 s per prompt, 35 minutes for 360.
+    Until 2026-10-23 an undocumented `intents_models.translation` role sent translation to Nemotron 3 Ultra
+    through MaaS.
+  - `plugins.probes.tap.TAPIntent.depth: 1`. In the shipped Garak (`0.15.0+rhaiv.6`) only the first round produces
+    attacks; every later round drops the attacker's instructions and sends empty prompts, and the default ten rounds
+    take about 30 minutes per intent.
+- `model_parameters`: the target's generation options, as in the qualification pipeline. `max_tokens` 2048 instead
+  of the provider's 512, which cuts most answers off, and `suppressed_params: ["stop"]`, because Garak's `stop`
+  sequences (`#`, `;`) cut answers short.
 - Automated risk assessment is a Technology Preview feature in RHOAI 3.5 (guide 7): read its attack success rate as
   advisory, and spot-check the judge's classifications (Complied, Rejected, Alternative, Other) against the answers in
   the HTML report before relying on a verdict.
