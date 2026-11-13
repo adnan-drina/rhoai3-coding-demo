@@ -34,7 +34,7 @@ spec:
     # Bounded Inspect coding benchmarks for the agentic coding Python tasks collection
     # (edd/inspect-coding-provider.yaml).
     - inspect-coding
-    # LiveCodeBench on the built-in lighteval image with huggingface-hub held below 2
+    # LiveCodeBench on the built-in lighteval image with huggingface-hub below 2 and xxhash below 4
     # (edd/lighteval-coding-provider.yaml).
     - lighteval-coding
   # EvalHub MCP server for AI coding agents (RHOAI 3.5 "Evaluating AI systems", 4.3 Deploy the EvalHub MCP

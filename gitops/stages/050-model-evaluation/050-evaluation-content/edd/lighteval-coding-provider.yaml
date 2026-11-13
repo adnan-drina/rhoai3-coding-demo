@@ -3,9 +3,11 @@
 # adapter, quay.io/evalhub/community-lighteval:v0.5.4 (RHOAI 3.5.3), pinned by digest. That build installs
 # huggingface-hub 2.x, which removed HfApi.list_models(model_name=...); lighteval 0.13.0 imports every task module at
 # start-up and its mix_eval judge check calls that function, so every lighteval job fails with a TypeError before the
-# first model request. The entrypoint therefore installs huggingface-hub below 2 before starting the adapter, the
-# cap eval-hub-contrib #232 put on main (not on the v0.5.4 branch). Drop the install once a v0.5.x image carries it.
-# The job pod downloads the package from PyPI at start, as it already downloads NLTK data.
+# first model request. It also installs xxhash 4.x, which takes bytes only, so lighteval's info logger fails with
+# "Strings must be encoded before hashing" when it computes the metrics. The entrypoint therefore installs
+# huggingface-hub below 2 and xxhash below 4 before starting the adapter, the pins eval-hub-contrib main carries (#232)
+# and the v0.5.4 branch does not. Drop the install once a v0.5.x image carries them. The job pod downloads the two
+# packages from PyPI at start, as it already downloads NLTK data.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -23,18 +25,18 @@ metadata:
 data:
   lighteval-coding.yaml: |
     id: lighteval-coding
-    name: Lighteval (huggingface-hub below 2)
-    title: Lighteval (huggingface-hub below 2)
+    name: Lighteval (huggingface-hub below 2, xxhash below 4)
+    title: Lighteval (huggingface-hub below 2, xxhash below 4)
     description: >-
-      The built-in lighteval adapter v0.5.4 with huggingface-hub held below 2, which lighteval 0.13.0 needs to
-      load its tasks.
+      The built-in lighteval adapter v0.5.4 with huggingface-hub held below 2 and xxhash below 4, which lighteval
+      0.13.0 needs to load its tasks and log its results.
     runtime:
       k8s:
         image: quay.io/evalhub/community-lighteval@sha256:3a09b06ff2e7faaa0f9c832acecd0932595aa5a759a268f4b3d9a4aa56a7b570
         entrypoint:
           - sh
           - -c
-          - pip install --no-cache-dir -q 'huggingface-hub>=0.30.2,<2' && exec python main.py
+          - pip install --no-cache-dir -q 'huggingface-hub>=0.30.2,<2' 'xxhash>=3.0.0,<4' && exec python main.py
         cpu_request: 500m
         memory_request: 1Gi
         cpu_limit: 4000m

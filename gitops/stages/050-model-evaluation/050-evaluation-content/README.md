@@ -45,7 +45,7 @@ All objects are ConfigMaps in `redhat-ods-applications`, wave 10.
 | `evalhub-collection-agentic-coding-livecodebench-v3` | `agentic-coding-livecodebench-v3` | LiveCodeBench v6 (`lighteval-coding`), gate 0.20 (v2 had 0.25) | pipeline step 3 |
 | `evalhub-collection-agentic-coding-python-tasks-v1` | `agentic-coding-python-tasks-v1` | MBPP, HumanEval (`inspect-coding`) | pipeline step 4 |
 | `evalhub-provider-inspect-coding` | provider `inspect-coding` | `inspect/humaneval`, `inspect/mbpp`; image `quay.io/evalhub/community-inspect` pinned by digest, `INSPECT_EVAL_MAX_TOKENS=512`, `MAX_CONNECTIONS=8`, `MAX_RETRIES=3` | python-tasks-v1 |
-| `evalhub-provider-lighteval-coding` | provider `lighteval-coding` | `lcb:codegeneration_v6`; the built-in `quay.io/evalhub/community-lighteval:v0.5.4` image pinned by digest, its entrypoint installing `huggingface-hub<2` before the adapter starts (the image's 2.x breaks lighteval 0.13.0, see [TROUBLESHOOTING](../../../../docs/TROUBLESHOOTING.md#evalhub-lighteval-job-fails-at-start-with-hfapilist_models-typeerror)) | livecodebench-v3 |
+| `evalhub-provider-lighteval-coding` | provider `lighteval-coding` | `lcb:codegeneration_v6`; the built-in `quay.io/evalhub/community-lighteval:v0.5.4` image pinned by digest, its entrypoint installing `huggingface-hub<2` and `xxhash<4` before the adapter starts (the image's newer majors break lighteval 0.13.0, see [TROUBLESHOOTING](../../../../docs/TROUBLESHOOTING.md#evalhub-lighteval-job-fails-at-start-with-hfapilist_models-typeerror)) | livecodebench-v3 |
 
 ### `swebench/`
 

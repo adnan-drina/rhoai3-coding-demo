@@ -2586,9 +2586,9 @@ oc get cm -n evaluated-models <job-id-prefix>-...-spec -o jsonpath='{.data.sidec
 
 **Affected stage:** Stage 050 (built-in `lighteval` provider, `community-lighteval:v0.5.4`, RHOAI 3.5.3)
 
-**Symptom:** Every LightEval job, for example LiveCodeBench in the qualification pipeline's `livecodebench` step, fails within a few minutes and before the first model request. The job message shows `LightEval CLI failed with exit code 1` and ends with `TypeError: HfApi.list_models() got an unexpected keyword argument 'model_name'` after `--- LOADING TASKS ---`. The model URL makes no difference.
+**Symptom:** Every LightEval job, for example LiveCodeBench in the qualification pipeline's `livecodebench` step, fails within a few minutes and before the first model request. The job message shows `LightEval CLI failed with exit code 1` and ends with `TypeError: HfApi.list_models() got an unexpected keyword argument 'model_name'` after `--- LOADING TASKS ---`. The model URL makes no difference. With `huggingface-hub` held below 2, the job generates every sample and then fails in `--- COMPUTING METRICS ---` with `TypeError: Strings must be encoded before hashing` from `lighteval/logging/info_loggers.py`.
 
-**Likely cause:** RHOAI 3.5.3 moved the six community EvalHub providers from `quay.io/evalhub/community-*:v0.5.0` to `v0.5.4`. The `v0.5.4` LightEval image pins `lighteval==0.13.0` but not `huggingface-hub`, so its rebuild on 2026-11-02 installed `huggingface-hub` 2.x, which removed the `model_name` argument. lighteval 0.13.0 imports every task module when it starts, and the `mix_eval` judge check calls `list_models(model_name=...)` at import. Upstream capped `huggingface-hub` below 2 in eval-hub-contrib #232 on `main` only.
+**Likely cause:** RHOAI 3.5.3 moved the six community EvalHub providers from `quay.io/evalhub/community-*:v0.5.0` to `v0.5.4`. The `v0.5.4` LightEval image pins `lighteval==0.13.0` but not `huggingface-hub`, so its rebuild on 2026-11-02 installed `huggingface-hub` 2.x, which removed the `model_name` argument, and `xxhash` 4.x, which hashes bytes only. lighteval 0.13.0 imports every task module when it starts, and the `mix_eval` judge check calls `list_models(model_name=...)` at import; its info logger passes strings to `xxhash.xxh64()`. eval-hub-contrib `main` pins both (`huggingface-hub>=0.30.2,<2` from #232, `xxhash>=3.0.0,<4`); the `v0.5.4` branch pins neither.
 
 **Diagnose:**
 
@@ -2601,7 +2601,7 @@ curl -sk -H "Authorization: Bearer $(oc whoami -t)" -H "X-Tenant: evaluated-mode
   | jq -r .status.message.message | grep -E 'TypeError|LOADING TASKS'
 ```
 
-**Recover:** The built-in provider ConfigMap is operator-owned, so the repository runs LiveCodeBench on its own provider `lighteval-coding` (`050-evaluation-content/edd/lighteval-coding-provider.yaml`): the same `v0.5.4` image pinned by digest, with an entrypoint that installs `huggingface-hub>=0.30.2,<2` before `python main.py`. The job pod downloads the package from PyPI at start. Drop the install once a `v0.5.x` image carries the cap.
+**Recover:** The built-in provider ConfigMap is operator-owned, so the repository runs LiveCodeBench on its own provider `lighteval-coding` (`050-evaluation-content/edd/lighteval-coding-provider.yaml`): the same `v0.5.4` image pinned by digest, with an entrypoint that installs `huggingface-hub>=0.30.2,<2` and `xxhash>=3.0.0,<4` before `python main.py`. The job pod downloads the two packages from PyPI at start. Drop the install once a `v0.5.x` image carries the pins.
 
 ## Model Catalog Safety And Security Insights Tab Spins Forever
 
