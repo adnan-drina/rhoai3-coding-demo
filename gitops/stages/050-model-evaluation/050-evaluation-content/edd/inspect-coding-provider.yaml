@@ -3,9 +3,11 @@
 # the built-in `inspect` provider (pinned by digest), with generation bounds set through Inspect's
 # INSPECT_EVAL_* environment variables (runtime.k8s.env, as in the operator's provider definitions). Without
 # them Inspect sets no output-token cap and retries without limit, so long answers ran past the evaluation
-# sidecar's 30 s model request limit and HumanEval spent hours in retries on Qwen 3.6 (2026-10-12). The cap
-# matches the 512 tokens LiveCodeBench already uses; eight concurrent requests stay within the model's 16
-# sequences. Benchmark ids are the adapter's own, so it selects the same inspect-evals tasks.
+# sidecar's 30 s model request limit and HumanEval spent hours in retries on Qwen 3.6 (2026-10-12). The cap is 1024
+# tokens from 2026-11-13 (512 before): with 512, 22 of the 666 replies of run 20261113-2 stopped at the cap and
+# failed their task for the cap, not the code (within the qualification's 5% cut-off budget, so still scored). Eight concurrent requests run at about 50 tokens/s each
+# (the cut-off replies took 9 to 10.7 s for 512 tokens), so 1024 tokens take about 20 s, inside the 30 s limit;
+# eight requests stay within the model's 16 sequences. Benchmark ids are the adapter's own, so it selects the same inspect-evals tasks.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -26,7 +28,7 @@ data:
     name: Inspect AI (bounded coding)
     title: Inspect AI (bounded coding)
     description: >-
-      Inspect AI coding benchmarks with a 512-token generation cap, eight concurrent model requests and
+      Inspect AI coding benchmarks with a 1024-token generation cap, eight concurrent model requests and
       three retries, sized for the evaluation sidecar's 30 s model request limit.
     runtime:
       k8s:
@@ -40,7 +42,7 @@ data:
         memory_limit: 4Gi
         env:
           - name: INSPECT_EVAL_MAX_TOKENS
-            value: "512"
+            value: "1024"
           - name: INSPECT_EVAL_MAX_CONNECTIONS
             value: "8"
           - name: INSPECT_EVAL_MAX_RETRIES

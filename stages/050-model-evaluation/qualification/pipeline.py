@@ -58,7 +58,8 @@ EVALUATIONS = [
     ("throughput", "skip_throughput", "agentic-coding-throughput-v2", "", 3600, False, 0),
     # Capability runs as two collections one after the other: LiveCodeBench needs every sequence slot of the
     # model, so it runs alone; the report combines both into the weighted capability score.
-    ("livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v3", "", 2 * 3600, False, 9001),
+    # v4 from pipeline v35: a 2048-token cap (v3's 512 cut 77 of 100 replies off before the code, run 20261113-2).
+    ("livecodebench", "skip_livecodebench", "agentic-coding-livecodebench-v4", "", 2 * 3600, False, 9001),
     ("python-tasks", "skip_python_tasks", "agentic-coding-python-tasks-v1", "", 3600, False, 9002),
     # The scan runs in the job pod on the fixed attack prompt set (INTENTS_DATA), bounded by INTENTS_TIMEOUT.
     ("risk-assessment", "skip_risk_assessment", "", "intents", 4 * 3600, False, 9003),

@@ -1,0 +1,65 @@
+# Evaluation-driven development criteria for agentic coding, capability dimension (RHOAI 3.5 "Evaluating AI
+# systems" 2.1 pass criteria and weights, 2.23 collection by ConfigMap). Versioned: change criteria in a new -v5.
+# v4 (2026-11-13) raises max_new_tokens from 512 to 2048. In run 20261113-2 (v3) 77 of the 100 replies stopped at
+# the 512-token cap: qwen3-8-27b-nvfp4 works through the problem in prose before the code, though the system prompt
+# asks for code only, so most replies ended before any code and the score measured the cap. Limits measured on
+# RHOAI 3.5.3 (2026-11-13): the evaluation sidecar still ends each model request after 30 s (evalhub-config
+# sidecar.eval_hub.http_timeout); lighteval-coding sends one request per problem with one sample (100 requests, one
+# at a time, no longer 16 samples per request as on 3.5.1); a single request runs at about 104 tokens/s (512 tokens
+# in 4.9 s); the adapter stops a benchmark after 3600 s (/app/main.py). 2048 tokens take at most about 20 s per
+# request and about 33 minutes for the 100 problems. Gate 0.20 as in v3 (v3 lowered it from 0.25 after every Qwen
+# 3.8 build missed 0.25); run-to-run noise is about +-0.03. The qualification verdict holds the result as not valid
+# when more than 5% of the replies stop at the cap (CUT_OFF_BUDGET, pipeline v33). Pipeline v35 runs v4. Capability is split in two collections the pipeline runs one after the
+# other, so a benchmark running beside LiveCodeBench cannot push its requests past the sidecar limit. The
+# qualification report combines both into the weighted capability score (3:2:1, gate 0.50).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evalhub-collection-agentic-coding-livecodebench-v4
+  namespace: redhat-ods-applications
+  labels:
+    trustyai.opendatahub.io/evalhub-collection-type: system
+    trustyai.opendatahub.io/evalhub-collection-name: agentic-coding-livecodebench-v4
+    app.kubernetes.io/name: evalhub-collection-agentic-coding-livecodebench-v4
+    app.kubernetes.io/part-of: rhoai-platform
+    app.kubernetes.io/component: evaluation
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+data:
+  agentic-coding-livecodebench-v4.yaml: |
+    id: agentic-coding-livecodebench-v4
+    name: Agentic coding capability - LiveCodeBench v4
+    category: code
+    description: >-
+      Can the model solve problems it has not seen? LiveCodeBench v6 competitive programming after the model
+      cutoff, execution-scored pass@1 from one sample per problem. Runs alone, one request at a time. A 2048-token
+      cap (v3: 512, which cut most replies off before the code) keeps a request inside the evaluation sidecar's
+      30 s limit. Weight 3 of 6 in the qualification report's capability score; gate 0.20. Submit with model.url ending in /v1.
+    tags: [code, agentic-coding, execution, edd]
+    pass_criteria:
+      threshold: 0.2
+    benchmarks:
+      - id: lcb:codegeneration_v6
+        # Not the built-in lighteval, whose 3.5.3 image fails at start (edd/lighteval-coding-provider.yaml).
+        provider_id: lighteval-coding
+        weight: 3
+        primary_score:
+          # The exact key LightEval reports; EvalHub matches the primary metric by exact key (v1 named
+          # codegen_pass@1, which LightEval reports only with a prefix, so EvalHub scored nothing).
+          metric: lcb:codegeneration_v6.codegen_pass@1
+          lower_is_better: false
+        pass_criteria:
+          threshold: 0.2
+        parameters:
+          provider: endpoint
+          num_few_shot: 0
+          num_examples: 100
+          parameters:
+            concurrent_requests: 1
+            api_max_retry: 1
+            system_prompt: "Answer with the complete Python program in a single ```python code block and nothing else."
+            generation_parameters:
+              temperature: 0.7
+              top_p: 0.8
+              max_new_tokens: 2048

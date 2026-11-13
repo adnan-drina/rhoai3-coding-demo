@@ -1,4 +1,4 @@
-# System-owned EvalHub provider for LiveCodeBench in agentic-coding-livecodebench-v3 (RHOAI 3.5 "Evaluating AI
+# System-owned EvalHub provider for LiveCodeBench in agentic-coding-livecodebench-v4 (RHOAI 3.5 "Evaluating AI
 # systems", Add a custom provider by using a ConfigMap). The image is the operator's own built-in lighteval
 # adapter, quay.io/evalhub/community-lighteval:v0.5.4 (RHOAI 3.5.3), pinned by digest. That build installs
 # huggingface-hub 2.x, which removed HfApi.list_models(model_name=...); lighteval 0.13.0 imports every task module at

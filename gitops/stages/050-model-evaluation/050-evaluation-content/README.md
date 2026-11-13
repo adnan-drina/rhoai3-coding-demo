@@ -13,7 +13,7 @@ API consume it through `050-evalhub`. Criteria change more often than the servic
 | Validated by | [`validate.sh`](../../../../stages/050-model-evaluation/validate.sh) (Synced and Healthy at the stage revision); EvalHub start-up validates the ids (see How). No content-specific check. |
 | Sync | Automated, `prune` and `selfHeal`. Server-Side Diff by annotation; `RespectIgnoreDifferences=true`, `SkipDryRunOnMissingResource=true`. |
 | Depends on | `050-evalhub` (lists every id in its CR); `050-model-qualification` (namespace `evaluated-models`, OBC `evaluation-models-workbench`, tenant job ServiceAccount); ODF Route `s3`; Stage 040 MaaS (models under test). |
-| Used by | `050-evalhub`; the qualification pipeline steps 1 to 4 (`latency-v1`, `throughput-v2`, `livecodebench-v3`, `python-tasks-v1`; its risk assessment step is a built-in `garak` `intents` job, not a collection); jobs submitted from **Develop & train → Evaluations** or the EvalHub REST API, or `stages/050-model-evaluation/evaluation/submit.sh` (the former SWE-bench driver `swebench-run.sh` is in git history at `82092e01`). |
+| Used by | `050-evalhub`; the qualification pipeline steps 1 to 4 (`latency-v1`, `throughput-v2`, `livecodebench-v4` from pipeline v35, `python-tasks-v1`; its risk assessment step is a built-in `garak` `intents` job, not a collection); jobs submitted from **Develop & train → Evaluations** or the EvalHub REST API, or `stages/050-model-evaluation/evaluation/submit.sh` (the former SWE-bench driver `swebench-run.sh` is in git history at `82092e01`). |
 
 ## Why
 
@@ -23,7 +23,7 @@ by label and mounts them once the id is listed in the `EvalHub` CR [1]. Collecti
 benchmark, so a collection is a versioned qualification gate [1]. Changing a gate means adding a new `-vN` collection,
 which keeps older results comparable.
 
-The custom provider reuses the built-in Inspect adapter image with different limits: a 512-token cap, eight connections
+The custom provider reuses the built-in Inspect adapter image with different limits: a 1,024-token cap (512 until 2026-11-13), eight connections
 and three retries so samples stay inside the evaluation sidecar's 30-second model request limit. The risk
 assessment uses the built-in `garak` provider's `intents` benchmark as a single job, not a collection; the
 `garak-coding` provider and the `security-*-v2` collections were retired on 2026-10-23.
@@ -42,10 +42,11 @@ All objects are ConfigMaps in `redhat-ods-applications`, wave 10.
 |---|---|---|---|
 | `evalhub-collection-agentic-coding-latency-v1` | `agentic-coding-latency-v1` | interactive TTFT, 8,000/256 tokens, one session (`guidellm`) | pipeline step 1 |
 | `evalhub-collection-agentic-coding-throughput-v2` | `agentic-coding-throughput-v2` | same, fixed 64 requests (`guidellm`) | pipeline step 2 |
-| `evalhub-collection-agentic-coding-livecodebench-v3` | `agentic-coding-livecodebench-v3` | LiveCodeBench v6 (`lighteval-coding`), gate 0.20 (v2 had 0.25) | pipeline step 3 |
+| `evalhub-collection-agentic-coding-livecodebench-v3` | `agentic-coding-livecodebench-v3` | LiveCodeBench v6 (`lighteval-coding`), gate 0.20 (v2 had 0.25), 512-token cap | pipeline step 3 until v34; kept for its jobs' results |
+| `evalhub-collection-agentic-coding-livecodebench-v4` | `agentic-coding-livecodebench-v4` | same, 2,048-token cap (v3's 512 cut 77 of 100 replies off before the code) | pipeline step 3 from v35 |
 | `evalhub-collection-agentic-coding-python-tasks-v1` | `agentic-coding-python-tasks-v1` | MBPP, HumanEval (`inspect-coding`) | pipeline step 4 |
-| `evalhub-provider-inspect-coding` | provider `inspect-coding` | `inspect/humaneval`, `inspect/mbpp`; image `quay.io/evalhub/community-inspect` pinned by digest, `INSPECT_EVAL_MAX_TOKENS=512`, `MAX_CONNECTIONS=8`, `MAX_RETRIES=3` | python-tasks-v1 |
-| `evalhub-provider-lighteval-coding` | provider `lighteval-coding` | `lcb:codegeneration_v6`; the built-in `quay.io/evalhub/community-lighteval:v0.5.4` image pinned by digest, its entrypoint installing `huggingface-hub<2` and `xxhash<4` before the adapter starts (the image's newer majors break lighteval 0.13.0, see [TROUBLESHOOTING](../../../../docs/TROUBLESHOOTING.md#evalhub-lighteval-job-fails-at-start-with-hfapilist_models-typeerror)) | livecodebench-v3 |
+| `evalhub-provider-inspect-coding` | provider `inspect-coding` | `inspect/humaneval`, `inspect/mbpp`; image `quay.io/evalhub/community-inspect` pinned by digest, `INSPECT_EVAL_MAX_TOKENS=1024`, `MAX_CONNECTIONS=8`, `MAX_RETRIES=3` | python-tasks-v1 |
+| `evalhub-provider-lighteval-coding` | provider `lighteval-coding` | `lcb:codegeneration_v6`; the built-in `quay.io/evalhub/community-lighteval:v0.5.4` image pinned by digest, its entrypoint installing `huggingface-hub<2` and `xxhash<4` before the adapter starts (the image's newer majors break lighteval 0.13.0, see [TROUBLESHOOTING](../../../../docs/TROUBLESHOOTING.md#evalhub-lighteval-job-fails-at-start-with-hfapilist_models-typeerror)) | livecodebench-v3, livecodebench-v4 |
 
 ### `swebench/`
 
@@ -77,10 +78,17 @@ pod keeps serving.
 **Id rules.** Collection and provider ids are 36 characters or fewer: EvalHub 1.0 validates them at start-up and one invalid
 id keeps the new pod from starting (`edd/kustomization.yaml`).
 
-**Sizing choices (from the collection comments).** LiveCodeBench uses `num_examples: 100`, a code-only system prompt and
-`max_new_tokens: 512` so a 16-sample request finishes inside the sidecar's 30-second limit; Inspect benchmarks are bounded
-by `max_samples` because the shipped adapter ignores `num_examples`; LiveCodeBench runs alone in its own collection because
-16 samples use all 16 sequence slots of the served model.
+**Sizing choices (from the collection comments).** Limits measured on RHOAI 3.5.3 (2026-11-13): the evaluation sidecar
+ends each model request after 30 seconds (`evalhub-config`, `sidecar.eval_hub.http_timeout`); `lighteval-coding` sends one
+LiveCodeBench request per problem with one sample, one request at a time (on 3.5.1 it sent 16 samples per request); a single
+request runs at about 104 output tokens/s and each of eight concurrent Inspect requests at about 50; the LightEval adapter
+stops a benchmark after 3,600 seconds. LiveCodeBench v4 therefore uses `num_examples: 100`, a code-only system prompt and
+`max_new_tokens: 2048` (at most about 20 seconds per request, about 33 minutes for the 100 problems), and Inspect a
+1,024-token cap (about 20 seconds per request). The 512-token caps sized on 3.5.1 cut 77 of 100 LiveCodeBench and 22 of
+666 Python task replies off in run 20261113-2: `qwen3-8-27b-nvfp4` reasons in prose before the code, so most LiveCodeBench
+replies ended before any code. The qualification verdict holds a result as not valid when more than 5% of its replies stop
+at the cap (`CUT_OFF_BUDGET`, pipeline v33). Inspect benchmarks are bounded by `max_samples` because the shipped adapter ignores
+`num_examples`; LiveCodeBench runs alone in its own collection so no other benchmark's requests compete with it.
 
 **SWE-bench agent.** `run-instance.sh` runs inside each SWE-bench instance image. At run time it downloads the `uv`
 release archive (version 0.12.21, checked against its published SHA-256), installs `mini-swe-agent` at the version the Job passes, loads the dataset split from Hugging

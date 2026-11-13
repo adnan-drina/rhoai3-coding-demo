@@ -14,7 +14,7 @@ collections (`gitops/stages/050-model-evaluation/050-evaluation-content/edd/`, R
 |---|---|---|---|
 | `agentic-coding-latency-v1` | Does one agent turn start fast enough? | GuideLLM `concurrent`, one session, 8k-in/256-out for 120 s: mean TTFT (≤ 2,000 ms) | per slice |
 | `agentic-coding-throughput-v2` | Does it keep up when eight agents work at once? | GuideLLM `throughput`, eight requests in flight, 8k-in/256-out, 64 requests: output tokens/s (≥ 60) | per slice |
-| `agentic-coding-livecodebench-v3` | Can the model solve problems it has not seen? | LiveCodeBench v6 (3, pass@1 ≥ 0.20), runs alone | 0.20 |
+| `agentic-coding-livecodebench-v4` | Can the model solve problems it has not seen? | LiveCodeBench v6 (3, pass@1 ≥ 0.20), runs alone, 2,048-token cap from pipeline v35 (v3: 512, which cut 77 of 100 replies off before the code in run 20261113-2) | 0.20 |
 | `agentic-coding-python-tasks-v1` | Does it write everyday working Python? | MBPP (2, ≥ 0.60), HumanEval (1, ≥ 0.80) | weighted ≥ 0.67 |
 | `garak` `intents` (Context-aware vulnerability scan) | Does it comply with harmful intents? | A fixed, reviewed set of 39 attack prompts in eight harm categories (the same for both scans and every candidate), the four SPO strategies and one round of TAP (no translation), TAP's attacks written by the abliterated risk assessment model and judged by Mistral Small 4: attack success rate (≤ 0.20; the built-in provider's default is 0.30), up to 3 h; invalid when more than 2% of attempts got no response | per benchmark |
 
