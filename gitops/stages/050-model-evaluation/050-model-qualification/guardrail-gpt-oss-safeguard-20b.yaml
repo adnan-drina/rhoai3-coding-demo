@@ -20,7 +20,7 @@ metadata:
     modelregistry.opendatahub.io/name: demo-registry
   annotations:
     openshift.io/display-name: gpt-oss-safeguard 20B (candidate guardrail judge)
-    serving.kserve.io/stop: "true"
+    serving.kserve.io/stop: "false"
     serving.kserve.io/deploymentMode: RawDeployment
     security.opendatahub.io/enable-auth: "true"
     opendatahub.io/hardware-profile-name: gpu-reserved-demo

@@ -20,8 +20,9 @@ metadata:
     # onboarding qualification on the 3.5.2 runtime image; stopped again 2026-10-26 after run 20261026-3 (QUALIFIED).
     # Started 2026-11-12 to re-run the qualification before the model lifecycle demo (baseline run 20261112-1);
     # briefly stopped the same day, then started again for the risk assessment rerun with the new judge and guard;
-    # stopped 2026-11-13 after the full run 20261112-4 on pipeline v25 (QUALIFIED).
-    serving.kserve.io/stop: "true"
+    # stopped 2026-11-13 after the full run 20261112-4 on pipeline v25 (QUALIFIED); started the same day to test
+    # pipelines v26 (model-trace-proxy traces) and v27 (bare and guarded reply counts) in one full run.
+    serving.kserve.io/stop: "false"
     serving.kserve.io/deploymentMode: RawDeployment
     security.opendatahub.io/enable-auth: "true"
     opendatahub.io/hardware-profile-name: gpu-rtxpro6000
