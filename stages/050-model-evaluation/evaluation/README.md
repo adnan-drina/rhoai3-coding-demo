@@ -27,7 +27,7 @@ For CI, save the body that `submit.sh --dry-run` prints and pass it to the EvalH
 | File | Benchmarks | Verified |
 |---|---|---|
 | `avid-security.parameters.json` | `avid_security`, `quick`, `owasp_llm_top10`, `cwe` and the other probe-based scans | 2026-10-22 on the former INT4 candidate: `avid_security`, 67 per-probe results in EvalHub; `quick` |
-| `intents.parameters.json` | `intents` (generated attack prompts, judge model, attack strategies) | 2026-10-22 on the former INT4 candidate: with GPT-6 Luna as judge and SDG model, through the SPO strategies |
+| `intents.parameters.json` | `intents` (generated attack prompts, judge model, attack strategies) | 2026-10-22 on the former INT4 candidate: with GPT-6 Luna as judge and SDG model, through the SPO strategies. Mistral Small 4 as judge (2026-11-13): not yet run |
 
 Both name the pipeline server's project and S3 connection and the candidate's in-cluster address:
 
@@ -41,16 +41,31 @@ Both name the pipeline server's project and S3 connection and the candidate's in
 - `timeout`, `experiment_name` (the KFP experiment) and `verify_ssl` keep their defaults; `intents` sets `timeout` to
   7200 s because its attack strategies run after the baseline.
 
-`intents.parameters.json` also sets the models the scan uses besides the candidate; every address is in-cluster.
+`intents.parameters.json` also sets the models the scan uses besides the candidate. The attack side and the scoring
+side are different models, so the judge never scores attacks it wrote (guide 7.3: the judge differs from the target),
+as in the qualification pipeline from v24:
 
-- `judge` and `sdg`: `gemma-2-9b-abliterated`, served in this project
+- `sdg`: `gemma-2-9b-abliterated`, served in this project
   (`050-model-qualification/risk-assessment-gemma-2-9b-abliterated.yaml`, one L40S; start it with
-  `serving.kserve.io/stop: "false"`). Both roles need a model without safety alignment: a safety-aligned judge and SDG
-  model (GPT-6 Luna, 2026-10-22) rewrote every harmful intent into a harmless request, so the scan measured nothing.
-  Their keys are the Secret's `JUDGE_API_KEY` and `SDG_API_KEY` (the `candidate-model-client` token; guide 7.7.4),
-  which the TAP attacker and evaluator also use.
-- Translation: with no translator named, the 3.5.2 provider translates with the attacker LLM (`gemma-2-9b-abliterated`;
-  the job log shows `Translation mode: attacker LLM`), not with the Helsinki-NLP models guide 7.2 describes. The
+  `serving.kserve.io/stop: "false"`), at its in-cluster address. Generating attack prompts needs a model without safety
+  alignment: a safety-aligned SDG model (GPT-6 Luna, 2026-10-22) rewrote every harmful intent into a harmless request,
+  so the scan measured nothing. Its key is the Secret's `SDG_API_KEY` (the `candidate-model-client` token; guide
+  7.7.4).
+- `judge`: Mistral Small 4 (`mistral-small4-119b`) through its MaaS listener (`model-qualification` subscription), with
+  the Secret's `JUDGE_API_KEY`, the MaaS key that `maas-key-provisioner` writes. Until 2026-11-13 the judge was
+  `gemma-2-9b-abliterated` too; a model built to comply is a poor judge of compliance, and since v24 `JUDGE_API_KEY` is
+  the MaaS key, not gemma's token. The listener's hostname differs per cluster, so the file
+  carries the placeholder `MISTRAL_SMALL4_MAAS_HOST`; replace it before you paste the file into the form. The hostname
+  is:
+
+  ```bash
+  oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[?(@.name=="mistral-small4")].hostname}'
+  ```
+
+- TAP's attacker and evaluator are not named in this file; check in the job log which model each uses. The attacker
+  needs the abliterated model: Mistral refuses to write attacks.
+- Translation: with no translator named, the 3.5.2 provider translates with the attacker LLM (`gemma-2-9b-abliterated`
+  when it was also the judge; the job log shows `Translation mode: attacker LLM`), not with the Helsinki-NLP models guide 7.2 describes. The
   qualification pipeline turns translation off with the guide's `garak_config` (`run.langproviders: null` and a
   `probe_spec` of the four SPO strategies and TAP).
 - TAP: in the shipped Garak (`0.15.0+rhaiv.6`) only the first round produces attacks; every later round drops the
@@ -75,7 +90,8 @@ stages/050-model-evaluation/evaluation/submit.sh --model-name qwen3-8-27b-nvfp4 
   --experiment models-onboarding --no-oci-export --wait
 ```
 
-For `intents`, use `--benchmark intents --parameters …/intents.parameters.json`.
+`intents` is started from the dashboard form below, with `intents.parameters.json` pasted in after its placeholder is
+replaced.
 A single benchmark is submitted with the provider catalog's primary metric, its direction and its pass threshold, as
 the dashboard form does (for `garak-kfp` `avid_security`: `attack_success_rate`, lower is better, at most 0.3);
 `--threshold` overrides the threshold. The Evaluations page shows the attack success rate itself as the score, so a
@@ -88,9 +104,14 @@ From the dashboard (**Develop & train → Evaluations → Start evaluation run**
 - **Model name:** `qwen3-8-27b-nvfp4`
 - **Endpoint URL:** `https://qwen3-8-27b-nvfp4-predictor.evaluated-models.svc.cluster.local:8443/v1`
 - **Authentication secret name:** `garak-kfp-model-auth`
-- **Benchmark parameters:** the content of the matching file.
+- **Benchmark parameters:** the content of the matching file (for `intents`, with `MISTRAL_SMALL4_MAAS_HOST`
+  replaced by the hostname above).
 
-The qualification pipeline (Stage 050 README) submits both benchmarks with these settings and the candidate's URL.
+The qualification pipeline (qualification README) does not use these files or `garak-kfp`. Since 2026-10-23 it
+runs only `intents`, with the built-in `garak` provider in the evaluation job pod, twice side by side: bare and through
+the candidate's guardrails. From v30 it uses a fixed, reviewed set of attack prompts instead of generated ones, so its
+results are not comparable with a manual `garak-kfp` run. It uses the same Secret `garak-kfp-model-auth`, with
+Mistral Small 4 as judge and TAP evaluator and `gemma-2-9b-abliterated` as TAP attacker.
 
 Do not start `garak-kfp` from a model picked in the project's **Model** list. Such a job carries no authentication
 Secret (a dashboard limitation fixed in 3.6, BACKLOG): it cannot reach the pipeline server, and where it can, the

@@ -8,8 +8,8 @@
   "disable_cache": true,
   "intents_models": {
     "judge": {
-      "url": "https://gemma-2-9b-abliterated-predictor.evaluated-models.svc.cluster.local:8443/v1",
-      "name": "gemma-2-9b-abliterated"
+      "url": "https://MISTRAL_SMALL4_MAAS_HOST/internal-models/mistral-small4-119b/v1",
+      "name": "mistral-small4-119b"
     },
     "sdg": {
       "url": "https://gemma-2-9b-abliterated-predictor.evaluated-models.svc.cluster.local:8443/v1",
