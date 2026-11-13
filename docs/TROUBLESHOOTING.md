@@ -2897,6 +2897,34 @@ oc patch monitoringstack data-science-monitoringstack -n redhat-ods-monitoring -
 
 The patch is not in Git: reapply it after a fresh deploy (BACKLOG, *Workarounds still required*). Open the showback tabs once before presenting; later loads are faster.
 
+## Platform Tempo Restarts In A Loop (OOMKilled)
+
+**Affected stage:** Stage 010 tracing stack, traced by Stage 050 qualification runs, RHOAI 3.5.2
+
+**Symptom:** Pod `tempo-data-science-tempomonolithic-0` in `redhat-ods-monitoring` is `2/3` in `CrashLoopBackOff`, the trace queries refuse connections, and Tempo-side traces stop arriving. MLflow traces are not affected: they do not go through Tempo.
+
+**Likely cause:** The operator generates the `TempoMonolithic` with 256Mi, and the DSCInitialization and `Monitoring` resource have no field to change it (`traces` carries only `exporters`, `sampleRatio`, `storage` and `tls`). A Stage 050 qualification run sends thousands of model-server `llm_request` spans: the model servers export every span, because the DSCI `sampleRatio` applies only to the platform's Instrumentation resource. Tempo then runs out of memory while it completes a WAL block. Each restart replays the same block and fails again, so it does not recover by itself (2026-11-12, during the bare Garak scan of run `hwt6n`).
+
+**Diagnose:**
+
+```bash
+oc get pod tempo-data-science-tempomonolithic-0 -n redhat-ods-monitoring \
+  -o jsonpath='{range .status.containerStatuses[*]}{.name}{" "}{.restartCount}{" "}{.lastState.terminated.reason}{"\n"}{end}'
+oc get tempomonolithic data-science-tempomonolithic -n redhat-ods-monitoring -o jsonpath='{.spec.resources}{"\n"}'
+oc logs tempo-data-science-tempomonolithic-0 -c tempo -n redhat-ods-monitoring --previous | tail -5
+```
+
+`OOMKilled` on the `tempo` container, a 256Mi limit, and a previous log that ends at `completing block` confirm it.
+
+**Recover:** Patch the operator-owned `TempoMonolithic`. Tempo restarts once, completes the block and stays up, and the operator keeps the values. Measured on 2026-11-13: about 430Mi in use at rest after the recovery.
+
+```bash
+oc patch tempomonolithic data-science-tempomonolithic -n redhat-ods-monitoring --type merge -p \
+  '{"spec":{"resources":{"requests":{"cpu":"100m","memory":"512Mi"},"limits":{"cpu":"1","memory":"2Gi"}}}}'
+```
+
+The Tempo operator warns that overriding the configuration could break the deployment; this change touches only the resources. Spans received while Tempo was down are lost. The patch is not in Git: reapply it after a fresh deploy (BACKLOG, *Workarounds still required*).
+
 ## Console Perses Models Dashboard Shows No Data, Or Two Models Dashboards
 
 **Affected stage:** Stage 010 observability stack with Stage 040 models, RHOAI 3.5.2
