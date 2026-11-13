@@ -26,6 +26,15 @@ MBPP and HumanEval beside it pushed its requests past the evaluation sidecar's 3
 report combines both into one capability score (weights 3:2:1, gate 0.50; MBPP and HumanEval 2:1 while
 LiveCodeBench is advisory).
 
+**Latency and throughput run as their one benchmark (from v41).** The pipeline reads each performance collection and
+submits its single GuideLLM benchmark with the collection's definition (metric, direction, gate, parameters), keeping
+the collection's name in the job name, a `collection=<id>` job tag and the MLflow run's `collection` parameter. The
+dashboard's Evaluations tab shows a collection job's score as a 0 to 1 share in percent and names the alphabetically
+first metric as primary, so a collection job read 331.85 output tokens/s as "33185%" with primary metric
+`mean_itl_ms`, and a 707 ms first-token time as "-70649%", failed against the collection's default 0.5. A benchmark
+job shows "331.85 output tokens/s" or "707.49 ms" with its own metric and gate. The capability collections stay
+collection jobs: their scores are 0 to 1 pass rates, which the dashboard shows correctly.
+
 **LiveCodeBench is advisory on RHOAI 3.5.3 (from v37).** The evaluation sidecar's model proxy ends every request after
 a fixed 30 s (`DefaultHTTPTimeout` in the eval-hub sidecar: the job's `sidecar_config.json` carries no model timeout, and
 neither the EvalHub CR nor `evalhub-config` sets one). At 93 to 104 tokens/s that allows about 2,600 tokens, while

@@ -12,13 +12,13 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v40
+  name: agentic-coding-model-qualification-v41
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
     the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v40
+  displayName: agentic-coding-model-qualification v41
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -547,7 +547,9 @@ spec:
               \  guardrails: str,\n    trace_port: int,\n    mlflow_url: str,\n  \
               \  thanos_url: str,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak benchmark, on the candidate and wait for it. Reads the\
+              \ or one garak benchmark, on the candidate and wait for it (a performance\
+              \ collection of\n    one benchmark runs as that benchmark, from v41,\
+              \ so the dashboard shows its score in the metric's unit). Reads the\
               \ results\n    ledger of the step before, appends this evaluation (job,\
               \ state, each benchmark's metric, value, gate and pass,\n    the job's\
               \ MLflow run) and hands it on, so the run graph shows the intermediate\
@@ -691,8 +693,8 @@ spec:
               \        # A benchmark job carries its definitions; a collection job\
               \ only collection.id (verdict's specs()).\n        specs = job.get(\"\
               benchmarks\") or []\n        collection = (job.get(\"collection\") or\
-              \ {}).get(\"id\") or \"\"\n        if not specs and collection:\n  \
-              \          specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
+              \ {}).get(\"id\") or collection_id\n        if not specs and collection:\n\
+              \            specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
               \                f\"/api/v1/evaluations/collections/{collection}\").raise_for_status().json().get(\"\
               benchmarks\")) or []\n        spec_of = {s.get(\"id\"): s for s in specs}\n\
               \        now = int(time.time() * 1000)\n        resource = job.get(\"\
@@ -809,16 +811,31 @@ spec:
               \        \"experiment\": {\"name\": experiment, \"tags\": [{\"key\"\
               : k, \"value\": v} for k, v in tags.items()]},\n        \"queue\": {\"\
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
-              \        body[\"collection\"] = {\"id\": collection_id}\n    else:\n\
-              \        # The provider catalog's primary metric, direction and threshold,\
-              \ as the dashboard form sends them; the\n        # intents scan is held\
-              \ to INTENTS_THRESHOLD instead of the catalog's 0.3.\n        catalog\
-              \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
-              \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
-              \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
-              \            parameters = {\"timeout\": intents_timeout,\n         \
-              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              \        # A performance collection of one benchmark (latency, throughput)\
+              \ runs as that benchmark, with the collection's\n        # definition\
+              \ (from v41): the dashboard shows a collection job's score as a 0-1\
+              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
+              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
+              \ 0.5)\n        # and names the alphabetically first metric as the primary\
+              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
+              \ its own metric and gate. The collection stays named in the job's tags\
+              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
+              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
+              ) or []\n        if definition.get(\"category\") == \"performance\"\
+              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
+              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
+              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
+              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
+              \ collection_id})\n        else:\n            body[\"collection\"] =\
+              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ primary metric, direction and threshold, as the dashboard form sends\
+              \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
+              \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
+              ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
+              benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
+              \ = {}\n        if benchmark_id == \"intents\":\n            data =\
+              \ json.loads(intents_data)\n            parameters = {\"timeout\": intents_timeout,\n\
+              \                          \"intents_s3_key\": f\"/test_data/{data['file']}\"\
               , \"intents_format\": \"csv\",\n                          \"intents_models\"\
               : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
               \                                             \"attacker\": {\"name\"\
@@ -926,7 +943,9 @@ spec:
               \  guardrails: str,\n    trace_port: int,\n    mlflow_url: str,\n  \
               \  thanos_url: str,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak benchmark, on the candidate and wait for it. Reads the\
+              \ or one garak benchmark, on the candidate and wait for it (a performance\
+              \ collection of\n    one benchmark runs as that benchmark, from v41,\
+              \ so the dashboard shows its score in the metric's unit). Reads the\
               \ results\n    ledger of the step before, appends this evaluation (job,\
               \ state, each benchmark's metric, value, gate and pass,\n    the job's\
               \ MLflow run) and hands it on, so the run graph shows the intermediate\
@@ -1070,8 +1089,8 @@ spec:
               \        # A benchmark job carries its definitions; a collection job\
               \ only collection.id (verdict's specs()).\n        specs = job.get(\"\
               benchmarks\") or []\n        collection = (job.get(\"collection\") or\
-              \ {}).get(\"id\") or \"\"\n        if not specs and collection:\n  \
-              \          specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
+              \ {}).get(\"id\") or collection_id\n        if not specs and collection:\n\
+              \            specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
               \                f\"/api/v1/evaluations/collections/{collection}\").raise_for_status().json().get(\"\
               benchmarks\")) or []\n        spec_of = {s.get(\"id\"): s for s in specs}\n\
               \        now = int(time.time() * 1000)\n        resource = job.get(\"\
@@ -1188,16 +1207,31 @@ spec:
               \        \"experiment\": {\"name\": experiment, \"tags\": [{\"key\"\
               : k, \"value\": v} for k, v in tags.items()]},\n        \"queue\": {\"\
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
-              \        body[\"collection\"] = {\"id\": collection_id}\n    else:\n\
-              \        # The provider catalog's primary metric, direction and threshold,\
-              \ as the dashboard form sends them; the\n        # intents scan is held\
-              \ to INTENTS_THRESHOLD instead of the catalog's 0.3.\n        catalog\
-              \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
-              \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
-              \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
-              \            parameters = {\"timeout\": intents_timeout,\n         \
-              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              \        # A performance collection of one benchmark (latency, throughput)\
+              \ runs as that benchmark, with the collection's\n        # definition\
+              \ (from v41): the dashboard shows a collection job's score as a 0-1\
+              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
+              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
+              \ 0.5)\n        # and names the alphabetically first metric as the primary\
+              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
+              \ its own metric and gate. The collection stays named in the job's tags\
+              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
+              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
+              ) or []\n        if definition.get(\"category\") == \"performance\"\
+              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
+              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
+              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
+              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
+              \ collection_id})\n        else:\n            body[\"collection\"] =\
+              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ primary metric, direction and threshold, as the dashboard form sends\
+              \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
+              \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
+              ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
+              benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
+              \ = {}\n        if benchmark_id == \"intents\":\n            data =\
+              \ json.loads(intents_data)\n            parameters = {\"timeout\": intents_timeout,\n\
+              \                          \"intents_s3_key\": f\"/test_data/{data['file']}\"\
               , \"intents_format\": \"csv\",\n                          \"intents_models\"\
               : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
               \                                             \"attacker\": {\"name\"\
@@ -1305,7 +1339,9 @@ spec:
               \  guardrails: str,\n    trace_port: int,\n    mlflow_url: str,\n  \
               \  thanos_url: str,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak benchmark, on the candidate and wait for it. Reads the\
+              \ or one garak benchmark, on the candidate and wait for it (a performance\
+              \ collection of\n    one benchmark runs as that benchmark, from v41,\
+              \ so the dashboard shows its score in the metric's unit). Reads the\
               \ results\n    ledger of the step before, appends this evaluation (job,\
               \ state, each benchmark's metric, value, gate and pass,\n    the job's\
               \ MLflow run) and hands it on, so the run graph shows the intermediate\
@@ -1449,8 +1485,8 @@ spec:
               \        # A benchmark job carries its definitions; a collection job\
               \ only collection.id (verdict's specs()).\n        specs = job.get(\"\
               benchmarks\") or []\n        collection = (job.get(\"collection\") or\
-              \ {}).get(\"id\") or \"\"\n        if not specs and collection:\n  \
-              \          specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
+              \ {}).get(\"id\") or collection_id\n        if not specs and collection:\n\
+              \            specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
               \                f\"/api/v1/evaluations/collections/{collection}\").raise_for_status().json().get(\"\
               benchmarks\")) or []\n        spec_of = {s.get(\"id\"): s for s in specs}\n\
               \        now = int(time.time() * 1000)\n        resource = job.get(\"\
@@ -1567,16 +1603,31 @@ spec:
               \        \"experiment\": {\"name\": experiment, \"tags\": [{\"key\"\
               : k, \"value\": v} for k, v in tags.items()]},\n        \"queue\": {\"\
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
-              \        body[\"collection\"] = {\"id\": collection_id}\n    else:\n\
-              \        # The provider catalog's primary metric, direction and threshold,\
-              \ as the dashboard form sends them; the\n        # intents scan is held\
-              \ to INTENTS_THRESHOLD instead of the catalog's 0.3.\n        catalog\
-              \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
-              \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
-              \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
-              \            parameters = {\"timeout\": intents_timeout,\n         \
-              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              \        # A performance collection of one benchmark (latency, throughput)\
+              \ runs as that benchmark, with the collection's\n        # definition\
+              \ (from v41): the dashboard shows a collection job's score as a 0-1\
+              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
+              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
+              \ 0.5)\n        # and names the alphabetically first metric as the primary\
+              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
+              \ its own metric and gate. The collection stays named in the job's tags\
+              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
+              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
+              ) or []\n        if definition.get(\"category\") == \"performance\"\
+              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
+              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
+              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
+              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
+              \ collection_id})\n        else:\n            body[\"collection\"] =\
+              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ primary metric, direction and threshold, as the dashboard form sends\
+              \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
+              \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
+              ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
+              benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
+              \ = {}\n        if benchmark_id == \"intents\":\n            data =\
+              \ json.loads(intents_data)\n            parameters = {\"timeout\": intents_timeout,\n\
+              \                          \"intents_s3_key\": f\"/test_data/{data['file']}\"\
               , \"intents_format\": \"csv\",\n                          \"intents_models\"\
               : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
               \                                             \"attacker\": {\"name\"\
@@ -1831,7 +1882,9 @@ spec:
               \  guardrails: str,\n    trace_port: int,\n    mlflow_url: str,\n  \
               \  thanos_url: str,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak benchmark, on the candidate and wait for it. Reads the\
+              \ or one garak benchmark, on the candidate and wait for it (a performance\
+              \ collection of\n    one benchmark runs as that benchmark, from v41,\
+              \ so the dashboard shows its score in the metric's unit). Reads the\
               \ results\n    ledger of the step before, appends this evaluation (job,\
               \ state, each benchmark's metric, value, gate and pass,\n    the job's\
               \ MLflow run) and hands it on, so the run graph shows the intermediate\
@@ -1975,8 +2028,8 @@ spec:
               \        # A benchmark job carries its definitions; a collection job\
               \ only collection.id (verdict's specs()).\n        specs = job.get(\"\
               benchmarks\") or []\n        collection = (job.get(\"collection\") or\
-              \ {}).get(\"id\") or \"\"\n        if not specs and collection:\n  \
-              \          specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
+              \ {}).get(\"id\") or collection_id\n        if not specs and collection:\n\
+              \            specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
               \                f\"/api/v1/evaluations/collections/{collection}\").raise_for_status().json().get(\"\
               benchmarks\")) or []\n        spec_of = {s.get(\"id\"): s for s in specs}\n\
               \        now = int(time.time() * 1000)\n        resource = job.get(\"\
@@ -2093,16 +2146,31 @@ spec:
               \        \"experiment\": {\"name\": experiment, \"tags\": [{\"key\"\
               : k, \"value\": v} for k, v in tags.items()]},\n        \"queue\": {\"\
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
-              \        body[\"collection\"] = {\"id\": collection_id}\n    else:\n\
-              \        # The provider catalog's primary metric, direction and threshold,\
-              \ as the dashboard form sends them; the\n        # intents scan is held\
-              \ to INTENTS_THRESHOLD instead of the catalog's 0.3.\n        catalog\
-              \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
-              \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
-              \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
-              \            parameters = {\"timeout\": intents_timeout,\n         \
-              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              \        # A performance collection of one benchmark (latency, throughput)\
+              \ runs as that benchmark, with the collection's\n        # definition\
+              \ (from v41): the dashboard shows a collection job's score as a 0-1\
+              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
+              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
+              \ 0.5)\n        # and names the alphabetically first metric as the primary\
+              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
+              \ its own metric and gate. The collection stays named in the job's tags\
+              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
+              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
+              ) or []\n        if definition.get(\"category\") == \"performance\"\
+              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
+              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
+              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
+              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
+              \ collection_id})\n        else:\n            body[\"collection\"] =\
+              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ primary metric, direction and threshold, as the dashboard form sends\
+              \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
+              \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
+              ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
+              benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
+              \ = {}\n        if benchmark_id == \"intents\":\n            data =\
+              \ json.loads(intents_data)\n            parameters = {\"timeout\": intents_timeout,\n\
+              \                          \"intents_s3_key\": f\"/test_data/{data['file']}\"\
               , \"intents_format\": \"csv\",\n                          \"intents_models\"\
               : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
               \                                             \"attacker\": {\"name\"\
@@ -2210,7 +2278,9 @@ spec:
               \  guardrails: str,\n    trace_port: int,\n    mlflow_url: str,\n  \
               \  thanos_url: str,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak benchmark, on the candidate and wait for it. Reads the\
+              \ or one garak benchmark, on the candidate and wait for it (a performance\
+              \ collection of\n    one benchmark runs as that benchmark, from v41,\
+              \ so the dashboard shows its score in the metric's unit). Reads the\
               \ results\n    ledger of the step before, appends this evaluation (job,\
               \ state, each benchmark's metric, value, gate and pass,\n    the job's\
               \ MLflow run) and hands it on, so the run graph shows the intermediate\
@@ -2354,8 +2424,8 @@ spec:
               \        # A benchmark job carries its definitions; a collection job\
               \ only collection.id (verdict's specs()).\n        specs = job.get(\"\
               benchmarks\") or []\n        collection = (job.get(\"collection\") or\
-              \ {}).get(\"id\") or \"\"\n        if not specs and collection:\n  \
-              \          specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
+              \ {}).get(\"id\") or collection_id\n        if not specs and collection:\n\
+              \            specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
               \                f\"/api/v1/evaluations/collections/{collection}\").raise_for_status().json().get(\"\
               benchmarks\")) or []\n        spec_of = {s.get(\"id\"): s for s in specs}\n\
               \        now = int(time.time() * 1000)\n        resource = job.get(\"\
@@ -2472,16 +2542,31 @@ spec:
               \        \"experiment\": {\"name\": experiment, \"tags\": [{\"key\"\
               : k, \"value\": v} for k, v in tags.items()]},\n        \"queue\": {\"\
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
-              \        body[\"collection\"] = {\"id\": collection_id}\n    else:\n\
-              \        # The provider catalog's primary metric, direction and threshold,\
-              \ as the dashboard form sends them; the\n        # intents scan is held\
-              \ to INTENTS_THRESHOLD instead of the catalog's 0.3.\n        catalog\
-              \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
-              \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
-              \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
-              \            parameters = {\"timeout\": intents_timeout,\n         \
-              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              \        # A performance collection of one benchmark (latency, throughput)\
+              \ runs as that benchmark, with the collection's\n        # definition\
+              \ (from v41): the dashboard shows a collection job's score as a 0-1\
+              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
+              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
+              \ 0.5)\n        # and names the alphabetically first metric as the primary\
+              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
+              \ its own metric and gate. The collection stays named in the job's tags\
+              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
+              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
+              ) or []\n        if definition.get(\"category\") == \"performance\"\
+              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
+              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
+              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
+              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
+              \ collection_id})\n        else:\n            body[\"collection\"] =\
+              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ primary metric, direction and threshold, as the dashboard form sends\
+              \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
+              \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
+              ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
+              benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
+              \ = {}\n        if benchmark_id == \"intents\":\n            data =\
+              \ json.loads(intents_data)\n            parameters = {\"timeout\": intents_timeout,\n\
+              \                          \"intents_s3_key\": f\"/test_data/{data['file']}\"\
               , \"intents_format\": \"csv\",\n                          \"intents_models\"\
               : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
               \                                             \"attacker\": {\"name\"\
@@ -2589,7 +2674,9 @@ spec:
               \  guardrails: str,\n    trace_port: int,\n    mlflow_url: str,\n  \
               \  thanos_url: str,\n    previous: dsl.Input[dsl.Dataset],\n    results:\
               \ dsl.Output[dsl.Dataset],\n):\n    \"\"\"Run one EvalHub collection,\
-              \ or one garak benchmark, on the candidate and wait for it. Reads the\
+              \ or one garak benchmark, on the candidate and wait for it (a performance\
+              \ collection of\n    one benchmark runs as that benchmark, from v41,\
+              \ so the dashboard shows its score in the metric's unit). Reads the\
               \ results\n    ledger of the step before, appends this evaluation (job,\
               \ state, each benchmark's metric, value, gate and pass,\n    the job's\
               \ MLflow run) and hands it on, so the run graph shows the intermediate\
@@ -2733,8 +2820,8 @@ spec:
               \        # A benchmark job carries its definitions; a collection job\
               \ only collection.id (verdict's specs()).\n        specs = job.get(\"\
               benchmarks\") or []\n        collection = (job.get(\"collection\") or\
-              \ {}).get(\"id\") or \"\"\n        if not specs and collection:\n  \
-              \          specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
+              \ {}).get(\"id\") or collection_id\n        if not specs and collection:\n\
+              \            specs = attempt(f\"collection {collection}\", lambda: client.get(\n\
               \                f\"/api/v1/evaluations/collections/{collection}\").raise_for_status().json().get(\"\
               benchmarks\")) or []\n        spec_of = {s.get(\"id\"): s for s in specs}\n\
               \        now = int(time.time() * 1000)\n        resource = job.get(\"\
@@ -2851,16 +2938,31 @@ spec:
               \        \"experiment\": {\"name\": experiment, \"tags\": [{\"key\"\
               : k, \"value\": v} for k, v in tags.items()]},\n        \"queue\": {\"\
               kind\": \"kueue\", \"name\": queue},\n    }\n    if collection_id:\n\
-              \        body[\"collection\"] = {\"id\": collection_id}\n    else:\n\
-              \        # The provider catalog's primary metric, direction and threshold,\
-              \ as the dashboard form sends them; the\n        # intents scan is held\
-              \ to INTENTS_THRESHOLD instead of the catalog's 0.3.\n        catalog\
-              \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
-              \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
-              \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
-              \            parameters = {\"timeout\": intents_timeout,\n         \
-              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              \        # A performance collection of one benchmark (latency, throughput)\
+              \ runs as that benchmark, with the collection's\n        # definition\
+              \ (from v41): the dashboard shows a collection job's score as a 0-1\
+              \ share in percent (331.85\n        # output tokens/s as \"33185%\"\
+              , a lower-is-better 707 ms as \"-70649%\" and failed against the collection's\
+              \ 0.5)\n        # and names the alphabetically first metric as the primary\
+              \ one. A benchmark job shows \"331.85 output tokens/s\"\n        # with\
+              \ its own metric and gate. The collection stays named in the job's tags\
+              \ and its MLflow run.\n        definition = client.get(f\"/api/v1/evaluations/collections/{collection_id}\"\
+              ).raise_for_status().json()\n        members = definition.get(\"benchmarks\"\
+              ) or []\n        if definition.get(\"category\") == \"performance\"\
+              \ and len(members) == 1:\n            body[\"benchmarks\"] = [{k: v\
+              \ for k, v in members[0].items() if k != \"weight\"}]\n            body[\"\
+              tags\"].append(f\"collection={collection_id}\")\n            body[\"\
+              experiment\"][\"tags\"].append({\"key\": \"collection\", \"value\":\
+              \ collection_id})\n        else:\n            body[\"collection\"] =\
+              \ {\"id\": collection_id}\n    else:\n        # The provider catalog's\
+              \ primary metric, direction and threshold, as the dashboard form sends\
+              \ them; the\n        # intents scan is held to INTENTS_THRESHOLD instead\
+              \ of the catalog's 0.3.\n        catalog = client.get(\"/api/v1/evaluations/providers/garak\"\
+              ).raise_for_status().json()\n        bdef = next(b for b in catalog.get(\"\
+              benchmarks\") or [] if b.get(\"id\") == benchmark_id)\n        parameters\
+              \ = {}\n        if benchmark_id == \"intents\":\n            data =\
+              \ json.loads(intents_data)\n            parameters = {\"timeout\": intents_timeout,\n\
+              \                          \"intents_s3_key\": f\"/test_data/{data['file']}\"\
               , \"intents_format\": \"csv\",\n                          \"intents_models\"\
               : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
               \                                             \"attacker\": {\"name\"\
