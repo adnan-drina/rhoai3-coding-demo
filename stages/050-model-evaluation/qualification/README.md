@@ -92,6 +92,10 @@ gates and records the verdict on the candidate's model registry version (Stage 0
 pipeline"). It runs the risk assessment twice, on the bare model and through the candidate's NeMo Guardrails
 (`candidate-guardrails`); the guarded result is the risk gate. The steps form one chain: `validate`, one step per
 evaluation, `trace-verdicts` (Garak's verdicts on the scans' traces), `verdict` (gates plus the weighted capability score) and `report` (HTML report and summary metrics).
+From v32 the two scans run side by side after `python-tasks`, and `trace-verdicts` joins their results ledgers. Each
+scan takes about an hour, two thirds of it in TAP: Garak's `TAPIntent` (0.15.0+rhaiv.6) sends one request at a time
+and ignores `parallel_attempts` (16, which the SPO probes use), so running the scans one after the other took about
+2 h 10 min (run 20261113-1). They share only Mistral Small 4, which judges both, and the abliterated attacker.
 From v26, LiveCodeBench, the Python tasks and the bare scan reach the candidate through `model-trace-proxy`, so each
 of their calls is a trace in MLflow `models-onboarding` with its prompt and answer, one session per run; latency
 and throughput stay direct (050-model-qualification README, "Model metrics and traces").

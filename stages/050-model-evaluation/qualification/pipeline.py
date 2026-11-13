@@ -4,9 +4,11 @@ record the evidence on its model registry version.
 Run parameters: model_name (an InferenceService in this project), model_version_id (its model registry version),
 plus one skip_<evaluation> switch per evaluation (all evaluations run unless a switch is set).
 
-Graph, one straight chain in the style of the garak-kfp pipeline (evalhub-garak-scan): validate -> latency ->
-throughput -> livecodebench -> python-tasks -> risk-assessment -> risk-assessment-guarded -> trace-verdicts (Garak's
-verdict on each scan reply's trace in MLflow) -> verdict -> report. As garak's steps
+Graph, a chain in the style of the garak-kfp pipeline (evalhub-garak-scan): validate -> latency -> throughput ->
+livecodebench -> python-tasks -> risk-assessment and risk-assessment-guarded side by side -> trace-verdicts (joins
+the two scans' ledgers; Garak's verdict on each scan reply's trace in MLflow) -> verdict -> report. The two scans
+run side by side from v32 because each spends most of its hour in Garak's TAPIntent, which sends one request at a
+time; they share only the judge and TAP's attacker. As garak's steps
 hand on their datasets, each step hands the next a results ledger: validate starts it (candidate), every evaluation
 appends its job and benchmark results (results), so the graph shows the intermediate results between the steps;
 verdict reads the ledger, judges the run against the gates and records it on the registry version, and the last step,
@@ -48,7 +50,7 @@ SERVICE_CA_DIR = "/etc/pki/ca-trust/source/anchors"
 SERVICE_CA_CONFIGMAP = "pipeline-tasks-service-ca"
 
 # (step name, skip parameter, collection id or "", garak benchmark id or "", --timeout seconds, through the guardrail,
-# model-trace-proxy port or 0), in run order. A step with a port reaches the candidate through model-trace-proxy,
+# model-trace-proxy port or 0), in run order; the two garak steps run side by side. A step with a port reaches the candidate through model-trace-proxy,
 # which writes each call with its prompt and answer to MLflow models-onboarding; latency and throughput stay direct so
 # the proxy is never part of what they measure, and the guarded scan is traced by the guardrail.
 EVALUATIONS = [
@@ -591,9 +593,11 @@ def trace_verdicts(
     run_name: str,
     run_id: str,
     previous: dsl.Input[dsl.Dataset],
+    guarded_results: dsl.Input[dsl.Dataset],
     results: dsl.Output[dsl.Dataset],
 ):
-    """A link in the chain between the last evaluation and verdict: it hands the results ledger on unchanged and
+    """A link in the chain between the scans and verdict: it joins the two scans' results ledgers (both extend the
+    python-tasks ledger, previous the bare and guarded_results the guarded scan), hands the joined ledger on and
     attaches Garak's own verdicts to the traces of this run's scans in MLflow, so a trace shows whether its reply
     complied with the attack. Garak's report (scan.report.jsonl in the scan job's MLflow run) holds each judged
     attempt: the prompt, every reply and the MulticlassJudge score per reply. A trace matches a reply when its
@@ -792,6 +796,9 @@ def trace_verdicts(
 
     with open(previous.path) as f:
         ledger = json.load(f)
+    with open(guarded_results.path) as f:
+        seen = {e["evaluation"] for e in ledger["results"]}
+        ledger["results"] += [e for e in json.load(f)["results"] if e["evaluation"] not in seen]
     with open(results.path, "w") as f:
         json.dump(ledger, f)
     try:
@@ -947,7 +954,9 @@ def qualification(
         model_name=model_name, model_version_id=model_version_id, registry_url=REGISTRY_URL, risk_model=RISK_MODEL,
         guard_model=GUARD_MODEL, skip_risk_assessment=skip_risk_assessment))
     ledger = validated.outputs["candidate"]
-    # One straight chain: each step extends the results ledger of the one before it.
+    # A chain: each step extends the results ledger of the one before it, except the two scans, which both extend
+    # the ledger of the step before them and run side by side; trace-verdicts joins their ledgers.
+    scans = []
     for label, skip_name, collection_id, benchmark_id, timeout, guarded, trace_port in EVALUATIONS:
         step = _small(_named(evaluate, label)(
             model_name=model_name, collection_id=collection_id, benchmark_id=benchmark_id,
@@ -959,11 +968,16 @@ def qualification(
             timeout_seconds=timeout, skip=skips[skip_name], previous=ledger,
             guarded=guarded, guardrails=guardrails, trace_port=trace_port,
         ))
-        ledger = step.outputs["results"]
-    # Garak's verdicts on the scans' traces in MLflow, in the chain: the ledger passes through unchanged.
+        if benchmark_id:
+            scans.append(step.outputs["results"])  # the ledger stays the one before the scans
+        else:
+            ledger = step.outputs["results"]
+    assert len(scans) == 2, "trace-verdicts joins exactly the bare and the guarded scan"
+    # Garak's verdicts on the scans' traces in MLflow, where the two scans' ledgers join.
     traced = _small(_named(trace_verdicts, "trace-verdicts")(
         evalhub_url=EVALHUB_URL, mlflow_url=MLFLOW_URL, experiment=EXPERIMENT,
-        run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER, previous=ledger,
+        run_name=dsl.PIPELINE_JOB_NAME_PLACEHOLDER, run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER, previous=scans[0],
+        guarded_results=scans[1],
     ))
     ledger = traced.outputs["results"]
     judged = _small(_named(verdict, "verdict")(
