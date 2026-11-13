@@ -253,8 +253,9 @@ spec:
               # self-check rails ("Enabling AI safety with Guardrails" 1.2.5), so a candidate never checks itself. The
               # candidate-model-client token may get every InferenceService here, so one key serves both. The external
               # Nemotron judge was dropped on 2026-10-23: under a scan, NVIDIA's hosted API answered 429 and the guardrail
-              # timed out; until 2026-11-12 the candidate checked itself. max_tokens 512 matches what Garak asks of the
-              # bare model; the candidate serves enable_thinking false by default. The guard model reasons before it
+              # timed out; until 2026-11-12 the candidate checked itself. max_tokens 2048 matches what Garak asks of
+              # the bare model (pipeline INTENTS_TARGET_PARAMETERS; 512 until 2026-11-13, when 122 of 158 guarded
+              # replies that passed the input rail were cut off); the candidate serves enable_thinking false by default. The guard model reasons before it
               # answers (the reasoning parser keeps that out of the content the rail reads), so its budget covers the
               # reasoning. A check cut off by max_tokens returns an empty answer, which the rail counts as a block, so
               # truncation adds refusals the guard never judged; at 1024 tokens 3.6% of checks were cut off (run 9ct98,
@@ -271,7 +272,7 @@ spec:
                   api_key_env_var: CANDIDATE_API_KEY
                   parameters:
                     base_url: https://${CANDIDATE}-predictor.${NS}.svc.cluster.local:8443/v1
-                    max_tokens: 512
+                    max_tokens: 2048
                 - type: self_check_input
                   engine: openai
                   model: ${GUARD}
