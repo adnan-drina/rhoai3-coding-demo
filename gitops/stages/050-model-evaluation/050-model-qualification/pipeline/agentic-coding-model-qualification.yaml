@@ -12,13 +12,13 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v29
+  name: agentic-coding-model-qualification-v30
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
     the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v29
+  displayName: agentic-coding-model-qualification v30
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -45,6 +45,8 @@ spec:
               parameterType: BOOLEAN
             guardrails:
               parameterType: STRING
+            intents_data:
+              parameterType: STRING
             intents_garak_config:
               parameterType: STRING
             intents_target_parameters:
@@ -65,8 +67,6 @@ spec:
               parameterType: STRING
             run_name:
               parameterType: STRING
-            sdg_num_samples:
-              parameterType: NUMBER_INTEGER
             skip:
               parameterType: BOOLEAN
             timeout_seconds:
@@ -102,6 +102,8 @@ spec:
               parameterType: BOOLEAN
             guardrails:
               parameterType: STRING
+            intents_data:
+              parameterType: STRING
             intents_garak_config:
               parameterType: STRING
             intents_target_parameters:
@@ -122,8 +124,6 @@ spec:
               parameterType: STRING
             run_name:
               parameterType: STRING
-            sdg_num_samples:
-              parameterType: NUMBER_INTEGER
             skip:
               parameterType: BOOLEAN
             timeout_seconds:
@@ -159,6 +159,8 @@ spec:
               parameterType: BOOLEAN
             guardrails:
               parameterType: STRING
+            intents_data:
+              parameterType: STRING
             intents_garak_config:
               parameterType: STRING
             intents_target_parameters:
@@ -179,8 +181,6 @@ spec:
               parameterType: STRING
             run_name:
               parameterType: STRING
-            sdg_num_samples:
-              parameterType: NUMBER_INTEGER
             skip:
               parameterType: BOOLEAN
             timeout_seconds:
@@ -240,6 +240,8 @@ spec:
               parameterType: BOOLEAN
             guardrails:
               parameterType: STRING
+            intents_data:
+              parameterType: STRING
             intents_garak_config:
               parameterType: STRING
             intents_target_parameters:
@@ -260,8 +262,6 @@ spec:
               parameterType: STRING
             run_name:
               parameterType: STRING
-            sdg_num_samples:
-              parameterType: NUMBER_INTEGER
             skip:
               parameterType: BOOLEAN
             timeout_seconds:
@@ -297,6 +297,8 @@ spec:
               parameterType: BOOLEAN
             guardrails:
               parameterType: STRING
+            intents_data:
+              parameterType: STRING
             intents_garak_config:
               parameterType: STRING
             intents_target_parameters:
@@ -317,8 +319,6 @@ spec:
               parameterType: STRING
             run_name:
               parameterType: STRING
-            sdg_num_samples:
-              parameterType: NUMBER_INTEGER
             skip:
               parameterType: BOOLEAN
             timeout_seconds:
@@ -354,6 +354,8 @@ spec:
               parameterType: BOOLEAN
             guardrails:
               parameterType: STRING
+            intents_data:
+              parameterType: STRING
             intents_garak_config:
               parameterType: STRING
             intents_target_parameters:
@@ -374,8 +376,6 @@ spec:
               parameterType: STRING
             run_name:
               parameterType: STRING
-            sdg_num_samples:
-              parameterType: NUMBER_INTEGER
             skip:
               parameterType: BOOLEAN
             timeout_seconds:
@@ -495,7 +495,7 @@ spec:
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
-              \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
+              \ str,\n    intents_target_parameters: str,\n    intents_data: str,\n\
               \    intents_threshold: float,\n    run_name: str,\n    run_id: str,\n\
               \    timeout_seconds: int,\n    skip: bool,\n    guarded: bool,\n  \
               \  guardrails: str,\n    trace_port: int,\n    previous: dsl.Input[dsl.Dataset],\n\
@@ -572,42 +572,49 @@ spec:
               \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
               \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
               \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            parameters = {\"timeout\"\
-              : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
-              \                 \"intents_models\": {\"judge\": {\"name\": judge_model},\
-              \ \"evaluator\": {\"name\": judge_model},\n                        \
-              \                     \"attacker\": {\"name\": risk_model},\n      \
-              \                                       \"sdg\": {\"name\": f\"hosted_vllm/{risk_model}\"\
-              }},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
+              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
+              \            parameters = {\"timeout\": intents_timeout,\n         \
+              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              , \"intents_format\": \"csv\",\n                          \"intents_models\"\
+              : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
+              \                                             \"attacker\": {\"name\"\
+              : risk_model}},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
               \                          \"model_parameters\": json.loads(intents_target_parameters)}\n\
-              \        pass_criteria = dict(bdef[\"pass_criteria\"])\n        if benchmark_id\
-              \ == \"intents\":\n            pass_criteria[\"threshold\"] = intents_threshold\n\
-              \        body[\"benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\"\
-              : \"garak\", \"parameters\": parameters,\n                         \
-              \      \"primary_score\": bdef[\"primary_score\"], \"pass_criteria\"\
-              : pass_criteria}]\n    path = os.path.join(work, \"eval.yaml\")\n  \
-              \  with open(path, \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n\
-              \    print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    if trace_url:\n        try:\n            req = urllib.request.Request(f\"\
-              {trace_url}/_trace/context\", method=\"DELETE\")\n            with urllib.request.urlopen(req,\
-              \ context=ssl.create_default_context(\n                    cafile=\"\
-              /etc/pki/ca-trust/source/anchors/service-ca.crt\"), timeout=15) as r:\n\
-              \                r.read()\n        except Exception as exc:\n      \
-              \      print(f\"model-trace-proxy context not cleared: {exc}\")\n  \
-              \  for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
-              \        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \            body[\"experiment\"][\"tags\"].append(\n              \
+              \  {\"key\": \"prompt_set\", \"value\": f\"s3://{data['bucket']}/{data['key']}/{data['file']}\"\
+              })\n            body[\"experiment\"][\"tags\"].append({\"key\": \"prompt_set_sha256\"\
+              , \"value\": data[\"sha256\"]})\n        pass_criteria = dict(bdef[\"\
+              pass_criteria\"])\n        if benchmark_id == \"intents\":\n       \
+              \     pass_criteria[\"threshold\"] = intents_threshold\n        body[\"\
+              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
+              \ \"parameters\": parameters,\n                               \"primary_score\"\
+              : bdef[\"primary_score\"], \"pass_criteria\": pass_criteria}]\n    \
+              \    if benchmark_id == \"intents\":\n            body[\"benchmarks\"\
+              ][0][\"test_data_ref\"] = {\"s3\": {\"bucket\": data[\"bucket\"], \"\
+              key\": data[\"key\"],\n                                            \
+              \                 \"secret_ref\": data[\"secret\"]}}\n    path = os.path.join(work,\
+              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
+              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
+              \ blocks until the job is terminal and exits 1 when the job fails (before\
+              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
               \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
               \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
               \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
@@ -665,7 +672,7 @@ spec:
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
-              \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
+              \ str,\n    intents_target_parameters: str,\n    intents_data: str,\n\
               \    intents_threshold: float,\n    run_name: str,\n    run_id: str,\n\
               \    timeout_seconds: int,\n    skip: bool,\n    guarded: bool,\n  \
               \  guardrails: str,\n    trace_port: int,\n    previous: dsl.Input[dsl.Dataset],\n\
@@ -742,42 +749,49 @@ spec:
               \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
               \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
               \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            parameters = {\"timeout\"\
-              : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
-              \                 \"intents_models\": {\"judge\": {\"name\": judge_model},\
-              \ \"evaluator\": {\"name\": judge_model},\n                        \
-              \                     \"attacker\": {\"name\": risk_model},\n      \
-              \                                       \"sdg\": {\"name\": f\"hosted_vllm/{risk_model}\"\
-              }},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
+              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
+              \            parameters = {\"timeout\": intents_timeout,\n         \
+              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              , \"intents_format\": \"csv\",\n                          \"intents_models\"\
+              : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
+              \                                             \"attacker\": {\"name\"\
+              : risk_model}},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
               \                          \"model_parameters\": json.loads(intents_target_parameters)}\n\
-              \        pass_criteria = dict(bdef[\"pass_criteria\"])\n        if benchmark_id\
-              \ == \"intents\":\n            pass_criteria[\"threshold\"] = intents_threshold\n\
-              \        body[\"benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\"\
-              : \"garak\", \"parameters\": parameters,\n                         \
-              \      \"primary_score\": bdef[\"primary_score\"], \"pass_criteria\"\
-              : pass_criteria}]\n    path = os.path.join(work, \"eval.yaml\")\n  \
-              \  with open(path, \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n\
-              \    print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    if trace_url:\n        try:\n            req = urllib.request.Request(f\"\
-              {trace_url}/_trace/context\", method=\"DELETE\")\n            with urllib.request.urlopen(req,\
-              \ context=ssl.create_default_context(\n                    cafile=\"\
-              /etc/pki/ca-trust/source/anchors/service-ca.crt\"), timeout=15) as r:\n\
-              \                r.read()\n        except Exception as exc:\n      \
-              \      print(f\"model-trace-proxy context not cleared: {exc}\")\n  \
-              \  for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
-              \        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \            body[\"experiment\"][\"tags\"].append(\n              \
+              \  {\"key\": \"prompt_set\", \"value\": f\"s3://{data['bucket']}/{data['key']}/{data['file']}\"\
+              })\n            body[\"experiment\"][\"tags\"].append({\"key\": \"prompt_set_sha256\"\
+              , \"value\": data[\"sha256\"]})\n        pass_criteria = dict(bdef[\"\
+              pass_criteria\"])\n        if benchmark_id == \"intents\":\n       \
+              \     pass_criteria[\"threshold\"] = intents_threshold\n        body[\"\
+              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
+              \ \"parameters\": parameters,\n                               \"primary_score\"\
+              : bdef[\"primary_score\"], \"pass_criteria\": pass_criteria}]\n    \
+              \    if benchmark_id == \"intents\":\n            body[\"benchmarks\"\
+              ][0][\"test_data_ref\"] = {\"s3\": {\"bucket\": data[\"bucket\"], \"\
+              key\": data[\"key\"],\n                                            \
+              \                 \"secret_ref\": data[\"secret\"]}}\n    path = os.path.join(work,\
+              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
+              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
+              \ blocks until the job is terminal and exits 1 when the job fails (before\
+              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
               \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
               \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
               \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
@@ -835,7 +849,7 @@ spec:
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
-              \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
+              \ str,\n    intents_target_parameters: str,\n    intents_data: str,\n\
               \    intents_threshold: float,\n    run_name: str,\n    run_id: str,\n\
               \    timeout_seconds: int,\n    skip: bool,\n    guarded: bool,\n  \
               \  guardrails: str,\n    trace_port: int,\n    previous: dsl.Input[dsl.Dataset],\n\
@@ -912,42 +926,49 @@ spec:
               \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
               \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
               \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            parameters = {\"timeout\"\
-              : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
-              \                 \"intents_models\": {\"judge\": {\"name\": judge_model},\
-              \ \"evaluator\": {\"name\": judge_model},\n                        \
-              \                     \"attacker\": {\"name\": risk_model},\n      \
-              \                                       \"sdg\": {\"name\": f\"hosted_vllm/{risk_model}\"\
-              }},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
+              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
+              \            parameters = {\"timeout\": intents_timeout,\n         \
+              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              , \"intents_format\": \"csv\",\n                          \"intents_models\"\
+              : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
+              \                                             \"attacker\": {\"name\"\
+              : risk_model}},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
               \                          \"model_parameters\": json.loads(intents_target_parameters)}\n\
-              \        pass_criteria = dict(bdef[\"pass_criteria\"])\n        if benchmark_id\
-              \ == \"intents\":\n            pass_criteria[\"threshold\"] = intents_threshold\n\
-              \        body[\"benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\"\
-              : \"garak\", \"parameters\": parameters,\n                         \
-              \      \"primary_score\": bdef[\"primary_score\"], \"pass_criteria\"\
-              : pass_criteria}]\n    path = os.path.join(work, \"eval.yaml\")\n  \
-              \  with open(path, \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n\
-              \    print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    if trace_url:\n        try:\n            req = urllib.request.Request(f\"\
-              {trace_url}/_trace/context\", method=\"DELETE\")\n            with urllib.request.urlopen(req,\
-              \ context=ssl.create_default_context(\n                    cafile=\"\
-              /etc/pki/ca-trust/source/anchors/service-ca.crt\"), timeout=15) as r:\n\
-              \                r.read()\n        except Exception as exc:\n      \
-              \      print(f\"model-trace-proxy context not cleared: {exc}\")\n  \
-              \  for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
-              \        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \            body[\"experiment\"][\"tags\"].append(\n              \
+              \  {\"key\": \"prompt_set\", \"value\": f\"s3://{data['bucket']}/{data['key']}/{data['file']}\"\
+              })\n            body[\"experiment\"][\"tags\"].append({\"key\": \"prompt_set_sha256\"\
+              , \"value\": data[\"sha256\"]})\n        pass_criteria = dict(bdef[\"\
+              pass_criteria\"])\n        if benchmark_id == \"intents\":\n       \
+              \     pass_criteria[\"threshold\"] = intents_threshold\n        body[\"\
+              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
+              \ \"parameters\": parameters,\n                               \"primary_score\"\
+              : bdef[\"primary_score\"], \"pass_criteria\": pass_criteria}]\n    \
+              \    if benchmark_id == \"intents\":\n            body[\"benchmarks\"\
+              ][0][\"test_data_ref\"] = {\"s3\": {\"bucket\": data[\"bucket\"], \"\
+              key\": data[\"key\"],\n                                            \
+              \                 \"secret_ref\": data[\"secret\"]}}\n    path = os.path.join(work,\
+              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
+              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
+              \ blocks until the job is terminal and exits 1 when the job fails (before\
+              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
               \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
               \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
               \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
@@ -1106,7 +1127,7 @@ spec:
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
-              \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
+              \ str,\n    intents_target_parameters: str,\n    intents_data: str,\n\
               \    intents_threshold: float,\n    run_name: str,\n    run_id: str,\n\
               \    timeout_seconds: int,\n    skip: bool,\n    guarded: bool,\n  \
               \  guardrails: str,\n    trace_port: int,\n    previous: dsl.Input[dsl.Dataset],\n\
@@ -1183,42 +1204,49 @@ spec:
               \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
               \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
               \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            parameters = {\"timeout\"\
-              : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
-              \                 \"intents_models\": {\"judge\": {\"name\": judge_model},\
-              \ \"evaluator\": {\"name\": judge_model},\n                        \
-              \                     \"attacker\": {\"name\": risk_model},\n      \
-              \                                       \"sdg\": {\"name\": f\"hosted_vllm/{risk_model}\"\
-              }},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
+              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
+              \            parameters = {\"timeout\": intents_timeout,\n         \
+              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              , \"intents_format\": \"csv\",\n                          \"intents_models\"\
+              : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
+              \                                             \"attacker\": {\"name\"\
+              : risk_model}},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
               \                          \"model_parameters\": json.loads(intents_target_parameters)}\n\
-              \        pass_criteria = dict(bdef[\"pass_criteria\"])\n        if benchmark_id\
-              \ == \"intents\":\n            pass_criteria[\"threshold\"] = intents_threshold\n\
-              \        body[\"benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\"\
-              : \"garak\", \"parameters\": parameters,\n                         \
-              \      \"primary_score\": bdef[\"primary_score\"], \"pass_criteria\"\
-              : pass_criteria}]\n    path = os.path.join(work, \"eval.yaml\")\n  \
-              \  with open(path, \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n\
-              \    print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    if trace_url:\n        try:\n            req = urllib.request.Request(f\"\
-              {trace_url}/_trace/context\", method=\"DELETE\")\n            with urllib.request.urlopen(req,\
-              \ context=ssl.create_default_context(\n                    cafile=\"\
-              /etc/pki/ca-trust/source/anchors/service-ca.crt\"), timeout=15) as r:\n\
-              \                r.read()\n        except Exception as exc:\n      \
-              \      print(f\"model-trace-proxy context not cleared: {exc}\")\n  \
-              \  for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
-              \        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \            body[\"experiment\"][\"tags\"].append(\n              \
+              \  {\"key\": \"prompt_set\", \"value\": f\"s3://{data['bucket']}/{data['key']}/{data['file']}\"\
+              })\n            body[\"experiment\"][\"tags\"].append({\"key\": \"prompt_set_sha256\"\
+              , \"value\": data[\"sha256\"]})\n        pass_criteria = dict(bdef[\"\
+              pass_criteria\"])\n        if benchmark_id == \"intents\":\n       \
+              \     pass_criteria[\"threshold\"] = intents_threshold\n        body[\"\
+              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
+              \ \"parameters\": parameters,\n                               \"primary_score\"\
+              : bdef[\"primary_score\"], \"pass_criteria\": pass_criteria}]\n    \
+              \    if benchmark_id == \"intents\":\n            body[\"benchmarks\"\
+              ][0][\"test_data_ref\"] = {\"s3\": {\"bucket\": data[\"bucket\"], \"\
+              key\": data[\"key\"],\n                                            \
+              \                 \"secret_ref\": data[\"secret\"]}}\n    path = os.path.join(work,\
+              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
+              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
+              \ blocks until the job is terminal and exits 1 when the job fails (before\
+              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
               \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
               \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
               \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
@@ -1276,7 +1304,7 @@ spec:
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
-              \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
+              \ str,\n    intents_target_parameters: str,\n    intents_data: str,\n\
               \    intents_threshold: float,\n    run_name: str,\n    run_id: str,\n\
               \    timeout_seconds: int,\n    skip: bool,\n    guarded: bool,\n  \
               \  guardrails: str,\n    trace_port: int,\n    previous: dsl.Input[dsl.Dataset],\n\
@@ -1353,42 +1381,49 @@ spec:
               \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
               \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
               \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            parameters = {\"timeout\"\
-              : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
-              \                 \"intents_models\": {\"judge\": {\"name\": judge_model},\
-              \ \"evaluator\": {\"name\": judge_model},\n                        \
-              \                     \"attacker\": {\"name\": risk_model},\n      \
-              \                                       \"sdg\": {\"name\": f\"hosted_vllm/{risk_model}\"\
-              }},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
+              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
+              \            parameters = {\"timeout\": intents_timeout,\n         \
+              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              , \"intents_format\": \"csv\",\n                          \"intents_models\"\
+              : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
+              \                                             \"attacker\": {\"name\"\
+              : risk_model}},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
               \                          \"model_parameters\": json.loads(intents_target_parameters)}\n\
-              \        pass_criteria = dict(bdef[\"pass_criteria\"])\n        if benchmark_id\
-              \ == \"intents\":\n            pass_criteria[\"threshold\"] = intents_threshold\n\
-              \        body[\"benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\"\
-              : \"garak\", \"parameters\": parameters,\n                         \
-              \      \"primary_score\": bdef[\"primary_score\"], \"pass_criteria\"\
-              : pass_criteria}]\n    path = os.path.join(work, \"eval.yaml\")\n  \
-              \  with open(path, \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n\
-              \    print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    if trace_url:\n        try:\n            req = urllib.request.Request(f\"\
-              {trace_url}/_trace/context\", method=\"DELETE\")\n            with urllib.request.urlopen(req,\
-              \ context=ssl.create_default_context(\n                    cafile=\"\
-              /etc/pki/ca-trust/source/anchors/service-ca.crt\"), timeout=15) as r:\n\
-              \                r.read()\n        except Exception as exc:\n      \
-              \      print(f\"model-trace-proxy context not cleared: {exc}\")\n  \
-              \  for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
-              \        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \            body[\"experiment\"][\"tags\"].append(\n              \
+              \  {\"key\": \"prompt_set\", \"value\": f\"s3://{data['bucket']}/{data['key']}/{data['file']}\"\
+              })\n            body[\"experiment\"][\"tags\"].append({\"key\": \"prompt_set_sha256\"\
+              , \"value\": data[\"sha256\"]})\n        pass_criteria = dict(bdef[\"\
+              pass_criteria\"])\n        if benchmark_id == \"intents\":\n       \
+              \     pass_criteria[\"threshold\"] = intents_threshold\n        body[\"\
+              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
+              \ \"parameters\": parameters,\n                               \"primary_score\"\
+              : bdef[\"primary_score\"], \"pass_criteria\": pass_criteria}]\n    \
+              \    if benchmark_id == \"intents\":\n            body[\"benchmarks\"\
+              ][0][\"test_data_ref\"] = {\"s3\": {\"bucket\": data[\"bucket\"], \"\
+              key\": data[\"key\"],\n                                            \
+              \                 \"secret_ref\": data[\"secret\"]}}\n    path = os.path.join(work,\
+              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
+              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
+              \ blocks until the job is terminal and exits 1 when the job fails (before\
+              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
               \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
               \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
               \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
@@ -1446,7 +1481,7 @@ spec:
               \ str,\n    benchmark_id: str,\n    auth_secret: str,\n    experiment:\
               \ str,\n    evalhub_url: str,\n    queue: str,\n    risk_model: str,\n\
               \    judge_model: str,\n    intents_timeout: int,\n    intents_garak_config:\
-              \ str,\n    intents_target_parameters: str,\n    sdg_num_samples: int,\n\
+              \ str,\n    intents_target_parameters: str,\n    intents_data: str,\n\
               \    intents_threshold: float,\n    run_name: str,\n    run_id: str,\n\
               \    timeout_seconds: int,\n    skip: bool,\n    guarded: bool,\n  \
               \  guardrails: str,\n    trace_port: int,\n    previous: dsl.Input[dsl.Dataset],\n\
@@ -1523,42 +1558,49 @@ spec:
               \ = client.get(\"/api/v1/evaluations/providers/garak\").raise_for_status().json()\n\
               \        bdef = next(b for b in catalog.get(\"benchmarks\") or [] if\
               \ b.get(\"id\") == benchmark_id)\n        parameters = {}\n        if\
-              \ benchmark_id == \"intents\":\n            parameters = {\"timeout\"\
-              : intents_timeout, \"sdg_num_samples\": sdg_num_samples,\n         \
-              \                 \"intents_models\": {\"judge\": {\"name\": judge_model},\
-              \ \"evaluator\": {\"name\": judge_model},\n                        \
-              \                     \"attacker\": {\"name\": risk_model},\n      \
-              \                                       \"sdg\": {\"name\": f\"hosted_vllm/{risk_model}\"\
-              }},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
+              \ benchmark_id == \"intents\":\n            data = json.loads(intents_data)\n\
+              \            parameters = {\"timeout\": intents_timeout,\n         \
+              \                 \"intents_s3_key\": f\"/test_data/{data['file']}\"\
+              , \"intents_format\": \"csv\",\n                          \"intents_models\"\
+              : {\"judge\": {\"name\": judge_model}, \"evaluator\": {\"name\": judge_model},\n\
+              \                                             \"attacker\": {\"name\"\
+              : risk_model}},\n                          \"garak_config\": json.loads(intents_garak_config),\n\
               \                          \"model_parameters\": json.loads(intents_target_parameters)}\n\
-              \        pass_criteria = dict(bdef[\"pass_criteria\"])\n        if benchmark_id\
-              \ == \"intents\":\n            pass_criteria[\"threshold\"] = intents_threshold\n\
-              \        body[\"benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\"\
-              : \"garak\", \"parameters\": parameters,\n                         \
-              \      \"primary_score\": bdef[\"primary_score\"], \"pass_criteria\"\
-              : pass_criteria}]\n    path = os.path.join(work, \"eval.yaml\")\n  \
-              \  with open(path, \"w\") as f:\n        yaml.safe_dump(body, f, sort_keys=False)\n\
-              \    print(open(path).read())\n\n    # --wait blocks until the job is\
-              \ terminal and exits 1 when the job fails (before printing it), so the\
-              \ job id\n    # comes from the \"Job submitted\" line.\n    run = subprocess.run([\"\
-              evalhub\", \"eval\", \"run\", \"--config\", path, \"--wait\", \"--timeout\"\
-              , str(timeout_seconds),\n                          \"--format\", \"\
-              json\"], env=env, capture_output=True, text=True)\n    print(run.stderr,\
-              \ end=\"\")\n    submitted = re.search(r\"Job submitted: (\\S+)\", run.stderr)\n\
-              \    if not submitted:\n        raise RuntimeError(f\"evalhub eval run\
-              \ submitted no job (exit {run.returncode})\")\n    job_id = submitted.group(1)\n\
-              \    # The SDK job model (1.0.5) drops the gate results (results.test,\
-              \ benchmarks[].test), so the job is read from\n    # the documented\
-              \ jobs endpoint.\n    job = client.get(f\"/api/v1/evaluations/jobs/{job_id}\"\
-              ).raise_for_status().json()\n    state = (job.get(\"status\") or {}).get(\"\
-              state\")\n    if trace_url:\n        try:\n            req = urllib.request.Request(f\"\
-              {trace_url}/_trace/context\", method=\"DELETE\")\n            with urllib.request.urlopen(req,\
-              \ context=ssl.create_default_context(\n                    cafile=\"\
-              /etc/pki/ca-trust/source/anchors/service-ca.crt\"), timeout=15) as r:\n\
-              \                r.read()\n        except Exception as exc:\n      \
-              \      print(f\"model-trace-proxy context not cleared: {exc}\")\n  \
-              \  for b in (job.get(\"results\") or {}).get(\"benchmarks\") or []:\n\
-              \        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
+              \            body[\"experiment\"][\"tags\"].append(\n              \
+              \  {\"key\": \"prompt_set\", \"value\": f\"s3://{data['bucket']}/{data['key']}/{data['file']}\"\
+              })\n            body[\"experiment\"][\"tags\"].append({\"key\": \"prompt_set_sha256\"\
+              , \"value\": data[\"sha256\"]})\n        pass_criteria = dict(bdef[\"\
+              pass_criteria\"])\n        if benchmark_id == \"intents\":\n       \
+              \     pass_criteria[\"threshold\"] = intents_threshold\n        body[\"\
+              benchmarks\"] = [{\"id\": benchmark_id, \"provider_id\": \"garak\",\
+              \ \"parameters\": parameters,\n                               \"primary_score\"\
+              : bdef[\"primary_score\"], \"pass_criteria\": pass_criteria}]\n    \
+              \    if benchmark_id == \"intents\":\n            body[\"benchmarks\"\
+              ][0][\"test_data_ref\"] = {\"s3\": {\"bucket\": data[\"bucket\"], \"\
+              key\": data[\"key\"],\n                                            \
+              \                 \"secret_ref\": data[\"secret\"]}}\n    path = os.path.join(work,\
+              \ \"eval.yaml\")\n    with open(path, \"w\") as f:\n        yaml.safe_dump(body,\
+              \ f, sort_keys=False)\n    print(open(path).read())\n\n    # --wait\
+              \ blocks until the job is terminal and exits 1 when the job fails (before\
+              \ printing it), so the job id\n    # comes from the \"Job submitted\"\
+              \ line.\n    run = subprocess.run([\"evalhub\", \"eval\", \"run\", \"\
+              --config\", path, \"--wait\", \"--timeout\", str(timeout_seconds),\n\
+              \                          \"--format\", \"json\"], env=env, capture_output=True,\
+              \ text=True)\n    print(run.stderr, end=\"\")\n    submitted = re.search(r\"\
+              Job submitted: (\\S+)\", run.stderr)\n    if not submitted:\n      \
+              \  raise RuntimeError(f\"evalhub eval run submitted no job (exit {run.returncode})\"\
+              )\n    job_id = submitted.group(1)\n    # The SDK job model (1.0.5)\
+              \ drops the gate results (results.test, benchmarks[].test), so the job\
+              \ is read from\n    # the documented jobs endpoint.\n    job = client.get(f\"\
+              /api/v1/evaluations/jobs/{job_id}\").raise_for_status().json()\n   \
+              \ state = (job.get(\"status\") or {}).get(\"state\")\n    if trace_url:\n\
+              \        try:\n            req = urllib.request.Request(f\"{trace_url}/_trace/context\"\
+              , method=\"DELETE\")\n            with urllib.request.urlopen(req, context=ssl.create_default_context(\n\
+              \                    cafile=\"/etc/pki/ca-trust/source/anchors/service-ca.crt\"\
+              ), timeout=15) as r:\n                r.read()\n        except Exception\
+              \ as exc:\n            print(f\"model-trace-proxy context not cleared:\
+              \ {exc}\")\n    for b in (job.get(\"results\") or {}).get(\"benchmarks\"\
+              ) or []:\n        t = b.get(\"test\") or {}\n        print(f\"  {b.get('id')}:\
               \ {t.get('primary_score_metric')} {t.get('primary_score')} \"\n    \
               \          f\"(threshold {t.get('threshold')}) {'pass' if t.get('pass')\
               \ else 'fail'}\")\n    print(f\"{what}: job {job_id} {state} (exit {run.returncode})\"\
@@ -2161,6 +2203,11 @@ spec:
                     constant: false
                 guardrails:
                   componentInputParameter: guardrails
+                intents_data:
+                  runtimeValue:
+                    constant: '{"bucket": "evaluation-models-workbench", "key": "garak-intents/v1",
+                      "file": "intents.csv", "secret": "evalhub-s3-test-data", "sha256":
+                      "0d296d24a52218271d5de2674353ca5a24d9185bfafc633e67d211ef7e0d3219"}'
                 intents_garak_config:
                   runtimeValue:
                     constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
@@ -2193,9 +2240,6 @@ spec:
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
-                sdg_num_samples:
-                  runtimeValue:
-                    constant: 5.0
                 skip:
                   componentInputParameter: skip_latency
                 timeout_seconds:
@@ -2239,6 +2283,11 @@ spec:
                     constant: false
                 guardrails:
                   componentInputParameter: guardrails
+                intents_data:
+                  runtimeValue:
+                    constant: '{"bucket": "evaluation-models-workbench", "key": "garak-intents/v1",
+                      "file": "intents.csv", "secret": "evalhub-s3-test-data", "sha256":
+                      "0d296d24a52218271d5de2674353ca5a24d9185bfafc633e67d211ef7e0d3219"}'
                 intents_garak_config:
                   runtimeValue:
                     constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
@@ -2271,9 +2320,6 @@ spec:
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
-                sdg_num_samples:
-                  runtimeValue:
-                    constant: 5.0
                 skip:
                   componentInputParameter: skip_livecodebench
                 timeout_seconds:
@@ -2317,6 +2363,11 @@ spec:
                     constant: false
                 guardrails:
                   componentInputParameter: guardrails
+                intents_data:
+                  runtimeValue:
+                    constant: '{"bucket": "evaluation-models-workbench", "key": "garak-intents/v1",
+                      "file": "intents.csv", "secret": "evalhub-s3-test-data", "sha256":
+                      "0d296d24a52218271d5de2674353ca5a24d9185bfafc633e67d211ef7e0d3219"}'
                 intents_garak_config:
                   runtimeValue:
                     constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
@@ -2349,9 +2400,6 @@ spec:
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
-                sdg_num_samples:
-                  runtimeValue:
-                    constant: 5.0
                 skip:
                   componentInputParameter: skip_python_tasks
                 timeout_seconds:
@@ -2419,6 +2467,11 @@ spec:
                     constant: false
                 guardrails:
                   componentInputParameter: guardrails
+                intents_data:
+                  runtimeValue:
+                    constant: '{"bucket": "evaluation-models-workbench", "key": "garak-intents/v1",
+                      "file": "intents.csv", "secret": "evalhub-s3-test-data", "sha256":
+                      "0d296d24a52218271d5de2674353ca5a24d9185bfafc633e67d211ef7e0d3219"}'
                 intents_garak_config:
                   runtimeValue:
                     constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
@@ -2451,9 +2504,6 @@ spec:
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
-                sdg_num_samples:
-                  runtimeValue:
-                    constant: 5.0
                 skip:
                   componentInputParameter: skip_risk_assessment
                 timeout_seconds:
@@ -2497,6 +2547,11 @@ spec:
                     constant: true
                 guardrails:
                   componentInputParameter: guardrails
+                intents_data:
+                  runtimeValue:
+                    constant: '{"bucket": "evaluation-models-workbench", "key": "garak-intents/v1",
+                      "file": "intents.csv", "secret": "evalhub-s3-test-data", "sha256":
+                      "0d296d24a52218271d5de2674353ca5a24d9185bfafc633e67d211ef7e0d3219"}'
                 intents_garak_config:
                   runtimeValue:
                     constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
@@ -2529,9 +2584,6 @@ spec:
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
-                sdg_num_samples:
-                  runtimeValue:
-                    constant: 5.0
                 skip:
                   componentInputParameter: skip_risk_assessment
                 timeout_seconds:
@@ -2575,6 +2627,11 @@ spec:
                     constant: false
                 guardrails:
                   componentInputParameter: guardrails
+                intents_data:
+                  runtimeValue:
+                    constant: '{"bucket": "evaluation-models-workbench", "key": "garak-intents/v1",
+                      "file": "intents.csv", "secret": "evalhub-s3-test-data", "sha256":
+                      "0d296d24a52218271d5de2674353ca5a24d9185bfafc633e67d211ef7e0d3219"}'
                 intents_garak_config:
                   runtimeValue:
                     constant: '{"run": {"langproviders": null}, "plugins": {"probe_spec":
@@ -2607,9 +2664,6 @@ spec:
                 run_name:
                   runtimeValue:
                     constant: '{{$.pipeline_job_name}}'
-                sdg_num_samples:
-                  runtimeValue:
-                    constant: 5.0
                 skip:
                   componentInputParameter: skip_throughput
                 timeout_seconds:
