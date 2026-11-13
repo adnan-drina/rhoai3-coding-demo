@@ -27,7 +27,7 @@ For CI, save the body that `submit.sh --dry-run` prints and pass it to the EvalH
 | File | Benchmarks | Verified |
 |---|---|---|
 | `avid-security.parameters.json` | `avid_security`, `quick`, `owasp_llm_top10`, `cwe` and the other probe-based scans | 2026-10-22 on the former INT4 candidate: `avid_security`, 67 per-probe results in EvalHub; `quick` |
-| `intents.parameters.json` | `intents` (generated attack prompts, judge model, attack strategies) | 2026-10-22 on the former INT4 candidate: with GPT-6 Luna as judge and SDG model, through the SPO strategies. Mistral Small 4 as judge (2026-11-13): not yet run |
+| `intents.parameters.json` | `intents` (generated attack prompts, judge model, attack strategies) | 2026-10-22 on the former INT4 candidate: with GPT-6 Luna as judge and SDG model, through the SPO strategies. 2026-11-13 on `qwen3-8-27b-nvfp4` with Mistral Small 4 as judge and TAP evaluator, gemma as SDG and TAP attacker: the pipeline ran in 83 minutes (IntentProbe, four SPO strategies, TAP at depth 1), 2,899 attempts, attack success rate 12.82%; EvalHub then failed the job on a 502 from S3 while downloading the results, so read them from the pipeline run |
 
 Both name the pipeline server's project and S3 connection and the candidate's in-cluster address:
 
