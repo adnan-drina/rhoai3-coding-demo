@@ -3,7 +3,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - agentic-coding-model-qualification.yaml
-# The PipelineVersion webhook requires its Pipeline to exist, so versions sync one wave later.
+# The PipelineVersion webhook requires its Pipeline to exist, so versions sync one wave later. A PipelineVersion syncs
+# server-side: from v42 its compiled spec (each evaluation step embeds the evaluate source) is over the 256 KiB a
+# client-side apply's last-applied-configuration annotation may hold ("metadata.annotations: Too long").
 patches:
   - target:
       kind: Pipeline
@@ -20,4 +22,4 @@ patches:
         path: /metadata/annotations
         value:
           argocd.argoproj.io/sync-wave: "17"
-          argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+          argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,ServerSideApply=true
