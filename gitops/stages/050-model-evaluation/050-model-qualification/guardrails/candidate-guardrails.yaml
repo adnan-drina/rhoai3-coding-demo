@@ -5,8 +5,8 @@
 # so it is not placed in front of the coding agents.
 #
 # Files: ConfigMap candidate-guardrails-config, which the provision-evalhub-model-auth hook writes: config.yaml (it
-# names the guarded model) plus prompts.yml and rails.co copied from candidate-guardrails-prompts below. The guarded
-# model is named by the demo.rhoai.io/guarded-model annotation and read by that hook.
+# names the guarded model) plus prompts.yml, rails.co and config.py copied from candidate-guardrails-prompts below.
+# The guarded model is named by the demo.rhoai.io/guarded-model annotation and read by that hook.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -61,6 +61,59 @@ data:
           Answer:
   rails.co: |
     # Built-in self-check rails only (self check input, self check output).
+  # Tracing adapter (NeMo's custom-adapter extension: a config.py beside config.yaml registers it, and the tracing
+  # block names it). NeMo 0.24 puts the caller's message on the guardrails.request span only as the UserMessage
+  # event, which the dialog creates after the input rails pass, so a request the input rail blocks has no user
+  # message in its trace and MLflow shows no Request. The message is always in the interaction's first ContextUpdate
+  # event (user_message); this adapter adds it as the missing guardrails.user_message event and then exports the
+  # spans exactly as the built-in OpenTelemetry adapter does. It adds content only when content capture is on (the
+  # request span's other events carry content).
+  config.py: |
+    from nemoguardrails.tracing.adapters.opentelemetry import OpenTelemetryAdapter
+    from nemoguardrails.tracing.adapters.registry import register_log_adapter
+    from nemoguardrails.tracing.spans import SpanEvent
+
+    USER_MESSAGE = "guardrails.user_message"
+
+
+    def _caller_message(events):
+        for event in events:
+            data = event.get("data") if event.get("type") == "ContextUpdate" else None
+            if isinstance(data, dict) and isinstance(data.get("user_message"), str):
+                return data["user_message"]
+        return None
+
+
+    def add_user_message(interaction_log):
+        for span in interaction_log.trace:
+            if span.name != "guardrails.request":
+                continue
+            events = getattr(span, "events", None) or []
+            if any(e.name == USER_MESSAGE for e in events):
+                return
+            if not any(e.body and "content" in e.body for e in events):
+                return  # content capture off
+            message = _caller_message(interaction_log.events)
+            if message is not None:
+                events.insert(0, SpanEvent(name=USER_MESSAGE, timestamp=span.start_time,
+                                           body={"content": message, "type": "UserMessage"}))
+                span.events = events
+            return
+
+
+    class OpenTelemetryWithInputAdapter(OpenTelemetryAdapter):
+        name = "OpenTelemetryWithInput"
+
+        def transform(self, interaction_log):
+            add_user_message(interaction_log)
+            super().transform(interaction_log)
+
+        async def transform_async(self, interaction_log):
+            add_user_message(interaction_log)
+            await super().transform_async(interaction_log)
+
+
+    register_log_adapter(OpenTelemetryWithInputAdapter)
 ---
 # The cluster's trusted CA bundle (public CAs), injected by the network operator. The
 # hook combines it with the service CA into candidate-guardrails-ca.

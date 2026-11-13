@@ -297,21 +297,24 @@ spec:
                     - self check output
               # Guardrail spans with the messages ("Enabling AI safety with Guardrails" 1.2.8): input rail, LLM call and
               # output rail per request, exported through the OTEL_* variables on candidate-guardrails. Content capture
-              # stays on: the scans send synthetic attacks and Evaluated Models is admin-only.
+              # stays on: the scans send synthetic attacks and Evaluated Models is admin-only. OpenTelemetryWithInput is
+              # the built-in OpenTelemetry adapter plus the caller's message on requests the input rail blocks
+              # (config.py in candidate-guardrails-prompts).
               tracing:
                 enabled: true
                 span_format: opentelemetry
                 enable_content_capture: true
                 adapters:
-                  - name: OpenTelemetry
+                  - name: OpenTelemetryWithInput
               YAML
               # One ConfigMap per configuration: the 3.5.2 operator mounts every ConfigMap of a configuration at the same
-              # path, so the prompts and rails from Git (candidate-guardrails-prompts) are copied in beside config.yaml.
+              # path, so the prompts, rails and tracing adapter from Git (candidate-guardrails-prompts) are copied in
+              # beside config.yaml.
               mkdir -p "${WORK}/rails"
               oc extract configmap/candidate-guardrails-prompts -n "${NS}" --to="${WORK}/rails" --confirm >/dev/null
               oc create configmap candidate-guardrails-config -n "${NS}" --from-file=config.yaml="${WORK}/config.yaml" \
                 --from-file="${WORK}/rails/prompts.yml" --from-file="${WORK}/rails/rails.co" \
-                --dry-run=client -o yaml | oc apply -f -
+                --from-file="${WORK}/rails/config.py" --dry-run=client -o yaml | oc apply -f -
               # CA bundle for the guardrail: the service CA (candidate predictor) and the cluster's trusted CAs.
               for i in $(seq 1 30); do
                 oc get configmap candidate-model-service-ca -n "${NS}" -o jsonpath='{.data.service-ca\.crt}' > "${WORK}/service-ca.crt" 2>/dev/null

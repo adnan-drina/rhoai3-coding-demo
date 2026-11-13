@@ -107,7 +107,8 @@ model_trace_args() {
 }
 check "Model servers trace to the platform collector without detailed traces" model_trace_args yes
 # Guardrail traces (Guardrails guide 1.2.8): the OTEL endpoint on the CR starts the server instrumented, and the
-# config.yaml tracing block (written by the provision-evalhub-model-auth hook) adds rail spans with the messages.
+# config.yaml tracing block (written by the provision-evalhub-model-auth hook) adds rail spans with the messages,
+# through the OpenTelemetryWithInput adapter so blocked attacks keep the caller's message.
 # guardrail-trace-collector forwards them to the platform Tempo and to MLflow experiment models-onboarding.
 guardrail_tracing() {
   read_json nemoguardrails candidate-guardrails -n "$TENANT" | jq -e \
@@ -116,9 +117,14 @@ guardrail_tracing() {
     { echo "candidate-guardrails does not export to guardrail-trace-collector"; return; }
   read_json deployment guardrail-trace-collector-collector -n "$TENANT" | jq -e '(.status.availableReplicas // 0) >= 1' >/dev/null ||
     { echo "guardrail-trace-collector is not available"; return; }
-  read_json configmap candidate-guardrails-config -n "$TENANT" | jq -r '.data["config.yaml"] // ""' |
-    awk '/^tracing:/{t=1;next} /^[^ ]/{t=0} t&&/enabled: true/{e=1} t&&/enable_content_capture: true/{c=1} END{exit !(e&&c)}' &&
-    echo yes || echo "candidate-guardrails-config has no tracing block with content capture"
+  local cfg
+  cfg="$(read_json configmap candidate-guardrails-config -n "$TENANT")"
+  jq -r '.data["config.yaml"] // ""' <<<"$cfg" |
+    awk '/^tracing:/{t=1;next} /^[^ ]/{t=0} t&&/enabled: true/{e=1} t&&/enable_content_capture: true/{c=1} t&&/name: OpenTelemetryWithInput$/{a=1} END{exit !(e&&c&&a)}' ||
+    { echo "candidate-guardrails-config has no tracing block with content capture and adapter OpenTelemetryWithInput"; return; }
+  # The adapter that gives blocked attacks their Request (config.py from candidate-guardrails-prompts).
+  jq -r '.data["config.py"] // ""' <<<"$cfg" | grep -q 'register_log_adapter(OpenTelemetryWithInputAdapter)' &&
+    echo yes || echo "candidate-guardrails-config has no config.py registering OpenTelemetryWithInput"
 }
 check "Guardrail traces rails and messages to Tempo and MLflow models-onboarding" guardrail_tracing yes
 # Models dashboard: evaluated-models-vllm-dashboard is the only source of kserve_vllm:* in the tenant. A second job for
