@@ -12,13 +12,13 @@ spec:
 apiVersion: pipelines.kubeflow.org/v2beta1
 kind: PipelineVersion
 metadata:
-  name: agentic-coding-model-qualification-v36
+  name: agentic-coding-model-qualification-v37
   namespace: evaluated-models
 spec:
   description: Evaluates one candidate model on the agentic coding collections and
     the Garak context-aware vulnerability scan, and records the verdict on its model
     registry version.
-  displayName: agentic-coding-model-qualification v36
+  displayName: agentic-coding-model-qualification v37
   pipelineName: agentic-coding-model-qualification
   pipelineSpec:
     components:
@@ -458,6 +458,8 @@ spec:
                 schemaTitle: system.Dataset
                 schemaVersion: 0.0.1
           parameters:
+            advisory:
+              parameterType: STRUCT
             capability_threshold:
               parameterType: NUMBER_DOUBLE
             checked:
@@ -1088,18 +1090,20 @@ spec:
               \ 'fail') }>{result}</h2>\",\n         \"<ul>\" + \"\".join(f\"<li>{html.escape(r)}</li>\"\
               \ for r in reasons) + \"</ul>\" if reasons\n         else \"<p>Every\
               \ evaluation ran and passed its gate.</p>\",\n         f\"<h3>Capability\
-              \ (weighted 3:2:1, gate {capability_threshold}): {fmt(cap)}</h3>\",\n\
-              \         \"<h3>Completeness: replies cut off by their token cap</h3><p\
-              \ class=note>A reply cut off by its token cap \"\n         \"cannot\
-              \ be scored fairly; an evaluation with more than \"\n         f\"{data.get('cut_off_budget',\
-              \ 0):.0%} of its replies cut off, or none counted, is not valid and\
-              \ its gate is \"\n         \"not judged. Scans count the judged replies\
-              \ that are not the guardrail's refusal.</p><table><tr>\"\n         \"\
-              <th>Evaluation</th><th>Replies</th><th>Cut off</th></tr>\" + \"\".join(\n\
-              \             f\"<tr><td>{html.escape(e)}</td><td>{n}</td><td class={css(None\
-              \ if not n else k / n <= data.get('cut_off_budget', 0))}>\"\n      \
-              \       f\"{pct(k, n)}</td></tr>\" for e, n, k in completeness) + \"\
-              </table>\" if completeness else \"\",\n         f\"<table><tr><th>Evaluation</th><th>Benchmark</th><th>Score</th><th>Gate</th></tr>{body}</table>\"\
+              \ (weighted {':'.join(str(w) for w in (data.get('capability_weights')\
+              \ or {}).values()) or '3:2:1'}\"\n         f\" over {', '.join(data.get('capability_weights')\
+              \ or {}) or 'LiveCodeBench, MBPP, HumanEval'}, gate \"\n         f\"\
+              {capability_threshold}): {fmt(cap)}</h3>\",\n         \"<h3>Completeness:\
+              \ replies cut off by their token cap</h3><p class=note>A reply cut off\
+              \ by its token cap \"\n         \"cannot be scored fairly; an evaluation\
+              \ with more than \"\n         f\"{data.get('cut_off_budget', 0):.0%}\
+              \ of its replies cut off, or none counted, is not valid and its gate\
+              \ is \"\n         \"not judged. Scans count the judged replies that\
+              \ are not the guardrail's refusal.</p><table><tr>\"\n         \"<th>Evaluation</th><th>Replies</th><th>Cut\
+              \ off</th></tr>\" + \"\".join(\n             f\"<tr><td>{html.escape(e)}</td><td>{n}</td><td\
+              \ class={css(None if not n else k / n <= data.get('cut_off_budget',\
+              \ 0))}>\"\n             f\"{pct(k, n)}</td></tr>\" for e, n, k in completeness)\
+              \ + \"</table>\" if completeness else \"\",\n         f\"<table><tr><th>Evaluation</th><th>Benchmark</th><th>Score</th><th>Gate</th></tr>{body}</table>\"\
               ,\n         \"<h3>Model quality by role</h3><p class=note>Each check\
               \ counts the traces where a model did its job: the \"\n         \"candidate\
               \ answered completely (candidate_complete), relevantly (candidate_relevant,\
@@ -2265,10 +2269,10 @@ spec:
             - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing\
               \ import *\n\ndef verdict(\n    model_version_id: str,\n    evalhub_url:\
               \ str,\n    registry_url: str,\n    capability_threshold: float,\n \
-              \   unanswered_budget: float,\n    cut_off_budget: float,\n    checked:\
-              \ list,\n    mlflow_url: str,\n    evaluations: list,\n    run_name:\
-              \ str,\n    run_id: str,\n    results: dsl.Input[dsl.Dataset],\n) ->\
-              \ str:\n    \"\"\"Judge the jobs in this run's results ledger against\
+              \   unanswered_budget: float,\n    cut_off_budget: float,\n    advisory:\
+              \ dict,\n    checked: list,\n    mlflow_url: str,\n    evaluations:\
+              \ list,\n    run_name: str,\n    run_id: str,\n    results: dsl.Input[dsl.Dataset],\n\
+              ) -> str:\n    \"\"\"Judge the jobs in this run's results ledger against\
               \ their gates and record the verdict: QUALIFIED when every\n    evaluation\
               \ ran, is valid and passed; NOT QUALIFIED when a valid evaluation missed\
               \ its gate or did not run;\n    INCONCLUSIVE when nothing failed but\
@@ -2279,8 +2283,10 @@ spec:
               \ or too many Garak attempts\n    went unanswered (unanswered_budget).\
               \ The ledger's per-role quality counts are recorded and reported\n \
               \   (evalhub.<benchmark>.quality.<check>), not gated. A result that\
-              \ is not valid never\n    counts as a fail or a pass. Record the\n \
-              \   evidence on the model version: per benchmark evalhub.<benchmark>.*\
+              \ is not valid never\n    counts as a fail or a pass. An advisory evaluation\
+              \ (advisory: evaluation to benchmark) is reported only: not\n    gated,\
+              \ never inconclusive, not required, and outside the capability score.\
+              \ Record the\n    evidence on the model version: per benchmark evalhub.<benchmark>.*\
               \ (job, results page, verdict, MLflow run) and\n    evalhub.qualification.*\
               \ (verdict and this pipeline run). References, not copies; the\n   \
               \ version's other properties are kept, as stages/050-model-evaluation/evaluation/record.sh\
@@ -2371,28 +2377,30 @@ spec:
               \ total, replies, compliant, blocked\n\n    rows, reasons, capability,\
               \ unanswered_rows, replies_by_job = [], [], [], [], {}\n    weights\
               \ = {\"lcb:codegeneration_v6\": 3, \"inspect/mbpp\": 2, \"inspect/humaneval\"\
-              : 1}\n    # With guardrails, the guarded risk assessment is the gate\
-              \ and the bare model's result is reported only; without\n    # guardrails\
+              : 1}\n    weights = {b: w for b, w in weights.items() if b not in advisory.values()}\n\
+              \    # With guardrails, the guarded risk assessment is the gate and\
+              \ the bare model's result is reported only; without\n    # guardrails\
               \ (empty run parameter) the bare model's result is the gate.\n    informative\
               \ = {e[:-len(\" (guarded)\")] for e in evaluations if e.endswith(\"\
               \ (guarded)\")\n                   and not (entries.get(e) or {}).get(\"\
-              no_guardrails\")}\n    def guard_cut(entry):\n        ok, n = ((entry.get(\"\
-              quality\") or {}).get(\"guard_complete\") or [0, 0])\n        return\
-              \ bool(n) and (n - ok) / n > cut_off_budget\n\n    # Per-role quality\
-              \ counts trace-quality wrote into the ledger: [evaluation, check, passed,\
-              \ checked].\n    quality_rows = [[e, name, counts[0], counts[1]] for\
-              \ e in evaluations\n                    for name, counts in sorted(((entries.get(e)\
-              \ or {}).get(\"quality\") or {}).items())]\n    # Evaluations whose\
-              \ result is not valid, and why; their gates are not judged.\n    invalid,\
-              \ void, completeness_rows = [], set(), []\n    for evaluation in evaluations:\n\
-              \        entry = entries.get(evaluation) or {}\n        if evaluation\
-              \ not in checked or not entry.get(\"job_id\"):\n            continue\n\
-              \        c = entry.get(\"completeness\") or {}\n        n, k = c.get(\"\
-              replies\") or 0, c.get(\"cut_off\") or 0\n        completeness_rows.append([evaluation,\
-              \ n, k])\n        if not n:\n            problem = \"replies not checked\
-              \ for completeness (trace-quality counted none)\"\n        elif k /\
-              \ n > cut_off_budget:\n            problem = (f\"{k} of {n} replies\
-              \ ({k / n:.0%}) cut off by their token cap, over the {cut_off_budget:.0%}\
+              no_guardrails\")} | set(advisory)\n    def guard_cut(entry):\n     \
+              \   ok, n = ((entry.get(\"quality\") or {}).get(\"guard_complete\")\
+              \ or [0, 0])\n        return bool(n) and (n - ok) / n > cut_off_budget\n\
+              \n    # Per-role quality counts trace-quality wrote into the ledger:\
+              \ [evaluation, check, passed, checked].\n    quality_rows = [[e, name,\
+              \ counts[0], counts[1]] for e in evaluations\n                    for\
+              \ name, counts in sorted(((entries.get(e) or {}).get(\"quality\") or\
+              \ {}).items())]\n    # Evaluations whose result is not valid, and why;\
+              \ their gates are not judged.\n    invalid, void, completeness_rows\
+              \ = [], set(), []\n    for evaluation in evaluations:\n        entry\
+              \ = entries.get(evaluation) or {}\n        if evaluation not in checked\
+              \ or not entry.get(\"job_id\"):\n            continue\n        c = entry.get(\"\
+              completeness\") or {}\n        n, k = c.get(\"replies\") or 0, c.get(\"\
+              cut_off\") or 0\n        completeness_rows.append([evaluation, n, k])\n\
+              \        if not n:\n            problem = \"replies not checked for\
+              \ completeness (trace-quality counted none)\"\n        elif k / n >\
+              \ cut_off_budget:\n            problem = (f\"{k} of {n} replies ({k\
+              \ / n:.0%}) cut off by their token cap, over the {cut_off_budget:.0%}\
               \ \"\n                       \"budget; raise the evaluation's token\
               \ cap\")\n        elif guard_cut(entry):\n            g_ok, g_n = (entry.get(\"\
               quality\") or {})[\"guard_complete\"]\n            problem = (f\"{g_n\
@@ -2408,6 +2416,8 @@ spec:
               \        if (entries.get(evaluation) or {}).get(\"no_guardrails\"):\n\
               \            rows.append([evaluation, \"-\", None, None, \"no guardrails\"\
               , None])\n            continue\n        job = by_evaluation.get(evaluation)\n\
+              \        if job is None and evaluation in advisory:\n            rows.append([evaluation,\
+              \ \"-\", None, None, \"not run (advisory)\", None])\n            continue\n\
               \        if job is None:\n            reasons.append(f\"{evaluation}:\
               \ not run in this pipeline run\")\n            rows.append([evaluation,\
               \ \"-\", None, None, \"not run\", None])\n            continue\n   \
@@ -2446,26 +2456,28 @@ spec:
               threshold\")\n            rows.append([evaluation, b[\"id\"], value,\
               \ None if evaluation in void else passed,\n                        \
               \ note + (\" (not valid)\" if evaluation in void else \"\")\n      \
-              \                   + (\" (reported)\" if evaluation in informative\
-              \ else \"\"), threshold])\n            if passed is not True and evaluation\
-              \ not in informative and evaluation not in void:\n                reasons.append(f\"\
-              {evaluation}/{b['id']}: misses its gate ({note} {value}, threshold {threshold})\"\
-              )\n            if b[\"id\"] in weights:\n                capability.append((weights[b[\"\
+              \                   + (\" (advisory)\" if evaluation in advisory else\
+              \ \" (reported)\" if evaluation in informative\n                   \
+              \         else \"\"), threshold])\n            if passed is not True\
+              \ and evaluation not in informative and evaluation not in void:\n  \
+              \              reasons.append(f\"{evaluation}/{b['id']}: misses its\
+              \ gate ({note} {value}, threshold {threshold})\")\n            if b[\"\
+              id\"] in weights and evaluation not in advisory:\n                capability.append((weights[b[\"\
               id\"]], value, evaluation))\n    voided = sorted({e for _, _, e in capability\
               \ if e in void})\n    cap = (sum(w * v for w, v, _ in capability) /\
               \ sum(w for w, _, _ in capability)\n           if len(capability) ==\
               \ len(weights) and not voided\n           and all(isinstance(v, (int,\
               \ float)) for _, v, _ in capability) else None)\n    if voided:\n  \
               \      invalid.append(f\"capability score not computed: {', '.join(voided)}\
-              \ not valid\")\n    elif cap is None:\n        reasons.append(\"no complete\
-              \ capability result (LiveCodeBench, MBPP and HumanEval)\")\n    elif\
-              \ cap < capability_threshold:\n        reasons.append(f\"capability\
-              \ score {cap:.3f} misses its gate {capability_threshold}\")\n    # A\
-              \ failed gate of a valid evaluation decides; results that are not valid\
-              \ make the run inconclusive otherwise.\n    result = \"NOT QUALIFIED\"\
-              \ if reasons else \"INCONCLUSIVE\" if invalid else \"QUALIFIED\"\n \
-              \   reasons = reasons + invalid\n    print(result)\n    for r in reasons:\n\
-              \        print(f\"  - {r}\")\n\n    # Record on the model registry version.\n\
+              \ not valid\")\n    elif cap is None:\n        reasons.append(f\"no\
+              \ complete capability result ({', '.join(weights)})\")\n    elif cap\
+              \ < capability_threshold:\n        reasons.append(f\"capability score\
+              \ {cap:.3f} misses its gate {capability_threshold}\")\n    # A failed\
+              \ gate of a valid evaluation decides; results that are not valid make\
+              \ the run inconclusive otherwise.\n    result = \"NOT QUALIFIED\" if\
+              \ reasons else \"INCONCLUSIVE\" if invalid else \"QUALIFIED\"\n    reasons\
+              \ = reasons + invalid\n    print(result)\n    for r in reasons:\n  \
+              \      print(f\"  - {r}\")\n\n    # Record on the model registry version.\n\
               \    dashboard_url = call(f\"https://kubernetes.default.svc/api/v1/namespaces/{tenant}/configmaps/qualification-endpoints\"\
               ,\n                         context=kube_ctx)[\"data\"][\"dashboard_url\"\
               ]\n    completed = [j for j in jobs if (j.get(\"status\") or {}).get(\"\
@@ -2514,13 +2526,15 @@ spec:
               \                if e == evaluation:\n                    props[k +\
               \ f\"quality.{name}\"] = s(f\"{passed_n} of {total_n}\")\n         \
               \   props[k + \"valid\"] = s(\"false\" if evaluation in void else \"\
-              true\")\n            props[k + \"mlflow_experiment\"] = s((job.get(\"\
-              experiment\") or {}).get(\"name\", \"\"))\n            if r.get(\"mlflow_run_id\"\
-              ):\n                props[k + \"mlflow_run_id\"] = s(r[\"mlflow_run_id\"\
-              ])\n            props[k + \"recorded_at\"] = s(now)\n    props[\"evalhub.qualification.verdict\"\
-              ] = s(result)\n    props[\"evalhub.qualification.pipeline_run\"] = s(run_name)\n\
-              \    props[\"evalhub.qualification.pipeline_run_url\"] = s(\n      \
-              \  f\"{dashboard_url}/develop-train/pipelines/runs/{tenant}/runs/{run_id}\"\
+              true\")\n            props[k + \"advisory\"] = s(\"true\" if evaluation\
+              \ in advisory else \"false\")\n            props[k + \"mlflow_experiment\"\
+              ] = s((job.get(\"experiment\") or {}).get(\"name\", \"\"))\n       \
+              \     if r.get(\"mlflow_run_id\"):\n                props[k + \"mlflow_run_id\"\
+              ] = s(r[\"mlflow_run_id\"])\n            props[k + \"recorded_at\"]\
+              \ = s(now)\n    props[\"evalhub.qualification.verdict\"] = s(result)\n\
+              \    props[\"evalhub.qualification.pipeline_run\"] = s(run_name)\n \
+              \   props[\"evalhub.qualification.pipeline_run_url\"] = s(\n       \
+              \ f\"{dashboard_url}/develop-train/pipelines/runs/{tenant}/runs/{run_id}\"\
               )\n    props[\"evalhub.qualification.recorded_at\"] = s(now)\n    updated\
               \ = call(f\"{registry_url}/model_versions/{model_version_id}\", \"PATCH\"\
               , {\"customProperties\": props})\n    count = len([k for k in updated.get(\"\
@@ -2531,7 +2545,7 @@ spec:
               : result, \"reasons\": reasons, \"capability\": cap, \"rows\": rows,\n\
               \                       \"unanswered\": unanswered_rows, \"completeness\"\
               : completeness_rows,\n                       \"cut_off_budget\": cut_off_budget,\
-              \ \"quality\": quality_rows})\n\n"
+              \ \"quality\": quality_rows, \"capability_weights\": weights})\n\n"
             image: registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9@sha256:3756f9891a27c2581201fd6696457c9b98ffefd80c88b900740f76e2bf970429
             resources:
               cpuLimit: 0.5
@@ -2651,7 +2665,7 @@ spec:
                     constant: ''
                 collection_id:
                   runtimeValue:
-                    constant: agentic-coding-livecodebench-v4
+                    constant: agentic-coding-livecodebench-v5
                 evalhub_url:
                   runtimeValue:
                     constant: https://evalhub.evalhub.svc.cluster.local:8443
@@ -3102,7 +3116,7 @@ spec:
                 traced:
                   runtimeValue:
                     constant:
-                      agentic-coding-livecodebench-v4: livecodebench
+                      agentic-coding-livecodebench-v5: livecodebench
                       agentic-coding-python-tasks-v1: python-tasks
             taskInfo:
               name: trace-quality
@@ -3142,13 +3156,17 @@ spec:
                     outputArtifactKey: results
                     producerTask: trace-quality
               parameters:
+                advisory:
+                  runtimeValue:
+                    constant:
+                      agentic-coding-livecodebench-v5: lcb:codegeneration_v6
                 capability_threshold:
                   runtimeValue:
                     constant: 0.5
                 checked:
                   runtimeValue:
                     constant:
-                    - agentic-coding-livecodebench-v4
+                    - agentic-coding-livecodebench-v5
                     - agentic-coding-python-tasks-v1
                     - garak/intents
                     - garak/intents (guarded)
@@ -3163,7 +3181,7 @@ spec:
                     constant:
                     - agentic-coding-latency-v1
                     - agentic-coding-throughput-v2
-                    - agentic-coding-livecodebench-v4
+                    - agentic-coding-livecodebench-v5
                     - agentic-coding-python-tasks-v1
                     - garak/intents
                     - garak/intents (guarded)
