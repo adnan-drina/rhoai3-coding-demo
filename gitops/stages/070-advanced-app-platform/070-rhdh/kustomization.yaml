@@ -63,6 +63,8 @@ configMapGenerator:
   - templates__app-migration__skeleton__run-budget.json=templates/app-migration/skeleton/run-budget.json
   - templates__app-migration__template.yaml=templates/app-migration/template.yaml
   - templates__migrate-with-mta__skeleton__.code-workspace=templates/migrate-with-mta/skeleton/.code-workspace
+  - templates__migrate-with-mta__skeleton__.konveyor__profiles__quarkus-profile__profile.yaml=templates/migrate-with-mta/skeleton/.konveyor/profiles/quarkus-profile/profile.yaml
+  - templates__migrate-with-mta__skeleton__.vscode__.gitignore=templates/migrate-with-mta/skeleton/.vscode/.gitignore
   - templates__migrate-with-mta__skeleton__Containerfile=templates/migrate-with-mta/skeleton/Containerfile
   - templates__migrate-with-mta__skeleton__catalog-info.yaml=templates/migrate-with-mta/skeleton/catalog-info.yaml
   - templates__migrate-with-mta__skeleton__devfile.yaml=templates/migrate-with-mta/skeleton/devfile.yaml

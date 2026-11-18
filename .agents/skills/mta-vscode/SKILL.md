@@ -51,7 +51,7 @@ extension pack, in its own image and template:
 | The 8.3.3 analyzer RPC binary baked to `/opt/mta-analyzer-rpc/mta-analyzer-rpc` and set as `mta-core.analyzerPath` | same image; skeleton `.code-workspace` | [Analyzer RPC binary][rpc] |
 | Settings live in the project's committed `.code-workspace` (single-project devfile, so Che Code opens `/projects/<project>/.code-workspace`); no postStart patch | `070-rhdh/templates/migrate-with-mta/skeleton/.code-workspace` | [IDE settings][ide] |
 | The project repository is the only, writable folder (MTA Core writes `.vscode/` under the first folder) | `migrate-with-mta/template.yaml` | [Install the extension][install] |
-| `HUB_SOLUTION_SERVER_ENABLED=false`, `HUB_PROFILE_SYNC_ENABLED=false`; the repository's `.konveyor/profiles/quarkus-profile` is the analysis profile | skeleton `devfile.yaml` | [Profile settings][profiles], [Hub OIDC][oidc] |
+| `HUB_SOLUTION_SERVER_ENABLED=false`, `HUB_PROFILE_SYNC_ENABLED=false`; the template adds `.konveyor/profiles/quarkus-profile` (Quarkus, Quarkus 3, Jakarta EE) to every project; the source is any Spring Boot 2.x Git URL | skeleton `devfile.yaml` | [Profile settings][profiles], [Hub OIDC][oidc] |
 
 ## Procedure
 

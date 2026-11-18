@@ -1,0 +1,9 @@
+metadata:
+  name: "quarkus-profile"
+  id: "quarkus-profile"
+  readonly: false
+  source: local
+spec:
+  labelSelector: "(konveyor.io/target=quarkus || konveyor.io/target=quarkus3 || konveyor.io/target=jakarta-ee) || (discovery)"
+  customRules: []
+  useDefaultRules: true

@@ -60,12 +60,13 @@ else
 fi
 
 log_step "Developer Hub template"
-CATALOG=$(oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\.yaml}' 2>/dev/null || echo "")
+# Location targets only: the catalog's comments name template paths too.
+TARGETS=$(oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\.yaml}' 2>/dev/null | grep -E '^ *target: ' || true)
 record "migrate-with-mta template Location in the runtime catalog" \
-  "$( [[ "$CATALOG" == *templates/migrate-with-mta/template.yaml* ]] && echo pass || echo "Location missing")"
+  "$(grep -q '/templates/migrate-with-mta/template\.yaml' <<<"$TARGETS" && echo pass || echo "Location missing")"
 record_warn "Stage 130 app-migration template parked" \
-  "$( [[ "$CATALOG" != *templates/app-migration/template.yaml* ]] && echo pass || echo "still listed")"
-check "legacy source mirror rhoai-workloads/coolstore-cart-legacy listed by GitLab discovery config" \
+  "$(grep -q '/templates/app-migration/template\.yaml' <<<"$TARGETS" && echo "still listed" || echo pass)"
+check "demo source rhoai-workloads/coolstore-cart-legacy listed by the GitLab mirror bootstrap" \
   "grep -c \"'coolstore-cart-legacy'\" '$REPO_ROOT/gitops/stages/070-advanced-app-platform/070-gitlab/bootstrap-scm.py'" \
   "1"
 
@@ -82,6 +83,10 @@ if [[ -n "$PUBLISHED" ]]; then
 fi
 record "DEFAULT_EXTENSIONS installs MTA Core and the Java language extension only" \
   "$(grep -qF "value: \"$EXTENSIONS\"" "$DEVFILE" && ! grep -q 'mta-vscode-extension' "$DEVFILE" && echo pass || echo "extension list differs")"
+record "skeleton adds the quarkus-profile analysis profile" \
+  "$(grep -q 'konveyor.io/target=quarkus' "$TEMPLATE_DIR/skeleton/.konveyor/profiles/quarkus-profile/profile.yaml" 2>/dev/null && echo pass || echo missing)"
+record "template takes a Git repository URL and a project name" \
+  "$(sed -n '/^    required:/,/^    properties:/p' "$TEMPLATE_DIR/template.yaml" | grep -E '^    - ' | tr -d ' -' | paste -sd, - | grep -qx 'repoUrl,name' && echo pass || echo "parameters differ")"
 record "workspace settings: Standard Java server, baked analyzer, GenAI, Hub OIDC" \
   "$(jq -e '.settings["java.server.launchMode"] == "Standard"
         and .settings["mta-core.analyzerPath"] == "/opt/mta-analyzer-rpc/mta-analyzer-rpc"

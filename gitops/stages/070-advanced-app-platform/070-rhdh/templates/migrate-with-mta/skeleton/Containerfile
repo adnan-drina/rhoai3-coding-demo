@@ -1,4 +1,4 @@
-# Runtime image for the cart service before and after its migration. The
+# Runtime image for the service before and after its migration. The
 # shared pipeline runs `mvn package` first; this file then takes what it
 # built: a Quarkus fast-jar (target/quarkus-app) once the service is
 # migrated, or the Spring Boot executable jar of the legacy code base.

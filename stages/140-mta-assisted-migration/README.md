@@ -1,14 +1,14 @@
 # Stage 140: Application Migration with MTA
 
-Stage 130 shows a migration run by an autonomous agent harness. This stage shows the same kind of work the way the product documents it: a developer migrates a legacy Spring Boot service to Quarkus in VS Code, with the migration toolkit for applications (MTA) 8.3 extension and Red Hat Developer Lightspeed for MTA, inside an OpenShift Dev Spaces workspace that the platform provisions from a golden-path template.
+Stage 130 shows a migration run by an autonomous agent harness. This stage shows the same kind of work the way the product documents it: a developer migrates a Spring Boot 2.x service to Quarkus in VS Code, with the migration toolkit for applications (MTA) 8.3 extension and Red Hat Developer Lightspeed for MTA, inside an OpenShift Dev Spaces workspace that the platform provisions from a golden-path template.
 
 The message for platform teams: the MTA Hub is the single place that holds the migration rules, the developer's identity and the model access. The developer signs in once; the extension analyzes the code, and Developer Lightspeed proposes fixes through the Hub's LLM proxy to the private model served by Models-as-a-Service. No developer holds a model key.
 
 ## What You'll Do
 
-You will **provision** a migration project from the **Migrate with MTA** template (a writable copy of `coolstore-cart-legacy`, a workspace, a namespace and the delivery pipeline), **open** a workspace whose MTA extensions, analyzer and settings are already in place, **sign in** to the MTA Hub with the platform identity, **analyze** the service against the Quarkus migration profile the repository carries, **resolve** the issues with Developer Lightspeed in agent mode, **run** the migrated service in Quarkus dev mode and **push** it through the same pipeline that built the legacy code.
+You will **provision** a migration project from the **Migrate Spring Boot to Quarkus with MTA** template (a writable copy of any Spring Boot 2.x repository, a workspace, a namespace and the delivery pipeline), **open** a workspace whose MTA extensions, analyzer and settings are already in place, **sign in** to the MTA Hub with the platform identity, **analyze** the service against the Quarkus migration profile the template adds, **resolve** the issues with Developer Lightspeed in agent mode, **run** the migrated service in Quarkus dev mode and **push** it through the same pipeline that built the legacy code.
 
-The service is `coolstore-cart`: a Spring Boot 2.7 shopping cart on Java 11 with `javax` APIs, Jersey resources under `/api` and an OpenFeign client for the catalog service.
+The template takes any Spring Boot 2.x service built with Maven. This walkthrough uses the Coolstore cart, [`coolstore-cart-legacy`](https://github.com/adnan-drina/coolstore-cart-legacy): a Spring Boot 2.7 shopping cart on Java 11 with `javax` APIs, Jersey resources under `/api` and an OpenFeign client for the catalog service. The platform GitLab mirrors it as `rhoai-workloads/coolstore-cart-legacy`.
 
 ---
 
@@ -22,25 +22,28 @@ The service is `coolstore-cart`: a Spring Boot 2.7 shopping cart on Java 11 with
 
 ## Step 2: Create your migration project from the template
 
-1. Click the **+** icon in the header and choose the **Migrate with MTA** template.
-2. Application name: `coolstore-cart` (lowercase, hyphens; it becomes the repository, namespace and workspace name).
-3. Click **Review**, then **Create**, and watch the steps run: read the platform endpoints → check the MTA Hub → fetch the legacy cart service → add the workspace and catalog files → publish to GitLab → enroll in the delivery pipeline.
-4. Read the **Next steps** panel.
+1. Click the **+** icon in the header and choose the **Migrate Spring Boot to Quarkus with MTA** template.
+2. **Git repository URL**: the HTTPS URL of the Spring Boot 2.x service, on GitHub or the platform GitLab. For this walkthrough: `https://github.com/adnan-drina/coolstore-cart-legacy.git`, or the `rhoai-workloads/coolstore-cart-legacy` URL of the platform GitLab.
+3. **Project name**: `coolstore-cart` (lowercase, hyphens; it becomes the repository, namespace and workspace name).
+4. Click **Review**, then **Create**, and watch the steps run: read the platform endpoints → check the MTA Hub → copy the Spring Boot service (its default branch) → add the workspace, analysis profile and catalog files → publish to GitLab → enroll in the delivery pipeline.
+5. Read the **Next steps** panel.
 
 **What you should see:** every step green, with **Source repository** and **Open in catalog** links at the bottom.
 
-> **Why a copy:** the legacy repository stays the reference. The template
-> publishes a new repository with the legacy code as its single first
+> **Why a copy:** the source repository stays the reference. The template
+> publishes a new repository with the Spring Boot code as its single first
 > commit, so every change of the migration is a reviewable diff on top of
-> the original.
+> the original. The template adds what every migration project needs: the
+> workspace (`devfile.yaml`, `.code-workspace`), the MTA analysis profile,
+> the catalog entry, a `Containerfile` and the runtime manifests.
 
 ---
 
 ## Step 3: Explore the component and its first build
 
 1. Click **Open in catalog**.
-2. On the Overview page, the **Links** card carries Source Repo, Dev Spaces, SonarQube and MTA Hub for this project. The `demo.rhoai.io/migrated-from` annotation records the legacy repository.
-3. Open the **CI** tab. Once the enrollment request is processed (about two minutes), a seed PipelineRun builds the legacy code as it is: clone → `mvn package` → SonarQube scan → image build and push.
+2. On the Overview page, the **Links** card carries Source Repo, Dev Spaces, SonarQube and MTA Hub for this project. The `demo.rhoai.io/migrated-from` annotation records the source repository.
+3. Open the **CI** tab. Once the enrollment request is processed (about two minutes), a seed PipelineRun builds the Spring Boot code as it is: clone → `mvn package` → SonarQube scan → image build and push.
 
 **What you should see:** the `coolstore-cart-dev` namespace, the `project-coolstore-cart` Argo CD application and the seed PipelineRun. The project's `Containerfile` packages either a Spring Boot jar or a Quarkus fast-jar, so the same pipeline builds the service before and after the migration.
 
@@ -79,11 +82,11 @@ The workspace settings that make this work live in the repository's `.code-works
 
 ## Step 6: Analyze the legacy service
 
-1. In the MTA view, open **Analysis profiles** and select **quarkus-profile**. It ships in the repository under `.konveyor/profiles/quarkus-profile/` and targets Quarkus, Quarkus 3 and Jakarta EE with the default rule sets.
+1. In the MTA view, open **Analysis profiles** and select **quarkus-profile**. The template adds it under `.konveyor/profiles/quarkus-profile/`; it targets Quarkus, Quarkus 3 and Jakarta EE with the default rule sets.
 2. Click **Start** to start the analyzer server.
 3. Click **Run Analysis**.
 
-**What you should see:** the **Analysis Results** view lists the issues by category: Spring Boot starters and annotations to replace, `javax` packages to move to `jakarta`, and the Jersey and OpenFeign usages. Each issue links to the affected lines.
+**What you should see:** the **Analysis Results** view lists the issues by category. For the cart: Spring Boot starters and annotations to replace, `javax` packages to move to `jakarta`, and the Jersey and OpenFeign usages. Each issue links to the affected lines.
 
 ---
 
@@ -111,22 +114,22 @@ The workspace settings that make this work live in the repository's `.code-works
 mvn quarkus:dev -Dquarkus.http.host=0.0.0.0
 ```
 
-2. In a second terminal, call the cart API:
+2. In a second terminal, call the service (for the cart, its cart API):
 
 ```
 curl -s localhost:8080/api/cart/demo
 ```
 
-**What you should see:** Quarkus dev mode starts and answers with a cart document. The legacy behavior is still available with the **run-legacy** command on the original code.
+**What you should see:** Quarkus dev mode starts and the cart answers with a cart document. The **run-legacy** command (`mvn spring-boot:run`) runs the Spring Boot code before its migration.
 
 ---
 
 ## Step 9: Push and let the pipeline build it
 
-1. Commit from the Source Control view (message: `Migrate coolstore-cart to Quarkus with MTA`) and push.
+1. Commit from the Source Control view (message: `Migrate to Quarkus with MTA`) and push.
 2. Watch the **CI** tab: the project's pipeline runs clone → `mvn package` → SonarQube → image build and push, then deploys the new image to `coolstore-cart-dev`.
 
-**What you should see:** a green run for the migrated service, built and deployed by the same pipeline that built the legacy code.
+**What you should see:** a green run for the migrated service, built and deployed by the same pipeline that built the Spring Boot code.
 
 ---
 
@@ -134,7 +137,7 @@ curl -s localhost:8080/api/cart/demo
 
 ### What you proved
 
-- **Self-service migration projects**: repository, workspace, namespace and pipeline from one template, with the legacy code as the reviewable starting point.
+- **Self-service migration projects**: repository, workspace, namespace and pipeline from one template for any Spring Boot 2.x service, with the original code as the reviewable starting point.
 - **A workspace configured by the documentation**: the MTA core extension with the Java language extension, the analyzer baked into the image, and the settings in the repository.
 - **Governed AI assistance**: Developer Lightspeed reached the private model through the MTA Hub with the developer's own identity; no model key left the platform.
 - **The developer decides**: every change was a diff the developer accepted, checked by the analysis and by the pipeline.
@@ -149,7 +152,7 @@ Teardown is an operator action on the platform. Run `stages/070-advanced-app-pla
 |------|---------|
 | [`validate.sh`](validate.sh) | Read-only checks of the MTA Hub, the LLM proxy, the template and the workspace image; `--project NAME` adds the checks of a created workspace |
 | [`workspace-image/`](workspace-image/README.md) | The Stage 140 workspace image: its Dockerfile, the checksummed artifact lock and the build script |
-| [`gitops/.../templates/migrate-with-mta/`](../../gitops/stages/070-advanced-app-platform/070-rhdh/templates/migrate-with-mta/template.yaml) | The Developer Hub template and its skeleton (devfile, `.code-workspace`, catalog entry, Containerfile, runtime manifests) |
+| [`gitops/.../templates/migrate-with-mta/`](../../gitops/stages/070-advanced-app-platform/070-rhdh/templates/migrate-with-mta/template.yaml) | The Developer Hub template and its skeleton (devfile, `.code-workspace`, MTA analysis profile, catalog entry, Containerfile, runtime manifests) |
 
 The template lives in the Stage 070 Developer Hub application, so this stage has no Argo CD application of its own. While Stage 140 is demonstrated, the Stage 130 **app-migration** template is not listed in the catalog; [docs/OPERATIONS.md](../../docs/OPERATIONS.md) describes how to list it again.
 

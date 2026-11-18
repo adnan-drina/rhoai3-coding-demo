@@ -4,9 +4,9 @@ metadata:
   name: ${{ values.name }}
   title: ${{ values.name }}
   description: |
-    Coolstore cart service, copied from the legacy Spring Boot 2.7 code base
-    and migrated to Quarkus with the migration toolkit for applications (MTA)
-    and Developer Lightspeed for MTA, provisioned by the migrate-with-mta
+    Spring Boot 2.x service copied from ${{ values.legacyRepoUrl }} and
+    migrated to Quarkus with the migration toolkit for applications (MTA) and
+    Developer Lightspeed for MTA, provisioned by the migrate-with-mta
     golden-path template.
   annotations:
     gitlab.com/project-slug: ${{ values.gitlabGroup }}/${{ values.name }}
@@ -23,6 +23,7 @@ metadata:
     - golden-path
     - migration
     - mta
+    - spring-boot
     - quarkus
   links:
     - url: ${{ values.gitlabBaseUrl }}/${{ values.gitlabGroup }}/${{ values.name }}

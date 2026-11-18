@@ -3595,4 +3595,4 @@ ls -l /opt/mta-analyzer-rpc/mta-analyzer-rpc
 jq '.settings["mta-core.analyzerPath"]' /projects/*/.code-workspace
 ```
 
-**Recover:** Open the workspace from a project created by the **Migrate with MTA** template (its devfile pins the Stage 140 image). If the image is rebuilt, record the new digest as described in [`workspace-image/README.md`](../stages/140-mta-assisted-migration/workspace-image/README.md).
+**Recover:** Open the workspace from a project created by the **Migrate Spring Boot to Quarkus with MTA** template (its devfile pins the Stage 140 image). If the image is rebuilt, record the new digest as described in [`workspace-image/README.md`](../stages/140-mta-assisted-migration/workspace-image/README.md).
