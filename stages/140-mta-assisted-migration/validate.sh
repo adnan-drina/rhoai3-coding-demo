@@ -111,6 +111,7 @@ if [[ -n "$PROJECT" ]]; then
       [ -x /opt/mta-analyzer-rpc/mta-analyzer-rpc ] && echo "analyzer present"' 2>/dev/null || true)
     record "MTA Core 8.3.3 installed" "$(grep -qx 'ext redhat.mta-core 8.3.3' <<<"$STATE" && echo pass || echo missing)"
     record "MTA Java 8.3.3 installed" "$(grep -qx 'ext redhat.mta-java 8.3.3' <<<"$STATE" && echo pass || echo missing)"
+    record "Language Support for Java 1.58.0 installed" "$(grep -qx 'ext redhat.java 1.58.0' <<<"$STATE" && echo pass || echo "other version")"
     record "no MTA extension pack or other language extensions" \
       "$(grep -Eq '^ext redhat\.(mta-vscode-extension|mta-csharp|mta-go|mta-javascript) ' <<<"$STATE" && echo present || echo pass)"
     record "baked MTA analyzer present" "$(grep -qx 'analyzer present' <<<"$STATE" && echo pass || echo missing)"

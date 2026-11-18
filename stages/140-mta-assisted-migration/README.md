@@ -86,7 +86,7 @@ The workspace settings that make this work live in the repository's `.code-works
 2. Click **Start** to start the analyzer server.
 3. Click **Run Analysis**.
 
-**What you should see:** the **Analysis Results** view lists the issues by category. For the cart: Spring Boot starters and annotations to replace, `javax` packages to move to `jakarta`, and the Jersey and OpenFeign usages. Each issue links to the affected lines.
+**What you should see:** the **Analysis Results** view lists the issues by category; the cart shows about 21 issues with 43 incidents in 7 files: Spring Boot starters and annotations to replace, `javax` packages to move to `jakarta`, and the Jersey and OpenFeign usages. Each issue links to the affected lines.
 
 ---
 

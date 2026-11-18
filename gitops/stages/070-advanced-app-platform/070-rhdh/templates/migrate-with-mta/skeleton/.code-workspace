@@ -1,14 +1,21 @@
 {
-  "folders": [
-    {
-      "name": "${{ values.name }}",
-      "path": "."
-    }
-  ],
-  "settings": {
-    "java.server.launchMode": "Standard",
-    "mta-core.analyzerPath": "/opt/mta-analyzer-rpc/mta-analyzer-rpc",
-    "mta-core.genai.enabled": true,
-    "mta-core.hub.auth.method": "oidc"
-  }
+	"folders": [
+		{
+			"name": "${{ values.name }}",
+			"path": "."
+		}
+	],
+	"settings": {
+		"java.server.launchMode": "Standard",
+		"java.compile.nullAnalysis.mode": "disabled",
+		"redhat.telemetry.enabled": false,
+		"mta-core.analyzerPath": "/opt/mta-analyzer-rpc/mta-analyzer-rpc",
+		"mta-core.genai.enabled": true,
+		"mta-core.hub.auth.method": "oidc"
+	},
+	"extensions": {
+		"recommendations": [
+			"redhat.vscode-openshift-connector"
+		]
+	}
 }
