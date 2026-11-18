@@ -81,13 +81,14 @@ Stages 010–070 construct the three platform layers declaratively — platform 
 
 **Part 2: Climbing the AI development maturity ladder (use-case-driven)**
 
-Stages 110–130 are developer workflow exercises that consume the platform built above. Each enters through the developer portal, uses governed models from MaaS, and exits through the CI pipeline.
+Stages 110–140 are developer workflow exercises that consume the platform built above. Each enters through the developer portal, uses governed models from MaaS, and exits through the CI pipeline.
 
 | Stage | Intent |
 |-------|--------|
 | [110 - AI-Assisted Development](stages/110-ai-assisted-development/README.md) | One-shot AI coding in the IDE — and its limits without project standards |
 | [120 - AI-Agentic Development](stages/120-ai-agentic-development/README.md) | Spec-driven development where agent-executable standards guide every change |
 | [130 - AI-Autonomous Migration](stages/130-ai-autonomous-migration/README.md) | Multi-agent legacy migration with human review gates ([stage architecture](stages/130-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)) |
+| [140 - Application Migration with MTA](stages/140-mta-assisted-migration/README.md) | Developer-led legacy migration in VS Code with the MTA extension and Developer Lightspeed through the MTA Hub |
 
 ## How Red Hat And Open Source Make It Work
 
@@ -135,12 +136,13 @@ Every Argo CD Application tracks `GIT_REPO_BRANCH` from `.env` (default `main`),
 
 Each stage has one `deploy.sh` and one `validate.sh`; stage capabilities are options of those two (for example Stage 020 `deploy.sh --gpus 1` starts a GPU worker, `--gpus 0` parks them all; Stage 060 `deploy.sh --component NAME` deploys one of its five components). See each stage README.
 
-**Validate the developer workflow stages.** Stages 110–130 are workflow-only: their developer tooling and infrastructure (workspaces, pipelines, quality gates, the MTA stack) are supplied by Stage 070; standalone agent hosting belongs to Stage 060. Each keeps a read-only `validate.sh` for its demo prerequisites:
+**Validate the developer workflow stages.** Stages 110–140 are workflow-only: their developer tooling and infrastructure (workspaces, pipelines, quality gates, the MTA stack) are supplied by Stage 070; standalone agent hosting belongs to Stage 060. Each keeps a read-only `validate.sh` for its demo prerequisites:
 
 ```bash
 ./stages/110-ai-assisted-development/validate.sh
 ./stages/120-ai-agentic-development/validate.sh
 ./stages/130-ai-autonomous-migration/validate.sh
+./stages/140-mta-assisted-migration/validate.sh
 ```
 
 For deployment detail, validation strategy, and recovery procedures, see:

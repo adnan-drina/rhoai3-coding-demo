@@ -63,6 +63,7 @@ kustomize build gitops/stages/NNN-name/ | oc apply --dry-run=server -f -
 | 110 | `./stages/110-ai-assisted-development/validate.sh` | Workspace config, Kilo Code, MaaS keys (workflow-only) |
 | 120 | `./stages/120-ai-agentic-development/validate.sh` | Golden-path template, OpenCode readiness (workflow-only) |
 | 130 | `./stages/130-ai-autonomous-migration/validate.sh` | MTA operator, Tackle, Developer Lightspeed (workflow-only) |
+| 140 | `./stages/140-mta-assisted-migration/validate.sh` | MTA Hub LLM proxy, migrate-with-mta template, workspace image (workflow-only) |
 
 ### Phase 3: Cross-stage verification
 

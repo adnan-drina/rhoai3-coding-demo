@@ -1,0 +1,27 @@
+# Runtime image for the cart service before and after its migration. The
+# shared pipeline runs `mvn package` first; this file then takes what it
+# built: a Quarkus fast-jar (target/quarkus-app) once the service is
+# migrated, or the Spring Boot executable jar of the legacy code base.
+# run-java.sh starts the single jar it finds in /deployments.
+# linux/amd64 digest of ubi9/openjdk-21-runtime:1.20 (the same base as the
+# agentic-quarkus-scaffold golden).
+FROM registry.access.redhat.com/ubi9/openjdk-21-runtime:1.20@sha256:aae73fbd455f3e918720d0d11263e15e3a2d307334736a1ec4ffe205fbe9efe7
+
+ENV LANGUAGE='en_US:en'
+
+USER 0
+COPY target/ /tmp/target/
+RUN if [ -f /tmp/target/quarkus-app/quarkus-run.jar ]; then \
+      cp -r /tmp/target/quarkus-app/. /deployments/; \
+    else \
+      set -- /tmp/target/*.jar; \
+      [ "$#" -eq 1 ] && [ -f "$1" ] || { echo "expected one application jar in target/" >&2; exit 1; }; \
+      cp "$1" /deployments/; \
+    fi \
+    && rm -rf /tmp/target \
+    && chown -R 185:0 /deployments
+
+EXPOSE 8080
+USER 185
+
+ENTRYPOINT [ "/opt/jboss/container/java/run/run-java.sh" ]

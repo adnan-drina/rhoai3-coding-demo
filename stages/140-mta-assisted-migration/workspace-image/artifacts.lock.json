@@ -1,0 +1,35 @@
+{
+  "schema": "rhoai3.stage140-workspace/v1",
+  "base": "registry.redhat.io/devspaces/udi-rhel9:3.29.1@sha256:420f18fc64f0d05ccdabafdde946eb1fdff0f1c7e14e1dc4a43fdfb917267bed",
+  "analyzer_rpc": {
+    "version": "8.3.3",
+    "url": "https://developers.redhat.com/content-gateway/rest/browse/pub/mta/8.3.3/mta-8.3.3-analyzer-rpc-linux-amd64.zip",
+    "archive_sha256": "b6e0f8c557387dea57626c7946255db49258baf882f2bfb4c9a9816ad3d090a2",
+    "binary_path": "mta-analyzer-rpc",
+    "binary_sha256": "df723639547cf2714bd0964ab84c82096fbdc1655eecca25586e790504b328b3"
+  },
+  "extensions": [
+    {
+      "name": "mta-core",
+      "id": "redhat.mta-core",
+      "version": "8.3.3",
+      "url": "https://open-vsx.org/api/redhat/mta-core/8.3.3/file/redhat.mta-core-8.3.3.vsix",
+      "sha256": "7e17928a1c95be7f40f98544fadf307792efb9c4f42850a45ac4f92198f2234e"
+    },
+    {
+      "name": "java",
+      "id": "redhat.java",
+      "version": "1.58.0",
+      "url": "https://open-vsx.org/api/redhat/java/linux-x64/1.58.0/file/redhat.java-1.58.0@linux-x64.vsix",
+      "sha256": "45049a2273c78814287fb31a45255e5ce1fdbe34161bb9f1ba8f62a6aa84bdfc"
+    },
+    {
+      "name": "mta-java",
+      "id": "redhat.mta-java",
+      "version": "8.3.3",
+      "url": "https://open-vsx.org/api/redhat/mta-java/8.3.3/file/redhat.mta-java-8.3.3.vsix",
+      "sha256": "a376f06d9589346292be84cba84adae3e3bfda453e862509c1c376a2d0f1641e"
+    }
+  ],
+  "published_image": null
+}

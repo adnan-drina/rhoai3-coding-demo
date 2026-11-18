@@ -1,0 +1,43 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.name }}
+  title: ${{ values.name }}
+  description: |
+    Coolstore cart service, copied from the legacy Spring Boot 2.7 code base
+    and migrated to Quarkus with the migration toolkit for applications (MTA)
+    and Developer Lightspeed for MTA, provisioned by the migrate-with-mta
+    golden-path template.
+  annotations:
+    gitlab.com/project-slug: ${{ values.gitlabGroup }}/${{ values.name }}
+    backstage.io/source-location: url:${{ values.gitlabBaseUrl }}/${{ values.gitlabGroup }}/${{ values.name }}
+    # Migration provenance: the legacy repository this component was copied from.
+    demo.rhoai.io/migrated-from: ${{ values.legacyRepoUrl }}
+    # RHDH OpenShift tabs: PipelineRuns in <name>-dev carry this label
+    # (set by the dispatcher TriggerTemplate); the project stack is the
+    # Argo CD app created by the scaffolded-project bootstrap trigger.
+    backstage.io/kubernetes-id: ${{ values.name }}
+    janus-idp.io/tekton: ${{ values.name }}
+    argocd/app-name: project-${{ values.name }}
+  tags:
+    - golden-path
+    - migration
+    - mta
+    - quarkus
+  links:
+    - url: ${{ values.gitlabBaseUrl }}/${{ values.gitlabGroup }}/${{ values.name }}
+      title: Source Repo
+      icon: gitlab
+    - url: ${{ values.devspacesUrl }}
+      title: Dev Spaces
+      icon: catalog
+    - url: ${{ values.sonarqubeUrl }}
+      title: SonarQube (code quality)
+      icon: dashboard
+    - url: ${{ values.mtaHubUrl }}
+      title: MTA Hub
+      icon: dashboard
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ai-modernization-team

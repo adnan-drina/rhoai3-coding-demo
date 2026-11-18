@@ -21,6 +21,8 @@ Thumbs.db
 !stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.vscode/
 !stages/130-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.vscode/settings.json
 *.code-workspace
+# The Stage 140 template ships the workspace file its Che Code opens.
+!gitops/stages/070-advanced-app-platform/070-rhdh/templates/migrate-with-mta/skeleton/.code-workspace
 
 # Tool-specific agent config (local runtime preferences, not project governance)
 # Shared rules, skills, and hooks live in .agents/ and are tracked in git.

@@ -1,0 +1,117 @@
+schemaVersion: 2.2.2
+metadata:
+  name: ${{ values.name }}
+attributes:
+  # Per-workspace PVC, like the other golden-path workspaces: the per-user
+  # claim is RWO and multi-attaches when a second workspace starts.
+  controller.devfile.io/storage-type: per-workspace
+# The project is this repository (the Dev Spaces link clones it). It is the
+# only folder in the workspace: MTA analyzes the first workspace folder and
+# writes its output under .vscode/ there, so it must be writable. Che Code
+# opens the repository's own .code-workspace (one project), which carries
+# the MTA and Java settings.
+components:
+  - name: development-tooling
+    container:
+      # Stage 140 workspace image: Dev Spaces UDI 3.29.1 with MTA Core 8.3.3,
+      # MTA Java 8.3.3, Language Support for Java 1.58.0 and the MTA 8.3.3
+      # analyzer RPC, checksum-verified at build time
+      # (stages/140-mta-assisted-migration/workspace-image). Public repository.
+      image: quay.io/rhoai3-coding-demo/rhoai3-ws-140@sha256:__STAGE140_IMAGE_DIGEST__
+      mountSources: true
+      # MTA documents 8 GB of RAM for the extension, analyzer and Java
+      # language server together.
+      memoryRequest: 2Gi
+      memoryLimit: 12Gi
+      cpuRequest: 500m
+      cpuLimit: 2500m
+      env:
+        - name: MAVEN_OPTS
+          value: "-Dmaven.repo.local=/home/user/.m2/repository"
+        - name: QUARKUS_ANALYTICS_DISABLED
+          value: "true"
+        # Install MTA Core and the Java language extension from the baked,
+        # checksum-verified files (MTA 8.3: Core plus one language extension).
+        - name: DEFAULT_EXTENSIONS
+          value: "/opt/rhoai3/extensions/mta-core.vsix;/opt/rhoai3/extensions/java.vsix;/opt/rhoai3/extensions/mta-java.vsix"
+        # MTA Hub connection: the authenticated Hub Route resolved by the
+        # platform catalog. Sign-in is OIDC through the Hub (platform realm).
+        # Developer Lightspeed reaches the model through the Hub's LLM proxy.
+        - name: HUB_URL
+          value: "${{ values.mtaHubUrl }}"
+        - name: FORCE_HUB_ENABLED
+          value: "true"
+        - name: HUB_INSECURE
+          value: "false"
+        # The platform runs the LLM proxy without the Solution Server, and
+        # the analysis profile ships in the repository (.konveyor/profiles).
+        - name: HUB_SOLUTION_SERVER_ENABLED
+          value: "false"
+        - name: HUB_PROFILE_SYNC_ENABLED
+          value: "false"
+      volumeMounts:
+        - name: m2
+          path: /home/user/.m2
+      endpoints:
+        - name: app
+          targetPort: 8080
+          exposure: public
+          secure: false
+          protocol: https
+        - name: debug
+          targetPort: 5005
+          exposure: none
+          secure: false
+          protocol: tcp
+  - name: m2
+    volume:
+      size: 2G
+commands:
+  - id: java21-default
+    exec:
+      component: development-tooling
+      commandLine: |
+        # Terminals default to Java 21: the migrated Quarkus service needs
+        # Java 17 or later, and the legacy service builds on 21 as well.
+        if [ -x "${JAVA_HOME_21}/bin/java" ] && ! grep -q "rhoai3-coding-demo: java 21 default" "${HOME}/.bashrc" 2>/dev/null; then
+          printf '\n# rhoai3-coding-demo: java 21 default\nexport JAVA_HOME="%s"\nexport PATH="$JAVA_HOME/bin:$PATH"\n' \
+            "${JAVA_HOME_21}" >> "${HOME}/.bashrc"
+        fi
+  - id: package
+    exec:
+      label: "Package"
+      component: development-tooling
+      workingDir: ${PROJECT_SOURCE}
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn -q -DskipTests package'
+      group:
+        kind: build
+        isDefault: true
+  - id: test
+    exec:
+      label: "1. Run tests"
+      component: development-tooling
+      workingDir: ${PROJECT_SOURCE}
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn -q test'
+      group:
+        kind: test
+        isDefault: true
+  - id: run-legacy
+    exec:
+      label: "2. Run the legacy service (Spring Boot)"
+      component: development-tooling
+      workingDir: ${PROJECT_SOURCE}
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn spring-boot:run'
+      group:
+        kind: run
+  - id: start-dev
+    exec:
+      label: "3. Run the migrated service (Quarkus dev mode)"
+      component: development-tooling
+      workingDir: ${PROJECT_SOURCE}
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn quarkus:dev -Dquarkus.http.host=0.0.0.0'
+      group:
+        kind: run
+        isDefault: true
+events:
+  postStart:
+    - java21-default

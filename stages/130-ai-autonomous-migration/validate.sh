@@ -528,18 +528,28 @@ else
 fi
 
 log_step "Migration Golden Path (app-migration template)"
+# The app-migration Location is parked (out of catalog/all.yaml) while Stage 140 is demonstrated; the template files
+# stay in the bundle. Restoring the Location (docs/OPERATIONS.md, Developer Hub templates) brings both checks back.
+APP_MIGRATION_LISTED=$(oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\.yaml}' 2>/dev/null \
+  | grep -c 'templates/app-migration/template.yaml' || true)
+if [[ "$APP_MIGRATION_LISTED" == 0 ]]; then
+  record_warn "app-migration template Location in the runtime catalog" "parked while Stage 140 is demonstrated"
+else
 check "app-migration template Location in the runtime catalog" \
   "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep -c 'templates/app-migration/template.yaml' || echo 0" \
   "1"
+fi
 check "runtime catalog placeholders are resolved" \
   "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep -cE '__RHOAI3_DEMO_(REVISION|LOCATION_REF)__' || echo 0" \
   "0"
 # B2 (a459cce7): the generator pins every template Location to the ONE revision
 # it published and prunes the rest; the app-migration Location must name the
 # catalog's recorded rhoai3.redhat.com/catalog-revision (Stage 050 checks all).
+if [[ "$APP_MIGRATION_LISTED" != 0 ]]; then
 check "runtime catalog app-migration Location is pinned to the catalog revision" \
   "rev=\$(oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.metadata.annotations.rhoai3\\.redhat\\.com/catalog-revision}'); oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep 'templates/app-migration/template.yaml' | grep -oE '/blob/[0-9a-f]{40}/' | sort -u | grep -cx \"/blob/\$rev/\" || echo 0" \
   "1"
+fi
 # The provisioner reads each run's own request (run-budget.json at the scaffold commit) through the run's reader
 # token; an unreadable request selects no board protocol and dest-init refuses PROTOCOL_UNBOUND at workspace start.
 check "provisioned migration runs read their own request (run control)" \

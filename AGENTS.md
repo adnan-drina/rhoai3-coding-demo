@@ -62,10 +62,11 @@ Current source stages:
 8. 110 AI-Assisted Development (Kilo Code, one-shot coding — workflow stage)
 9. 120 AI-Agentic Development (OpenCode, AGENTS.md, skills — workflow stage)
 10. 130 AI-Autonomous Migration (MTA + multi-agent migration — workflow stage)
+11. 140 Application Migration with MTA (MTA 8.3 VS Code extension + Developer Lightspeed agent mode — workflow stage)
 
 The stages renumbered when stage 040 absorbed the former external-model and MCP stages during the rhoai3-demo foundation import: 070/080/090/100 became 050/060/070/080.
 
-Developer workflow stages after 130 are deferred until each has a concrete implementation plan and validation path.
+Developer workflow stages after 140 are deferred until each has a concrete implementation plan and validation path.
 
 When changing one stage, check whether related changes are also needed in:
 
@@ -237,6 +238,7 @@ When deploying, validating, or changing a stage, consult the matching doc-ground
 | 110 assisted dev | `rhoai-maas-governance` (key consumption), `manage-devspaces` |
 | 120 agentic dev | `rhoai-maas-governance`, workspace-repo skills |
 | 130 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), `mta-cli`, `mta-rules`, `mta-vscode`, `ocp-devspaces-user-guide` |
+| 140 MTA migration | `mta-vscode`, `mta-lightspeed`, `mta-ui`, `ocp-devspaces-user-guide`, `rhoai-maas-governance` |
 
 Skill project-default sections were authored in rhoai3-demo; where this repo deliberately diverges (no GPU time-slicing, two GPU workers, two private models), the stage README is the source of truth and the skill defaults have been updated to match.
 
@@ -261,6 +263,7 @@ scripts/validate-stage-flow.sh --live
 ./stages/110-ai-assisted-development/validate.sh
 ./stages/120-ai-agentic-development/validate.sh
 ./stages/130-ai-autonomous-migration/validate.sh
+./stages/140-mta-assisted-migration/validate.sh
 ```
 
 Stage 120 consumes the Stage 070 Dev Spaces platform and Stage 070 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `scripts/validate-stage-flow.sh` and any specific commands documented in the Stage 120 README when a live workspace and cluster are available.

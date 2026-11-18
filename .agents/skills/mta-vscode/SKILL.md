@@ -2,7 +2,7 @@
 name: mta-vscode
 metadata:
   author: rhoai3-coding-demo
-  version: 2.0.0
+  version: 2.1.0
   product: mta
   docs-version: "8.3"
   skill-group: "Application Modernization"
@@ -11,7 +11,9 @@ description: >
   change or misbehave: the baked mta-vscode-extension, mta-core and mta-java
   8.3.1 VSIX files, DEFAULT_EXTENSIONS ordering with the Red Hat Java
   extension, Hub OIDC connection and profile sync, GenAI settings, and
-  in-IDE analysis. Do NOT use for Lightspeed proxy or model settings (use
+  in-IDE analysis; and the Stage 140 migrate-with-mta workspace (MTA Core
+  and MTA Java 8.3.3, baked analyzer, settings in the project's
+  .code-workspace). Do NOT use for Lightspeed proxy or model settings (use
   mta-lightspeed), CLI analysis (use mta-cli), IntelliJ (use mta-intellij),
   or Dev Spaces extension policy in general (use ocp-devspaces-user-guide).
 ---
@@ -37,6 +39,19 @@ workspaces created from the Developer Hub `app-migration` template.
 | Workspace settings: JDT.LS `Standard` launch mode (so `mta-java` registers its provider), `mta-core.genai.enabled: true`, `mta-core.hub.auth.method: oidc` | same devfile (postStart) | [IDE settings][ide], [Hub OIDC][oidc] |
 | Hub connection: `HUB_URL` from the template, `HUB_INSECURE=false`, `HUB_PROFILE_SYNC_ENABLED=true` | same devfile | [Hub OIDC][oidc], [Hub profile analysis][profile] |
 | No analyzer RPC binary is installed separately; the extensions use the baked image | `stages/070-advanced-app-platform/workspace-image/` | [Analyzer RPC binary][rpc] |
+
+## Stage 140 workspace (migrate-with-mta)
+
+Stage 140 follows the documented single-language install instead of the
+extension pack, in its own image and template:
+
+| Decision | Where in Git | Official section |
+|---|---|---|
+| MTA Core and MTA Java 8.3.3 with Red Hat Java 1.58.0 (no `mta-vscode-extension` pack, no C#, Go or JavaScript extensions), SHA-256 locked and baked to `/opt/rhoai3/extensions/` | `stages/140-mta-assisted-migration/workspace-image/` | [Install the extension][install] |
+| The 8.3.3 analyzer RPC binary baked to `/opt/mta-analyzer-rpc/mta-analyzer-rpc` and set as `mta-core.analyzerPath` | same image; skeleton `.code-workspace` | [Analyzer RPC binary][rpc] |
+| Settings live in the project's committed `.code-workspace` (single-project devfile, so Che Code opens `/projects/<project>/.code-workspace`); no postStart patch | `070-rhdh/templates/migrate-with-mta/skeleton/.code-workspace` | [IDE settings][ide] |
+| The project repository is the only, writable folder (MTA Core writes `.vscode/` under the first folder) | `migrate-with-mta/template.yaml` | [Install the extension][install] |
+| `HUB_SOLUTION_SERVER_ENABLED=false`, `HUB_PROFILE_SYNC_ENABLED=false`; the repository's `.konveyor/profiles/quarkus-profile` is the analysis profile | skeleton `devfile.yaml` | [Profile settings][profiles], [Hub OIDC][oidc] |
 
 ## Procedure
 
@@ -64,6 +79,10 @@ workspaces created from the Developer Hub `app-migration` template.
 - The devfile sets `HUB_SOLUTION_SERVER_ENABLED=true` while the Hub's
   Solution Server is disabled (`mta-lightspeed`); expect Solution Server
   features in the IDE to be unavailable.
+- A postStart command that edits `/projects/.code-workspace` races Che
+  Code, which writes that file after postStart on a first start; commit
+  the settings in a project `.code-workspace` instead (Stage 140).
+- A read-only first workspace folder stops MTA Core with `EROFS`.
 - A missing Hub URL refuses the migration template rather than producing a
   workspace without Hub access.
 

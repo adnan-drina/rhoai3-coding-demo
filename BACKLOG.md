@@ -2,6 +2,13 @@
 
 Open limitations and the evidence needed to understand them. Completed narratives remain in Git history; `tmp/` holds local evidence excluded from Git.
 
+## Stage 140 Migrate with MTA (2026-11-18)
+
+Stage 140 shows a developer-led migration with the MTA 8.3.3 VS Code extension and Developer Lightspeed in agent mode, without Hermes ([Stage 140](stages/140-mta-assisted-migration/README.md)).
+
+- [ ] Rehearse the whole flow as `ai-developer` before the demo: Hub OIDC sign-in, `quarkus-profile` analysis, agent-mode fixes through the Hub LLM proxy (the 8.3 documentation marks agent mode experimental), `mvn quarkus:dev`, a green pipeline run. Confirm `role.architect` is enough for the LLM proxy; granting another Hub role changes `070-mta/jobs/configure-mta-platform-sso.yaml` and needs a decision.
+- [ ] Restore the Stage 130 `template-app-migration` Location in `070-rhdh/catalog/all.yaml` after the MTA demo, and return the Stage 130 validator's parked-template warnings to checks ([Operations](docs/OPERATIONS.md#stage-140--migrate-with-mta)).
+
 ## Three-team showback demo (Stage 040)
 
 The [showback demo](stages/040-governed-models-as-a-service/showback-demo/README.md) maps three teams to three offerings (shared Qwen, dedicated Mistral, external models) with live dashboards. The retired report pipeline and its qualification records are in Git history at `87aaf9c1`.

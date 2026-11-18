@@ -1131,7 +1131,7 @@ oc get authpolicy,tokenratelimitpolicy -n maas
 
 ## Red Hat Developer Lightspeed for MTA Cannot Call MaaS
 
-**Affected stage:** Stage 130
+**Affected stage:** Stages 130 and 140
 
 **Likely cause:** `kai-api-keys` contains placeholder values, the MaaS API key is invalid, or `llm-proxy` did not restart after secret patching.
 
@@ -2038,7 +2038,7 @@ oc get configmap devspace-ai-tools-init -n wksp-ai-developer \
 
 ## Workspace Opens In Restricted Mode Or Asks To Trust Authors Or Publishers
 
-**Affected stage:** Stages 070, 110, 120 and 130 (every Che Code workspace in `wksp-*`)
+**Affected stage:** Stages 070, 110, 120, 130 and 140 (every Che Code workspace in `wksp-*`)
 
 **Likely cause:** The workspace started before `che-code-workspace-trust.yaml` was applied, or one of its two ConfigMaps is missing. Code - OSS reads `security.workspace.trust.enabled` only from browser user settings: it ignores the value in Machine settings, and the server never passes `product.json` `configurationDefaults` to the web workbench. The web workbench enables trust unless the server runs with `--disable-workspace-trust`. `che-code-trust-env` sets `VSCODE_NODEJS_RUNTIME_DIR` to the `che-code-trust-launcher` wrapper, which adds that flag to the server start. A **Trust publisher** dialog before an extension installs means the publisher is missing from `product.json` `trustedExtensionPublishers` in `vscode-editor-configurations`.
 
@@ -3547,3 +3547,52 @@ holds the backend until discovery answers 200 three times in a row. Stage 070 `v
 redirects to the platform realm (HTTP 302).
 
 **Recover:** delete the `backstage-developer-hub` pod in `rhdh`; the operator recreates it with the unchanged spec.
+
+## MTA View Shows "No analysis providers are registered"
+
+**Affected stage:** Stage 140 (and any Che Code workspace with MTA Java)
+
+**Likely cause:** MTA Java registers its analysis provider through the Java language server, and only when that server runs in Standard mode. The workspace reads `java.server.launchMode` from the `.code-workspace` file Che Code opens. When the setting is missing there, or a postStart command writes it after Che Code has already created `/projects/.code-workspace`, the server starts in LightWeight mode and no provider registers. Stage 140 commits the setting in the project's own `.code-workspace` (a single-project devfile makes Che Code open `/projects/<project>/.code-workspace`).
+
+**Diagnose:**
+
+```bash
+./stages/140-mta-assisted-migration/validate.sh --project coolstore-cart
+```
+
+In the workspace terminal, a Standard-mode server runs with a `jdt_ws` data directory:
+
+```bash
+ps -eo args | grep '[r]edhat.java/jdt_ws'
+```
+
+**Recover:** Confirm the project's `.code-workspace` carries `"java.server.launchMode": "Standard"` and is the file the editor opened (**File → Open Workspace from File** if another one is open), then run **Java: Clean Java Language Server Workspace** or restart the workspace.
+
+## MTA Core Fails To Start With `EROFS` On The First Folder
+
+**Affected stage:** Stage 140 (and any workspace whose first folder is read-only)
+
+**Likely cause:** On activation MTA Core creates `.vscode/` state under the first workspace folder. A read-only first folder (a mounted legacy source, for example) stops the extension with `EROFS: read-only file system, mkdir '<folder>/.vscode'`. MTA Core also expects a single-folder workspace.
+
+**Diagnose:** Open **Output → Migration Toolkit for Applications** in the workspace, or list the folders of the workspace file the editor opened:
+
+```bash
+jq '.folders' /projects/*/.code-workspace /projects/.code-workspace 2>/dev/null
+```
+
+**Recover:** Keep the writable project repository as the only folder. Stage 140 copies the legacy code into the project repository for this reason.
+
+## MTA Extension Cannot Download The Analyzer (HTTP 500)
+
+**Affected stage:** Stage 140
+
+**Likely cause:** Without `mta-core.analyzerPath`, MTA Core downloads the analyzer RPC binary on first use. The workspace cannot reach the download host, or the host answers with an error. The Stage 140 workspace image ships the 8.3.3 analyzer at `/opt/mta-analyzer-rpc/mta-analyzer-rpc` and the project's `.code-workspace` points `mta-core.analyzerPath` at it.
+
+**Diagnose:**
+
+```bash
+ls -l /opt/mta-analyzer-rpc/mta-analyzer-rpc
+jq '.settings["mta-core.analyzerPath"]' /projects/*/.code-workspace
+```
+
+**Recover:** Open the workspace from a project created by the **Migrate with MTA** template (its devfile pins the Stage 140 image). If the image is rebuilt, record the new digest as described in [`workspace-image/README.md`](../stages/140-mta-assisted-migration/workspace-image/README.md).

@@ -1,0 +1,14 @@
+{
+  "folders": [
+    {
+      "name": "${{ values.name }}",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "java.server.launchMode": "Standard",
+    "mta-core.analyzerPath": "/opt/mta-analyzer-rpc/mta-analyzer-rpc",
+    "mta-core.genai.enabled": true,
+    "mta-core.hub.auth.method": "oidc"
+  }
+}

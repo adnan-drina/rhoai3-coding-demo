@@ -1,0 +1,95 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: migrate-with-mta
+  title: Migrate with MTA
+  description: "Copies the legacy Coolstore cart service (Spring Boot 2.7) into a new\nrepository of your own and opens it in a Dev Spaces workspace with the\nmigration toolkit for applications (MTA) 8.3 extension: analyze it against\nQuarkus targets, then apply Developer Lightspeed for MTA fixes in agent\nmode through the MTA Hub's LLM proxy. Registered in the catalog and\nprovisioned with its own namespace and delivery pipeline (SonarQube quality\ngate included), like every golden-path project.\n"
+  tags:
+  - golden-path
+  - migration
+  - mta
+  - quarkus
+spec:
+  owner: ai-modernization-team
+  type: service
+  parameters:
+  - title: Migration project
+    required:
+    - name
+    properties:
+      name:
+        title: Project name
+        type: string
+        description: 'Name for your copy of the legacy cart service (e.g. coolstore-cart).
+
+          Lowercase letters, numbers, and hyphens.
+
+          '
+        default: coolstore-cart
+        pattern: ^[a-z][a-z0-9-]{2,40}$
+        ui:autofocus: true
+  steps:
+  - id: platform-entity
+    name: Read platform link endpoints from the catalog
+    action: catalog:fetch
+    input:
+      entityRef: component:default/coolstore-inventory-service
+  - id: require-mta-hub
+    name: MTA Hub endpoint present (refuse with FACTORY_MTA_HUB_MISSING)
+    if: ${{ not steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/mta-hub-url'] or not steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/mta-hub-url'].startsWith('https://') or ('_' in steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/mta-hub-url']) }}
+    action: fetch:plain
+    input:
+      url: ./refusals/FACTORY_MTA_HUB_MISSING
+      targetPath: ./.refusal
+  - id: fetch-legacy
+    name: Copy the legacy cart service from its GitLab mirror
+    action: fetch:plain
+    input:
+      url: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-base-url'] }}/${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-workload-group'] }}/coolstore-cart-legacy/-/tree/main
+  - id: add-catalog-info
+    name: Add the workspace, catalog and delivery files
+    action: fetch:template
+    input:
+      url: ./skeleton
+      replace: true
+      values:
+        name: ${{ parameters.name }}
+        legacyRepoUrl: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-base-url'] }}/${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-workload-group'] }}/coolstore-cart-legacy
+        sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
+        devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/devspaces-base-url'] }}/#${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-base-url'] }}/${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-workload-group'] }}/${{ parameters.name }}?revision=main&existing=${{ parameters.name }}
+        gitlabBaseUrl: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-base-url'] }}
+        gitlabGroup: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-workload-group'] }}
+        mtaHubUrl: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/mta-hub-url'] }}
+  - id: publish
+    name: Publish private repository to GitLab
+    action: publish:gitlab
+    input:
+      repoUrl: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-host'] }}?owner=${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-workload-group'] }}&repo=${{ parameters.name }}
+      defaultBranch: main
+      settings:
+        description: 'Coolstore cart service to migrate from Spring Boot to Quarkus with MTA'
+        visibility: private
+        topics:
+        - rhoai3-golden-path
+        - rhoai3-scaffolded
+        - rhoai3-mta-migration
+  - id: enroll
+    name: Request platform enrollment of the immutable first commit
+    action: gitlab:issues:create
+    input:
+      repoUrl: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-host'] }}?owner=rhoai-platform&repo=platform-enrollment
+      projectId: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-registration-project-id'] | int }}
+      title: Enroll ${{ parameters.name }}
+      labels: platform-enrollment
+      confidential: true
+      description: '{"project_id": ${{ steps.publish.output.projectId }}, "initial_commit": "${{ steps.publish.output.commitHash }}", "kind": "application", "requester": "${{ user.ref }}"}'
+  output:
+    links:
+    - title: Source repository
+      url: ${{ steps.publish.output.remoteUrl }}
+    - title: Open in catalog
+      icon: catalog
+      entityRef: component:default/${{ parameters.name }}
+    text:
+    - title: Next steps
+      content: "The publish above requested platform enrollment. The catalog discovers your project automatically; Argo CD is\ncreating the `<name>-dev` namespace with the project's own delivery\npipeline, and the first build runs the legacy service as it is.\n\nOpen the repository from the component page's **Dev Spaces** link. The\nworkspace opens this repository as its only folder, with MTA Core, the\nMTA Java extension and the analyzer ready. In the MTA view: configure the\nHub settings and sign in, select `quarkus-profile`, click **Start**, then\n**Run Analysis**. Turn on **Agent Mode** to let Developer Lightspeed for\nMTA propose and apply fixes. Every push to `main` runs the project's own\npipeline in `<name>-dev` with the SonarQube quality gate.\n"

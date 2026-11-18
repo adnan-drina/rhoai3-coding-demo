@@ -27,7 +27,7 @@ The implemented flow is the ordered stage directories. Links outside this docume
 10. [Stage 120: AI-Agentic Development](https://github.com/adnan-drina/rhoai3-coding-demo/blob/main/stages/120-ai-agentic-development/README.md)
 11. [Stage 130: AI-Autonomous Migration](https://github.com/adnan-drina/rhoai3-coding-demo/blob/main/stages/130-ai-autonomous-migration/README.md)
 
-[Stage 110](https://github.com/adnan-drina/rhoai3-coding-demo/blob/main/stages/110-ai-assisted-development/README.md) starts the developer-facing path. It uses the Stage 070 portal and workspace platform for assisted development; Stage 120 covers agentic development and Stage 130 covers autonomous migration. A stage being implemented does not mean every workflow has passed live qualification; see [BACKLOG.md](https://github.com/adnan-drina/rhoai3-coding-demo/blob/main/BACKLOG.md).
+[Stage 110](https://github.com/adnan-drina/rhoai3-coding-demo/blob/main/stages/110-ai-assisted-development/README.md) starts the developer-facing path. It uses the Stage 070 portal and workspace platform for assisted development; Stage 120 covers agentic development, Stage 130 covers autonomous migration and Stage 140 covers migration with the MTA extension and Developer Lightspeed. A stage being implemented does not mean every workflow has passed live qualification; see [BACKLOG.md](https://github.com/adnan-drina/rhoai3-coding-demo/blob/main/BACKLOG.md).
 
 ## AI Collaboration Rules
 

@@ -199,13 +199,17 @@ spec:
 # minted a new Location per push while the old one stayed registered
 # (entity 200/404 flap; Lead:catalog-location-must-not-accumulate).
 # Stage 070 enters through the coolstore-inventory-service component (no
-# template); stage 070 = agentic-quarkus-scaffold; stage 080 =
-# app-migration (destination repo cataloged, legacy app workspace-only).
+# template); Stage 120 = agentic-quarkus-scaffold; Stage 140 =
+# migrate-with-mta. The Stage 130 app-migration template is parked: its
+# Location is out of this catalog while Stage 140 is demonstrated, and its
+# files stay in the bundle. To restore it, add back a Location named
+# template-app-migration targeting templates/app-migration/template.yaml
+# (docs/OPERATIONS.md, Developer Hub templates).
 apiVersion: backstage.io/v1alpha1
 kind: Location
 metadata:
   name: template-agentic-quarkus-scaffold
-  description: Golden-path template for stage 070 AI-agentic development
+  description: Golden-path template for Stage 120 AI-agentic development
 spec:
   type: url
   target: __RHOAI3_PLATFORM_BLOB_URL__/gitops/stages/070-advanced-app-platform/070-rhdh/templates/agentic-quarkus-scaffold/template.yaml
@@ -213,8 +217,8 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Location
 metadata:
-  name: template-app-migration
-  description: Golden-path template for stage 080 AI-autonomous migration
+  name: template-migrate-with-mta
+  description: Golden-path template for Stage 140 migration with MTA
 spec:
   type: url
-  target: __RHOAI3_PLATFORM_BLOB_URL__/gitops/stages/070-advanced-app-platform/070-rhdh/templates/app-migration/template.yaml
+  target: __RHOAI3_PLATFORM_BLOB_URL__/gitops/stages/070-advanced-app-platform/070-rhdh/templates/migrate-with-mta/template.yaml

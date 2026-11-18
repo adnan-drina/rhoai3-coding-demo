@@ -489,7 +489,7 @@ Deploy stages in order:
 
 Stage 060 `deploy.sh` covers `060-openshell-identity` and `060-openshell-runtime`; its other three components use `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-mcp-platform`, `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-agent-tools` and `stages/060-agent-runtime-and-agentops/deploy.sh --component 060-agent-console` (see the Stage 060 README).
 
-Stages 110–130 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 070 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 070's deploy script creates no secrets from `.env`; it checks read-only preconditions (node sizing, a Managed and Available internal registry) and Sync hooks create the scoped GitLab, SonarQube and integration identities.
+Stages 110–140 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 070 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 070's deploy script creates no secrets from `.env`; it checks read-only preconditions (node sizing, a Managed and Available internal registry) and Sync hooks create the scoped GitLab, SonarQube and integration identities.
 
 Each script applies its stage's Applications from `gitops/applications/` (`<NNN>-*.yaml`). GitOps stages are the `stages/*/` directories that have `deploy.sh`; each of its Applications is one file `gitops/applications/<NNN>-<component>.yaml` and renders `gitops/stages/<directory-name>/<NNN>-<component>/`: file, Application and folder share one name. Workflow-only stages omit `deploy.sh` and have no Application.
 
@@ -505,6 +505,7 @@ Each script applies its stage's Applications from `gitops/applications/` (`<NNN>
 | 110 | *(workflow-only)* | AI-assisted development on stage 070 workspaces |
 | 120 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
 | 130 | *(workflow-only)* | AI-autonomous migration on the stage 070 MTA stack |
+| 140 | *(workflow-only)* | Migration with the MTA 8.3 extension and Developer Lightspeed on the stage 070 MTA stack |
 
 MLflow moved from Stage 050 to Stage 010 on 2026-10-27 (`050-mlflow` became the script-deployed `010-mlflow`), because Stages 040, 050 and 060 all use it, and MaaS request tracing (Stage 040) will too. The objects, names and data did not change: the move followed `.agents/skills/gitops-move-applications` (tracking ids rewritten, nothing recreated). The evaluation part of the old enablement hook (TrustyAI, AI Pipelines, `disableLMEval`) moved to `050-model-qualification` (`evaluation-enablement/`). Deploy or repair MLflow with `stages/010-openshift-ai-platform-foundation/deploy.sh --component 010-mlflow`; Stage 050 `deploy.sh` now requires it Synced and Healthy.
 
@@ -762,7 +763,7 @@ The upstream-image OpenShift MCP server in `rhoai-mcp` and the inactive Slack/Br
 
 ### Stage 070 — Dev Spaces (devspaces component)
 
-The stage 070 `devspaces` component installs Red Hat OpenShift Dev Spaces and persona namespaces (consumed by the workflow-only stages 110/120/130).
+The stage 070 `devspaces` component installs Red Hat OpenShift Dev Spaces and persona namespaces (consumed by the workflow-only stages 110/120/130/140).
 
 `validate.sh` checks that the component Application is Synced and Healthy and that the standing `coolstore-inventory-service` workspace in `wksp-ai-developer` and `wksp-ai-admin` clones from the private GitLab `rhoai-workloads/coolstore-inventory-service` project. Stages 120 and 130 create additional workspaces from RHDH factory templates at demo time. The CheCluster uses the `per-workspace` PVC strategy, so each workspace gets its own claim and factory workspaces run beside `coolstore-inventory-service`. Standing `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces were retired. Component detail: [devspaces README](../gitops/stages/070-advanced-app-platform/070-devspaces/README.md).
 
@@ -828,13 +829,29 @@ oc get oauth cluster -o jsonpath='{.spec.identityProviders[*].openID.issuer}'
 
 ### Stage 070 — MTA (mta component)
 
-The stage 070 `mta` component selects Migration Toolkit for Applications operator/operands 8.3.3 (consumed by workflow-only Stage 130). The exact `stable-v8.3` Manual InstallPlan is approved only for `mta-operator.v8.3.3`; the workspace CLI/RPC stays at its separately qualified 8.3.0. Native Hub Agents use `Gateway/maas-qwen` and the existing owner-bound MaaS subscription. They do not depend on Solution Server. The Lightspeed proxy remains enabled with the same MaaS base URL; optional Solution Server is disabled pending its vendor dependency correction. Keeping `kai_llm_proxy_enabled: true` retains the operator's shared `kai-db` deployment, credentials and PVC. Existing Hub OIDC and platform-realm SSO remain enabled. The `configure-mta-platform-sso` hook maintains that integration, and `mta-hub-workspace-config` publishes the launcher configuration. Stage 130 analysis workspaces come from the `app-migration` factory destfile; Stage 130's validator covers that contract.
+The stage 070 `mta` component selects Migration Toolkit for Applications operator/operands 8.3.3 (consumed by workflow-only Stages 130 and 140). The exact `stable-v8.3` Manual InstallPlan is approved only for `mta-operator.v8.3.3`; the workspace CLI/RPC stays at its separately qualified 8.3.0. Native Hub Agents use `Gateway/maas-qwen` and the existing owner-bound MaaS subscription. They do not depend on Solution Server. The Lightspeed proxy remains enabled with the same MaaS base URL; optional Solution Server is disabled pending its vendor dependency correction. Keeping `kai_llm_proxy_enabled: true` retains the operator's shared `kai-db` deployment, credentials and PVC. Existing Hub OIDC and platform-realm SSO remain enabled. The `configure-mta-platform-sso` hook maintains that integration, and `mta-hub-workspace-config` publishes the launcher configuration. Stage 130 analysis workspaces come from the `app-migration` factory destfile; Stage 130's validator covers that contract.
 
 Useful checks:
 
 ```bash
 oc get tackle mta -n openshift-mta -o yaml
 oc get deployment -n openshift-mta
+```
+
+### Stage 140 — Migrate with MTA
+
+Stage 140 is workflow-only. Its Developer Hub template `migrate-with-mta` ships in the Stage 070 `rhdh` component (`070-rhdh/templates/migrate-with-mta/`), and its projects use the Stage 070 `mta`, `devspaces` and `pipelines` components. The template copies the `rhoai-workloads/coolstore-cart-legacy` mirror into a new GitLab project and enrolls it as `kind: application`.
+
+**Workspace image.** The skeleton devfile pins `quay.io/rhoai3-coding-demo/rhoai3-ws-140` by digest. The image carries MTA Core 8.3.3, MTA Java 8.3.3, Language Support for Java 1.58.0 and the 8.3.3 analyzer RPC binary, all checksummed in `stages/140-mta-assisted-migration/workspace-image/artifacts.lock.json`. To rebuild it, run `build.sh TAG --push` in that folder, then record the printed digest in the lock file's `published_image` and in the skeleton `devfile.yaml`, and sync `070-gitlab` before `070-rhdh` (see [`workspace-image/README.md`](../stages/140-mta-assisted-migration/workspace-image/README.md)).
+
+**Template listing.** While Stage 140 is demonstrated, `070-rhdh/catalog/all.yaml` lists the `template-migrate-with-mta` Location instead of `template-app-migration`; the Stage 130 template files stay in Git and the Stage 130 validator reports the parked template as a warning. To list the Stage 130 template again, restore its Location document in `catalog/all.yaml` (the comment above the template Locations names it) and sync `070-gitlab`, then `070-rhdh`.
+
+Useful checks:
+
+```bash
+./stages/140-mta-assisted-migration/validate.sh
+./stages/140-mta-assisted-migration/validate.sh --project coolstore-cart
+oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\.yaml}' | grep -o 'templates/[a-z-]*/template.yaml'
 ```
 
 ### Stage 070 — Pipelines (pipelines component)
