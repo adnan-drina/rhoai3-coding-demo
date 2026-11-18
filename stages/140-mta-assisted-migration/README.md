@@ -58,7 +58,7 @@ The template takes any Spring Boot 2.x service built with Maven. This walkthroug
 
 - One folder, `coolstore-cart`, opened through the project's `.code-workspace` file.
 - **Migration Toolkit for Applications Core** 8.3.3, **MTA Java** 8.3.3 and **Language Support for Java by Red Hat**. This is the documented install of the core extension with one language extension.
-- The Java language server in Standard mode (the status bar shows the Java project once it is imported), which MTA Java needs to provide its analysis.
+- The Java language server in Standard mode, which MTA Java needs to provide its analysis. Wait for **Java: Ready** in the status bar (about half a minute): until then the MTA view reports that no analysis providers are registered.
 
 The workspace settings that make this work live in the repository's `.code-workspace` file: `java.server.launchMode: Standard`, `mta-core.analyzerPath` pointing at the analyzer baked into the image, `mta-core.genai.enabled: true` and `mta-core.hub.auth.method: oidc`. The devfile sets the Hub connection (`HUB_URL`, `FORCE_HUB_ENABLED`) for this cluster's MTA Hub.
 
