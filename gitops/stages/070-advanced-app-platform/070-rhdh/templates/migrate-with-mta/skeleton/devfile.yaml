@@ -17,7 +17,7 @@ components:
       # MTA Java 8.3.3, Language Support for Java 1.58.0 and the MTA 8.3.3
       # analyzer RPC, checksum-verified at build time
       # (stages/140-mta-assisted-migration/workspace-image). Public repository.
-      image: quay.io/rhoai3-coding-demo/rhoai3-ws-140@sha256:__STAGE140_IMAGE_DIGEST__
+      image: quay.io/rhoai3-coding-demo/rhoai3-ws-140@sha256:9666903d63e6db7a7e86d839211f3d8bf452e4acc17195cf5d66c439d6a265e9
       mountSources: true
       # MTA documents 8 GB of RAM for the extension, analyzer and Java
       # language server together.

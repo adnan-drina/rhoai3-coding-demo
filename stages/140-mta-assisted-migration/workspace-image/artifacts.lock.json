@@ -31,5 +31,5 @@
       "sha256": "a376f06d9589346292be84cba84adae3e3bfda453e862509c1c376a2d0f1641e"
     }
   ],
-  "published_image": null
+  "published_image": "quay.io/rhoai3-coding-demo/rhoai3-ws-140@sha256:9666903d63e6db7a7e86d839211f3d8bf452e4acc17195cf5d66c439d6a265e9"
 }
