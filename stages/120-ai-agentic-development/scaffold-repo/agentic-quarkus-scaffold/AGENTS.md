@@ -49,10 +49,23 @@ it once per shell before any Maven command:
 ```bash
 export JAVA_HOME="${JAVA_HOME_21}" && export PATH="${JAVA_HOME}/bin:${PATH}"
 
-mvn quarkus:dev          # dev mode with hot reload
 mvn -q test              # unit + component tests
 mvn -q package           # full build (what the platform pipeline runs)
 ```
+
+Dev mode (hot reload, port 8080) never exits, so never run it as a blocking
+command. If `curl -s localhost:8080/q/health` already answers, dev mode is
+running (the workspace's "Start Development mode" task): use it. Otherwise
+start it in the background and wait for the log:
+
+```bash
+nohup mvn quarkus:dev -Dquarkus.console.enabled=false > /tmp/quarkus-dev.log 2>&1 &
+until grep -qE "Listening on|BUILD FAILURE" /tmp/quarkus-dev.log; do sleep 2; done
+```
+
+The workspace warms the Maven cache in the background when it starts
+(`/tmp/prefetch-dev-deps.log`), so the first dev mode does not download
+its Dev UI dependencies.
 
 ## Platform integration
 

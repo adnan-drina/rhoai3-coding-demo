@@ -79,6 +79,25 @@ commands:
         chmod 700 "${INIT_VOL}" 2>/dev/null || true
         bash "${INIT_VOL}" "${PROJECT_DIR}" "${PROFILE}" \
           || { echo "ERROR: init-ai-tools.sh failed"; exit 1; }
+  - id: prefetch-dev-deps
+    exec:
+      component: development-tooling
+      commandLine: |
+        # The first quarkus:dev in a new project downloads about 60 Dev UI
+        # artifacts. An agent that runs dev mode as a blocking command is
+        # killed mid-download and reports the dev server stuck. Warm the
+        # Maven cache in the background from a copy of the project (the
+        # project's target/ stays untouched); the workspace start does not
+        # wait for it. Log: /tmp/prefetch-dev-deps.log
+        PROJECT_DIR="${PROJECT_SOURCE:-$(ls -d /projects/* 2>/dev/null | head -1)}"
+        PREFETCH_DIR=/tmp/prefetch-dev-deps
+        # The whole group is redirected so the hook returns at once.
+        ( rm -rf "${PREFETCH_DIR}" && mkdir -p "${PREFETCH_DIR}" \
+          && cp -r "${PROJECT_DIR}/pom.xml" "${PROJECT_DIR}/src" "${PREFETCH_DIR}/" \
+          && cd "${PREFETCH_DIR}" \
+          && export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" PATH="${JAVA_HOME_21:-${JAVA_HOME}}/bin:${PATH}" \
+          && exec mvn -B -ntp -q -DskipTests package quarkus:go-offline \
+        ) > /tmp/prefetch-dev-deps.log 2>&1 < /dev/null &
   - id: package
     exec:
       label: "Package"
@@ -109,3 +128,4 @@ commands:
 events:
   postStart:
     - init-ai-tools
+    - prefetch-dev-deps

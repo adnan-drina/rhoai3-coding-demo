@@ -3308,6 +3308,18 @@ A missing Hub endpoint refuses the migration template. Check the named MTA Route
 
 A non-root Buildah failure requires the actual TaskRun Pod, applied SCC, user-namespace annotations, volume permissions and registry service CA. Only `image-builder` receives `pipelines-scc` use and namespace image push. Do not add privileged mode, host mounts, TLS bypass or workspace-wide build permissions as a workaround.
 
+## Scaffolded project's dev server looks stuck downloading dependencies
+
+The first `quarkus:dev` in a new project from the `agentic-quarkus-scaffold` template downloads about 60 Dev UI artifacts. Each is looked up on the Red Hat repository first (404), then fetched from Maven Central. When OpenCode runs dev mode as a blocking command, its tool call is killed partway through, and the agent reports the dev server stuck. The network is not the cause.
+
+The template devfile's `prefetch-dev-deps` postStart command warms the Maven cache in the background at workspace start (`mvn -DskipTests package quarkus:go-offline` on a copy of the project; log `/tmp/prefetch-dev-deps.log`). The scaffold's `AGENTS.md` tells the agent to reuse a running dev server or start one in the background. A workspace created before this change can be warmed by hand from the project directory:
+
+```bash
+mvn -B -ntp -DskipTests package quarkus:go-offline
+```
+
+Then start dev mode from **Tasks: Run Task → devfile → 2. Start Development mode**. The first `mvn test` still downloads the small Surefire JUnit provider.
+
 ## Stage 070 setup hook fails on Python subprocess keywords
 
 **Symptom:** the first Argo reader hook raises `TypeError: __init__() got an unexpected keyword argument 'text'`.
