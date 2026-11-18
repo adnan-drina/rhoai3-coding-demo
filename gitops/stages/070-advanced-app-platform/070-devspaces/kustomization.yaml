@@ -29,6 +29,7 @@ resources:
   # Per-run migration resources are not declared here; they are rendered by
   # pipelines/build/task-provision-migration-run.yaml.
   - vscode-editor-configurations.yaml
+  - che-code-workspace-trust.yaml
   - workspaces.yaml
   - agentic-workspace.yaml
 

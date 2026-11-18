@@ -2021,7 +2021,7 @@ oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
 
 **Affected stage:** Stage 070 (`coolstore-inventory-service`)
 
-**Likely cause:** Two stacked defaults. Che Code Restricted Mode (Workspace Trust) leaves a VSIX installed but disabled until the user clicks Enable. After enable, Kilo 7.4 reads `kilo-code.new.model.*` from `vscode-editor-configurations` and its built-in Gateway catalog unless `~/.config/kilo/kilo.jsonc` allow-lists only `qwen38`. Machine `settings.json` alone does not suppress the first-start trust dialog; Che Code must also merge `product.json` `configurationDefaults`.
+**Likely cause:** Two stacked defaults. Che Code Restricted Mode (Workspace Trust) leaves a VSIX installed but disabled until the user clicks Enable. After enable, Kilo 7.4 reads `kilo-code.new.model.*` from `vscode-editor-configurations` and its built-in Gateway catalog unless `~/.config/kilo/kilo.jsonc` allow-lists only `qwen38`. Workspace Trust is off only when the VS Code server runs with `--disable-workspace-trust` (`che-code-workspace-trust.yaml`); see the next entry.
 
 **Diagnose:**
 
@@ -2036,20 +2036,25 @@ oc get configmap devspace-ai-tools-init -n wksp-ai-developer \
 
 **Recover:** Sync Stage 070, then **stop and start** `coolstore-inventory-service` so Che Code reloads editor settings and postStart rewrites `~/.config/kilo/kilo.jsonc`. Do not click Enable on a Restricted Mode workspace as the configuration path — trust is disabled in these namespaces. The picker should show only `qwen3-8-27b`.
 
-## First Factory Workspace Asks To Trust Authors
+## Workspace Opens In Restricted Mode Or Asks To Trust Authors Or Publishers
 
-**Affected stage:** Stage 120 (and any RHDH factory workspace in `wksp-*`)
+**Affected stage:** Stages 070, 110, 120 and 130 (every Che Code workspace in `wksp-*`)
 
-**Likely cause:** Che Code copies `vscode-editor-configurations` `extensions.json` into `/projects/.code-workspace`. Installing `redhat.vscode-openshift-connector` then shows **Trust Workspace & Install** because Machine `settings.json` is applied after that prompt. The startup hook is `product.json` `configurationDefaults` in the same ConfigMap.
+**Likely cause:** The workspace started before `che-code-workspace-trust.yaml` was applied, or one of its two ConfigMaps is missing. Code - OSS reads `security.workspace.trust.enabled` only from browser user settings: it ignores the value in Machine settings, and the server never passes `product.json` `configurationDefaults` to the web workbench. The web workbench enables trust unless the server runs with `--disable-workspace-trust`. `che-code-trust-env` sets `VSCODE_NODEJS_RUNTIME_DIR` to the `che-code-trust-launcher` wrapper, which adds that flag to the server start. A **Trust publisher** dialog before an extension installs means the publisher is missing from `product.json` `trustedExtensionPublishers` in `vscode-editor-configurations`.
 
 **Diagnose:**
 
 ```bash
-oc get configmap vscode-editor-configurations -n wksp-ai-developer \
-  -o jsonpath='{.data.product\.json}' | jq .
+oc get configmap che-code-trust-launcher che-code-trust-env vscode-editor-configurations -n wksp-ai-developer
 ```
 
-**Recover:** Sync Stage 070 so the ConfigMap includes `product.json`, then **stop and start** the factory workspace (Che Code reads the ConfigMap only at launcher start). The current session can click **Trust Workspace & Install** — these namespaces only run platform-provisioned repos. Do not restart a workspace that is mid-OpenCode session unless the presenter is ready.
+In the workspace terminal, the server command line should end with `--disable-workspace-trust`:
+
+```bash
+ps -eo args | grep '[s]erver-main'
+```
+
+**Recover:** Sync Stage 070, then **stop and start** the workspace. Both ConfigMaps are `mount-on-start`, so applying them never restarts a running workspace, and Che Code reads `vscode-editor-configurations` only at launcher start. The current session can click **Trust**: these namespaces only start platform-owned GitLab sources. Do not restart a workspace that is mid-OpenCode session unless the presenter is ready.
 
 ## Kilo Code Cannot Reach MaaS Endpoint
 

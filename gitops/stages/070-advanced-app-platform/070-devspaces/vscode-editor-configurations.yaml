@@ -7,15 +7,12 @@
 # DEFAULT_EXTENSIONS — do not recommend kilocode.kilo-code here or factory
 # (OpenCode) workspaces will also install it.
 #
-# Workspace Trust: these namespaces only run platform-provisioned repos, and
-# the demo runs a relaxed security posture (.agents/rules/env.md).
-# settings.json is copied to Machine/settings.json. That is not enough on a
-# first factory start: Che Code writes recommended extensions into
-# /projects/.code-workspace, then the web workbench prompts
-# "Enabling this extension requires a trusted workspace" before Machine
-# settings are consulted. product.json configurationDefaults are merged
-# into the editor product before server-main.js starts (Dev Spaces
-# Administration Guide, Configure Visual Studio Code - Open Source).
+# Workspace Trust is disabled by che-code-workspace-trust.yaml (server flag).
+# security.workspace.trust.enabled stays in settings.json for the record, but
+# Code - OSS ignores it in Machine settings. product.json
+# trustedExtensionPublishers skips the "Trust publisher" prompt for the
+# platform's own extension publishers: Red Hat (OpenShift, Java, account),
+# Kilo Code (the 070 seat) and Konveyor (the MTA pack).
 # kilo-code.new.model.* must match the canonical model key that
 # init-ai-tools.sh writes into kilo.jsonc (provider qwen38, model
 # publishers/internal-models/models/qwen3-8-27b), not Kilo Gateway defaults.
@@ -58,10 +55,7 @@ data:
     }
   product.json: |
     {
-      "configurationDefaults": {
-        "security.workspace.trust.enabled": false,
-        "security.workspace.trust.startupPrompt": "never"
-      }
+      "trustedExtensionPublishers": ["redhat", "kilocode", "konveyor"]
     }
 ---
 apiVersion: v1
@@ -101,10 +95,7 @@ data:
     }
   product.json: |
     {
-      "configurationDefaults": {
-        "security.workspace.trust.enabled": false,
-        "security.workspace.trust.startupPrompt": "never"
-      }
+      "trustedExtensionPublishers": ["redhat", "kilocode", "konveyor"]
     }
 ---
 apiVersion: v1
@@ -144,8 +135,5 @@ data:
     }
   product.json: |
     {
-      "configurationDefaults": {
-        "security.workspace.trust.enabled": false,
-        "security.workspace.trust.startupPrompt": "never"
-      }
+      "trustedExtensionPublishers": ["redhat", "kilocode", "konveyor"]
     }

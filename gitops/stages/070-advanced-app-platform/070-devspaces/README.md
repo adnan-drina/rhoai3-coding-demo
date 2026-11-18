@@ -33,7 +33,8 @@ The operator, the instance and the workspace contract form one Application becau
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | RoleBinding | `wksp-edit-<user>` | each persona namespace | ClusterRole `edit` for the persona user (wave 3) |
-| ConfigMap | `vscode-editor-configurations` | each persona namespace | Code - OSS settings, recommendations and the Kilo Code model default (wave 17) |
+| ConfigMap | `vscode-editor-configurations` | each persona namespace | Code - OSS settings, recommendations, trusted extension publishers and the Kilo Code model default (wave 17) |
+| ConfigMaps | `che-code-trust-launcher`, `che-code-trust-env` | each persona namespace | `mount-on-start` launcher wrapper that starts the VS Code server with `--disable-workspace-trust` (wave 17) |
 | DevWorkspace | `coolstore-inventory-service` | `wksp-ai-developer`, `wksp-ai-admin` | Standing catalog workspace, `started: false`, UDI image pinned by digest, Kilo Code VSIX via `DEFAULT_EXTENSIONS`, remote patched by `070-gitlab` (wave 10) |
 | ServiceAccount, ClusterRole, ClusterRoleBinding | `job-repair-devworkspace-sync-options` | `openshift-devspaces` / cluster | `get`/`patch` on DevWorkspaces (wave 17) |
 | Job (Sync hook) | `job-repair-devworkspace-sync-options` | `openshift-devspaces` | Resets the Argo sync-option annotation on the two standing workspaces (wave 19) |
@@ -127,6 +128,7 @@ oc get devworkspace -n wksp-ai-developer
 | Allowed sources | `allowedSources.urls` restricts which URLs can start a workspace [3] | Restricted to two GitLab groups, set by `070-gitlab` | Aligned |
 | Pre-provisioned projects | Labels `part-of: che.eclipse.org`, `component: workspaces-namespace`, annotation `che.eclipse.org/username` [4] | All three present; `autoProvision` stays `true` for other users | Aligned |
 | Editor configuration | ConfigMap `vscode-editor-configurations` with `workspaces-config` labels in the user project, or in `openshift-devspaces` to replicate [5] | Per persona project | Aligned |
+| Workspace Trust | No documented setting; Code - OSS ignores `security.workspace.trust.enabled` in Machine settings [5] | Server flag `--disable-workspace-trust` through a `VSCODE_NODEJS_RUNTIME_DIR` wrapper | Deviation (justified: demo posture; only platform GitLab sources can start) |
 | Default extensions | `DEFAULT_EXTENSIONS` lists local VSIX paths, which a postStart command may download [8] | Kilo Code 7.4.8 VSIX downloaded to `/tmp` at postStart | Aligned (no checksum on the download) |
 | Mounted credentials | `mount-to-devworkspace` Secrets restart running workspaces when applied unless annotated `mount-on-start` [6] | `migration-model-profiles` uses `mount-on-start`; `workspace-maas-credentials` and `devspace-ai-tools-init` do not | Gap: a credential or init-script change can restart running workspaces |
 | GitLab OAuth | Secret `gitlab-oauth-config` with the `oauth-scm-configuration` labels and annotations, keys `id`/`secret` [7]; app callback `/api/oauth/callback`, Confidential, scopes `api write_repository openid` [9] | Written by `070-gitlab` exactly so; CheCluster `gitServices.gitlab[].endpoint` also set | Aligned; the endpoint field is deprecated in favor of the annotation [3] |

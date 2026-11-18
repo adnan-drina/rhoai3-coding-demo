@@ -2,7 +2,7 @@
 name: manage-devspaces
 metadata:
   author: rhoai3-coding-demo
-  version: 1.2.1
+  version: 1.3.0
   platform-family: "rhoai"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -43,12 +43,12 @@ Factory (RHDH) workspaces use the **repo destfile** stamped at create time.
 
 ### Workspace Trust (Che Code)
 
-`vscode-editor-configurations` in each `wksp-*` namespace must set both:
+Workspace Trust is off because the VS Code server starts with `--disable-workspace-trust`. `070-devspaces/che-code-workspace-trust.yaml` puts two `mount-on-start` ConfigMaps in each `wksp-*` namespace:
 
-- `settings.json` → `security.workspace.trust.enabled: false` (Machine settings)
-- `product.json` → `configurationDefaults` for the same key (and `startupPrompt: never`)
+- `che-code-trust-env` sets `VSCODE_NODEJS_RUNTIME_DIR=/etc/che-code-trust`, which the Che Code launcher uses to find `node`.
+- `che-code-trust-launcher` mounts the `/etc/che-code-trust/node` wrapper (mode 0755). It runs the real `node` from the directory the launcher selected and adds the flag only to `out/server-main.js`.
 
-Machine settings alone still show **Trust Workspace & Install** on a first factory start: Che Code writes recommended extensions into `/projects/.code-workspace` before the web workbench consults Machine settings. `product.json` is merged before `server-main.js` starts (Dev Spaces 3.28 Admin Guide ch. 17). ConfigMap changes take effect only after a workspace stop/start.
+Settings do not work: Code - OSS reads `security.workspace.trust.enabled` only from browser user settings, ignores it in Machine settings, and never passes `product.json` `configurationDefaults` to the web workbench (checked on Che Code 1.128.1). `vscode-editor-configurations` `product.json` sets `trustedExtensionPublishers` (`redhat`, `kilocode`, `konveyor`) so extension installs skip the **Trust publisher** dialog. Both take effect only after a workspace stop/start. Check with `ps -eo args | grep '[s]erver-main'` in the workspace.
 
 ### postStart Initialization
 

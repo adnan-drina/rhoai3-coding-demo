@@ -1,0 +1,150 @@
+# Che Code Workspace Trust: start the VS Code server with
+# --disable-workspace-trust, so every workspace in the persona namespaces
+# opens out of Restricted Mode with no "Do you trust the authors" prompt.
+#
+# Why a launcher wrapper: Code - OSS reads security.workspace.trust.enabled
+# only from user settings, which live in the browser. It ignores the value in
+# Machine (remote) settings, and the server never passes product.json
+# configurationDefaults to the web workbench (both checked on Che Code
+# 1.128.1). The web workbench enables trust unless the server runs with
+# --disable-workspace-trust, and the Che Code launcher has no option for that
+# flag. The launcher does use a preset VSCODE_NODEJS_RUNTIME_DIR to find node,
+# so that variable points at this wrapper, which runs the real node from the
+# directory the launcher selected and adds the flag only to the server start.
+#
+# mount-on-start: applying or changing these never restarts a running
+# workspace; a workspace picks them up at its next start. The demo runs a
+# relaxed security posture and these namespaces start only platform-owned
+# GitLab sources (.agents/rules/env.md, CheCluster allowedSources).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: che-code-trust-launcher
+  namespace: wksp-kubeadmin
+  labels:
+    controller.devfile.io/mount-to-devworkspace: "true"
+    controller.devfile.io/watch-configmap: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    controller.devfile.io/mount-as: file
+    controller.devfile.io/mount-path: /etc/che-code-trust
+    controller.devfile.io/mount-access-mode: "0755"
+    controller.devfile.io/mount-on-start: "true"
+data:
+  node: |
+    #!/bin/sh
+    # The launcher runs "$VSCODE_NODEJS_RUNTIME_DIR/node" from the Node.js
+    # directory it selected, so the real binary is ./node there.
+    REAL="$(pwd)/node"
+    if [ "$(pwd)" = /etc/che-code-trust ] || [ ! -x "$REAL" ]; then
+      echo "che-code-trust: no Node.js binary in $(pwd)" >&2
+      exit 1
+    fi
+    if [ "$1" = out/server-main.js ]; then
+      exec "$REAL" "$@" --disable-workspace-trust
+    fi
+    exec "$REAL" "$@"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: che-code-trust-env
+  namespace: wksp-kubeadmin
+  labels:
+    controller.devfile.io/mount-to-devworkspace: "true"
+    controller.devfile.io/watch-configmap: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    controller.devfile.io/mount-as: env
+    controller.devfile.io/mount-on-start: "true"
+data:
+  VSCODE_NODEJS_RUNTIME_DIR: /etc/che-code-trust
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: che-code-trust-launcher
+  namespace: wksp-ai-admin
+  labels:
+    controller.devfile.io/mount-to-devworkspace: "true"
+    controller.devfile.io/watch-configmap: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    controller.devfile.io/mount-as: file
+    controller.devfile.io/mount-path: /etc/che-code-trust
+    controller.devfile.io/mount-access-mode: "0755"
+    controller.devfile.io/mount-on-start: "true"
+data:
+  node: |
+    #!/bin/sh
+    # The launcher runs "$VSCODE_NODEJS_RUNTIME_DIR/node" from the Node.js
+    # directory it selected, so the real binary is ./node there.
+    REAL="$(pwd)/node"
+    if [ "$(pwd)" = /etc/che-code-trust ] || [ ! -x "$REAL" ]; then
+      echo "che-code-trust: no Node.js binary in $(pwd)" >&2
+      exit 1
+    fi
+    if [ "$1" = out/server-main.js ]; then
+      exec "$REAL" "$@" --disable-workspace-trust
+    fi
+    exec "$REAL" "$@"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: che-code-trust-env
+  namespace: wksp-ai-admin
+  labels:
+    controller.devfile.io/mount-to-devworkspace: "true"
+    controller.devfile.io/watch-configmap: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    controller.devfile.io/mount-as: env
+    controller.devfile.io/mount-on-start: "true"
+data:
+  VSCODE_NODEJS_RUNTIME_DIR: /etc/che-code-trust
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: che-code-trust-launcher
+  namespace: wksp-ai-developer
+  labels:
+    controller.devfile.io/mount-to-devworkspace: "true"
+    controller.devfile.io/watch-configmap: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    controller.devfile.io/mount-as: file
+    controller.devfile.io/mount-path: /etc/che-code-trust
+    controller.devfile.io/mount-access-mode: "0755"
+    controller.devfile.io/mount-on-start: "true"
+data:
+  node: |
+    #!/bin/sh
+    # The launcher runs "$VSCODE_NODEJS_RUNTIME_DIR/node" from the Node.js
+    # directory it selected, so the real binary is ./node there.
+    REAL="$(pwd)/node"
+    if [ "$(pwd)" = /etc/che-code-trust ] || [ ! -x "$REAL" ]; then
+      echo "che-code-trust: no Node.js binary in $(pwd)" >&2
+      exit 1
+    fi
+    if [ "$1" = out/server-main.js ]; then
+      exec "$REAL" "$@" --disable-workspace-trust
+    fi
+    exec "$REAL" "$@"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: che-code-trust-env
+  namespace: wksp-ai-developer
+  labels:
+    controller.devfile.io/mount-to-devworkspace: "true"
+    controller.devfile.io/watch-configmap: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    controller.devfile.io/mount-as: env
+    controller.devfile.io/mount-on-start: "true"
+data:
+  VSCODE_NODEJS_RUNTIME_DIR: /etc/che-code-trust
