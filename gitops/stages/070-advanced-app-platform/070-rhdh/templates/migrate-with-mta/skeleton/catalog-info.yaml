@@ -35,9 +35,6 @@ metadata:
     - url: ${{ values.sonarqubeUrl }}
       title: SonarQube (code quality)
       icon: dashboard
-    - url: ${{ values.mtaHubUrl }}
-      title: MTA Hub
-      icon: dashboard
 spec:
   type: service
   lifecycle: experimental

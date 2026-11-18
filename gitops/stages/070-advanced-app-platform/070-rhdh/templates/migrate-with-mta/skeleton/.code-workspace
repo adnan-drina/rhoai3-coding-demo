@@ -11,7 +11,7 @@
 		"redhat.telemetry.enabled": false,
 		"mta-core.analyzerPath": "/opt/mta-analyzer-rpc/mta-analyzer-rpc",
 		"mta-core.genai.enabled": true,
-		"mta-core.hub.auth.method": "oidc"
+		"mta-core.genai.agentMode": true
 	},
 	"extensions": {
 		"recommendations": [

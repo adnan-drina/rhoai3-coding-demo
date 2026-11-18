@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Stage 140 validation: the MTA 8.3 Hub and LLM proxy the developer signs in to, the migrate-with-mta golden-path
-# template in Developer Hub, its legacy source mirror, and the Stage 140 workspace (image, extensions, settings).
-# With --project NAME it also checks a project created from the template: its DevWorkspace, the installed MTA
-# extensions, the Java language server mode and the registered Java analysis provider. Read-only.
+# Stage 140 validation: the Models-as-a-Service credentials Developer Lightspeed for MTA uses, the migrate-with-mta
+# golden-path template in Developer Hub, its legacy source mirror, and the Stage 140 workspace (image, extensions,
+# settings). With --project NAME it also checks a project created from the template: its DevWorkspace, the installed
+# MTA extensions, the model provider settings, the Java language server mode and the registered Java analysis
+# provider. Read-only.
 # Usage: stages/140-mta-assisted-migration/validate.sh [--project NAME]
 set -euo pipefail
 
@@ -35,29 +36,15 @@ echo ""
 log_step "Argo CD Application (platform stage owns the resources)"
 check_stage_applications 070
 
-log_step "MTA Hub and Developer Lightspeed"
-check_csv_succeeded "openshift-mta" "mta-operator"
-check "MTA operator is 8.3.3" \
-  "oc get csv -n openshift-mta -o jsonpath='{range .items[*]}{.metadata.name}{\"\\n\"}{end}' | grep -x 'mta-operator.v8.3.3'" \
-  "mta-operator.v8.3.3"
-check "Tackle LLM proxy enabled" \
-  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_proxy_enabled}'" \
+log_step "Developer Lightspeed for MTA model access (Models-as-a-Service, no MTA Hub sign-in)"
+# Stage 070 mounts the developer's MaaS key into every workspace as environment variables; the Stage 140 devfile
+# passes MAAS_API_KEY to the extension as OPENAI_API_KEY and writes provider-settings.yaml from the other two.
+check "workspace-maas-credentials mounted as environment variables in $NS" \
+  "oc get secret workspace-maas-credentials -n $NS -o jsonpath='{.metadata.annotations.controller\\.devfile\\.io/mount-as}'" \
+  "env"
+check "workspace-maas-credentials carries the key, endpoint and model" \
+  "oc get secret workspace-maas-credentials -n $NS -o json | jq -r '.data | [has(\"MAAS_API_KEY\"), has(\"MAAS_API_BASE_URL\"), has(\"MAAS_MODEL_NAME\")] | all'" \
   "true"
-check "Tackle Solution Server disabled (agent mode only)" \
-  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_solution_server_enabled}'" \
-  "false"
-check "Tackle hub auth enabled (OIDC sign-in)" \
-  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.feature_auth_required}'" \
-  "true"
-check "LLM proxy model credential present" \
-  "oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_KEY}' | grep -c . || echo 0" \
-  "1"
-MTA_ROUTE_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
-if [[ -n "$MTA_ROUTE_HOST" ]]; then
-  check_http_code "Hub OIDC discovery" "https://${MTA_ROUTE_HOST}/oidc/.well-known/openid-configuration" "200"
-else
-  record "MTA Route exists" "no route mta in openshift-mta"
-fi
 
 log_step "Developer Hub template"
 # Location targets only: the catalog's comments name template paths too.
@@ -87,11 +74,18 @@ record "skeleton adds the quarkus-profile analysis profile" \
   "$(grep -q 'konveyor.io/target=quarkus' "$TEMPLATE_DIR/skeleton/.konveyor/profiles/quarkus-profile/profile.yaml" 2>/dev/null && echo pass || echo missing)"
 record "template takes a Git repository URL and a project name" \
   "$(sed -n '/^    required:/,/^    properties:/p' "$TEMPLATE_DIR/template.yaml" | grep -E '^    - ' | tr -d ' -' | paste -sd, - | grep -qx 'repoUrl,name' && echo pass || echo "parameters differ")"
-record "workspace settings: Standard Java server, baked analyzer, GenAI, Hub OIDC" \
+record "workspace settings: Standard Java server, baked analyzer, GenAI agent mode, no Hub" \
   "$(jq -e '.settings["java.server.launchMode"] == "Standard"
         and .settings["mta-core.analyzerPath"] == "/opt/mta-analyzer-rpc/mta-analyzer-rpc"
-        and .settings["mta-core.genai.enabled"] == true and .settings["mta-core.hub.auth.method"] == "oidc"
+        and .settings["mta-core.genai.enabled"] == true and .settings["mta-core.genai.agentMode"] == true
+        and (.settings | has("mta-core.hub.auth.method") | not)
         and (.folders | length) == 1 and .folders[0].path == "."' "$WORKSPACE_FILE" >/dev/null && echo pass || echo "settings differ")"
+record "devfile passes the MaaS key as OPENAI_API_KEY and connects no MTA Hub" \
+  "$(grep -qF 'value: "$(MAAS_API_KEY)"' "$DEVFILE" && grep -q 'name: OPENAI_API_KEY' "$DEVFILE" \
+      && ! grep -qE 'name: (HUB_|FORCE_HUB)' "$DEVFILE" && echo pass || echo "env differs")"
+record "devfile writes provider-settings.yaml at every start" \
+  "$(sed -n '/^  postStart:/,$p' "$DEVFILE" | grep -q 'mta-provider-settings' && grep -q 'provider: ChatOpenAI' "$DEVFILE" \
+      && echo pass || echo "postStart differs")"
 record "skeleton workspace file is tracked in Git" \
   "$(git -C "$REPO_ROOT" ls-files --error-unmatch "$WORKSPACE_FILE" >/dev/null 2>&1 && echo pass || echo "not tracked")"
 
@@ -108,17 +102,30 @@ if [[ -n "$PROJECT" ]]; then
       ps -eo args | grep -q "[r]edhat.java/jdt_ws" && echo "jdt standard"
       grep -h "Registering provider: java" /checode/remote/data/logs/*/exthost*/redhat.mta-core/extension.log 2>/dev/null \
         | tail -1 | grep -q . && echo "provider java"
-      [ -x /opt/mta-analyzer-rpc/mta-analyzer-rpc ] && echo "analyzer present"' 2>/dev/null || true)
+[ -x /opt/mta-analyzer-rpc/mta-analyzer-rpc ] && echo "analyzer present"
+[ -n "$OPENAI_API_KEY" ] && [ "$OPENAI_API_KEY" = "$MAAS_API_KEY" ] && echo "maas key"
+env | grep -q "^HUB_" && echo "hub env"
+grep -qF "baseURL: \"$MAAS_API_BASE_URL\"" \
+  /checode/remote/data/User/globalStorage/redhat.mta-core/settings/provider-settings.yaml 2>/dev/null \
+  && echo "provider settings"
+grep -h "Model provider set from local config" /checode/remote/data/logs/*/exthost*/redhat.mta-core/extension.log \
+  2>/dev/null | tail -1 | grep -q . && echo "model provider"' 2>/dev/null || true)
     record "MTA Core 8.3.3 installed" "$(grep -qx 'ext redhat.mta-core 8.3.3' <<<"$STATE" && echo pass || echo missing)"
     record "MTA Java 8.3.3 installed" "$(grep -qx 'ext redhat.mta-java 8.3.3' <<<"$STATE" && echo pass || echo missing)"
     record "Language Support for Java 1.58.0 installed" "$(grep -qx 'ext redhat.java 1.58.0' <<<"$STATE" && echo pass || echo "other version")"
     record "no MTA extension pack or other language extensions" \
       "$(grep -Eq '^ext redhat\.(mta-vscode-extension|mta-csharp|mta-go|mta-javascript) ' <<<"$STATE" && echo present || echo pass)"
     record "baked MTA analyzer present" "$(grep -qx 'analyzer present' <<<"$STATE" && echo pass || echo missing)"
-    record_warn "Java language server in Standard mode (after the editor opened)" \
+record "workspace OPENAI_API_KEY is the MaaS key" "$(grep -qx 'maas key' <<<"$STATE" && echo pass || echo missing)"
+record "no MTA Hub connection variables" "$(grep -qx 'hub env' <<<"$STATE" && echo present || echo pass)"
+record "provider-settings.yaml points at the MaaS endpoint" \
+  "$(grep -qx 'provider settings' <<<"$STATE" && echo pass || echo missing)"
+record_warn "Java language server in Standard mode (after the editor opened)" \
       "$(grep -qx 'jdt standard' <<<"$STATE" && echo pass || echo "not started yet")"
     record_warn "MTA Java analysis provider registered (after the MTA view opened)" \
-      "$(grep -qx 'provider java' <<<"$STATE" && echo pass || echo "not registered yet")"
+  "$(grep -qx 'provider java' <<<"$STATE" && echo pass || echo "not registered yet")"
+record_warn "Developer Lightspeed model provider loaded (after the MTA view opened)" \
+  "$(grep -qx 'model provider' <<<"$STATE" && echo pass || echo "not loaded yet")"
   else
     record "workspace pod for $PROJECT" "no pod"
   fi

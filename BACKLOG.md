@@ -6,7 +6,7 @@ Open limitations and the evidence needed to understand them. Completed narrative
 
 Stage 140 shows a developer-led migration with the MTA 8.3.3 VS Code extension and Developer Lightspeed in agent mode, without Hermes ([Stage 140](stages/140-mta-assisted-migration/README.md)).
 
-- [ ] Rehearse the whole flow as `ai-developer` before the demo: Hub OIDC sign-in, `quarkus-profile` analysis, agent-mode fixes through the Hub LLM proxy (the 8.3 documentation marks agent mode experimental), `mvn quarkus:dev`, a green pipeline run. Confirm `role.architect` is enough for the LLM proxy; granting another Hub role changes `070-mta/jobs/configure-mta-platform-sso.yaml` and needs a decision.
+- [ ] Rehearse the whole flow as `ai-developer` before the demo: `quarkus-profile` analysis, agent-mode fixes with the developer's MaaS key (the 8.3 documentation marks agent mode experimental; on 2026-11-18 it proposed and staged a `pom.xml` fix), `mvn quarkus:dev`, a green pipeline run.
 - [ ] Keep the workspace's MTA Core and Java extensions on the locked VSIX files. Che Code installs `DEFAULT_EXTENSIONS` in parallel, so MTA Java's dependencies (`redhat.mta-core`, `redhat.java`) also come from Open VSX and the gallery copies win (`extensions.json` `source: gallery`, duplicate folders, "2 require restart"). On 2026-11-18 the gallery served the locked 8.3.3 and 1.58.0; a newer Open VSX release would replace them silently. `validate.sh --project` checks both versions.
 - [ ] Restore the Stage 130 `template-app-migration` Location in `070-rhdh/catalog/all.yaml` after the MTA demo, and return the Stage 130 validator's parked-template warnings to checks ([Operations](docs/OPERATIONS.md#stage-140--migrate-with-mta)).
 

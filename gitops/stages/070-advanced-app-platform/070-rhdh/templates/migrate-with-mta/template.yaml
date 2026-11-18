@@ -3,7 +3,7 @@ kind: Template
 metadata:
   name: migrate-with-mta
   title: Migrate Spring Boot to Quarkus with MTA
-  description: "Migrates a Spring Boot 2.x service to Quarkus. Copies the service into a\nnew repository of your own and opens it in a Dev Spaces workspace with the\nmigration toolkit for applications (MTA) 8.3 extension: analyze it against\nQuarkus and Jakarta EE targets, then apply Developer Lightspeed for MTA\nfixes in agent mode through the MTA Hub's LLM proxy. Registered in the\ncatalog and provisioned with its own namespace and delivery pipeline\n(SonarQube quality gate included), like every golden-path project.\n"
+  description: "Migrates a Spring Boot 2.x service to Quarkus. Copies the service into a\nnew repository of your own and opens it in a Dev Spaces workspace with the\nmigration toolkit for applications (MTA) 8.3 extension: analyze it against\nQuarkus and Jakarta EE targets, then apply Developer Lightspeed for MTA\nfixes in agent mode with your own Models-as-a-Service key. Registered in the\ncatalog and provisioned with its own namespace and delivery pipeline\n(SonarQube quality gate included), like every golden-path project.\n"
   tags:
   - golden-path
   - migration
@@ -43,13 +43,6 @@ spec:
     action: catalog:fetch
     input:
       entityRef: component:default/coolstore-inventory-service
-  - id: require-mta-hub
-    name: MTA Hub endpoint present (refuse with FACTORY_MTA_HUB_MISSING)
-    if: ${{ not steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/mta-hub-url'] or not steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/mta-hub-url'].startsWith('https://') or ('_' in steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/mta-hub-url']) }}
-    action: fetch:plain
-    input:
-      url: ./refusals/FACTORY_MTA_HUB_MISSING
-      targetPath: ./.refusal
   - id: fetch-legacy
     name: Copy the Spring Boot service (default branch)
     action: fetch:plain
@@ -68,7 +61,6 @@ spec:
         devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/devspaces-base-url'] }}/#${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-base-url'] }}/${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-workload-group'] }}/${{ parameters.name }}?revision=main&existing=${{ parameters.name }}
         gitlabBaseUrl: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-base-url'] }}
         gitlabGroup: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/gitlab-workload-group'] }}
-        mtaHubUrl: ${{ steps['platform-entity'].output.entity.metadata.annotations['rhoai3.redhat.com/mta-hub-url'] }}
   - id: publish
     name: Publish private repository to GitLab
     action: publish:gitlab
@@ -101,4 +93,4 @@ spec:
       entityRef: component:default/${{ parameters.name }}
     text:
     - title: Next steps
-      content: "The publish above requested platform enrollment. The catalog discovers your project automatically; Argo CD is\ncreating the `<name>-dev` namespace with the project's own delivery\npipeline, and the first build runs the Spring Boot service as it is.\n\nOpen the repository from the component page's **Dev Spaces** link. The\nworkspace opens this repository as its only folder, with MTA Core, the\nMTA Java extension and the analyzer ready. In the MTA view: configure the\nHub settings and sign in, select `quarkus-profile` (added to the repository by\nthis template), click **Start**, then\n**Run Analysis**. Turn on **Agent Mode** to let Developer Lightspeed for\nMTA propose and apply fixes. Every push to `main` runs the project's own\npipeline in `<name>-dev` with the SonarQube quality gate.\n"
+      content: "The publish above requested platform enrollment. The catalog discovers your project automatically; Argo CD is\ncreating the `<name>-dev` namespace with the project's own delivery\npipeline, and the first build runs the Spring Boot service as it is.\n\nOpen the repository from the component page's **Dev Spaces** link. The\nworkspace opens this repository as its only folder, with MTA Core, the\nMTA Java extension, the analyzer and Developer Lightspeed for MTA ready:\nagent mode is on and uses your Models-as-a-Service key, with no sign-in.\nIn the MTA view select `quarkus-profile` (added to the repository by this\ntemplate), click **Start**, then **Run Analysis**, and ask for fixes. Every push to `main` runs the project's own\npipeline in `<name>-dev` with the SonarQube quality gate.\n"

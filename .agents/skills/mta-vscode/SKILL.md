@@ -2,7 +2,7 @@
 name: mta-vscode
 metadata:
   author: rhoai3-coding-demo
-  version: 2.1.0
+  version: 2.2.0
   product: mta
   docs-version: "8.3"
   skill-group: "Application Modernization"
@@ -13,7 +13,7 @@ description: >
   extension, Hub OIDC connection and profile sync, GenAI settings, and
   in-IDE analysis; and the Stage 140 migrate-with-mta workspace (MTA Core
   and MTA Java 8.3.3, baked analyzer, settings in the project's
-  .code-workspace). Do NOT use for Lightspeed proxy or model settings (use
+  .code-workspace, no MTA Hub connection). Do NOT use for Lightspeed proxy or model settings (use
   mta-lightspeed), CLI analysis (use mta-cli), IntelliJ (use mta-intellij),
   or Dev Spaces extension policy in general (use ocp-devspaces-user-guide).
 ---
@@ -51,7 +51,7 @@ extension pack, in its own image and template:
 | The 8.3.3 analyzer RPC binary baked to `/opt/mta-analyzer-rpc/mta-analyzer-rpc` and set as `mta-core.analyzerPath` | same image; skeleton `.code-workspace` | [Analyzer RPC binary][rpc] |
 | Settings live in the project's committed `.code-workspace` (single-project devfile, so Che Code opens `/projects/<project>/.code-workspace`); no postStart patch | `070-rhdh/templates/migrate-with-mta/skeleton/.code-workspace` | [IDE settings][ide] |
 | The project repository is the only, writable folder (MTA Core writes `.vscode/` under the first folder) | `migrate-with-mta/template.yaml` | [Install the extension][install] |
-| `HUB_SOLUTION_SERVER_ENABLED=false`, `HUB_PROFILE_SYNC_ENABLED=false`; the template adds `.konveyor/profiles/quarkus-profile` (Quarkus, Quarkus 3, Jakarta EE) to every project; the source is any Spring Boot 2.x Git URL | skeleton `devfile.yaml` | [Profile settings][profiles], [Hub OIDC][oidc] |
+| No MTA Hub connection (no `HUB_*` variables, so no Sign In): Developer Lightspeed runs agent mode (`mta-core.genai.agentMode: true`) on the developer's MaaS key, with provider settings written at start (see `mta-lightspeed`). The template adds `.konveyor/profiles/quarkus-profile` (Quarkus, Quarkus 3, Jakarta EE) to every project; the source is any Spring Boot 2.x Git URL | skeleton `devfile.yaml`, `.code-workspace` | [IDE settings][ide], [Profile settings][profiles] |
 
 ## Procedure
 

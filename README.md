@@ -88,7 +88,7 @@ Stages 110–140 are developer workflow exercises that consume the platform buil
 | [110 - AI-Assisted Development](stages/110-ai-assisted-development/README.md) | One-shot AI coding in the IDE — and its limits without project standards |
 | [120 - AI-Agentic Development](stages/120-ai-agentic-development/README.md) | Spec-driven development where agent-executable standards guide every change |
 | [130 - AI-Autonomous Migration](stages/130-ai-autonomous-migration/README.md) | Multi-agent legacy migration with human review gates ([stage architecture](stages/130-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)) |
-| [140 - Application Migration with MTA](stages/140-mta-assisted-migration/README.md) | Developer-led legacy migration in VS Code with the MTA extension and Developer Lightspeed through the MTA Hub |
+| [140 - Application Migration with MTA](stages/140-mta-assisted-migration/README.md) | Developer-led legacy migration in VS Code with the MTA extension and Developer Lightspeed in agent mode on Models-as-a-Service |
 
 ## How Red Hat And Open Source Make It Work
 

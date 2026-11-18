@@ -2,7 +2,7 @@
 name: mta-lightspeed
 metadata:
   author: rhoai3-coding-demo
-  version: 2.0.0
+  version: 2.1.0
   product: mta
   docs-version: "8.3"
   skill-group: "Application Modernization"
@@ -43,6 +43,7 @@ Preview. Detailed record: `gitops/stages/070-advanced-app-platform/070-mta/READM
 | Solution Server disabled (`kai_solution_server_enabled: false`); proxy kept so `kai-db` and its PVC survive | `070-mta/mta-instance/tackle.yaml` | [About the Solution Server][ss] |
 | Private model hosting is the IP-protection posture: all traffic goes to the governed MaaS gateway | Stage 040, `070-mta/jobs/configure-ai.yaml` | [Self-managed hosting][selfhost], [LLM on OpenShift AI][rhoai] |
 | Key rotation keeps the same ServiceAccount (`stages/070-advanced-app-platform/credentials/rotate.sh mta`) | — | — |
+| Stage 140 workspaces skip the proxy (agent mode without the LLM proxy, so no Hub sign-in): the devfile sets `OPENAI_API_KEY: $(MAAS_API_KEY)` from the mounted `workspace-maas-credentials` Secret, and postStart `mta-provider-settings` writes `provider-settings.yaml` in the extension's global storage with one active `ChatOpenAI` provider (`MAAS_API_BASE_URL`, `MAAS_MODEL_NAME`, `CA_BUNDLE` = cluster bundle). MTA Core 8.3.3 merges the process environment under the provider `environment`, so the key stays out of the file | `070-rhdh/templates/migrate-with-mta/skeleton/devfile.yaml` | [Workflows][proxyflow], [Provider settings][provider], [Agent mode][agentmode] |
 
 ## Procedure
 

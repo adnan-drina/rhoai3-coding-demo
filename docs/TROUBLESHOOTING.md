@@ -1131,7 +1131,7 @@ oc get authpolicy,tokenratelimitpolicy -n maas
 
 ## Red Hat Developer Lightspeed for MTA Cannot Call MaaS
 
-**Affected stage:** Stages 130 and 140
+**Affected stage:** Stage 130 (the MTA LLM proxy). Stage 140 workspaces call MaaS directly: see the "Failed To Establish Connection To The Model" entry.
 
 **Likely cause:** `kai-api-keys` contains placeholder values, the MaaS API key is invalid, or `llm-proxy` did not restart after secret patching.
 
@@ -3596,3 +3596,19 @@ jq '.settings["mta-core.analyzerPath"]' /projects/*/.code-workspace
 ```
 
 **Recover:** Open the workspace from a project created by the **Migrate Spring Boot to Quarkus with MTA** template (its devfile pins the Stage 140 image). If the image is rebuilt, record the new digest as described in [`workspace-image/README.md`](../stages/140-mta-assisted-migration/workspace-image/README.md).
+
+## MTA Analysis View Reports "Failed To Establish Connection To The Model"
+
+**Affected stage:** Stage 140
+
+**Likely cause:** Developer Lightspeed loaded the sample `provider-settings.yaml` (an OpenAI `gpt-4o` provider with an empty key) instead of the workspace's MaaS provider. The workspace writes its own file at every start (devfile postStart `mta-provider-settings`); the file is missing when the workspace was created from an older template, and the key is missing when `workspace-maas-credentials` is not mounted, so `OPENAI_API_KEY` stays the literal `$(MAAS_API_KEY)`.
+
+**Diagnose** (in a workspace terminal):
+
+```bash
+cat /checode/remote/data/User/globalStorage/redhat.mta-core/settings/provider-settings.yaml
+[ "$OPENAI_API_KEY" = "$MAAS_API_KEY" ] && echo "key passed" || echo "key not passed"
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $MAAS_API_KEY" "$MAAS_API_BASE_URL/models"
+```
+
+**Recover:** Restart the workspace so postStart writes the provider settings again, then reload the window. For a workspace created before the change, recreate the project from the **Migrate Spring Boot to Quarkus with MTA** template, or copy the `OPENAI_API_KEY` env entry, the `mta-provider-settings` command and its postStart event from the skeleton devfile into the DevWorkspace. Check the model access with `./stages/140-mta-assisted-migration/validate.sh --project NAME`.

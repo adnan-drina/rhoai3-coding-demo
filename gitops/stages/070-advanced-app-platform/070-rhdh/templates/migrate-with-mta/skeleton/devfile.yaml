@@ -34,21 +34,16 @@ components:
         # checksum-verified files (MTA 8.3: Core plus one language extension).
         - name: DEFAULT_EXTENSIONS
           value: "/opt/rhoai3/extensions/mta-core.vsix;/opt/rhoai3/extensions/java.vsix;/opt/rhoai3/extensions/mta-java.vsix"
-        # MTA Hub connection: the authenticated Hub Route resolved by the
-        # platform catalog. Sign-in is OIDC through the Hub (platform realm).
-        # Developer Lightspeed reaches the model through the Hub's LLM proxy.
-        - name: HUB_URL
-          value: "${{ values.mtaHubUrl }}"
-        - name: FORCE_HUB_ENABLED
-          value: "true"
-        - name: HUB_INSECURE
-          value: "false"
-        # The platform runs the LLM proxy without the Solution Server, and
-        # the analysis profile ships in the repository (.konveyor/profiles).
-        - name: HUB_SOLUTION_SERVER_ENABLED
-          value: "false"
-        - name: HUB_PROFILE_SYNC_ENABLED
-          value: "false"
+        # Developer Lightspeed for MTA calls the platform's Models-as-a-Service
+        # endpoint directly with the developer's own MaaS key (MTA 8.3 "agent
+        # AI mode without the LLM proxy"); no MTA Hub sign-in. The key comes
+        # from the workspace-maas-credentials Secret that Stage 070 mounts
+        # into every workspace as environment variables; the kubelet expands
+        # $(MAAS_API_KEY) because mounted Secrets load before env entries.
+        # The extension merges the workspace environment into the provider
+        # settings, so the key is never written to a file.
+        - name: OPENAI_API_KEY
+          value: "$(MAAS_API_KEY)"
       volumeMounts:
         - name: m2
           path: /home/user/.m2
@@ -77,6 +72,30 @@ commands:
           printf '\n# rhoai3-coding-demo: java 21 default\nexport JAVA_HOME="%s"\nexport PATH="$JAVA_HOME/bin:$PATH"\n' \
             "${JAVA_HOME_21}" >> "${HOME}/.bashrc"
         fi
+  - id: mta-provider-settings
+    exec:
+      component: development-tooling
+      commandLine: |
+        # Developer Lightspeed for MTA reads its model from
+        # provider-settings.yaml in the extension's global storage (MTA 8.3,
+        # "LLM provider setting configurations"). Write it at every start,
+        # before the editor activates the extension, with the MaaS endpoint
+        # and model from the workspace environment. The API key stays in the
+        # environment (OPENAI_API_KEY); CA_BUNDLE is the cluster trust bundle.
+        settings=/checode/remote/data/User/globalStorage/redhat.mta-core/settings
+        mkdir -p "$settings"
+        printf '%s\n' \
+          '# Written by the workspace at every start (devfile command mta-provider-settings).' \
+          'models:' \
+          '  maas: &active' \
+          '    environment:' \
+          '      CA_BUNDLE: /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem' \
+          '    provider: ChatOpenAI' \
+          '    args:' \
+          "      model: \"${MAAS_MODEL_NAME}\"" \
+          '      configuration:' \
+          "        baseURL: \"${MAAS_API_BASE_URL}\"" \
+          'active: *active' > "$settings/provider-settings.yaml"
   - id: package
     exec:
       label: "Package"
@@ -115,3 +134,4 @@ commands:
 events:
   postStart:
     - java21-default
+    - mta-provider-settings
