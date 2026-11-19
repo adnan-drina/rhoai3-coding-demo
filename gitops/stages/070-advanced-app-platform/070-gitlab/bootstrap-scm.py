@@ -243,8 +243,9 @@ def main():
 
         publisher, enroller, reader, operator = [user(u) for u in ('rhdh-publisher', 'platform-enroller', 'platform-catalog-reader', 'demo-operator')]
         # demo-operator: the demo operator's own identity for the Stage 070 demo-reset task scripts (baseline commits,
-        # archiving retired projects); Owner of the workload group, nothing else.
-        for identity, groups in ((publisher, [(workloads, 40), (platform, 20)]), (enroller, [(workloads, 50), (delivery, 50), (platform, 20)]), (reader, [(platform, 20)]), (operator, [(workloads, 50)])):
+        # removing retired projects and their NAME-deployment delivery repositories); Owner of the workload and delivery
+        # groups, nothing else.
+        for identity, groups in ((publisher, [(workloads, 40), (platform, 20)]), (enroller, [(workloads, 50), (delivery, 50), (platform, 20)]), (reader, [(platform, 20)]), (operator, [(workloads, 50), (delivery, 50)])):
             for g, level in groups: membership(g['id'], identity['id'], level)
 
         def credential(username, scopes, secret_name, ns, days=90):

@@ -342,7 +342,7 @@ pass.
 
 ### Resetting the demo
 
-Resetting is an **operator action**, not a workspace action: it needs operator credentials, which never enter a developer workspace. It restores the registered GitLab baseline of `coolstore-inventory-service` with a normal commit (history is kept) and stops the `coolstore-inventory-service` workspaces that clone it (their PVCs and local changes are kept); the commit fires one expected pipeline run in `coolstore-dev`.
+Resetting is an **operator action**, not a workspace action: it needs operator credentials, which never enter a developer workspace. It puts `main` of `coolstore-inventory-service` back on its registered baseline commit, deletes the exercise's branches, merge requests and pipeline runs, and recreates the `coolstore-inventory-service` workspaces with a fresh clone. One pipeline run then deploys the baseline in `coolstore-dev`.
 
 ```bash
 ./stages/070-advanced-app-platform/demo-reset/reset-coolstore.sh        # prints the plan

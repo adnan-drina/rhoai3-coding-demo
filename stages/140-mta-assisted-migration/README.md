@@ -147,7 +147,7 @@ curl -s localhost:8080/api/cart/demo
 
 ### Resetting the demo
 
-Teardown is an operator action on the platform. Run `stages/070-advanced-app-platform/demo-reset/delete-project.sh coolstore-cart` (plan) and then with `--yes`; see [`demo-reset/README.md`](../070-advanced-app-platform/demo-reset/README.md). Delete the DevWorkspace afterwards. Create the project again anytime from the template.
+Teardown is an operator action on the platform. Run `stages/070-advanced-app-platform/demo-reset/delete-project.sh coolstore-cart` (plan) and then with `--yes`; see [`demo-reset/README.md`](../070-advanced-app-platform/demo-reset/README.md). It also deletes the workspace, the delivery repository and the GitLab project, so the name is free again. Create the project again anytime from the template.
 
 ### Stage files
 

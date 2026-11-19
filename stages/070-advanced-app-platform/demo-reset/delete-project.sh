@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Retire one registered GitLab project (a template-created application or migration run, never a stage-owned import
-# such as Coolstore). In order: an immutable retirement record (ConfigMap retired-project-NAME in app-platform-build),
-# stop the DevWorkspaces that clone it, archive the GitLab project (the persistent guard: the reconciler cannot
-# recreate its resources), run the platform retirement pipeline for a migration run, then delete its Applications
-# project-NAME and runtime-NAME, its cross-namespace grants, delivery reader Secret, listener binding and workspace
-# scanner credential mirror (NAME-sonar-credentials in the persona workspace namespaces), and its namespace. Kept: the GitLab repository (archived), workspace PVCs, delivery history; no GitHub/Quay deletion.
-# Without --yes it only prints the plan (read-only) and refuses; safe to rerun (every step accepts the retired state).
+# Remove one registered GitLab project (a template-created application or migration run, never a stage-owned import
+# such as Coolstore) so the demo shows no trace of it and its name can be used again. In order: a retirement record
+# (ConfigMap retired-project-NAME in app-platform-build) so an interrupted run can resume, delete the DevWorkspaces that
+# clone it (with their storage), archive the GitLab project (the reconciler then cannot recreate its resources), run the
+# platform retirement pipeline for a migration run, delete its Applications project-NAME and runtime-NAME, its
+# cross-namespace grants, delivery reader Secret, listener binding, workspace scanner credential mirror
+# (NAME-sonar-credentials in the persona workspace namespaces) and its namespace, then delete its migration-run receipt
+# and lifecycle PipelineRuns, its delivery repository rhoai-delivery/NAME-deployment and the GitLab project itself.
+# The Developer Hub catalog drops the component within a minute, once the GitLab discovery provider no longer finds
+# it. The retirement record goes last. Not touched: the SonarQube project, GitHub and Quay.
+# Without --yes it only prints the plan (read-only) and refuses; safe to rerun (every step accepts the removed state).
 # Acts as the GitLab user demo-operator (token in Secret gitlab-system/gitlab-demo-operator).
 # Usage: stages/070-advanced-app-platform/demo-reset/delete-project.sh NAME [--yes]
 set -euo pipefail
@@ -27,16 +31,24 @@ check_oc_logged_in
 source "$SCRIPT_DIR/lifecycle.sh"
 BUILD_NS=app-platform-build
 GITOPS_NS=openshift-gitops
+RUN_NS=wksp-ai-developer
 
 # ── Read-only: registration, project identity, workspaces, retirement record and pipeline ────────────────────────────
-log_step "Retire project $NAME: plan"
+log_step "Remove project $NAME: plan"
 lifecycle_read_platform
 lifecycle_read_registration "$NAME"
 lifecycle_read_token
+if [[ -z "$REGISTRATION" ]]; then
+  [[ -z $(gitlab_find "projects/$(printf '%s' "$GITLAB_WORKLOAD_GROUP/$NAME" | jq -sRr @uri)") ]] ||
+    die "GitLab project $GITLAB_WORKLOAD_GROUP/$NAME exists without a registration; inspect it by hand"
+  log_success "Nothing registered under $NAME: already removed"
+  exit 0
+fi
 lifecycle_check_project retire "$NAME"
+lifecycle_read_delivery "$NAME"
 WORKSPACES=$(lifecycle_matching_workspaces)
 KIND=$(printf '%s' "$REGISTRATION" | jq -r '.kind')
-PROJECT_ID=$(printf '%s' "$PROJECT" | jq -r '.id')
+PROJECT_ID=$(printf '%s' "$REGISTRATION" | jq -r '.project_id')
 TOMBSTONE=$(lifecycle_tombstone "$NAME")
 RECORD=$(oc get configmap "retired-project-$NAME" -n "$BUILD_NS" --ignore-not-found -o json)
 if [[ -n "$RECORD" ]]; then
@@ -52,50 +64,59 @@ RUN=$(jq -n -c --arg name "$NAME" --arg commit "$(printf '%s' "$REGISTRATION" | 
     spec: {taskRunTemplate: {serviceAccountName: "migration-run-provisioner"}, pipelineRef: {name: "provision-migration-run"},
       params: [{name: "run-name", value: $name}, {name: "scaffold-commit", value: $commit}, {name: "mode", value: "retire"},
                {name: "request-project-id", value: $pid}]}}')
+ARCHIVED=$(printf '%s' "$PROJECT" | jq -r '.archived // false')
 log_info "Project:    $GITLAB_WORKLOAD_GROUP/$NAME (GitLab id $PROJECT_ID, kind $KIND, namespace $PROJECT_NS)"
-log_info "Record:     ConfigMap $BUILD_NS/retired-project-$NAME ($([[ -n "$RECORD" ]] && echo present || echo create))"
+log_info "Record:     ConfigMap $BUILD_NS/retired-project-$NAME ($([[ -n "$RECORD" ]] && echo present || echo create); deleted at the end)"
 while read -r namespace name; do
-  [[ -z "$name" ]] || log_info "Stop:       DevWorkspace $namespace/$name"
+  [[ -z "$name" ]] || log_info "Delete:     DevWorkspace $namespace/$name and its storage"
 done <<<"$WORKSPACES"
-log_info "Archive:    GitLab project ($([[ $(printf '%s' "$PROJECT" | jq -r '.archived // false') == true ]] && echo already archived || echo archive))"
+if [[ -z "$PROJECT" ]]; then
+  log_info "GitLab:     project already deleted (resuming)"
+else
+  log_info "Archive:    GitLab project ($([[ "$ARCHIVED" == true ]] && echo already archived || echo archive))"
+fi
 [[ "$KIND" != migration ]] || log_info "Pipeline:   PipelineRun $BUILD_NS/retire-$NAME (provision-migration-run, mode retire)"
 log_info "Delete:     Applications project-$NAME, runtime-$NAME; grants, delivery reader, listener binding, scanner credential mirror; namespace $PROJECT_NS"
+[[ "$KIND" != migration ]] || log_info "Delete:     ConfigMap $RUN_NS/migration-run-$NAME; PipelineRuns $BUILD_NS/provision-$NAME, retire-$NAME"
+log_info "Delete:     GitLab delivery repository $(printf '%s' "$DELIVERY" | jq -r '.path_with_namespace // "(none)"')"
+[[ -z "$PROJECT" ]] || log_info "Delete:     GitLab project $GITLAB_WORKLOAD_GROUP/$NAME (permanently; the catalog drops it within a minute)"
 if [[ "$CONFIRMED" != true ]]; then
-  log_error "Pass --yes after reviewing the registered project and retained data."
+  log_error "Pass --yes after reviewing the plan. Deleted repositories and workspaces cannot be recovered."
   exit 1
 fi
 
 # ── Writes ───────────────────────────────────────────────────────────────────────────────────────────────────────
-log_step "Retire project $NAME"
+log_step "Remove project $NAME"
 if [[ -z "$RECORD" ]]; then
   printf '%s' "$TOMBSTONE" | oc create -f - >/dev/null
   log_success "Retirement record retired-project-$NAME created"
 fi
-# Stop matching workspaces; retain their PVCs and local changes.
-lifecycle_stop_workspaces "$WORKSPACES"
-# Archiving is the persistent retirement guard: the reconciler cannot recreate resources for this project, even after
-# its namespace is gone.
-if [[ $(printf '%s' "$PROJECT" | jq -r '.archived // false') != true ]]; then
+lifecycle_delete_workspaces "$WORKSPACES"
+# Archiving keeps the reconciler from recreating resources for this project while they are removed.
+if [[ -n "$PROJECT" && "$ARCHIVED" != true ]]; then
   gitlab POST "projects/$PROJECT_ID/archive" </dev/null >/dev/null
   log_success "GitLab project archived"
 fi
 if [[ "$KIND" == migration ]]; then
-  RECORDED=$(oc get pipelinerun "retire-$NAME" -n "$BUILD_NS" --ignore-not-found -o json)
-  [[ -n "$RECORDED" ]] || RECORDED=$(printf '%s' "$RUN" | oc create -f - -o json)
-  printf '%s' "$RECORDED" | jq -e --argjson want "$RUN" '(.spec.params | map({(.name): .value}) | add)
-      == ($want.spec.params | map({(.name): .value}) | add) and .spec.pipelineRef == $want.spec.pipelineRef' >/dev/null ||
-    { log_error "Existing retirement PipelineRun has another identity"; exit 1; }
-  if printf '%s' "$RECORDED" | jq -e 'any(.status.conditions[]?; .type == "Succeeded" and .status == "False")' >/dev/null; then
-    log_error "Retirement pipeline failed; preserve it, repair its cause and review a native retry. Namespace retained."
-    exit 1
+  RECEIPT=$(oc get configmap "migration-run-$NAME" -n "$RUN_NS" --ignore-not-found -o json)
+  # The receipt is deleted only after a successful retirement, so a missing receipt means the pipeline already ran.
+  if [[ -n "$RECEIPT" ]]; then
+    RECORDED=$(oc get pipelinerun "retire-$NAME" -n "$BUILD_NS" --ignore-not-found -o json)
+    [[ -n "$RECORDED" ]] || RECORDED=$(printf '%s' "$RUN" | oc create -f - -o json)
+    printf '%s' "$RECORDED" | jq -e --argjson want "$RUN" '(.spec.params | map({(.name): .value}) | add)
+        == ($want.spec.params | map({(.name): .value}) | add) and .spec.pipelineRef == $want.spec.pipelineRef' >/dev/null ||
+      { log_error "Existing retirement PipelineRun has another identity"; exit 1; }
+    if printf '%s' "$RECORDED" | jq -e 'any(.status.conditions[]?; .type == "Succeeded" and .status == "False")' >/dev/null; then
+      log_error "Retirement pipeline failed; preserve it, repair its cause and review a native retry. Namespace retained."
+      exit 1
+    fi
+    oc wait pipelinerun "retire-$NAME" -n "$BUILD_NS" --for=condition=Succeeded --timeout=600s
   fi
-  oc wait pipelinerun "retire-$NAME" -n "$BUILD_NS" --for=condition=Succeeded --timeout=600s
 fi
 for app in "project-$NAME" "runtime-$NAME"; do
   oc delete application "$app" -n "$GITOPS_NS" --ignore-not-found
 done
-# Child Applications have no destructive finalizers. Remove only their registered cross-namespace grants; repository
-# and delivery history remain.
+# Child Applications have no destructive finalizers. Remove their registered cross-namespace grants.
 oc delete rolebinding "$NAME.inputs" "$NAME.runs" -n "$BUILD_NS" --ignore-not-found
 oc delete role "$NAME.runs" -n "$BUILD_NS" --ignore-not-found
 oc delete rolebinding "$NAME.delivery" "$NAME.readback" -n "$GITOPS_NS" --ignore-not-found
@@ -103,8 +124,18 @@ oc delete role "$NAME.delivery" "$NAME.readback" -n "$GITOPS_NS" --ignore-not-fo
 oc delete secret "gitlab-delivery-reader-$NAME" -n "$GITOPS_NS" --ignore-not-found
 oc delete clusterrolebinding "$NAME.listener" --ignore-not-found
 # The reconciler mirrors the project's SonarQube token into the requester's workspace namespace for the scanner.
-for ws_ns in wksp-ai-developer wksp-ai-admin; do
+for ws_ns in "${WORKSPACE_NAMESPACES[@]}"; do
   oc delete secret "$NAME-sonar-credentials" -n "$ws_ns" --ignore-not-found
 done
 oc delete namespace "$PROJECT_NS" --ignore-not-found
-log_success "Project retired. GitLab repository archived; workspace PVCs and delivery history retained."
+# A migration run's receipt would refuse a new run of the same name; its lifecycle runs are history.
+if [[ "$KIND" == migration ]]; then
+  oc delete configmap "migration-run-$NAME" -n "$RUN_NS" --ignore-not-found
+  oc delete pipelinerun "provision-$NAME" "retire-$NAME" -n "$BUILD_NS" --ignore-not-found
+fi
+# The delivery repository would be reused by a new project of the same name, and its promotion record would refuse
+# that project's first image (promotion only moves forward along one source history).
+[[ -z "$DELIVERY" ]] || lifecycle_delete_gitlab_project "$(printf '%s' "$DELIVERY" | jq -r '.id')"
+[[ -z "$PROJECT" ]] || lifecycle_delete_gitlab_project "$PROJECT_ID"
+oc delete configmap "retired-project-$NAME" -n "$BUILD_NS" --ignore-not-found
+log_success "Project $NAME removed. The name is free for a new project from the Developer Hub template."

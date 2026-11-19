@@ -3520,8 +3520,8 @@ with `REFUSE enrollment: <iid> requires correction of the recorded request`.
 `platform-enrollment-refused` (for example a migration run whose first enrollment hit a GitLab error). The reconciler
 never retries a refused request.
 
-**Recover:** retire the project with `stages/070-advanced-app-platform/demo-reset/delete-project.sh NAME --yes`. Once
-the GitLab project is archived, the reconciler closes its refused request on the next run. To keep the project instead,
+**Recover:** remove the project with `stages/070-advanced-app-platform/demo-reset/delete-project.sh NAME --yes`. Once
+the GitLab project is archived or deleted, the reconciler closes its refused request on the next run. To keep the project instead,
 file a corrected enrollment request from the Developer Hub template.
 
 ## Stage 130 workspace autostart refuses PROTOCOL_UNBOUND
