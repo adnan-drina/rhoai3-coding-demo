@@ -201,7 +201,7 @@ generator does for its own calls:
 | Secret | `evaluation-models-{models,workbench,pipelines}-connection` | `evaluated-models` | Wave 12, `Prune=false,Delete=false,ServerSideApply=true`. Dashboard S3 connection skeletons (`connection-type-ref: s3`); the hook fills the data. |
 | ServiceAccount, Role, RoleBinding | `evaluated-models-s3-connections` | `evaluated-models` | Wave 12. Read the claims' Secrets/ConfigMaps, patch the three connections, create the project PVC. |
 | Role / RoleBinding | `evaluated-models-s3-route-reader` | `openshift-storage` | Wave 12. `get` on Route `s3` only. |
-| Job | `evaluated-models-s3-connections` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation` (the completed Job is kept). Copies each claim's keys, bucket and endpoint into its connection after ownership checks; the Pipelines connection uses the external ODF Route so signed artifact links open in a browser; creates PVC `evaluated-models-storage`. |
+| Job | `evaluated-models-s3-connections` | `evaluated-models` | `Sync` hook, wave 13, `BeforeHookCreation` (the completed Job is kept). Copies each claim's keys, bucket and endpoint into its connection after ownership checks; the Pipelines connection uses the external ODF Route so signed artifact links open in a browser. |
 
 ### Objects not in Git
 
@@ -209,7 +209,6 @@ generator does for its own calls:
 |---|---|
 | Secrets `evalhub-model-auth-maas`, `garak-kfp-model-auth`, `dashboard-dspa-secret`; ConfigMaps `qualification-endpoints`, `candidate-guardrails-config`, `candidate-guardrails-ca`, `ds-pipeline-server-config-custom` | Hook Jobs above |
 | DataSciencePipelinesApplication `dspa` | `configure-pipeline-server` hook (not tracked by Argo CD) |
-| PVC `evaluated-models-storage` (20 Gi `gp3-csi`) | `evaluated-models-s3-connections` hook, so a `WaitForFirstConsumer` PVC does not hold the sync |
 | Pipeline server Deployments, MariaDB, `pipeline-runner-dspa` ServiceAccount, `ds-pipeline-server-config-dspa` | Data Science Pipelines operator from `dspa` |
 | ServiceAccount `evalhub-evalhub-job`, ConfigMaps `evalhub-discovery`, `evalhub-service-ca` | TrustyAI operator, for the tenant |
 | Secrets and ConfigMaps named after each ObjectBucketClaim | ODF [5] |
