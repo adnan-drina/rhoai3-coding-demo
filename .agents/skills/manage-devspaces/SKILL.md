@@ -2,7 +2,7 @@
 name: manage-devspaces
 metadata:
   author: rhoai3-coding-demo
-  version: 1.3.0
+  version: 1.3.1
   platform-family: "rhoai"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -109,25 +109,44 @@ The Dev Spaces operator reconciles DevWorkspaces. Manual `oc apply` changes may 
 4. Delete the namespace PVC only if no other workspace in that namespace still needs it (`claim-devworkspace` is per-user and shared)
 5. Apply the new CR from GitOps
 6. Re-enable ArgoCD auto-sync
+7. For `coolstore-inventory-service`, restore the GitLab origin before starting it, because Git holds a placeholder (next section)
+
+### Recreated seats clone from a placeholder origin
+
+`agentic-workspace.yaml` sets the project origin to `https://gitlab.pending.invalid/rhoai-workloads/coolstore-inventory-service.git`. The `070-gitlab` bootstrap (`bootstrap-scm.py`) replaces it with the GitLab mirror URL once, on a stopped seat, and `070-devspaces` ignores `/spec/template/projects/0/git/remotes/origin`, so a later sync never reverts it. A recreated seat therefore keeps the placeholder and its `project-clone` init container fails with `Could not resolve host: gitlab.pending.invalid` (the workspace still reaches Running with an empty `/projects`). Patch the origin on the stopped seat, as the bootstrap does, instead of rerunning the whole bootstrap.
+
+Deleting the last DevWorkspace in a `wksp-*` namespace makes the DevWorkspace operator remove `claim-devworkspace` itself, so the explicit PVC delete may find nothing.
 
 ## Common Operations
 
 ### Recreate the Stage 070 catalog seat (clean slate)
 
+First confirm nothing unpushed is lost (`git status -sb` and `git stash list` in `/projects/coolstore-inventory-service`).
+
 ```bash
-NS=wksp-ai-developer
+NS=wksp-ai-developer            # the seat to recreate
+OTHER=wksp-ai-admin             # the other persona's seat, still holding the GitLab origin
 oc patch application 070-devspaces -n openshift-gitops --type=json \
   -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
 oc patch devworkspace coolstore-inventory-service -n $NS --type=merge -p '{"spec":{"started":false}}'
-sleep 10
-oc delete devworkspace coolstore-inventory-service -n $NS --force --grace-period=0
+oc wait devworkspace/coolstore-inventory-service -n $NS --for=jsonpath='{.status.phase}'=Stopped --timeout=120s
+oc delete devworkspace coolstore-inventory-service -n $NS --wait=true
 # Only delete the per-user claim when no other DevWorkspace in $NS still needs it.
-oc delete pvc claim-devworkspace -n $NS --force --grace-period=0
-sleep 5
-oc apply -f gitops/stages/070-advanced-app-platform/070-devspaces/agentic-workspace.yaml
+oc delete pvc claim-devworkspace -n $NS --ignore-not-found --wait=true
+# Re-enabling auto-sync recreates the seat from Git (stopped, placeholder origin).
 oc patch application 070-devspaces -n openshift-gitops --type=merge \
   -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
+until oc get devworkspace coolstore-inventory-service -n $NS >/dev/null 2>&1; do sleep 10; done
+# Restore the GitLab origin while the seat is stopped (what bootstrap-scm.py does).
+URL=$(oc get devworkspace coolstore-inventory-service -n $OTHER \
+  -o jsonpath='{.spec.template.projects[0].git.remotes.origin}')
+case "$URL" in *gitlab.pending.invalid*|"") echo "no GitLab origin to copy" >&2; exit 1;; esac
+oc patch devworkspace coolstore-inventory-service -n $NS --type=json \
+  -p "[{\"op\":\"replace\",\"path\":\"/spec/template/projects/0/git/remotes/origin\",\"value\":\"$URL\"}]"
+oc patch devworkspace coolstore-inventory-service -n $NS --type=merge -p '{"spec":{"started":true}}'
 ```
+
+If the seat was already started with the placeholder, delete `/projects/project-clone-*` and `/projects/project-clone-errors.log` in the workspace, stop it, patch the origin and start it again. When both seats are recreated, take the URL from `http_url_to_repo` of `rhoai-workloads/coolstore-inventory-service` in GitLab. Verified on 2026-11-18.
 
 ### Check Workspace Health
 
