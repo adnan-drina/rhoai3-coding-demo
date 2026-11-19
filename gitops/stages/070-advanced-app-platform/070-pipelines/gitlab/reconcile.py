@@ -549,6 +549,11 @@ def main():
                 print('Enrollment complete:',project['path'])
             except (ValueError, KeyError, subprocess.CalledProcessError, urllib.error.URLError, TimeoutError) as error:
                 state, reason = enrollment_failure(error, issue.get('created_at'))
+                if state == 'refused' and retired_request(api, issue, config):
+                    # A demo reset archived or deleted the project while its enrollment was still in flight.
+                    api.request('PUT','projects/%s/issues/%s' % (config['GITLAB_REGISTRATION_PROJECT_ID'],issue['iid']),{'state_event':'close'})
+                    print('Enrollment retired:', issue['iid'], 'project archived or deleted during enrollment; request closed')
+                    continue
                 print('Enrollment ' + state + ':', issue['iid'], reason)
                 if state == 'refused':
                     failures += 1

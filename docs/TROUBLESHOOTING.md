@@ -3542,6 +3542,9 @@ never retries a refused request.
 the GitLab project is archived or deleted, the reconciler closes its refused request on the next run. To keep the project instead,
 file a corrected enrollment request from the Developer Hub template.
 
+A request whose project is archived or deleted while its enrollment is still in flight (a demo reset right after the
+template run) is closed as retired on that run, without a failed Job.
+
 ## Stage 130 workspace autostart refuses PROTOCOL_UNBOUND
 
 **Symptom:** a new migration workspace starts, but `/projects/modernized/.hermes/AUTOSTART-STATUS` reads `"state":
