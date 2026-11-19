@@ -57,6 +57,7 @@ DCGM metric list (`dcgm-metrics/`):
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | ConfigMap | `nvidia-dcgm-metrics` | `nvidia-gpu-operator` | Key `dcgm-metrics.csv`, generated from the local `dcgm-metrics.csv`; read by `ClusterPolicy` `dcgmExporter.config.name` |
+| PrometheusRule | `nvidia-dcgm-legacy-names` | `nvidia-gpu-operator` | Records `DCGM_FI_PROF_GR_ENGINE_ACTIVE`, `DCGM_FI_PROF_PIPE_TENSOR_ACTIVE`, `DCGM_FI_DEV_POWER_USAGE` and `DCGM_FI_DEV_GPU_TEMP` from their 4.9 names (platform monitoring evaluates it) |
 
 Console plugin (`console-plugin/`, rendered from chart `console-plugin-nvidia-gpu` 0.3.0, Apache-2.0):
 
@@ -115,8 +116,11 @@ zero replicas, the operand DaemonSets schedule no pods and the `ClusterPolicy` s
   names and changed some units (for example `DCGM_FI_DEV_GPU_UTIL` in percent became `DCGM_FI_DEV_GPU_UTIL_RATIO`) [7].
   The plugin 0.3.0, the pinned dashboard, the `rhoai-monitoring/` ServiceMonitor and `validate.sh --functional`
   still query the old names. A custom list replaces the exporter defaults, so `dcgm-metrics.csv` repeats the 4.9.0
-  defaults and then adds the old names; each old name is still its own DCGM field with its old unit. The file was
-  checked with `dcgm-exporter config explain -- --collectors <file>` on the running image (41 fields, exit 0). The
+  defaults and then adds the old names that are still their own DCGM field with the old unit (`GPU_UTIL`,
+  `MEM_COPY_UTIL`, `FB_USED`, the clocks). The exporter exports one name per DCGM field and the first CSV row wins
+  without a warning (seen live), so four old names share a field with a default and cannot come from the CSV:
+  `nvidia-dcgm-legacy-names` records them from the new names, which have the same unit. The file was checked with
+  `dcgm-exporter config explain -- --collectors <file>` on the running image (exit 0) and against live output. The
   upstream procedure installs the chart's 11-metric list as the whole list [5]; that would drop the 4.9 defaults.
 - **Console plugin.** The upstream procedure installs the plugin with Helm and enables it with `oc patch` [5]. Here the chart was
   rendered once into plain manifests, as for GitLab in Stage 070: no Helm release, the image pinned by digest, the
@@ -135,7 +139,7 @@ zero replicas, the operand DaemonSets schedule no pods and the `ClusterPolicy` s
 `validate.sh --readiness` checks: the RoleBinding subject and the Role rules; the dashboard ConfigMap label,
 tracking, title and SHA-256; the CSV `Succeeded`; `ClusterPolicy` state `ready`; `nvidia-operator-validator` and
 `nvidia-dcgm-exporter` DaemonSets owned by the policy and ready on every GPU node; the `ClusterPolicy` reading
-`nvidia-dcgm-metrics` with old and new names, the plugin Deployment available, its `ConsolePlugin` backend and the
+`nvidia-dcgm-metrics` with old and new names and the legacy-name rule, the plugin Deployment available, its `ConsolePlugin` backend and the
 plugin enabled on the console; one current Driver Toolkit driver DaemonSet per GPU node RHCOS version. `--functional` adds the CUDA vectorAdd validator result and a
 port-forwarded DCGM `/metrics` scrape per node. GPU node checks fail while the pools are parked at zero.
 

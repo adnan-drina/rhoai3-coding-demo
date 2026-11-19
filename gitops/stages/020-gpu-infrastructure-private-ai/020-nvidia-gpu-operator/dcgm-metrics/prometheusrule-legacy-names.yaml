@@ -1,0 +1,23 @@
+# Pre-4.9 DCGM names that share a DCGM field with a 4.9 default. dcgm-exporter exports one name per field (the first
+# CSV row wins, without a warning), so these cannot come from dcgm-metrics.csv. Same field and unit on both sides:
+# the old name is recorded from the new one with every label kept. Consumers: console-plugin-nvidia-gpu 0.3.0
+# (GPU utilization, power, temperature) and the pinned DCGM console dashboard (power, temperature, tensor activity).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nvidia-dcgm-legacy-names
+  labels:
+    app.kubernetes.io/name: nvidia-dcgm-legacy-names
+spec:
+  groups:
+    - name: nvidia-dcgm-legacy-names
+      interval: 30s
+      rules:
+        - record: DCGM_FI_PROF_GR_ENGINE_ACTIVE
+          expr: DCGM_FI_PROF_GR_ENGINE_UTIL_RATIO
+        - record: DCGM_FI_PROF_PIPE_TENSOR_ACTIVE
+          expr: DCGM_FI_PROF_TENSOR_UTIL_RATIO
+        - record: DCGM_FI_DEV_POWER_USAGE
+          expr: DCGM_FI_DEV_BOARD_POWER_WATTS
+        - record: DCGM_FI_DEV_GPU_TEMP
+          expr: DCGM_FI_DEV_GPU_TEMP_CELSIUS

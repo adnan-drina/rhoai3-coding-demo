@@ -380,7 +380,7 @@ oc get configmap nvidia-dcgm-metrics -n nvidia-gpu-operator -o jsonpath='{.data.
 oc logs -n nvidia-gpu-operator ds/nvidia-dcgm-exporter | grep -iE 'error|warn' | tail
 ```
 
-**Recover:** Keep `dcgmExporter.config.name: nvidia-dcgm-metrics` and both blocks of `020-nvidia-gpu-operator/dcgm-metrics/dcgm-metrics.csv` (the exporter defaults, then the old names). After an exporter update, compare the defaults block with that release's `etc/default-counters.csv` and check the file with `dcgm-exporter config explain -- --collectors <file>` (see the component README). The exporter reloads the mounted list, so no pod restart is needed.
+**Recover:** Keep `dcgmExporter.config.name: nvidia-dcgm-metrics`, both blocks of `020-nvidia-gpu-operator/dcgm-metrics/dcgm-metrics.csv` (the exporter defaults, then the old names) and the `nvidia-dcgm-legacy-names` PrometheusRule. The exporter exports one name per DCGM field, first CSV row first, so an old name that shares a field with a default (`GR_ENGINE_ACTIVE`, `PIPE_TENSOR_ACTIVE`, `POWER_USAGE`, `GPU_TEMP`) only exists through that rule. After an exporter update, compare the defaults block with that release's `etc/default-counters.csv` and check the file with `dcgm-exporter config explain -- --collectors <file>` (see the component README). The exporter reloads the mounted list, so no pod restart is needed.
 
 ## Kueue Or GPUaaS Queue Resources Are Missing
 

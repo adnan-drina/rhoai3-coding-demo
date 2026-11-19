@@ -62,14 +62,16 @@ console_dashboard() {
 }
 # The ClusterPolicy reads the Git metric list, and the NVIDIA console plugin is served, registered and enabled.
 console_plugin() {
-    local cm deploy plugin console
+    local cm rule deploy plugin console
     cm=$(read_json configmap nvidia-dcgm-metrics -n nvidia-gpu-operator)
+    rule=$(read_json prometheusrule nvidia-dcgm-legacy-names -n nvidia-gpu-operator)
     deploy=$(read_json deployment console-plugin-nvidia-gpu -n nvidia-gpu-operator)
     plugin=$(read_json consoleplugin console-plugin-nvidia-gpu)
     console=$(read_json console.operator.openshift.io cluster)
-    jq -n -e --argjson cp "$cp" --argjson cm "$cm" --argjson d "$deploy" --argjson p "$plugin" --argjson c "$console" \
+    jq -n -e --argjson cp "$cp" --argjson cm "$cm" --argjson r "$rule" --argjson d "$deploy" --argjson p "$plugin" --argjson c "$console" \
         '$cp.spec.dcgmExporter.config.name == "nvidia-dcgm-metrics"
-        and ($cm.data["dcgm-metrics.csv"] | test("(?m)^DCGM_FI_PROF_GR_ENGINE_ACTIVE,") and test("(?m)^DCGM_FI_DEV_GPU_UTIL_RATIO,"))
+        and ($cm.data["dcgm-metrics.csv"] | test("(?m)^DCGM_FI_DEV_GPU_UTIL,") and test("(?m)^DCGM_FI_DEV_GPU_UTIL_RATIO,"))
+        and ([$r.spec.groups[].rules[].record] | index("DCGM_FI_PROF_GR_ENGINE_ACTIVE")) != null
         and $d.status.observedGeneration == $d.metadata.generation and ($d.status.availableReplicas // 0) >= 1
         and $p.spec.backend.service == {name: "console-plugin-nvidia-gpu", namespace: "nvidia-gpu-operator", port: 9443, basePath: "/"}
         and ($c.spec.plugins // [] | index("console-plugin-nvidia-gpu")) != null' >/dev/null && echo yes || echo no
