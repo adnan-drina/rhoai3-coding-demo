@@ -180,16 +180,18 @@ results() {
 }
 
 # lifecycle_list_results all|orphans NAMESPACE [RUN...]: print the stored results (one name per line) of NAMESPACE,
-# limited to the PipelineRuns named RUN when given. "orphans" leaves out every result that a PipelineRun or TaskRun
-# still in the cluster links, so a live run is never touched.
+# limited to the PipelineRuns named RUN when given. "orphans" leaves out every result that a PipelineRun or a
+# standalone TaskRun still in the cluster links, so a live run is never touched. A pipeline's TaskRuns share its result
+# and outlive a deleted PipelineRun for a few seconds (garbage collection), so they do not count.
 lifecycle_list_results() {
     local mode=$1 namespace=$2 names live='[]' token="" page all='[]'
     shift 2
     [[ -n "$RESULTS_URL" ]] || return 0
     names=$(printf '%s\n' "$@" | jq -R . | jq -sc 'map(select(. != ""))')
     if [[ "$mode" == orphans ]]; then
-        live=$(oc get pipelineruns,taskruns -n "$namespace" -o json |
-            jq -c '[.items[].metadata.annotations["results.tekton.dev/result"] // empty]')
+        live=$(oc get pipelineruns,taskruns -n "$namespace" -o json | jq -c '[.items[]
+            | select(.kind == "PipelineRun" or ([.metadata.ownerReferences[]?.kind] | index("PipelineRun") | not))
+            | .metadata.annotations["results.tekton.dev/result"] // empty]')
     fi
     while :; do
         page=$(results GET "$namespace/results?page_size=100${token:+&page_token=$(printf '%s' "$token" | jq -sRr @uri)}")
