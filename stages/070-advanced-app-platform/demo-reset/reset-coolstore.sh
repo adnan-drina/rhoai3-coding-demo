@@ -2,7 +2,8 @@
 # Reset the Coolstore demo to its registered starting point, with no trace of earlier runs:
 #   - recreate the coolstore-inventory-service workspaces (DevWorkspaces deleted with their storage; 070-devspaces
 #     recreates the Argo CD-owned seats from Git, stopped, and the script points them at the GitLab project again);
-#   - delete every merge request and every branch except main in rhoai-workloads/coolstore-inventory-service;
+#   - delete the merge requests and branches of demo runs (newer than the registered commit) in
+#     rhoai-workloads/coolstore-inventory-service; older branches that came with the import, such as golden, stay;
 #   - put main back on the registered initial commit when it moved: delete the PipelineRuns in coolstore-dev, clear the
 #     delivery repository's promotion record (promotion only moves forward along one source history), then recreate
 #     main at that commit and protect it as before. Creating main fires one pipeline run that builds and deploys it.
@@ -27,6 +28,8 @@ NAME=coolstore-inventory-service
 GITOPS_NS=openshift-gitops
 SEAT_APP=070-devspaces
 TEMP_BRANCH=demo-reset-baseline
+# GitLab timestamps (ISO 8601 with an offset) as epoch seconds.
+TS='def ts: (.[0:19] + "Z" | fromdateiso8601) - (if test("[+-][0-9]{2}:[0-9]{2}$") then (.[-6:] | ((.[1:3] | tonumber) * 3600 + (.[4:6] | tonumber) * 60) * (if startswith("-") then -1 else 1 end)) else 0 end);'
 
 # ── Read-only: registration, project identity, workspaces, GitLab history, pipeline history ───────────────────────────
 log_step "Coolstore demo reset: plan"
@@ -42,11 +45,15 @@ PID=$(printf '%s' "$PROJECT" | jq -r '.id')
 DID=$(printf '%s' "$DELIVERY" | jq -r '.id')
 REPO_URL=$(printf '%s' "$PROJECT" | jq -r '.http_url_to_repo')
 BASELINE=$(printf '%s' "$REGISTRATION" | jq -r '.initial_commit')
-gitlab GET "projects/$PID/repository/commits/$BASELINE" >/dev/null
+SINCE=$(gitlab GET "projects/$PID/repository/commits/$BASELINE" | jq -r "$TS"' .committed_date | ts')
 HEAD=$(gitlab GET "projects/$PID/repository/branches/main" | jq -r '.commit.id')
 PROTECTION=$(gitlab GET "projects/$PID/protected_branches/main")
-BRANCHES=$(gitlab GET "projects/$PID/repository/branches?per_page=100" | jq -r '.[].name | select(. != "main")')
-MRS=$(gitlab GET "projects/$PID/merge_requests?state=all&per_page=100" | jq -r '.[].iid')
+# Demo runs: branches whose last commit and merge requests created after the registered commit. Older branches came
+# with the import (for example golden) and stay.
+BRANCHES=$(gitlab GET "projects/$PID/repository/branches?per_page=100" | jq -r --argjson since "$SINCE" "$TS"'.[]
+  | select(.name != "main" and (.commit.committed_date | ts) > $since) | .name')
+MRS=$(gitlab GET "projects/$PID/merge_requests?state=all&per_page=100" | jq -r --argjson since "$SINCE" "$TS"'.[]
+  | select((.created_at | ts) > $since) | .iid')
 PROMOTION=$(gitlab GET "projects/$DID/repository/files/promotion.json?ref=main" | jq -c '.content | @base64d | fromjson')
 WORKSPACES=$(lifecycle_matching_workspaces)
 # Seats Argo CD recreates: the matching workspaces that 070-devspaces tracks.
@@ -63,7 +70,7 @@ log_info "Baseline:   registered commit ${BASELINE:0:12}; main is at ${HEAD:0:12
 while read -r namespace name; do
   [[ -z "$name" ]] || log_info "Workspace:  delete $namespace/$name$(grep -qx "$namespace $name" <<<"$SEATS" && echo '; 070-devspaces recreates it stopped')"
 done <<<"$WORKSPACES"
-log_info "GitLab:     delete $(grep -c . <<<"$MRS" || true) merge request(s) and branch(es): $(tr '\n' ' ' <<<"$BRANCHES")"
+log_info "GitLab:     delete $(grep -c . <<<"$MRS" || true) merge request(s); branches: $([[ -n "$BRANCHES" ]] && tr '\n' ' ' <<<"$BRANCHES" || echo none)"
 if [[ "$HEAD" != "$BASELINE" ]]; then
   log_info "Pipelines:  delete $(grep -c . <<<"$RUNS" || true) PipelineRun(s) in coolstore-dev"
   log_info "Delivery:   reset promotion.json in $(printf '%s' "$DELIVERY" | jq -r '.path_with_namespace') (now ${PROMOTION:0:80})"
