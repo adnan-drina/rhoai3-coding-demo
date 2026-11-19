@@ -1,14 +1,14 @@
 # Stage 140: Application Migration with MTA
 
-Stage 130 shows a migration run by an autonomous agent harness. This stage shows the same kind of work the way the product documents it: a developer migrates a Spring Boot 2.x service to Quarkus in VS Code, with the migration toolkit for applications (MTA) 8.3 extension and Red Hat Developer Lightspeed for MTA, inside an OpenShift Dev Spaces workspace that the platform provisions from a golden-path template.
+Stage 130 shows a migration run by an autonomous agent harness. This stage shows the same kind of work the way the product documents it: a developer brings a Java application and migrates it in VS Code to the target they choose, with the migration toolkit for applications (MTA) 8.3 extension and Red Hat Developer Lightspeed for MTA, inside an OpenShift Dev Spaces workspace that the platform provisions from a golden-path template.
 
 The message for platform teams: the workspace arrives ready. The platform provisions the extensions, the analyzer and the model access with the workspace, so the developer opens it and starts migrating. Developer Lightspeed proposes fixes with the private model served by Models-as-a-Service, using the developer's own MaaS key, so Models-as-a-Service stays the place where model access, quotas and usage are governed.
 
 ## What You'll Do
 
-You will **provision** a migration project from the **Migrate Spring Boot to Quarkus with MTA** template (a writable copy of any Spring Boot 2.x repository, a workspace, a namespace and the delivery pipeline), **open** a workspace whose MTA extensions, analyzer, model access and settings are already in place, **analyze** the service against the Quarkus migration profile the template adds, **resolve** the issues with Developer Lightspeed in agent mode, **run** the migrated service in Quarkus dev mode and **push** it through the same pipeline that built the legacy code.
+You will **provision** a migration project from the **Migrate an application with MTA** template (a writable copy of your Git repository, a workspace, a namespace and the delivery pipeline), **open** a workspace whose MTA extensions, analyzer, model access and settings are already in place, **analyze** the application against the analysis profile the template adds for your migration target, **resolve** the issues with Developer Lightspeed in agent mode, **run** the migrated service and **push** it through the same pipeline that built the legacy code.
 
-The template takes any Spring Boot 2.x service built with Maven. This walkthrough uses the Coolstore cart, [`coolstore-cart-legacy`](https://github.com/adnan-drina/coolstore-cart-legacy): a Spring Boot 2.7 shopping cart on Java 11 with `javax` APIs, Jersey resources under `/api` and an OpenFeign client for the catalog service. The platform GitLab mirrors it as `rhoai-workloads/coolstore-cart-legacy`.
+The template takes a Java application built with Maven that packages as a runnable jar, and offers the Java targets of the [MTA 8.3 supported migration paths](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html/installing_the_migration_toolkit_for_applications/supported-migration-paths_installing-mta-title): Quarkus, Spring Boot on Red Hat Runtimes, Jakarta EE 9, OpenJDK 21, Camel 4 and containerization (cloud readiness). The source is whatever the repository contains; MTA's rules for the target find the source technologies themselves. This walkthrough migrates to Quarkus and uses the Coolstore cart, [`coolstore-cart-legacy`](https://github.com/adnan-drina/coolstore-cart-legacy): a Spring Boot 2.7 shopping cart on Java 11 with `javax` APIs, Jersey resources under `/api` and an OpenFeign client for the catalog service. The platform GitLab mirrors it as `rhoai-workloads/coolstore-cart-legacy`.
 
 ---
 
@@ -22,19 +22,21 @@ The template takes any Spring Boot 2.x service built with Maven. This walkthroug
 
 ## Step 2: Create your migration project from the template
 
-1. Click the **+** icon in the header and choose the **Migrate Spring Boot to Quarkus with MTA** template.
-2. **Git repository URL**: the HTTPS URL of the Spring Boot 2.x service, on GitHub or the platform GitLab. For this walkthrough: `https://github.com/adnan-drina/coolstore-cart-legacy.git`, or the `rhoai-workloads/coolstore-cart-legacy` URL of the platform GitLab.
+1. Click the **+** icon in the header and choose the **Migrate an application with MTA** template.
+2. **Git repository URL**: the HTTPS URL of the application, on GitHub or the platform GitLab. For this walkthrough: `https://github.com/adnan-drina/coolstore-cart-legacy.git`, or the `rhoai-workloads/coolstore-cart-legacy` URL of the platform GitLab.
 3. **Project name**: `coolstore-cart` (lowercase, hyphens; it becomes the repository, namespace and workspace name).
-4. Click **Review**, then **Create**, and watch the steps run: read the platform endpoints → copy the Spring Boot service (its default branch) → add the workspace, analysis profile and catalog files → publish to GitLab → enroll in the delivery pipeline.
-5. Read the **Next steps** panel.
+4. **Migration target**: **Quarkus**. The other choices write the same project with an analysis profile for their target.
+5. Click **Review**, then **Create**, and watch the steps run: read the platform endpoints → copy the application (its default branch) → add the workspace, analysis profile and catalog files → publish to GitLab → enroll in the delivery pipeline.
+6. Read the **Next steps** panel.
 
 **What you should see:** every step green, with **Source repository** and **Open in catalog** links at the bottom.
 
 > **Why a copy:** the source repository stays the reference. The template
-> publishes a new repository with the Spring Boot code as its single first
+> publishes a new repository with the original code as its single first
 > commit, so every change of the migration is a reviewable diff on top of
 > the original. The template adds what every migration project needs: the
-> workspace (`devfile.yaml`, `.code-workspace`), the MTA analysis profile,
+> workspace (`devfile.yaml`, `.code-workspace`), the MTA analysis profile
+> for the chosen target,
 > the catalog entry, a `Containerfile` and the runtime manifests.
 
 ---
@@ -43,9 +45,9 @@ The template takes any Spring Boot 2.x service built with Maven. This walkthroug
 
 1. Click **Open in catalog**.
 2. On the Overview page, the **Links** card carries Source Repo, Dev Spaces and SonarQube for this project. The `demo.rhoai.io/migrated-from` annotation records the source repository.
-3. Open the **CI** tab. Once the enrollment request is processed (about two minutes), a seed PipelineRun builds the Spring Boot code as it is: clone → `mvn package` → SonarQube scan → image build and push.
+3. Open the **CI** tab. Once the enrollment request is processed (about two minutes), a seed PipelineRun builds the original code as it is: clone → `mvn package` → SonarQube scan → image build and push.
 
-**What you should see:** the `coolstore-cart-dev` namespace, the `project-coolstore-cart` Argo CD application and the seed PipelineRun. The project's `Containerfile` packages either a Spring Boot jar or a Quarkus fast-jar, so the same pipeline builds the service before and after the migration.
+**What you should see:** the `coolstore-cart-dev` namespace, the `project-coolstore-cart` Argo CD application and the seed PipelineRun. The project's `Containerfile` packages a Quarkus fast-jar when there is one, otherwise the single runnable jar the build produced (Spring Boot or plain Java), so the same pipeline builds the service before and after the migration.
 
 ---
 
@@ -83,7 +85,7 @@ The workspace settings that make this work live in the repository's `.code-works
 
 ## Step 6: Analyze the legacy service
 
-1. In the MTA view, open **Analysis profiles** and select **quarkus-profile**. The template adds it under `.konveyor/profiles/quarkus-profile/`; it targets Quarkus, Quarkus 3 and Jakarta EE with the default rule sets.
+1. In the MTA view, open **Analysis profiles** and select **Migrate to Quarkus**. The template adds it under `.konveyor/profiles/migration-target/` with the label selector of the chosen target; for Quarkus that is the Quarkus and Jakarta EE rules of the default rule sets, plus the technology discovery rules.
 2. Click **Start** to start the analyzer server.
 3. Click **Run Analysis**.
 
@@ -109,7 +111,7 @@ The workspace settings that make this work live in the repository's `.code-works
 
 ## Step 8: Run the migrated service
 
-1. Open the **Run** commands of the workspace (Terminal → Run Task → devfile) and start **start-dev** (`mvn quarkus:dev`), or run it in a terminal:
+1. Open the **Run** commands of the workspace (Terminal → Run Task → devfile) and start **3. Run in Quarkus dev mode** (`mvn quarkus:dev`), or run it in a terminal:
 
 ```
 mvn quarkus:dev -Dquarkus.http.host=0.0.0.0
@@ -121,7 +123,7 @@ mvn quarkus:dev -Dquarkus.http.host=0.0.0.0
 curl -s localhost:8080/api/cart/demo
 ```
 
-**What you should see:** Quarkus dev mode starts and the cart answers with a cart document. The **run-legacy** command (`mvn spring-boot:run`) runs the Spring Boot code before its migration.
+**What you should see:** Quarkus dev mode starts and the cart answers with a cart document. The **2. Package and run the application** command builds and runs the packaged jar, before or after the migration; projects with a target other than Quarkus have only this run command.
 
 ---
 
@@ -130,7 +132,7 @@ curl -s localhost:8080/api/cart/demo
 1. Commit from the Source Control view (message: `Migrate to Quarkus with MTA`) and push.
 2. Watch the **CI** tab: the project's pipeline runs clone → `mvn package` → SonarQube → image build and push, then deploys the new image to `coolstore-cart-dev`.
 
-**What you should see:** a green run for the migrated service, built and deployed by the same pipeline that built the Spring Boot code.
+**What you should see:** a green run for the migrated service, built and deployed by the same pipeline that built the original code.
 
 ---
 
@@ -138,7 +140,7 @@ curl -s localhost:8080/api/cart/demo
 
 ### What you proved
 
-- **Self-service migration projects**: repository, workspace, namespace and pipeline from one template for any Spring Boot 2.x service, with the original code as the reviewable starting point.
+- **Self-service migration projects**: repository, workspace, namespace and pipeline from one template for a Java application and the migration target the developer picks, with the original code as the reviewable starting point.
 - **A workspace configured by the documentation**: the MTA core extension with the Java language extension, the analyzer baked into the image, and the settings in the repository.
 - **Governed AI assistance**: Developer Lightspeed reached the private model through Models-as-a-Service with the developer's own key, configured by the platform with the workspace; no extra sign-in in the editor.
 - **The developer decides**: every change was a diff the developer accepted, checked by the analysis and by the pipeline.
@@ -169,12 +171,13 @@ The template lives in the Stage 070 Developer Hub application, so this stage has
 
 - [Konveyor](https://konveyor.io/) is the upstream project of MTA: the analyzer, the rule sets and the IDE extensions.
 - [Konveyor AI (Kai)](https://github.com/konveyor/kai) is the upstream of Developer Lightspeed for MTA.
-- [Quarkus](https://quarkus.io/) is the migration target.
+- [Quarkus](https://quarkus.io/) is the migration target of this walkthrough.
 
 ## References
 
 | Resource | Link |
 |----------|------|
+| Supported migration paths | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html/installing_the_migration_toolkit_for_applications/supported-migration-paths_installing-mta-title |
 | Installing the MTA extension | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_the_visual_studio_code_extension_for_mta/index#installing-vscode-extension_vsc-extension-guide |
 | Installing the analyzer RPC binary | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_the_visual_studio_code_extension_for_mta/index#installing-analyzer-rpc_vsc-extension-guide |
 | Analysis profiles | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html-single/configuring_and_using_the_visual_studio_code_extension_for_mta/index#analyzing-application-profiles_vsc-extension-guide |

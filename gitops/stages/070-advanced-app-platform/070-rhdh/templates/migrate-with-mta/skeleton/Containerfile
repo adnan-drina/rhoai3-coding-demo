@@ -1,7 +1,7 @@
-# Runtime image for the service before and after its migration. The
+# Runtime image for the application before and after its migration. The
 # shared pipeline runs `mvn package` first; this file then takes what it
-# built: a Quarkus fast-jar (target/quarkus-app) once the service is
-# migrated, or the Spring Boot executable jar of the legacy code base.
+# built: a Quarkus fast-jar (target/quarkus-app) when there is one,
+# otherwise the single runnable jar in target/ (Spring Boot or plain Java).
 # run-java.sh starts the single jar it finds in /deployments.
 # linux/amd64 digest of ubi9/openjdk-21-runtime:1.20 (the same base as the
 # agentic-quarkus-scaffold golden).

@@ -1,8 +1,8 @@
 # Runtime for this project, applied by the shared pipeline's deploy task
 # after every green build (the task also pins the image to the platform's
 # resolved registry, so the default here is only a bootstrap value).
-# The probes check the HTTP port, so they hold for the legacy Spring Boot
-# service and for the migrated Quarkus service alike.
+# The probes check the HTTP port, so they hold for the application before
+# and after its migration, whatever its framework.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

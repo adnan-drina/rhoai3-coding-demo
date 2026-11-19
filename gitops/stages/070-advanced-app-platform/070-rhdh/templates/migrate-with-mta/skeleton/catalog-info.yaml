@@ -4,10 +4,10 @@ metadata:
   name: ${{ values.name }}
   title: ${{ values.name }}
   description: |
-    Spring Boot 2.x service copied from ${{ values.legacyRepoUrl }} and
-    migrated to Quarkus with the migration toolkit for applications (MTA) and
-    Developer Lightspeed for MTA, provisioned by the migrate-with-mta
-    golden-path template.
+    Java application copied from ${{ values.legacyRepoUrl }} and
+    migrated with the migration toolkit for applications (MTA) and Developer
+    Lightspeed for MTA (target: ${{ values.target }}), provisioned by the
+    migrate-with-mta golden-path template.
   annotations:
     gitlab.com/project-slug: ${{ values.gitlabGroup }}/${{ values.name }}
     backstage.io/source-location: url:${{ values.gitlabBaseUrl }}/${{ values.gitlabGroup }}/${{ values.name }}
@@ -23,8 +23,8 @@ metadata:
     - golden-path
     - migration
     - mta
-    - spring-boot
-    - quarkus
+    - java
+    - ${{ values.target }}
   links:
     - url: ${{ values.gitlabBaseUrl }}/${{ values.gitlabGroup }}/${{ values.name }}
       title: Source Repo

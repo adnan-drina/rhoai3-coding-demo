@@ -70,10 +70,20 @@ if [[ -n "$PUBLISHED" ]]; then
 fi
 record "DEFAULT_EXTENSIONS installs MTA Core and the Java language extension only" \
   "$(grep -qF "value: \"$EXTENSIONS\"" "$DEVFILE" && ! grep -q 'mta-vscode-extension' "$DEVFILE" && echo pass || echo "extension list differs")"
-record "skeleton adds the quarkus-profile analysis profile" \
-  "$(grep -q 'konveyor.io/target=quarkus' "$TEMPLATE_DIR/skeleton/.konveyor/profiles/quarkus-profile/profile.yaml" 2>/dev/null && echo pass || echo missing)"
-record "template takes a Git repository URL and a project name" \
-  "$(sed -n '/^    required:/,/^    properties:/p' "$TEMPLATE_DIR/template.yaml" | grep -E '^    - ' | tr -d ' -' | paste -sd, - | grep -qx 'repoUrl,name' && echo pass || echo "parameters differ")"
+# The template's migration-target picker and the profile's lookup tables must agree: every target the picker offers
+# needs a title and a label selector in profile.yaml, or the rendered profile is empty.
+PROFILE="$TEMPLATE_DIR/skeleton/.konveyor/profiles/migration-target/profile.yaml"
+TARGET_VALUES=$(sed -n '/^      target:/,/^  steps:/p' "$TEMPLATE_DIR/template.yaml" | sed -n '/^        enum:/,/^        enumNames:/p' \
+  | sed -n 's/^        - //p')
+missing=""
+for t in $TARGET_VALUES; do
+  [[ $(grep -c "^  \"$t\": " "$PROFILE" 2>/dev/null) -eq 2 ]] && grep -q "^  \"$t\": \"konveyor\.io/target=" "$PROFILE" \
+    || missing+=" $t"
+done
+record "skeleton profile covers every migration target the template offers" \
+  "$( [[ -n "$TARGET_VALUES" && -z "$missing" ]] && echo pass || echo "missing:${missing:- no targets}")"
+record "template takes a Git repository URL, a project name and a migration target" \
+  "$(sed -n '/^    required:/,/^    properties:/p' "$TEMPLATE_DIR/template.yaml" | grep -E '^    - ' | tr -d ' -' | paste -sd, - | grep -qx 'repoUrl,name,target' && echo pass || echo "parameters differ")"
 record "workspace settings: Standard Java server, baked analyzer, GenAI agent mode, no Hub" \
   "$(jq -e '.settings["java.server.launchMode"] == "Standard"
         and .settings["mta-core.analyzerPath"] == "/opt/mta-analyzer-rpc/mta-analyzer-rpc"

@@ -66,8 +66,8 @@ commands:
     exec:
       component: development-tooling
       commandLine: |
-        # Terminals default to Java 21: the migrated Quarkus service needs
-        # Java 17 or later, and the legacy service builds on 21 as well.
+        # Terminals default to Java 21, the newest JDK in the image: the
+        # supported MTA 8.3 targets run on it.
         if [ -x "${JAVA_HOME_21}/bin/java" ] && ! grep -q "rhoai3-coding-demo: java 21 default" "${HOME}/.bashrc" 2>/dev/null; then
           printf '\n# rhoai3-coding-demo: java 21 default\nexport JAVA_HOME="%s"\nexport PATH="$JAVA_HOME/bin:$PATH"\n' \
             "${JAVA_HOME_21}" >> "${HOME}/.bashrc"
@@ -114,23 +114,38 @@ commands:
       group:
         kind: test
         isDefault: true
-  - id: run-legacy
+  - id: run-jar
     exec:
-      label: "2. Run the legacy service (Spring Boot)"
+      label: "2. Package and run the application"
       component: development-tooling
       workingDir: ${PROJECT_SOURCE}
-      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn spring-boot:run'
+      # Runs what the pipeline image runs (see Containerfile): a Quarkus
+      # fast-jar once there is one, otherwise the single jar in target/.
+      commandLine: |
+        export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}"
+        mvn -q -DskipTests package || exit 1
+        if [ -f target/quarkus-app/quarkus-run.jar ]; then
+          exec java -jar target/quarkus-app/quarkus-run.jar
+        fi
+        set -- target/*.jar
+        [ "$#" -eq 1 ] && [ -f "$1" ] || { echo "expected one application jar in target/" >&2; exit 1; }
+        exec java -jar "$1"
       group:
         kind: run
+{%- if values.target == "quarkus" %}
+        isDefault: false
   - id: start-dev
     exec:
-      label: "3. Run the migrated service (Quarkus dev mode)"
+      label: "3. Run in Quarkus dev mode"
       component: development-tooling
       workingDir: ${PROJECT_SOURCE}
       commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn quarkus:dev -Dquarkus.http.host=0.0.0.0'
       group:
         kind: run
         isDefault: true
+{%- else %}
+        isDefault: true
+{%- endif %}
 events:
   postStart:
     - java21-default
