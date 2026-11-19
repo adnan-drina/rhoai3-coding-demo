@@ -2185,18 +2185,24 @@ Verify: `maas-api/health` returns 200 and `maas-api/v1/models` returns 401 witho
 
 **Affected stage:** Stage 010 and everything that requires a Ready `DataScienceCluster` (validators in Stages 010, 020, 030 and 040 fail)
 
-**Symptoms (observed live 2026-11-03):** `default-dsc` reports `Some modules are degraded: ogx`, and `default-ogx` has `Degraded=True` with `UnhealthyOGXServers`, naming `demo-sandbox/lsd-genai-playground`. The OGXServer itself is `Ready` and its health check passes. The condition's `lastTransitionTime` is older than the playground pod.
+**Symptoms (observed live 2026-11-03, and on every lab start 2026-11-17 to 11-19 on 3.5.3):** `default-dsc` reports `Some modules are degraded: ogx`, and `default-ogx` has `Degraded=True` with `UnhealthyOGXServers`, naming `demo-sandbox/lsd-genai-playground`. The OGXServer itself reports `HealthCheck=True` and `DeploymentReady=True`. The condition's `lastTransitionTime` is older than the playground's health check.
 
-**Likely cause:** the OGX component evaluated the playground during a resume, while its pod was down, and did not evaluate it again once the pod was healthy.
+**Cause:** the OGX module controller (`opendatahub-ogx-operator`, RHOAI 3.5.3) evaluates OGXServer health only when it reconciles `default-ogx`, and it does not watch OGXServers (its start-up log lists the kinds it watches). After a lab start it reconciles within seconds, while the playground is still restarting, and nothing makes it evaluate again once the playground is healthy. The 3.5 documentation and known issues do not cover it.
 
-**Recover:** any change to the component triggers a new evaluation; a temporary annotation is enough:
+**Recover:** automatic since the `ogx-status-refresh` CronJob (`040-genai-studio`): within about 5 minutes of the playground turning healthy, it annotates `default-ogx` (`rhoai3-demo/status-refresh`) and the controller evaluates again. Read its log:
+
+```bash
+oc logs -n demo-sandbox job/$(oc get jobs -n demo-sandbox -l app.kubernetes.io/name=ogx-status-refresh -o jsonpath='{.items[-1:].metadata.name}')
+```
+
+`WAIT: ... still unhealthy` means the playground really is unhealthy; look at its pod. `WAIT: ... still Degraded after the refresh` means the controller sees a problem the OGXServer status does not report; it does not refresh again in that episode. Without the CronJob, any change to the component triggers a new evaluation; a temporary annotation is enough:
 
 ```bash
 oc annotate ogx default-ogx rhoai3-demo/reconcile-nudge="$(date -u +%s)" --overwrite
 oc annotate ogx default-ogx rhoai3-demo/reconcile-nudge-
 ```
 
-Verify: `oc get datasciencecluster default-dsc` reports Ready. If `Degraded` stays `True`, the playground really is unhealthy; look at its pod.
+Verify: `oc get datasciencecluster default-dsc` reports Ready.
 
 ## MaaS Gateway Times Out On Every Path (RHCL 1.4.x Drift)
 

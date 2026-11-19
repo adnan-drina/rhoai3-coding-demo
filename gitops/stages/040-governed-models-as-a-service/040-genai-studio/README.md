@@ -3,7 +3,7 @@
 This Application prepares the Gen AI playground (Gen AI studio) for the demo project **AI Coding Sandbox**
 (`demo-sandbox`) and publishes platform MCP servers to every playground. It provisions a playground custom endpoint for
 GPT-6 Luna, a saved agent "OpenShift Ops Assistant" with its reviewed system prompt in the MLflow prompt registry, a
-retained state PVC, the NeMo Guardrails service with a real judge model and a demo adapter that makes the playground toggles work on 3.5.2 (see Guardrails), and the cluster-wide MCP server discovery
+retained state PVC, the NeMo Guardrails service with a real judge model and a demo adapter that makes the playground toggles work on 3.5.2 and 3.5.3 (see Guardrails), a CronJob that clears the stale OGX `Degraded` status a lab start leaves (see OGX status refresh), and the cluster-wide MCP server discovery
 ConfigMap. Users create the playground itself from the dashboard.
 
 | | |
@@ -61,6 +61,14 @@ Application holds them because they all change with the playground experience an
 | Service | `nemoguardrails-server` | `demo-sandbox` | The operator-managed guardrail pod (kube-rbac-proxy, 8443), called only by the adapter. Wave 20 |
 | ConfigMap, Deployment | `nemoguardrails-playground-adapter` | `demo-sandbox` | Demo adapter (Python stdlib in the `ose-cli` image): replaces the playground's inline `guardrails.config` with `config_id: playground-guardrails` and the Qwen 3.8 judge model, forwards with the caller's token. Waves 20/21 |
 
+### OGX status refresh (`ogx-status-refresh/`, workaround)
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| ServiceAccount | `ogx-status-refresh` | `demo-sandbox` | Identity of the CronJob. Wave 18 |
+| ClusterRole + ClusterRoleBinding | `ogx-status-refresh` | (cluster) | `get`/`patch` on `ogxs.components.platform.opendatahub.io` `default-ogx` only; `get`/`list` on `ogxservers.ogx.io`. Wave 18 |
+| CronJob | `ogx-status-refresh` | `demo-sandbox` | Every 5 minutes: when `default-ogx` reports `Degraded=True` `UnhealthyOGXServers` and every `OGXServer` it names reports `HealthCheck` and `DeploymentReady` True (or no longer exists), annotates `default-ogx` with `rhoai3-demo/status-refresh=<epoch>` so the OGX controller evaluates again; once per Degraded episode. Same pod settings as the attacher. Wave 20 |
+
 ### MCP server discovery (`mcp/`)
 
 | Kind | Name | Namespace | Purpose |
@@ -102,7 +110,9 @@ Custom endpoints [1, chapters 4-5] carry no such default. The Job:
 The `aiAssetCustomEndpoints` flag and the internal cluster domain (`genAiStudioConfig.aiAssetCustomEndpoints.clusterDomains`, with `externalProviders: false`) are set by the `040-maas-platform` Job [1, chapter 4]. The
 `gen-ai-aa-custom-model-endpoints` format is the dashboard backend's internal format; the product docs describe the
 feature flags and the UI, not this ConfigMap. Users add the endpoint model to the playground and set Temperature to 1.
-Remove this workaround when the RHOAIENG-90257 fix ships.
+Remove this workaround when the RHOAIENG-90257 fix ships. Rechecked on 3.5.3 (2026-11-19): the release notes list
+security updates only, and the 3.5.3 playground backend still writes `max_tokens: ${env.VLLM_MAX_TOKENS_1:=4096}` into
+every MaaS provider and still reads `gen-ai-aa-custom-model-endpoints`, so the workaround is still required.
 
 **Prompt registration.** The Job uses MLflow SDK 3.14 with `MLFLOW_TRACKING_AUTH=kubernetes-namespaced`: inside the
 cluster the plugin uses the mounted ServiceAccount token and namespace [4]. `MLFLOW_WORKSPACE=demo-sandbox` and the
@@ -146,7 +156,10 @@ the RWO volume.
 (`guardrails.config`). The shipped NeMo Guardrails server (0.24) refuses inline configs with `status: error`
 (deliberate 3.5 security hardening, RHOAIENG-83465; the `rhoai-3.6` server accepts them again on this endpoint), and
 the backend counts an error as not flagged, so without help every message passes (observed 2026-10-28; raised with Red
-Hat support, which offers no supported 3.5.z workaround and advises against replacing the managed image).
+Hat support, which offers no supported 3.5.z workaround and advises against replacing the managed image). Rechecked on
+3.5.3 (2026-11-19, security updates only): a check with an inline config sent straight to `nemoguardrails-server`
+still returns `status: error`, "Inline guardrails configuration is not supported. Use config_id to reference a
+server-side configuration.", while the same check with `config_id: playground-guardrails` runs the rails.
 
 **Workaround: guardrail adapter.** The backend finds the server through the Service named after the NemoGuardrails
 CR (`https://nemoguardrails.demo-sandbox.svc.cluster.local:443`). The operator creates that Service only when it is
@@ -169,6 +182,22 @@ judge. A renewed key reaches the guardrail pod only when it restarts. Where a pl
 dashboard's `nemoguardrails`, `deploy.sh` adopts it after checking that it is untracked, unowned and carries the
 dashboard label.
 
+**Workaround: OGX status refresh.** The OGX module controller (`opendatahub-ogx-operator`, RHOAI 3.5.3) sets
+`Degraded` on `default-ogx` from the health of every `OGXServer`, but only when it reconciles `default-ogx`: it watches
+the component CR and its own Deployments, ConfigMaps, Services and RBAC, not `OGXServer` (its start-up log lists the
+twelve watched kinds). After a lab start the controller restarts and reconciles within seconds, while the playground
+still restarts for several minutes (its liveness probe kills it during a slow start that lists every MaaS model), so
+it records `Degraded=True` `UnhealthyOGXServers`, and `default-dsc` reports "Some modules are degraded: ogx" (which
+fails the Stage 010 to 040 validators) until another event reconciles it, hours later; observed on the 2026-11-02,
+11-17, 11-18 and 11-19 starts. The 3.5 documentation describes neither the condition nor a recovery ("Working with OGX"
+verifies a server by its own `OGXServer` conditions and phase [8]) and the known issues do not list it [9]. Any change
+to `default-ogx` makes the controller evaluate again, so the CronJob annotates it once every server the condition names
+reports `HealthCheck` and `DeploymentReady` True. It never writes a status, so a really unhealthy playground stays
+Degraded; it waits on any other `Degraded` reason; and it refreshes once per episode (an annotation newer than the
+condition's `lastTransitionTime` means it already did), logging instead of repeating if the condition survives. Argo CD
+does not manage `default-ogx` (the operator owns it through the DataScienceCluster), so the annotation is no drift.
+Remove `ogx-status-refresh/` when the controller watches `OGXServer` or requeues while Degraded (BACKLOG).
+
 **Secrets.** No secret values in Git. The only Secret is the endpoint key, minted at runtime.
 
 **Cluster-specific values.** The MaaS hostname is read from the Gateway at Job run time; the MCP endpoints are read from
@@ -179,7 +208,8 @@ the Stage 060 objects at publication time.
 `validate.sh --readiness` requires this Application to be Synced and Healthy at the deployed revision and checks
 both MCP keys (it passes with an explicit deferral while the Stage 060 MCP
 runtime is absent). It does not check the endpoint Secret, the custom endpoint ConfigMap, the MLflow prompt or the agent
-profile; playground use is a user acceptance step. The model-free persona qualification of the
+profile; playground use is a user acceptance step. It warns when the `ogx-status-refresh` CronJob is missing,
+suspended, or its last Job failed. The model-free persona qualification of the
 token-required `OpenShift-MCP-ReadWrite` entry is [`stages/040-governed-models-as-a-service/catalog/qualify-mcp.sh`](../../../../stages/040-governed-models-as-a-service/catalog/README.md).
 
 By hand (read-only; do not print the Secret):
@@ -187,6 +217,8 @@ By hand (read-only; do not print the Secret):
 ```bash
 oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o jsonpath='{.data}' | python3 -c 'import json,sys; print(sorted(json.load(sys.stdin)))'
 oc get configmap gen-ai-aa-custom-model-endpoints,agent-profile-e0e610ff-3438-5d81-a3c7-eeb3e20a9ff8 -n demo-sandbox
+oc get ogxs.components.platform.opendatahub.io default-ogx -o jsonpath='{range .status.conditions[?(@.type=="Degraded")]}{.status} {.reason} {.lastTransitionTime}{"\n"}{end}'
+oc logs -n demo-sandbox job/$(oc get jobs -n demo-sandbox -l app.kubernetes.io/name=ogx-status-refresh -o jsonpath='{.items[-1:].metadata.name}')
 ```
 
 ## Alignment with official guidance
@@ -203,6 +235,7 @@ oc get configmap gen-ai-aa-custom-model-endpoints,agent-profile-e0e610ff-3438-5d
 | Pod security | Restricted profile | Prompt Job sets non-root, seccomp, drop ALL; endpoint Job sets no security context or resources | Gap (endpoint Job relies on SCC defaults) |
 | Guardrails | `NemoGuardrails` created automatically with the playground; Guardrail model is any running playground model [1, chapter 9] | Git-managed `nemoguardrails` with a MaaS judge; judge models limited to the `playground-sandbox` subscription | Deviation (justified: the dashboard-created service has a placeholder judge) and Gap (product: the hardened 3.5.2 server refuses the playground's inline config and the playground maps the error to not flagged, so the toggles fail open; raised with Red Hat support 2026-10-28). Workaround: the Git-managed `nemoguardrails` Service routes through an adapter that swaps the inline config for the server config |
 | Hook lifecycle | `BeforeHookCreation`, `HookSucceeded` delete policies [5] | Both Jobs | Aligned |
+| OGX component status | Verify an OGX server by its `OGXServer` conditions and phase [8]; no `default-ogx` condition or recovery documented, and no known issue [9] | `ogx-status-refresh` CronJob annotates `default-ogx` when its `UnhealthyOGXServers` condition is stale | Gap (product: the 3.5.3 OGX controller does not watch `OGXServer`, so a lab start leaves the DataScienceCluster degraded). Workaround: refresh trigger only, no status written; to be raised with Red Hat |
 
 ## References
 
@@ -213,3 +246,5 @@ oc get configmap gen-ai-aa-custom-model-endpoints,agent-profile-e0e610ff-3438-5d
 5. Argo CD, "Sync Phases and Waves" (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/
 6. Argo CD, "Sync Options" (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/
 7. Argo CD, "Diffing Customization" (upstream). https://argo-cd.readthedocs.io/en/stable/user-guide/diffing/
+8. Working with OGX, "Migrating from Llama Stack to OGX" (verification), Red Hat OpenShift AI Self-Managed 3.5. https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html-single/working_with_ogx/index#llama-stack-to-ogx-migration_rag
+9. Release notes, "Known issues", Red Hat OpenShift AI Self-Managed 3.5. https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/release_notes/known-issues_relnotes

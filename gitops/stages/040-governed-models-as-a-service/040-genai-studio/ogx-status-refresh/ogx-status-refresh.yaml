@@ -1,0 +1,147 @@
+---
+# Refreshes a stale Degraded condition on the OGX component CR default-ogx (RHOAI 3.5.3 workaround).
+# The OGX module controller (opendatahub-ogx-operator) evaluates OGXServer health only when it reconciles
+# default-ogx, and it watches no OGXServer: a playground that is still starting when the controller reconciles (every
+# lab start) leaves Degraded=True UnhealthyOGXServers, and DataScienceCluster default-dsc "Some modules are degraded:
+# ogx", until something else triggers a reconcile, hours later. When every OGXServer the condition names reports
+# HealthCheck and DeploymentReady True (or no longer exists), this CronJob annotates default-ogx, which makes the
+# controller evaluate again. It never writes a status: a server that is really unhealthy stays Degraded. It refreshes
+# once per Degraded episode; if the condition survives the refresh, the log says so and it does not repeat.
+# Remove it when the OGX controller watches OGXServers or requeues while Degraded.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ogx-status-refresh
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: ogx-status-refresh
+    app.kubernetes.io/component: studio-status
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ogx-status-refresh
+  labels:
+    app.kubernetes.io/name: ogx-status-refresh
+    app.kubernetes.io/component: studio-status
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: [components.platform.opendatahub.io]
+    resources: [ogxs]
+    resourceNames: [default-ogx]
+    verbs: [get, patch]
+  - apiGroups: [ogx.io]
+    resources: [ogxservers]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ogx-status-refresh
+  labels:
+    app.kubernetes.io/name: ogx-status-refresh
+    app.kubernetes.io/component: studio-status
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ogx-status-refresh
+subjects:
+  - kind: ServiceAccount
+    name: ogx-status-refresh
+    namespace: demo-sandbox
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ogx-status-refresh
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/name: ogx-status-refresh
+    app.kubernetes.io/component: studio-status
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  # A run missed while the lab was stopped is skipped, not caught up; the next tick checks again.
+  startingDeadlineSeconds: 60
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      # The schedule is the retry: one pod per run.
+      backoffLimit: 0
+      # A run takes seconds; the headroom covers pod start-up while the cluster is still starting after a lab start.
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ogx-status-refresh
+        spec:
+          restartPolicy: Never
+          serviceAccountName: ogx-status-refresh
+          containers:
+            - name: refresh
+              image: registry.redhat.io/openshift4/ose-cli@sha256:69762925e16053d77685ff3a08b3b45dd2bfa5d68277851bc6969b368bbd0cb9
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+                runAsNonRoot: true
+                seccompProfile: {type: RuntimeDefault}
+              resources:
+                requests: {cpu: 20m, memory: 256Mi}
+                limits: {cpu: 500m, memory: 1Gi}  # the oc client in ose-cli was OOMKilled at 256Mi
+              command:
+                - /bin/bash
+                - -ceu
+                - |
+                  NAME=default-ogx KEY=rhoai3-demo/status-refresh
+                  RESOURCE=ogxs.components.platform.opendatahub.io
+                  ogx=$(oc get "$RESOURCE" "$NAME" -o json)
+                  servers=$(oc get ogxservers.ogx.io -A -o json)
+                  plan=$(printf '%s' "$ogx" | SERVERS=$servers KEY=$KEY python3 -c '
+                  import datetime, json, os, sys
+                  def epoch(s):
+                      return datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc).timestamp()
+                  d = json.load(sys.stdin)
+                  cond = next((c for c in (d.get("status") or {}).get("conditions") or [] if c.get("type") == "Degraded"), None)
+                  if not cond or cond.get("status") != "True":
+                      print("ok not Degraded"); sys.exit()
+                  message = cond.get("message", "")
+                  if cond.get("reason") != "UnhealthyOGXServers":
+                      print("wait Degraded for %s, not for OGXServer health: %s" % (cond.get("reason"), message)); sys.exit()
+                  last = (d["metadata"].get("annotations") or {}).get(os.environ["KEY"], "")
+                  if last.isdigit() and int(last) > epoch(cond["lastTransitionTime"]):
+                      print("wait still Degraded after the refresh at %s: %s" % (last, message)); sys.exit()
+                  names = [n.strip() for n in message.split(":", 1)[-1].split(",") if "/" in n]
+                  items = json.loads(os.environ["SERVERS"]).get("items") or []
+                  found = {"%s/%s" % (s["metadata"]["namespace"], s["metadata"]["name"]): s for s in items}
+                  unhealthy = []
+                  for name in names:
+                      if name not in found:
+                          continue  # deleted since; a new evaluation drops it
+                      status = {c.get("type"): c.get("status") for c in (found[name].get("status") or {}).get("conditions") or []}
+                      if status.get("HealthCheck") != "True" or status.get("DeploymentReady") != "True":
+                          unhealthy.append(name)
+                  if not names:
+                      print("wait no OGXServer named in: %s" % message)
+                  elif unhealthy:
+                      print("wait OGXServers still unhealthy: %s" % ", ".join(unhealthy))
+                  else:
+                      print("refresh %s healthy or deleted now, Degraded since %s" % (", ".join(names), cond["lastTransitionTime"]))
+                  ')
+                  case "$plan" in
+                    ok*) echo "OK: $NAME ${plan#ok }" ;;
+                    wait*) echo "WAIT: $NAME ${plan#wait }" ;;
+                    refresh*) oc annotate "$RESOURCE" "$NAME" "$KEY=$(date -u +%s)" --overwrite >/dev/null
+                              echo "REFRESHED: $NAME evaluates again; ${plan#refresh }" ;;
+                  esac

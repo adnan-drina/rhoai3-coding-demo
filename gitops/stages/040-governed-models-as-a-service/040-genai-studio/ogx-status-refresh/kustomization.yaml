@@ -1,0 +1,6 @@
+# OGX component status refresh (RHOAI 3.5.3 workaround): CronJob with its ServiceAccount and narrow ClusterRole.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ogx-status-refresh.yaml

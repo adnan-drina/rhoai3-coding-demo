@@ -674,6 +674,18 @@ playground_state() {
     echo yes
 }
 check_warn "Gen AI playground keeps its state on the retained PVC (or no playground yet)" playground_state yes
+# RHOAI 3.5.3 leaves default-ogx Degraded after a lab start until something reconciles it (040-genai-studio
+# ogx-status-refresh); the CronJob must exist, run, and not have failed its last Job.
+ogx_status_refresh() {
+    local cron failed
+    cron=$(read_json cronjob ogx-status-refresh -n demo-sandbox) || { echo "CronJob ogx-status-refresh missing (sync 040-genai-studio)"; return; }
+    jq -e '.spec.suspend != true' <<<"$cron" >/dev/null || { echo "CronJob ogx-status-refresh is suspended"; return; }
+    failed=$(oc --request-timeout="$TIMEOUT" get jobs -n demo-sandbox -l app.kubernetes.io/name=ogx-status-refresh \
+        -o jsonpath='{range .items[?(@.status.failed)]}{.metadata.name} {end}')
+    [[ -z "$failed" ]] || { echo "last ogx-status-refresh Job failed: ${failed% } (read its log)"; return; }
+    echo yes
+}
+check_warn "OGX status refresh CronJob present and its last run did not fail" ogx_status_refresh yes
 # The playground guardrail toggles work on 3.5.2 only through the adapter (040-genai-studio
 # playground-guardrails-adapter.yaml): Service nemoguardrails must select the ready adapter, which reaches the managed
 # pod through nemoguardrails-server. A re-created NemoGuardrails CR restores the operator's selector until the next sync.

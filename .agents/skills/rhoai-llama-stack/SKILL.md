@@ -72,6 +72,11 @@ its old name. Detailed record:
 
 - Older skills and examples use `LlamaStackDistribution` and the Llama Stack
   operator; follow the [migration chapter][migration] instead of porting them.
+- `default-ogx` `Degraded=True` `UnhealthyOGXServers` while the named
+  `OGXServer` is healthy is stale, not a fault: the 3.5.3 OGX controller does
+  not watch `OGXServer`. The `ogx-status-refresh` CronJob (`040-genai-studio`)
+  clears it after a lab start; do not hand-patch the status
+  (`docs/TROUBLESHOOTING.md#datasciencecluster-stays-degraded-on-ogx-after-a-cluster-resume`).
 - Do not pre-author or patch the playground's generated pgvector resources;
   they are service-owned (`docs/OPERATIONS.md`, Stage 040 GenAI Studio).
 - Moving existing playground state needs the backup and restore procedure in
