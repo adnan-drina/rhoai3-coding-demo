@@ -9,7 +9,7 @@ This Application runs SonarQube Community Build with its own PostgreSQL database
 | Validated by | `stages/070-advanced-app-platform/validate.sh` (live checks "SonarQube ready" and "SonarQube reachable", plus its security-boundary checks); `validate.sh --static` (renders, disjoint components, scripts parse; the former offline tests `tests/*.test.py` are in git history at `82092e01`) |
 | Sync | Automated, `prune: true`, `selfHeal: true`; `CreateNamespace`, `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`, `ClientSideApplyMigration=false`; compare-option `ServerSideDiff=true`; `ignoreDifferences` on `/spec/volumeName` of PVCs `sonardb-data` and `sonarqube` |
 | Depends on | `070-namespaces` (the `sonarqube` and `app-platform-build` namespaces); `070-identity` (SAML client `sonarqube` in the base `sso` realm); Stage 010 (the existing Keycloak `rhbk` OpenID provider in the cluster OAuth config) |
-| Used by | `070-pipelines` (the GitLab reconciler mints per-project analysis tokens from `app-platform-build/sonarqube-credentials`; the `sonar-scan` task); `070-devspaces` (workspace Sonar credential mirror) |
+| Used by | `070-pipelines` (the GitLab reconciler mints per-project analysis tokens from `app-platform-build/sonarqube-credentials`; the `sonar-scan` task); `070-devspaces` (workspace Sonar credential mirror); Stage 070 `demo-reset/delete-project.sh` (deletes a removed project's Sonar project and analysis token with `sonarqube-admin`) |
 
 ## Why
 

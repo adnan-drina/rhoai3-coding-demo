@@ -86,6 +86,57 @@ lifecycle_read_delivery() {
     DELIVERY=$(gitlab_find "projects/$(printf '%s' "$group/$name-deployment" | jq -sRr @uri)")
 }
 
+# ── SonarQube API (the administrator credential from Secret sonarqube/sonarqube-admin, written by the 070-sonarqube
+#    bootstrap; never printed, never a process argument). The project pipeline analyses into the Sonar project NAME
+#    with a project analysis token gitlab-project-<GitLab id> of the technical user platform-provisioner. ─────────
+SONAR_PROVISIONER=platform-provisioner
+lifecycle_read_sonar() {
+    local secret
+    secret=$(oc get secret sonarqube-admin -n sonarqube -o json 2>/dev/null) ||
+        die "Secret sonarqube/sonarqube-admin is unreadable; sync 070-sonarqube so its bootstrap creates it"
+    printf '%s' "$secret" | jq -e '.metadata.annotations["rhoai3.redhat.com/password-bootstrap"] == "ready"' >/dev/null ||
+        die "SonarQube admin password rotation is not complete; sync 070-sonarqube first"
+    # curl config line `user = "login:password"`, with \ and " escaped; kept in the private temporary directory.
+    printf '%s' "$secret" | jq -j '"user = \"" + ((.data.username | @base64d) + ":" + (.data.password | @base64d)
+        | gsub("\\\\"; "\\\\") | gsub("\""; "\\\"")) + "\"\n"' >"$LIFECYCLE_TMP/sonar.curl"
+    chmod 600 "$LIFECYCLE_TMP/sonar.curl"
+    SONAR_URL="https://$(oc get route sonarqube -n sonarqube -o jsonpath='{.spec.host}')"
+    [[ "$SONAR_URL" != https:// ]] || die "Route sonarqube/sonarqube has no host"
+}
+
+# sonar METHOD PATH: the response goes to stdout; a non-2xx status stops the script without printing the body.
+sonar() {
+    local response code
+    response=$(curl -sS -k --max-time 60 -X "$1" -w '\n%{http_code}' --config "$LIFECYCLE_TMP/sonar.curl" \
+        "$SONAR_URL/api/$2") || die "SonarQube $1 ${2%%\?*} failed"
+    code=${response##*$'\n'}
+    [[ "$code" == 2?? ]] || die "SonarQube $1 ${2%%\?*} returned HTTP $code"
+    printf '%s' "${response%$'\n'*}"
+}
+
+# Sets SONAR_PROJECT ("present" or empty) and SONAR_TOKENS (names of platform-provisioner tokens bound to NAME).
+lifecycle_read_sonar_project() {
+    local name=$1
+    SONAR_PROJECT=$(sonar GET "projects/search?projects=$(printf '%s' "$name" | jq -sRr @uri)" |
+        jq -r --arg k "$name" 'if any(.components[]; .key == $k) then "present" else "" end')
+    SONAR_TOKENS=$(sonar GET "user_tokens/search?login=$SONAR_PROVISIONER" |
+        jq -r --arg k "$name" '.userTokens[] | select(.project.key? == $k) | .name')
+}
+
+# Delete the Sonar project NAME (its analyses, issues and project analysis tokens) and revoke the named tokens.
+lifecycle_delete_sonar_project() {
+    local name=$1 token
+    while IFS= read -r token; do
+        [[ -n "$token" ]] || continue
+        sonar POST "user_tokens/revoke?login=$SONAR_PROVISIONER&name=$(printf '%s' "$token" | jq -sRr @uri)" >/dev/null
+        log_success "Revoked SonarQube token $token"
+    done <<<"$SONAR_TOKENS"
+    if [[ -n "$SONAR_PROJECT" ]]; then
+        sonar POST "projects/delete?project=$(printf '%s' "$name" | jq -sRr @uri)" >/dev/null
+        log_success "Deleted SonarQube project $name and its analysis history"
+    fi
+}
+
 # ── Registration and identity checks ─────────────────────────────────────────────────────────────────────────────
 # Sets GITLAB_BASE_URL and GITLAB_WORKLOAD_GROUP from the platform configuration.
 lifecycle_read_platform() {
