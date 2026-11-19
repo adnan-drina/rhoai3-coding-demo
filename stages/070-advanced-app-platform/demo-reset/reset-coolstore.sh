@@ -6,10 +6,12 @@
 #     rhoai-workloads/coolstore-inventory-service; older branches that came with the import, such as golden, stay;
 #   - put main back on the registered initial commit when it moved: delete the PipelineRuns in coolstore-dev, clear the
 #     delivery repository's promotion record (promotion only moves forward along one source history), then recreate
-#     main at that commit and protect it as before. Creating main fires one pipeline run that builds and deploys it.
+#     main at that commit and protect it as before. Creating main fires one pipeline run that builds and deploys it;
+#   - delete the coolstore-dev runs stored in Tekton Results whose PipelineRun is gone (all earlier runs after a
+#     rewind), which the OpenShift console keeps listing otherwise.
 # Without --yes it only prints the plan (read-only) and refuses; safe to rerun (a reset of a clean demo changes nothing
 # but the workspaces). Acts as the GitLab user demo-operator, whose token the 070-gitlab bootstrap keeps in Secret
-# gitlab-system/gitlab-demo-operator (never in a developer workspace).
+# gitlab-system/gitlab-demo-operator (never in a developer workspace), and for Tekton Results as the logged-in oc user.
 # Usage: stages/070-advanced-app-platform/demo-reset/reset-coolstore.sh [--yes]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,6 +66,9 @@ SEATS=$(while read -r namespace name; do
      | "\(.metadata.namespace) \(.metadata.name)"'
 done <<<"$WORKSPACES")
 RUNS=$(oc get pipelinerun -n coolstore-dev -o name)
+# Stored runs to delete: after a rewind every earlier run, otherwise those whose PipelineRun is already gone.
+lifecycle_open_results
+STORED=$(lifecycle_list_results "$([[ "$HEAD" != "$BASELINE" ]] && echo all || echo orphans)" coolstore-dev)
 
 log_info "Project:    $GITLAB_WORKLOAD_GROUP/$NAME (GitLab id $PID)"
 log_info "Baseline:   registered commit ${BASELINE:0:12}; main is at ${HEAD:0:12}$([[ "$HEAD" == "$BASELINE" ]] && echo ' (unchanged)')"
@@ -76,6 +81,7 @@ if [[ "$HEAD" != "$BASELINE" ]]; then
   log_info "Delivery:   reset promotion.json in $(printf '%s' "$DELIVERY" | jq -r '.path_with_namespace') (now ${PROMOTION:0:80})"
   log_info "Rewind:     recreate main at ${BASELINE:0:12}, protection as now; one pipeline run then deploys the baseline"
 fi
+[[ -z "$STORED" ]] || log_info "Results:    delete $(grep -c . <<<"$STORED") stored run(s) of coolstore-dev from Tekton Results"
 if [[ "$CONFIRMED" != true ]]; then
   log_error "Pass --yes after reviewing the plan. Deleted workspaces, branches and merge requests cannot be recovered."
   exit 1
@@ -90,12 +96,12 @@ if [[ -n "$WORKSPACES" ]]; then
     [[ -z "$AUTOMATED" ]] || oc patch application "$SEAT_APP" -n "$GITOPS_NS" --type=merge \
       -p "{\"spec\":{\"syncPolicy\":{\"automated\":$AUTOMATED}}}" >/dev/null
   }
-  trap 'restore_sync; rm -rf "$LIFECYCLE_TMP"' EXIT
+  trap 'restore_sync; lifecycle_cleanup' EXIT
   [[ -z "$AUTOMATED" ]] || oc patch application "$SEAT_APP" -n "$GITOPS_NS" --type=json \
     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]' >/dev/null
   lifecycle_delete_workspaces "$WORKSPACES"
   restore_sync
-  trap 'rm -rf "$LIFECYCLE_TMP"' EXIT
+  trap lifecycle_cleanup EXIT
   [[ -n "$AUTOMATED" ]] || log_warn "$SEAT_APP has no auto-sync; sync it to recreate the seats"
   while read -r namespace name; do
     [[ -n "$name" ]] || continue
@@ -115,13 +121,19 @@ while read -r branch; do
   gitlab DELETE "projects/$PID/repository/branches/$(printf '%s' "$branch" | jq -sRr @uri)" </dev/null >/dev/null
   log_success "Deleted branch $branch"
 done <<<"$BRANCHES"
+# Clean pipeline history; the run for the baseline commit is recreated by the push below. Waiting lets the Results
+# watcher store each run's last state (its finalizer) before the archive is cleaned.
+if [[ "$HEAD" != "$BASELINE" && -n "$RUNS" ]]; then
+  oc delete -n coolstore-dev $RUNS --timeout=300s >/dev/null
+  log_success "Deleted PipelineRuns in coolstore-dev"
+fi
+lifecycle_open_results
+STORED=$(lifecycle_list_results orphans coolstore-dev)
+lifecycle_delete_results "$STORED"
 if [[ "$HEAD" == "$BASELINE" ]]; then
   log_success "main is on the registered baseline; nothing to rewind"
   exit 0
 fi
-# Clean pipeline history; the run for the baseline commit is recreated by the push below.
-[[ -z "$RUNS" ]] || oc delete -n coolstore-dev $RUNS --wait=false >/dev/null
-log_success "Deleted PipelineRuns in coolstore-dev"
 if [[ "$PROMOTION" != "{}" ]]; then
   jq -n -c '{branch: "main", commit_message: "chore: reset promotion for the registered Coolstore baseline",
     actions: [{action: "update", file_path: "promotion.json", content: "{}"}]}' |

@@ -2,13 +2,17 @@
 # Shared steps of the GitLab project lifecycle task scripts reset-coolstore.sh and delete-project.sh; sourced by them
 # after scripts/lib.sh, load_env and check_oc_logged_in, never run on its own. The readers cover the platform GitLab
 # configuration, the immutable project registration, the GitLab project identity checks, the delivery repository and
-# the DevWorkspaces that clone the project. The two writers, lifecycle_delete_workspaces and
-# lifecycle_delete_gitlab_project, run only after a script's --yes: the demo-reset scripts leave no trace of earlier
-# demo runs.
+# the DevWorkspaces that clone the project, its SonarQube project and its runs stored in Tekton Results. The writers
+# (lifecycle_delete_*) run only after a script's --yes: the demo-reset scripts leave no trace of earlier demo runs.
 
 WORKSPACE_NAMESPACES=(wksp-ai-developer wksp-ai-admin)
 LIFECYCLE_TMP=$(mktemp -d)
-trap 'rm -rf "$LIFECYCLE_TMP"' EXIT
+RESULTS_PF=""
+lifecycle_cleanup() {
+    [[ -z "$RESULTS_PF" ]] || kill "$RESULTS_PF" 2>/dev/null || true
+    rm -rf "$LIFECYCLE_TMP"
+}
+trap lifecycle_cleanup EXIT
 
 die() { log_error "$*"; exit 1; }
 
@@ -135,6 +139,81 @@ lifecycle_delete_sonar_project() {
         sonar POST "projects/delete?project=$(printf '%s' "$name" | jq -sRr @uri)" >/dev/null
         log_success "Deleted SonarQube project $name and its analysis history"
     fi
+}
+
+# ── Tekton Results (the OpenShift Pipelines archive of finished PipelineRuns and TaskRuns: it keeps them after the
+#    cluster objects are deleted, and the OpenShift console lists them). Its Route is edge-terminated in front of a TLS
+#    backend and answers HTTP 400, so the scripts reach the API Service through a port-forward, with the operator's own
+#    oc token (never printed, never a process argument). A live run links its stored result by the annotation
+#    results.tekton.dev/result. ───────────────────────────────────────────────────────────────────────────────────
+RESULTS_URL=""
+# Start the port-forward in the calling shell, or restart it if it stopped; RESULTS_URL stays empty without Tekton
+# Results.
+lifecycle_open_results() {
+    local port=""
+    [[ -z "$RESULTS_PF" ]] || ! kill -0 "$RESULTS_PF" 2>/dev/null || return 0
+    oc get service tekton-results-api-service -n openshift-pipelines >/dev/null 2>&1 || { RESULTS_URL=""; return 0; }
+    oc whoami -t >/dev/null 2>&1 || die "Tekton Results needs a token login (oc whoami -t)"
+    oc port-forward -n openshift-pipelines service/tekton-results-api-service :8080 >"$LIFECYCLE_TMP/results-pf" 2>&1 &
+    RESULTS_PF=$!
+    for _ in $(seq 1 60); do
+        port=$(sed -n 's/^Forwarding from 127\.0\.0\.1:\([0-9]*\) .*/\1/p' "$LIFECYCLE_TMP/results-pf" | head -1)
+        [[ -z "$port" ]] && kill -0 "$RESULTS_PF" 2>/dev/null || break
+        sleep 0.25
+    done
+    [[ -n "$port" ]] || die "Cannot reach the Tekton Results API through oc port-forward"
+    printf 'header = "Authorization: Bearer %s"\n' "$(oc whoami -t)" >"$LIFECYCLE_TMP/results.curl"
+    chmod 600 "$LIFECYCLE_TMP/results.curl"
+    RESULTS_URL="https://127.0.0.1:$port/apis/results.tekton.dev/v1alpha2/parents"
+}
+
+# results METHOD PATH: the response goes to stdout ({} for HTTP 404, an object already deleted); any other non-2xx
+# status stops the script without printing the body.
+results() {
+    local response code
+    response=$(curl -sS -k --max-time 60 -X "$1" -w '\n%{http_code}' --config "$LIFECYCLE_TMP/results.curl" \
+        "$RESULTS_URL/$2") || die "Tekton Results $1 ${2%%\?*} failed"
+    code=${response##*$'\n'}
+    [[ "$code" != 404 ]] || { printf '{}'; return 0; }
+    [[ "$code" == 2?? ]] || die "Tekton Results $1 ${2%%\?*} returned HTTP $code"
+    printf '%s' "${response%$'\n'*}"
+}
+
+# lifecycle_list_results all|orphans NAMESPACE [RUN...]: print the stored results (one name per line) of NAMESPACE,
+# limited to the PipelineRuns named RUN when given. "orphans" leaves out every result that a PipelineRun or TaskRun
+# still in the cluster links, so a live run is never touched.
+lifecycle_list_results() {
+    local mode=$1 namespace=$2 names live='[]' token="" page all='[]'
+    shift 2
+    [[ -n "$RESULTS_URL" ]] || return 0
+    names=$(printf '%s\n' "$@" | jq -R . | jq -sc 'map(select(. != ""))')
+    if [[ "$mode" == orphans ]]; then
+        live=$(oc get pipelineruns,taskruns -n "$namespace" -o json |
+            jq -c '[.items[].metadata.annotations["results.tekton.dev/result"] // empty]')
+    fi
+    while :; do
+        page=$(results GET "$namespace/results?page_size=100${token:+&page_token=$(printf '%s' "$token" | jq -sRr @uri)}")
+        all=$(printf '%s' "$page" | jq -c --argjson all "$all" '$all + [.results[]?]')
+        token=$(printf '%s' "$page" | jq -r '.next_page_token // empty')
+        [[ -n "$token" ]] || break
+    done
+    printf '%s' "$all" | jq -r --argjson names "$names" --argjson live "$live" '.[]
+        | select(($names | length) == 0 or (.annotations["object.metadata.name"] as $n | $names | index($n)))
+        | select(.name as $r | $live | index($r) | not) | .name'
+}
+
+# lifecycle_delete_results LIST: delete the stored results named in LIST (one per line) with all their records.
+lifecycle_delete_results() {
+    local result records record count=0
+    while IFS= read -r result; do
+        [[ -n "$result" ]] || continue
+        while records=$(results GET "$result/records?page_size=100" | jq -r '.records[]?.name'); [[ -n "$records" ]]; do
+            while IFS= read -r record; do results DELETE "$record" >/dev/null; done <<<"$records"
+        done
+        results DELETE "$result" >/dev/null
+        count=$((count + 1))
+    done <<<"$1"
+    [[ "$count" == 0 ]] || log_success "Deleted $count stored run(s) from Tekton Results"
 }
 
 # ── Registration and identity checks ─────────────────────────────────────────────────────────────────────────────

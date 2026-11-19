@@ -8,11 +8,13 @@
 # (NAME-sonar-credentials in the persona workspace namespaces) and its namespace, then delete its migration-run receipt
 # and lifecycle PipelineRuns, its delivery repository rhoai-delivery/NAME-deployment and the GitLab project itself.
 # The Developer Hub catalog drops the component within a minute, once the GitLab discovery provider no longer finds
-# it. Its SonarQube project (analysis history) and analysis token go too. The retirement record goes last. Not
-# touched: GitHub and Quay.
+# it. Its SonarQube project (analysis history) and analysis token go too, and so do its runs stored in Tekton Results
+# (the project namespace's runs and the lifecycle PipelineRuns), which the OpenShift console keeps listing otherwise.
+# The retirement record goes last. Not touched: GitHub and Quay. A name with nothing registered any more is checked
+# for leftovers of an earlier removal (SonarQube project, stored runs) and those are removed.
 # Without --yes it only prints the plan (read-only) and refuses; safe to rerun (every step accepts the removed state).
-# Acts as the GitLab user demo-operator (token in Secret gitlab-system/gitlab-demo-operator) and as the SonarQube
-# administrator (Secret sonarqube/sonarqube-admin).
+# Acts as the GitLab user demo-operator (token in Secret gitlab-system/gitlab-demo-operator), as the SonarQube
+# administrator (Secret sonarqube/sonarqube-admin) and, for Tekton Results, as the logged-in oc user.
 # Usage: stages/070-advanced-app-platform/demo-reset/delete-project.sh NAME [--yes]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,18 +44,26 @@ lifecycle_read_registration "$NAME"
 lifecycle_read_token
 lifecycle_read_sonar
 lifecycle_read_sonar_project "$NAME"
+lifecycle_open_results
+LIFECYCLE_RUNS=("provision-$NAME" "retire-$NAME")
+STORED=$(lifecycle_list_results all "$PROJECT_NS"; lifecycle_list_results all "$BUILD_NS" "${LIFECYCLE_RUNS[@]}")
 if [[ -z "$REGISTRATION" ]]; then
   [[ -z $(gitlab_find "projects/$(printf '%s' "$GITLAB_WORKLOAD_GROUP/$NAME" | jq -sRr @uri)") ]] ||
     die "GitLab project $GITLAB_WORKLOAD_GROUP/$NAME exists without a registration; inspect it by hand"
-  if [[ -z "$SONAR_PROJECT$SONAR_TOKENS" ]]; then
+  # Only orphans: a run still in the cluster is never removed from the archive here.
+  STORED=$(lifecycle_list_results orphans "$PROJECT_NS"; lifecycle_list_results orphans "$BUILD_NS" "${LIFECYCLE_RUNS[@]}")
+  if [[ -z "$SONAR_PROJECT$SONAR_TOKENS$STORED" ]]; then
     log_success "Nothing registered under $NAME: already removed"
     exit 0
   fi
-  # A project removed before SonarQube cleanup existed keeps its Sonar history; a new project of this name would
-  # inherit it.
-  log_info "SonarQube:  delete leftover project $NAME$([[ -n "$SONAR_TOKENS" ]] && echo " and token(s) $(tr '\n' ' ' <<<"$SONAR_TOKENS")")"
+  # A project removed before this cleanup existed keeps its Sonar history (a new project of this name would inherit
+  # it) and its stored runs.
+  [[ -z "$SONAR_PROJECT$SONAR_TOKENS" ]] ||
+    log_info "SonarQube:  delete leftover project $NAME$([[ -n "$SONAR_TOKENS" ]] && echo " and token(s) $(tr '\n' ' ' <<<"$SONAR_TOKENS")")"
+  [[ -z "$STORED" ]] || log_info "Results:    delete $(grep -c . <<<"$STORED") leftover stored run(s) of $PROJECT_NS and $BUILD_NS/{provision,retire}-$NAME"
   [[ "$CONFIRMED" == true ]] || { log_error "Pass --yes after reviewing the plan."; exit 1; }
   lifecycle_delete_sonar_project "$NAME"
+  lifecycle_delete_results "$STORED"
   exit 0
 fi
 lifecycle_check_project retire "$NAME"
@@ -90,6 +100,7 @@ fi
 [[ "$KIND" != migration ]] || log_info "Pipeline:   PipelineRun $BUILD_NS/retire-$NAME (provision-migration-run, mode retire)"
 log_info "Delete:     Applications project-$NAME, runtime-$NAME; grants, delivery reader, listener binding, scanner credential mirror; namespace $PROJECT_NS"
 [[ "$KIND" != migration ]] || log_info "Delete:     ConfigMap $RUN_NS/migration-run-$NAME; PipelineRuns $BUILD_NS/provision-$NAME, retire-$NAME"
+log_info "Delete:     Tekton Results: $(grep -c . <<<"$STORED" || true) stored run(s) of $PROJECT_NS and $BUILD_NS/{provision,retire}-$NAME"
 log_info "Delete:     SonarQube project $NAME ($([[ -n "$SONAR_PROJECT" ]] && echo "analysis history" || echo "none")); token(s): $([[ -n "$SONAR_TOKENS" ]] && tr '\n' ' ' <<<"$SONAR_TOKENS" || echo none)"
 log_info "Delete:     GitLab delivery repository $(printf '%s' "$DELIVERY" | jq -r '.path_with_namespace // "(none)"')"
 [[ -z "$PROJECT" ]] || log_info "Delete:     GitLab project $GITLAB_WORKLOAD_GROUP/$NAME (permanently; the catalog drops it within a minute)"
@@ -146,6 +157,10 @@ if [[ "$KIND" == migration ]]; then
   oc delete configmap "migration-run-$NAME" -n "$RUN_NS" --ignore-not-found
   oc delete pipelinerun "provision-$NAME" "retire-$NAME" -n "$BUILD_NS" --ignore-not-found
 fi
+# The archive keeps deleted runs; the project's are orphans now (namespace and lifecycle PipelineRuns are gone).
+lifecycle_open_results
+STORED=$(lifecycle_list_results orphans "$PROJECT_NS"; lifecycle_list_results orphans "$BUILD_NS" "${LIFECYCLE_RUNS[@]}")
+lifecycle_delete_results "$STORED"
 # The Sonar project would be reused too: its history moves the new-code period of a new project of the same name.
 lifecycle_delete_sonar_project "$NAME"
 # The delivery repository would be reused by a new project of the same name, and its promotion record would refuse
