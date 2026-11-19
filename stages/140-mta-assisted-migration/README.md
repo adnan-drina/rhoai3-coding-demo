@@ -6,7 +6,7 @@ The message for platform teams: the workspace arrives ready. The platform provis
 
 ## What You'll Do
 
-You will **provision** a migration project from the **Migrate an application with MTA** template (a writable copy of your Git repository, a workspace, a namespace and the delivery pipeline), **open** a workspace whose MTA extensions, analyzer, model access and settings are already in place, **analyze** the application against the analysis profile the template adds for your migration target, **resolve** the issues with Developer Lightspeed in agent mode, **run** the migrated service and **push** it through the same pipeline that built the legacy code.
+You will **provision** a migration project from the **Migrate with MTA** template (a writable copy of your Git repository, a workspace, a namespace and the delivery pipeline), **open** a workspace whose MTA extensions, analyzer, model access and settings are already in place, **analyze** the application against the analysis profile the template adds for your migration target, **resolve** the issues with Developer Lightspeed in agent mode, **run** the migrated service and **push** it through the same pipeline that built the legacy code.
 
 The template takes a Java application built with Maven that packages as a runnable jar, and offers the Java targets of the [MTA 8.3 supported migration paths](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.3/html/installing_the_migration_toolkit_for_applications/supported-migration-paths_installing-mta-title): Quarkus, Spring Boot on Red Hat Runtimes, Jakarta EE 9, OpenJDK 21, Camel 4 and containerization (cloud readiness). The source is whatever the repository contains; MTA's rules for the target find the source technologies themselves. This walkthrough migrates to Quarkus and uses the Coolstore cart, [`coolstore-cart-legacy`](https://github.com/adnan-drina/coolstore-cart-legacy): a Spring Boot 2.7 shopping cart on Java 11 with `javax` APIs, Jersey resources under `/api` and an OpenFeign client for the catalog service. The platform GitLab mirrors it as `rhoai-workloads/coolstore-cart-legacy`.
 
@@ -22,7 +22,7 @@ The template takes a Java application built with Maven that packages as a runnab
 
 ## Step 2: Create your migration project from the template
 
-1. Click the **+** icon in the header and choose the **Migrate an application with MTA** template.
+1. Click the **+** icon in the header and choose the **Migrate with MTA** template.
 2. **Git repository URL**: the HTTPS URL of the application, on GitHub or the platform GitLab. For this walkthrough: `https://github.com/adnan-drina/coolstore-cart-legacy.git`, or the `rhoai-workloads/coolstore-cart-legacy` URL of the platform GitLab.
 3. **Project name**: `coolstore-cart` (lowercase, hyphens; it becomes the repository, namespace and workspace name).
 4. **Migration target**: **Quarkus**. The other choices write the same project with an analysis profile for their target.

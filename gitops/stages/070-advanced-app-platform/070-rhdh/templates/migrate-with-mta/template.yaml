@@ -2,7 +2,7 @@ apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
 metadata:
   name: migrate-with-mta
-  title: Migrate an application with MTA
+  title: Migrate with MTA
   description: "Migrates a Java application built with Maven to the target you choose\n(Quarkus, Spring Boot on Red Hat Runtimes, Jakarta EE 9, OpenJDK 21, Camel 4\nor containerization). Copies your repository into a new one of your own and\nopens it in a Dev Spaces workspace with the migration toolkit for\napplications (MTA) 8.3 extension and an analysis profile for that target;\nDeveloper Lightspeed for MTA proposes fixes in agent mode with your own\nModels-as-a-Service key. Registered in the catalog and provisioned with its\nown namespace and delivery pipeline (SonarQube quality gate included).\n"
   tags:
   - golden-path

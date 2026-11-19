@@ -3601,7 +3601,7 @@ ls -l /opt/mta-analyzer-rpc/mta-analyzer-rpc
 jq '.settings["mta-core.analyzerPath"]' /projects/*/.code-workspace
 ```
 
-**Recover:** Open the workspace from a project created by the **Migrate an application with MTA** template (its devfile pins the Stage 140 image). If the image is rebuilt, record the new digest as described in [`workspace-image/README.md`](../stages/140-mta-assisted-migration/workspace-image/README.md).
+**Recover:** Open the workspace from a project created by the **Migrate with MTA** template (its devfile pins the Stage 140 image). If the image is rebuilt, record the new digest as described in [`workspace-image/README.md`](../stages/140-mta-assisted-migration/workspace-image/README.md).
 
 ## MTA Analysis View Reports "Failed To Establish Connection To The Model"
 
@@ -3617,4 +3617,4 @@ cat /checode/remote/data/User/globalStorage/redhat.mta-core/settings/provider-se
 curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $MAAS_API_KEY" "$MAAS_API_BASE_URL/models"
 ```
 
-**Recover:** Restart the workspace so postStart writes the provider settings again, then reload the window. For a workspace created before the change, recreate the project from the **Migrate an application with MTA** template, or copy the `OPENAI_API_KEY` env entry, the `mta-provider-settings` command and its postStart event from the skeleton devfile into the DevWorkspace. Check the model access with `./stages/140-mta-assisted-migration/validate.sh --project NAME`.
+**Recover:** Restart the workspace so postStart writes the provider settings again, then reload the window. For a workspace created before the change, recreate the project from the **Migrate with MTA** template, or copy the `OPENAI_API_KEY` env entry, the `mta-provider-settings` command and its postStart event from the skeleton devfile into the DevWorkspace. Check the model access with `./stages/140-mta-assisted-migration/validate.sh --project NAME`.
