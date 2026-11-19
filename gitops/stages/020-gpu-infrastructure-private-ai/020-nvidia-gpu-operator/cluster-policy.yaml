@@ -53,8 +53,9 @@ spec:
       name: ''
   dcgmExporter:
     enabled: true
+    # Metric list from dcgm-metrics/: the 4.9 defaults plus pre-4.9 names the console plugin and dashboards query.
     config:
-      name: ''
+      name: nvidia-dcgm-metrics
     serviceMonitor:
       enabled: true
   dcgm:

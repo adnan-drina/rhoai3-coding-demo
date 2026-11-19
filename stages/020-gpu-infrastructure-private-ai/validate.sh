@@ -60,6 +60,20 @@ console_dashboard() {
         and (.data["dcgm-exporter-dashboard.json"] | fromjson | .title) == "NVIDIA DCGM Exporter Dashboard"' \
         <<<"$cm" >/dev/null && echo yes || echo no
 }
+# The ClusterPolicy reads the Git metric list, and the NVIDIA console plugin is served, registered and enabled.
+console_plugin() {
+    local cm deploy plugin console
+    cm=$(read_json configmap nvidia-dcgm-metrics -n nvidia-gpu-operator)
+    deploy=$(read_json deployment console-plugin-nvidia-gpu -n nvidia-gpu-operator)
+    plugin=$(read_json consoleplugin console-plugin-nvidia-gpu)
+    console=$(read_json console.operator.openshift.io cluster)
+    jq -n -e --argjson cp "$cp" --argjson cm "$cm" --argjson d "$deploy" --argjson p "$plugin" --argjson c "$console" \
+        '$cp.spec.dcgmExporter.config.name == "nvidia-dcgm-metrics"
+        and ($cm.data["dcgm-metrics.csv"] | test("(?m)^DCGM_FI_PROF_GR_ENGINE_ACTIVE,") and test("(?m)^DCGM_FI_DEV_GPU_UTIL_RATIO,"))
+        and $d.status.observedGeneration == $d.metadata.generation and ($d.status.availableReplicas // 0) >= 1
+        and $p.spec.backend.service == {name: "console-plugin-nvidia-gpu", namespace: "nvidia-gpu-operator", port: 9443, basePath: "/"}
+        and ($c.spec.plugins // [] | index("console-plugin-nvidia-gpu")) != null' >/dev/null && echo yes || echo no
+}
 # Automatic approval rolls within the reviewed channel; check-operator-policy.py above guards the release family.
 operator_current() {
     local sub csv
@@ -175,6 +189,7 @@ check "NFD Available with fresh native worker/master" nfd_ready yes
 check "ClusterPolicy native ready" clusterpolicy_ready yes
 check "nvidia-operator-validator native owner/current readiness" "owned_daemonset nvidia-operator-validator" yes
 check "nvidia-dcgm-exporter native owner/current readiness" "owned_daemonset nvidia-dcgm-exporter" yes
+check "DCGM metric list from Git; NVIDIA GPU console plugin available and enabled" console_plugin yes
 check "Reviewed GPU MachineSets (L40S g6e.2xlarge, RTX PRO 6000 g7e.2xlarge) at their desired replicas" pools_reviewed yes
 jq -r 'group_by(.metadata.labels["cluster-api/accelerator"])[]
     | "  pool \(.[0].metadata.labels["cluster-api/accelerator"]): \(map("\(.metadata.name)=\(.spec.replicas)") | join(", "))"' \

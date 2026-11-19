@@ -2,17 +2,17 @@
 
 This Application installs the certified NVIDIA GPU Operator and its `ClusterPolicy`. The operator installs the
 driver, container toolkit, device plugin, GPU Feature Discovery and DCGM exporter on every GPU node, so each GPU
-shows up as one schedulable `nvidia.com/gpu` unit. The Application also publishes the NVIDIA DCGM dashboard in the
-OpenShift console and lets OpenShift AI administrators query GPU metrics. Model serving in Stages 030 to 050
+shows up as one schedulable `nvidia.com/gpu` unit. The Application also publishes the NVIDIA DCGM dashboard and the
+NVIDIA GPU console plugin in the OpenShift console and lets OpenShift AI administrators query GPU metrics. Model serving in Stages 030 to 050
 consumes the GPUs; administrators consume the dashboard.
 
 | | |
 |---|---|
 | Argo CD Application | `020-nvidia-gpu-operator` ([manifest](../../../applications/020-nvidia-gpu-operator.yaml)) |
 | Deployed by | [`stages/020-gpu-infrastructure-private-ai/deploy.sh`](../../../../stages/020-gpu-infrastructure-private-ai/deploy.sh) (deploy-order 2) |
-| Validated by | [`stages/020-gpu-infrastructure-private-ai/validate.sh`](../../../../stages/020-gpu-infrastructure-private-ai/validate.sh) (metrics Role binding, pinned dashboard, CSV, `ClusterPolicy` ready, validator/DCGM DaemonSets, per-node driver; `--functional` adds CUDA vectorAdd and DCGM metrics) |
+| Validated by | [`stages/020-gpu-infrastructure-private-ai/validate.sh`](../../../../stages/020-gpu-infrastructure-private-ai/validate.sh) (metrics Role binding, pinned dashboard, CSV, `ClusterPolicy` ready, validator/DCGM DaemonSets, DCGM metric list and console plugin, per-node driver; `--functional` adds CUDA vectorAdd and DCGM metrics) |
 | Sync | Automated, prune and self-heal; `SkipDryRunOnMissingResource`, `RespectIgnoreDifferences`; Server-Side Diff by compare-options annotation; retry 10, 5s to 3m |
-| Depends on | `020-node-feature-discovery` (GPU node labels); `certified-operators` catalog; group `rhods-admins` and Role `cluster-monitoring-metrics-api` (platform monitoring) |
+| Depends on | `020-node-feature-discovery` (GPU node labels); `certified-operators` catalog; group `rhods-admins` and Role `cluster-monitoring-metrics-api` (platform monitoring); `010-console-observability` (enables `console-plugin-nvidia-gpu` in the console plugin list) |
 | Used by | `020-gpu-quotas` (GPU capacity behind the queues); Stage 030/040/050 model servers; `stages/020-gpu-infrastructure-private-ai/deploy.sh --gpus N` (waits for allocatable GPUs) |
 
 ## Why
@@ -27,8 +27,13 @@ The console dashboard follows NVIDIA's OpenShift procedure: a ConfigMap with the
 `openshift-config-managed` with the label `console.openshift.io/dashboard=true` (upstream) [3]. Querying cluster
 GPU metrics needs the `cluster-monitoring-metrics-api` permissions in `openshift-monitoring` [4].
 
-The operator, its policy, the dashboard and the metrics binding share one lifecycle (GPU node software and its
-observability), so they form one Application.
+The console Cluster utilization card shows CPU, memory, filesystem, network and pods only. The NVIDIA GPU
+administration dashboard is a dynamic console plugin that adds GPU rows to **Home > Overview** and a
+**Compute > GPUs** page from DCGM exporter metrics; its install has the DCGM exporter collect a custom metric list (upstream) [5].
+It uses the documented `console.cluster-overview/utilization-item` and related extension types [6].
+
+The operator, its policy, the DCGM metric list, the dashboard, the console plugin and the metrics binding share one
+lifecycle (GPU node software and its observability), so they form one Application.
 
 ## What
 
@@ -46,6 +51,20 @@ GPU metrics access:
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | RoleBinding | `rhoai-gpu-metrics-admins` | `openshift-monitoring` | Binds group `rhods-admins` to the platform Role `cluster-monitoring-metrics-api` |
+
+DCGM metric list (`dcgm-metrics/`):
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| ConfigMap | `nvidia-dcgm-metrics` | `nvidia-gpu-operator` | Key `dcgm-metrics.csv`, generated from the local `dcgm-metrics.csv`; read by `ClusterPolicy` `dcgmExporter.config.name` |
+
+Console plugin (`console-plugin/`, rendered from chart `console-plugin-nvidia-gpu` 0.3.0, Apache-2.0):
+
+| Kind | Name | Namespace | Purpose |
+|---|---|---|---|
+| Deployment | `console-plugin-nvidia-gpu` | `nvidia-gpu-operator` | Serves the plugin bundle over TLS on 9443; image `quay.io/edge-infrastructure/console-plugin-nvidia-gpu:release-0.3.0` pinned by digest |
+| Service | `console-plugin-nvidia-gpu` | `nvidia-gpu-operator` | Port 9443; service CA writes the `plugin-serving-cert` Secret |
+| ConsolePlugin | `console-plugin-nvidia-gpu` | cluster-scoped | Registers the bundle; display name `NVIDIA GPU` |
 
 Console dashboard (`console-dashboard/`):
 
@@ -81,6 +100,7 @@ zero replicas, the operand DaemonSets schedule no pods and the `ClusterPolicy` s
   - `daemonsets.tolerations` adds `nvidia-gpu-only:NoSchedule` next to `nvidia.com/gpu`. The GPU MachineSets taint
     their nodes with `nvidia-gpu-only` (see `020-gpu-machinesets`); without this toleration no operand would run there.
   - `dcgmExporter.serviceMonitor.enabled: true`: DCGM metrics reach platform monitoring and the console dashboard.
+  - `dcgmExporter.config.name: nvidia-dcgm-metrics`: the exporter collects the Git metric list (see DCGM metric list).
   - No time-slicing or MIG partitioning is configured (`mig.strategy: single`, no device-plugin config): one
     physical GPU is one `nvidia.com/gpu` unit.
   - `driver.upgradePolicy.autoUpgrade: true` with drain disabled and `maxParallelUpgrades: 1`.
@@ -91,6 +111,19 @@ zero replicas, the operand DaemonSets schedule no pods and the `ClusterPolicy` s
   `validate.sh` checks its SHA-256.
 - **Metrics access.** The RoleBinding gives `rhods-admins` the namespaced `cluster-monitoring-metrics-api` Role
   (Prometheus and Thanos Querier API access on port 9091) [4], not `cluster-monitoring-view` across the cluster.
+- **DCGM metric list.** GPU Operator v26.7 ships dcgm-exporter 4.9.0, which renamed its default metrics to DCGM 4.7
+  names and changed some units (for example `DCGM_FI_DEV_GPU_UTIL` in percent became `DCGM_FI_DEV_GPU_UTIL_RATIO`) [7].
+  The plugin 0.3.0, the pinned dashboard, the `rhoai-monitoring/` ServiceMonitor and `validate.sh --functional`
+  still query the old names. A custom list replaces the exporter defaults, so `dcgm-metrics.csv` repeats the 4.9.0
+  defaults and then adds the old names; each old name is still its own DCGM field with its old unit. The file was
+  checked with `dcgm-exporter config explain -- --collectors <file>` on the running image (41 fields, exit 0). The
+  upstream procedure installs the chart's 11-metric list as the whole list [5]; that would drop the 4.9 defaults.
+- **Console plugin.** The upstream procedure installs the plugin with Helm and enables it with `oc patch` [5]. Here the chart was
+  rendered once into plain manifests, as for GitLab in Stage 070: no Helm release, the image pinned by digest, the
+  chart's test Pod and its unused `nginx-conf` volume (a ConfigMap the chart never creates) dropped, restricted pod
+  security settings and small resource requests added. `010-console-observability` owns the console plugin list,
+  so the plugin is enabled there, not by patch. Red Hat does not support custom plugin code [6]; the plugin is
+  maintained by the Red Hat ecosystem edge team on GitHub.
 - **ignoreDifferences / delegated fields.** None.
 - **Secrets.** None. vGPU licensing (`licensingConfig.secretName`) is empty because vGPU is not used.
 - **Cluster-specific values.** None.
@@ -101,8 +134,9 @@ zero replicas, the operand DaemonSets schedule no pods and the `ClusterPolicy` s
 
 `validate.sh --readiness` checks: the RoleBinding subject and the Role rules; the dashboard ConfigMap label,
 tracking, title and SHA-256; the CSV `Succeeded`; `ClusterPolicy` state `ready`; `nvidia-operator-validator` and
-`nvidia-dcgm-exporter` DaemonSets owned by the policy and ready on every GPU node; one current Driver Toolkit
-driver DaemonSet per GPU node RHCOS version. `--functional` adds the CUDA vectorAdd validator result and a
+`nvidia-dcgm-exporter` DaemonSets owned by the policy and ready on every GPU node; the `ClusterPolicy` reading
+`nvidia-dcgm-metrics` with old and new names, the plugin Deployment available, its `ConsolePlugin` backend and the
+plugin enabled on the console; one current Driver Toolkit driver DaemonSet per GPU node RHCOS version. `--functional` adds the CUDA vectorAdd validator result and a
 port-forwarded DCGM `/metrics` scrape per node. GPU node checks fail while the pools are parked at zero.
 
 ```bash
@@ -122,6 +156,7 @@ oc get ds -n nvidia-gpu-operator
 | OpenShift AI dashboard refresh | After installing, delete `migration-gpu-status` ConfigMap and restart `rhods-dashboard` [1] | Not done by GitOps; the ConfigMap does not exist on this cluster | Gap (the one-time step is not documented in the stage runbook) |
 | GPU verification | Node reports `nvidia.com/gpu` capacity; run a CUDA vectorAdd test [1][2] | `validate.sh` checks allocatable `nvidia.com/gpu=1` and the operator's CUDA validator | Aligned |
 | Console dashboard | ConfigMap in `openshift-config-managed` labelled `console.openshift.io/dashboard=true` (upstream) [3] | Same, with pinned local JSON | Aligned |
+| GPU console plugin | Install `console-plugin-nvidia-gpu` with Helm, enable it with `oc patch`, point `dcgmExporter.config` at the chart's metric ConfigMap [5] (upstream) | Rendered manifests from chart 0.3.0, enabled in the Git console plugin list, metric list is the 4.9 defaults plus the chart's names | Deviation (justified: GitOps ownership of the plugin list; the chart's list alone would drop the dcgm-exporter 4.9 defaults) |
 | Metrics API access | Bind `cluster-monitoring-metrics-api` in `openshift-monitoring` for Prometheus/Thanos API access [4] | RoleBinding for `rhods-admins` | Aligned |
 
 ## References
@@ -130,3 +165,6 @@ oc get ds -n nvidia-gpu-operator
 2. Installing the NVIDIA GPU Operator on OpenShift, NVIDIA GPU Operator on Red Hat OpenShift (latest) (upstream). https://docs.nvidia.com/datacenter/cloud-native/openshift/latest/install-gpu-ocp.html
 3. Enabling the GPU Monitoring Dashboard, NVIDIA GPU Operator on Red Hat OpenShift (latest) (upstream). https://docs.nvidia.com/datacenter/cloud-native/openshift/latest/enable-gpu-monitoring-dashboard.html
 4. Accessing monitoring APIs by using the CLI, Accessing metrics, Monitoring stack for Red Hat OpenShift 4.22. https://docs.redhat.com/en/documentation/monitoring_stack_for_red_hat_openshift/4.22/html/accessing_metrics/accessing-monitoring-apis-by-using-the-cli
+5. OpenShift Console NVIDIA GPU plugin, release-0.3.0 (upstream; the OpenShift Monitoring book documented its install as "The NVIDIA GPU administration dashboard" up to 4.12 and has no later edition). https://github.com/rh-ecosystem-edge/console-plugin-nvidia-gpu/tree/release-0.3.0
+6. Dynamic plugins, Web console, OpenShift Container Platform 4.22. https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/web_console/dynamic-plugins
+7. DCGM Exporter 4.9.0 release notes (upstream). https://github.com/NVIDIA/dcgm-exporter/releases/tag/4.9.0

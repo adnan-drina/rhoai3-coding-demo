@@ -364,6 +364,24 @@ oc describe machineset <gpu-machineset> -n openshift-machine-api
 - Inspect Machine API events.
 - Re-run `./stages/020-gpu-infrastructure-private-ai/validate.sh`.
 
+## GPU Metrics Empty After A GPU Operator Update (DCGM Names Renamed)
+
+**Affected stage:** Stage 020, GPU Operator v26.7 (dcgm-exporter 4.9.0)
+
+**Symptom:** The NVIDIA GPU console plugin rows on **Home → Overview** or **Compute → GPUs**, the **NVIDIA DCGM Exporter Dashboard** or the RHOAI LLM Utilization GPU panel show no data, and `validate.sh --functional` fails "native DCGM metrics", while the GPU is busy.
+
+**Likely cause:** dcgm-exporter 4.9.0 renamed its default metrics to DCGM 4.7 names and changed some units (`DCGM_FI_DEV_GPU_UTIL` became `DCGM_FI_DEV_GPU_UTIL_RATIO`, `DCGM_FI_PROF_GR_ENGINE_ACTIVE` became `DCGM_FI_PROF_GR_ENGINE_UTIL_RATIO`). Consumers that query the old names get nothing if the `ClusterPolicy` no longer reads `nvidia-dcgm-metrics`, or the ConfigMap lost the old-name rows.
+
+**Diagnose:**
+
+```bash
+oc get clusterpolicy gpu-cluster-policy -o jsonpath='{.spec.dcgmExporter.config.name}{"\n"}'
+oc get configmap nvidia-dcgm-metrics -n nvidia-gpu-operator -o jsonpath='{.data.dcgm-metrics\.csv}' | grep -c '^DCGM_'
+oc logs -n nvidia-gpu-operator ds/nvidia-dcgm-exporter | grep -iE 'error|warn' | tail
+```
+
+**Recover:** Keep `dcgmExporter.config.name: nvidia-dcgm-metrics` and both blocks of `020-nvidia-gpu-operator/dcgm-metrics/dcgm-metrics.csv` (the exporter defaults, then the old names). After an exporter update, compare the defaults block with that release's `etc/default-counters.csv` and check the file with `dcgm-exporter config explain -- --collectors <file>` (see the component README). The exporter reloads the mounted list, so no pod restart is needed.
+
 ## Kueue Or GPUaaS Queue Resources Are Missing
 
 **Affected stage:** Stage 020

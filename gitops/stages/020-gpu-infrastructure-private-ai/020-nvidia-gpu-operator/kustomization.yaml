@@ -1,4 +1,5 @@
-# NVIDIA GPU Operator with its ClusterPolicy and GPU metrics access; console-dashboard/ publishes the DCGM dashboard.
+# NVIDIA GPU Operator with its ClusterPolicy and GPU metrics access; dcgm-metrics/ sets the DCGM exporter metric list,
+# console-dashboard/ publishes the DCGM dashboard and console-plugin/ serves the NVIDIA GPU console plugin.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -7,6 +8,8 @@ resources:
   - operatorgroup.yaml
   - subscription.yaml
   - cluster-policy.yaml
+  - dcgm-metrics
   - rolebinding-gpu-metrics-admins.yaml
   - console-dashboard
+  - console-plugin
   - rhoai-monitoring

@@ -3,7 +3,7 @@
 This Application adds Perses dashboards to the OpenShift web console. It enables the Cluster Observability Operator
 monitoring UI plugin with Perses. It also owns the full list of enabled console plugins on the cluster `Console`
 operator configuration. Users see **Observe > Dashboards (Perses)** and can pick the RHOAI monitoring project. Every
-stage that installs a console plugin (GitOps, ODF, Connectivity Link, Lightspeed, Pipelines) depends on this list.
+stage that installs a console plugin (GitOps, ODF, Connectivity Link, Lightspeed, NVIDIA GPU, Pipelines) depends on this list.
 
 | | |
 |---|---|
@@ -33,7 +33,7 @@ Application from the foundation components.
 | Kind | Name | Namespace | Purpose |
 |---|---|---|---|
 | UIPlugin | `monitoring` | (cluster) | `type: Monitoring`, `perses.enabled: true` |
-| Console (`operator.openshift.io/v1`) | `cluster` | (cluster) | Owns only `spec.plugins`: `monitoring-plugin`, `networking-console-plugin`, `monitoring-console-plugin`, `gitops-plugin`, `odf-console`, `odf-client-console`, `kuadrant-console-plugin`, `lightspeed-console-plugin`, `pipelines-console-plugin` |
+| Console (`operator.openshift.io/v1`) | `cluster` | (cluster) | Owns only `spec.plugins`: `monitoring-plugin`, `networking-console-plugin`, `monitoring-console-plugin`, `gitops-plugin`, `odf-console`, `odf-client-console`, `kuadrant-console-plugin`, `lightspeed-console-plugin`, `pipelines-console-plugin`, `console-plugin-nvidia-gpu` |
 
 There are no sync waves or hooks.
 
@@ -44,7 +44,7 @@ deletes the cluster singleton [3].
 Not in Git (COO-owned, generated from the UIPlugin): the `monitoring-console-plugin` ConsolePlugin and its Deployment,
 and the console `Perses` server with its StatefulSet in `openshift-cluster-observability-operator`. The other listed
 ConsolePlugin objects belong to the operators that install them (OpenShift, GitOps, ODF, Connectivity Link, Lightspeed,
-Pipelines).
+Pipelines), except `console-plugin-nvidia-gpu`, which Stage 020 `020-nvidia-gpu-operator` deploys from Git.
 
 ## How
 

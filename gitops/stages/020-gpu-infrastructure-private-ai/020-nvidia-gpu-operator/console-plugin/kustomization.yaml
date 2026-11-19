@@ -1,0 +1,15 @@
+# NVIDIA GPU console plugin: GPU rows on Home > Overview and the Compute > GPUs page.
+# Rendered once from Helm chart rh-ecosystem-edge/console-plugin-nvidia-gpu 0.3.0 (source tag release-0.3.0,
+# commit bb4da792, Apache-2.0; OpenShift 4.19+) and kept as plain manifests: no Helm release, image by digest,
+# chart test Pod and its unused nginx-conf volume dropped. Enabled in 010-console-observability/console-plugins.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: gpu-infra
+      app.kubernetes.io/component: gpu-observability
+      app.kubernetes.io/managed-by: argocd
+resources:
+  - deployment.yaml
+  - service.yaml
+  - consoleplugin.yaml

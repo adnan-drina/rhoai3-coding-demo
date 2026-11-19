@@ -39,7 +39,7 @@ CLUSTER_SCOPED='["/Namespace","rbac.authorization.k8s.io/ClusterRole","rbac.auth
  "services.platform.opendatahub.io/Auth","mlflow.opendatahub.io/MLflow","policy.networking.k8s.io/AdminNetworkPolicy",
  "policy.networking.k8s.io/BaselineAdminNetworkPolicy","imageregistry.operator.openshift.io/Config","oauth.openshift.io/OAuthClient",
  "ols.openshift.io/OLSConfig",
- "console.openshift.io/ConsoleLink","admissionregistration.k8s.io/ValidatingAdmissionPolicy",
+ "console.openshift.io/ConsoleLink","console.openshift.io/ConsolePlugin","admissionregistration.k8s.io/ValidatingAdmissionPolicy",
  "admissionregistration.k8s.io/ValidatingAdmissionPolicyBinding"]'
 CACHE=$(mktemp -d)
 trap 'rm -rf "$CACHE"' EXIT

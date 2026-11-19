@@ -1,0 +1,15 @@
+apiVersion: console.openshift.io/v1
+kind: ConsolePlugin
+metadata:
+  name: console-plugin-nvidia-gpu
+  labels:
+    app.kubernetes.io/name: console-plugin-nvidia-gpu
+spec:
+  displayName: NVIDIA GPU
+  backend:
+    type: Service
+    service:
+      name: console-plugin-nvidia-gpu
+      namespace: nvidia-gpu-operator
+      port: 9443
+      basePath: /
