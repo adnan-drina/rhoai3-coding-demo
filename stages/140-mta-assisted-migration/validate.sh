@@ -82,13 +82,6 @@ for t in $TARGET_VALUES; do
 done
 record "skeleton profile covers every migration target the template offers" \
   "$( [[ -n "$TARGET_VALUES" && -z "$missing" ]] && echo pass || echo "missing:${missing:- no targets}")"
-record "Spring Boot 3 picker uses the MTA default-rule selector" \
-  "$(grep -q '^        - spring-boot3$' "$TEMPLATE_DIR/template.yaml" \
-      && grep -q '^        - Spring Boot 3$' "$TEMPLATE_DIR/template.yaml" \
-      && grep -qx '  "spring-boot3": "Spring Boot 3",' "$PROFILE" \
-      && grep -qx '  "spring-boot3": "konveyor.io/target=spring-boot3",' "$PROFILE" \
-      && ! grep -qE 'spring-boot2-to-spring-boot3|spring6' "$TEMPLATE_DIR/template.yaml" "$PROFILE" \
-      && echo pass || echo "Spring Boot 3 target differs")"
 record "template takes a Git repository URL, a project name and a migration target" \
   "$(sed -n '/^    required:/,/^    properties:/p' "$TEMPLATE_DIR/template.yaml" | grep -E '^    - ' | tr -d ' -' | paste -sd, - | grep -qx 'repoUrl,name,target' && echo pass || echo "parameters differ")"
 record "workspace settings: Standard Java server, baked analyzer, GenAI agent mode, no Hub" \

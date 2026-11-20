@@ -2,7 +2,7 @@
 name: mta-vscode
 metadata:
   author: rhoai3-coding-demo
-  version: 2.3.0
+  version: 2.3.1
   product: mta
   docs-version: "8.3"
   skill-group: "Application Modernization"
@@ -51,7 +51,7 @@ extension pack, in its own image and template:
 | The 8.3.3 analyzer RPC binary baked to `/opt/mta-analyzer-rpc/mta-analyzer-rpc` and set as `mta-core.analyzerPath` | same image; skeleton `.code-workspace` | [Analyzer RPC binary][rpc] |
 | Settings live in the project's committed `.code-workspace` (single-project devfile, so Che Code opens `/projects/<project>/.code-workspace`); no postStart patch | `070-rhdh/templates/migrate-with-mta/skeleton/.code-workspace` | [IDE settings][ide] |
 | The project repository is the only, writable folder (MTA Core writes `.vscode/` under the first folder) | `migrate-with-mta/template.yaml` | [Install the extension][install] |
-| No MTA Hub connection (no `HUB_*` variables, so no Sign In): Developer Lightspeed runs agent mode (`mta-core.genai.agentMode: true`) on the developer's MaaS key, with provider settings written at start (see `mta-lightspeed`). The template adds `.konveyor/profiles/migration-target`, rendered for the target picked in the template (Quarkus, Spring Boot on Red Hat Runtimes, Jakarta EE 9, OpenJDK 21, Camel 4 or cloud readiness; unversioned `konveyor.io/target` labels plus `discovery`); the source is any Java Maven Git URL | skeleton `devfile.yaml`, `.code-workspace` | [IDE settings][ide], [Profile settings][profiles] |
+| No MTA Hub connection (no `HUB_*` variables, so no Sign In): Developer Lightspeed runs agent mode (`mta-core.genai.agentMode: true`) on the developer's MaaS key, with provider settings written at start (see `mta-lightspeed`). The template adds `.konveyor/profiles/migration-target`, rendered for the target picked in the template (Quarkus, Spring Boot on Red Hat Runtimes, Spring Boot 3, Jakarta EE 9, OpenJDK 21, Camel 4 or cloud readiness; `konveyor.io/target` labels plus `discovery`, unversioned except `spring-boot3`, which keeps the Spring Boot 2 to 3 rules apart from the 3 to 4 ones); the source is any Java Maven Git URL | skeleton `devfile.yaml`, `.code-workspace` | [IDE settings][ide], [Profile settings][profiles] |
 
 ## Procedure
 
