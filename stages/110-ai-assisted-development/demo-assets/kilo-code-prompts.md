@@ -33,25 +33,22 @@ Verify with hot reload: `curl localhost:8080/api/inventory/stats` answers immedi
 
 > The pipeline's SonarQube quality gate failed. The report lists these new
 > issues:
-> - Replace System.out by a proper logger (three occurrences in
->   InventoryResource.java)
-> - Remove the @Inject field injection and use constructor injection instead
+> - Catch a list of specific exception subtypes instead of Exception
+>   (InventoryResource.java, stats endpoint)
+> - Remove this field injection and use constructor injection instead
 >   (InventoryResource.java)
-> - Define a constant instead of duplicating the "http://redhat.com" literal
->   (InventoryRepository.java)
 > Fix all of them following project conventions. Keep behavior unchanged and
 > make sure the existing tests — including the stats endpoint tests — still
 > pass.
 
 **Coverage note:** the gate also requires 80% coverage on new code, which is why the Module 1 prompt asks for unit tests up front — the generation and its tests land together, so the red gate is about the smells, and the fix round is about the smells only.
 
-**Presenter beat:** the third issue is pre-existing debt in InventoryRepository that surfaced because the AI touched that file — the gate reviews everything you change, not just what you meant to write.
+**What the report shows with Qwen 3.8:** the catch-all is always there; Coolstore's quality profile adds `java:S2221` to Sonar way, and every model writes "catch the exception and return an empty map" as `catch (Exception e)`. Field injection appears only when the model follows "inject it directly into a field" (about half the runs); drop that line otherwise. `System.out` is rare, because the class already has a logger that models reuse. If the agent also touched `InventoryRepository`, its pre-existing duplicated `"http://redhat.com"` literal shows up too: add "Define a constant instead of duplicating this literal (InventoryRepository.java)" — the gate reviews everything you change, not just what you meant to write.
 
 **Expected fixes:**
-1. `System.out.println` → `Logger.info()` (using `org.jboss.logging.Logger`)
-2. `@Inject` field injection → constructor injection
-3. The duplicated URL literal → a single constant in `InventoryRepository`
+1. `catch (Exception e)` → no catch-all: catch only the specific runtime exceptions that can occur, or let errors propagate to the default error handling
+2. `@Inject` field injection → constructor injection (if reported)
 
-**Expected result:** `System.out.println` replaced by `org.jboss.logging.Logger` calls, the repository injected via constructor, and the catch block logging the error instead of hiding it.
+**Expected result:** the stats endpoint no longer hides every failure behind an empty map, and the repository is injected through the constructor.
 
 **Talk track note:** the fix loop stays in Kilo Code at this stage — one-shot in, gate out. Stage 120 is where the agent (OpenCode + skills) internalizes the standards so the smells never ship in the first place.

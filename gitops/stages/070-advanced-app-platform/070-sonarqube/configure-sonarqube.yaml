@@ -181,6 +181,32 @@ spec:
             --data-urlencode "name=${GATE}" >/dev/null
           echo "'${GATE}' set as default quality gate"
 
+          # --- 4. Coolstore quality profile (Stage 110): Sonar way plus java:S2221 ---
+          # The Stage 110 prompt asks to "catch the exception and return an empty map"; every model writes that as
+          # catch (Exception e), while it follows the other flawed instructions only sometimes. S2221 (catch
+          # specific exceptions) makes the gate fail on it every run. Bound to the Coolstore project only, so other
+          # projects keep Sonar way. The project is created here when missing (private, as the GitLab reconciler
+          # creates it; the reconciler accepts an existing key).
+          PROFILE="AI Platform Way (Coolstore)"
+          COOLSTORE="coolstore-inventory-service"
+          curl -s -u "${AUTH}" -X POST "${SONAR}/api/qualityprofiles/create" \
+            --data-urlencode "language=java" --data-urlencode "name=${PROFILE}" >/dev/null
+          curl -sf -u "${AUTH}" -X POST "${SONAR}/api/qualityprofiles/change_parent" \
+            --data-urlencode "language=java" --data-urlencode "qualityProfile=${PROFILE}" \
+            --data-urlencode "parentQualityProfile=Sonar way" >/dev/null
+          profile_key=$(curl -sf -u "${AUTH}" -G "${SONAR}/api/qualityprofiles/search" \
+            --data-urlencode "language=java" --data-urlencode "qualityProfile=${PROFILE}" |
+            python3 -c 'import json,sys; print(json.load(sys.stdin)["profiles"][0]["key"])')
+          curl -sf -u "${AUTH}" -X POST "${SONAR}/api/qualityprofiles/activate_rule" \
+            --data-urlencode "key=${profile_key}" --data-urlencode "rule=java:S2221" >/dev/null
+          curl -s -u "${AUTH}" -X POST "${SONAR}/api/projects/create" \
+            --data-urlencode "project=${COOLSTORE}" --data-urlencode "name=${COOLSTORE}" \
+            --data-urlencode "visibility=private" >/dev/null
+          curl -sf -u "${AUTH}" -X POST "${SONAR}/api/qualityprofiles/add_project" \
+            --data-urlencode "language=java" --data-urlencode "project=${COOLSTORE}" \
+            --data-urlencode "qualityProfile=${PROFILE}" >/dev/null
+          echo "'${PROFILE}' (Sonar way + java:S2221) bound to ${COOLSTORE}"
+
           python3 /scripts/configure-sso.py
         volumeMounts:
         - name: admin-bootstrap

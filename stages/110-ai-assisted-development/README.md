@@ -248,8 +248,9 @@ In SonarQube (anonymous browsing is enabled):
 2. Click **New Code** to see only the issues introduced by your push.
 3. Each issue has a production consequence:
    - **`System.out.println`:** unstructured logging that disappears in container runtimes; no log levels, no correlation IDs.
-   - **Empty catch block:** hidden failures that silently corrupt data or leave the service in an undefined state.
-   - **Field injection:** untestable wiring; the class cannot be constructed outside the CDI container.
+   - **Catch-all `Exception`:** "Catch a list of specific exception subtypes instead." The endpoint swallows every failure, including programming errors, and answers an empty map as if all were well. Coolstore's quality profile adds this rule (`java:S2221`) to Sonar way, so the instructed catch-all fails the gate on every run.
+   - **Field injection** (when the model follows that instruction): untestable wiring; the class cannot be constructed outside the CDI container.
+   - **`System.out.println`** (rare: the class already has a logger, which models reuse): unstructured logging that disappears in container runtimes.
 
 ![SonarQube Quality Gate: Failed](images/sonar-quality-gate-failed.png) ![SonarQube report showing new issues](images/sonar-report-issues.png)
 
@@ -263,12 +264,10 @@ In SonarQube (anonymous browsing is enabled):
 ```
 The pipeline's SonarQube quality gate failed. The report lists these new
 issues:
-- Replace System.out by a proper logger (three occurrences in
-  InventoryResource.java)
-- Remove the @Inject field injection and use constructor injection instead
+- Catch a list of specific exception subtypes instead of Exception
+  (InventoryResource.java, stats endpoint)
+- Remove this field injection and use constructor injection instead
   (InventoryResource.java)
-- Define a constant instead of duplicating the "http://redhat.com" literal
-  (InventoryRepository.java)
 Fix all of them following project conventions. Keep behavior unchanged and
 make sure the existing tests, including the stats endpoint tests, still
 pass.
