@@ -50,6 +50,7 @@ spec:
         enum:
         - quarkus
         - rhr
+        - spring-boot2-to-spring-boot3
         - jakarta-ee9
         - openjdk21
         - camel4
@@ -57,6 +58,7 @@ spec:
         enumNames:
         - Quarkus
         - Spring Boot on Red Hat Runtimes
+        - Spring Boot 2 to Spring Boot 3
         - Jakarta EE 9
         - OpenJDK 21
         - Camel 4
