@@ -3,7 +3,7 @@ kind: Template
 metadata:
   name: migrate-with-mta
   title: Migrate with MTA
-  description: "Migrates a Java application built with Maven to the target you choose\n(Quarkus, Spring Boot on Red Hat Runtimes, Jakarta EE 9, OpenJDK 21, Camel 4\nor containerization). Copies your repository into a new one of your own and\nopens it in a Dev Spaces workspace with the migration toolkit for\napplications (MTA) 8.3 extension and an analysis profile for that target;\nDeveloper Lightspeed for MTA proposes fixes in agent mode with your own\nModels-as-a-Service key. Registered in the catalog and provisioned with its\nown namespace and delivery pipeline (SonarQube quality gate included).\n"
+  description: "Migrates a Java application built with Maven to the target you choose\n(Quarkus, Spring Boot on Red Hat Runtimes, Spring Boot 3, Jakarta EE 9,\nOpenJDK 21, Camel 4 or containerization). Copies your repository into a new\none of your own and opens it in a Dev Spaces workspace with the migration\ntoolkit for applications (MTA) 8.3 extension and an analysis profile for\nthat target; Developer Lightspeed for MTA proposes fixes in agent mode with\nyour own Models-as-a-Service key. Registered in the catalog and provisioned\nwith its own namespace and delivery pipeline (SonarQube quality gate\nincluded).\n"
   tags:
   - golden-path
   - migration
@@ -43,13 +43,14 @@ spec:
         title: Migration target
         type: string
         description: 'Where the application should go. The template writes an MTA analysis
-          profile with the rules for this target (MTA 8.3 supported migration paths).
+          profile with MTA 8.3 default rules for this target.
 
           '
         default: quarkus
         enum:
         - quarkus
         - rhr
+        - spring-boot3
         - jakarta-ee9
         - openjdk21
         - camel4
@@ -57,6 +58,7 @@ spec:
         enumNames:
         - Quarkus
         - Spring Boot on Red Hat Runtimes
+        - Spring Boot 3
         - Jakarta EE 9
         - OpenJDK 21
         - Camel 4
