@@ -75,18 +75,21 @@ spec:
           fi
         component: tooling-container
       id: init-ai-tools
+    # -ntp: no line per downloaded artifact. On an empty Maven cache (a new workspace or a demo reset) that output
+    # crashed che-machine-exec (panic: concurrent write to websocket connection) and left Maven blocked on the
+    # unread terminal.
     - exec:
         label: "1. Package the application"
         component: tooling-container
         workingDir: ${PROJECT_SOURCE}
-        commandLine: "./mvnw package"
+        commandLine: "./mvnw -ntp package"
         group: {kind: build, isDefault: true}
       id: package
     - exec:
         label: "2. Start Development mode (Hot reload)"
         component: tooling-container
         workingDir: ${PROJECT_SOURCE}
-        commandLine: "./mvnw compile quarkus:dev -Dquarkus.analytics.disabled=true"
+        commandLine: "./mvnw -ntp compile quarkus:dev -Dquarkus.analytics.disabled=true"
         group: {kind: run, isDefault: true}
       id: start-dev
     components:
@@ -209,18 +212,21 @@ spec:
           fi
         component: tooling-container
       id: init-ai-tools
+    # -ntp: no line per downloaded artifact. On an empty Maven cache (a new workspace or a demo reset) that output
+    # crashed che-machine-exec (panic: concurrent write to websocket connection) and left Maven blocked on the
+    # unread terminal.
     - exec:
         label: "1. Package the application"
         component: tooling-container
         workingDir: ${PROJECT_SOURCE}
-        commandLine: "./mvnw package"
+        commandLine: "./mvnw -ntp package"
         group: {kind: build, isDefault: true}
       id: package
     - exec:
         label: "2. Start Development mode (Hot reload)"
         component: tooling-container
         workingDir: ${PROJECT_SOURCE}
-        commandLine: "./mvnw compile quarkus:dev -Dquarkus.analytics.disabled=true"
+        commandLine: "./mvnw -ntp compile quarkus:dev -Dquarkus.analytics.disabled=true"
         group: {kind: run, isDefault: true}
       id: start-dev
     components:

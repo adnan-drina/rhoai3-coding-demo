@@ -3529,6 +3529,23 @@ GitLab OAuth tokens expire after two hours in the current supported configuratio
 
 Inspect carrier metadata and provider status without printing values. Keep the same user, application, scopes and expiry when renewing. Do not inject a shared PAT, extend token lifetime or recreate a workspace to hide the failure. Normal dashboard Stop then Open, after native reauthorization, refreshed the carrier and passed private clone on the same validation workspace. The UID/PVC, images, complete workspace specification and clean product tree were retained; it finished Running. Check for active work and snapshot first. This qualifies that bounded renewal/restart path, not uninterrupted hot refresh of a running Git mount.
 
+## Workspace task terminal dies and Quarkus dev mode never starts
+
+**Affected stage:** Stages 110 and 120 (the `coolstore-inventory-service` workspaces), first Maven run on an empty cache
+
+**Symptom:** **2. Start Development mode** stops printing, nothing listens on port 8080, and the editor shows
+`Activity tracker: Failed to ping che-machine-exec: fetch failed`. `/checode/entrypoint-logs.txt` in the
+`tooling-container` ends with `panic: concurrent write to websocket connection` from `che-machine-exec`.
+
+**Likely cause:** a new workspace or a demo reset (`reset-coolstore.sh` deletes the workspace storage) starts with an
+empty `~/.m2`, and Maven printed a line for every download. Under that output the terminal backend `che-machine-exec`
+panicked; the task's Maven process keeps running but blocks writing to its unread terminal, so it never reaches the
+compile. The devfile commands now pass `-ntp` (no transfer progress) so first runs stay quiet.
+
+**Recover:** Stop then Open the workspace from the Dev Spaces dashboard (this restarts `che-machine-exec`, ends the
+blocked Maven and, after two hours, also refreshes the GitLab credential; see the previous section). `/home/user` is on
+the workspace storage, so whatever Maven already downloaded is kept. Run the task again.
+
 ## Stage 070 project-provisioner fails: Enrollment has terminal refusals
 
 **Symptom:** `070-pipelines` is Degraded because the `app-platform-build/project-provisioner` CronJob fails each run
