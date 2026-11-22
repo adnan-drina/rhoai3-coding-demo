@@ -21,7 +21,7 @@ metadata:
     modelregistry.opendatahub.io/name: demo-registry
   annotations:
     openshift.io/display-name: Gemma 2 9B abliterated (risk assessment judge and SDG)
-    serving.kserve.io/stop: "true"
+    serving.kserve.io/stop: "false"
     serving.kserve.io/deploymentMode: RawDeployment
     security.opendatahub.io/enable-auth: "true"
     opendatahub.io/hardware-profile-name: gpu-reserved-demo
