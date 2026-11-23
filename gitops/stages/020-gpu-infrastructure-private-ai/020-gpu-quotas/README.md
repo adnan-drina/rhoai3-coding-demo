@@ -40,7 +40,7 @@ Queues (`queues/`):
 | ResourceFlavor | `gpu-rtxpro6000` | cluster-scoped | `nodeLabels: cluster-api/accelerator=nvidia-rtxpro6000`, tolerates `nvidia-gpu-only:NoSchedule` (wave 4) |
 | ClusterQueue | `cq-cpu-default` | cluster-scoped | 40 CPU, 128Gi on `default-flavor` (wave 4) |
 | ClusterQueue | `cq-gpu-reserved-demo` | cluster-scoped | 14 CPU, 112Gi, 2 `nvidia.com/gpu` on `gpu-l40s` (wave 4) |
-| ClusterQueue | `cq-gpu-rtxpro6000` | cluster-scoped | 14 CPU, 112Gi, 2 `nvidia.com/gpu` on `gpu-rtxpro6000` (wave 4) |
+| ClusterQueue | `cq-gpu-rtxpro6000` | cluster-scoped | 21 CPU, 168Gi, 3 `nvidia.com/gpu` on `gpu-rtxpro6000` (wave 4) |
 | LocalQueue | `lq-cpu-default` | `demo-sandbox` | Points to `cq-cpu-default` (wave 5) |
 | LocalQueue | `lq-gpu-reserved-demo` | `demo-sandbox` | Points to `cq-gpu-reserved-demo` (wave 5) |
 | LocalQueue | `lq-gpu-rtxpro6000` | `demo-sandbox` | Points to `cq-gpu-rtxpro6000` (wave 5) |

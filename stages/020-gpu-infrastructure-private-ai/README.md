@@ -49,7 +49,7 @@ The AWS GPU MachineSets, managed by OpenShift Machine API and tracked in GitOps:
 
 ### Kueue ClusterQueues
 
-The CPU queue supports workbenches; `cq-gpu-rtxpro6000` (two RTX PRO 6000 units) and `cq-gpu-reserved-demo` (two L40S units) provide exclusive GPUs for model-serving consumers, each through its own LocalQueue in `demo-sandbox`, `internal-models` and `evaluated-models`.
+The CPU queue supports workbenches; `cq-gpu-rtxpro6000` (up to three RTX PRO 6000 units; the third in us-east-2b) and `cq-gpu-reserved-demo` (two L40S units) provide exclusive GPUs for model-serving consumers, each through its own LocalQueue in `demo-sandbox`, `internal-models` and `evaluated-models`.
 
 
 ## What This Stage Adds

@@ -13,7 +13,8 @@ metadata:
 spec:
   # One ClusterQueue per GPU type: a hardware profile names one LocalQueue, and inside a
   # ClusterQueue Kueue picks the first fitting flavor, so users could not choose the GPU.
-  # Two g7e.2xlarge workers (7.5 CPU / ~58 GiB allocatable each).
+  # Up to three g7e.2xlarge workers (7.5 CPU / ~58 GiB allocatable each): two in us-east-2a, a third in
+  # us-east-2b (GPU_ZONE=us-east-2b deploy.sh --gpus 1) when production Qwen runs beside the evaluation models.
   namespaceSelector: {}
   resourceGroups:
   - coveredResources:
@@ -23,13 +24,13 @@ spec:
     - name: default-flavor
       resources:
       - name: cpu
-        nominalQuota: '14'
+        nominalQuota: '21'
       - name: memory
-        nominalQuota: 112Gi
+        nominalQuota: 168Gi
   - coveredResources:
     - nvidia.com/gpu
     flavors:
     - name: gpu-rtxpro6000
       resources:
       - name: nvidia.com/gpu
-        nominalQuota: '2'
+        nominalQuota: '3'
